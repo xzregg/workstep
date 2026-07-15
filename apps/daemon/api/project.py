@@ -22,7 +22,7 @@ async def init_project(req: InitRequest):
 async def register_project(req: RegisterRequest):
     """Register an existing project path."""
     try:
-        proj = project_manager.register(req.path)
+        proj = project_manager.register_and_save(req.path)
         return {"path": str(proj.path), "name": proj.path.name, "steps": proj.steps}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

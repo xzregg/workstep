@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global task_service
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
+    project_manager._load_saved_projects()
     task_service = TaskService(event_bus)
     yield
     logger.info("WorkStep Daemon shutting down")

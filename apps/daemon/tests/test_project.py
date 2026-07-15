@@ -3,15 +3,21 @@
 import json
 import pytest
 from pathlib import Path
+from unittest.mock import patch
 
 from services.project import ProjectManager, DEFAULT_STEPS
 
 
 @pytest.fixture
-def manager():
-    """Fresh ProjectManager per test."""
+def manager(tmp_path):
+    """Fresh ProjectManager with temp config dir."""
+    config_dir = tmp_path / ".workstep"
+    config_dir.mkdir()
+    config_file = config_dir / "config.json"
     m = ProjectManager()
-    yield m
+    with patch("services.project.GLOBAL_CONFIG_DIR", config_dir), \
+         patch("services.project.GLOBAL_CONFIG_FILE", config_file):
+        yield m
     m.close_all()
 
 
@@ -65,8 +71,10 @@ def test_register_existing_project(tmp_path, manager):
 
 def test_register_nonexistent_raises(tmp_path, manager):
     """register raises if no .workstep/ directory."""
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
     with pytest.raises(ValueError, match="No .workstep"):
-        manager.register(tmp_path)
+        manager.register(empty_dir)
 
 
 def test_list_projects(tmp_path, manager):
@@ -103,3 +111,35 @@ def test_close_all(tmp_path, manager):
     manager.close_all()
 
     assert manager.list_projects() == []
+
+
+def test_save_config_persists_paths(tmp_path, manager):
+    """init_project saves project path to config.json."""
+    from services.project import GLOBAL_CONFIG_FILE
+    proj_dir = tmp_path / "my-project"
+    proj_dir.mkdir()
+    manager.init_project(proj_dir)
+
+    config = json.loads(GLOBAL_CONFIG_FILE.read_text())
+    assert str(proj_dir.resolve()) in config["projects"]
+
+
+def test_load_saved_projects_restores(tmp_path, manager):
+    """_load_saved_projects restores projects from config.json on startup."""
+    from services.project import GLOBAL_CONFIG_FILE
+
+    # Create and init a project
+    proj_dir = tmp_path / "restore-me"
+    proj_dir.mkdir()
+    manager.init_project(proj_dir)
+
+    # Simulate restart: new manager, load saved
+    manager.close_all()
+    m2 = ProjectManager()
+
+    with patch("services.project.GLOBAL_CONFIG_DIR", GLOBAL_CONFIG_FILE.parent), \
+         patch("services.project.GLOBAL_CONFIG_FILE", GLOBAL_CONFIG_FILE):
+        m2._load_saved_projects()
+        assert len(m2.list_projects()) == 1
+        assert m2.list_projects()[0]["name"] == "restore-me"
+        m2.close_all()

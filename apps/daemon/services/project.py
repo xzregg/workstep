@@ -13,6 +13,10 @@ from settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Global config: ~/.workstep/config.json
+GLOBAL_CONFIG_DIR = Path.home() / ".workstep"
+GLOBAL_CONFIG_FILE = GLOBAL_CONFIG_DIR / "config.json"
+
 # Default workflow template for new projects
 DEFAULT_STEPS = {
     "steps": [
@@ -57,6 +61,30 @@ class ProjectManager:
     def __init__(self):
         self._projects: dict[str, Project] = {}  # path_str -> Project
 
+    def _save_config(self):
+        """Persist project list to ~/.workstep/config.json."""
+        GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        config = {"projects": list(self._projects.keys())}
+        GLOBAL_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+
+    def _load_saved_projects(self):
+        """Load and register projects from ~/.workstep/config.json on startup."""
+        if not GLOBAL_CONFIG_FILE.exists():
+            return
+        try:
+            config = json.loads(GLOBAL_CONFIG_FILE.read_text())
+            for path_str in config.get("projects", []):
+                path = Path(path_str)
+                if path.exists() and (path / settings.workstep_dir).exists():
+                    try:
+                        self.register(path)
+                    except Exception as e:
+                        logger.warning("Failed to restore project %s: %s", path_str, e)
+                else:
+                    logger.warning("Project path no longer exists: %s", path_str)
+        except Exception as e:
+            logger.warning("Failed to load config: %s", e)
+
     def init_project(self, path: str | Path) -> Project:
         """Initialize a new WorkStep project at the given path.
 
@@ -90,6 +118,7 @@ class ProjectManager:
 
         project = Project(path=path, db=db, steps=steps)
         self._projects[path_str] = project
+        self._save_config()
         logger.info("Initialized project: %s", path_str)
         return project
 
@@ -120,6 +149,12 @@ class ProjectManager:
         self._projects[path_str] = project
         logger.info("Registered project: %s", path_str)
         return project
+
+    def register_and_save(self, path: str | Path) -> Project:
+        """Register a project and persist to config."""
+        proj = self.register(path)
+        self._save_config()
+        return proj
 
     def list_projects(self) -> list[dict]:
         """List all registered projects."""
