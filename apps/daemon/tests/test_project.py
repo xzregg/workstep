@@ -114,14 +114,33 @@ def test_close_all(tmp_path, manager):
 
 
 def test_save_config_persists_paths(tmp_path, manager):
-    """init_project saves project path to config.json."""
+    """init_project saves project path and name to config.json."""
     from services.project import GLOBAL_CONFIG_FILE
     proj_dir = tmp_path / "my-project"
     proj_dir.mkdir()
-    manager.init_project(proj_dir)
+    manager.init_project(proj_dir, name="我的项目")
 
     config = json.loads(GLOBAL_CONFIG_FILE.read_text())
-    assert str(proj_dir.resolve()) in config["projects"]
+    assert len(config["projects"]) == 1
+    assert config["projects"][0]["path"] == str(proj_dir.resolve())
+    assert config["projects"][0]["name"] == "我的项目"
+
+
+def test_rename_project(tmp_path, manager):
+    """rename updates project name and persists to config."""
+    from services.project import GLOBAL_CONFIG_FILE
+    proj_dir = tmp_path / "rename-me"
+    proj_dir.mkdir()
+    manager.init_project(proj_dir, name="旧名字")
+
+    proj = manager.rename(proj_dir, "新名字")
+    assert proj.name == "新名字"
+
+    config = json.loads(GLOBAL_CONFIG_FILE.read_text())
+    assert config["projects"][0]["name"] == "新名字"
+
+    # Rename non-existent returns None
+    assert manager.rename(tmp_path / "nope", "x") is None
 
 
 def test_load_saved_projects_restores(tmp_path, manager):

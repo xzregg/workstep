@@ -37,6 +37,7 @@ class Project:
     path: Path
     db: pw.SqliteDatabase
     steps: dict  # Parsed steps.json
+    name: str = ""  # Display name, defaults to directory name
 
     @property
     def workstep_dir(self) -> Path:
@@ -64,7 +65,12 @@ class ProjectManager:
     def _save_config(self):
         """Persist project list to ~/.workstep/config.json."""
         GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        config = {"projects": list(self._projects.keys())}
+        config = {
+            "projects": [
+                {"path": path_str, "name": proj.name}
+                for path_str, proj in self._projects.items()
+            ]
+        }
         GLOBAL_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2))
 
     def _load_saved_projects(self):
@@ -73,11 +79,19 @@ class ProjectManager:
             return
         try:
             config = json.loads(GLOBAL_CONFIG_FILE.read_text())
-            for path_str in config.get("projects", []):
+            for entry in config.get("projects", []):
+                # Support both old format (string) and new format (object)
+                if isinstance(entry, str):
+                    path_str, name = entry, ""
+                else:
+                    path_str = entry.get("path", "")
+                    name = entry.get("name", "")
                 path = Path(path_str)
                 if path.exists() and (path / settings.workstep_dir).exists():
                     try:
-                        self.register(path)
+                        proj = self.register(path)
+                        if name:
+                            proj.name = name
                     except Exception as e:
                         logger.warning("Failed to restore project %s: %s", path_str, e)
                 else:
@@ -85,13 +99,17 @@ class ProjectManager:
         except Exception as e:
             logger.warning("Failed to load config: %s", e)
 
-    def init_project(self, path: str | Path) -> Project:
+    def init_project(self, path: str | Path, name: str | None = None) -> Project:
         """Initialize a new WorkStep project at the given path.
 
         Creates:
         - .workstep/ directory
         - .workstep/steps.json (default template)
         - .workstep/workstep.db (SQLite with schema)
+
+        Args:
+            path: Project root directory
+            name: Display name (defaults to directory name)
 
         Returns the Project instance.
         """
@@ -116,13 +134,13 @@ class ProjectManager:
         # Read steps
         steps = json.loads(steps_path.read_text())
 
-        project = Project(path=path, db=db, steps=steps)
+        project = Project(path=path, db=db, steps=steps, name=name or path.name)
         self._projects[path_str] = project
         self._save_config()
-        logger.info("Initialized project: %s", path_str)
+        logger.info("Initialized project: %s (name=%s)", path_str, project.name)
         return project
 
-    def register(self, path: str | Path) -> Project:
+    def register(self, path: str | Path, name: str | None = None) -> Project:
         """Register an existing project path (opens its DB).
 
         Raises ValueError if the path has no .workstep/ directory.
@@ -145,14 +163,24 @@ class ProjectManager:
         steps_path = ws_dir / "steps.json"
         steps = json.loads(steps_path.read_text()) if steps_path.exists() else DEFAULT_STEPS
 
-        project = Project(path=path, db=db, steps=steps)
+        project = Project(path=path, db=db, steps=steps, name=name or path.name)
         self._projects[path_str] = project
         logger.info("Registered project: %s", path_str)
         return project
 
-    def register_and_save(self, path: str | Path) -> Project:
+    def register_and_save(self, path: str | Path, name: str | None = None) -> Project:
         """Register a project and persist to config."""
-        proj = self.register(path)
+        proj = self.register(path, name=name)
+        self._save_config()
+        return proj
+
+    def rename(self, path: str | Path, name: str) -> Project | None:
+        """Rename a registered project. Persists to config."""
+        path_str = str(Path(path).resolve())
+        proj = self._projects.get(path_str)
+        if not proj:
+            return None
+        proj.name = name
         self._save_config()
         return proj
 
@@ -162,7 +190,7 @@ class ProjectManager:
         for path_str, proj in self._projects.items():
             result.append({
                 "path": path_str,
-                "name": proj.path.name,
+                "name": proj.name,
                 "steps": proj.steps,
             })
         return result
