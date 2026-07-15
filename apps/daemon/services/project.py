@@ -63,10 +63,10 @@ class ProjectManager:
 
     def _save_config(self):
         """Persist project list to config store."""
-        projects = {
-            path_str: proj.name
+        projects = [
+            {"path": path_str, "name": proj.name}
             for path_str, proj in self._projects.items()
-        }
+        ]
         config_store.set("projects", projects)
 
     def _load_saved_projects(self):
@@ -76,21 +76,16 @@ class ProjectManager:
             return
 
         try:
-            # New format: {path: name}
-            if isinstance(projects_data, dict):
-                items = projects_data.items()
-            # Old format: [{path, name}] or [path_string]
-            elif isinstance(projects_data, list):
-                items = []
-                for entry in projects_data:
-                    if isinstance(entry, str):
-                        items.append((entry, ""))
-                    else:
-                        items.append((entry.get("path", ""), entry.get("name", "")))
-            else:
-                return
+            for entry in projects_data:
+                if isinstance(entry, str):
+                    # Legacy: plain path string
+                    path_str, name = entry, ""
+                elif isinstance(entry, dict):
+                    path_str = entry.get("path", "")
+                    name = entry.get("name", "")
+                else:
+                    continue
 
-            for path_str, name in items:
                 path = Path(path_str)
                 if path.exists() and (path / settings.workstep_dir).exists():
                     try:

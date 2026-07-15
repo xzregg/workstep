@@ -124,15 +124,16 @@ def test_close_all(tmp_path, manager):
 
 
 def test_save_config_persists_paths(tmp_path, manager):
-    """init_project saves {path: name} to config store."""
-    m, store, config_file = manager
+    """init_project saves [{path, name}] to config store."""
+    m, store, _ = manager
     proj_dir = tmp_path / "my-project"
     proj_dir.mkdir()
     m.init_project(proj_dir, name="我的项目")
 
     projects = store.get("projects")
-    assert str(proj_dir.resolve()) in projects
-    assert projects[str(proj_dir.resolve())] == "我的项目"
+    assert len(projects) == 1
+    assert projects[0]["path"] == str(proj_dir.resolve())
+    assert projects[0]["name"] == "我的项目"
 
 
 def test_rename_project(tmp_path, manager):
@@ -146,7 +147,7 @@ def test_rename_project(tmp_path, manager):
     assert proj.name == "新名字"
 
     projects = store.get("projects")
-    assert projects[str(proj_dir.resolve())] == "新名字"
+    assert projects[0]["name"] == "新名字"
 
     assert m.rename(tmp_path / "nope", "x") is None
 
