@@ -13,8 +13,10 @@ from settings import settings
 from streaming.bus import EventBus
 from api.project import router as project_router
 from api.task import router as task_router
+from api.history import router as history_router
 from services.project import project_manager
 from services.task import TaskService
+from services.intervention import intervention_manager
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ app = FastAPI(title="WorkStep Daemon", lifespan=lifespan)
 # Register routers
 app.include_router(project_router)
 app.include_router(task_router)
+app.include_router(history_router)
 
 
 # --- REST API ---
@@ -101,8 +104,13 @@ async def _handle_client_message(raw: str):
         msg_type = msg.get("type")
 
         if msg_type == "respond":
-            logger.info("Received respond for run_id=%s", msg.get("run_id"))
-            # TODO: inject response into running engine via task_service
+            intervention_id = msg.get("intervention_id")
+            data = msg.get("data", {})
+            if intervention_id:
+                delivered = intervention_manager.deliver_response(intervention_id, data)
+                logger.info("WS intervention respond: %s → %s", intervention_id, delivered)
+            else:
+                logger.warning("WS respond missing intervention_id")
 
         elif msg_type == "cancel":
             task_id = msg.get("task_id")
