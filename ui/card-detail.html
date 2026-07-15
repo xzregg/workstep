@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>需求卡片详情 — 设计稿</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #f6f6f7;
+  --fg: #1d1d1f;
+  --fg-2: #424245;
+  --muted: #6e6e73;
+  --meta: #86868b;
+  --border: #e5e5e7;
+  --border-soft: #eeeef0;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --success: #16a34a;
+  --warn: #eab308;
+  --danger: #dc2626;
+  --status-ready: #3b82f6;
+  --status-running: #16a34a;
+  --status-paused: #eab308;
+  --status-stopped: #dc2626;
+  --font-body: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --ease: cubic-bezier(0.28, 0, 0.22, 1);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--surface);
+  line-height: 1.47;
+  padding: 24px;
+}
+.btn {
+  font-family: var(--font-body); font-size: 13px; font-weight: 500;
+  border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer;
+  border: none; display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost { background: transparent; color: var(--fg-2); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface); color: var(--fg); }
+.btn-icon {
+  width: 28px; height: 28px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: transparent; color: var(--muted); border: none; cursor: pointer;
+}
+.btn-icon:hover { background: var(--surface); color: var(--fg); }
+
+/* ─── Detail Panel ─── */
+.detail-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex; justify-content: center; align-items: center;
+}
+.detail-panel {
+  width: 85vw; min-width: 80vw; height: 90vh;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.detail-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: flex-start; gap: 16px;
+}
+.detail-header-left { flex: 1; }
+.detail-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.detail-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.detail-status {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 8px; border-radius: 4px;
+  line-height: 1.6;
+}
+.detail-status[data-s="ready"] { background: color-mix(in oklab, var(--status-ready), transparent 85%); color: var(--status-ready); }
+.detail-status[data-s="running"] { background: color-mix(in oklab, var(--status-running), transparent 85%); color: var(--status-running); }
+.detail-status[data-s="paused"] { background: color-mix(in oklab, var(--status-paused), transparent 85%); color: var(--status-paused); }
+.detail-status[data-s="stopped"] { background: color-mix(in oklab, var(--status-stopped), transparent 85%); color: var(--status-stopped); }
+.detail-stage-tag {
+  font-size: 11px; font-weight: 500;
+  padding: 2px 8px; border-radius: 4px;
+  background: color-mix(in oklab, var(--accent), transparent 85%);
+  color: var(--accent);
+}
+
+/* ─── Main Content Split ─── */
+.detail-content {
+  flex: 1; display: flex; overflow: hidden;
+}
+.detail-left {
+  width: 45%; min-width: 400px;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex; flex-direction: column; gap: 24px;
+  border-right: 1px solid var(--border-soft);
+}
+.detail-right {
+  flex: 1;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+}
+
+.detail-body {
+  flex: 1; overflow-y: auto;
+  padding: 20px 24px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+
+/* ─── Progress Timeline ─── */
+.section-title {
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.progress-track {
+  display: flex; gap: 0; position: relative;
+}
+.progress-step {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  position: relative; padding-top: 24px; cursor: pointer;
+}
+.progress-step::before {
+  content: '';
+  position: absolute; top: 10px; left: 0; right: 0;
+  height: 2px; background: var(--border);
+}
+.progress-step:first-child::before { left: 50%; }
+.progress-step:last-child::before { right: 50%; }
+.progress-dot {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--border);
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.progress-step.done .progress-dot {
+  background: var(--success); border-color: var(--success);
+}
+.progress-step.done .progress-dot::after {
+  content: '✓'; color: #fff; font-size: 11px; font-weight: 700;
+}
+.progress-step.active .progress-dot {
+  background: var(--accent); border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent), transparent 70%);
+}
+.progress-step.active::before { background: var(--accent); }
+.progress-step.done::before { background: var(--success); }
+.progress-step.selected .progress-label { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.progress-label {
+  font-size: 11px; color: var(--muted); margin-top: 8px;
+  text-align: center; white-space: nowrap;
+}
+.progress-step.done .progress-label { color: var(--success); }
+.progress-step.active .progress-label { color: var(--accent); font-weight: 500; }
+.progress-time {
+  margin-top: 4px; text-align: center;
+  font-size: 10px; color: var(--meta);
+  line-height: 1.5;
+}
+.progress-time .duration {
+  display: block; color: var(--fg-2); font-weight: 500;
+  font-size: 10px;
+}
+
+/* ─── Content Block ─── */
+.content-block {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+.content-block-label {
+  font-size: 11px; font-weight: 500; color: var(--muted);
+  margin-bottom: 6px;
+}
+.content-block-text {
+  font-size: 13px; color: var(--fg-2);
+  white-space: pre-wrap;
+}
+
+/* ─── I/O Section ─── */
+.io-grid {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.io-column {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.io-column-title {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+}
+.io-column-title .arrow { color: var(--meta); }
+.io-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border-radius: 6px;
+  border: 1px solid var(--border-soft);
+}
+.io-item-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.io-item-dot.in { background: var(--accent); }
+.io-item-dot.out { background: var(--success); }
+.io-item-name { font-size: 13px; font-weight: 500; }
+.io-item-type {
+  font-size: 11px; color: var(--meta);
+  background: var(--surface); border: 1px solid var(--border-soft);
+  padding: 0 4px; border-radius: 3px;
+}
+.io-item-status {
+  font-size: 10px; font-weight: 500;
+  padding: 2px 6px; border-radius: 4px;
+}
+.io-item-status.done { background: color-mix(in oklab, var(--success), transparent 85%); color: var(--success); }
+.io-item-status.pending { background: var(--surface); color: var(--meta); border: 1px solid var(--border-soft); }
+.io-item-next {
+  font-size: 11px; color: var(--muted);
+  display: flex; align-items: center; gap: 3px;
+  margin-left: auto;
+}
+.io-item-next .arrow { color: var(--meta); font-size: 10px; }
+.io-group { display: flex; flex-direction: column; gap: 4px; }
+.io-sub { margin-left: 18px; }
+.io-arrow { color: var(--meta); font-size: 11px; margin-right: 4px; }
+
+/* ─── Chat Panel ─── */
+.chat-panel {
+  flex: 1; display: flex; flex-direction: column;
+}
+.chat-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
+  display: flex; align-items: center; gap: 10px;
+}
+.chat-header-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+.chat-header-engine {
+  font-size: 11px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border-soft);
+  padding: 2px 8px; border-radius: 4px;
+}
+.chat-messages {
+  flex: 1; overflow-y: auto;
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.chat-msg {
+  display: flex; gap: 12px;
+  max-width: 85%;
+}
+.chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+.chat-msg-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+.chat-msg.user .chat-msg-avatar { background: var(--accent); color: #fff; }
+.chat-msg.assistant .chat-msg-avatar { background: var(--fg); color: #fff; }
+.chat-msg.system .chat-msg-avatar { background: var(--warn); color: #fff; }
+.chat-msg-body { display: flex; flex-direction: column; gap: 4px; }
+.chat-msg-time { font-size: 10px; color: var(--meta); }
+.chat-msg.user .chat-msg-time { text-align: right; }
+.chat-msg-content {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap;
+}
+.chat-msg.user .chat-msg-content {
+  background: var(--accent); color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.chat-msg.assistant .chat-msg-content {
+  background: var(--bg); color: var(--fg);
+  border: 1px solid var(--border-soft);
+  border-bottom-left-radius: 4px;
+}
+.chat-msg.system .chat-msg-content {
+  background: color-mix(in oklab, var(--warn), transparent 90%);
+  color: var(--fg-2);
+  border: 1px dashed var(--border);
+  font-size: 12px;
+}
+.chat-input-area {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+  background: var(--bg);
+  display: flex; gap: 10px; align-items: flex-end;
+}
+.chat-input {
+  flex: 1;
+  font-family: var(--font-body); font-size: 13px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  resize: none; min-height: 40px; max-height: 120px;
+  background: var(--bg); color: var(--fg);
+}
+.chat-input:focus { outline: none; border-color: var(--accent); }
+.chat-send-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--accent); color: #fff;
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.chat-send-btn:hover { background: var(--accent-hover); }
+.chat-send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+.detail-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-soft);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+</style>
+</head>
+<body>
+
+<div class="detail-overlay" id="overlay">
+  <div class="detail-panel">
+    <!-- Header -->
+    <div class="detail-header">
+      <div class="detail-header-left">
+        <div class="detail-title" id="cardTitle"></div>
+        <div class="detail-meta">
+          <span class="detail-status" id="cardStatus"></span>
+          <span class="detail-stage-tag" id="cardStageTag"></span>
+          <span id="cardCreatedAt" style="font-size:12px;color:var(--meta);"></span>
+        </div>
+      </div>
+      <button class="btn-icon" onclick="document.getElementById('overlay').style.display='none'">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Body: two-column layout -->
+    <div class="detail-content">
+      <!-- Left: Progress, I/O, Prompt -->
+      <div class="detail-left">
+
+        <!-- Progress (clickable as tabs, dynamic from steps.json) -->
+        <div>
+          <div class="section-title">进度</div>
+          <div class="progress-track" id="progressTrack"></div>
+        </div>
+
+        <!-- Stage I/O (driven by timeline click) -->
+        <div>
+          <div class="section-title" id="ioSectionTitle">阶段输入输出</div>
+          <div class="io-grid" id="ioSection"></div>
+        </div>
+
+        <!-- Prompt -->
+        <div>
+          <div class="section-title" id="promptSectionTitle">阶段提示词</div>
+          <div class="content-block">
+            <div class="content-block-text" id="promptSectionText"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Chat conversation -->
+      <div class="detail-right">
+        <div class="chat-panel">
+          <div class="chat-header">
+            <span class="chat-header-title">对话记录</span>
+            <span class="chat-header-engine" id="chatEngine">claude</span>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-area">
+            <textarea class="chat-input" id="chatInput" placeholder="输入补充说明或追问..." rows="1"></textarea>
+            <button class="chat-send-btn" onclick="sendChatMessage()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="detail-footer">
+      <button class="btn btn-ghost">关闭</button>
+      <button class="btn btn-primary">推进到下一阶段</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ponytail: card state loaded from cards.json (matched by ?id=)
+const statusLabels = { ready: '准备', running: '开始', paused: '暂停', stopped: '停止' };
+let cardState = null;
+let stageData = [];
+let selectedStage = 0;
+
+function renderCardHeader(card) {
+  document.getElementById('cardTitle').textContent = card.title;
+  const statusEl = document.getElementById('cardStatus');
+  statusEl.textContent = statusLabels[card.status] || card.status;
+  statusEl.dataset.s = card.status;
+  const step = stageData[card.currentStep];
+  if (step) document.getElementById('cardStageTag').textContent = step.label + ' 阶段';
+  document.getElementById('cardCreatedAt').textContent = '创建于 ' + card.createdAt;
+}
+
+function selectStage(idx) {
+  selectedStage = idx;
+  document.querySelectorAll('.progress-step').forEach(s => s.classList.remove('selected'));
+  document.querySelector(`.progress-step[data-stage="${idx}"]`)?.classList.add('selected');
+  const d = stageData[idx];
+  if (!d) return;
+  document.getElementById('ioSectionTitle').textContent = '阶段输入输出 — ' + d.label;
+  // Build assembled prompt with input references
+  let assembledPrompt = '';
+  if (d.inputs && d.inputs.length > 0) {
+    assembledPrompt += '# 输入内容\n\n';
+    d.inputs.forEach(inp => {
+      const sourceStage = stageData.find(s => s.outputs && s.outputs.some(o => o.name === inp.name));
+      const sourceLabel = sourceStage ? sourceStage.label : '外部';
+      assembledPrompt += `## [来自 ${sourceLabel}: ${inp.name}]\n\n`;
+    });
+    assembledPrompt += '\n---\n\n# 阶段指令\n\n';
+  }
+  assembledPrompt += d.prompt || '';
+  document.getElementById('promptSectionText').textContent = assembledPrompt;
+  const ioEl = document.getElementById('ioSection');
+  const isStageDone = idx < cardState.currentStep;
+  const nextStage = stageData[idx + 1];
+  const nextInputs = nextStage ? (nextStage.inputs || []) : [];
+  let html = '<div class="io-column"><div class="io-column-title"><span class="arrow">→</span> 输入</div>';
+  d.inputs.forEach((i, inpIdx) => {
+    const subOutputs = inpIdx === 0 ? (d.outputs || []) : [];
+    html += '<div class="io-group">';
+    html += `<div class="io-item"><div class="io-item-dot in"></div><span class="io-item-name">${i.name}</span><span class="io-item-type">${i.type}</span></div>`;
+    subOutputs.forEach((o, outIdx) => {
+      const nextInput = nextInputs[outIdx];
+      const statusCls = isStageDone ? 'done' : 'pending';
+      const statusText = isStageDone ? '完成' : '待生成';
+      html += `<div class="io-item io-sub"><span class="io-arrow">↳</span><div class="io-item-dot out"></div><span class="io-item-name">${o.name}</span><span class="io-item-type">${o.type}</span><span class="io-item-status ${statusCls}">${statusText}</span>`;
+      if (nextInput) {
+        html += `<span class="io-item-next"><span class="arrow">→</span>${nextStage.label}: ${nextInput.name}</span>`;
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  ioEl.innerHTML = html;
+  renderChatMessages();
+}
+
+function formatDuration(startStr, endStr) {
+  if (!startStr || !endStr) return '';
+  const diff = new Date(endStr) - new Date(startStr);
+  if (diff < 0) return '';
+  const s = Math.floor(diff / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const parts = [];
+  if (d > 0) parts.push(d + '天');
+  if (h > 0) parts.push(h + '时');
+  if (m > 0) parts.push(m + '分');
+  parts.push(sec + '秒');
+  return parts.join(' ');
+}
+
+function renderTimeline() {
+  const track = document.getElementById('progressTrack');
+  track.innerHTML = stageData.map((s, i) => {
+    const t = cardState.timeline[i] || {};
+    let cls = 'progress-step';
+    if (i < cardState.currentStep) cls += ' done';
+    else if (i === cardState.currentStep) cls += ' active';
+    return `<div class="${cls}" data-stage="${i}" data-start="${t.start || ''}" data-end="${t.end || ''}" onclick="selectStage(${i})">
+      <div class="progress-dot"></div>
+      <div class="progress-label">${s.label}</div>
+      <div class="progress-time"></div>
+    </div>`;
+  }).join('');
+  renderProgressTimes();
+  selectStage(cardState.currentStep);
+}
+
+function renderProgressTimes() {
+  document.querySelectorAll('.progress-step').forEach(step => {
+    const start = step.dataset.start;
+    const end = step.dataset.end;
+    const el = step.querySelector('.progress-time');
+    if (!el) return;
+    if (!start) { el.innerHTML = ''; return; }
+    let html = '<span class="duration">' + formatDuration(start, end || new Date().toISOString().replace('T',' ').slice(0,19)) + '</span>';
+    html += '<div>' + start + '</div>';
+    if (end) {
+      const sameDay = end.slice(0, 10) === start.slice(0, 10);
+      html += '<div>' + (sameDay ? end.slice(11) : end) + '</div>';
+    }
+    el.innerHTML = html;
+  });
+}
+
+const params = new URLSearchParams(location.search);
+const cardId = parseInt(params.get('id') || '1', 10);
+
+Promise.all([
+  fetch('cards.json').then(r => r.json()),
+  fetch('steps.json').then(r => r.json())
+]).then(([cardsData, stepsData]) => {
+  stageData = stepsData.steps;
+  const card = cardsData.cards.find(c => c.id === cardId) || cardsData.cards[0];
+  cardState = {
+    currentStep: card.currentStep,
+    timeline: card.timeline,
+    title: card.title,
+    desc: card.desc,
+    status: card.status,
+    createdAt: card.createdAt,
+    engine: card.engine || 'claude'
+  };
+  renderCardHeader(card);
+  renderTimeline();
+  renderChatMessages();
+});
+
+// ─── Chat functionality ───
+const chatHistory = {};
+
+function renderChatMessages() {
+  const d = stageData[selectedStage];
+  if (!d) return;
+  const msgEl = document.getElementById('chatMessages');
+  const engineEl = document.getElementById('chatEngine');
+  engineEl.textContent = d.engine || 'claude';
+  const messages = chatHistory[selectedStage] || generateMockMessages(selectedStage);
+  if (!chatHistory[selectedStage]) chatHistory[selectedStage] = messages;
+  msgEl.innerHTML = messages.map(m => `
+    <div class="chat-msg ${m.role}">
+      <div class="chat-msg-avatar">${m.role === 'user' ? '我' : m.role === 'assistant' ? 'AI' : '!'}</div>
+      <div class="chat-msg-body">
+        <div class="chat-msg-time">${m.time}</div>
+        <div class="chat-msg-content">${escapeHtml(m.content)}</div>
+      </div>
+    </div>
+  `).join('');
+  msgEl.scrollTop = msgEl.scrollHeight;
+}
+
+function generateMockMessages(stageIdx) {
+  const d = stageData[stageIdx];
+  if (!d) return [];
+  const msgs = [];
+  const isDone = stageIdx < cardState.currentStep;
+  const isActive = stageIdx === cardState.currentStep;
+  msgs.push({ role: 'system', content: `开始阶段: ${d.label}`, time: '系统' });
+  if (d.inputs && d.inputs.length > 0) {
+    msgs.push({ role: 'user', content: `请根据以下输入完成${d.label}阶段:\n${d.inputs.map(i => `- ${i.name}`).join('\n')}`, time: '10:30' });
+  }
+  if (isDone) {
+    msgs.push({ role: 'assistant', content: `已完成${d.label}阶段。\n\n产出:\n${(d.outputs || []).map(o => `- ${o.name} (${o.type})`).join('\n')}`, time: '10:45' });
+  } else if (isActive && cardState.status === 'running') {
+    msgs.push({ role: 'assistant', content: '正在处理中，请稍候...', time: '刚刚' });
+  }
+  return msgs;
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!chatHistory[selectedStage]) chatHistory[selectedStage] = generateMockMessages(selectedStage);
+  const now = new Date();
+  const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  chatHistory[selectedStage].push({ role: 'user', content: text, time: timeStr });
+  input.value = '';
+  renderChatMessages();
+  setTimeout(() => {
+    chatHistory[selectedStage].push({ role: 'assistant', content: '收到，正在处理您的请求...', time: '刚刚' });
+    renderChatMessages();
+  }, 800);
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+document.getElementById('chatInput')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "kind": "html",
+  "title": "card-detail.html",
+  "entry": "card-detail.html",
+  "renderer": "html",
+  "status": "complete",
+  "exports": [
+    "html",
+    "pdf",
+    "zip"
+  ],
+  "createdAt": "2026-06-23T02:57:21.820Z",
+  "updatedAt": "2026-06-23T02:57:21.820Z",
+  "metadata": {
+    "inferred": true,
+    "reconciled": true
+  }
+}

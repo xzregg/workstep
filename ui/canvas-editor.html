@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>阶段编辑器 — FlowCraft</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --surface: #f6f6f7;
+  --fg: #1d1d1f;
+  --fg-2: #424245;
+  --muted: #6e6e73;
+  --meta: #86868b;
+  --border: #e5e5e7;
+  --border-soft: #eeeef0;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --success: #16a34a;
+  --warn: #eab308;
+  --danger: #dc2626;
+  --font-display: "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 980px;
+  --elev-raised: 0 12px 32px rgba(0,0,0,0.08);
+  --focus-ring: 0 0 0 4px color-mix(in oklab, var(--accent), transparent 65%);
+  --motion-fast: 150ms;
+  --ease: cubic-bezier(0.28, 0, 0.22, 1);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--surface);
+  line-height: 1.47;
+  overflow: hidden;
+  height: 100vh;
+}
+
+.btn {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  border: none;
+  transition: all var(--motion-fast) var(--ease);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost { background: transparent; color: var(--fg-2); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface); color: var(--fg); }
+.btn-icon {
+  width: 28px; height: 28px; padding: 0;
+  display: flex; align-items: center;
+  justify-content: center; border-radius: 50%;
+  background: transparent; color: var(--muted); border: none; cursor: pointer;
+}
+.btn-icon:hover { background: var(--surface); color: var(--fg); }
+
+/* ── Canvas Editor ── */
+.canvas-editor {
+  position: fixed; inset: 0;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+}
+.canvas-toolbar {
+  height: 48px; background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px;
+}
+.canvas-toolbar-title { font-weight: 600; font-size: 14px; color: var(--muted); flex: 1; }
+.canvas-toolbar-name {
+  font-weight: 600; font-size: 14px; color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  width: 120px;
+  transition: border-color 0.15s;
+}
+.canvas-toolbar-name:hover { border-color: var(--border); }
+.canvas-toolbar-name:focus { border-color: var(--accent); outline: none; }
+.canvas-toolbar-divider { width: 1px; height: 16px; background: var(--border); }
+.canvas-container {
+  flex: 1; position: relative; overflow: auto;
+}
+.canvas-zoom-wrapper {
+  position: absolute;
+  transform-origin: 0 0;
+  width: 5000px; height: 5000px;
+}
+.canvas-board {
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.canvas-zoom-controls {
+  position: absolute;
+  bottom: 24px; right: calc(33.33vw + 24px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  display: flex; align-items: center; gap: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  z-index: 11;
+}
+.canvas-zoom-btn {
+  width: 28px; height: 28px;
+  border: none; background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--fg-2);
+  transition: all var(--motion-fast) var(--ease);
+}
+.canvas-zoom-btn:hover { background: var(--surface); color: var(--fg); }
+.canvas-zoom-level {
+  font-size: 12px; font-weight: 500;
+  color: var(--fg-2);
+  min-width: 40px; text-align: center;
+}
+.canvas-nodes {
+  position: absolute;
+  top: 0; left: 0;
+  width: 5000px;
+  height: 5000px;
+}
+.canvas-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 5000px;
+  height: 5000px;
+  pointer-events: none;
+  z-index: 3;
+}
+.canvas-svg path {
+  fill: none;
+}
+.canvas-svg path.connection-hit {
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.canvas-svg path.connection-visible {
+  stroke: var(--accent);
+  stroke-width: 2;
+  pointer-events: none;
+  transition: stroke-width 0.15s;
+}
+.canvas-svg path.connection-visible.selected {
+  stroke: var(--accent);
+  stroke-width: 4;
+}
+.canvas-connection-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  cursor: move;
+  z-index: 10;
+  transform: translate(-50%, -50%);
+}
+.canvas-connection-handle:hover {
+  background: var(--accent);
+}
+.canvas-node {
+  position: absolute;
+  width: 220px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  cursor: move;
+  user-select: none;
+  z-index: 5;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.canvas-node:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+.canvas-node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 75%); }
+.canvas-node-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600;
+}
+.canvas-node-icon {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+}
+.canvas-node-body {
+  padding: 10px 12px;
+  font-size: 12px; color: var(--muted);
+}
+.canvas-node-ports {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.canvas-port {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--fg-2);
+}
+.canvas-port-sub {
+  padding-left: 22px;
+  color: var(--meta);
+  font-size: 10px;
+}
+.canvas-port-arrow {
+  color: var(--meta);
+  font-size: 10px;
+  width: 10px;
+  flex-shrink: 0;
+}
+.canvas-port-sub .canvas-port-dot { width: 6px; height: 6px; }
+.canvas-port-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: crosshair;
+}
+.canvas-port-dot.output { margin-left: auto; }
+.canvas-port-dot:hover { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.canvas-port-dot.connecting { background: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.canvas-node-config {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px; color: var(--meta);
+}
+.canvas-add-btn {
+  position: absolute; bottom: 24px; right: calc(33.33vw + 150px);
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--accent); color: #fff;
+  border: none; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,113,227,0.3);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10;
+  transition: transform 0.15s;
+}
+.canvas-add-btn:hover { transform: scale(1.08); }
+.canvas-auto-layout-btn {
+  position: absolute; bottom: 24px; right: calc(33.33vw + 210px);
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--surface); color: var(--accent);
+  border: 1px solid var(--border); cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10;
+  transition: transform 0.15s, background 0.15s;
+}
+.canvas-auto-layout-btn:hover { transform: scale(1.08); background: var(--bg); }
+.canvas-node-panel {
+  position: absolute; right: 0; top: 48px; bottom: 0;
+  width: 33.33vw; background: var(--bg);
+  border-left: 1px solid var(--border-soft);
+  box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+}
+.canvas-node-panel.open { transform: translateX(0); }
+
+.canvas-context-menu {
+  position: absolute; z-index: 200;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--elev-raised);
+  padding: 4px 0; min-width: 140px;
+}
+.canvas-context-menu-item {
+  padding: 8px 16px; font-size: 13px; cursor: pointer;
+  color: var(--fg); display: flex; align-items: center; gap: 8px;
+}
+.canvas-context-menu-item:hover { background: var(--surface); }
+.canvas-context-menu-item.danger { color: var(--danger); }
+.canvas-node-panel-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.canvas-node-panel-title { font-weight: 600; font-size: 14px; }
+.canvas-node-panel-body {
+  flex: 1; overflow-y: auto; padding: 14px 16px;
+}
+.canvas-node-panel-body label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: var(--fg-2); margin-bottom: 4px; margin-top: 12px;
+}
+.canvas-node-panel-body label:first-child { margin-top: 0; }
+.canvas-node-panel-body input,
+.canvas-node-panel-body textarea,
+.canvas-node-panel-body select {
+  width: 100%; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-family: var(--font-body); color: var(--fg); outline: none;
+  resize: vertical;
+}
+.canvas-node-panel-body input:focus,
+.canvas-node-panel-body textarea:focus,
+.canvas-node-panel-body select:focus { border-color: var(--accent); }
+.canvas-node-panel-body textarea { min-height: 240px; }
+.canvas-io-list { display: flex; flex-direction: column; gap: 6px; }
+.canvas-io-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.canvas-io-item input { flex: 1; padding: 4px 6px; font-size: 12px; }
+.canvas-io-remove {
+  width: 18px; height: 18px;
+  border: none; background: transparent;
+  color: var(--danger); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.canvas-io-add {
+  padding: 6px; border: 1px dashed var(--border);
+  border-radius: var(--radius-sm); text-align: center;
+  cursor: pointer; font-size: 11px; color: var(--meta);
+  background: transparent;
+}
+.canvas-io-add:hover { border-color: var(--accent); color: var(--accent); }
+.canvas-io-group {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+}
+.canvas-io-sub {
+  display: flex; align-items: center; gap: 6px;
+  margin-left: 18px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.canvas-io-sub input { flex: 1; padding: 3px 6px; font-size: 12px; }
+.canvas-io-arrow { color: var(--meta); font-size: 12px; margin-left: 10px; }
+.canvas-io-add-sub {
+  margin-left: 18px;
+  padding: 3px 6px;
+  border: 1px dashed var(--border-soft);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer; font-size: 11px; color: var(--meta);
+  text-align: left;
+}
+.canvas-io-add-sub:hover { border-color: var(--accent); color: var(--accent); }
+
+/* JSON 预览面板 */
+.json-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.json-preview-overlay.open {
+  display: flex;
+}
+.json-preview-panel {
+  width: 600px;
+  max-height: 80vh;
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.json-preview-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.json-preview-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.json-preview-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+  background: var(--surface);
+}
+.json-preview-body pre {
+  margin: 0;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg);
+}
+.json-preview-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 临时连线 */
+.canvas-svg .temp-connection {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+  fill: none;
+  pointer-events: none;
+}
+.canvas-svg .temp-drag-connection {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 8, 4;
+  fill: none;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.canvas-port-dot.highlight {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), 0 0 8px var(--accent);
+  transform: scale(1.3);
+}
+</style>
+</head>
+<body>
+
+<div class="canvas-editor">
+  <div class="canvas-toolbar">
+    <button class="btn btn-ghost" onclick="window.location.href='index.html'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      返回
+    </button>
+    <input class="canvas-toolbar-name" type="text" value="研发流程" placeholder="流程名称">
+    <span class="canvas-toolbar-divider"></span>
+    <span class="canvas-toolbar-title">阶段编辑器</span>
+    <button class="btn btn-ghost" onclick="previewJSON()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      预览 JSON
+    </button>
+    <button class="btn btn-primary" onclick="saveCanvasEditor()">保存</button>
+  </div>
+  <div class="canvas-container" onwheel="handleCanvasWheel(event)">
+    <div class="canvas-zoom-wrapper" id="canvasZoomWrapper">
+      <div class="canvas-board" id="canvasBoard" onclick="deselectAll()">
+        <svg class="canvas-svg" id="canvasSvg"></svg>
+        <div class="canvas-nodes" id="canvasNodes"></div>
+      </div>
+    </div>
+  </div>
+  <div class="canvas-node-panel" id="canvasNodePanel">
+    <div class="canvas-node-panel-header">
+      <span class="canvas-node-panel-title" id="canvasPanelTitle">节点配置</span>
+      <button class="btn-icon" onclick="closeCanvasNodePanel()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="canvas-node-panel-body" id="canvasPanelBody"></div>
+  </div>
+  <button class="canvas-add-btn" onclick="addCanvasNode()" title="添加节点">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <button class="canvas-auto-layout-btn" onclick="autoLayoutCanvas()" title="自动排列">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="7" height="7"/>
+      <rect x="14" y="3" width="7" height="7"/>
+      <rect x="3" y="14" width="7" height="7"/>
+      <rect x="14" y="14" width="7" height="7"/>
+    </svg>
+  </button>
+  <div class="canvas-zoom-controls">
+    <button class="canvas-zoom-btn" onclick="zoomOut()" title="缩小">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <span class="canvas-zoom-level" id="canvasZoomLevel">100%</span>
+    <button class="canvas-zoom-btn" onclick="zoomIn()" title="放大">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- JSON 预览面板 -->
+<div class="json-preview-overlay" id="jsonPreviewOverlay">
+  <div class="json-preview-panel">
+    <div class="json-preview-header">
+      <span class="json-preview-title">工作流 JSON 配置</span>
+      <button class="btn-icon" onclick="closeJSONPreview()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="json-preview-body">
+      <pre id="jsonPreviewContent"></pre>
+    </div>
+    <div class="json-preview-footer">
+      <button class="btn btn-ghost" onclick="copyJSON()">复制</button>
+      <button class="btn btn-primary" onclick="closeJSONPreview()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Canvas Editor ──
+let canvasNodes = [];
+let canvasConnections = [];
+let selectedCanvasNode = null;
+let selectedConnection = null;
+let draggingCanvasNode = null;
+let draggingConnectionHandle = null;
+let connectingFrom = null;
+let nextCanvasNodeId = 1;
+let canvasScale = 1;
+const CANVAS_SCALE_MIN = 0.25;
+const CANVAS_SCALE_MAX = 2;
+const CANVAS_SCALE_STEP = 0.05;
+
+let nodeTypes = [];
+
+function initDefaultCanvas() {
+  // ponytail: nodes built from steps.json at runtime
+  canvasNodes = [];
+  canvasConnections = [];
+  const startX = 100, y = 200, gapX = 280;
+  nodeTypes.forEach((t, i) => {
+    canvasNodes.push({
+      id: nextCanvasNodeId++,
+      type: t.key,
+      x: startX + i * gapX, y,
+      title: t.label,
+      engine: t.engine || 'claude',
+      model: t.model || '',
+      prompt: t.prompt || '',
+      inputs: (t.inputs || []).map((inp, idx) => ({
+        name: inp.name,
+        type: inp.type,
+        outputs: idx === 0 ? (t.outputs || []).map(out => ({ name: out.name, type: out.type })) : []
+      })),
+      outputs: (t.outputs || []).map(out => ({ name: out.name, type: out.type })),
+    });
+  });
+  for (let i = 0; i < canvasNodes.length - 1; i++) {
+    canvasConnections.push({ from: canvasNodes[i].id, fromPort: 0, to: canvasNodes[i + 1].id, toPort: 0, label: '' });
+  }
+}
+
+function addCanvasNode() {
+  const type = nodeTypes[0];
+  canvasNodes.push({
+    id: nextCanvasNodeId++,
+    type: type.key,
+    x: 100 + Math.random() * 200,
+    y: 100 + Math.random() * 200,
+    title: type.label,
+    engine: type.engine || 'claude',
+    model: '',
+    prompt: '',
+    inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }],
+    outputs: [{ name: 'output', type: 'any' }],
+  });
+  renderCanvas();
+}
+
+function renderCanvas() {
+  const container = document.getElementById('canvasNodes');
+  let html = '';
+  canvasNodes.forEach(node => {
+    const type = nodeTypes.find(t => t.key === node.type) || nodeTypes[0];
+    html += `<div class="canvas-node ${selectedCanvasNode === node.id ? 'selected' : ''}" data-id="${node.id}" style="left:${node.x}px;top:${node.y}px;" onmousedown="onCanvasNodeMouseDown(event, ${node.id})" ondblclick="openCanvasNodePanel(${node.id})" oncontextmenu="showContextMenu(event, ${node.id})">`;
+    html += `<div class="canvas-node-header">`;
+    html += `<div class="canvas-node-icon" style="background:${type.color}20;color:${type.color};">${type.icon || '⚙'}</div>`;
+    html += `<span>${node.title}</span>`;
+    html += `</div>`;
+    if (node.prompt) {
+      html += `<div class="canvas-node-body">${node.prompt.substring(0, 50)}${node.prompt.length > 50 ? '...' : ''}</div>`;
+    }
+    if (node.inputs.length > 0 || node.outputs.length > 0) {
+      html += `<div class="canvas-node-ports">`;
+      let outIdx = 0;
+      node.inputs.forEach((inp, i) => {
+        html += `<div class="canvas-port"><div class="canvas-port-dot input" onmousedown="startConnect(event, ${node.id}, 'input', ${i})"></div><span>${inp.name}</span></div>`;
+        const subOutputs = inp.outputs || [];
+        subOutputs.forEach((out) => {
+          const idx = outIdx++;
+          html += `<div class="canvas-port canvas-port-sub"><span class="canvas-port-arrow">↳</span><span>${out.name}</span><div class="canvas-port-dot output" onmousedown="startConnect(event, ${node.id}, 'output', ${idx})"></div></div>`;
+        });
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+  requestAnimationFrame(() => renderCanvasConnections());
+}
+
+function getConnectionPoints(conn) {
+  const fromEl = document.querySelector(`.canvas-node[data-id="${conn.from}"]`);
+  const toEl = document.querySelector(`.canvas-node[data-id="${conn.to}"]`);
+  const svg = document.getElementById('canvasSvg');
+  if (!fromEl || !toEl || !svg) return null;
+
+  const fromDots = fromEl.querySelectorAll('.canvas-port-dot.output');
+  const toDots = toEl.querySelectorAll('.canvas-port-dot.input');
+  const fromDot = fromDots[conn.fromPort];
+  const toDot = toDots[conn.toPort];
+  if (!fromDot || !toDot) return null;
+
+  const svgRect = svg.getBoundingClientRect();
+  const scale = svgRect.width / svg.clientWidth;
+  return {
+    x1: (fromDot.getBoundingClientRect().left + 4 - svgRect.left) / scale,
+    y1: (fromDot.getBoundingClientRect().top + 4 - svgRect.top) / scale,
+    x2: (toDot.getBoundingClientRect().left + 4 - svgRect.left) / scale,
+    y2: (toDot.getBoundingClientRect().top + 4 - svgRect.top) / scale,
+  };
+}
+
+function getPortPosition(nodeId, portType, portIndex) {
+  const nodeEl = document.querySelector(`.canvas-node[data-id="${nodeId}"]`);
+  if (!nodeEl) return null;
+  const dots = nodeEl.querySelectorAll(`.canvas-port-dot.${portType}`);
+  const dot = dots[portIndex];
+  if (!dot) return null;
+  const board = document.getElementById('canvasBoard');
+  if (!board) return null;
+  const boardRect = board.getBoundingClientRect();
+  const scale = boardRect.width / board.clientWidth;
+  return {
+    x: (dot.getBoundingClientRect().left + 4 - boardRect.left) / scale,
+    y: (dot.getBoundingClientRect().top + 4 - boardRect.top) / scale
+  };
+}
+
+function renderCanvasConnections() {
+  const svg = document.getElementById('canvasSvg');
+  if (!svg) return;
+
+  let html = '';
+
+  canvasConnections.forEach((conn, idx) => {
+    const fromNode = canvasNodes.find(n => n.id === conn.from);
+    const toNode = canvasNodes.find(n => n.id === conn.to);
+    if (!fromNode || !toNode) return;
+
+    const pts = getConnectionPoints(conn);
+    if (!pts) return;
+
+    let path;
+    if (conn.from === conn.to) {
+      // ponytail: self-connection loops down around the node
+      const loopDown = 80;
+      const loopOut = 60;
+      path = `M ${pts.x1} ${pts.y1} C ${pts.x1 + loopOut} ${pts.y1}, ${pts.x1 + loopOut} ${pts.y1 + loopDown}, ${(pts.x1 + pts.x2) / 2} ${pts.y1 + loopDown} S ${pts.x2 - loopOut} ${pts.y2}, ${pts.x2} ${pts.y2}`;
+    } else {
+      const dx = Math.max(50, Math.abs(pts.x2 - pts.x1) * 0.5);
+      path = `M ${pts.x1} ${pts.y1} C ${pts.x1 + dx} ${pts.y1}, ${pts.x2 - dx} ${pts.y2}, ${pts.x2} ${pts.y2}`;
+    }
+    const selectedClass = selectedConnection === idx ? 'selected' : '';
+    html += `<path d="${path}" class="connection-hit" onclick="selectConnection(${idx})" ondblclick="deleteConnection(${idx})" />`;
+    html += `<path d="${path}" class="connection-visible ${selectedClass}" />`;
+  });
+
+  svg.innerHTML = html;
+
+  if (!draggingConnectionHandle) {
+    renderConnectionHandles();
+  }
+}
+
+function renderConnectionHandles() {
+  document.querySelectorAll('.canvas-connection-handle').forEach(el => el.remove());
+
+  if (selectedConnection === null) return;
+
+  const conn = canvasConnections[selectedConnection];
+  if (!conn) return;
+
+  const fromNode = canvasNodes.find(n => n.id === conn.from);
+  const toNode = canvasNodes.find(n => n.id === conn.to);
+  if (!fromNode || !toNode) return;
+
+  const p1 = getPortPosition(conn.from, 'output', conn.fromPort);
+  const p2 = getPortPosition(conn.to, 'input', conn.toPort);
+  if (!p1 || !p2) return;
+
+  const handle1 = document.createElement('div');
+  handle1.className = 'canvas-connection-handle';
+  handle1.style.left = p1.x + 'px';
+  handle1.style.top = p1.y + 'px';
+  handle1.onmousedown = (e) => startDragConnectionHandle(e, selectedConnection, 'from');
+  document.getElementById('canvasNodes').appendChild(handle1);
+
+  const handle2 = document.createElement('div');
+  handle2.className = 'canvas-connection-handle';
+  handle2.style.left = p2.x + 'px';
+  handle2.style.top = p2.y + 'px';
+  handle2.onmousedown = (e) => startDragConnectionHandle(e, selectedConnection, 'to');
+  document.getElementById('canvasNodes').appendChild(handle2);
+}
+
+function selectConnection(idx) {
+  event.stopPropagation();
+  selectedConnection = idx;
+  selectedCanvasNode = null;
+  renderCanvasConnections();
+}
+
+function deselectAll() {
+  selectedConnection = null;
+  selectedCanvasNode = null;
+  hideContextMenu();
+  renderCanvas();
+}
+
+function startDragConnectionHandle(e, connIdx, handleType) {
+  e.stopPropagation();
+  e.preventDefault();
+  const conn = canvasConnections[connIdx];
+  // 保存原始状态，用于取消操作
+  draggingConnectionHandle = {
+    connIdx,
+    handleType,
+    originalFrom: conn.from,
+    originalFromPort: conn.fromPort,
+    originalTo: conn.to,
+    originalToPort: conn.toPort
+  };
+  document.addEventListener('mousemove', onDragConnectionHandle);
+  document.addEventListener('mouseup', stopDragConnectionHandle);
+}
+
+function onDragConnectionHandle(e) {
+  if (!draggingConnectionHandle) return;
+
+  const conn = canvasConnections[draggingConnectionHandle.connIdx];
+  if (!conn) return;
+
+  // 先恢复到原始状态，再应用新的连接
+  conn.from = draggingConnectionHandle.originalFrom;
+  conn.fromPort = draggingConnectionHandle.originalFromPort;
+  conn.to = draggingConnectionHandle.originalTo;
+  conn.toPort = draggingConnectionHandle.originalToPort;
+
+  // 获取鼠标位置（相对于画板）
+  const board = document.getElementById('canvasBoard');
+  const boardRect = board.getBoundingClientRect();
+  const wrapper = document.getElementById('canvasZoomWrapper');
+  const scale = parseFloat(wrapper.style.transform.replace('scale(', '').replace(')', '')) || 1;
+  const mouseX = (e.clientX - boardRect.left) / scale;
+  const mouseY = (e.clientY - boardRect.top) / scale;
+
+  // 找到最近的端口
+  const portInfo = findNearestPort(mouseX, mouseY, draggingConnectionHandle.handleType === 'from' ? 'output' : 'input');
+
+  // 高亮目标端口
+  highlightTargetPort(portInfo);
+
+  // 记录是否找到了有效端口
+  draggingConnectionHandle.foundPort = !!portInfo;
+
+  if (portInfo) {
+    // 应用新的连接
+    if (draggingConnectionHandle.handleType === 'from') {
+      conn.from = portInfo.nodeId;
+      conn.fromPort = portInfo.portIndex;
+    } else {
+      conn.to = portInfo.nodeId;
+      conn.toPort = portInfo.portIndex;
+    }
+  }
+
+  // 先重新渲染连接线（会清空 SVG），再显示虚线预览
+  renderCanvasConnections();
+  showTempConnectionPreview(mouseX, mouseY, draggingConnectionHandle.handleType, conn);
+}
+
+function showTempConnectionPreview(mouseX, mouseY, handleType, conn) {
+  const oldPreview = document.querySelector('.temp-drag-connection');
+  if (oldPreview) oldPreview.remove();
+
+  const fromNode = canvasNodes.find(n => n.id === conn.from);
+  const toNode = canvasNodes.find(n => n.id === conn.to);
+  if (!fromNode || !toNode) return;
+
+  const fixedP1 = getPortPosition(conn.from, 'output', conn.fromPort);
+  const fixedP2 = getPortPosition(conn.to, 'input', conn.toPort);
+  if (!fixedP1 || !fixedP2) return;
+
+  let x1, y1, x2, y2;
+
+  if (handleType === 'from') {
+    x1 = mouseX;
+    y1 = mouseY;
+    x2 = fixedP2.x;
+    y2 = fixedP2.y;
+  } else {
+    x1 = fixedP1.x;
+    y1 = fixedP1.y;
+    x2 = mouseX;
+    y2 = mouseY;
+  }
+
+  const dx = Math.max(50, Math.abs(x2 - x1) * 0.5);
+  const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+
+  const svg = document.getElementById('canvasSvg');
+  const previewPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  previewPath.setAttribute('d', path);
+  previewPath.classList.add('temp-drag-connection');
+  svg.appendChild(previewPath);
+}
+
+function highlightTargetPort(portInfo) {
+  // 移除旧的高亮
+  document.querySelectorAll('.canvas-port-dot.highlight').forEach(el => el.classList.remove('highlight'));
+
+  if (!portInfo) return;
+
+  const nodeEl = document.querySelector(`.canvas-node[data-id="${portInfo.nodeId}"]`);
+  if (!nodeEl) return;
+
+  const ports = nodeEl.querySelectorAll(`.canvas-port-dot.${portInfo.portType}`);
+  const port = ports[portInfo.portIndex];
+  if (port) {
+    port.classList.add('highlight');
+  }
+}
+
+function stopDragConnectionHandle() {
+  // 如果没有找到有效端口，恢复到原始状态
+  if (draggingConnectionHandle && !draggingConnectionHandle.foundPort) {
+    const conn = canvasConnections[draggingConnectionHandle.connIdx];
+    if (conn) {
+      conn.from = draggingConnectionHandle.originalFrom;
+      conn.fromPort = draggingConnectionHandle.originalFromPort;
+      conn.to = draggingConnectionHandle.originalTo;
+      conn.toPort = draggingConnectionHandle.originalToPort;
+    }
+  }
+
+  draggingConnectionHandle = null;
+  document.removeEventListener('mousemove', onDragConnectionHandle);
+  document.removeEventListener('mouseup', stopDragConnectionHandle);
+
+  // 清理预览线和端口高亮
+  const preview = document.querySelector('.temp-drag-connection');
+  if (preview) preview.remove();
+  document.querySelectorAll('.canvas-port-dot.highlight').forEach(el => el.classList.remove('highlight'));
+
+  // 重新渲染连接线
+  renderCanvasConnections();
+}
+
+function findNearestPort(x, y, portType) {
+  let nearest = null;
+  let minDist = 50;
+
+  canvasNodes.forEach(node => {
+    const ports = portType === 'output' ? node.outputs : node.inputs;
+    ports.forEach((port, idx) => {
+      const pos = getPortPosition(node.id, portType, idx);
+      if (!pos) return;
+      const dist = Math.sqrt((x - pos.x) ** 2 + (y - pos.y) ** 2);
+
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = { nodeId: node.id, portIndex: idx, portType };
+      }
+    });
+  });
+
+  return nearest;
+}
+
+function onCanvasNodeMouseDown(e, id) {
+  if (e.target.classList.contains('canvas-port-dot')) return;
+  e.stopPropagation();
+  const panelOpen = document.getElementById('canvasNodePanel')?.classList.contains('open');
+  const prevSelected = selectedCanvasNode;
+  selectedCanvasNode = id;
+  draggingCanvasNode = { id, startX: e.clientX, startY: e.clientY, origX: canvasNodes.find(n => n.id === id).x, origY: canvasNodes.find(n => n.id === id).y, moved: false };
+  document.addEventListener('mousemove', onCanvasNodeMouseMove);
+  document.addEventListener('mouseup', onCanvasNodeMouseUp);
+  if (panelOpen && prevSelected !== id) openCanvasNodePanel(id);
+  // ponytail: defer render so dblclick fires before DOM rebuild
+  else if (prevSelected !== id) setTimeout(() => { if (!draggingCanvasNode?.moved) renderCanvas(); }, 300);
+}
+
+function onCanvasNodeMouseMove(e) {
+  if (!draggingCanvasNode) return;
+  draggingCanvasNode.moved = true;
+  const node = canvasNodes.find(n => n.id === draggingCanvasNode.id);
+  if (!node) return;
+  node.x = draggingCanvasNode.origX + (e.clientX - draggingCanvasNode.startX);
+  node.y = draggingCanvasNode.origY + (e.clientY - draggingCanvasNode.startY);
+  renderCanvas();
+}
+
+function onCanvasNodeMouseUp() {
+  draggingCanvasNode = null;
+  document.removeEventListener('mousemove', onCanvasNodeMouseMove);
+  document.removeEventListener('mouseup', onCanvasNodeMouseUp);
+}
+
+function startConnect(e, nodeId, portType, portIndex) {
+  e.stopPropagation();
+  e.preventDefault();
+  if (connectingFrom) {
+    if (connectingFrom.portType !== portType) {
+      const from = connectingFrom.portType === 'output' ? connectingFrom : { nodeId, portType, portIndex };
+      const to = connectingFrom.portType === 'output' ? { nodeId, portType, portIndex } : connectingFrom;
+      canvasConnections.push({ from: from.nodeId, fromPort: from.portIndex, to: to.nodeId, toPort: to.portIndex });
+      renderCanvas();
+    }
+    connectingFrom = null;
+    document.querySelectorAll('.canvas-port-dot').forEach(el => el.classList.remove('connecting'));
+    document.removeEventListener('mousemove', onTempConnectionMove);
+    document.removeEventListener('mouseup', onTempConnectionEnd);
+    const tempPath = document.querySelector('.temp-connection');
+    if (tempPath) tempPath.remove();
+  } else {
+    connectingFrom = { nodeId, portType, portIndex };
+    e.target.classList.add('connecting');
+    document.addEventListener('mousemove', onTempConnectionMove);
+    document.addEventListener('mouseup', onTempConnectionEnd);
+  }
+}
+
+function onTempConnectionMove(e) {
+  if (!connectingFrom) return;
+  const fromNode = canvasNodes.find(n => n.id === connectingFrom.nodeId);
+  if (!fromNode) return;
+
+  const svg = document.getElementById('canvasSvg');
+  if (!svg) return;
+
+  const portPos = getPortPosition(connectingFrom.nodeId, connectingFrom.portType, connectingFrom.portIndex);
+  if (!portPos) return;
+  const x1 = portPos.x;
+  const y1 = portPos.y;
+
+  const board = svg.parentElement;
+  const boardRect = board.getBoundingClientRect();
+  const wrapper = document.getElementById('canvasZoomWrapper');
+  const scale = parseFloat(wrapper.style.transform.replace('scale(', '').replace(')', '')) || 1;
+
+  const x2 = (e.clientX - boardRect.left) / scale;
+  const y2 = (e.clientY - boardRect.top) / scale;
+
+  const dx = Math.max(50, Math.abs(x2 - x1) * 0.5);
+  const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  let tempPath = document.querySelector('.temp-connection');
+  if (!tempPath) {
+    tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tempPath.classList.add('temp-connection');
+    svg.appendChild(tempPath);
+  }
+  tempPath.setAttribute('d', path);
+}
+
+function onTempConnectionEnd(e) {
+  if (connectingFrom && !e.target.classList.contains('canvas-port-dot')) {
+    connectingFrom = null;
+    document.querySelectorAll('.canvas-port-dot').forEach(el => el.classList.remove('connecting'));
+    document.removeEventListener('mousemove', onTempConnectionMove);
+    document.removeEventListener('mouseup', onTempConnectionEnd);
+    const tempPath = document.querySelector('.temp-connection');
+    if (tempPath) tempPath.remove();
+  }
+}
+
+function deleteConnection(idx) {
+  canvasConnections.splice(idx, 1);
+  renderCanvas();
+}
+
+function openCanvasNodePanel(id) {
+  selectedCanvasNode = id;
+  const node = canvasNodes.find(n => n.id === id);
+  if (!node) return;
+  const type = nodeTypes.find(t => t.key === node.type) || nodeTypes[0];
+  document.getElementById('canvasPanelTitle').textContent = node.title + ' - ' + type.label;
+  const body = document.getElementById('canvasPanelBody');
+  let html = '';
+  html += `<label>阶段名称</label>`;
+  html += `<input type="text" value="${node.title}" onchange="updateCanvasNode(${id}, 'title', this.value)">`;
+  html += `<label>提示词</label>`;
+  html += `<textarea onchange="updateCanvasNode(${id}, 'prompt', this.value)" placeholder="输入提示词...">${node.prompt}</textarea>`;
+  html += `<label>输入</label>`;
+  html += `<div class="canvas-io-list">`;
+  node.inputs.forEach((inp, i) => {
+    html += `<div class="canvas-io-group">`;
+    html += `<div class="canvas-io-item"><input type="text" value="${inp.name}" placeholder="名称" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'name', this.value)"><input type="text" value="${inp.type}" placeholder="类型" style="width:60px;" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'type', this.value)"><button class="canvas-io-remove" onclick="removeCanvasNodeIO(${id}, 'inputs', ${i})">×</button></div>`;
+    const subOutputs = inp.outputs || [];
+    subOutputs.forEach((out, j) => {
+      html += `<div class="canvas-io-sub"><span class="canvas-io-arrow">↳</span><input type="text" value="${out.name}" placeholder="输出名称" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'name', this.value)"><select style="width:72px;" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'type', this.value)"><option value="string" ${out.type === 'string' ? 'selected' : ''}>字符串</option><option value="json" ${out.type === 'json' ? 'selected' : ''}>JSON</option><option value="file" ${out.type === 'file' ? 'selected' : ''}>文件</option></select><button class="canvas-io-remove" onclick="removeCanvasNodeSubIO(${id}, ${i}, ${j})">×</button></div>`;
+    });
+    html += `<button class="canvas-io-add-sub" onclick="addCanvasNodeSubIO(${id}, ${i})">+ 对应输出</button>`;
+    html += `</div>`;
+  });
+  html += `</div>`;
+  html += `<button class="canvas-io-add" onclick="addCanvasNodeIO(${id}, 'inputs')">+ 添加输入</button>`;
+  html += `<label>LLM 引擎</label>`;
+  html += `<select onchange="updateCanvasNode(${id}, 'engine', this.value)"><option value="claude" ${node.engine === 'claude' ? 'selected' : ''}>Claude Code</option><option value="codex" ${node.engine === 'codex' ? 'selected' : ''}>Codex CLI</option><option value="hermes" ${node.engine === 'hermes' ? 'selected' : ''}>Hermes (ACP)</option></select>`;
+  html += `<label>模型（可选）</label>`;
+  html += `<input type="text" value="${node.model || ''}" onchange="updateCanvasNode(${id}, 'model', this.value)" placeholder="如 gpt-5.5 / grok-4.3 / 留空用默认">`;
+  html += `<div style="display:flex;gap:8px;margin-top:16px;"><button class="btn btn-primary" style="flex:1;" onclick="saveAndCloseCanvasNodePanel(${id})">保存</button><button class="btn btn-ghost" style="color:var(--danger);" onclick="deleteCanvasNode(${id})">删除</button></div>`;
+  body.innerHTML = html;
+  const panel = document.getElementById('canvasNodePanel');
+  panel.classList.add('open');
+  panel.style.transform = 'translateX(0)';
+  renderCanvas();
+}
+
+function closeCanvasNodePanel() {
+  const panel = document.getElementById('canvasNodePanel');
+  panel.classList.remove('open');
+  panel.style.transform = 'translateX(100%)';
+  selectedCanvasNode = null;
+  renderCanvas();
+}
+
+function saveAndCloseCanvasNodePanel(id) {
+  closeCanvasNodePanel();
+}
+
+function updateCanvasNode(id, field, value) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node) {
+    node[field] = value;
+    renderCanvas();
+    openCanvasNodePanel(id);
+  }
+}
+
+function updateCanvasNodeIO(id, ioType, index, field, value) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node && node[ioType][index]) {
+    node[ioType][index][field] = value;
+    renderCanvas();
+  }
+}
+
+function addCanvasNodeIO(id, ioType) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node) {
+    node[ioType].push({ name: 'new_' + ioType, type: 'any' });
+    openCanvasNodePanel(id);
+  }
+}
+
+function removeCanvasNodeIO(id, ioType, index) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node) {
+    node[ioType].splice(index, 1);
+    openCanvasNodePanel(id);
+  }
+}
+
+function updateCanvasNodeSubIO(id, inputIndex, outputIndex, field, value) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node && node.inputs[inputIndex] && node.inputs[inputIndex].outputs[outputIndex]) {
+    node.inputs[inputIndex].outputs[outputIndex][field] = value;
+    syncNodeOutputs(node);
+    renderCanvas();
+  }
+}
+
+function addCanvasNodeSubIO(id, inputIndex) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node && node.inputs[inputIndex]) {
+    if (!node.inputs[inputIndex].outputs) node.inputs[inputIndex].outputs = [];
+    node.inputs[inputIndex].outputs.push({ name: 'output', type: 'any' });
+    syncNodeOutputs(node);
+    openCanvasNodePanel(id);
+  }
+}
+
+function removeCanvasNodeSubIO(id, inputIndex, outputIndex) {
+  const node = canvasNodes.find(n => n.id === id);
+  if (node && node.inputs[inputIndex] && node.inputs[inputIndex].outputs) {
+    node.inputs[inputIndex].outputs.splice(outputIndex, 1);
+    syncNodeOutputs(node);
+    openCanvasNodePanel(id);
+  }
+}
+
+function syncNodeOutputs(node) {
+  node.outputs = (node.inputs || []).flatMap(inp => inp.outputs || []);
+}
+
+function deleteCanvasNode(id) {
+  hideContextMenu();
+  canvasNodes = canvasNodes.filter(n => n.id !== id);
+  canvasConnections = canvasConnections.filter(c => c.from !== id && c.to !== id);
+  closeCanvasNodePanel();
+  renderCanvas();
+}
+
+function showContextMenu(e, id) {
+  e.preventDefault();
+  e.stopPropagation();
+  hideContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'canvas-context-menu';
+  menu.style.left = (e.clientX - e.currentTarget.closest('.canvas-editor').getBoundingClientRect().left) + 'px';
+  menu.style.top = (e.clientY - e.currentTarget.closest('.canvas-editor').getBoundingClientRect().top) + 'px';
+  menu.innerHTML = `
+    <div class="canvas-context-menu-item" onclick="hideContextMenu(); openCanvasNodePanel(${id})">✏️ 编辑阶段</div>
+    <div class="canvas-context-menu-item danger" onclick="deleteCanvasNode(${id})">🗑 删除</div>
+  `;
+  document.querySelector('.canvas-editor').appendChild(menu);
+  document.addEventListener('click', hideContextMenu, { once: true });
+  document.addEventListener('contextmenu', hideContextMenu, { once: true });
+}
+
+function hideContextMenu() {
+  document.querySelectorAll('.canvas-context-menu').forEach(el => el.remove());
+}
+
+function previewJSON() {
+  const workflow = {
+    nodes: canvasNodes.map(n => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      position: { x: n.x, y: n.y },
+      engine: n.engine,
+      model: n.model,
+      prompt: n.prompt,
+      inputs: n.inputs,
+      outputs: n.outputs,
+    })),
+    connections: canvasConnections,
+  };
+  const json = JSON.stringify(workflow, null, 2);
+  document.getElementById('jsonPreviewContent').textContent = json;
+  document.getElementById('jsonPreviewOverlay').classList.add('open');
+}
+
+function closeJSONPreview() {
+  document.getElementById('jsonPreviewOverlay').classList.remove('open');
+}
+
+function copyJSON() {
+  const content = document.getElementById('jsonPreviewContent').textContent;
+  navigator.clipboard.writeText(content).then(() => {
+    alert('已复制到剪贴板');
+  }).catch(() => {
+    // Fallback for older browsers
+    const textarea = document.createElement('textarea');
+    textarea.value = content;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    alert('已复制到剪贴板');
+  });
+}
+
+function saveCanvasEditor() {
+  alert('保存成功！');
+  window.location.href = 'index.html';
+}
+
+function autoLayoutCanvas() {
+  if (canvasNodes.length === 0) return;
+
+  // 计算每个节点的层级（基于连接关系）
+  const levels = {};
+  const inDegree = {};
+
+  // 初始化入度
+  canvasNodes.forEach(node => {
+    inDegree[node.id] = 0;
+  });
+
+  // 计算入度
+  canvasConnections.forEach(conn => {
+    inDegree[conn.to] = (inDegree[conn.to] || 0) + 1;
+  });
+
+  // 拓扑排序确定层级
+  const queue = [];
+  canvasNodes.forEach(node => {
+    if (inDegree[node.id] === 0) {
+      queue.push(node.id);
+      levels[node.id] = 0;
+    }
+  });
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    const currentLevel = levels[nodeId];
+
+    canvasConnections.forEach(conn => {
+      if (conn.from === nodeId) {
+        const targetLevel = currentLevel + 1;
+        if (levels[conn.to] === undefined || levels[conn.to] < targetLevel) {
+          levels[conn.to] = targetLevel;
+        }
+        inDegree[conn.to]--;
+        if (inDegree[conn.to] === 0) {
+          queue.push(conn.to);
+        }
+      }
+    });
+  }
+
+  // 处理未连接的节点
+  canvasNodes.forEach(node => {
+    if (levels[node.id] === undefined) {
+      levels[node.id] = 0;
+    }
+  });
+
+  // 按层级分组
+  const levelGroups = {};
+  canvasNodes.forEach(node => {
+    const level = levels[node.id];
+    if (!levelGroups[level]) {
+      levelGroups[level] = [];
+    }
+    levelGroups[level].push(node);
+  });
+
+  // 计算位置
+  const startX = 100;
+  const startY = 100;
+  const nodeWidth = 220;
+  const nodeHeight = 120;
+  const horizontalGap = 100;
+  const verticalGap = 60;
+
+  Object.keys(levelGroups).forEach(level => {
+    const nodes = levelGroups[level];
+    nodes.forEach((node, index) => {
+      node.x = startX + level * (nodeWidth + horizontalGap);
+      node.y = startY + index * (nodeHeight + verticalGap);
+    });
+  });
+
+  renderCanvas();
+}
+
+function updateCanvasZoom() {
+  const wrapper = document.getElementById('canvasZoomWrapper');
+  if (wrapper) {
+    wrapper.style.transform = `scale(${canvasScale})`;
+  }
+  const levelDisplay = document.getElementById('canvasZoomLevel');
+  if (levelDisplay) {
+    levelDisplay.textContent = Math.round(canvasScale * 100) + '%';
+  }
+  requestAnimationFrame(() => renderCanvasConnections());
+}
+
+function zoomIn() {
+  canvasScale = Math.min(CANVAS_SCALE_MAX, canvasScale + CANVAS_SCALE_STEP);
+  updateCanvasZoom();
+}
+
+function zoomOut() {
+  canvasScale = Math.max(CANVAS_SCALE_MIN, canvasScale - CANVAS_SCALE_STEP);
+  updateCanvasZoom();
+}
+
+function handleCanvasWheel(e) {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -CANVAS_SCALE_STEP : CANVAS_SCALE_STEP;
+    canvasScale = Math.max(CANVAS_SCALE_MIN, Math.min(CANVAS_SCALE_MAX, canvasScale + delta));
+    updateCanvasZoom();
+  }
+}
+
+// 初始化
+fetch('steps.json').then(r => r.json()).then(data => {
+  nodeTypes = data.steps.map(s => ({ key: s.key, label: s.label, color: s.color, engine: s.engine || 'claude', model: s.model || '', prompt: s.prompt, inputs: s.inputs, outputs: s.outputs }));
+  initDefaultCanvas();
+  renderCanvas();
+});
+updateCanvasZoom();
+</script>
+
+</body>
+</html>
