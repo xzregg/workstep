@@ -3,21 +3,10 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+
+from schemas.task import CreateTaskRequest, RunTaskRequest
 
 router = APIRouter(prefix="/api/task")
-
-
-class CreateTaskRequest(BaseModel):
-    title: str
-    cwd: str
-    description: str | None = None
-    engine: str = "claude"
-
-
-class RunTaskRequest(BaseModel):
-    task_id: str
-    prompt: str
 
 
 @router.post("/create")

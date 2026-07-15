@@ -1,19 +1,11 @@
 """Project API routes."""
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from schemas.project import InitRequest, RegisterRequest
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/project")
-
-
-class InitRequest(BaseModel):
-    path: str
-
-
-class RegisterRequest(BaseModel):
-    path: str
 
 
 @router.post("/init")
