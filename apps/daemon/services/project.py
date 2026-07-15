@@ -66,10 +66,10 @@ class ProjectManager:
         """Persist project list to ~/.workstep/config.json."""
         GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         config = {
-            "projects": [
-                {"path": path_str, "name": proj.name}
+            "projects": {
+                path_str: proj.name
                 for path_str, proj in self._projects.items()
-            ]
+            }
         }
         GLOBAL_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2))
 
@@ -79,19 +79,27 @@ class ProjectManager:
             return
         try:
             config = json.loads(GLOBAL_CONFIG_FILE.read_text())
-            for entry in config.get("projects", []):
-                # Support both old format (string) and new format (object)
-                if isinstance(entry, str):
-                    path_str, name = entry, ""
-                else:
-                    path_str = entry.get("path", "")
-                    name = entry.get("name", "")
+            projects_data = config.get("projects", {})
+
+            # New format: {path: name}
+            if isinstance(projects_data, dict):
+                items = projects_data.items()
+            # Old format: [{path, name}] or [path_string]
+            elif isinstance(projects_data, list):
+                items = []
+                for entry in projects_data:
+                    if isinstance(entry, str):
+                        items.append((entry, ""))
+                    else:
+                        items.append((entry.get("path", ""), entry.get("name", "")))
+            else:
+                return
+
+            for path_str, name in items:
                 path = Path(path_str)
                 if path.exists() and (path / settings.workstep_dir).exists():
                     try:
-                        proj = self.register(path)
-                        if name:
-                            proj.name = name
+                        self.register(path, name=name or None)
                     except Exception as e:
                         logger.warning("Failed to restore project %s: %s", path_str, e)
                 else:
