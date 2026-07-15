@@ -13,9 +13,8 @@ from settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Global config: ~/.workstep/config.json
-GLOBAL_CONFIG_DIR = Path.home() / ".workstep"
-GLOBAL_CONFIG_FILE = GLOBAL_CONFIG_DIR / "config.json"
+# Global config store — single source of truth for ~/.workstep/config.json
+from services.config import config_store
 
 # Default workflow template for new projects
 DEFAULT_STEPS = {
@@ -63,24 +62,20 @@ class ProjectManager:
         self._projects: dict[str, Project] = {}  # path_str -> Project
 
     def _save_config(self):
-        """Persist project list to ~/.workstep/config.json."""
-        GLOBAL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        config = {
-            "projects": {
-                path_str: proj.name
-                for path_str, proj in self._projects.items()
-            }
+        """Persist project list to config store."""
+        projects = {
+            path_str: proj.name
+            for path_str, proj in self._projects.items()
         }
-        GLOBAL_CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2))
+        config_store.set("projects", projects)
 
     def _load_saved_projects(self):
-        """Load and register projects from ~/.workstep/config.json on startup."""
-        if not GLOBAL_CONFIG_FILE.exists():
+        """Load and register projects from config store on startup."""
+        projects_data = config_store.get("projects")
+        if not projects_data:
             return
-        try:
-            config = json.loads(GLOBAL_CONFIG_FILE.read_text())
-            projects_data = config.get("projects", {})
 
+        try:
             # New format: {path: name}
             if isinstance(projects_data, dict):
                 items = projects_data.items()
@@ -105,7 +100,7 @@ class ProjectManager:
                 else:
                     logger.warning("Project path no longer exists: %s", path_str)
         except Exception as e:
-            logger.warning("Failed to load config: %s", e)
+            logger.warning("Failed to load projects from config: %s", e)
 
     def init_project(self, path: str | Path, name: str | None = None) -> Project:
         """Initialize a new WorkStep project at the given path.
