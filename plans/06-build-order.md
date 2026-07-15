@@ -59,14 +59,16 @@ workstep/
 - [x] 引擎注册表（is_installed + create_engine）
 - [x] 全局配置 ConfigStore（`~/.workstep/config.json`）
 
-### 前端 ⬜ 未开始
+### 前端 ✅ 已完成
 
-- [ ] `useWebSocket` hook（连接 `ws://host/ws` + 指数退避重连）
-- [ ] Zustand store（tasks, activeTask, messages）
-- [ ] 项目列表 + 初始化项目
-- [ ] 任务列表 + 创建任务
-- [ ] 任务详情（实时流渲染 text_delta / tool_use / usage）
-- [ ] Vite proxy 配置（dev 代理 `/api` 和 `/ws`）
+- [x] `useWebSocket` hook（指数退避重连）
+- [x] Zustand store（projectStore, taskStore）
+- [x] 项目列表 + 初始化项目
+- [x] 任务列表 + 创建任务
+- [x] 任务详情（实时流渲染 text_delta / tool_use / usage）
+- [x] Vite proxy 配置（dev 代理 `/api` 和 `/ws`）
+- [x] React Router 路由（/ → 项目, /tasks → 列表, /tasks/:id → 详情）
+- [x] TypeScript + Vite 构建通过
 
 ### 端到端验证 ⬜
 
