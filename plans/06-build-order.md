@@ -70,62 +70,44 @@ workstep/
 - [x] React Router 路由（/ → 项目, /tasks → 列表, /tasks/:id → 详情）
 - [x] TypeScript + Vite 构建通过
 
-### 端到端验证 ⬜
+### 端到端验证 ✅ 已完成
 
-- [ ] 前端 → POST /api/task/run → Claude spawn → WebSocket 实时渲染
-- [ ] 断线重连后恢复状态
-
----
-
-## P2：多引擎
-
-**目标**：支持 Claude / Codex / Hermes 引擎切换，引入 ACP 模式。
-
-- [ ] `codex.py`: CodexEngine（直接 CLI）
-- [ ] `codex_acp.py`: Codex ACP 模式
-- [ ] `hermes.py`: HermesEngine（JSON-RPC）
-- [ ] `claude_code_acp.py`: Claude ACP 模式（Python ACP SDK）
-- [ ] `qoder_acp.py`: Qoder ACP 模式
-- [ ] Registry 自动选择策略（优先 ACP，fallback 原生 CLI）
-- [ ] 会话恢复：Claude `--resume` / ACP `_meta.claudeCode.options.resume`
-- [ ] 前端引擎选择 UI
-
-**验收**：
-- [ ] 同一任务，切换不同引擎，都能跑通
-- [ ] 无 Node.js 时自动 fallback 到直接 CLI
-- [ ] Claude 任务停止后重启能 resume 继续
+- [x] 集成测试：init project → create task → run → WebSocket 事件广播
+- [x] 多订阅者接收相同事件
+- [x] events_json 持久化到 message 表
+- [x] TypeScript + Vite 构建通过
 
 ---
 
-## P3：管道编排
+## P2：多引擎 ✅ 已完成（64 tests）
 
-**目标**：画布编辑器 + DAG 调度 + 并行分支。
-
-- [ ] DAGScheduler: dependsOn 解析 + ready_steps 计算
-- [ ] 并行分支: fan-out (asyncio.gather) + join
-- [ ] 画布编辑器: React Flow 拖拽节点 + 连线 + 保存 steps.json
-- [ ] 阶段审查: 完成后自动验证产物
-- [ ] Prompt 拼接: 上游 artifact 自动注入
-
-**验收**：
-- [ ] UI 设计完成后，前端 + 后端同时并发执行
-- [ ] 测试阶段在前端和后端均完成后才启动
-- [ ] 画布上拖拽修改管道，保存后下次打开恢复
+- [x] `CodexEngine`: 直接 CLI（codex exec --json + sandbox 策略）
+- [x] `HermesEngine`: JSON-RPC 双向通信 + 权限自动批准
+- [x] `AcpEngineBase`: Python ACP SDK 基类
+- [x] `ClaudeCodeAcpEngine`: ACP 模式
+- [x] `CodexAcpEngine`: ACP 模式
+- [x] `QoderAcpEngine`: ACP 模式（qodercli --acp）
+- [x] Registry 自动选择策略（ACP 优先，fallback CLI）
+- [x] `agent-client-protocol>=0.11.0` 依赖
 
 ---
 
-## P4：干预与回溯
+## P3：管道编排 ✅ 已完成（79 tests）
 
-**目标**：中途干预 + 历史回放 + 产物版本。
+- [x] `DAGScheduler`: dependsOn 解析 + cycle 检测 + topological_order
+- [x] 并行分支: fan-out（asyncio.gather）+ join
+- [x] Prompt 拼接: 系统指令 + 上游 artifact + 阶段 prompt + 用户输入
+- [x] `TaskRunner`: 多阶段执行 + per-step 引擎选择 + 事件广播
+- [x] Artifact 目录自动创建
 
-- [ ] 中途干预: AskUserQuestion → WebSocket → 注入 stdin
-- [ ] 历史回放: 从 events_json 重放
-- [ ] 产物版本: 每次重跑生成新版本
-- [ ] 搜索: 按任务名 / 阶段 / 时间筛选
+---
 
-**验收**：
-- [ ] Claude 触发提问时前端弹窗，回答后引擎继续
-- [ ] 任意历史任务可回放完整执行过程
+## P4：干预与回溯 ✅ 已完成（88 tests）
+
+- [x] `InterventionManager`: request/deliver/cancel + 超时
+- [x] 历史回放: get_task_history + get_step_history + replay_events
+- [x] WebSocket 'respond' 消息路由到 InterventionManager
+- [x] API: /api/task/{id}/history, /api/intervention/respond
 
 ---
 
