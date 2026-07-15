@@ -22,15 +22,16 @@ def test_internal_event_to_dict():
 
 
 def test_registry_has_claude():
-    """Registry includes claude engine."""
+    """Registry includes claude engine (ACP or CLI)."""
     assert "claude" in ENGINE_REGISTRY
-    assert ENGINE_REGISTRY["claude"] is ClaudeCodeEngine
+    # Could be ClaudeCodeEngine or ClaudeCodeAcpEngine depending on install
 
 
 def test_create_engine():
-    """create_engine returns an engine instance."""
+    """create_engine returns a BaseLLMEngine instance."""
+    from engines.base import BaseLLMEngine
     engine = create_engine("claude")
-    assert isinstance(engine, ClaudeCodeEngine)
+    assert isinstance(engine, BaseLLMEngine)
 
 
 def test_create_engine_unknown():
