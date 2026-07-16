@@ -34,10 +34,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const [historyMessages, setHistoryMessages] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const historyFetchedRef = useRef<string>('')
 
   // Load historical messages when panel opens
   useEffect(() => {
     if (!taskId || !projectId) return
+    const fetchKey = `${taskId}-${projectId}`
+    if (historyFetchedRef.current === fetchKey) return
+    historyFetchedRef.current = fetchKey
     setHistoryLoading(true)
     taskApi.history(taskId, projectId, 50, 0)
       .then((res) => setHistoryMessages(res.messages || []))
