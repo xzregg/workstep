@@ -117,7 +117,7 @@ function canvasToFlowEdges(conns: CanvasConnection[], nodesData: StepNodeData[])
     target: idMap.get(c.to) || String(c.to),
     targetHandle: `in-${c.toPort}`,
     animated: true,
-    style: { stroke: 'var(--border)', strokeWidth: 2 },
+    style: { stroke: 'var(--accent)', strokeWidth: 2 },
   }))
 }
 
@@ -332,29 +332,6 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
         <button onClick={addInput} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
           + 添加输入
         </button>
-      </div>
-    </div>
-  )
-}
-
-/* ══════════════════════════════════════════
-   Output editor (flat list)
-   ══════════════════════════════════════════ */
-function OutputEditor({ outputs }: { outputs: OutputField[]; onChange: (v: OutputField[]) => void }) {
-  return (
-    <div>
-      <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ color: 'var(--success)' }}>●</span> 输出产物
-        <span style={{ fontSize: 10, color: 'var(--meta)', fontWeight: 400, textTransform: 'none' }}>（自动同步自输入子输出）</span>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {outputs.map((f, i) => (
-          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <input value={f.name} readOnly placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12, background: 'var(--surface)' }} />
-            <input value={f.type} readOnly placeholder="类型" style={{ width: 60, height: 28, fontSize: 12, background: 'var(--surface)' }} />
-            <span style={{ width: 22, height: 22 }} />
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -599,11 +576,6 @@ function CanvasEditorInner() {
             <InputEditor
               inputs={selectedNode.inputs}
               onChange={(inputs) => updateNodeData(String(selectedNode.nodeId), 'inputs', inputs)}
-            />
-
-            <OutputEditor
-              outputs={selectedNode.outputs}
-              onChange={(outputs) => updateNodeData(String(selectedNode.nodeId), 'outputs', outputs)}
             />
 
             <div>
