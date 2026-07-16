@@ -312,19 +312,30 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       const senderColor = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : (stageInfo?.color || 'var(--fg)')
 
                       return (
-                        <div key={i} style={{ display: 'flex', gap: 12, maxWidth: '90%' }}>
-                          <div style={{
-                            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                            background: senderColor, color: '#fff',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 12, fontWeight: 600,
-                          }}>
-                            {initials}
+                        <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: '85%', alignSelf: isUser ? 'flex-end' : 'flex-start' }}>
+                          {/* Time above message */}
+                          <div style={{ fontSize: 10, color: 'var(--meta)', textAlign: isUser ? 'right' : 'left', paddingLeft: isUser ? 0 : 44, paddingRight: isUser ? 44 : 0 }}>
+                            {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
                           </div>
-                          <div style={{ flex: 1, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--fg-2)' }}>
-                            {msg.content}
-                            <div style={{ fontSize: 10, color: 'var(--meta)', marginTop: 4 }}>
-                              {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {/* Message row */}
+                          <div style={{ display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                            <div style={{
+                              width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                              background: senderColor, color: '#fff',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 12, fontWeight: 600,
+                            }}>
+                              {initials}
+                            </div>
+                            <div style={{
+                              flex: 1, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                              color: isUser ? '#fff' : 'var(--fg-2)',
+                              background: isUser ? 'var(--accent)' : 'var(--surface)',
+                              padding: '10px 14px', borderRadius: 12,
+                              borderBottomRightRadius: isUser ? 4 : 12,
+                              borderBottomLeftRadius: isUser ? 12 : 4,
+                            }}>
+                              {msg.content}
                             </div>
                           </div>
                         </div>
