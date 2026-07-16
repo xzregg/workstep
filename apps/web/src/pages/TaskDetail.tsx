@@ -308,12 +308,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       const isUser = msg.role === 'user'
                       const isSystem = msg.role === 'system'
                       const sender = isUser ? '我' : isSystem ? '系统' : stageLabel
+                      const initials = sender.slice(0, 2)
                       const senderColor = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : (stageInfo?.color || 'var(--fg)')
 
                       return (
                         <div key={i} style={{ display: 'flex', gap: 12, maxWidth: '90%' }}>
-                          <div style={{ width: 60, flexShrink: 0, textAlign: 'right', fontSize: 12, fontWeight: 600, color: senderColor, paddingTop: 2 }}>
-                            {sender}
+                          <div style={{
+                            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                            background: senderColor, color: '#fff',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 12, fontWeight: 600,
+                          }}>
+                            {initials}
                           </div>
                           <div style={{ flex: 1, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--fg-2)' }}>
                             {msg.content}
