@@ -187,37 +187,61 @@ const handleStyle: React.CSSProperties = {
   width: 10, height: 10, background: 'var(--bg)', border: '2px solid var(--border)',
 }
 
+/* ── Port layout constants ── */
+const HEADER_H = 44
+const PROMPT_H = 28
+const PORT_ROW_H = 20
+const SUB_ROW_H = 16
+const PORT_PAD = 8
+
 function StepNode({ data }: { data: StepNodeData }) {
-  const inCount = Math.max(data.inputs.length, 1)
-  const outCount = Math.max(data.outputs.length, 1)
+  const hasPrompt = !!data.prompt
+  const topOffset = (hasPrompt ? HEADER_H + PROMPT_H : HEADER_H) + PORT_PAD
+
+  // Calculate Y for each input handle
+  const inputYs: number[] = []
+  let cursor = topOffset
+  data.inputs.forEach((inp) => {
+    inputYs.push(cursor + PORT_ROW_H / 2)
+    cursor += PORT_ROW_H
+    inp.outputs.forEach(() => { cursor += SUB_ROW_H })
+  })
+
+  // Calculate Y for each output handle
+  const gap = data.inputs.length > 0 ? 4 : 0
+  const outputsTop = cursor + gap
+  const outputYs = data.outputs.map((_, i) => outputsTop + i * PORT_ROW_H + PORT_ROW_H / 2)
+
+  const totalH = Math.max(outputsTop + data.outputs.length * PORT_ROW_H + PORT_PAD, topOffset + 20)
 
   return (
     <div style={{
-      width: 220, background: 'var(--bg)',
+      width: 220, height: totalH,
+      background: 'var(--bg)',
       border: `1.5px solid ${data.color || 'var(--border)'}`,
       borderRadius: 'var(--radius-md)',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
       fontFamily: 'var(--font-body)', position: 'relative',
     }}>
       {/* Input handles */}
-      {data.inputs.length > 0
-        ? data.inputs.map((_, i) => (
+      {inputYs.length > 0
+        ? inputYs.map((y, i) => (
             <Handle key={`in-${i}`} id={`in-${i}`} type="target" position={Position.Left}
-              style={{ ...handleStyle, top: `${((i + 1) / (inCount + 1)) * 100}%` }} />
+              style={{ ...handleStyle, top: y }} />
           ))
         : <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleStyle, top: '50%' }} />
       }
       {/* Output handles */}
-      {data.outputs.length > 0
-        ? data.outputs.map((_, i) => (
+      {outputYs.length > 0
+        ? outputYs.map((y, i) => (
             <Handle key={`out-${i}`} id={`out-${i}`} type="source" position={Position.Right}
-              style={{ ...handleStyle, top: `${((i + 1) / (outCount + 1)) * 100}%` }} />
+              style={{ ...handleStyle, top: y }} />
           ))
         : <Handle id="out-0" type="source" position={Position.Right} style={{ ...handleStyle, top: '50%' }} />
       }
 
       {/* Header */}
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ height: HEADER_H, padding: '0 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
           {data.label.charAt(0)}
         </div>
@@ -225,39 +249,48 @@ function StepNode({ data }: { data: StepNodeData }) {
         <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{data.engine}</span>
       </div>
 
-      {data.prompt && (
-        <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)' }}>
+      {hasPrompt && (
+        <div style={{ height: PROMPT_H, padding: '0 12px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
           {data.prompt.substring(0, 50)}{data.prompt.length > 50 ? '...' : ''}
         </div>
       )}
 
-      {/* Ports */}
-      <div style={{ padding: '8px 12px' }}>
-        {data.inputs.map((inp, i) => (
-          <div key={`inp-${i}`} style={{ marginBottom: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
+      {/* Input port labels — absolute to match handles */}
+      {data.inputs.map((inp, i) => {
+        const labelTop = inputYs[i] - PORT_ROW_H / 2
+        return (
+          <div key={`inp-${i}`}>
+            <div style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-              <span style={{ flex: 1 }}>{inp.name}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.name}</span>
               <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
             </div>
-            {/* Sub-outputs */}
-            {inp.outputs.map((sub, j) => (
-              <div key={`sub-${j}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--meta)', marginLeft: 14, marginTop: 2 }}>
-                <span style={{ color: 'var(--meta)' }}>↳</span>
-                <span>{sub.name}</span>
-                <span style={{ fontSize: 9, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
-              </div>
-            ))}
+            {inp.outputs.map((sub, j) => {
+              let subTop = labelTop + PORT_ROW_H
+              for (let k = 0; k < j; k++) subTop += SUB_ROW_H
+              return (
+                <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--meta)' }}>
+                  <span>↳</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
+                  <span style={{ fontSize: 9, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
+                </div>
+              )
+            })}
           </div>
-        ))}
-        {data.outputs.map((out, i) => (
-          <div key={`out-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 2, justifyContent: 'flex-end' }}>
-            <span style={{ flex: 1, textAlign: 'right' }}>{out.name}</span>
+        )
+      })}
+
+      {/* Output port labels — absolute to match handles */}
+      {data.outputs.map((out, i) => {
+        const labelTop = outputYs[i] - PORT_ROW_H / 2
+        return (
+          <div key={`out-${i}`} style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', justifyContent: 'flex-end' }}>
+            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{out.name}</span>
             <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
           </div>
-        ))}
-      </div>
+        )
+      })}
     </div>
   )
 }
