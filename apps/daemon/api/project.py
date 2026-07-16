@@ -1,8 +1,10 @@
 """Project API routes."""
 
+import json
+
 from fastapi import APIRouter, HTTPException
 
-from schemas.project import InitRequest, RegisterRequest, RenameRequest
+from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveStepsRequest
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/project")
@@ -41,3 +43,18 @@ async def rename_project(req: RenameRequest):
 async def list_projects():
     """List all registered projects."""
     return {"projects": project_manager.list_projects()}
+
+
+@router.post("/save-steps")
+async def save_steps(req: SaveStepsRequest):
+    """Save workflow steps.json for a project."""
+    proj = project_manager.get_project(req.path)
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    steps_path = proj.workstep_dir / "steps.json"
+    steps_path.write_text(json.dumps(req.steps, ensure_ascii=False, indent=2))
+
+    # Update in-memory steps
+    proj.steps = req.steps
+    return {"path": str(steps_path), "saved": True}

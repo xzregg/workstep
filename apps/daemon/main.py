@@ -14,6 +14,7 @@ from streaming.bus import EventBus
 from api.project import router as project_router
 from api.task import router as task_router
 from api.history import router as history_router
+from api.fs import router as fs_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
@@ -46,6 +47,7 @@ app = FastAPI(title="WorkStep Daemon", lifespan=lifespan)
 app.include_router(project_router)
 app.include_router(task_router)
 app.include_router(history_router)
+app.include_router(fs_router)
 
 
 # --- REST API ---

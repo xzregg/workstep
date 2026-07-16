@@ -104,6 +104,9 @@ export default function TaskList() {
         <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
         <span style={{ fontSize: 13, color: 'var(--fg-2)' }}>任务看板</span>
         <div style={{ flex: 1 }} />
+        <button className="btn-ghost" onClick={() => navigate('/canvas')}>
+          ⚙ 编辑流程
+        </button>
         <button className="btn-primary" onClick={() => setShowCreate(true)}>
           + 新任务
         </button>

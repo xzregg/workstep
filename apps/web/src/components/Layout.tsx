@@ -1,21 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
+import DirectoryBrowser from './DirectoryBrowser'
 import type { Project } from '../api/client'
 
-/* ── Sidebar styles ── */
 const sidebarStyle: React.CSSProperties = {
   width: 280, minWidth: 280,
   background: 'var(--bg)',
   borderRight: '1px solid var(--border-soft)',
   display: 'flex', flexDirection: 'column',
   overflow: 'hidden',
-}
-
-const navStyle: React.CSSProperties = {
-  padding: '12px 14px 8px',
-  display: 'flex', flexDirection: 'column', gap: 2,
-  borderBottom: '1px solid var(--border-soft)',
 }
 
 const sectionLabel: React.CSSProperties = {
@@ -31,8 +25,7 @@ const sectionLabel: React.CSSProperties = {
 const projectItemStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer',
-  fontSize: 14,
+  cursor: 'pointer', fontSize: 14,
   color: active ? 'var(--fg)' : 'var(--fg-2)',
   background: active ? 'var(--surface)' : 'transparent',
   border: `1.5px solid ${active ? 'var(--accent)' : 'transparent'}`,
@@ -47,10 +40,8 @@ const addButtonStyle: React.CSSProperties = {
   border: '1.5px dashed var(--border)',
   borderRadius: 'var(--radius-sm)',
   textAlign: 'center' as const,
-  cursor: 'pointer',
-  color: 'var(--meta)',
-  fontSize: 12,
-  background: 'transparent',
+  cursor: 'pointer', color: 'var(--meta)',
+  fontSize: 12, background: 'transparent',
   width: 'calc(100% - 24px)',
   fontFamily: 'var(--font-body)',
 }
@@ -67,6 +58,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [newPath, setNewPath] = useState('')
   const [newName, setNewName] = useState('')
   const [error, setError] = useState('')
+  const [showBrowser, setShowBrowser] = useState(false)
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -85,17 +77,22 @@ export default function Layout({ onSelectProject, children }: Props) {
       setShowInitModal(false)
       setNewPath('')
       setNewName('')
+      setShowBrowser(false)
     } catch (e) {
       setError((e as Error).message)
     }
+  }
+
+  const handleDirSelect = (path: string) => {
+    setNewPath(path)
+    setShowBrowser(false)
   }
 
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* Sidebar */}
       <aside style={sidebarStyle}>
-        {/* Brand */}
-        <div style={navStyle}>
+        <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-display)' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -104,10 +101,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
         </div>
 
-        {/* Projects section */}
-        <div style={sectionLabel}>
-          项目
-        </div>
+        <div style={sectionLabel}>项目</div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
           {projects.map((p) => (
@@ -131,7 +125,6 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        {/* Add project button */}
         <button style={addButtonStyle} onClick={() => setShowInitModal(true)}>
           + 添加项目
         </button>
@@ -144,19 +137,32 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       {/* Init project modal */}
       {showInitModal && (
-        <div className="modal-overlay" onClick={() => setShowInitModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>
+          <div className="modal" style={{ width: showBrowser ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">初始化项目</span>
-              <button className="btn-icon" onClick={() => setShowInitModal(false)}>✕</button>
+              <button className="btn-icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</button>
             </div>
             <div className="modal-body">
               <label>项目路径</label>
-              <input
-                placeholder="/Users/me/my-app"
-                value={newPath}
-                onChange={(e) => setNewPath(e.target.value)}
-              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  style={{ flex: 1 }}
+                  placeholder="/Users/me/my-app"
+                  value={newPath}
+                  onChange={(e) => setNewPath(e.target.value)}
+                />
+                <button className="btn-ghost" onClick={() => setShowBrowser(!showBrowser)}>
+                  {showBrowser ? '收起' : '浏览'}
+                </button>
+              </div>
+
+              {showBrowser && (
+                <div style={{ marginTop: 8 }}>
+                  <DirectoryBrowser onSelect={handleDirSelect} />
+                </div>
+              )}
+
               <label>项目名称（可选）</label>
               <input
                 placeholder="默认使用目录名"
@@ -167,7 +173,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               {error && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{error}</p>}
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setShowInitModal(false)}>取消</button>
+              <button className="btn-ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>取消</button>
               <button className="btn-primary" onClick={handleInit}>初始化</button>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
 import TaskDetail from './pages/TaskDetail'
+import CanvasEditor from './pages/CanvasEditor'
 import type { Project } from './api/client'
 
 function AppRoutes() {
@@ -14,13 +15,21 @@ function AppRoutes() {
   }
 
   return (
-    <Layout onSelectProject={handleSelectProject}>
-      <Routes>
-        <Route path="/" element={<WelcomeView />} />
-        <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
-        <Route path="/tasks/:taskId" element={<TaskDetail />} />
-      </Routes>
-    </Layout>
+    <Routes>
+      {/* Canvas editor is full-screen, outside Layout */}
+      <Route path="/canvas" element={<CanvasEditor />} />
+
+      {/* All other pages are inside Layout */}
+      <Route path="*" element={
+        <Layout onSelectProject={handleSelectProject}>
+          <Routes>
+            <Route path="/" element={<WelcomeView />} />
+            <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
+            <Route path="/tasks/:taskId" element={<TaskDetail />} />
+          </Routes>
+        </Layout>
+      } />
+    </Routes>
   )
 }
 
