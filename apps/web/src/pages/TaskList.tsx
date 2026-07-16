@@ -13,8 +13,9 @@ const topbarStyle: React.CSSProperties = {
 
 const kanbanStyle: React.CSSProperties = {
   flex: 1, display: 'flex', gap: 0,
-  overflowX: 'auto', padding: '16px 16px 16px 0',
-  minWidth: 0,
+  overflowX: 'auto', overflowY: 'hidden',
+  padding: '16px 16px 16px 0',
+  minWidth: 0, width: '100%',
 }
 
 const laneStyle: React.CSSProperties = {
@@ -206,11 +207,20 @@ export default function TaskList() {
 
       {/* Kanban board */}
       <div style={kanbanStyle}>
-        {loading && <div style={{ padding: 40, color: 'var(--meta)' }}>加载中...</div>}
+        {loading && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
+            加载中...
+          </div>
+        )}
 
         {!loading && !activeProject && (
-          <div style={{ padding: 40, color: 'var(--meta)', textAlign: 'center', width: '100%' }}>
-            请在左侧选择一个项目
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)', minWidth: '100%' }}>
+            <div style={{ textAlign: 'center' }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 12, opacity: 0.5 }}>
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              <div style={{ fontSize: 14 }}>请在左侧选择一个项目</div>
+            </div>
           </div>
         )}
 
