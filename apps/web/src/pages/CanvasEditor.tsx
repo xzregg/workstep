@@ -468,22 +468,19 @@ function CanvasEditorInner() {
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
 
-  // Auto-load project from URL ?project=name on refresh
+  // Always re-fetch project on mount to get latest steps.json
   useEffect(() => {
     const projectName = searchParams.get('project')
-    if (!projectName || activeProject) return
+    if (!projectName) return
 
     const doLoad = async () => {
-      let currentProjects = useProjectStore.getState().projects
-      if (currentProjects.length === 0) {
-        await fetchProjects()
-        currentProjects = useProjectStore.getState().projects
-      }
+      await fetchProjects()
+      const currentProjects = useProjectStore.getState().projects
       const match = currentProjects.find((p) => p.name === projectName)
       if (match) setActiveProject(match)
     }
     doLoad()
-  }, []) // eslint-disable-line -- only run once on mount
+  }, []) // eslint-disable-line -- run once on mount
 
   const { nodes: canvasNodes, connections: canvasConns } = loadCanvasData(activeProject?.steps)
 
