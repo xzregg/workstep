@@ -116,7 +116,6 @@ function canvasToFlowEdges(conns: CanvasConnection[], nodesData: StepNodeData[])
     sourceHandle: `out-${c.fromPort}`,
     target: idMap.get(c.to) || String(c.to),
     targetHandle: `in-${c.toPort}`,
-    animated: true,
     style: { stroke: 'var(--accent)', strokeWidth: 2 },
   }))
 }
@@ -401,7 +400,7 @@ function CanvasEditorInner() {
   }, [setNodes, setEdges])
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: 'var(--border)', strokeWidth: 2 } }, eds))
+    setEdges((eds) => addEdge({ ...params, style: { stroke: 'var(--accent)', strokeWidth: 2 } }, eds))
   }, [setEdges])
 
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
@@ -560,6 +559,7 @@ function CanvasEditorInner() {
             onConnect={onConnect} onNodeClick={onNodeClick}
             onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView deleteKeyCode={null}
+            connectionLineStyle={{ stroke: '#999', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>
             <Controls /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>
@@ -584,6 +584,11 @@ function CanvasEditorInner() {
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
                   <input value={selectedNode.label} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'label', e.target.value)} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
+                  <textarea value={selectedNode.prompt} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'prompt', e.target.value)}
+                    rows={6} style={{ minHeight: 120, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}>
@@ -610,12 +615,6 @@ function CanvasEditorInner() {
               inputs={selectedNode.inputs}
               onChange={(inputs) => updateNodeData(String(selectedNode.nodeId), 'inputs', inputs)}
             />
-
-            <div>
-              <div style={sectionTitle}>阶段 Prompt</div>
-              <textarea value={selectedNode.prompt} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'prompt', e.target.value)}
-                rows={8} style={{ minHeight: 160, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
-            </div>
 
             <button onClick={() => deleteNode(String(selectedNode.nodeId))}
               style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>

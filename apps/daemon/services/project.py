@@ -16,16 +16,61 @@ logger = logging.getLogger(__name__)
 # Global config store — single source of truth for ~/.workstep/config.json
 from services.config import config_store
 
-# Default workflow template for new projects
+# Default workflow template for new projects (canvas-editor format)
 DEFAULT_STEPS = {
-    "steps": [
-        {
-            "id": "do",
-            "name": "执行",
-            "engine": "claude",
-            "prompt": "{{input}}",
-        }
-    ]
+    "nodes": [
+        {"id": 1, "type": "req", "title": "需求", "position": {"x": 100, "y": 200},
+         "engine": "claude", "model": "",
+         "prompt": "根据业务需求和用户调研，产出 PRD 文档和原型图。明确用户场景、功能点、验收标准。",
+         "inputs": [
+             {"name": "业务需求", "type": "文档", "outputs": [{"name": "PRD 文档", "type": "Markdown"}, {"name": "原型图", "type": "Figma"}]},
+             {"name": "用户调研", "type": "PDF", "outputs": []}],
+         "outputs": [{"name": "PRD 文档", "type": "Markdown"}, {"name": "原型图", "type": "Figma"}]},
+        {"id": 2, "type": "ui", "title": "UI 设计", "position": {"x": 380, "y": 200},
+         "engine": "claude", "model": "",
+         "prompt": "根据 PRD 和原型图，设计高保真 UI 界面，产出设计稿和设计规范文档。",
+         "inputs": [
+             {"name": "PRD 文档", "type": "Markdown", "outputs": [{"name": "UI 设计稿", "type": "Figma"}, {"name": "设计规范", "type": "PDF"}]},
+             {"name": "原型图", "type": "Figma", "outputs": []}],
+         "outputs": [{"name": "UI 设计稿", "type": "Figma"}, {"name": "设计规范", "type": "PDF"}]},
+        {"id": 3, "type": "frontend", "title": "前端开发", "position": {"x": 660, "y": 200},
+         "engine": "claude", "model": "",
+         "prompt": "根据 UI 设计稿和接口文档，开发前端页面，实现状态管理和单元测试。",
+         "inputs": [
+             {"name": "UI 设计稿", "type": "Figma", "outputs": [{"name": "前端页面", "type": "React"}, {"name": "状态管理", "type": "Zustand"}, {"name": "单元测试", "type": "Vitest"}]},
+             {"name": "接口文档", "type": "JSON", "outputs": []},
+             {"name": "组件库", "type": "React", "outputs": []}],
+         "outputs": [{"name": "前端页面", "type": "React"}, {"name": "状态管理", "type": "Zustand"}, {"name": "单元测试", "type": "Vitest"}]},
+        {"id": 4, "type": "backend", "title": "后端开发", "position": {"x": 940, "y": 200},
+         "engine": "codex", "model": "gpt-5.5",
+         "prompt": "根据 PRD 和接口文档，开发后端 API 服务，设计数据库表结构。",
+         "inputs": [
+             {"name": "PRD 文档", "type": "Markdown", "outputs": [{"name": "API 服务", "type": "Go"}, {"name": "数据库", "type": "MySQL"}]},
+             {"name": "接口文档", "type": "JSON", "outputs": []}],
+         "outputs": [{"name": "API 服务", "type": "Go"}, {"name": "数据库", "type": "MySQL"}]},
+        {"id": 5, "type": "test", "title": "测试", "position": {"x": 1220, "y": 200},
+         "engine": "codex", "model": "",
+         "prompt": "对前端页面和后端 API 进行集成测试，产出测试报告和 Bug 列表。",
+         "inputs": [
+             {"name": "前端页面", "type": "React", "outputs": [{"name": "测试报告", "type": "HTML"}, {"name": "Bug 列表", "type": "Excel"}]},
+             {"name": "API 服务", "type": "Go", "outputs": []}],
+         "outputs": [{"name": "测试报告", "type": "HTML"}, {"name": "Bug 列表", "type": "Excel"}]},
+        {"id": 6, "type": "deploy", "title": "上线", "position": {"x": 1500, "y": 200},
+         "engine": "hermes", "model": "grok-4.3",
+         "prompt": "根据测试报告和部署文档，将服务部署到生产环境。",
+         "inputs": [
+             {"name": "测试报告", "type": "HTML", "outputs": [{"name": "生产环境", "type": "K8s"}]},
+             {"name": "部署文档", "type": "Markdown", "outputs": []}],
+         "outputs": [{"name": "生产环境", "type": "K8s"}]},
+    ],
+    "connections": [
+        {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+        {"from": 2, "fromPort": 0, "to": 3, "toPort": 0},
+        {"from": 2, "fromPort": 1, "to": 3, "toPort": 1},
+        {"from": 3, "fromPort": 0, "to": 5, "toPort": 0},
+        {"from": 4, "fromPort": 0, "to": 5, "toPort": 1},
+        {"from": 5, "fromPort": 0, "to": 6, "toPort": 0},
+    ],
 }
 
 
