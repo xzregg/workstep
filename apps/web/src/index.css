@@ -12,10 +12,15 @@
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
-  --status-ready: #3b82f6;
-  --status-running: #16a34a;
+
+  /* Status colors: gray=未开始, blue=进行中, green=完成, red=失败, yellow=暂停 */
+  --status-ready: #86868b;
+  --status-running: #0071e3;
   --status-paused: #eab308;
   --status-stopped: #dc2626;
+  --status-done: #16a34a;
+  --status-failed: #dc2626;
+
   --font-display: "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: "SF Mono", ui-monospace, monospace;
@@ -40,10 +45,12 @@
     --border-soft: #32323a;
     --accent: #0a84ff;
     --accent-hover: #409cff;
-    --status-ready: #64d2ff;
-    --status-running: #30d158;
+    --status-ready: #636366;
+    --status-running: #0a84ff;
     --status-paused: #ffd60a;
     --status-stopped: #ff453a;
+    --status-done: #30d158;
+    --status-failed: #ff453a;
   }
 }
 
@@ -130,9 +137,10 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .status-badge[data-s="running"]  { background: color-mix(in oklab, var(--status-running), transparent 85%); color: var(--status-running); }
 .status-badge[data-s="paused"]   { background: color-mix(in oklab, var(--status-paused), transparent 85%); color: var(--status-paused); }
 .status-badge[data-s="stopped"]  { background: color-mix(in oklab, var(--status-stopped), transparent 85%); color: var(--status-stopped); }
-.status-badge[data-s="passed"]   { background: color-mix(in oklab, var(--status-running), transparent 85%); color: var(--status-running); }
-.status-badge[data-s="pending"]  { background: color-mix(in oklab, var(--meta), transparent 85%); color: var(--meta); }
-.status-badge[data-s="failed"]   { background: color-mix(in oklab, var(--status-stopped), transparent 85%); color: var(--status-stopped); }
+.status-badge[data-s="done"]     { background: color-mix(in oklab, var(--status-done), transparent 85%); color: var(--status-done); }
+.status-badge[data-s="passed"]   { background: color-mix(in oklab, var(--status-done), transparent 85%); color: var(--status-done); }
+.status-badge[data-s="pending"]  { background: color-mix(in oklab, var(--status-ready), transparent 85%); color: var(--status-ready); }
+.status-badge[data-s="failed"]   { background: color-mix(in oklab, var(--status-failed), transparent 85%); color: var(--status-failed); }
 
 /* ── Slide-in animation ── */
 @keyframes slideInRight {
