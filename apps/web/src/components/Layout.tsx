@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import DirectoryBrowser from './DirectoryBrowser'
@@ -53,14 +54,28 @@ interface Props {
 
 export default function Layout({ onSelectProject, children }: Props) {
   useWebSocket()
-  const { projects, activeProject, fetchProjects, initProject, setActiveProject } = useProjectStore()
+  const [searchParams] = useSearchParams()
+  const { projects, activeProject, fetchProjects, initProject, setActiveProject, renameProject } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [newPath, setNewPath] = useState('')
   const [newName, setNewName] = useState('')
   const [error, setError] = useState('')
   const [showBrowser, setShowBrowser] = useState(false)
+  const [renameId, setRenameId] = useState<string | null>(null)
+  const [renameName, setRenameName] = useState('')
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  // Auto-select project from URL ?project=name
+  useEffect(() => {
+    const projectName = searchParams.get('project')
+    if (projectName && projects.length > 0 && !activeProject) {
+      const match = projects.find((p) => p.name === projectName)
+      if (match) {
+        setActiveProject(match)
+      }
+    }
+  }, [searchParams, projects, activeProject, setActiveProject])
 
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
@@ -108,14 +123,38 @@ export default function Layout({ onSelectProject, children }: Props) {
             <div
               key={p.path}
               onClick={() => handleSelectProject(p)}
+              onDoubleClick={(e) => { e.stopPropagation(); setRenameId(p.path); setRenameName(p.name) }}
               style={projectItemStyle(activeProject?.path === p.path)}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {p.name}
-              </span>
+              {renameId === p.path ? (
+                <input
+                  value={renameName}
+                  onChange={(e) => setRenameName(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && renameName.trim()) {
+                      await renameProject(p.path, renameName.trim())
+                      setRenameId(null)
+                    }
+                    if (e.key === 'Escape') setRenameId(null)
+                  }}
+                  onBlur={async () => {
+                    if (renameName.trim() && renameName !== p.name) {
+                      await renameProject(p.path, renameName.trim())
+                    }
+                    setRenameId(null)
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ flex: 1, height: 22, fontSize: 13, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                />
+              ) : (
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.name}
+                </span>
+              )}
             </div>
           ))}
           {projects.length === 0 && (
