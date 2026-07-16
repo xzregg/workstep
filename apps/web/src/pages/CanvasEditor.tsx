@@ -568,6 +568,19 @@ function CanvasEditorInner() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* Toast notification */}
+      {saveMsg && (
+        <div style={{
+          position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 600,
+          padding: '8px 20px', borderRadius: 'var(--radius-sm)',
+          background: saveMsg.includes('成功') ? 'var(--success)' : 'var(--danger)',
+          color: '#fff', fontSize: 13, fontWeight: 500,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        }}>
+          {saveMsg}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
         <button className="btn-icon" onClick={() => navigate(-1)}>←</button>
@@ -580,11 +593,6 @@ function CanvasEditorInner() {
         <button className="btn-ghost" onClick={handleAutoLayout}>⊞ 布局</button>
         <button className="btn-ghost" onClick={handleAddNode}>+ 阶段</button>
         <button className="btn-primary" onClick={handleSave}>保存</button>
-        {saveMsg && (
-          <span style={{ fontSize: 12, color: saveMsg.includes('成功') ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
-            {saveMsg}
-          </span>
-        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
