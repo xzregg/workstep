@@ -14,6 +14,7 @@ const topbarStyle: React.CSSProperties = {
 const kanbanStyle: React.CSSProperties = {
   flex: 1, display: 'flex', gap: 0,
   overflowX: 'auto', padding: '16px 16px 16px 0',
+  minWidth: 0,
 }
 
 const laneStyle: React.CSSProperties = {
@@ -189,7 +190,7 @@ export default function TaskList() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', minWidth: 0 }}>
       {/* Topbar */}
       <div style={topbarStyle}>
         <button className="btn-ghost" onClick={() => navigate('/canvas')} style={{ fontSize: 13, gap: 5 }}>
