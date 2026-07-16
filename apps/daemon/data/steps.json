@@ -3,10 +3,10 @@
     {
       "id": 1,
       "type": "req",
-      "title": "需求",
+      "title": "需求123",
       "position": {
-        "x": 100,
-        "y": 100
+        "x": 77.72500000000002,
+        "y": 200
       },
       "engine": "claude",
       "model": "",
@@ -18,28 +18,23 @@
           "outputs": [
             {
               "name": "PRD 文档",
-              "type": "Markdown"
+              "type": "string"
             },
             {
               "name": "原型图",
-              "type": "Figma"
+              "type": "json"
             }
           ]
-        },
-        {
-          "name": "用户调研",
-          "type": "PDF",
-          "outputs": []
         }
       ],
       "outputs": [
         {
           "name": "PRD 文档",
-          "type": "Markdown"
+          "type": "string"
         },
         {
           "name": "原型图",
-          "type": "Figma"
+          "type": "json"
         }
       ]
     },
@@ -48,8 +43,8 @@
       "type": "ui",
       "title": "UI 设计",
       "position": {
-        "x": 420,
-        "y": 100
+        "x": 338.48750000000007,
+        "y": 53.18749999999997
       },
       "engine": "claude",
       "model": "",
@@ -61,11 +56,11 @@
           "outputs": [
             {
               "name": "UI 设计稿",
-              "type": "Figma"
+              "type": "file"
             },
             {
               "name": "设计规范",
-              "type": "PDF"
+              "type": "json"
             }
           ]
         },
@@ -78,11 +73,11 @@
       "outputs": [
         {
           "name": "UI 设计稿",
-          "type": "Figma"
+          "type": "file"
         },
         {
           "name": "设计规范",
-          "type": "PDF"
+          "type": "json"
         }
       ]
     },
@@ -91,8 +86,8 @@
       "type": "frontend",
       "title": "前端开发",
       "position": {
-        "x": 740,
-        "y": 100
+        "x": 660,
+        "y": 200
       },
       "engine": "claude",
       "model": "",
@@ -104,41 +99,31 @@
           "outputs": [
             {
               "name": "前端页面",
-              "type": "React"
+              "type": "json"
             },
             {
               "name": "状态管理",
-              "type": "Zustand"
+              "type": "json"
             },
             {
               "name": "单元测试",
-              "type": "Vitest"
+              "type": "file"
             }
           ]
-        },
-        {
-          "name": "接口文档",
-          "type": "JSON",
-          "outputs": []
-        },
-        {
-          "name": "组件库",
-          "type": "React",
-          "outputs": []
         }
       ],
       "outputs": [
         {
           "name": "前端页面",
-          "type": "React"
+          "type": "json"
         },
         {
           "name": "状态管理",
-          "type": "Zustand"
+          "type": "json"
         },
         {
           "name": "单元测试",
-          "type": "Vitest"
+          "type": "file"
         }
       ]
     },
@@ -147,8 +132,8 @@
       "type": "backend",
       "title": "后端开发",
       "position": {
-        "x": 1060,
-        "y": 100
+        "x": 940,
+        "y": 200
       },
       "engine": "codex",
       "model": "gpt-5.5",
@@ -160,28 +145,23 @@
           "outputs": [
             {
               "name": "API 服务",
-              "type": "Go"
+              "type": "string"
             },
             {
               "name": "数据库",
-              "type": "MySQL"
+              "type": "string"
             }
           ]
-        },
-        {
-          "name": "接口文档",
-          "type": "JSON",
-          "outputs": []
         }
       ],
       "outputs": [
         {
           "name": "API 服务",
-          "type": "Go"
+          "type": "string"
         },
         {
           "name": "数据库",
-          "type": "MySQL"
+          "type": "string"
         }
       ]
     },
@@ -190,8 +170,8 @@
       "type": "test",
       "title": "测试",
       "position": {
-        "x": 1380,
-        "y": 100
+        "x": 1153.5997298630214,
+        "y": 106.8362407275055
       },
       "engine": "codex",
       "model": "",
@@ -203,11 +183,11 @@
           "outputs": [
             {
               "name": "测试报告",
-              "type": "HTML"
+              "type": "json"
             },
             {
               "name": "Bug 列表",
-              "type": "Excel"
+              "type": "json"
             }
           ]
         },
@@ -220,11 +200,11 @@
       "outputs": [
         {
           "name": "测试报告",
-          "type": "HTML"
+          "type": "json"
         },
         {
           "name": "Bug 列表",
-          "type": "Excel"
+          "type": "json"
         }
       ]
     },
@@ -233,8 +213,8 @@
       "type": "deploy",
       "title": "上线",
       "position": {
-        "x": 1700,
-        "y": 100
+        "x": 1500,
+        "y": 200
       },
       "engine": "hermes",
       "model": "grok-4.3",
@@ -246,20 +226,15 @@
           "outputs": [
             {
               "name": "生产环境",
-              "type": "K8s"
+              "type": "json"
             }
           ]
-        },
-        {
-          "name": "部署文档",
-          "type": "Markdown",
-          "outputs": []
         }
       ],
       "outputs": [
         {
           "name": "生产环境",
-          "type": "K8s"
+          "type": "json"
         }
       ]
     }
@@ -302,22 +277,10 @@
       "toPort": 0
     },
     {
-      "from": 4,
+      "from": 1,
       "fromPort": 1,
-      "to": 5,
-      "toPort": 1
-    },
-    {
-      "from": 3,
-      "fromPort": 2,
-      "to": 4,
-      "toPort": 1
-    },
-    {
-      "from": 3,
-      "fromPort": 1,
-      "to": 4,
-      "toPort": 0
+      "to": 3,
+      "toPort": 2
     }
   ]
 }

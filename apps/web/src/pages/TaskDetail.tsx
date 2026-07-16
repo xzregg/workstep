@@ -279,32 +279,55 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               </div>
             )}
 
-            {/* Historical messages */}
-            {historyMessages.map((msg: any, i: number) => {
-              const isUser = msg.role === 'user'
-              const isSystem = msg.role === 'system'
-              const avatarText = isUser ? '我' : isSystem ? '!' : 'AI'
-              const avatarBg = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : 'var(--fg)'
-              const bubbleStyle = isUser
-                ? { background: 'var(--accent)', color: '#fff', borderBottomRightRadius: 4 }
-                : isSystem
-                  ? { background: 'color-mix(in oklab, var(--warn), transparent 90%)', color: 'var(--fg-2)', border: '1px dashed var(--border)', fontSize: 12 }
-                  : { background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', borderBottomLeftRadius: 4 }
+            {/* Historical messages grouped by stage */}
+            {(() => {
+              const stageMessages: Record<string, any[]> = {}
+              historyMessages.forEach((msg: any) => {
+                const stage = msg.step_key || 'unknown'
+                if (!stageMessages[stage]) stageMessages[stage] = []
+                stageMessages[stage].push(msg)
+              })
 
-              return (
-                <div key={`hist-${i}`} style={{ display: 'flex', gap: 12, maxWidth: '85%', alignSelf: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{avatarText}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 10, color: 'var(--meta)', textAlign: isUser ? 'right' : 'left' }}>
-                      {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
-                    <div style={{ padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', ...bubbleStyle }}>
-                      {msg.content}
+              return Object.entries(stageMessages).map(([stageKey, msgs]) => {
+                const stageInfo = stages.find((s: any) => s.key === stageKey)
+                const stageLabel = stageInfo?.label || stageKey
+                return (
+                  <div key={stageKey} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Stage header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border-soft)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: stageInfo?.color || 'var(--accent)', background: `color-mix(in oklab, ${stageInfo?.color || 'var(--accent)'}, transparent 85%)`, padding: '2px 8px', borderRadius: 4 }}>
+                        {stageLabel}
+                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--meta)' }}>
+                        {msgs[0]?.created_at ? new Date(msgs[0].created_at * 1000).toLocaleString('zh-CN') : ''}
+                      </span>
                     </div>
+
+                    {/* Messages in this stage */}
+                    {msgs.map((msg: any, i: number) => {
+                      const isUser = msg.role === 'user'
+                      const isSystem = msg.role === 'system'
+                      const sender = isUser ? '我' : isSystem ? '系统' : stageLabel
+                      const senderColor = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : (stageInfo?.color || 'var(--fg)')
+
+                      return (
+                        <div key={i} style={{ display: 'flex', gap: 12, maxWidth: '90%' }}>
+                          <div style={{ width: 60, flexShrink: 0, textAlign: 'right', fontSize: 12, fontWeight: 600, color: senderColor, paddingTop: 2 }}>
+                            {sender}
+                          </div>
+                          <div style={{ flex: 1, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--fg-2)' }}>
+                            {msg.content}
+                            <div style={{ fontSize: 10, color: 'var(--meta)', marginTop: 4 }}>
+                              {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
-              )
-            })}
+                )
+              })
+            })()}
 
             {/* Live tool use events */}
             {events.filter((e: any) => e.type === 'tool_use').map((ev: any, i: number) => (
