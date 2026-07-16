@@ -198,21 +198,23 @@ function StepNode({ data }: { data: StepNodeData }) {
   const hasPrompt = !!data.prompt
   const topOffset = (hasPrompt ? HEADER_H + PROMPT_H : HEADER_H) + PORT_PAD
 
-  // Calculate Y for each input handle
+  // Calculate Y for each input handle + collect sub-output Y positions
   const inputYs: number[] = []
+  const subOutputYs: number[] = [] // flat list of all sub-output Y centers
   let cursor = topOffset
   data.inputs.forEach((inp) => {
     inputYs.push(cursor + PORT_ROW_H / 2)
     cursor += PORT_ROW_H
-    inp.outputs.forEach(() => { cursor += SUB_ROW_H })
+    inp.outputs.forEach(() => {
+      subOutputYs.push(cursor + SUB_ROW_H / 2)
+      cursor += SUB_ROW_H
+    })
   })
 
-  // Calculate Y for each output handle
-  const gap = data.inputs.length > 0 ? 4 : 0
-  const outputsTop = cursor + gap
-  const outputYs = data.outputs.map((_, i) => outputsTop + i * PORT_ROW_H + PORT_ROW_H / 2)
+  // Output handles align with sub-outputs (1:1 mapping)
+  const outputYs = subOutputYs
 
-  const totalH = Math.max(outputsTop + data.outputs.length * PORT_ROW_H + PORT_PAD, topOffset + 20)
+  const totalH = Math.max(cursor + PORT_PAD, topOffset + 20)
 
   return (
     <div style={{
@@ -223,7 +225,7 @@ function StepNode({ data }: { data: StepNodeData }) {
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
       fontFamily: 'var(--font-body)', position: 'relative',
     }}>
-      {/* Input handles */}
+      {/* Input handles — one per input */}
       {inputYs.length > 0
         ? inputYs.map((y, i) => (
             <Handle key={`in-${i}`} id={`in-${i}`} type="target" position={Position.Left}
@@ -231,7 +233,7 @@ function StepNode({ data }: { data: StepNodeData }) {
           ))
         : <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleStyle, top: '50%' }} />
       }
-      {/* Output handles */}
+      {/* Output handles — one per sub-output, aligned to sub-output rows */}
       {outputYs.length > 0
         ? outputYs.map((y, i) => (
             <Handle key={`out-${i}`} id={`out-${i}`} type="source" position={Position.Right}
@@ -255,39 +257,30 @@ function StepNode({ data }: { data: StepNodeData }) {
         </div>
       )}
 
-      {/* Input port labels — absolute to match handles */}
+      {/* Input labels + sub-output labels — absolute positioned */}
       {data.inputs.map((inp, i) => {
         const labelTop = inputYs[i] - PORT_ROW_H / 2
         return (
           <div key={`inp-${i}`}>
+            {/* Input row */}
             <div style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.name}</span>
               <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
             </div>
+            {/* Sub-output rows */}
             {inp.outputs.map((sub, j) => {
               let subTop = labelTop + PORT_ROW_H
               for (let k = 0; k < j; k++) subTop += SUB_ROW_H
               return (
                 <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--meta)' }}>
                   <span>↳</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
                   <span style={{ fontSize: 9, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
                 </div>
               )
             })}
-          </div>
-        )
-      })}
-
-      {/* Output port labels — absolute to match handles */}
-      {data.outputs.map((out, i) => {
-        const labelTop = outputYs[i] - PORT_ROW_H / 2
-        return (
-          <div key={`out-${i}`} style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', justifyContent: 'flex-end' }}>
-            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{out.name}</span>
-            <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
           </div>
         )
       })}
