@@ -594,6 +594,7 @@ function CanvasEditorInner() {
         id: d.nodeId,
         type: d.key,
         title: d.label,
+        color: d.color,
         position: n.position,
         engine: d.engine, model: d.model,
         prompt: d.prompt,
