@@ -37,8 +37,18 @@ interface StepNodeData {
   [key: string]: unknown
 }
 
-/* ── Step Node ── */
+/* ── Handle styles ── */
+const handleBaseStyle: React.CSSProperties = {
+  width: 10, height: 10,
+  background: 'var(--bg)',
+  border: '2px solid var(--border)',
+}
+
+/* ── Step Node with per-port Handles ── */
 function StepNode({ data }: { data: StepNodeData }) {
+  const inputCount = Math.max(data.inputs.length, 1)
+  const outputCount = Math.max(data.outputs.length, 1)
+
   return (
     <div style={{
       width: 220, background: 'var(--bg)',
@@ -46,10 +56,41 @@ function StepNode({ data }: { data: StepNodeData }) {
       borderRadius: 'var(--radius-md)',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
       fontFamily: 'var(--font-body)',
+      position: 'relative',
     }}>
-      <Handle type="target" position={Position.Left} style={{
-        width: 10, height: 10, background: 'var(--bg)', border: '2px solid var(--border)',
-      }} />
+      {/* Input handles (left side, one per input) */}
+      {data.inputs.length > 0 ? data.inputs.map((_, i) => (
+        <Handle
+          key={`in-${i}`}
+          id={`in-${i}`}
+          type="target"
+          position={Position.Left}
+          style={{
+            ...handleBaseStyle,
+            top: `${((i + 1) / (inputCount + 1)) * 100}%`,
+          }}
+        />
+      )) : (
+        <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleBaseStyle, top: '50%' }} />
+      )}
+
+      {/* Output handles (right side, one per output) */}
+      {data.outputs.length > 0 ? data.outputs.map((_, i) => (
+        <Handle
+          key={`out-${i}`}
+          id={`out-${i}`}
+          type="source"
+          position={Position.Right}
+          style={{
+            ...handleBaseStyle,
+            top: `${((i + 1) / (outputCount + 1)) * 100}%`,
+          }}
+        />
+      )) : (
+        <Handle id="out-0" type="source" position={Position.Right} style={{ ...handleBaseStyle, top: '50%' }} />
+      )}
+
+      {/* Header */}
       <div style={{
         padding: '10px 12px', borderBottom: '1px solid var(--border-soft)',
         display: 'flex', alignItems: 'center', gap: 8,
@@ -67,28 +108,34 @@ function StepNode({ data }: { data: StepNodeData }) {
           {data.engine}
         </span>
       </div>
+
+      {/* Prompt preview */}
       {data.prompt && (
         <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)' }}>
           {data.prompt.substring(0, 50)}{data.prompt.length > 50 ? '...' : ''}
         </div>
       )}
+
+      {/* Ports */}
       <div style={{ padding: '8px 12px' }}>
+        {/* Input ports */}
         {data.inputs.length > 0 && (
           <div style={{ marginBottom: 4 }}>
             {data.inputs.map((inp, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 2 }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 4, position: 'relative' }}>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-                <span>{inp.name}</span>
+                <span style={{ flex: 1 }}>{inp.name}</span>
                 <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
               </div>
             ))}
           </div>
         )}
+        {/* Output ports */}
         {data.outputs.length > 0 && (
           <div>
             {data.outputs.map((out, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 2, justifyContent: 'flex-end' }}>
-                <span>{out.name}</span>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 4, justifyContent: 'flex-end' }}>
+                <span style={{ flex: 1, textAlign: 'right' }}>{out.name}</span>
                 <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
                 <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
               </div>
@@ -96,9 +143,6 @@ function StepNode({ data }: { data: StepNodeData }) {
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Right} style={{
-        width: 10, height: 10, background: 'var(--bg)', border: '2px solid var(--border)',
-      }} />
     </div>
   )
 }
