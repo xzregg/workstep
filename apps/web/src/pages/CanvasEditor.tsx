@@ -491,6 +491,16 @@ function CanvasEditorInner() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // Reload canvas when project steps change (e.g. after re-fetch)
+  const stepsKey = JSON.stringify(activeProject?.steps)
+  useEffect(() => {
+    const { nodes: nn, connections: nc } = loadCanvasData(activeProject?.steps)
+    setNodes(canvasToFlowNodes(nn))
+    setEdges(canvasToFlowEdges(nc, nn))
+    setSelectedNode(null)
+    setTimeout(() => fitView({ padding: 0.2 }), 100)
+  }, [stepsKey]) // eslint-disable-line
+
   // Keyboard: Delete selected
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -693,7 +703,7 @@ function CanvasEditorInner() {
             nodeTypes={nodeTypes} fitView deleteKeyCode={null}
             connectionLineStyle={{ stroke: '#999', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>
-            <Controls /><Background gap={20} size={1} color="var(--border)" />
+            <Controls position="top-right" /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>
         </div>
 
