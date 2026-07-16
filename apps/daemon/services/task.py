@@ -65,6 +65,40 @@ class TaskService:
         except Task.DoesNotExist:
             return None
 
+    def get_task_history(self, task_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+        """Get chat history for a task with pagination."""
+        try:
+            Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            return []
+
+        messages = (
+            Message.select()
+            .where(Message.task == task_id)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = []
+        import json as json_mod
+        for msg in messages:
+            entry = {
+                "id": msg.id,
+                "role": msg.role,
+                "content": msg.content,
+                "step_key": msg.step_key,
+                "run_status": msg.run_status,
+                "created_at": msg.created_at,
+                "events": [],
+            }
+            if msg.events_json:
+                try:
+                    entry["events"] = json_mod.loads(msg.events_json)
+                except Exception:
+                    pass
+            result.append(entry)
+        return result
+
     async def run_task(self, task_id: str, prompt: str) -> None:
         """Run a task: spawn engine, stream events to event bus.
 

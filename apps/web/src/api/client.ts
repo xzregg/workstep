@@ -65,6 +65,10 @@ export const taskApi = {
     }),
   get: (id: string, projectId: string) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`),
+  history: (taskId: string, projectId: string, limit = 50, offset = 0) =>
+    request<{ messages: any[]; limit: number; offset: number }>(
+      `/task/${taskId}/history?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`
+    ),
   run: (taskId: string, prompt: string, projectId: string) =>
     request<{ status: string }>(`/task/run?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',

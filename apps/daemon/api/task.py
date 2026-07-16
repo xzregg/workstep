@@ -58,6 +58,22 @@ async def get_task(task_id: str, pid: str = Query(..., alias="project_id")):
     return task
 
 
+@router.get("/{task_id}/history")
+async def get_task_history(
+    task_id: str,
+    pid: str = Query(..., alias="project_id"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """Get chat history (messages) for a task with pagination."""
+    from main import task_service
+    if not task_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind(pid)
+    history = task_service.get_task_history(task_id, limit=limit, offset=offset)
+    return {"messages": history, "limit": limit, "offset": offset}
+
+
 @router.post("/run")
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
