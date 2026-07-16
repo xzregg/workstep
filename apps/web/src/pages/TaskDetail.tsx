@@ -36,9 +36,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
   const historyFetchedRef = useRef<string>('')
 
-  // Load historical messages when panel opens
+  // Load historical messages when panel opens (or task changes)
   useEffect(() => {
-    if (!taskId || !projectId) return
+    if (!taskId || !projectId) {
+      historyFetchedRef.current = ''
+      return
+    }
     const fetchKey = `${taskId}-${projectId}`
     if (historyFetchedRef.current === fetchKey) return
     historyFetchedRef.current = fetchKey
