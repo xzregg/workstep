@@ -1,6 +1,7 @@
 """Project API routes."""
 
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -8,6 +9,9 @@ from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveSte
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/project")
+
+# Path to default steps template
+DEFAULT_STEPS_PATH = Path(__file__).parent.parent / "data" / "steps.json"
 
 
 @router.post("/init")
@@ -58,3 +62,11 @@ async def save_steps(req: SaveStepsRequest):
     # Update in-memory steps
     proj.steps = req.steps
     return {"path": str(steps_path), "saved": True}
+
+
+@router.get("/default-steps")
+async def get_default_steps():
+    """Return the default steps.json template."""
+    if not DEFAULT_STEPS_PATH.exists():
+        raise HTTPException(status_code=404, detail="Default steps template not found")
+    return json.loads(DEFAULT_STEPS_PATH.read_text())

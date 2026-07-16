@@ -90,8 +90,11 @@ const DEFAULT_CONNECTIONS: CanvasConnection[] = [
   { from: 1, fromPort: 0, to: 2, toPort: 0 },
   { from: 2, fromPort: 0, to: 3, toPort: 0 },
   { from: 2, fromPort: 1, to: 3, toPort: 1 },
+  { from: 3, fromPort: 1, to: 4, toPort: 0 },
+  { from: 3, fromPort: 2, to: 4, toPort: 1 },
   { from: 3, fromPort: 0, to: 5, toPort: 0 },
   { from: 4, fromPort: 0, to: 5, toPort: 1 },
+  { from: 4, fromPort: 1, to: 5, toPort: 1 },
   { from: 5, fromPort: 0, to: 6, toPort: 0 },
 ]
 
@@ -100,12 +103,16 @@ const DEFAULT_CONNECTIONS: CanvasConnection[] = [
    ══════════════════════════════════════════ */
 
 function canvasToFlowNodes(nodesData: StepNodeData[]): Node[] {
-  const gapX = 280, startX = 100, y = 200
-  return nodesData.map((step, i) => ({
-    id: String(step.nodeId), type: 'step',
-    position: { x: startX + i * gapX, y },
-    data: step,
-  }))
+  const defaultGapX = 320, startX = 100, y = 100
+  return nodesData.map((step, i) => {
+    // Use stored position if available, otherwise auto-layout
+    const pos = (step as any).position
+    return {
+      id: String(step.nodeId), type: 'step',
+      position: pos || { x: startX + i * defaultGapX, y },
+      data: step,
+    }
+  })
 }
 
 function canvasToFlowEdges(conns: CanvasConnection[], nodesData: StepNodeData[]): Edge[] {
@@ -131,6 +138,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       model: n.model || '',
       color: n.color || '#888888',
       prompt: n.prompt || '',
+      position: n.position,
       inputs: (n.inputs || []).map((inp: any) => ({
         name: inp.name || '', type: inp.type || 'any',
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
@@ -509,15 +517,42 @@ function CanvasEditorInner() {
     return { nodes: nodesArr, connections: conns }
   }
 
+  const [saveMsg, setSaveMsg] = useState('')
+
+  const handleLoadDefault = async () => {
+    try {
+      const res = await fetch('/api/project/default-steps')
+      if (!res.ok) return
+      const data = await res.json()
+      const { nodes: newNodes, connections: newConns } = loadCanvasData(data)
+      setNodes(canvasToFlowNodes(newNodes))
+      setEdges(canvasToFlowEdges(newConns, newNodes))
+      setSelectedNode(null)
+      setTimeout(() => fitView({ padding: 0.2 }), 100)
+    } catch (e) {
+      console.error('Load default failed:', e)
+    }
+  }
+
   const handleSave = async () => {
     if (!activeProject) return
     try {
-      await fetch('/api/project/save-steps', {
+      const res = await fetch('/api/project/save-steps', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: activeProject.path, steps: buildCanvasJson() }),
       })
-      navigate(-1)
-    } catch (e) { console.error('Save failed:', e) }
+      if (res.ok) {
+        setSaveMsg('保存成功')
+        setTimeout(() => setSaveMsg(''), 2000)
+      } else {
+        setSaveMsg('保存失败')
+        setTimeout(() => setSaveMsg(''), 2000)
+      }
+    } catch (e) {
+      console.error('Save failed:', e)
+      setSaveMsg('保存失败')
+      setTimeout(() => setSaveMsg(''), 2000)
+    }
   }
 
   const handleCopyJson = () => {
@@ -540,10 +575,16 @@ function CanvasEditorInner() {
         <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
         <span style={{ fontSize: 13, color: 'var(--fg-2)' }}>{activeProject?.name || '项目'}</span>
         <div style={{ flex: 1 }} />
+        <button className="btn-ghost" onClick={handleLoadDefault}>↻ 加载默认</button>
         <button className="btn-ghost" onClick={() => setShowJson(true)}>{'{ }'} JSON</button>
         <button className="btn-ghost" onClick={handleAutoLayout}>⊞ 布局</button>
         <button className="btn-ghost" onClick={handleAddNode}>+ 阶段</button>
         <button className="btn-primary" onClick={handleSave}>保存</button>
+        {saveMsg && (
+          <span style={{ fontSize: 12, color: saveMsg.includes('成功') ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
+            {saveMsg}
+          </span>
+        )}
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
