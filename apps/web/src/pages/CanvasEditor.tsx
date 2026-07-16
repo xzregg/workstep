@@ -316,17 +316,10 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
               <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
                 <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
                 <input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
-                <select value={sub.type} onChange={(e) => updateSubOutput(i, j, 'type', e.target.value)} style={{ width: 68, height: 24, fontSize: 11 }}>
-                  <option value="Markdown">Markdown</option>
-                  <option value="Figma">Figma</option>
-                  <option value="React">React</option>
-                  <option value="JSON">JSON</option>
-                  <option value="Go">Go</option>
-                  <option value="HTML">HTML</option>
-                  <option value="PDF">PDF</option>
-                  <option value="Excel">Excel</option>
-                  <option value="K8s">K8s</option>
-                  <option value="any">any</option>
+                <select value={sub.type} onChange={(e) => updateSubOutput(i, j, 'type', e.target.value)} style={{ width: 72, height: 24, fontSize: 11 }}>
+                  <option value="string">字符串</option>
+                  <option value="json">JSON</option>
+                  <option value="file">文件</option>
                 </select>
                 <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 12 }}>×</button>
               </div>
