@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { taskApi } from '../api/client'
 
 const EMPTY_EVENTS: any[] = []
 
@@ -31,6 +32,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [running, setRunning] = useState(false)
   const [selectedStage, setSelectedStage] = useState(0)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const [historyMessages, setHistoryMessages] = useState<any[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  // Load historical messages when panel opens
+  useEffect(() => {
+    if (!taskId || !projectId) return
+    setHistoryLoading(true)
+    taskApi.history(taskId, projectId, 50, 0)
+      .then((res) => setHistoryMessages(res.messages || []))
+      .catch(() => setHistoryMessages([]))
+      .finally(() => setHistoryLoading(false))
+  }, [taskId, projectId])
 
   // Fetch tasks if not already loaded
   useEffect(() => {
@@ -263,13 +276,44 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
           {/* Chat messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {events.length === 0 && !content && !running && (
+            {historyLoading && (
+              <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>加载中...</div>
+            )}
+
+            {!historyLoading && historyMessages.length === 0 && events.length === 0 && !content && !running && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 40, fontSize: 13 }}>
                 输入补充说明或追问开始对话
               </div>
             )}
 
-            {/* Tool use events as system messages */}
+            {/* Historical messages */}
+            {historyMessages.map((msg: any, i: number) => {
+              const isUser = msg.role === 'user'
+              const isSystem = msg.role === 'system'
+              const avatarText = isUser ? '我' : isSystem ? '!' : 'AI'
+              const avatarBg = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : 'var(--fg)'
+              const bubbleStyle = isUser
+                ? { background: 'var(--accent)', color: '#fff', borderBottomRightRadius: 4 }
+                : isSystem
+                  ? { background: 'color-mix(in oklab, var(--warn), transparent 90%)', color: 'var(--fg-2)', border: '1px dashed var(--border)', fontSize: 12 }
+                  : { background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', borderBottomLeftRadius: 4 }
+
+              return (
+                <div key={`hist-${i}`} style={{ display: 'flex', gap: 12, maxWidth: '85%', alignSelf: isUser ? 'flex-end' : 'flex-start', flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: avatarBg, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{avatarText}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 10, color: 'var(--meta)', textAlign: isUser ? 'right' : 'left' }}>
+                      {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                    </span>
+                    <div style={{ padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', ...bubbleStyle }}>
+                      {msg.content}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Live tool use events */}
             {events.filter((e: any) => e.type === 'tool_use').map((ev: any, i: number) => (
               <div key={`tool-${i}`} style={{ display: 'flex', gap: 12, maxWidth: '85%' }}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--warn)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>!</div>
