@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -10,33 +9,21 @@ const STATUS_LABELS: Record<string, string> = {
   ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
 }
 
-export default function TaskDetail() {
-  const { taskId } = useParams<{ taskId: string }>()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+interface TaskDetailProps {
+  taskId: string
+  onClose: () => void
+}
+
+export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useWebSocket()
 
   const activeProject = useProjectStore((s) => s.activeProject)
-  const fetchProjects = useProjectStore((s) => s.fetchProjects)
-  const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
   const runTask = useTaskStore((s) => s.runTask)
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
-
-  // Auto-load project from URL ?project=name
-  useEffect(() => {
-    const projectName = searchParams.get('project')
-    if (!projectName) return
-    const doLoad = async () => {
-      await fetchProjects()
-      const match = useProjectStore.getState().projects.find((p) => p.name === projectName)
-      if (match) setActiveProject(match)
-    }
-    doLoad()
-  }, []) // eslint-disable-line
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
@@ -85,7 +72,7 @@ export default function TaskDetail() {
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
         任务未找到
         <br />
-        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => navigate(-1)}>← 返回</button>
+        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={onClose}>← 返回</button>
       </div>
     )
   }
@@ -94,10 +81,18 @@ export default function TaskDetail() {
   const time = new Date(task.created_at * 1000).toLocaleString('zh-CN')
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+    <div style={{
+      position: 'fixed', right: 0, top: 0, bottom: 0,
+      width: '85vw', maxWidth: 1200, minWidth: 800,
+      background: 'var(--bg)',
+      boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
+      display: 'flex', flexDirection: 'column',
+      zIndex: 1000,
+      animation: 'slideInRight 0.3s ease',
+    }}>
       {/* ── Header ── */}
       <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'flex-start', gap: 16, flexShrink: 0 }}>
-        <button className="btn-icon" onClick={() => navigate(-1)} style={{ marginTop: 2 }}>←</button>
+        <button className="btn-icon" onClick={onClose} style={{ marginTop: 2 }}>←</button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>{task.title}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -129,8 +124,11 @@ export default function TaskDetail() {
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>进度</div>
             <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
               {stages.map((stage: any, i: number) => {
-                const isDone = i < selectedStage
-                const isActive = i === selectedStage
+                // done/active based on task actual progress, not selectedStage
+                // For now: stage 0 is active if task is running/ready, no stages are done yet
+                // selectedStage only controls the underline highlight
+                const isCurrentActive = (task.status === 'running' || task.status === 'ready') && i === 0
+                const isSelected = i === selectedStage
                 return (
                   <div
                     key={stage.key}
@@ -141,23 +139,24 @@ export default function TaskDetail() {
                     <div style={{
                       position: 'absolute', top: 10,
                       left: i === 0 ? '50%' : 0, right: i === stages.length - 1 ? '50%' : 0,
-                      height: 2, background: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--border)',
+                      height: 2, background: isCurrentActive ? 'var(--accent)' : 'var(--border)',
                     }} />
                     {/* Dot */}
                     <div style={{
                       width: 20, height: 20, borderRadius: '50%',
-                      background: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--bg)',
-                      border: `2px solid ${isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--border)'}`,
+                      background: isCurrentActive ? 'var(--accent)' : 'var(--bg)',
+                      border: `2px solid ${isCurrentActive ? 'var(--accent)' : 'var(--border)'}`,
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: isActive ? '0 0 0 4px color-mix(in oklab, var(--accent), transparent 70%)' : 'none',
+                      boxShadow: isCurrentActive ? '0 0 0 4px color-mix(in oklab, var(--accent), transparent 70%)' : 'none',
                     }}>
-                      {isDone && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
                     </div>
                     <span style={{
                       fontSize: 11, marginTop: 8, textAlign: 'center', whiteSpace: 'nowrap',
-                      color: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--muted)',
-                      fontWeight: isActive ? 500 : 400,
+                      color: isCurrentActive ? 'var(--accent)' : 'var(--muted)',
+                      fontWeight: isSelected ? 600 : isCurrentActive ? 500 : 400,
+                      textDecoration: isSelected ? 'underline' : 'none',
+                      textUnderlineOffset: '3px',
                     }}>
                       {stage.label}
                     </span>

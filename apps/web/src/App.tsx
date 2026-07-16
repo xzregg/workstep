@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
-import TaskDetail from './pages/TaskDetail'
 import CanvasEditor from './pages/CanvasEditor'
 import type { Project } from './api/client'
 
@@ -25,7 +24,6 @@ function AppRoutes() {
           <Routes>
             <Route path="/" element={<WelcomeView />} />
             <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
-            <Route path="/tasks/:taskId" element={<TaskDetail />} />
           </Routes>
         </Layout>
       } />

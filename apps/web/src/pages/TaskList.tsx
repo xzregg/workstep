@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
+import TaskDetail from './TaskDetail'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -82,6 +84,8 @@ export default function TaskList() {
   const { tasks, loading, fetchTasks, createTask, setActiveTask } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
   const [showNewPanel, setShowNewPanel] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
@@ -132,7 +136,7 @@ export default function TaskList() {
 
   const handleSelectTask = (taskId: string) => {
     setActiveTask(taskId)
-    navigate(`/tasks/${taskId}?project=${encodeURIComponent(activeProject?.name || '')}`)
+    setSelectedTaskId(taskId)
   }
 
   const cycleStatus = (e: React.MouseEvent, taskId: string) => {
@@ -163,9 +167,14 @@ export default function TaskList() {
 
   const deleteCard = (e: React.MouseEvent, taskId: string) => {
     e.stopPropagation()
-    if (confirm('确定删除？')) {
+    setConfirmDeleteTaskId(taskId)
+  }
+
+  const handleDeleteConfirm = () => {
+    if (confirmDeleteTaskId) {
       // TODO: call backend delete API
-      setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
+      setCardLanes((prev) => { const next = { ...prev }; delete next[confirmDeleteTaskId]; return next })
+      setConfirmDeleteTaskId(null)
     }
   }
 
@@ -368,6 +377,32 @@ export default function TaskList() {
           <button className="btn-primary" onClick={handleCreate}>创建</button>
         </div>
       </div>
+
+      {/* ── Task detail slide-in panel from right ── */}
+      {selectedTaskId && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setSelectedTaskId(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
+          />
+          <TaskDetail
+            taskId={selectedTaskId}
+            onClose={() => setSelectedTaskId(null)}
+          />
+        </>
+      )}
+
+      {/* ── Delete confirm dialog ── */}
+      <ConfirmDialog
+        open={confirmDeleteTaskId !== null}
+        title="删除任务"
+        message="确定删除此任务？此操作不可撤销。"
+        confirmText="删除"
+        danger
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setConfirmDeleteTaskId(null)}
+      />
     </>
   )
 }

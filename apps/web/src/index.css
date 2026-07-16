@@ -134,6 +134,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .status-badge[data-s="pending"]  { background: color-mix(in oklab, var(--meta), transparent 85%); color: var(--meta); }
 .status-badge[data-s="failed"]   { background: color-mix(in oklab, var(--status-stopped), transparent 85%); color: var(--status-stopped); }
 
+/* ── Slide-in animation ── */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
 /* ── Scrollbar ── */
 
 ::-webkit-scrollbar { width: 4px; height: 5px; }
