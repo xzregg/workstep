@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 
-/* ── Topbar ── */
+/* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
   height: 48, background: 'var(--bg)',
   borderBottom: '1px solid var(--border-soft)',
@@ -11,7 +11,6 @@ const topbarStyle: React.CSSProperties = {
   padding: '0 20px', gap: 12, flexShrink: 0,
 }
 
-/* ── Kanban ── */
 const kanbanStyle: React.CSSProperties = {
   flex: 1, display: 'flex', gap: 0,
   overflowX: 'auto', padding: '16px 16px 16px 0',
@@ -22,12 +21,6 @@ const laneStyle: React.CSSProperties = {
   background: 'var(--surface)', borderRadius: 'var(--radius-md)',
   display: 'flex', flexDirection: 'column',
   marginRight: 12, overflow: 'hidden',
-}
-
-const laneHeaderStyle: React.CSSProperties = {
-  padding: '12px 14px 8px',
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  flexShrink: 0,
 }
 
 const laneBodyStyle: React.CSSProperties = {
@@ -54,13 +47,33 @@ const addCardStyle: React.CSSProperties = {
   marginTop: 4,
 }
 
-/* ── Lane definitions matching task statuses ── */
-const LANES = [
-  { key: 'ready', label: '待处理', color: 'var(--status-ready)' },
-  { key: 'running', label: '运行中', color: 'var(--status-running)' },
-  { key: 'paused', label: '已暂停', color: 'var(--status-paused)' },
-  { key: 'stopped', label: '已停止', color: 'var(--status-stopped)' },
-]
+/* ── Extract lanes from steps.json ── */
+interface Lane {
+  key: string
+  label: string
+  color: string
+}
+
+function getLanesFromSteps(steps: any): Lane[] {
+  // New format: { nodes: [...] }
+  if (steps?.nodes?.length) {
+    return steps.nodes.map((n: any) => ({
+      key: n.type || n.key || n.id,
+      label: n.title || n.label || n.type,
+      color: n.color || '#888',
+    }))
+  }
+  // Legacy format: { steps: [...] }
+  if (steps?.steps?.length) {
+    return steps.steps.map((s: any) => ({
+      key: s.key || s.id,
+      label: s.label || s.name || s.key,
+      color: s.color || '#888',
+    }))
+  }
+  // Fallback
+  return [{ key: 'do', label: '执行', color: '#0071e3' }]
+}
 
 export default function TaskList() {
   const navigate = useNavigate()
@@ -69,7 +82,41 @@ export default function TaskList() {
   const [showCreate, setShowCreate] = useState(false)
   const [title, setTitle] = useState('')
 
-  useEffect(() => { fetchTasks() }, [fetchTasks])
+  // Re-fetch tasks when project changes
+  useEffect(() => { fetchTasks() }, [fetchTasks, activeProject?.path])
+
+  // Build lanes from project's steps.json
+  const lanes = useMemo(() => {
+    const base = getLanesFromSteps(activeProject?.steps)
+    // Add a "done" lane at the end
+    return [...base, { key: '__done__', label: '已完成', color: 'var(--success)' }]
+  }, [activeProject?.steps])
+
+  // Group tasks by current step
+  // A task's current step = first step with status != 'passed', or '__done__' if all passed
+  const getTaskLane = (task: any): string => {
+    // If task has step info, use it
+    if (task.current_step) return task.current_step
+    // If task status indicates completion
+    if (task.status === 'ready' && task.completed_steps) return '__done__'
+    // Default: put in first lane
+    return lanes[0]?.key || 'do'
+  }
+
+  const tasksByLane = useMemo(() => {
+    const map: Record<string, any[]> = {}
+    lanes.forEach((l) => { map[l.key] = [] })
+    tasks.forEach((t: any) => {
+      const lane = getTaskLane(t)
+      if (map[lane]) {
+        map[lane].push(t)
+      } else {
+        // Fallback to first lane
+        if (lanes[0]) map[lanes[0].key]?.push(t)
+      }
+    })
+    return map
+  }, [tasks, lanes])
 
   const handleCreate = async () => {
     if (!title.trim() || !activeProject) return
@@ -86,9 +133,6 @@ export default function TaskList() {
     setActiveTask(taskId)
     navigate(`/tasks/${taskId}`)
   }
-
-  const tasksByStatus = (status: string) =>
-    tasks.filter((t) => t.status === status)
 
   return (
     <>
@@ -116,11 +160,17 @@ export default function TaskList() {
       <div style={kanbanStyle}>
         {loading && <div style={{ padding: 40, color: 'var(--meta)' }}>加载中...</div>}
 
-        {!loading && LANES.map((lane) => {
-          const laneTasks = tasksByStatus(lane.key)
+        {!loading && !activeProject && (
+          <div style={{ padding: 40, color: 'var(--meta)', textAlign: 'center', width: '100%' }}>
+            请在左侧选择一个项目
+          </div>
+        )}
+
+        {!loading && activeProject && lanes.map((lane) => {
+          const laneTasks = tasksByLane[lane.key] || []
           return (
             <div key={lane.key} style={laneStyle}>
-              <div style={laneHeaderStyle}>
+              <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
                   {lane.label}
@@ -130,7 +180,7 @@ export default function TaskList() {
                 </div>
               </div>
               <div style={laneBodyStyle}>
-                {laneTasks.map((t) => (
+                {laneTasks.map((t: any) => (
                   <div
                     key={t.id}
                     onClick={() => handleSelectTask(t.id)}
@@ -153,7 +203,7 @@ export default function TaskList() {
                   </div>
                 ))}
 
-                {lane.key === 'ready' && (
+                {lane.key === lanes[0]?.key && (
                   <button style={addCardStyle} onClick={() => setShowCreate(true)}>
                     + 添加任务
                   </button>
