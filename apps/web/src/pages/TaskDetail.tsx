@@ -87,7 +87,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       background: 'var(--bg)',
       boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
       display: 'flex', flexDirection: 'column',
-      zIndex: 1000,
+      zIndex: 1000, height: '100vh',
       animation: 'slideInRight 0.3s ease',
     }}>
       {/* ── Header ── */}
