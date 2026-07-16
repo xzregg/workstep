@@ -90,7 +90,7 @@ export default function TaskList() {
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
   const [cardStatuses, setCardStatuses] = useState<Record<string, string>>({})
 
-  useEffect(() => { fetchTasks() }, [fetchTasks, activeProject?.path])
+  useEffect(() => { if (activeProject?.path) fetchTasks(activeProject.path) }, [fetchTasks, activeProject?.path])
 
   // Reset local state when project changes
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function TaskList() {
 
   const handleSelectTask = (taskId: string) => {
     setActiveTask(taskId)
-    navigate(`/tasks/${taskId}`)
+    navigate(`/tasks/${taskId}?project=${encodeURIComponent(activeProject?.name || '')}`)
   }
 
   const cycleStatus = (e: React.MouseEvent, taskId: string) => {
@@ -202,7 +202,7 @@ export default function TaskList() {
     <>
       {/* Topbar */}
       <div style={topbarStyle}>
-        <button className="btn-ghost" onClick={() => navigate('/canvas')} style={{ fontSize: 13, gap: 5 }}>
+        <button className="btn-ghost" onClick={() => navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}`)} style={{ fontSize: 13, gap: 5 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           阶段编辑
         </button>

@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -82,6 +83,7 @@ class Project:
     db: pw.SqliteDatabase
     steps: dict  # Parsed steps.json
     name: str = ""  # Display name, defaults to directory name
+    id: str = ""  # Unique project ID
 
     @property
     def workstep_dir(self) -> Path:
@@ -109,10 +111,22 @@ class ProjectManager:
     def _save_config(self):
         """Persist project list to config store."""
         projects = [
-            {"path": path_str, "name": proj.name}
+            {"id": proj.id, "path": path_str, "name": proj.name}
             for path_str, proj in self._projects.items()
         ]
         config_store.set("projects", projects)
+
+    def bind_project(self, path: str | Path) -> "Project":
+        """Switch db_proxy to the given project's database. Must call before querying tasks."""
+        from models import db_proxy
+        path_str = str(Path(path).resolve())
+        proj = self._projects.get(path_str)
+        if not proj:
+            raise ValueError(f"Project not registered: {path_str}")
+        if proj.db.is_closed():
+            proj.db.connect(reuse_if_open=True)
+        db_proxy.initialize(proj.db)
+        return proj
 
     def _load_saved_projects(self):
         """Load and register projects from config store on startup."""
@@ -123,18 +137,18 @@ class ProjectManager:
         try:
             for entry in projects_data:
                 if isinstance(entry, str):
-                    # Legacy: plain path string
-                    path_str, name = entry, ""
+                    path_str, name, pid = entry, "", ""
                 elif isinstance(entry, dict):
                     path_str = entry.get("path", "")
                     name = entry.get("name", "")
+                    pid = entry.get("id", "")
                 else:
                     continue
 
                 path = Path(path_str)
                 if path.exists() and (path / settings.workstep_dir).exists():
                     try:
-                        self.register(path, name=name or None)
+                        self.register(path, name=name or None, project_id=pid or None)
                     except Exception as e:
                         logger.warning("Failed to restore project %s: %s", path_str, e)
                 else:
@@ -177,13 +191,13 @@ class ProjectManager:
         # Read steps
         steps = json.loads(steps_path.read_text())
 
-        project = Project(path=path, db=db, steps=steps, name=name or path.name)
+        project = Project(path=path, db=db, steps=steps, name=name or path.name, id=str(uuid.uuid4())[:8])
         self._projects[path_str] = project
         self._save_config()
-        logger.info("Initialized project: %s (name=%s)", path_str, project.name)
+        logger.info("Initialized project: %s (name=%s, id=%s)", path_str, project.name, project.id)
         return project
 
-    def register(self, path: str | Path, name: str | None = None) -> Project:
+    def register(self, path: str | Path, name: str | None = None, project_id: str | None = None) -> Project:
         """Register an existing project path (opens its DB).
 
         Raises ValueError if the path has no .workstep/ directory.
@@ -206,9 +220,9 @@ class ProjectManager:
         steps_path = ws_dir / "steps.json"
         steps = json.loads(steps_path.read_text()) if steps_path.exists() else DEFAULT_STEPS
 
-        project = Project(path=path, db=db, steps=steps, name=name or path.name)
+        project = Project(path=path, db=db, steps=steps, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
         self._projects[path_str] = project
-        logger.info("Registered project: %s", path_str)
+        logger.info("Registered project: %s (id=%s)", path_str, project.id)
         return project
 
     def register_and_save(self, path: str | Path, name: str | None = None) -> Project:

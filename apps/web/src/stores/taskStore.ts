@@ -16,10 +16,10 @@ interface TaskState {
   content: Record<string, string>     // task_id → accumulated text
   loading: boolean
 
-  fetchTasks: () => Promise<void>
+  fetchTasks: (projectPath: string) => Promise<void>
   setActiveTask: (id: string | null) => void
   createTask: (title: string, cwd: string) => Promise<Task>
-  runTask: (taskId: string, prompt: string) => Promise<void>
+  runTask: (taskId: string, prompt: string, projectPath: string) => Promise<void>
   cancelTask: (taskId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
 }
@@ -31,10 +31,10 @@ export const useTaskStore = create<TaskState>((set) => ({
   content: {},
   loading: false,
 
-  fetchTasks: async () => {
+  fetchTasks: async (projectPath: string) => {
     set({ loading: true })
     try {
-      const { tasks } = await taskApi.list()
+      const { tasks } = await taskApi.list(projectPath)
       set({ tasks, loading: false })
     } catch {
       set({ loading: false })
@@ -49,9 +49,8 @@ export const useTaskStore = create<TaskState>((set) => ({
     return task
   },
 
-  runTask: async (taskId, prompt) => {
-    await taskApi.run(taskId, prompt)
-    // Clear previous content for fresh run
+  runTask: async (taskId, prompt, projectPath) => {
+    await taskApi.run(taskId, prompt, projectPath)
     set((s) => ({
       content: { ...s.content, [taskId]: '' },
       events: { ...s.events, [taskId]: [] },
@@ -75,7 +74,6 @@ export const useTaskStore = create<TaskState>((set) => ({
         newContent = prevContent + (event.data.delta as string || '')
       }
 
-      // Update task status if it's a status event
       let newTasks = s.tasks
       if (event.type === 'status') {
         const status = event.data.status as string

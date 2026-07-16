@@ -17,9 +17,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 // --- Project API ---
 
 export interface Project {
+  id: string
   path: string
   name: string
-  steps: { steps: { id: string; name: string; engine: string }[] }
+  steps: any
 }
 
 export const projectApi = {
@@ -55,15 +56,17 @@ export interface Task {
 }
 
 export const taskApi = {
-  list: () => request<{ tasks: Task[] }>('/task/list'),
+  list: (projectPath: string) =>
+    request<{ tasks: Task[] }>(`/task/list?project=${encodeURIComponent(projectPath)}`),
   create: (title: string, cwd: string, engine = 'claude') =>
     request<Task>('/task/create', {
       method: 'POST',
       body: JSON.stringify({ title, cwd, engine }),
     }),
-  get: (id: string) => request<Task>(`/task/${id}`),
-  run: (taskId: string, prompt: string) =>
-    request<{ status: string }>('/task/run', {
+  get: (id: string, projectPath: string) =>
+    request<Task>(`/task/${id}?project=${encodeURIComponent(projectPath)}`),
+  run: (taskId: string, prompt: string, projectPath: string) =>
+    request<{ status: string }>(`/task/run?project=${encodeURIComponent(projectPath)}`, {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId, prompt }),
     }),

@@ -2,11 +2,22 @@
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from schemas.task import CreateTaskRequest, RunTaskRequest
 
 router = APIRouter(prefix="/api/task")
+
+
+def _bind_project(project_path: str):
+    """Bind db_proxy to the given project's database."""
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        project_manager.bind_project(project_path)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/create")
@@ -15,6 +26,7 @@ async def create_task(req: CreateTaskRequest):
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind_project(req.cwd)
     return task_service.create_task(
         title=req.title,
         cwd=req.cwd,
@@ -24,20 +36,22 @@ async def create_task(req: CreateTaskRequest):
 
 
 @router.get("/list")
-async def list_tasks():
-    """List all tasks."""
+async def list_tasks(project_path: str = Query(..., alias="project")):
+    """List all tasks for a project."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind_project(project_path)
     return {"tasks": task_service.list_tasks()}
 
 
 @router.get("/{task_id}")
-async def get_task(task_id: str):
+async def get_task(task_id: str, project_path: str = Query(..., alias="project")):
     """Get a single task."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind_project(project_path)
     task = task_service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -45,17 +59,17 @@ async def get_task(task_id: str):
 
 
 @router.post("/run")
-async def run_task(req: RunTaskRequest):
+async def run_task(req: RunTaskRequest, project_path: str = Query(..., alias="project")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind_project(project_path)
 
     task = task_service.get_task(req.task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # Fire and forget — events will stream via WebSocket
     asyncio.create_task(task_service.run_task(req.task_id, req.prompt))
     return {"status": "started", "task_id": req.task_id}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
+import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 export default function TaskDetail() {
@@ -8,6 +9,7 @@ export default function TaskDetail() {
   const navigate = useNavigate()
   useWebSocket()
 
+  const activeProject = useProjectStore((s) => s.activeProject)
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] || [] : []))
   const content = useTaskStore((s) => (taskId ? s.content[taskId] || '' : ''))
@@ -15,10 +17,12 @@ export default function TaskDetail() {
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
 
+  const projectPath = activeProject?.path || ''
+
   // Fetch tasks if not already loaded
   useEffect(() => {
-    if (tasks.length === 0) fetchTasks()
-  }, [tasks.length, fetchTasks])
+    if (tasks.length === 0 && projectPath) fetchTasks(projectPath)
+  }, [tasks.length, fetchTasks, projectPath])
 
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
@@ -43,7 +47,7 @@ export default function TaskDetail() {
     if (!taskId || !prompt.trim()) return
     setRunning(true)
     try {
-      await runTask(taskId, prompt.trim())
+      await runTask(taskId, prompt.trim(), projectPath)
       setPrompt('')
     } catch {
       setRunning(false)

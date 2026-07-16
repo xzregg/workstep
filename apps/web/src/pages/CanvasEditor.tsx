@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ConfirmDialog from '../components/ConfirmDialog'
 import {
   ReactFlow, Controls, Background, addEdge,
   useNodesState, useEdgesState,
@@ -374,10 +375,10 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
 /* ══════════════════════════════════════════
    Node Config Panel — edits are local until saved
    ══════════════════════════════════════════ */
-function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
+function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
   node: StepNodeData
   onSave: (data: StepNodeData) => void
-  onDelete: () => void
+  onRequestDelete: () => void
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
@@ -448,7 +449,7 @@ function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
         onChange={(inputs) => updateDraft('inputs', inputs)}
       />
 
-      <button onClick={() => { if (confirm('确定删除此阶段？')) onDelete() }}
+      <button onClick={onRequestDelete}
         style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
         删除此阶段
       </button>
@@ -471,6 +472,7 @@ function CanvasEditorInner() {
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
   const [showJson, setShowJson] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // Keyboard: Delete selected
   useEffect(() => {
@@ -688,7 +690,7 @@ function CanvasEditorInner() {
               ))
               setSelectedNode(data)
             }}
-            onDelete={() => deleteNode(String(selectedNode.nodeId))}
+            onRequestDelete={() => setConfirmDeleteId(String(selectedNode.nodeId))}
             onClose={() => setSelectedNode(null)}
           />
         )}
@@ -703,7 +705,7 @@ function CanvasEditorInner() {
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             ✏️ 编辑阶段
           </div>
-          <div onClick={() => deleteNode(contextMenu.nodeId)}
+          <div onClick={() => { setConfirmDeleteId(contextMenu.nodeId); setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
@@ -732,6 +734,17 @@ function CanvasEditorInner() {
           </div>
         </div>
       )}
+
+      {/* Delete confirm dialog */}
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="删除阶段"
+        message="确定删除此阶段？相关连线也会被移除。"
+        confirmText="删除"
+        danger
+        onConfirm={() => { if (confirmDeleteId) { deleteNode(confirmDeleteId); setConfirmDeleteId(null) } }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }
