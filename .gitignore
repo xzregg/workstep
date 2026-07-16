@@ -22,3 +22,5 @@ apps/web/dist/
 # WorkStep runtime
 .workstep/
 *.db
+.pids/
+logs/
