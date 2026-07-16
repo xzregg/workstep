@@ -66,16 +66,16 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
-  // Auto-select project from URL ?project=name
+  // Auto-select project from URL ?project=name (only once)
   useEffect(() => {
     const projectName = searchParams.get('project')
-    if (projectName && projects.length > 0 && !activeProject) {
+    if (projectName && projects.length > 0 && (!activeProject || activeProject.name !== projectName)) {
       const match = projects.find((p) => p.name === projectName)
       if (match) {
         setActiveProject(match)
       }
     }
-  }, [searchParams, projects, activeProject, setActiveProject])
+  }, [projects]) // Only re-run when projects list changes
 
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
