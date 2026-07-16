@@ -15,11 +15,10 @@ const kanbanStyle: React.CSSProperties = {
   flex: 1, display: 'flex', gap: 0,
   overflowX: 'auto', overflowY: 'hidden',
   padding: '16px 16px 16px 0',
-  minWidth: 0, width: '100%',
 }
 
 const laneStyle: React.CSSProperties = {
-  minWidth: 260, maxWidth: 320, flex: 1,
+  minWidth: 260, maxWidth: 320, flexShrink: 0,
   background: 'var(--surface)', borderRadius: 'var(--radius-md)',
   display: 'flex', flexDirection: 'column',
   marginRight: 12, overflow: 'hidden',
@@ -51,13 +50,22 @@ const STATUS_LABELS: Record<string, string> = {
 /* ── Extract lanes from steps.json ── */
 interface Lane { key: string; label: string; color: string }
 
+/* ── Default colors for known stage keys ── */
+const STAGE_COLORS: Record<string, string> = {
+  req: '#0071e3', ui: '#7c3aed', frontend: '#059669',
+  backend: '#d97706', test: '#dc2626', deploy: '#16a34a',
+}
+
 function getLanesFromSteps(steps: any): Lane[] {
   if (steps?.nodes?.length) {
-    return steps.nodes.map((n: any) => ({
-      key: n.type || n.key || String(n.id),
-      label: n.title || n.label || n.type,
-      color: n.color || '#888',
-    }))
+    return steps.nodes.map((n: any) => {
+      const key = n.type || n.key || String(n.id)
+      return {
+        key,
+        label: n.title || n.label || n.type,
+        color: n.color || STAGE_COLORS[key] || '#888',
+      }
+    })
   }
   if (steps?.steps?.length) {
     return steps.steps.map((s: any) => ({
@@ -191,7 +199,7 @@ export default function TaskList() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', minWidth: 0 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
       {/* Topbar */}
       <div style={topbarStyle}>
         <button className="btn-ghost" onClick={() => navigate('/canvas')} style={{ fontSize: 13, gap: 5 }}>

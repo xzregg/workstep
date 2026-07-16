@@ -131,7 +131,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       </aside>
 
       {/* Main content */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {children}
       </main>
 
