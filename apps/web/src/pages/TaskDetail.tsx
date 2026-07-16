@@ -13,6 +13,12 @@ export default function TaskDetail() {
   const content = useTaskStore((s) => (taskId ? s.content[taskId] || '' : ''))
   const runTask = useTaskStore((s) => s.runTask)
   const cancelTask = useTaskStore((s) => s.cancelTask)
+  const fetchTasks = useTaskStore((s) => s.fetchTasks)
+
+  // Fetch tasks if not already loaded
+  useEffect(() => {
+    if (tasks.length === 0) fetchTasks()
+  }, [tasks.length, fetchTasks])
 
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)

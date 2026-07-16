@@ -199,7 +199,7 @@ export default function TaskList() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
+    <>
       {/* Topbar */}
       <div style={topbarStyle}>
         <button className="btn-ghost" onClick={() => navigate('/canvas')} style={{ fontSize: 13, gap: 5 }}>
@@ -368,6 +368,6 @@ export default function TaskList() {
           <button className="btn-primary" onClick={handleCreate}>创建</button>
         </div>
       </div>
-    </div>
+    </>
   )
 }
