@@ -262,6 +262,7 @@ class ProjectManager:
         result = []
         for path_str, proj in self._projects.items():
             result.append({
+                "id": proj.id,
                 "path": path_str,
                 "name": proj.name,
                 "steps": proj.steps,
