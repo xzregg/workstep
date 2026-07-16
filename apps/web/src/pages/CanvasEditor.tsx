@@ -184,6 +184,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
 
 const handleStyle: React.CSSProperties = {
   width: 10, height: 10, background: 'var(--bg)', border: '2px solid var(--border)',
+  transform: 'translateY(-50%)',
 }
 
 /* ── Port layout constants ── */
