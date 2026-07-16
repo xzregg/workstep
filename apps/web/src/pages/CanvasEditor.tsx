@@ -372,6 +372,91 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
 }
 
 /* ══════════════════════════════════════════
+   Node Config Panel — edits are local until saved
+   ══════════════════════════════════════════ */
+function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
+  node: StepNodeData
+  onSave: (data: StepNodeData) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
+
+  // Sync draft when node changes (e.g. clicking different node)
+  useEffect(() => {
+    setDraft({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
+  }, [node.nodeId])
+
+  const updateDraft = (field: string, value: any) => {
+    let updated = { ...draft, [field]: value }
+    if (field === 'inputs') updated = { ...updated, outputs: syncOutputs(value as InputField[]) }
+    setDraft(updated)
+  }
+
+  return (
+    <div style={{ width: 340, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+            {draft.label.charAt(0)}
+          </div>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>{draft.label}</span>
+        </div>
+        <button className="btn-icon" onClick={onClose}>✕</button>
+      </div>
+
+      <div>
+        <div style={sectionTitle}>基本信息</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
+            <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
+            <textarea value={draft.prompt} onChange={(e) => updateDraft('prompt', e.target.value)}
+              rows={6} style={{ minHeight: 120, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
+              <select value={draft.engine} onChange={(e) => updateDraft('engine', e.target.value)} style={{ height: 32 }}>
+                <option value="claude">Claude Code</option>
+                <option value="codex">Codex CLI</option>
+                <option value="hermes">Hermes ACP</option>
+              </select>
+            </div>
+            <div style={{ width: 60 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
+              <input type="color" value={draft.color} onChange={(e) => updateDraft('color', e.target.value)} style={{ height: 32, width: '100%', cursor: 'pointer', padding: 2 }} />
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
+            <input value={draft.model} onChange={(e) => updateDraft('model', e.target.value)} placeholder="如 gpt-5.5 / 留空用默认" />
+          </div>
+        </div>
+      </div>
+
+      <InputEditor
+        inputs={draft.inputs}
+        onChange={(inputs) => updateDraft('inputs', inputs)}
+      />
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn-primary" style={{ flex: 1 }} onClick={() => onSave(draft)}>
+          保存
+        </button>
+        <button onClick={onDelete}
+          style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
+          删除
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
    Canvas Editor Inner
    ══════════════════════════════════════════ */
 function CanvasEditorInner() {
@@ -425,21 +510,6 @@ function CanvasEditorInner() {
     if (selectedNode && String(selectedNode.nodeId) === nodeId) setSelectedNode(null)
     setContextMenu(null)
   }, [setNodes, setEdges, selectedNode])
-
-  // Update node data (and sync outputs when inputs change)
-  const updateNodeData = useCallback((key: string, field: string, value: any) => {
-    setNodes((nds) => nds.map((n) => {
-      if (n.id !== key) return n
-      let updated = { ...(n.data as StepNodeData), [field]: value }
-      if (field === 'inputs') updated = { ...updated, outputs: syncOutputs(value as InputField[]) }
-      return { ...n, data: updated }
-    }))
-    if (selectedNode && String(selectedNode.nodeId) === key) {
-      let updated = { ...selectedNode, [field]: value }
-      if (field === 'inputs') updated = { ...updated, outputs: syncOutputs(value as InputField[]) }
-      setSelectedNode(updated)
-    }
-  }, [setNodes, selectedNode])
 
   const handleAddNode = () => {
     const id = Date.now()
@@ -610,60 +680,17 @@ function CanvasEditorInner() {
 
         {/* Config panel */}
         {selectedNode && (
-          <div style={{ width: 340, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 6, background: `${selectedNode.color}20`, color: selectedNode.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
-                  {selectedNode.label.charAt(0)}
-                </div>
-                <span style={{ fontSize: 15, fontWeight: 600 }}>{selectedNode.label}</span>
-              </div>
-              <button className="btn-icon" onClick={() => setSelectedNode(null)}>✕</button>
-            </div>
-
-            <div>
-              <div style={sectionTitle}>基本信息</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
-                  <input value={selectedNode.label} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'label', e.target.value)} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
-                  <textarea value={selectedNode.prompt} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'prompt', e.target.value)}
-                    rows={6} style={{ minHeight: 120, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
-                    <select value={selectedNode.engine} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'engine', e.target.value)} style={{ height: 32 }}>
-                      <option value="claude">Claude Code</option>
-                      <option value="codex">Codex CLI</option>
-                      <option value="hermes">Hermes ACP</option>
-                    </select>
-                  </div>
-                  <div style={{ width: 60 }}>
-                    <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
-                    <input type="color" value={selectedNode.color} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'color', e.target.value)} style={{ height: 32, width: '100%', cursor: 'pointer', padding: 2 }} />
-                  </div>
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
-                  <input value={selectedNode.model} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'model', e.target.value)} placeholder="如 gpt-5.5 / 留空用默认" />
-                </div>
-              </div>
-            </div>
-
-            <InputEditor
-              inputs={selectedNode.inputs}
-              onChange={(inputs) => updateNodeData(String(selectedNode.nodeId), 'inputs', inputs)}
-            />
-
-            <button onClick={() => deleteNode(String(selectedNode.nodeId))}
-              style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
-              删除此阶段
-            </button>
-          </div>
+          <NodeConfigPanel
+            node={selectedNode}
+            onSave={(data) => {
+              setNodes((nds) => nds.map((n) =>
+                n.id === String(data.nodeId) ? { ...n, data } : n
+              ))
+              setSelectedNode(data)
+            }}
+            onDelete={() => deleteNode(String(selectedNode.nodeId))}
+            onClose={() => setSelectedNode(null)}
+          />
         )}
       </div>
 
