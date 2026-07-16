@@ -186,50 +186,55 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
           </div>
 
-          {/* I/O section */}
+          {/* I/O section — matching card-detail.html layout */}
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 8 }}>
               阶段输入输出 — {currentStage.label}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Inputs with sub-outputs */}
-              {currentStage.inputs?.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ color: 'var(--meta)' }}>→</span> 输入
-                  </div>
-                  {currentStage.inputs.map((inp: any, i: number) => {
-                    const subOutputs = inp.outputs || []
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: 'var(--meta)' }}>→</span> 输入
+                </div>
+                {(() => {
+                  const isStageDone = selectedStage < (task.status === 'running' ? selectedStage : 0)
+                  const nextStageIdx = selectedStage + 1
+                  const nextStage = nextStageIdx < stages.length ? stages[nextStageIdx] : null
+                  const nextInputs = nextStage ? (nextStage.inputs || []) : []
+                  // Outputs are attached to the FIRST input only (matching card-detail.html)
+                  const stageOutputs = currentStage.outputs || (currentStage.inputs || [])[0]?.outputs || []
+
+                  return (currentStage.inputs || []).map((inp: any, inpIdx: number) => {
+                    const subOutputs = inpIdx === 0 ? stageOutputs : []
                     return (
-                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div key={inpIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {/* Input item */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)' }}>
                           <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
                           <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
                           <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
                         </div>
-                        {/* Sub-outputs */}
-                        {subOutputs.map((sub: any, j: number) => {
-                          const isSubDone = task.status !== 'ready'
-                          const nextStage = stages.find((s: any) =>
-                            s.inputs?.some((si: any) => si.name === sub.name)
-                          )
+                        {/* Sub-outputs (only on first input) */}
+                        {subOutputs.map((out: any, outIdx: number) => {
+                          const nextInput = nextInputs[outIdx]
+                          const statusDone = isStageDone
                           return (
-                            <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px' }}>
+                            <div key={outIdx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px' }}>
                               <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                              <span style={{ fontSize: 12, flex: 1 }}>{sub.name}</span>
-                              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{sub.type}</span>
+                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
+                              <span style={{ fontSize: 12, flex: 1 }}>{out.name}</span>
+                              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
                               <span style={{
                                 fontSize: 9, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
-                                background: isSubDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
-                                color: isSubDone ? 'var(--success)' : 'var(--meta)',
-                                border: isSubDone ? 'none' : '1px solid var(--border-soft)',
+                                background: statusDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
+                                color: statusDone ? 'var(--success)' : 'var(--meta)',
+                                border: statusDone ? 'none' : '1px solid var(--border-soft)',
                               }}>
-                                {isSubDone ? '已生成' : '待生成'}
+                                {statusDone ? '完成' : '待生成'}
                               </span>
-                              {nextStage && (
+                              {nextInput && (
                                 <span style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  → {nextStage.label}: {sub.name}
+                                  <span style={{ color: 'var(--meta)', fontSize: 9 }}>→</span> {nextStage?.label}: {nextInput.name}
                                 </span>
                               )}
                             </div>
@@ -237,43 +242,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         })}
                       </div>
                     )
-                  })}
-                </div>
-              )}
-              {/* Outputs */}
-              {currentStage.outputs?.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ color: 'var(--meta)' }}>←</span> 输出
-                  </div>
-                  {currentStage.outputs.map((out: any, i: number) => {
-                    const isDone = task.status !== 'ready'
-                    const nextStage = stages.find((s: any) =>
-                      s.inputs?.some((inp: any) => inp.name === out.name)
-                    )
-                    return (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)' }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{out.name}</span>
-                        <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{out.type}</span>
-                        <span style={{
-                          fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 4,
-                          background: isDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
-                          color: isDone ? 'var(--success)' : 'var(--meta)',
-                          border: isDone ? 'none' : '1px solid var(--border-soft)',
-                        }}>
-                          {isDone ? '已完成' : '待产出'}
-                        </span>
-                        {nextStage && (
-                          <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto' }}>
-                            → {nextStage.label}
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+                  })
+                })()}
+              </div>
             </div>
           </div>
 
