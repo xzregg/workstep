@@ -448,7 +448,7 @@ function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
         onChange={(inputs) => updateDraft('inputs', inputs)}
       />
 
-      <button onClick={onDelete}
+      <button onClick={() => { if (confirm('确定删除此阶段？')) onDelete() }}
         style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
         删除此阶段
       </button>
