@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
   ReactFlow, Controls, Background, addEdge,
@@ -462,8 +462,28 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
    ══════════════════════════════════════════ */
 function CanvasEditorInner() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { fitView } = useReactFlow()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const setActiveProject = useProjectStore((s) => s.setActiveProject)
+  const fetchProjects = useProjectStore((s) => s.fetchProjects)
+
+  // Auto-load project from URL ?project=name on refresh
+  useEffect(() => {
+    const projectName = searchParams.get('project')
+    if (!projectName || activeProject) return
+
+    const doLoad = async () => {
+      let currentProjects = useProjectStore.getState().projects
+      if (currentProjects.length === 0) {
+        await fetchProjects()
+        currentProjects = useProjectStore.getState().projects
+      }
+      const match = currentProjects.find((p) => p.name === projectName)
+      if (match) setActiveProject(match)
+    }
+    doLoad()
+  }, []) // eslint-disable-line -- only run once on mount
 
   const { nodes: canvasNodes, connections: canvasConns } = loadCanvasData(activeProject?.steps)
 
@@ -609,9 +629,9 @@ function CanvasEditorInner() {
   const handleSave = async () => {
     if (!activeProject) return
     try {
-      const res = await fetch('/api/project/save-steps', {
+      const res = await fetch(`/api/project/save-steps?project_id=${encodeURIComponent(activeProject.id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeProject.path, steps: buildCanvasJson() }),
+        body: JSON.stringify({ steps: buildCanvasJson() }),
       })
       if (res.ok) {
         setSaveMsg('保存成功')

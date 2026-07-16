@@ -19,12 +19,12 @@ export default function TaskDetail() {
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
 
-  const projectPath = activeProject?.path || ''
+  const projectId = activeProject?.id || ''
 
   // Fetch tasks if not already loaded
   useEffect(() => {
-    if (tasks.length === 0 && projectPath) fetchTasks(projectPath)
-  }, [tasks.length, fetchTasks, projectPath])
+    if (tasks.length === 0 && projectId) fetchTasks(projectId)
+  }, [tasks.length, fetchTasks, projectId])
 
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
@@ -49,7 +49,7 @@ export default function TaskDetail() {
     if (!taskId || !prompt.trim()) return
     setRunning(true)
     try {
-      await runTask(taskId, prompt.trim(), projectPath)
+      await runTask(taskId, prompt.trim(), projectId)
       setPrompt('')
     } catch {
       setRunning(false)

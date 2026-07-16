@@ -18,6 +18,7 @@ export const useProjectStore = create<ProjectState>((set) => ({
   loading: false,
 
   fetchProjects: async () => {
+    if (useProjectStore.getState().loading) return // Prevent double-fetch
     set({ loading: true })
     try {
       const { projects } = await projectApi.list()

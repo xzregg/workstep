@@ -20,5 +20,4 @@ class RenameRequest(BaseSchema):
 
 
 class SaveStepsRequest(BaseSchema):
-    path: str
     steps: dict[str, Any]  # The full steps.json content

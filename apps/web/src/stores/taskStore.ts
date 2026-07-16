@@ -16,10 +16,10 @@ interface TaskState {
   content: Record<string, string>     // task_id → accumulated text
   loading: boolean
 
-  fetchTasks: (projectPath: string) => Promise<void>
+  fetchTasks: (projectId: string) => Promise<void>
   setActiveTask: (id: string | null) => void
-  createTask: (title: string, cwd: string) => Promise<Task>
-  runTask: (taskId: string, prompt: string, projectPath: string) => Promise<void>
+  createTask: (title: string, cwd: string, projectId: string) => Promise<Task>
+  runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
 }
@@ -31,10 +31,10 @@ export const useTaskStore = create<TaskState>((set) => ({
   content: {},
   loading: false,
 
-  fetchTasks: async (projectPath: string) => {
+  fetchTasks: async (projectId: string) => {
     set({ loading: true })
     try {
-      const { tasks } = await taskApi.list(projectPath)
+      const { tasks } = await taskApi.list(projectId)
       set({ tasks, loading: false })
     } catch {
       set({ loading: false })
@@ -43,14 +43,14 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   setActiveTask: (id) => set({ activeTaskId: id }),
 
-  createTask: async (title, cwd) => {
-    const task = await taskApi.create(title, cwd)
+  createTask: async (title, cwd, projectId) => {
+    const task = await taskApi.create(title, cwd, projectId)
     set((s) => ({ tasks: [...s.tasks, task] }))
     return task
   },
 
-  runTask: async (taskId, prompt, projectPath) => {
-    await taskApi.run(taskId, prompt, projectPath)
+  runTask: async (taskId, prompt, projectId) => {
+    await taskApi.run(taskId, prompt, projectId)
     set((s) => ({
       content: { ...s.content, [taskId]: '' },
       events: { ...s.events, [taskId]: [] },

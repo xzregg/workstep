@@ -90,7 +90,7 @@ export default function TaskList() {
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
   const [cardStatuses, setCardStatuses] = useState<Record<string, string>>({})
 
-  useEffect(() => { if (activeProject?.path) fetchTasks(activeProject.path) }, [fetchTasks, activeProject?.path])
+  useEffect(() => { if (activeProject?.id) fetchTasks(activeProject.id) }, [fetchTasks, activeProject?.id])
 
   // Reset local state when project changes
   useEffect(() => {
@@ -123,7 +123,7 @@ export default function TaskList() {
   const handleCreate = async () => {
     if (!newTitle.trim() || !activeProject) return
     try {
-      await createTask(newTitle.trim(), activeProject.path)
+      await createTask(newTitle.trim(), activeProject.path, activeProject.id)
       setNewTitle('')
       setNewDesc('')
       setShowNewPanel(false)

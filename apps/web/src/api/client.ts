@@ -56,17 +56,17 @@ export interface Task {
 }
 
 export const taskApi = {
-  list: (projectPath: string) =>
-    request<{ tasks: Task[] }>(`/task/list?project=${encodeURIComponent(projectPath)}`),
-  create: (title: string, cwd: string, engine = 'claude') =>
-    request<Task>('/task/create', {
+  list: (projectId: string) =>
+    request<{ tasks: Task[] }>(`/task/list?project_id=${encodeURIComponent(projectId)}`),
+  create: (title: string, cwd: string, projectId: string, engine = 'claude') =>
+    request<Task>(`/task/create?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       body: JSON.stringify({ title, cwd, engine }),
     }),
-  get: (id: string, projectPath: string) =>
-    request<Task>(`/task/${id}?project=${encodeURIComponent(projectPath)}`),
-  run: (taskId: string, prompt: string, projectPath: string) =>
-    request<{ status: string }>(`/task/run?project=${encodeURIComponent(projectPath)}`, {
+  get: (id: string, projectId: string) =>
+    request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`),
+  run: (taskId: string, prompt: string, projectId: string) =>
+    request<{ status: string }>(`/task/run?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId, prompt }),
     }),

@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveStepsRequest
 from services.project import project_manager
@@ -50,9 +50,9 @@ async def list_projects():
 
 
 @router.post("/save-steps")
-async def save_steps(req: SaveStepsRequest):
+async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project_id")):
     """Save workflow steps.json for a project."""
-    proj = project_manager.get_project(req.path)
+    proj = project_manager.get_project_by_id(pid)
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 

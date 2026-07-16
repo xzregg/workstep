@@ -128,6 +128,22 @@ class ProjectManager:
         db_proxy.initialize(proj.db)
         return proj
 
+    def get_project_by_id(self, project_id: str) -> "Project | None":
+        """Find a project by its unique ID."""
+        for proj in self._projects.values():
+            if proj.id == project_id:
+                return proj
+        return None
+
+    def bind_project_by_id(self, project_id: str) -> "Project":
+        """Switch db_proxy to the project identified by ID."""
+        proj = self.get_project_by_id(project_id)
+        if not proj:
+            raise ValueError(f"Project not found: {project_id}")
+        return self.bind_project(str(proj.path))
+        db_proxy.initialize(proj.db)
+        return proj
+
     def _load_saved_projects(self):
         """Load and register projects from config store on startup."""
         projects_data = config_store.get("projects")
