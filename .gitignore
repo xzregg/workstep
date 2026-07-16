@@ -24,3 +24,4 @@ apps/web/dist/
 *.db
 .pids/
 logs/
+.gstack/

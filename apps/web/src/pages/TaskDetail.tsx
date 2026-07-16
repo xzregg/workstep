@@ -4,6 +4,8 @@ import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 
+const EMPTY_EVENTS: any[] = []
+
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>()
   const navigate = useNavigate()
@@ -11,8 +13,8 @@ export default function TaskDetail() {
 
   const activeProject = useProjectStore((s) => s.activeProject)
   const tasks = useTaskStore((s) => s.tasks)
-  const events = useTaskStore((s) => (taskId ? s.events[taskId] || [] : []))
-  const content = useTaskStore((s) => (taskId ? s.content[taskId] || '' : ''))
+  const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
+  const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
   const runTask = useTaskStore((s) => s.runTask)
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
