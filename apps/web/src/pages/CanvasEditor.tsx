@@ -223,7 +223,7 @@ export default function CanvasEditor() {
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
       <div style={{
         height: 48, background: 'var(--bg)',
