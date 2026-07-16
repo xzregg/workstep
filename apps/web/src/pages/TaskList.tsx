@@ -314,9 +314,9 @@ export default function TaskList() {
         })}
       </div>
 
-      {/* ── New requirement panel (slide-in from right) ── */}
+      {/* ── New requirement panel (slide-in from right, fixed to viewport) ── */}
       <div style={{
-        position: 'absolute', right: 0, top: 0, bottom: 0,
+        position: 'fixed', right: 0, top: 0, bottom: 0,
         width: 360, background: 'var(--bg)',
         borderLeft: '1px solid var(--border-soft)',
         boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
