@@ -18,7 +18,6 @@ function AppRoutes() {
     <Routes>
       {/* Full-screen pages, outside Layout */}
       <Route path="/canvas" element={<CanvasEditor />} />
-      <Route path="/tasks/:taskId" element={<TaskDetail />} />
 
       {/* Pages inside Layout with sidebar */}
       <Route path="*" element={
@@ -26,6 +25,7 @@ function AppRoutes() {
           <Routes>
             <Route path="/" element={<WelcomeView />} />
             <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
+            <Route path="/tasks/:taskId" element={<TaskDetail />} />
           </Routes>
         </Layout>
       } />
