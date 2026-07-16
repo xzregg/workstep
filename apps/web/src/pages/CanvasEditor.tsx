@@ -1,53 +1,195 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ReactFlow,
-  Controls,
-  Background,
-  addEdge,
-  useNodesState,
-  useEdgesState,
-  type Node,
-  type Edge,
-  type Connection,
-  type NodeTypes,
-  Handle,
-  Position,
-  useReactFlow,
-  ReactFlowProvider,
+  ReactFlow, Controls, Background, addEdge,
+  useNodesState, useEdgesState,
+  type Node, type Edge, type Connection, type NodeTypes,
+  Handle, Position, useReactFlow, ReactFlowProvider,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useProjectStore } from '../stores/projectStore'
 
-/* ── Types ── */
-interface IOField {
-  name: string
-  type: string
-}
+/* ══════════════════════════════════════════
+   Types — matching canvas-editor.html JSON
+   ══════════════════════════════════════════ */
+
+interface SubOutput { name: string; type: string }
+interface InputField { name: string; type: string; outputs: SubOutput[] }
+interface OutputField { name: string; type: string }
 
 interface StepNodeData {
+  nodeId: number
   key: string
   label: string
   engine: string
   model: string
   color: string
   prompt: string
-  inputs: IOField[]
-  outputs: IOField[]
-  [key: string]: unknown
+  inputs: InputField[]
+  outputs: OutputField[]
+  [k: string]: unknown
 }
 
-/* ── Handle styles ── */
-const handleBaseStyle: React.CSSProperties = {
-  width: 10, height: 10,
-  background: 'var(--bg)',
-  border: '2px solid var(--border)',
+function syncOutputs(inputs: InputField[]): OutputField[] {
+  return inputs.flatMap((inp) => inp.outputs || [])
 }
 
-/* ── Step Node with per-port Handles ── */
+/* ══════════════════════════════════════════
+   Default template (matching user's JSON)
+   ══════════════════════════════════════════ */
+
+const DEFAULT_NODES: StepNodeData[] = [
+  { nodeId: 1, key: 'req', label: '需求', engine: 'claude', model: '', color: '#0071e3',
+    prompt: '根据业务需求和用户调研，产出 PRD 文档和原型图。明确用户场景、功能点、验收标准。',
+    inputs: [
+      { name: '业务需求', type: '文档', outputs: [{ name: 'PRD 文档', type: 'Markdown' }, { name: '原型图', type: 'Figma' }] },
+      { name: '用户调研', type: 'PDF', outputs: [] },
+    ],
+    outputs: [{ name: 'PRD 文档', type: 'Markdown' }, { name: '原型图', type: 'Figma' }] },
+  { nodeId: 2, key: 'ui', label: 'UI 设计', engine: 'claude', model: '', color: '#7c3aed',
+    prompt: '根据 PRD 和原型图，设计高保真 UI 界面，产出设计稿和设计规范文档。',
+    inputs: [
+      { name: 'PRD 文档', type: 'Markdown', outputs: [{ name: 'UI 设计稿', type: 'Figma' }, { name: '设计规范', type: 'PDF' }] },
+      { name: '原型图', type: 'Figma', outputs: [] },
+    ],
+    outputs: [{ name: 'UI 设计稿', type: 'Figma' }, { name: '设计规范', type: 'PDF' }] },
+  { nodeId: 3, key: 'frontend', label: '前端开发', engine: 'claude', model: '', color: '#059669',
+    prompt: '根据 UI 设计稿和接口文档，开发前端页面，实现状态管理和单元测试。',
+    inputs: [
+      { name: 'UI 设计稿', type: 'Figma', outputs: [{ name: '前端页面', type: 'React' }, { name: '状态管理', type: 'Zustand' }, { name: '单元测试', type: 'Vitest' }] },
+      { name: '接口文档', type: 'JSON', outputs: [] },
+      { name: '组件库', type: 'React', outputs: [] },
+    ],
+    outputs: [{ name: '前端页面', type: 'React' }, { name: '状态管理', type: 'Zustand' }, { name: '单元测试', type: 'Vitest' }] },
+  { nodeId: 4, key: 'backend', label: '后端开发', engine: 'codex', model: 'gpt-5.5', color: '#d97706',
+    prompt: '根据 PRD 和接口文档，开发后端 API 服务，设计数据库表结构。',
+    inputs: [
+      { name: 'PRD 文档', type: 'Markdown', outputs: [{ name: 'API 服务', type: 'Go' }, { name: '数据库', type: 'MySQL' }] },
+      { name: '接口文档', type: 'JSON', outputs: [] },
+    ],
+    outputs: [{ name: 'API 服务', type: 'Go' }, { name: '数据库', type: 'MySQL' }] },
+  { nodeId: 5, key: 'test', label: '测试', engine: 'codex', model: '', color: '#dc2626',
+    prompt: '对前端页面和后端 API 进行集成测试，产出测试报告和 Bug 列表。',
+    inputs: [
+      { name: '前端页面', type: 'React', outputs: [{ name: '测试报告', type: 'HTML' }, { name: 'Bug 列表', type: 'Excel' }] },
+      { name: 'API 服务', type: 'Go', outputs: [] },
+    ],
+    outputs: [{ name: '测试报告', type: 'HTML' }, { name: 'Bug 列表', type: 'Excel' }] },
+  { nodeId: 6, key: 'deploy', label: '上线', engine: 'hermes', model: 'grok-4.3', color: '#16a34a',
+    prompt: '根据测试报告和部署文档，将服务部署到生产环境。',
+    inputs: [
+      { name: '测试报告', type: 'HTML', outputs: [{ name: '生产环境', type: 'K8s' }] },
+      { name: '部署文档', type: 'Markdown', outputs: [] },
+    ],
+    outputs: [{ name: '生产环境', type: 'K8s' }] },
+]
+
+interface CanvasConnection { from: number; fromPort: number; to: number; toPort: number; label?: string }
+
+const DEFAULT_CONNECTIONS: CanvasConnection[] = [
+  { from: 1, fromPort: 0, to: 2, toPort: 0 },
+  { from: 2, fromPort: 0, to: 3, toPort: 0 },
+  { from: 2, fromPort: 1, to: 3, toPort: 1 },
+  { from: 3, fromPort: 0, to: 5, toPort: 0 },
+  { from: 4, fromPort: 0, to: 5, toPort: 1 },
+  { from: 5, fromPort: 0, to: 6, toPort: 0 },
+]
+
+/* ══════════════════════════════════════════
+   Conversion: canvas JSON ↔ React Flow
+   ══════════════════════════════════════════ */
+
+function canvasToFlowNodes(nodesData: StepNodeData[]): Node[] {
+  const gapX = 280, startX = 100, y = 200
+  return nodesData.map((step, i) => ({
+    id: String(step.nodeId), type: 'step',
+    position: { x: startX + i * gapX, y },
+    data: step,
+  }))
+}
+
+function canvasToFlowEdges(conns: CanvasConnection[], nodesData: StepNodeData[]): Edge[] {
+  const idMap = new Map(nodesData.map((n) => [n.nodeId, String(n.nodeId)]))
+  return conns.map((c, i) => ({
+    id: `conn-${i}`,
+    source: idMap.get(c.from) || String(c.from),
+    sourceHandle: `out-${c.fromPort}`,
+    target: idMap.get(c.to) || String(c.to),
+    targetHandle: `in-${c.toPort}`,
+    animated: true,
+    style: { stroke: 'var(--border)', strokeWidth: 2 },
+  }))
+}
+
+function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: CanvasConnection[] } {
+  // New format: { nodes, connections }
+  if (stepsJson?.nodes?.length) {
+    const nodes: StepNodeData[] = stepsJson.nodes.map((n: any) => ({
+      nodeId: n.id,
+      key: n.type || n.key,
+      label: n.title || n.label || n.type,
+      engine: n.engine || 'claude',
+      model: n.model || '',
+      color: n.color || '#888888',
+      prompt: n.prompt || '',
+      inputs: (n.inputs || []).map((inp: any) => ({
+        name: inp.name || '', type: inp.type || 'any',
+        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
+      })),
+      outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
+    }))
+    const connections: CanvasConnection[] = (stepsJson.connections || []).map((c: any) => ({
+      from: c.from, fromPort: c.fromPort || 0,
+      to: c.to, toPort: c.toPort || 0,
+      label: c.label || '',
+    }))
+    return { nodes, connections }
+  }
+  // Legacy format: { steps }
+  if (stepsJson?.steps?.length) {
+    const nodes: StepNodeData[] = stepsJson.steps.map((s: any, i: number) => ({
+      nodeId: i + 1,
+      key: s.key || s.id,
+      label: s.label || s.name || s.key,
+      engine: s.engine || 'claude',
+      model: s.model || '',
+      color: s.color || '#888888',
+      prompt: s.prompt || '',
+      inputs: (s.inputs || []).map((inp: any) => ({
+        name: inp.name || inp, type: inp.type || 'document',
+        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })),
+      })),
+      outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
+    }))
+    // Build connections from dependsOn
+    const conns: CanvasConnection[] = []
+    const keyToId = new Map(nodes.map((n) => [n.key, n.nodeId]))
+    for (const s of stepsJson.steps) {
+      const key = s.key || s.id
+      if (s.dependsOn?.length) {
+        for (const dep of s.dependsOn) {
+          const fromId = keyToId.get(dep)
+          const toId = keyToId.get(key)
+          if (fromId && toId) conns.push({ from: fromId, fromPort: 0, to: toId, toPort: 0 })
+        }
+      }
+    }
+    return { nodes, connections: conns }
+  }
+  return { nodes: DEFAULT_NODES, connections: DEFAULT_CONNECTIONS }
+}
+
+/* ══════════════════════════════════════════
+   Step Node component
+   ══════════════════════════════════════════ */
+
+const handleStyle: React.CSSProperties = {
+  width: 10, height: 10, background: 'var(--bg)', border: '2px solid var(--border)',
+}
+
 function StepNode({ data }: { data: StepNodeData }) {
-  const inputCount = Math.max(data.inputs.length, 1)
-  const outputCount = Math.max(data.outputs.length, 1)
+  const inCount = Math.max(data.inputs.length, 1)
+  const outCount = Math.max(data.outputs.length, 1)
 
   return (
     <div style={{
@@ -55,61 +197,34 @@ function StepNode({ data }: { data: StepNodeData }) {
       border: `1.5px solid ${data.color || 'var(--border)'}`,
       borderRadius: 'var(--radius-md)',
       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-      fontFamily: 'var(--font-body)',
-      position: 'relative',
+      fontFamily: 'var(--font-body)', position: 'relative',
     }}>
-      {/* Input handles (left side, one per input) */}
-      {data.inputs.length > 0 ? data.inputs.map((_, i) => (
-        <Handle
-          key={`in-${i}`}
-          id={`in-${i}`}
-          type="target"
-          position={Position.Left}
-          style={{
-            ...handleBaseStyle,
-            top: `${((i + 1) / (inputCount + 1)) * 100}%`,
-          }}
-        />
-      )) : (
-        <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleBaseStyle, top: '50%' }} />
-      )}
-
-      {/* Output handles (right side, one per output) */}
-      {data.outputs.length > 0 ? data.outputs.map((_, i) => (
-        <Handle
-          key={`out-${i}`}
-          id={`out-${i}`}
-          type="source"
-          position={Position.Right}
-          style={{
-            ...handleBaseStyle,
-            top: `${((i + 1) / (outputCount + 1)) * 100}%`,
-          }}
-        />
-      )) : (
-        <Handle id="out-0" type="source" position={Position.Right} style={{ ...handleBaseStyle, top: '50%' }} />
-      )}
+      {/* Input handles */}
+      {data.inputs.length > 0
+        ? data.inputs.map((_, i) => (
+            <Handle key={`in-${i}`} id={`in-${i}`} type="target" position={Position.Left}
+              style={{ ...handleStyle, top: `${((i + 1) / (inCount + 1)) * 100}%` }} />
+          ))
+        : <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleStyle, top: '50%' }} />
+      }
+      {/* Output handles */}
+      {data.outputs.length > 0
+        ? data.outputs.map((_, i) => (
+            <Handle key={`out-${i}`} id={`out-${i}`} type="source" position={Position.Right}
+              style={{ ...handleStyle, top: `${((i + 1) / (outCount + 1)) * 100}%` }} />
+          ))
+        : <Handle id="out-0" type="source" position={Position.Right} style={{ ...handleStyle, top: '50%' }} />
+      }
 
       {/* Header */}
-      <div style={{
-        padding: '10px 12px', borderBottom: '1px solid var(--border-soft)',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <div style={{
-          width: 24, height: 24, borderRadius: 6,
-          background: `${data.color}20`, color: data.color,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 600,
-        }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
           {data.label.charAt(0)}
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{data.label}</span>
-        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>
-          {data.engine}
-        </span>
+        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{data.engine}</span>
       </div>
 
-      {/* Prompt preview */}
       {data.prompt && (
         <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)' }}>
           {data.prompt.substring(0, 50)}{data.prompt.length > 50 ? '...' : ''}
@@ -118,30 +233,30 @@ function StepNode({ data }: { data: StepNodeData }) {
 
       {/* Ports */}
       <div style={{ padding: '8px 12px' }}>
-        {/* Input ports */}
-        {data.inputs.length > 0 && (
-          <div style={{ marginBottom: 4 }}>
-            {data.inputs.map((inp, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 4, position: 'relative' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
-                <span style={{ flex: 1 }}>{inp.name}</span>
-                <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
+        {data.inputs.map((inp, i) => (
+          <div key={`inp-${i}`} style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+              <span style={{ flex: 1 }}>{inp.name}</span>
+              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
+            </div>
+            {/* Sub-outputs */}
+            {inp.outputs.map((sub, j) => (
+              <div key={`sub-${j}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--meta)', marginLeft: 14, marginTop: 2 }}>
+                <span style={{ color: 'var(--meta)' }}>↳</span>
+                <span>{sub.name}</span>
+                <span style={{ fontSize: 9, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
               </div>
             ))}
           </div>
-        )}
-        {/* Output ports */}
-        {data.outputs.length > 0 && (
-          <div>
-            {data.outputs.map((out, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 4, justifyContent: 'flex-end' }}>
-                <span style={{ flex: 1, textAlign: 'right' }}>{out.name}</span>
-                <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
-              </div>
-            ))}
+        ))}
+        {data.outputs.map((out, i) => (
+          <div key={`out-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)', marginBottom: 2, justifyContent: 'flex-end' }}>
+            <span style={{ flex: 1, textAlign: 'right' }}>{out.name}</span>
+            <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
           </div>
-        )}
+        ))}
       </div>
     </div>
   )
@@ -149,136 +264,131 @@ function StepNode({ data }: { data: StepNodeData }) {
 
 const nodeTypes: NodeTypes = { step: StepNode }
 
-/* ── Default template ── */
-const DEFAULT_STEPS: StepNodeData[] = [
-  { key: 'req', label: '需求', engine: 'claude', model: '', color: '#0071e3', prompt: '', inputs: [{ name: '业务需求', type: '文档' }], outputs: [{ name: 'PRD 文档', type: 'Markdown' }] },
-  { key: 'ui', label: 'UI 设计', engine: 'claude', model: '', color: '#7c3aed', prompt: '', inputs: [{ name: 'PRD 文档', type: 'Markdown' }], outputs: [{ name: 'UI 设计稿', type: 'Figma' }] },
-  { key: 'frontend', label: '前端开发', engine: 'claude', model: '', color: '#059669', prompt: '', inputs: [{ name: 'UI 设计稿', type: 'Figma' }], outputs: [{ name: '前端代码', type: 'React' }] },
-  { key: 'backend', label: '后端开发', engine: 'codex', model: 'gpt-5.5', color: '#d97706', prompt: '', inputs: [{ name: 'PRD 文档', type: 'Markdown' }], outputs: [{ name: 'API 服务', type: 'Go' }] },
-  { key: 'test', label: '测试', engine: 'codex', model: '', color: '#dc2626', prompt: '', inputs: [{ name: '前端代码', type: 'React' }, { name: 'API 服务', type: 'Go' }], outputs: [{ name: '测试报告', type: 'HTML' }] },
-  { key: 'deploy', label: '上线', engine: 'hermes', model: 'grok-4.3', color: '#16a34a', prompt: '', inputs: [{ name: '测试报告', type: 'HTML' }], outputs: [{ name: '部署完成', type: 'K8s' }] },
-]
-
-const DEFAULT_DEPS: Record<string, string[]> = {
-  ui: ['req'], frontend: ['ui'], backend: ['ui'], test: ['frontend', 'backend'], deploy: ['test'],
-}
-
-function stepsJsonToNodes(stepsJson: any): StepNodeData[] {
-  if (!stepsJson?.steps?.length) return DEFAULT_STEPS
-  return stepsJson.steps.map((s: any) => ({
-    key: s.key || s.id, label: s.label || s.name || s.key,
-    engine: s.engine || 'claude', model: s.model || '',
-    color: s.color || '#888888', prompt: s.prompt || '',
-    inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'document' })),
-    outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
-  }))
-}
-
-function stepsJsonToDeps(stepsJson: any): Record<string, string[]> {
-  if (!stepsJson?.steps?.length) return DEFAULT_DEPS
-  const deps: Record<string, string[]> = {}
-  for (const s of stepsJson.steps) {
-    const key = s.key || s.id
-    if (s.dependsOn?.length) deps[key] = s.dependsOn
-  }
-  return deps
-}
-
-function buildNodes(steps: StepNodeData[]): Node[] {
-  const positions = [
-    { x: 50, y: 200 }, { x: 320, y: 200 },
-    { x: 590, y: 100 }, { x: 590, y: 300 },
-    { x: 860, y: 200 }, { x: 1130, y: 200 },
-  ]
-  return steps.map((step, i) => ({
-    id: step.key, type: 'step',
-    position: positions[i] || { x: 50 + i * 270, y: 200 },
-    data: step,
-  }))
-}
-
-function buildEdges(deps: Record<string, string[]>): Edge[] {
-  const edges: Edge[] = []
-  for (const [target, sources] of Object.entries(deps)) {
-    for (const source of sources) {
-      edges.push({ id: `${source}-${target}`, source, target, animated: true, style: { stroke: 'var(--border)', strokeWidth: 2 } })
-    }
-  }
-  return edges
-}
-
-/* ── Section title ── */
+/* ══════════════════════════════════════════
+   Section title style
+   ══════════════════════════════════════════ */
 const sectionTitle: React.CSSProperties = {
   fontSize: 12, fontWeight: 600, color: 'var(--muted)',
   textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8,
 }
 
-/* ── IOFieldEditor ── */
-function IOFieldEditor({
-  label, dotColor, fields, onChange,
-}: {
-  label: string; dotColor: string; fields: IOField[]
-  onChange: (fields: IOField[]) => void
-}) {
-  const update = (i: number, field: keyof IOField, val: string) => {
-    const next = [...fields]
-    next[i] = { ...next[i], [field]: val }
+/* ══════════════════════════════════════════
+   Input editor with sub-outputs
+   ══════════════════════════════════════════ */
+function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v: InputField[]) => void }) {
+  const updateInput = (i: number, field: 'name' | 'type', val: string) => {
+    const next = [...inputs]; next[i] = { ...next[i], [field]: val }; onChange(next)
+  }
+  const addInput = () => onChange([...inputs, { name: '', type: 'any', outputs: [] }])
+  const removeInput = (i: number) => onChange(inputs.filter((_, idx) => idx !== i))
+
+  const addSubOutput = (i: number) => {
+    const next = [...inputs]
+    next[i] = { ...next[i], outputs: [...next[i].outputs, { name: '', type: 'any' }] }
     onChange(next)
   }
-  const add = () => onChange([...fields, { name: '', type: 'any' }])
-  const remove = (i: number) => onChange(fields.filter((_, idx) => idx !== i))
+  const updateSubOutput = (i: number, j: number, field: 'name' | 'type', val: string) => {
+    const next = [...inputs]
+    const subs = [...next[i].outputs]; subs[j] = { ...subs[j], [field]: val }
+    next[i] = { ...next[i], outputs: subs }; onChange(next)
+  }
+  const removeSubOutput = (i: number, j: number) => {
+    const next = [...inputs]
+    next[i] = { ...next[i], outputs: next[i].outputs.filter((_, idx) => idx !== j) }
+    onChange(next)
+  }
 
   return (
     <div>
       <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ color: dotColor }}>●</span> {label}
+        <span style={{ color: 'var(--accent)' }}>●</span> 输入产物
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {fields.map((f, i) => (
-          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <input
-              value={f.name} onChange={(e) => update(i, 'name', e.target.value)}
-              placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12 }}
-            />
-            <input
-              value={f.type} onChange={(e) => update(i, 'type', e.target.value)}
-              placeholder="类型" style={{ width: 64, height: 28, fontSize: 12 }}
-            />
-            <button className="btn-icon" onClick={() => remove(i)} style={{ width: 24, height: 24, color: 'var(--danger)', fontSize: 14 }}>×</button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {inputs.map((inp, i) => (
+          <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12 }} />
+              <input value={inp.type} onChange={(e) => updateInput(i, 'type', e.target.value)} placeholder="类型" style={{ width: 60, height: 28, fontSize: 12 }} />
+              <button className="btn-icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 14 }}>×</button>
+            </div>
+            {/* Sub-outputs */}
+            {inp.outputs.map((sub, j) => (
+              <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
+                <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
+                <input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
+                <select value={sub.type} onChange={(e) => updateSubOutput(i, j, 'type', e.target.value)} style={{ width: 68, height: 24, fontSize: 11 }}>
+                  <option value="Markdown">Markdown</option>
+                  <option value="Figma">Figma</option>
+                  <option value="React">React</option>
+                  <option value="JSON">JSON</option>
+                  <option value="Go">Go</option>
+                  <option value="HTML">HTML</option>
+                  <option value="PDF">PDF</option>
+                  <option value="Excel">Excel</option>
+                  <option value="K8s">K8s</option>
+                  <option value="any">any</option>
+                </select>
+                <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 12 }}>×</button>
+              </div>
+            ))}
+            <button onClick={() => addSubOutput(i)} style={{ fontSize: 11, color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
+              + 对应输出
+            </button>
           </div>
         ))}
-        <button onClick={add} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '4px 0' }}>
-          + 添加{label.replace('输入', '').replace('输出', '')}
+        <button onClick={addInput} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+          + 添加输入
         </button>
       </div>
     </div>
   )
 }
 
-/* ── Canvas Editor Inner (needs ReactFlow context) ── */
+/* ══════════════════════════════════════════
+   Output editor (flat list)
+   ══════════════════════════════════════════ */
+function OutputEditor({ outputs }: { outputs: OutputField[]; onChange: (v: OutputField[]) => void }) {
+  return (
+    <div>
+      <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color: 'var(--success)' }}>●</span> 输出产物
+        <span style={{ fontSize: 10, color: 'var(--meta)', fontWeight: 400, textTransform: 'none' }}>（自动同步自输入子输出）</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {outputs.map((f, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <input value={f.name} readOnly placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12, background: 'var(--surface)' }} />
+            <input value={f.type} readOnly placeholder="类型" style={{ width: 60, height: 28, fontSize: 12, background: 'var(--surface)' }} />
+            <span style={{ width: 22, height: 22 }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
+   Canvas Editor Inner
+   ══════════════════════════════════════════ */
 function CanvasEditorInner() {
   const navigate = useNavigate()
   const { fitView } = useReactFlow()
   const activeProject = useProjectStore((s) => s.activeProject)
 
-  const stepsData = stepsJsonToNodes(activeProject?.steps)
-  const depsData = stepsJsonToDeps(activeProject?.steps)
+  const { nodes: canvasNodes, connections: canvasConns } = loadCanvasData(activeProject?.steps)
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes(stepsData))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(depsData))
+  const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(canvasNodes))
+  const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(canvasConns, canvasNodes))
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
   const [showJson, setShowJson] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
-  const flowRef = useRef<HTMLDivElement>(null)
 
-  /* ── Keyboard shortcuts ── */
+  // Keyboard: Delete selected
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        // Don't delete if focus is in an input/textarea
         const tag = (e.target as HTMLElement)?.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-        // Delete selected nodes
         setNodes((nds) => nds.filter((n) => !n.selected))
         setEdges((eds) => eds.filter((ed) => !ed.selected))
       }
@@ -287,7 +397,6 @@ function CanvasEditorInner() {
     return () => window.removeEventListener('keydown', handler)
   }, [setNodes, setEdges])
 
-  /* ── Edge operations ── */
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: 'var(--border)', strokeWidth: 2 } }, eds))
   }, [setEdges])
@@ -296,7 +405,6 @@ function CanvasEditorInner() {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
   }, [setEdges])
 
-  /* ── Node operations ── */
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as StepNodeData)
     setContextMenu(null)
@@ -310,96 +418,116 @@ function CanvasEditorInner() {
   const deleteNode = useCallback((nodeId: string) => {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
-    if (selectedNode?.key === nodeId) setSelectedNode(null)
+    if (selectedNode && String(selectedNode.nodeId) === nodeId) setSelectedNode(null)
     setContextMenu(null)
   }, [setNodes, setEdges, selectedNode])
 
-  /* ── Update node data ── */
+  // Update node data (and sync outputs when inputs change)
   const updateNodeData = useCallback((key: string, field: string, value: any) => {
     setNodes((nds) => nds.map((n) => {
       if (n.id !== key) return n
-      const updated = { ...n.data as StepNodeData, [field]: value }
+      let updated = { ...(n.data as StepNodeData), [field]: value }
+      if (field === 'inputs') updated = { ...updated, outputs: syncOutputs(value as InputField[]) }
       return { ...n, data: updated }
     }))
-    if (selectedNode?.key === key) {
-      setSelectedNode({ ...selectedNode, [field]: value })
+    if (selectedNode && String(selectedNode.nodeId) === key) {
+      let updated = { ...selectedNode, [field]: value }
+      if (field === 'inputs') updated = { ...updated, outputs: syncOutputs(value as InputField[]) }
+      setSelectedNode(updated)
     }
   }, [setNodes, selectedNode])
 
-  /* ── Add node ── */
   const handleAddNode = () => {
-    const id = `step_${Date.now()}`
+    const id = Date.now()
+    const maxId = Math.max(0, ...nodes.map((n) => (n.data as StepNodeData).nodeId))
     const newNode: Node = {
-      id, type: 'step',
+      id: String(id), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { key: id, label: '新阶段', engine: 'claude', model: '', color: '#888888', prompt: '', inputs: [], outputs: [] } as StepNodeData,
-      selected: false,
+      data: { nodeId: maxId + 1, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: '#888888', prompt: '', inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
 
-  /* ── Auto layout (topological sort) ── */
   const handleAutoLayout = useCallback(() => {
     const levels: Record<string, number> = {}
-    const inDegree: Record<string, number> = {}
-    nodes.forEach((n) => { inDegree[n.id] = 0 })
-    edges.forEach((e) => { inDegree[e.target] = (inDegree[e.target] || 0) + 1 })
+    const inDeg: Record<string, number> = {}
+    nodes.forEach((n) => { inDeg[n.id] = 0 })
+    edges.forEach((e) => { inDeg[e.target] = (inDeg[e.target] || 0) + 1 })
 
-    const queue = nodes.filter((n) => inDegree[n.id] === 0).map((n) => n.id)
+    const queue = nodes.filter((n) => inDeg[n.id] === 0).map((n) => n.id)
     const visited = new Set<string>()
     while (queue.length > 0) {
-      const nodeId = queue.shift()!
-      if (visited.has(nodeId)) continue
-      visited.add(nodeId)
-      const currentLevel = levels[nodeId] || 0
-      edges.filter((e) => e.source === nodeId).forEach((e) => {
-        const targetLevel = currentLevel + 1
-        if (!levels[e.target] || levels[e.target] < targetLevel) levels[e.target] = targetLevel
-        inDegree[e.target]--
-        if (inDegree[e.target] === 0) queue.push(e.target)
+      const nid = queue.shift()!
+      if (visited.has(nid)) continue
+      visited.add(nid)
+      const lvl = levels[nid] || 0
+      edges.filter((e) => e.source === nid).forEach((e) => {
+        levels[e.target] = Math.max(levels[e.target] || 0, lvl + 1)
+        inDeg[e.target]--
+        if (inDeg[e.target] === 0) queue.push(e.target)
       })
     }
     nodes.forEach((n) => { if (levels[n.id] === undefined) levels[n.id] = 0 })
 
-    const groups: Record<number, Node[]> = {}
+    const groups: Record<number, string[]> = {}
     nodes.forEach((n) => {
-      const lvl = levels[n.id]
-      if (!groups[lvl]) groups[lvl] = []
-      groups[lvl].push(n)
+      const l = levels[n.id]
+      if (!groups[l]) groups[l] = []
+      groups[l].push(n.id)
     })
 
-    setNodes((nds) => nds.map((n) => {
-      const lvl = levels[n.id] || 0
-      const idx = groups[lvl].indexOf(n)
-      return { ...n, position: { x: 50 + lvl * 320, y: 100 + idx * 180 } }
-    }))
-
+    setNodes((nds) => nds.map((n) => ({
+      ...n,
+      position: { x: 100 + (levels[n.id] || 0) * 320, y: 100 + (groups[levels[n.id] || 0]?.indexOf(n.id) || 0) * 180 },
+    })))
     setTimeout(() => fitView({ padding: 0.2 }), 100)
   }, [nodes, edges, setNodes, fitView])
 
-  /* ── Save ── */
-  const getStepsJson = () => nodes.map((node) => {
-    const d = node.data as StepNodeData
-    const deps = edges.filter((e) => e.target === node.id).map((e) => e.source)
-    return { key: d.key, label: d.label, engine: d.engine, model: d.model, color: d.color, prompt: d.prompt, inputs: d.inputs, outputs: d.outputs, dependsOn: deps }
-  })
+  // Build canvas-editor JSON for save/preview
+  const buildCanvasJson = () => {
+    const nodesArr = nodes.map((n) => {
+      const d = n.data as StepNodeData
+      return {
+        id: d.nodeId,
+        type: d.key,
+        title: d.label,
+        position: n.position,
+        engine: d.engine, model: d.model,
+        prompt: d.prompt,
+        inputs: d.inputs,
+        outputs: d.outputs,
+      }
+    })
+    // Build connections from edges
+    const idToNum = new Map(nodes.map((n) => [n.id, (n.data as StepNodeData).nodeId]))
+    const conns = edges.map((e) => {
+      const sourceHandle = e.sourceHandle || 'out-0'
+      const targetHandle = e.targetHandle || 'in-0'
+      return {
+        from: idToNum.get(e.source) || 0,
+        fromPort: parseInt(sourceHandle.replace('out-', '')) || 0,
+        to: idToNum.get(e.target) || 0,
+        toPort: parseInt(targetHandle.replace('in-', '')) || 0,
+      }
+    })
+    return { nodes: nodesArr, connections: conns }
+  }
 
   const handleSave = async () => {
     if (!activeProject) return
     try {
       await fetch('/api/project/save-steps', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeProject.path, steps: { steps: getStepsJson() } }),
+        body: JSON.stringify({ path: activeProject.path, steps: buildCanvasJson() }),
       })
       navigate(-1)
     } catch (e) { console.error('Save failed:', e) }
   }
 
   const handleCopyJson = () => {
-    navigator.clipboard.writeText(JSON.stringify({ steps: getStepsJson() }, null, 2))
+    navigator.clipboard.writeText(JSON.stringify(buildCanvasJson(), null, 2))
   }
 
-  /* ── Close context menu on click outside ── */
   useEffect(() => {
     if (!contextMenu) return
     const handler = () => setContextMenu(null)
@@ -410,10 +538,7 @@ function CanvasEditorInner() {
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
-      <div style={{
-        height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)',
-        display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0,
-      }}>
+      <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
         <button className="btn-icon" onClick={() => navigate(-1)}>←</button>
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>流程编辑器</span>
         <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
@@ -425,42 +550,24 @@ function CanvasEditorInner() {
         <button className="btn-primary" onClick={handleSave}>保存</button>
       </div>
 
-      {/* Canvas + Config panel */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }} ref={flowRef}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1 }}>
-          <ReactFlow
-            nodes={nodes} edges={edges}
+          <ReactFlow nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onNodeContextMenu={onNodeContextMenu}
-            onEdgeDoubleClick={onEdgeDoubleClick}
-            nodeTypes={nodeTypes}
-            fitView
-            deleteKeyCode={null}
-            style={{ background: 'var(--surface)' }}
-          >
-            <Controls />
-            <Background gap={20} size={1} color="var(--border)" />
+            onConnect={onConnect} onNodeClick={onNodeClick}
+            onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
+            nodeTypes={nodeTypes} fitView deleteKeyCode={null}
+            style={{ background: 'var(--surface)' }}>
+            <Controls /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>
         </div>
 
-        {/* ── Config panel ── */}
+        {/* Config panel */}
         {selectedNode && (
-          <div style={{
-            width: 340, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)',
-            overflowY: 'auto', padding: '20px 16px',
-            display: 'flex', flexDirection: 'column', gap: 20,
-          }}>
-            {/* Header */}
+          <div style={{ width: 340, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{
-                  width: 28, height: 28, borderRadius: 6,
-                  background: `${selectedNode.color}20`, color: selectedNode.color,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 13, fontWeight: 600,
-                }}>
+                <div style={{ width: 28, height: 28, borderRadius: 6, background: `${selectedNode.color}20`, color: selectedNode.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
                   {selectedNode.label.charAt(0)}
                 </div>
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{selectedNode.label}</span>
@@ -468,18 +575,17 @@ function CanvasEditorInner() {
               <button className="btn-icon" onClick={() => setSelectedNode(null)}>✕</button>
             </div>
 
-            {/* Basic info */}
             <div>
               <div style={sectionTitle}>基本信息</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
-                  <input value={selectedNode.label} onChange={(e) => updateNodeData(selectedNode.key, 'label', e.target.value)} />
+                  <input value={selectedNode.label} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'label', e.target.value)} />
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <div style={{ flex: 1 }}>
                     <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
-                    <select value={selectedNode.engine} onChange={(e) => updateNodeData(selectedNode.key, 'engine', e.target.value)} style={{ height: 32 }}>
+                    <select value={selectedNode.engine} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'engine', e.target.value)} style={{ height: 32 }}>
                       <option value="claude">Claude Code</option>
                       <option value="codex">Codex CLI</option>
                       <option value="hermes">Hermes ACP</option>
@@ -487,103 +593,59 @@ function CanvasEditorInner() {
                   </div>
                   <div style={{ width: 60 }}>
                     <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
-                    <input type="color" value={selectedNode.color} onChange={(e) => updateNodeData(selectedNode.key, 'color', e.target.value)} style={{ height: 32, width: '100%', cursor: 'pointer', padding: 2 }} />
+                    <input type="color" value={selectedNode.color} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'color', e.target.value)} style={{ height: 32, width: '100%', cursor: 'pointer', padding: 2 }} />
                   </div>
                 </div>
                 <div>
                   <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
-                  <input value={selectedNode.model} onChange={(e) => updateNodeData(selectedNode.key, 'model', e.target.value)} placeholder="如 gpt-5.5 / 留空用默认" />
+                  <input value={selectedNode.model} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'model', e.target.value)} placeholder="如 gpt-5.5 / 留空用默认" />
                 </div>
               </div>
             </div>
 
-            {/* Inputs */}
-            <IOFieldEditor
-              label="输入产物" dotColor="var(--accent)"
-              fields={selectedNode.inputs}
-              onChange={(fields) => updateNodeData(selectedNode.key, 'inputs', fields)}
+            <InputEditor
+              inputs={selectedNode.inputs}
+              onChange={(inputs) => updateNodeData(String(selectedNode.nodeId), 'inputs', inputs)}
             />
 
-            {/* Outputs */}
-            <IOFieldEditor
-              label="输出产物" dotColor="var(--success)"
-              fields={selectedNode.outputs}
-              onChange={(fields) => updateNodeData(selectedNode.key, 'outputs', fields)}
+            <OutputEditor
+              outputs={selectedNode.outputs}
+              onChange={(outputs) => updateNodeData(String(selectedNode.nodeId), 'outputs', outputs)}
             />
 
-            {/* Dependencies */}
-            <div>
-              <div style={sectionTitle}>上游依赖</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {edges.filter((e) => e.target === selectedNode.key).length === 0 && (
-                  <span style={{ fontSize: 12, color: 'var(--meta)', fontStyle: 'italic' }}>无（起始阶段）</span>
-                )}
-                {edges.filter((e) => e.target === selectedNode.key).map((e) => (
-                  <span key={e.id} style={{
-                    fontSize: 12, padding: '3px 10px', borderRadius: 'var(--radius-pill)',
-                    background: 'var(--surface)', color: 'var(--fg-2)', border: '1px solid var(--border-soft)',
-                  }}>
-                    {e.source}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Prompt */}
             <div>
               <div style={sectionTitle}>阶段 Prompt</div>
-              <textarea
-                value={selectedNode.prompt}
-                onChange={(e) => updateNodeData(selectedNode.key, 'prompt', e.target.value)}
-                rows={8}
-                style={{ minHeight: 160, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }}
-                placeholder="描述这个阶段要做什么..."
-              />
+              <textarea value={selectedNode.prompt} onChange={(e) => updateNodeData(String(selectedNode.nodeId), 'prompt', e.target.value)}
+                rows={8} style={{ minHeight: 160, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
             </div>
 
-            {/* Delete */}
-            <button
-              onClick={() => deleteNode(selectedNode.key)}
-              style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '8px', borderRadius: 'var(--radius-sm)' }}
-            >
+            <button onClick={() => deleteNode(String(selectedNode.nodeId))}
+              style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
               删除此阶段
             </button>
           </div>
         )}
       </div>
 
-      {/* ── Context menu ── */}
+      {/* Context menu */}
       {contextMenu && (
-        <div style={{
-          position: 'fixed', left: contextMenu.x, top: contextMenu.y,
-          background: 'var(--bg)', border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          padding: '4px 0', zIndex: 500, minWidth: 140,
-        }}>
-          <div
-            onClick={() => {
-              const node = nodes.find((n) => n.id === contextMenu.nodeId)
-              if (node) setSelectedNode(node.data as StepNodeData)
-              setContextMenu(null)
-            }}
+        <div style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)', padding: '4px 0', zIndex: 500, minWidth: 140 }}>
+          <div onClick={() => { const n = nodes.find((nd) => nd.id === contextMenu.nodeId); if (n) setSelectedNode(n.data as StepNodeData); setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             ✏️ 编辑阶段
           </div>
-          <div
-            onClick={() => deleteNode(contextMenu.nodeId)}
+          <div onClick={() => deleteNode(contextMenu.nodeId)}
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             🗑 删除
           </div>
         </div>
       )}
 
-      {/* ── JSON Preview overlay ── */}
+      {/* JSON Preview */}
       {showJson && (
         <div className="modal-overlay" onClick={() => setShowJson(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
@@ -592,14 +654,8 @@ function CanvasEditorInner() {
               <button className="btn-icon" onClick={() => setShowJson(false)}>✕</button>
             </div>
             <div className="modal-body" style={{ padding: 0 }}>
-              <pre style={{
-                margin: 0, padding: 16,
-                fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6,
-                background: 'var(--surface)', color: 'var(--fg)',
-                overflow: 'auto', maxHeight: '60vh',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              }}>
-                {JSON.stringify({ steps: getStepsJson() }, null, 2)}
+              <pre style={{ margin: 0, padding: 16, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', overflow: 'auto', maxHeight: '60vh', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {JSON.stringify(buildCanvasJson(), null, 2)}
               </pre>
             </div>
             <div className="modal-footer">
@@ -613,7 +669,6 @@ function CanvasEditorInner() {
   )
 }
 
-/* ── Canvas Editor (with ReactFlowProvider) ── */
 export default function CanvasEditor() {
   return (
     <ReactFlowProvider>
