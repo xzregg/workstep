@@ -93,8 +93,14 @@ export default function TaskList() {
   // Local card state: lane assignment + status (until backend supports it)
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
   const [cardStatuses, setCardStatuses] = useState<Record<string, string>>({})
+  const tasksFetchedRef = useRef<string>('')
 
-  useEffect(() => { if (activeProject?.id) fetchTasks(activeProject.id) }, [fetchTasks, activeProject?.id])
+  useEffect(() => {
+    if (!activeProject?.id) { tasksFetchedRef.current = ''; return }
+    if (tasksFetchedRef.current === activeProject.id) return
+    tasksFetchedRef.current = activeProject.id
+    fetchTasks(activeProject.id)
+  }, [fetchTasks, activeProject?.id])
 
   // Reset local state when project changes
   useEffect(() => {
