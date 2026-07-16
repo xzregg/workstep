@@ -109,12 +109,19 @@ class ProjectManager:
         self._projects: dict[str, Project] = {}  # path_str -> Project
 
     def _save_config(self):
-        """Persist project list to config store."""
-        projects = [
-            {"id": proj.id, "path": path_str, "name": proj.name}
-            for path_str, proj in self._projects.items()
-        ]
-        config_store.set("projects", projects)
+        """Persist project list to config store.
+
+        Merges in-memory projects with existing config to avoid losing
+        entries whose paths are temporarily unavailable.
+        """
+        existing = config_store.get("projects") or []
+        existing_by_path = {e["path"]: e for e in existing if isinstance(e, dict)}
+
+        # Update with in-memory projects
+        for path_str, proj in self._projects.items():
+            existing_by_path[path_str] = {"id": proj.id, "path": path_str, "name": proj.name}
+
+        config_store.set("projects", list(existing_by_path.values()))
 
     def bind_project(self, path: str | Path) -> "Project":
         """Switch db_proxy to the given project's database. Must call before querying tasks."""

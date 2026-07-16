@@ -19,7 +19,7 @@ async def init_project(req: InitRequest):
     """Initialize a new WorkStep project."""
     try:
         proj = project_manager.init_project(req.path, name=req.name)
-        return {"path": str(proj.path), "name": proj.name, "steps": proj.steps}
+        return {"id": proj.id, "path": str(proj.path), "name": proj.name, "steps": proj.steps}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
