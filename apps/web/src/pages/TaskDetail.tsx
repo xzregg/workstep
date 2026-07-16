@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 const EMPTY_EVENTS: any[] = []
+
+const STATUS_LABELS: Record<string, string> = {
+  ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
+}
 
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>()
@@ -20,48 +24,45 @@ export default function TaskDetail() {
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
 
   const projectId = activeProject?.id || ''
+  const task = tasks.find((t) => t.id === taskId)
+  const [prompt, setPrompt] = useState('')
+  const [running, setRunning] = useState(false)
+  const [selectedStage, setSelectedStage] = useState(0)
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   // Fetch tasks if not already loaded
   useEffect(() => {
     if (tasks.length === 0 && projectId) fetchTasks(projectId)
   }, [tasks.length, fetchTasks, projectId])
 
-  const [prompt, setPrompt] = useState('')
-  const [running, setRunning] = useState(false)
-  const [selectedStep, setSelectedStep] = useState('do')
-  const contentEndRef = useRef<HTMLDivElement>(null)
-  const chatEndRef = useRef<HTMLDivElement>(null)
-  const task = tasks.find((t) => t.id === taskId)
-
-  useEffect(() => {
-    contentEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [content, events])
-
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events])
+  }, [events, content])
 
   useEffect(() => {
     if (task) setRunning(task.status === 'running')
   }, [task?.status])
 
+  // Get stages from project steps
+  const stages = useMemo(() => {
+    const steps = activeProject?.steps
+    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || '#888', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
+    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || '#888', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any' })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
+    return [{ key: 'do', label: '执行', color: '#0071e3', prompt: '', inputs: [], outputs: [] }]
+  }, [activeProject?.steps])
+
   const handleRun = async () => {
-    if (!taskId || !prompt.trim()) return
+    if (!taskId || !prompt.trim() || !projectId) return
     setRunning(true)
     try {
       await runTask(taskId, prompt.trim(), projectId)
       setPrompt('')
-    } catch {
-      setRunning(false)
-    }
+    } catch { setRunning(false) }
   }
 
   const handleCancel = async () => {
     if (!taskId) return
-    try {
-      await cancelTask(taskId)
-      setRunning(false)
-    } catch { /* ignore */ }
+    try { await cancelTask(taskId); setRunning(false) } catch {}
   }
 
   if (!task) {
@@ -74,82 +75,64 @@ export default function TaskDetail() {
     )
   }
 
+  const currentStage = stages[selectedStage] || stages[0]
   const time = new Date(task.created_at * 1000).toLocaleString('zh-CN')
 
-  // Separate events into chat messages
-  const chatMessages = events.filter((e) =>
-    e.type === 'text_delta' || e.type === 'tool_use' || e.type === 'tool_result' ||
-    e.type === 'error' || e.type === 'usage'
-  )
-
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       {/* ── Header ── */}
-      <div style={{
-        padding: '18px 24px',
-        borderBottom: '1px solid var(--border-soft)',
-        display: 'flex', alignItems: 'flex-start', gap: 16,
-        background: 'var(--bg)',
-      }}>
-        <button className="btn-icon" onClick={() => navigate(-1)} style={{ marginTop: 2 }}>
-          ←
-        </button>
+      <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'flex-start', gap: 16, flexShrink: 0 }}>
+        <button className="btn-icon" onClick={() => navigate(-1)} style={{ marginTop: 2 }}>←</button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6, fontFamily: 'var(--font-display)' }}>
-            {task.title}
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>{task.title}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span className="status-badge" data-s={task.status}>{task.status}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4, lineHeight: 1.6,
+              background: `color-mix(in oklab, var(--status-${task.status === 'ready' ? 'ready' : task.status}), transparent 85%)`,
+              color: `var(--status-${task.status === 'ready' ? 'ready' : task.status})`,
+            }}>
+              {STATUS_LABELS[task.status] || task.status}
+            </span>
             <span style={{
               fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4,
-              background: 'color-mix(in oklab, var(--accent), transparent 85%)',
-              color: 'var(--accent)',
+              background: 'color-mix(in oklab, var(--accent), transparent 85%)', color: 'var(--accent)',
             }}>
-              {task.engine}
+              {currentStage.label} 阶段
             </span>
             <span style={{ fontSize: 12, color: 'var(--meta)' }}>{time}</span>
           </div>
         </div>
       </div>
 
-      {/* ── Content split: left (info) + right (chat) ── */}
+      {/* ── Content split ── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* ── Left panel ── */}
+        <div style={{ width: '45%', minWidth: 380, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, borderRight: '1px solid var(--border-soft)' }}>
 
-        {/* ── Left: Progress + Events + Prompt ── */}
-        <div style={{
-          width: '45%', minWidth: 380,
-          overflowY: 'auto', padding: '20px 24px',
-          display: 'flex', flexDirection: 'column', gap: 24,
-          borderRight: '1px solid var(--border-soft)',
-        }}>
           {/* Progress timeline */}
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
-              阶段进度
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>进度</div>
             <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
-              {['do'].map((step) => {
-                const isActive = step === selectedStep
-                const isDone = task.status === 'ready' && events.length > 0
+              {stages.map((stage: any, i: number) => {
+                const isDone = i < selectedStage
+                const isActive = i === selectedStage
                 return (
                   <div
-                    key={step}
-                    onClick={() => setSelectedStep(step)}
-                    style={{
-                      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      position: 'relative', paddingTop: 24, cursor: 'pointer',
-                    }}
+                    key={stage.key}
+                    onClick={() => setSelectedStage(i)}
+                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', paddingTop: 24, cursor: 'pointer' }}
                   >
                     {/* Connector line */}
                     <div style={{
-                      position: 'absolute', top: 10, left: 0, right: 0, height: 2,
-                      background: isDone ? 'var(--success)' : 'var(--border)',
+                      position: 'absolute', top: 10,
+                      left: i === 0 ? '50%' : 0, right: i === stages.length - 1 ? '50%' : 0,
+                      height: 2, background: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--border)',
                     }} />
                     {/* Dot */}
                     <div style={{
                       width: 20, height: 20, borderRadius: '50%',
                       background: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--bg)',
-                      border: `2px solid ${isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--meta)'}`,
+                      border: `2px solid ${isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--border)'}`,
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: isActive ? '0 0 0 4px color-mix(in oklab, var(--accent), transparent 70%)' : 'none',
@@ -157,11 +140,11 @@ export default function TaskDetail() {
                       {isDone && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
                     </div>
                     <span style={{
-                      fontSize: 11, marginTop: 8,
+                      fontSize: 11, marginTop: 8, textAlign: 'center', whiteSpace: 'nowrap',
                       color: isDone ? 'var(--success)' : isActive ? 'var(--accent)' : 'var(--muted)',
-                      fontWeight: isActive ? 600 : 400,
+                      fontWeight: isActive ? 500 : 400,
                     }}>
-                      执行
+                      {stage.label}
                     </span>
                   </div>
                 )
@@ -169,107 +152,102 @@ export default function TaskDetail() {
             </div>
           </div>
 
-          {/* Event log */}
+          {/* I/O section */}
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
-              执行日志
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>
+              阶段输入输出 — {currentStage.label}
             </div>
-            <div style={{
-              background: '#1e1e1e', color: '#d4d4d4',
-              borderRadius: 'var(--radius-sm)', padding: 16,
-              fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6,
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              minHeight: 200, maxHeight: 400, overflowY: 'auto',
-            }}>
-              {events.map((ev, i) => {
-                if (ev.type === 'text_delta' || ev.type === 'thinking_delta') return null
-                if (ev.type === 'status') {
-                  return <div key={i} style={{ color: '#888', fontSize: 12 }}>[{String(ev.data.status)}]</div>
-                }
-                if (ev.type === 'tool_use') {
-                  return (
-                    <div key={i} style={{ background: '#2d2d2d', padding: '4px 8px', borderRadius: 4, margin: '4px 0' }}>
-                      🔧 {String(ev.data.name)}
-                      {ev.data.input ? (
-                        <span style={{ color: '#888', marginLeft: 8 }}>
-                          {JSON.stringify(ev.data.input).slice(0, 80)}
-                        </span>
-                      ) : null}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Inputs */}
+              {currentStage.inputs?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: 'var(--meta)' }}>→</span> 输入
+                  </div>
+                  {currentStage.inputs.map((inp: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', marginBottom: 4 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
                     </div>
-                  )
-                }
-                if (ev.type === 'tool_result') {
-                  return (
-                    <div key={i} style={{ background: '#1a3a1a', padding: '4px 8px', borderRadius: 4, margin: '4px 0', color: '#8f8' }}>
-                      ✓ result{ev.data.is_error ? ' (error)' : ''}
+                  ))}
+                </div>
+              )}
+              {/* Outputs */}
+              {currentStage.outputs?.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ color: 'var(--meta)' }}>←</span> 输出
+                  </div>
+                  {currentStage.outputs.map((out: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', marginBottom: 4 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{out.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{out.type}</span>
                     </div>
-                  )
-                }
-                if (ev.type === 'usage') {
-                  return (
-                    <div key={i} style={{ color: '#888', fontSize: 11, marginTop: 8 }}>
-                      tokens: {String(ev.data.input_tokens)}in / {String(ev.data.output_tokens)}out
-                    </div>
-                  )
-                }
-                if (ev.type === 'error') {
-                  return (
-                    <div key={i} style={{ color: '#f44', background: '#3a1a1a', padding: '4px 8px', borderRadius: 4 }}>
-                      ❌ {String(ev.data.message)}
-                    </div>
-                  )
-                }
-                return null
-              })}
-              {content && <div style={{ marginTop: 8, color: '#e0e0e0' }}>{content}</div>}
-              <div ref={contentEndRef} />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Prompt section */}
+          {currentStage.prompt && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>阶段提示词</div>
+              <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
+                <div style={{ fontSize: 13, color: 'var(--fg-2)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{currentStage.prompt}</div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ── Right: Chat panel ── */}
+        {/* ── Right panel: Chat ── */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
           {/* Chat header */}
-          <div style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid var(--border-soft)',
-            background: 'var(--bg)',
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>对话</span>
-            <span style={{
-              fontSize: 11, color: 'var(--muted)',
-              background: 'var(--surface)', border: '1px solid var(--border-soft)',
-              padding: '2px 8px', borderRadius: 4,
-            }}>
-              {task.engine}
-            </span>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
+            <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '2px 8px', borderRadius: 4 }}>{task.engine || 'claude'}</span>
           </div>
 
           {/* Chat messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {chatMessages.length === 0 && !running && (
+            {events.length === 0 && !content && !running && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 40, fontSize: 13 }}>
-                输入 prompt 开始执行任务
+                输入补充说明或追问开始对话
               </div>
             )}
 
-            {/* Render accumulated text as assistant bubble */}
+            {/* Tool use events as system messages */}
+            {events.filter((e: any) => e.type === 'tool_use').map((ev: any, i: number) => (
+              <div key={`tool-${i}`} style={{ display: 'flex', gap: 12, maxWidth: '85%' }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--warn)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>!</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{
+                    padding: '10px 14px', borderRadius: 12, fontSize: 12, lineHeight: 1.5,
+                    background: 'color-mix(in oklab, var(--warn), transparent 90%)',
+                    color: 'var(--fg-2)', border: '1px dashed var(--border)',
+                  }}>
+                    🔧 <strong>{String(ev.data.name)}</strong>
+                    {ev.data.input ? (
+                      <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                        {JSON.stringify(ev.data.input).slice(0, 120)}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* AI response as assistant bubble */}
             {content && (
               <div style={{ display: 'flex', gap: 12, maxWidth: '85%' }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: 'var(--fg)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 600, flexShrink: 0,
-                }}>
-                  AI
-                </div>
-                <div>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--fg)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>AI</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div style={{
                     padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
-                    background: 'var(--bg)', border: '1px solid var(--border-soft)',
-                    fontSize: 13, lineHeight: 1.5,
+                    background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
+                    fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
                   }}>
                     {content}
                   </div>
@@ -277,85 +255,43 @@ export default function TaskDetail() {
               </div>
             )}
 
-            {/* Tool use events as system messages */}
-            {events.filter((e) => e.type === 'tool_use').map((ev, i) => (
-              <div key={`tool-${i}`} style={{
-                display: 'flex', gap: 12, maxWidth: '85%',
-              }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: 'var(--warn)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 600, flexShrink: 0,
-                }}>
-                  !
-                </div>
-                <div style={{
-                  padding: '8px 14px', borderRadius: 12,
-                  background: 'color-mix(in oklab, var(--warn), transparent 90%)',
-                  border: '1px dashed var(--warn)',
-                  fontSize: 13, lineHeight: 1.5,
-                }}>
-                  🔧 <strong>{String(ev.data.name)}</strong>
-                  {ev.data.input ? (
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                      {JSON.stringify(ev.data.input).slice(0, 120)}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-
             <div ref={chatEndRef} />
           </div>
 
-          {/* Input area */}
-          <div style={{
-            padding: '12px 16px',
-            borderTop: '1px solid var(--border-soft)',
-            background: 'var(--bg)',
-            display: 'flex', gap: 8, alignItems: 'flex-end',
-          }}>
+          {/* Chat input */}
+          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0 }}>
             <textarea
-              placeholder={running ? '任务运行中...' : '输入 prompt (Enter 发送, Shift+Enter 换行)'}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !running) {
-                  e.preventDefault()
-                  handleRun()
-                }
+                if (e.key === 'Enter' && !e.shiftKey && !running) { e.preventDefault(); handleRun() }
               }}
+              placeholder={running ? '运行中...' : '输入补充说明或追问...'}
               disabled={running}
+              rows={1}
               style={{
-                flex: 1, height: 44, minHeight: 44, maxHeight: 120,
-                padding: '10px 14px', resize: 'none',
-                borderRadius: 12, fontSize: 13, lineHeight: 1.5,
+                flex: 1, fontSize: 13, padding: '10px 14px',
+                border: '1px solid var(--border)', borderRadius: 8,
+                resize: 'none', minHeight: 40, maxHeight: 120,
+                background: 'var(--bg)', color: 'var(--fg)', outline: 'none',
+                fontFamily: 'var(--font-body)', lineHeight: 1.5,
               }}
+              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
             />
             {running ? (
-              <button
-                onClick={handleCancel}
-                style={{
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: 'var(--danger)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: 'none', flexShrink: 0, cursor: 'pointer', fontSize: 16,
-                }}
-              >
-                ■
-              </button>
+              <button onClick={handleCancel} style={{
+                width: 40, height: 40, borderRadius: '50%',
+                background: 'var(--danger)', color: '#fff', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>■</button>
             ) : (
-              <button
-                onClick={handleRun}
-                style={{
-                  width: 44, height: 44, borderRadius: '50%',
-                  background: 'var(--accent)', color: '#fff',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: 'none', flexShrink: 0, cursor: 'pointer', fontSize: 16,
-                }}
-              >
-                ▶
+              <button onClick={handleRun} style={{
+                width: 40, height: 40, borderRadius: '50%',
+                background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
             )}
           </div>
