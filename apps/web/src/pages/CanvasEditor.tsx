@@ -402,7 +402,12 @@ function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
           </div>
           <span style={{ fontSize: 15, fontWeight: 600 }}>{draft.label}</span>
         </div>
-        <button className="btn-icon" onClick={onClose}>✕</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button className="btn-primary" style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => onSave(draft)}>
+            保存
+          </button>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
       </div>
 
       <div>
@@ -443,15 +448,10 @@ function NodeConfigPanel({ node, onSave, onDelete, onClose }: {
         onChange={(inputs) => updateDraft('inputs', inputs)}
       />
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn-primary" style={{ flex: 1 }} onClick={() => onSave(draft)}>
-          保存
-        </button>
-        <button onClick={onDelete}
-          style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
-          删除
-        </button>
-      </div>
+      <button onClick={onDelete}
+        style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
+        删除此阶段
+      </button>
     </div>
   )
 }
