@@ -142,17 +142,47 @@ const DEFAULT_DEPS: Record<string, string[]> = {
   deploy: ['test'],
 }
 
+/* ── Convert steps.json → nodes + edges ── */
+function stepsJsonToNodes(stepsJson: { steps: any[] } | null): StepNodeData[] {
+  if (!stepsJson?.steps?.length) return DEFAULT_STEPS
+  return stepsJson.steps.map((s: any) => ({
+    key: s.key || s.id,
+    label: s.label || s.name || s.key,
+    engine: s.engine || 'claude',
+    color: s.color || '#888888',
+    prompt: s.prompt || '',
+    inputs: (s.inputs || []).map((i: any) => typeof i === 'string' ? i : i.name || ''),
+    outputs: (s.outputs || []).map((o: any) => typeof o === 'string' ? o : o.name || ''),
+  }))
+}
+
+function stepsJsonToDeps(stepsJson: { steps: any[] } | null): Record<string, string[]> {
+  if (!stepsJson?.steps?.length) return DEFAULT_DEPS
+  const deps: Record<string, string[]> = {}
+  for (const s of stepsJson.steps) {
+    const key = s.key || s.id
+    if (s.dependsOn?.length) {
+      deps[key] = s.dependsOn
+    }
+  }
+  return deps
+}
+
 /* ── Canvas Editor Page ── */
 export default function CanvasEditor() {
   const navigate = useNavigate()
   const activeProject = useProjectStore((s) => s.activeProject)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
 
+  // Load from project's steps.json, fallback to default template
+  const stepsData = stepsJsonToNodes(activeProject?.steps as any)
+  const depsData = stepsJsonToDeps(activeProject?.steps as any)
+
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    buildInitialNodes(DEFAULT_STEPS)
+    buildInitialNodes(stepsData)
   )
   const [edges, setEdges, onEdgesChange] = useEdgesState(
-    buildInitialEdges(DEFAULT_STEPS, DEFAULT_DEPS)
+    buildInitialEdges(stepsData, depsData)
   )
 
   const onConnect = useCallback((params: Connection) => {
