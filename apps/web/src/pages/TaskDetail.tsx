@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -13,15 +13,30 @@ const STATUS_LABELS: Record<string, string> = {
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   useWebSocket()
 
   const activeProject = useProjectStore((s) => s.activeProject)
+  const fetchProjects = useProjectStore((s) => s.fetchProjects)
+  const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
   const runTask = useTaskStore((s) => s.runTask)
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
+
+  // Auto-load project from URL ?project=name
+  useEffect(() => {
+    const projectName = searchParams.get('project')
+    if (!projectName) return
+    const doLoad = async () => {
+      await fetchProjects()
+      const match = useProjectStore.getState().projects.find((p) => p.name === projectName)
+      if (match) setActiveProject(match)
+    }
+    doLoad()
+  }, []) // eslint-disable-line
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)

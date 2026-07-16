@@ -16,16 +16,16 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Canvas editor is full-screen, outside Layout */}
+      {/* Full-screen pages, outside Layout */}
       <Route path="/canvas" element={<CanvasEditor />} />
+      <Route path="/tasks/:taskId" element={<TaskDetail />} />
 
-      {/* All other pages are inside Layout */}
+      {/* Pages inside Layout with sidebar */}
       <Route path="*" element={
         <Layout onSelectProject={handleSelectProject}>
           <Routes>
             <Route path="/" element={<WelcomeView />} />
             <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
-            <Route path="/tasks/:taskId" element={<TaskDetail />} />
           </Routes>
         </Layout>
       } />
