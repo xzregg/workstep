@@ -116,6 +116,11 @@ workstep/
 - [ ] QCodeEngine / OpenClawEngine
 - [ ] APIEngine: 直接调 OpenAI / Anthropic API
 - [ ] 工作流模板市场
+- [ ] F1.4 条件路由
+- [ ] F2.4 卡片操作（暂停/删除/复制）
+- [ ] F4.2 产物预览（Markdown/代码/图片）
+- [ ] F5.1 会话列表（sidebar 显示历史会话）
+- [ ] F5.4 搜索（按任务名/阶段/时间筛选）
 
 ## 开发原则
 
