@@ -124,9 +124,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>进度</div>
             <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
               {stages.map((stage: any, i: number) => {
-                // done/active based on task actual progress, not selectedStage
-                // For now: stage 0 is active if task is running/ready, no stages are done yet
-                // selectedStage only controls the underline highlight
                 const isCurrentActive = (task.status === 'running' || task.status === 'ready') && i === 0
                 const isSelected = i === selectedStage
                 return (
@@ -149,8 +146,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: isCurrentActive ? '0 0 0 4px color-mix(in oklab, var(--accent), transparent 70%)' : 'none',
-                    }}>
-                    </div>
+                    }} />
                     <span style={{
                       fontSize: 11, marginTop: 8, textAlign: 'center', whiteSpace: 'nowrap',
                       color: isCurrentActive ? 'var(--accent)' : 'var(--muted)',
@@ -160,6 +156,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     }}>
                       {stage.label}
                     </span>
+                    {/* Time info for active stage */}
+                    {isCurrentActive && (
+                      <div style={{ fontSize: 10, color: 'var(--meta)', marginTop: 4, textAlign: 'center', lineHeight: 1.5 }}>
+                        <div>开始: {new Date(task.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        {task.updated_at !== task.created_at && (
+                          <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>
+                            {Math.round((task.updated_at - task.created_at) / 60)}分钟
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -310,6 +317,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
+        <button className="btn-ghost" onClick={onClose}>关闭</button>
+        <button className="btn-primary" onClick={() => {
+          if (selectedStage < stages.length - 1) {
+            setSelectedStage(selectedStage + 1)
+          }
+        }}>
+          推进到下一阶段
+        </button>
       </div>
     </div>
   )
