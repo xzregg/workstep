@@ -6,10 +6,13 @@ from models.task import Task, TaskStep
 from models.message import Message
 from models.schema import SchemaVersion
 from models.run import StepRun, WorkflowRun
+from models.review import ReviewRun
 from models.migrations import LATEST_SCHEMA_VERSION, migrate_database
 
 # Complete model registry for callers that need model metadata.
-ALL_MODELS = [SchemaVersion, Task, TaskStep, Message, WorkflowRun, StepRun]
+ALL_MODELS = [
+    SchemaVersion, Task, TaskStep, Message, WorkflowRun, StepRun, ReviewRun
+]
 
 
 def init_db(db_path: str) -> pw.SqliteDatabase:

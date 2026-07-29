@@ -124,6 +124,8 @@ class TaskService:
                 "content": msg.content,
                 "step_key": msg.step_key,
                 "run_status": msg.run_status,
+                "started_at": msg.started_at,
+                "ended_at": msg.ended_at,
                 "created_at": msg.created_at,
                 "events": [],
             }
@@ -168,6 +170,7 @@ class TaskService:
 
         # Create message record
         msg_id = str(uuid.uuid4())
+        message_started_at = int(time.time())
         Message.create(
             id=msg_id,
             task=task,
@@ -176,7 +179,8 @@ class TaskService:
             run_id=msg_id,
             run_status="running",
             position=1,
-            created_at=int(time.time()),
+            started_at=message_started_at,
+            created_at=message_started_at,
         )
 
         await self._publish(task_id, "do", {

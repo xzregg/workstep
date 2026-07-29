@@ -66,11 +66,37 @@ export interface Task {
 
 export interface TaskStepState {
   step_key: string
-  status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
+  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'passed' | 'rejected' | 'failed' | 'skipped'
   engine: string | null
   started_at: number | null
   ended_at: number | null
   error: string | null
+}
+
+export interface ReviewRun {
+  id: string
+  workflow_run_id: string
+  step_run_id: string
+  step_key: string
+  mode: 'auto' | 'manual'
+  status: 'pending' | 'running' | 'passed' | 'rejected' | 'failed'
+  engine: string | null
+  model: string | null
+  report: {
+    passed: boolean
+    score: number | null
+    summary: string
+    issues: Array<{
+      severity: 'error' | 'warning'
+      category: string
+      description: string
+      suggestion: string
+    }>
+  } | null
+  decision: string | null
+  decision_comment: string | null
+  started_at: number | null
+  ended_at: number | null
 }
 
 export interface TaskArtifact {
@@ -118,6 +144,25 @@ export const taskApi = {
   artifacts: (taskId: string, projectId: string) =>
     request<{ artifacts: TaskArtifact[] }>(
       `/task/${taskId}/artifacts?project_id=${encodeURIComponent(projectId)}`
+    ),
+  reviews: (taskId: string, projectId: string) =>
+    request<{ reviews: ReviewRun[] }>(
+      `/task/${taskId}/reviews?project_id=${encodeURIComponent(projectId)}`
+    ),
+  decideReview: (
+    taskId: string,
+    stepKey: string,
+    reviewRunId: string,
+    decision: 'approve' | 'reject' | 'force-approve',
+    projectId: string,
+    comment?: string,
+  ) =>
+    request<{ decision: string; resumed: boolean; run_id: string | null }>(
+      `/task/${taskId}/steps/${stepKey}/review/${decision}?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ review_run_id: reviewRunId, comment }),
+      },
     ),
   run: (taskId: string, prompt: string, projectId: string) =>
     request<{ status: string }>(`/task/run?project_id=${encodeURIComponent(projectId)}`, {

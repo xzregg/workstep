@@ -600,6 +600,7 @@ async def test_task_runner_unavailable_engine_finalizes_message(tmp_path):
         assert step.status == "failed"
         assert "not available" in step.error
         assert message.run_status == "failed"
+        assert message.started_at is not None
         assert message.ended_at is not None
 
     finally:

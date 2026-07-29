@@ -798,6 +798,8 @@ async def test_step_history_binds_the_requested_project(api_context):
             run_status="succeeded",
             events_json=json.dumps([{"type": "text_delta"}]),
             position=1,
+            started_at=100,
+            ended_at=284,
             created_at=int(time.time()),
         )
 
@@ -812,6 +814,14 @@ async def test_step_history_binds_the_requested_project(api_context):
 
     assert response.status_code == 200
     assert response.json()["messages"][0]["content"] == "persisted output"
+
+    task_history = await client.get(
+        f"/api/task/{task_id}/history",
+        params={"project_id": first_id},
+    )
+    assert task_history.status_code == 200
+    assert task_history.json()["messages"][0]["started_at"] == 100
+    assert task_history.json()["messages"][0]["ended_at"] == 284
 
 
 @pytest.mark.anyio

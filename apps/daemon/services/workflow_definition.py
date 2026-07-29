@@ -191,7 +191,7 @@ class WorkflowDefinition:
 
     @staticmethod
     def _normalize_step(step: Mapping[str, Any]) -> dict[str, Any]:
-        return {
+        normalized = {
             "key": step.get("key", step.get("id", "")),
             "label": step.get("label", step.get("name", "")),
             "engine": step.get("engine", "claude"),
@@ -203,3 +203,25 @@ class WorkflowDefinition:
             "dependsOn": list(step.get("dependsOn", [])),
             "condition": step.get("condition", ""),
         }
+        # Absence means legacy pass-through. An explicit review object enables
+        # the review gate, including manual review when auto is false.
+        if "review" in step:
+            review = step.get("review") or {}
+            max_retries = review.get("maxRetries", 1)
+            if (
+                not isinstance(max_retries, int)
+                or isinstance(max_retries, bool)
+                or max_retries < 0
+            ):
+                raise WorkflowValidationError(
+                    f"step '{normalized['key']}'.review.maxRetries: "
+                    "expected a non-negative integer"
+                )
+            normalized["review"] = {
+                "auto": bool(review.get("auto", False)),
+                "maxRetries": max_retries,
+                "engine": review.get("engine", ""),
+                "model": review.get("model", ""),
+                "prompt": review.get("prompt", ""),
+            }
+        return normalized

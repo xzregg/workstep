@@ -92,6 +92,20 @@ def stage_messages(task_title: str, stage_key: str, stage_label: str) -> list[tu
         stage_key,
         (f"完成{stage_label}阶段工作", f"{stage_label}阶段正在处理中。"),
     )
+    overflow_sample = ""
+    if stage_key == "req":
+        overflow_sample = (
+            "\n\n## 长内容渲染示例\n"
+            "```text\n"
+            "GET /api/workflow/runs/req?"
+            "project_id=test_workstep&include=events,artifacts,usage,engine_session,"
+            "workflow_snapshot,recovery_state&after_sequence=1234567890\n"
+            "```\n\n"
+            "| 运行编号 | 阶段标识 | 执行引擎 | 默认模型 | 最近事件序号 | 产物目录 | 恢复策略 |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| run-demo-001 | req | claude | sonnet | 1234567890 | "
+            "`.workstep/artifacts/req/mock-stage-req-v1` | manual_resume |\n"
+        )
     return [
         ("user", f"开始处理「{task_title}」的{stage_label}阶段。"),
         (
@@ -99,8 +113,108 @@ def stage_messages(task_title: str, stage_key: str, stage_label: str) -> list[tu
             f"收到。\n\n## 本阶段目标\n{goal}\n\n"
             "## 执行计划\n1. 读取上游产物\n2. 完成本阶段工作\n3. 校验输出格式",
         ),
-        ("assistant", f"## 当前进度\n{progress}\n\n已生成阶段模拟产物和执行记录。"),
+        (
+            "assistant",
+            f"## 当前进度\n{progress}\n\n已生成阶段模拟产物和执行记录。"
+            f"{overflow_sample}",
+        ),
     ]
+
+
+def message_events(
+    role: str,
+    content: str,
+    stage_key: str,
+    message_index: int,
+    created_at: int,
+) -> list[dict]:
+    """Build realistic engine events for exercising chat process folding."""
+    timestamp = created_at * 1000
+    events: list[dict] = []
+    if role == "assistant":
+        events.append({
+            "type": "thinking_delta",
+            "data": {
+                "delta": (
+                    "先读取工作流定义和上游阶段产物，再根据本阶段输出规范执行。"
+                    "完成后检查产物文件是否存在，并整理结果。"
+                ),
+            },
+            "timestamp": timestamp,
+        })
+        read_id = f"{stage_key}-{message_index}-read"
+        events.extend([
+            {
+                "type": "tool_use",
+                "data": {
+                    "id": read_id,
+                    "name": "Read",
+                    "input": {"path": ".workstep/steps.json"},
+                },
+                "timestamp": timestamp + 100,
+            },
+            {
+                "type": "tool_result",
+                "data": {
+                    "tool_use_id": read_id,
+                    "content": "已读取当前项目的阶段定义与输入输出规范。",
+                    "is_error": False,
+                },
+                "timestamp": timestamp + 200,
+            },
+        ])
+        if message_index == 1:
+            search_id = f"{stage_key}-{message_index}-search"
+            events.extend([
+                {
+                    "type": "tool_use",
+                    "data": {
+                        "id": search_id,
+                        "name": "Grep",
+                        "input": {"pattern": "outputs", "path": ".workstep/steps.json"},
+                    },
+                    "timestamp": timestamp + 300,
+                },
+                {
+                    "type": "tool_result",
+                    "data": {
+                        "tool_use_id": search_id,
+                        "content": "已定位本阶段输出物配置。",
+                        "is_error": False,
+                    },
+                    "timestamp": timestamp + 400,
+                },
+            ])
+        else:
+            write_id = f"{stage_key}-{message_index}-write"
+            events.extend([
+                {
+                    "type": "tool_use",
+                    "data": {
+                        "id": write_id,
+                        "name": "Write",
+                        "input": {
+                            "path": f".workstep/artifacts/{stage_key}/result.md",
+                        },
+                    },
+                    "timestamp": timestamp + 300,
+                },
+                {
+                    "type": "tool_result",
+                    "data": {
+                        "tool_use_id": write_id,
+                        "content": "阶段模拟产物已写入。",
+                        "is_error": False,
+                    },
+                    "timestamp": timestamp + 400,
+                },
+            ])
+    events.append({
+        "type": "text_delta",
+        "data": {"delta": content},
+        "timestamp": timestamp + 500,
+    })
+    return events
 
 
 def seed(project_path: Path) -> None:
@@ -191,17 +305,16 @@ def seed(project_path: Path) -> None:
                             engine=engines[step_key],
                             run_id=f"{task_id}-{step_key}",
                             run_status="succeeded" if status == "passed" else "running",
-                            events_json=json.dumps(
-                                [
-                                    {
-                                        "type": "text_delta",
-                                        "data": {"delta": content},
-                                        "timestamp": created_at * 1000,
-                                    }
-                                ],
-                                ensure_ascii=False,
-                            ),
+                            events_json=json.dumps(message_events(
+                                role,
+                                content,
+                                step_key,
+                                message_index,
+                                created_at,
+                            ), ensure_ascii=False),
                             position=position,
+                            started_at=created_at if role == "assistant" else None,
+                            ended_at=created_at + 184 if role == "assistant" else None,
                             created_at=created_at,
                         )
                         position += 1

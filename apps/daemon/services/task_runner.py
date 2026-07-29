@@ -7,9 +7,10 @@ import time
 import uuid
 from pathlib import Path
 
-from models import Message, StepRun, Task, TaskStep, WorkflowRun
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt
+from services.review_gate import ReviewGate
 from services.config import config_store
 from engines.registry import create_engine
 from engines.events import InternalEvent
@@ -91,7 +92,13 @@ class TaskRunner:
                 (StepRun.run == workflow_run)
                 & (StepRun.status == "succeeded")
             ):
-                completed.add(step_run.step_key)
+                reviews = list(
+                    ReviewRun.select()
+                    .where(ReviewRun.step_run == step_run)
+                    .order_by(ReviewRun.attempt.desc())
+                )
+                if not reviews or reviews[0].status == "passed":
+                    completed.add(step_run.step_key)
         else:
             for ts in TaskStep.select().where(
                 (TaskStep.task == task) & (TaskStep.status == "passed")
@@ -177,6 +184,7 @@ class TaskRunner:
         running: set[str],
         failed: set[str],
         workflow_run: WorkflowRun | None,
+        review_feedback: str = "",
     ) -> None:
         """Execute a single pipeline step."""
         step_key = step.key
@@ -189,8 +197,14 @@ class TaskRunner:
 
         # Update step status
         ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == step_key))
+        is_review_retry = ts.status == "retrying" and ts.started_at is not None
         ts.status = "running"
-        ts.started_at = int(time.time())
+        # A review retry is still part of the same stage lifecycle. Preserve the
+        # first attempt's start time so the final duration includes execution,
+        # automatic review, and every retry.
+        if not is_review_retry:
+            ts.started_at = int(time.time())
+        ts.ended_at = None
         ts.engine = step.engine
         ts.save()
 
@@ -225,6 +239,12 @@ class TaskRunner:
 
         # Assemble prompt
         prompt = assemble_prompt(task, step, artifacts_dir, user_input)
+        if review_feedback:
+            prompt += (
+                "\n\n## 上一轮审核反馈\n"
+                f"{review_feedback}\n\n"
+                "请保留已有正确结果，并修复以上问题。"
+            )
 
         # Ensure artifact output directory
         out_dir = artifacts_dir / step_key / task.id
@@ -232,6 +252,7 @@ class TaskRunner:
 
         # Create message record
         msg_id = str(uuid.uuid4())
+        message_started_at = int(time.time())
         Message.create(
             id=msg_id,
             task=task,
@@ -242,7 +263,8 @@ class TaskRunner:
             run_id=msg_id,
             run_status="running",
             position=1,
-            created_at=int(time.time()),
+            started_at=message_started_at,
+            created_at=message_started_at,
         )
 
         # Select engine
@@ -271,6 +293,8 @@ class TaskRunner:
         events_collected = []
         content_parts = []
         reported_error: str | None = None
+        execution_succeeded = False
+        retry_feedback: str | None = None
 
         try:
             async for event in engine.spawn(
@@ -297,15 +321,84 @@ class TaskRunner:
                 await self._fail_step(ts, task, step_key, reported_error)
                 failed.add(step_key)
             else:
-                # Step passed
-                ts.status = "passed"
-                ts.ended_at = int(time.time())
-                ts.save()
-                completed.add(step_key)
+                execution_succeeded = True
+                # Missing review means a legacy workflow and retains the old
+                # execution-success-is-passed behavior.
+                if step.review is None or workflow_run is None or step_run is None:
+                    ts.status = "passed"
+                    ts.ended_at = int(time.time())
+                    ts.save()
+                    completed.add(step_key)
+                else:
+                    step_run.status = "succeeded"
+                    step_run.ended_at = int(time.time())
+                    step_run.save()
+                    ts.status = (
+                        "reviewing"
+                        if step.review.get("auto", False)
+                        else "awaiting_review"
+                    )
+                    ts.save()
+                    await self._publish(task.id, step_key, {
+                        "type": "status",
+                        "data": {
+                            "status": ts.status,
+                            "step_key": step_key,
+                            "task_id": task.id,
+                        },
+                    })
+                    gate = ReviewGate(
+                        lambda event: self._publish(task.id, step_key, event)
+                    )
+                    outcome = await gate.evaluate(
+                        task=task,
+                        step=step,
+                        workflow_run=workflow_run,
+                        step_run=step_run,
+                        artifacts_dir=artifacts_dir,
+                        execution_output="".join(content_parts),
+                    )
+                    if outcome.status == "passed":
+                        ts.status = "passed"
+                        ts.ended_at = int(time.time())
+                        ts.error = None
+                        ts.save()
+                        completed.add(step_key)
+                    elif outcome.status == "awaiting_review":
+                        ts.status = "awaiting_review"
+                        # The stage remains open until the reviewer decides.
+                        # decide_review() records the actual lifecycle end.
+                        ts.ended_at = None
+                        ts.save()
+                        failed.add(step_key)
+                    elif step_run.attempt <= int(step.review.get("maxRetries", 1)):
+                        retry_feedback = outcome.feedback
+                        ts.status = "retrying"
+                        ts.error = outcome.feedback
+                        ts.save()
+                        await self._publish(task.id, step_key, {
+                            "type": "step_retrying",
+                            "data": {
+                                "task_id": task.id,
+                                "step_key": step_key,
+                                "attempt": step_run.attempt + 1,
+                                "max_retries": step.review.get("maxRetries", 1),
+                            },
+                        })
+                    else:
+                        ts.status = "rejected"
+                        ts.error = outcome.feedback
+                        ts.ended_at = int(time.time())
+                        ts.save()
+                        failed.add(step_key)
 
                 await self._publish(task.id, step_key, {
                     "type": "status",
-                    "data": {"status": "passed", "step_key": step_key, "task_id": task.id},
+                    "data": {
+                        "status": ts.status,
+                        "step_key": step_key,
+                        "task_id": task.id,
+                    },
                 })
 
         except Exception as e:
@@ -320,7 +413,7 @@ class TaskRunner:
                 msg = Message.get_by_id(msg_id)
                 msg.events_json = json.dumps(events_collected)
                 msg.content = "".join(content_parts)
-                msg.run_status = "succeeded" if ts.status == "passed" else "failed"
+                msg.run_status = "succeeded" if execution_succeeded else "failed"
                 msg.ended_at = int(time.time())
                 msg.save()
             except Exception:
@@ -330,12 +423,26 @@ class TaskRunner:
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
             if step_run is not None:
-                step_run.status = (
-                    "succeeded" if ts.status == "passed" else "failed"
-                )
-                step_run.error = ts.error
-                step_run.ended_at = int(time.time())
-                step_run.save()
+                if step_run.status == "running":
+                    step_run.status = (
+                        "succeeded" if execution_succeeded else "failed"
+                    )
+                    step_run.error = None if execution_succeeded else ts.error
+                    step_run.ended_at = int(time.time())
+                    step_run.save()
+
+        if retry_feedback is not None:
+            await self._run_step(
+                task,
+                step,
+                artifacts_dir,
+                user_input,
+                completed,
+                running,
+                failed,
+                workflow_run,
+                retry_feedback,
+            )
 
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""

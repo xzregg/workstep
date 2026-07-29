@@ -18,3 +18,8 @@ class RunTaskRequest(BaseSchema):
 
 class UpdateTaskRequest(BaseSchema):
     description: str | None = None
+
+
+class ReviewDecisionRequest(BaseSchema):
+    review_run_id: str
+    comment: str | None = None

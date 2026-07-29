@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from models import Task, WorkflowRun
+from models import ReviewRun, Task, TaskStep, WorkflowRun
 from services.task_runner import TaskRunner
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
@@ -117,6 +117,112 @@ class WorkflowRuntime:
         """Wait for a handle returned by start and return its run id."""
         return await handle._completion
 
+    async def decide_review(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        review_run_id: str,
+        decision: str,
+        comment: str | None = None,
+    ) -> WorkflowRunHandle | None:
+        """Persist a manual decision and resume the same workflow when approved."""
+        with self._project_manager.activate_project_by_id(project_id) as project:
+            review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
+            if (
+                review is None
+                or review.task_id != task_id
+                or review.step_key != step_key
+            ):
+                raise ValueError("Review not found for the requested task step")
+            latest = (
+                ReviewRun.select()
+                .where(
+                    (ReviewRun.task == task_id)
+                    & (ReviewRun.step_key == step_key)
+                )
+                .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
+                .first()
+            )
+            if latest is None or latest.id != review.id:
+                raise RuntimeError("Review has been superseded by a newer attempt")
+            if review.decision:
+                if review.decision == decision:
+                    return None
+                raise RuntimeError("Review already has a different decision")
+
+            now = int(time.time())
+            approved = decision in {"approve", "force_approve"}
+            review.decision = decision
+            review.decision_comment = comment
+            review.decided_at = now
+            review.ended_at = review.ended_at or now
+            review.status = "passed" if approved else "rejected"
+            review.save()
+
+            task_step = TaskStep.get(
+                (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+            )
+            task_step.status = "passed" if approved else "rejected"
+            task_step.error = None if approved else (comment or "用户驳回审核")
+            task_step.ended_at = now
+            task_step.save()
+            task = Task.get_by_id(task_id)
+            task.status = "running" if approved else "paused"
+            task.updated_at = now
+            task.save()
+
+            if not approved:
+                return None
+            # The awaiting-review event can reach the UI just before the
+            # scheduler retires. Wait briefly so an immediate click resumes
+            # instead of racing the still-active runner.
+            for _ in range(100):
+                if task.id not in self._runners:
+                    break
+                await asyncio.sleep(0.01)
+            if task.id in self._runners:
+                raise RuntimeError("Task is still finishing the current stage")
+            return self._resume_in_project(project, task, review.workflow_run)
+
+    def _resume_in_project(
+        self,
+        project,
+        task: Task,
+        workflow_run: WorkflowRun,
+    ) -> WorkflowRunHandle:
+        """Resume downstream scheduling from persisted review state."""
+        if task.id in self._runners:
+            raise RuntimeError(f"Task is already running: {task.id}")
+        snapshot = json.loads(workflow_run.workflow_snapshot_json)
+        compiled = WorkflowDefinition.load(snapshot).compile()
+        workflow_run.status = "running"
+        workflow_run.ended_at = None
+        workflow_run.save()
+        runner = TaskRunner(self._event_bus)
+        self._runners[task.id] = runner
+        completion = asyncio.create_task(
+            self._execute(
+                task=task,
+                runner=runner,
+                workflow_run=workflow_run,
+                steps_config=compiled.to_steps_config(),
+                artifacts_dir=Path(project.workstep_dir) / "artifacts",
+                user_input="",
+            ),
+            name=f"workflow-run:{workflow_run.id}:resume",
+        )
+        self._active_tasks.add(completion)
+        completion.add_done_callback(
+            functools.partial(
+                self._consume_completion,
+                task_id=task.id,
+                runner=runner,
+                workflow_run=workflow_run,
+            )
+        )
+        return WorkflowRunHandle(workflow_run.id, completion)
+
     async def shutdown(self) -> None:
         """Cancel and await every workflow owned by this runtime."""
         runners = tuple(self._runners.items())
@@ -180,9 +286,15 @@ class WorkflowRuntime:
             raise
         else:
             task = Task.get_by_id(task.id)
-            workflow_run.status = (
-                "succeeded" if task.status == "ready" else "failed"
-            )
+            if task.status == "ready":
+                workflow_run.status = "succeeded"
+            elif task.status == "paused" and TaskStep.select().where(
+                (TaskStep.task == task)
+                & (TaskStep.status.in_(["awaiting_review", "rejected"]))
+            ).exists():
+                workflow_run.status = "paused"
+            else:
+                workflow_run.status = "failed"
         finally:
             workflow_run.ended_at = int(time.time())
             workflow_run.save()

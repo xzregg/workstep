@@ -119,6 +119,9 @@ export const useTaskStore = create<TaskState>((set) => ({
   handleWsEvent: (event) => {
     const taskId = event.task_id
     if (!taskId) return
+    const timedEvent = event.timestamp
+      ? event
+      : { ...event, timestamp: Date.now() }
 
     set((s) => {
       const prevEvents = s.events[taskId] || []
@@ -130,10 +133,18 @@ export const useTaskStore = create<TaskState>((set) => ({
       }
 
       let newTasks = s.tasks
-      if (event.type === 'status') {
-        const status = event.data.status as string
+      const isStatusEvent = [
+        'status', 'review_status', 'review_result', 'step_retrying',
+      ].includes(event.type)
+      if (isStatusEvent) {
+        const status = (
+          event.type === 'step_retrying' ? 'retrying' : event.data.status
+        ) as string
         const stepKey = event.step_key || event.data.step_key as string | undefined
-        const isStepStatus = ['pending', 'running', 'passed', 'failed', 'skipped'].includes(status)
+        const isStepStatus = [
+          'pending', 'running', 'reviewing', 'awaiting_review', 'retrying',
+          'passed', 'rejected', 'failed', 'skipped',
+        ].includes(status)
         const stepStatus = status as TaskStepState['status']
         const updateTaskStep = (task: Task) => ({
           ...task,
@@ -147,9 +158,13 @@ export const useTaskStore = create<TaskState>((set) => ({
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'ready' } : t,
           )
-        } else if (status === 'running') {
+        } else if (['running', 'reviewing', 'retrying'].includes(status)) {
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'running' } : t,
+          )
+        } else if (['awaiting_review', 'rejected'].includes(status)) {
+          newTasks = s.tasks.map((t) =>
+            t.id === taskId ? { ...updateTaskStep(t), status: 'paused' } : t,
           )
         } else if (status === 'failed') {
           newTasks = s.tasks.map((t) =>
@@ -160,7 +175,7 @@ export const useTaskStore = create<TaskState>((set) => ({
 
       return {
         tasks: newTasks,
-        events: { ...s.events, [taskId]: [...prevEvents, event] },
+        events: { ...s.events, [taskId]: [...prevEvents, timedEvent] },
         content: { ...s.content, [taskId]: newContent },
       }
     })

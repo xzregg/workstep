@@ -19,6 +19,7 @@ class Step:
     outputs: list[dict] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
     condition: str = ""  # Optional condition expression for conditional routing
+    review: dict | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -33,6 +34,7 @@ class Step:
             outputs=d.get("outputs", []),
             depends_on=d.get("dependsOn", []),
             condition=d.get("condition", ""),
+            review=d.get("review"),
         )
 
 

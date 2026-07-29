@@ -7,10 +7,11 @@ import peewee as pw
 from models.base import db_proxy
 from models.schema import SchemaVersion
 from models.run import StepRun, WorkflowRun
+from models.review import ReviewRun
 from models.message import Message
 from models.task import Task, TaskStep
 
-LATEST_SCHEMA_VERSION = 3
+LATEST_SCHEMA_VERSION = 4
 
 
 def _create_initial_tables(db: pw.SqliteDatabase) -> None:
@@ -25,10 +26,15 @@ def _create_step_runs_table(db: pw.SqliteDatabase) -> None:
     db.create_tables([StepRun], safe=True)
 
 
+def _create_review_runs_table(db: pw.SqliteDatabase) -> None:
+    db.create_tables([ReviewRun], safe=True)
+
+
 MIGRATIONS: dict[int, Callable[[pw.SqliteDatabase], None]] = {
     1: _create_initial_tables,
     2: _create_workflow_runs_table,
     3: _create_step_runs_table,
+    4: _create_review_runs_table,
 }
 
 

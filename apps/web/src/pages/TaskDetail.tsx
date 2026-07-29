@@ -1,16 +1,43 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
-import { fsApi, projectApi, taskApi, type TaskArtifact, type TaskStepState } from '../api/client'
+import { fsApi, projectApi, taskApi, type ReviewRun, type TaskArtifact, type TaskStepState } from '../api/client'
 import ArtifactPreview from '../components/ArtifactPreview'
+import MarkdownMessage from '../components/MarkdownMessage'
+import ProcessTrace from '../components/ProcessTrace'
 
 const EMPTY_EVENTS: any[] = []
+const PROCESS_EVENT_TYPES = new Set([
+  'thinking_delta',
+  'tool_use',
+  'tool_input_delta',
+  'tool_result',
+])
+
+function hasProcessEvents(events: any[]) {
+  return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
+}
 
 const STATUS_LABELS: Record<string, string> = {
   ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
 }
 
-type StageVisualState = 'completed' | 'current' | 'failed' | 'skipped' | 'pending'
+type StageVisualState =
+  | 'completed'
+  | 'current'
+  | 'reviewing'
+  | 'awaiting_review'
+  | 'retrying'
+  | 'failed'
+  | 'skipped'
+  | 'pending'
 
 interface StageData {
   key: string
@@ -32,14 +59,159 @@ interface StageProgress extends Partial<TaskStepState> {
 const STAGE_STATE_LABELS: Record<StageVisualState, string> = {
   completed: '已完成',
   current: '当前',
+  reviewing: '审核中',
+  awaiting_review: '等待审核',
+  retrying: '自动重跑',
   failed: '失败',
   skipped: '已跳过',
   pending: '待处理',
 }
 
+function formatStageDuration(startedAt?: number | null, endedAt?: number | null) {
+  if (!startedAt || !endedAt || endedAt < startedAt) return null
+  const totalSeconds = Math.max(1, endedAt - startedAt)
+  if (totalSeconds < 60) return `${totalSeconds}秒`
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (totalMinutes < 60) {
+    return seconds > 0 ? `${totalMinutes}分${seconds}秒` : `${totalMinutes}分钟`
+  }
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}小时${minutes}分` : `${hours}小时`
+}
+
 interface TaskDetailProps {
   taskId: string
   onClose: () => void
+}
+
+interface PanelBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+type ResizeEdge = 'n' | 'e' | 's' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+const PANEL_BOUNDS_KEY = 'workstep:task-detail-bounds'
+const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
+const DEFAULT_SPLIT_RATIO = 1 / 3
+const SPLIT_HANDLE_WIDTH = 8
+const RESIZE_EDGES: ResizeEdge[] = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']
+const RESIZE_LABELS: Record<ResizeEdge, string> = {
+  n: '调整任务详情上边界',
+  e: '调整任务详情右边界',
+  s: '调整任务详情下边界',
+  w: '调整任务详情左边界',
+  ne: '调整任务详情右上角',
+  nw: '调整任务详情左上角',
+  se: '调整任务详情右下角',
+  sw: '调整任务详情左下角',
+}
+
+function panelMinimums() {
+  return {
+    width: Math.min(640, Math.max(320, window.innerWidth - 24)),
+    height: Math.min(420, Math.max(280, window.innerHeight - 24)),
+  }
+}
+
+function clampPanelBounds(bounds: PanelBounds): PanelBounds {
+  const minimums = panelMinimums()
+  const width = Math.min(
+    window.innerWidth,
+    Math.max(minimums.width, bounds.width),
+  )
+  const height = Math.min(
+    window.innerHeight,
+    Math.max(minimums.height, bounds.height),
+  )
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(0, bounds.x), Math.max(0, window.innerWidth - width)),
+    y: Math.min(Math.max(0, bounds.y), Math.max(0, window.innerHeight - height)),
+  }
+}
+
+function initialPanelBounds(): PanelBounds {
+  const fallback = clampPanelBounds({
+    width: Math.min(1200, window.innerWidth * 0.85),
+    height: window.innerHeight,
+    x: Math.max(0, window.innerWidth - Math.min(1200, window.innerWidth * 0.85)),
+    y: 0,
+  })
+  try {
+    const saved = sessionStorage.getItem(PANEL_BOUNDS_KEY)
+    if (!saved) return fallback
+    const parsed = JSON.parse(saved) as Partial<PanelBounds>
+    if (
+      !Number.isFinite(parsed.x)
+      || !Number.isFinite(parsed.y)
+      || !Number.isFinite(parsed.width)
+      || !Number.isFinite(parsed.height)
+    ) return fallback
+    return clampPanelBounds(parsed as PanelBounds)
+  } catch {
+    return fallback
+  }
+}
+
+function clampSplitRatio(ratio: number, containerWidth: number): number {
+  const usableWidth = Math.max(1, containerWidth - SPLIT_HANDLE_WIDTH)
+  const minLeft = Math.min(240, usableWidth * 0.45)
+  const minRight = Math.min(320, usableWidth * 0.55)
+  const minimum = minLeft / usableWidth
+  const maximum = Math.max(minimum, (usableWidth - minRight) / usableWidth)
+  return Math.min(maximum, Math.max(minimum, ratio))
+}
+
+function initialSplitRatio(): number {
+  const stored = Number(sessionStorage.getItem(SPLIT_RATIO_KEY))
+  return Number.isFinite(stored) && stored > 0 && stored < 1
+    ? stored
+    : DEFAULT_SPLIT_RATIO
+}
+
+function resizePanelBounds(
+  start: PanelBounds,
+  edge: ResizeEdge,
+  deltaX: number,
+  deltaY: number,
+): PanelBounds {
+  const minimums = panelMinimums()
+  let { x, y, width, height } = start
+  if (edge.includes('w')) {
+    const right = start.x + start.width
+    x = Math.min(
+      Math.max(0, start.x + deltaX),
+      right - minimums.width,
+    )
+    width = right - x
+  }
+  if (edge.includes('e')) {
+    width = Math.min(
+      Math.max(minimums.width, start.width + deltaX),
+      window.innerWidth - start.x,
+    )
+  }
+  if (edge.includes('n')) {
+    const bottom = start.y + start.height
+    y = Math.min(
+      Math.max(0, start.y + deltaY),
+      bottom - minimums.height,
+    )
+    height = bottom - y
+  }
+  if (edge.includes('s')) {
+    height = Math.min(
+      Math.max(minimums.height, start.height + deltaY),
+      window.innerHeight - start.y,
+    )
+  }
+  return clampPanelBounds({ x, y, width, height })
 }
 
 export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
@@ -56,6 +228,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
   const taskStatus = task?.status
+  const reviewEventSignal = useMemo(() => {
+    const event = [...events].reverse().find((item) =>
+      ['review_status', 'review_result', 'step_retrying'].includes(item.type)
+    )
+    return event
+      ? `${event.type}:${event.data?.review_run_id || ''}:${event.data?.status || event.data?.attempt || ''}`
+      : ''
+  }, [events])
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
   const [selectedStage, setSelectedStage] = useState(0)
@@ -66,6 +246,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactsLoading, setArtifactsLoading] = useState(false)
+  const [reviews, setReviews] = useState<ReviewRun[]>([])
+  const [reviewActionPending, setReviewActionPending] = useState(false)
+  const [reviewComment, setReviewComment] = useState('')
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
@@ -76,7 +259,195 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
   const [descriptionError, setDescriptionError] = useState('')
+  const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
+  const [splitRatio, setSplitRatio] = useState(initialSplitRatio)
   const historyFetchedRef = useRef<string>('')
+  const contentSplitRef = useRef<HTMLDivElement>(null)
+  const interactionCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    sessionStorage.setItem(PANEL_BOUNDS_KEY, JSON.stringify(panelBounds))
+  }, [panelBounds])
+
+  useEffect(() => {
+    sessionStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio))
+  }, [splitRatio])
+
+  useEffect(() => {
+    setSplitRatio((current) => clampSplitRatio(current, panelBounds.width))
+  }, [panelBounds.width])
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      setPanelBounds((current) => clampPanelBounds(current))
+    }
+    window.addEventListener('resize', handleViewportResize)
+    return () => window.removeEventListener('resize', handleViewportResize)
+  }, [])
+
+  useEffect(() => () => interactionCleanupRef.current?.(), [])
+
+  const beginPanelMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button, input, textarea, select, a')) {
+      return
+    }
+    event.preventDefault()
+    const startPointer = { x: event.clientX, y: event.clientY }
+    const startBounds = panelBounds
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'move'
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      setPanelBounds(clampPanelBounds({
+        ...startBounds,
+        x: startBounds.x + moveEvent.clientX - startPointer.x,
+        y: startBounds.y + moveEvent.clientY - startPointer.y,
+      }))
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      interactionCleanupRef.current = null
+    }
+    interactionCleanupRef.current?.()
+    interactionCleanupRef.current = cleanup
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', cleanup)
+    window.addEventListener('pointercancel', cleanup)
+  }
+
+  const beginPanelResize = (
+    edge: ResizeEdge,
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const startPointer = { x: event.clientX, y: event.clientY }
+    const startBounds = panelBounds
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    const cursor = getComputedStyle(event.currentTarget).cursor
+    document.body.style.cursor = cursor
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      setPanelBounds(resizePanelBounds(
+        startBounds,
+        edge,
+        moveEvent.clientX - startPointer.x,
+        moveEvent.clientY - startPointer.y,
+      ))
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      interactionCleanupRef.current = null
+    }
+    interactionCleanupRef.current?.()
+    interactionCleanupRef.current = cleanup
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', cleanup)
+    window.addEventListener('pointercancel', cleanup)
+  }
+
+  const resizeWithKeyboard = (
+    edge: ResizeEdge,
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    const step = event.shiftKey ? 40 : 12
+    const deltaX = event.key === 'ArrowLeft'
+      ? -step
+      : event.key === 'ArrowRight'
+        ? step
+        : 0
+    const deltaY = event.key === 'ArrowUp'
+      ? -step
+      : event.key === 'ArrowDown'
+        ? step
+        : 0
+    if (deltaX === 0 && deltaY === 0) return
+    event.preventDefault()
+    setPanelBounds((current) =>
+      resizePanelBounds(current, edge, deltaX, deltaY)
+    )
+  }
+
+  const beginSplitResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const container = contentSplitRef.current
+    if (!container) return
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      const rect = container.getBoundingClientRect()
+      const usableWidth = Math.max(1, rect.width - SPLIT_HANDLE_WIDTH)
+      const next = (
+        moveEvent.clientX
+        - rect.left
+        - SPLIT_HANDLE_WIDTH / 2
+      ) / usableWidth
+      setSplitRatio(clampSplitRatio(next, rect.width))
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      interactionCleanupRef.current = null
+    }
+    interactionCleanupRef.current?.()
+    interactionCleanupRef.current = cleanup
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', cleanup)
+    window.addEventListener('pointercancel', cleanup)
+  }
+
+  const resizeSplitWithKeyboard = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const containerWidth = contentSplitRef.current?.clientWidth || panelBounds.width
+    const step = event.shiftKey ? 0.08 : 0.025
+    setSplitRatio((current) => clampSplitRatio(
+      current + (event.key === 'ArrowLeft' ? -step : step),
+      containerWidth,
+    ))
+  }
+
+  const moveWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 40 : 12
+    const deltaX = event.key === 'ArrowLeft'
+      ? -step
+      : event.key === 'ArrowRight'
+        ? step
+        : 0
+    const deltaY = event.key === 'ArrowUp'
+      ? -step
+      : event.key === 'ArrowDown'
+        ? step
+        : 0
+    if (deltaX === 0 && deltaY === 0) return
+    event.preventDefault()
+    setPanelBounds((current) => clampPanelBounds({
+      ...current,
+      x: current.x + deltaX,
+      y: current.y + deltaY,
+    }))
+  }
 
   // Load historical messages when panel opens (or task changes)
   useEffect(() => {
@@ -93,6 +464,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .catch(() => setHistoryMessages([]))
       .finally(() => setHistoryLoading(false))
   }, [taskId, projectId])
+
+  useEffect(() => {
+    if (!taskId || !projectId) {
+      setReviews([])
+      return
+    }
+    taskApi.reviews(taskId, projectId)
+      .then((res) => setReviews(res.reviews || []))
+      .catch(() => setReviews([]))
+  }, [taskId, projectId, task?.updated_at, reviewEventSignal])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -147,7 +528,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const rawStatuses: TaskStepState['status'][] = stages.map(
       (stage: any) => stepByKey.get(stage.key)?.status || 'pending',
     )
-    let activeIndex = rawStatuses.findIndex((status) => status === 'running')
+    let activeIndex = rawStatuses.findIndex((status) =>
+      ['running', 'reviewing', 'awaiting_review', 'retrying'].includes(status)
+    )
     if (activeIndex < 0) {
       activeIndex = rawStatuses.findIndex((status) => status === 'failed')
     }
@@ -160,8 +543,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       const status = rawStatuses[index]
       let visualState: StageVisualState = 'pending'
       if (status === 'passed') visualState = 'completed'
+      else if (status === 'reviewing') visualState = 'reviewing'
+      else if (status === 'awaiting_review') visualState = 'awaiting_review'
+      else if (status === 'retrying') visualState = 'retrying'
       else if (status === 'running') visualState = 'current'
-      else if (status === 'failed') visualState = 'failed'
+      else if (status === 'failed' || status === 'rejected') visualState = 'failed'
       else if (status === 'skipped') visualState = 'skipped'
       else if (index === activeIndex) visualState = 'current'
       return { ...step, visualState }
@@ -170,7 +556,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const activeStageIndex = useMemo(() => {
     const current = stageProgress.findIndex((progress: StageProgress) =>
-      progress.visualState === 'current'
+      ['current', 'reviewing', 'awaiting_review', 'retrying'].includes(
+        progress.visualState
+      )
     )
     if (current >= 0) return current
     const failed = stageProgress.findIndex((progress: StageProgress) =>
@@ -207,6 +595,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStage = stages[activeStageIndex] || stages[0]
   const currentStageColor = currentStage.color || 'var(--accent)'
   const activeStageColor = activeStage.color || 'var(--accent)'
+  const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
+  const activeReview = reviews.find((review) => review.step_key === activeStage.key)
+  const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
   const time = new Date(task.created_at * 1000).toLocaleString('zh-CN')
 
   const openDescriptionEditor = () => {
@@ -293,6 +684,75 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     })
   }
 
+  const decideReview = async (
+    decision: 'approve' | 'reject' | 'force-approve',
+    review = selectedReview,
+    stepKey = currentStage.key,
+  ) => {
+    if (!review || !projectId) return
+    setReviewActionPending(true)
+    try {
+      await taskApi.decideReview(
+        task.id,
+        stepKey,
+        review.id,
+        decision,
+        projectId,
+        reviewComment.trim() || undefined,
+      )
+      setReviewComment('')
+      const [reviewResult] = await Promise.all([
+        taskApi.reviews(task.id, projectId),
+        fetchTasks(projectId),
+      ])
+      setReviews(reviewResult.reviews || [])
+    } finally {
+      setReviewActionPending(false)
+    }
+  }
+
+  const globalAdvance = () => {
+    if (!activeReview) return
+    if (activeStepStatus === 'awaiting_review') {
+      void decideReview('approve', activeReview, activeStage.key)
+    } else if (activeStepStatus === 'rejected') {
+      void decideReview('force-approve', activeReview, activeStage.key)
+    }
+  }
+
+  const globalAdvanceState = (() => {
+    if (
+      task.status === 'ready'
+      && task.steps.every(
+        (step) => step.status === 'passed' || step.status === 'skipped'
+      )
+    ) {
+      return { label: '工作流已完成', disabled: true }
+    }
+    if (activeStepStatus === 'awaiting_review') {
+      return {
+        label: '审核通过并进入下一阶段',
+        disabled: reviewActionPending || !activeReview,
+      }
+    }
+    if (activeStepStatus === 'rejected') {
+      return {
+        label: '跳过审核并进入下一阶段',
+        disabled: reviewActionPending || !activeReview,
+      }
+    }
+    if (activeStepStatus === 'reviewing') {
+      return { label: '审核中…', disabled: true }
+    }
+    if (activeStepStatus === 'retrying') {
+      return { label: '自动重跑中…', disabled: true }
+    }
+    if (activeStepStatus === 'running') {
+      return { label: '当前阶段执行中…', disabled: true }
+    }
+    return { label: '等待当前阶段完成', disabled: true }
+  })()
+
   const findArtifact = (name: string, preferredStepKey?: string) => {
     const normalize = (value: string) =>
       value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
@@ -337,17 +797,56 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   return (
-    <div style={{
-      position: 'fixed', right: 0, top: 0, bottom: 0,
-      width: '85vw', maxWidth: 1200, minWidth: 800,
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`任务详情 ${task.title}`}
+      style={{
+      position: 'fixed',
+      left: panelBounds.x,
+      top: panelBounds.y,
+      width: panelBounds.width,
+      height: panelBounds.height,
       background: 'var(--bg)',
       boxShadow: '-4px 0 24px rgba(0,0,0,0.12)',
       display: 'flex', flexDirection: 'column',
-      zIndex: 1000, height: '100vh',
+      zIndex: 1000,
       animation: 'slideInRight 0.3s ease',
     }}>
+      {RESIZE_EDGES.map((edge) => (
+        <div
+          key={edge}
+          role="separator"
+          tabIndex={0}
+          aria-label={RESIZE_LABELS[edge]}
+          className={`task-detail-resize-handle task-detail-resize-${edge}`}
+          onPointerDown={(event) => beginPanelResize(edge, event)}
+          onKeyDown={(event) => resizeWithKeyboard(edge, event)}
+        />
+      ))}
+
       {/* ── Header ── */}
-      <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'flex-start', gap: 16, flexShrink: 0 }}>
+      <div
+        role="group"
+        tabIndex={0}
+        aria-label="拖动任务详情窗口"
+        className="task-detail-drag-header"
+        onPointerDown={beginPanelMove}
+        onKeyDown={moveWithKeyboard}
+        onDoubleClick={() => setPanelBounds(initialPanelBounds())}
+        title="拖动移动任务详情，双击恢复默认大小"
+        style={{
+          padding: '18px 24px',
+          borderBottom: '1px solid var(--border-soft)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 16,
+          flexShrink: 0,
+          cursor: 'move',
+          userSelect: 'none',
+        }}
+      >
+        <span className="task-detail-drag-grip" aria-hidden="true">⠿</span>
         <button className="btn-icon" onClick={onClose} style={{ marginTop: 2 }}>←</button>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>{task.title}</div>
@@ -372,9 +871,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       </div>
 
       {/* ── Content split ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div
+        ref={contentSplitRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'grid',
+          gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr`,
+          overflow: 'hidden',
+        }}
+      >
         {/* ── Left panel ── */}
-        <div style={{ width: '45%', minWidth: 380, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24, borderRight: '1px solid var(--border-soft)' }}>
+        <div style={{ minWidth: 0, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
 
           <div>
             <div style={{
@@ -464,15 +972,25 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 const progress = stageProgress[i]
                 const visualState = progress?.visualState || 'pending'
                 const isCompleted = visualState === 'completed'
-                const isCurrentActive = visualState === 'current'
+                const isCurrentActive = [
+                  'current', 'reviewing', 'awaiting_review', 'retrying',
+                ].includes(visualState)
                 const isFailed = visualState === 'failed'
                 const isSkipped = visualState === 'skipped'
                 const isSelected = i === selectedStage
                 const stageColor = stage.color || 'var(--accent)'
+                const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
+                const completedDuration = isCompleted
+                  ? formatStageDuration(progress?.started_at, progress?.ended_at)
+                  : null
                 const activeStateColor = task.status === 'paused'
                   ? 'var(--status-paused)'
                   : task.status === 'stopped'
                     ? 'var(--status-stopped)'
+                    : visualState === 'reviewing'
+                      ? 'var(--accent)'
+                      : visualState === 'retrying'
+                        ? 'var(--warn)'
                     : 'var(--status-running)'
                 const stateColor = isCompleted
                   ? 'var(--status-done)'
@@ -519,7 +1037,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     </div>
                     <span style={{
                       fontSize: 11, marginTop: 8, textAlign: 'center', whiteSpace: 'nowrap',
-                      color: stageColor,
+                      color: stageLabelColor,
                       fontWeight: isSelected || isCurrentActive ? 600 : 400,
                       textDecoration: isSelected ? 'underline' : 'none',
                       textUnderlineOffset: '3px',
@@ -537,6 +1055,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         {STAGE_STATE_LABELS[visualState]}
                       </span>
                     )}
+                    {completedDuration && (
+                      <div style={{
+                        fontSize: 10, color: 'var(--meta)', marginTop: 4,
+                        textAlign: 'center', lineHeight: 1.5, whiteSpace: 'nowrap',
+                      }}>
+                        耗时 {completedDuration}
+                      </div>
+                    )}
                     {/* Time info for active stage */}
                     {isCurrentActive && (
                       <div style={{ fontSize: 10, color: 'var(--meta)', marginTop: 4, textAlign: 'center', lineHeight: 1.5 }}>
@@ -553,6 +1079,100 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               })}
             </div>
           </div>
+
+          {selectedReview && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+                阶段审核
+              </div>
+              <div style={{
+                border: '1px solid var(--border-soft)', borderRadius: 8,
+                background: 'var(--surface)', padding: 12,
+                display: 'flex', flexDirection: 'column', gap: 9,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <strong style={{ fontSize: 13 }}>
+                    {selectedReview.mode === 'auto' ? '自动审核' : '人工审核'}
+                  </strong>
+                  <span className="status-badge" data-s={
+                    selectedReview.status === 'passed'
+                      ? 'passed'
+                      : selectedReview.status === 'rejected'
+                        ? 'failed'
+                        : 'paused'
+                  }>
+                    {selectedReview.status === 'passed'
+                      ? '已通过'
+                      : selectedReview.status === 'rejected'
+                        ? '未通过'
+                        : selectedReview.status === 'running'
+                          ? '审核中'
+                          : '等待确认'}
+                  </span>
+                </div>
+                {selectedReview.report && (
+                  <>
+                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                      {selectedReview.report.score !== null && (
+                        <strong>{selectedReview.report.score} 分 · </strong>
+                      )}
+                      {selectedReview.report.summary}
+                    </div>
+                    {selectedReview.report.issues.map((issue, index) => (
+                      <div key={`${issue.category}-${index}`} style={{
+                        fontSize: 11, lineHeight: 1.5, padding: '7px 9px',
+                        borderRadius: 6,
+                        background: issue.severity === 'error'
+                          ? 'color-mix(in oklab, var(--danger), transparent 90%)'
+                          : 'color-mix(in oklab, var(--warn), transparent 90%)',
+                      }}>
+                        <strong>{issue.description}</strong>
+                        {issue.suggestion && <div>{issue.suggestion}</div>}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {(selectedReview.status === 'pending' || selectedReview.status === 'rejected') && (
+                  <>
+                    <textarea
+                      rows={2}
+                      value={reviewComment}
+                      onChange={(event) => setReviewComment(event.target.value)}
+                      placeholder="审核意见（可选）"
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                      {selectedReview.status === 'pending' ? (
+                        <>
+                          <button
+                            className="btn-ghost"
+                            disabled={reviewActionPending}
+                            onClick={() => void decideReview('reject')}
+                          >
+                            驳回
+                          </button>
+                          <button
+                            className="btn-primary"
+                            disabled={reviewActionPending}
+                            onClick={() => void decideReview('approve')}
+                          >
+                            通过并进入下一阶段
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn-primary"
+                          disabled={reviewActionPending}
+                          onClick={() => void decideReview('force-approve')}
+                        >
+                          强制通过
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* I/O section — matching card-detail.html layout */}
           <div>
@@ -666,8 +1286,25 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
         </div>
 
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-label="调整任务详情左右分栏"
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(splitRatio * 100)}
+          className="task-detail-split-handle"
+          onPointerDown={beginSplitResize}
+          onKeyDown={resizeSplitWithKeyboard}
+          onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT_RATIO)}
+          title="拖动调整左右分栏，双击恢复 1:2"
+        >
+          <span aria-hidden="true" />
+        </div>
+
         {/* ── Right panel: Chat ── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
           {/* Chat header */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
@@ -678,7 +1315,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           </div>
 
           {/* Chat messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {historyLoading && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>加载中...</div>
             )}
@@ -702,7 +1339,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 const stageInfo = stages.find((s: any) => s.key === stageKey)
                 const stageLabel = stageInfo?.label || stageKey
                 return (
-                  <div key={stageKey} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div key={stageKey} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {/* Stage header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border-soft)' }}>
                       <span style={{ fontSize: 12, fontWeight: 600, color: stageInfo?.color || 'var(--accent)', background: `color-mix(in oklab, ${stageInfo?.color || 'var(--accent)'}, transparent 85%)`, padding: '2px 8px', borderRadius: 4 }}>
@@ -717,6 +1354,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     {msgs.map((msg: any, i: number) => {
                       const isUser = msg.role === 'user'
                       const isSystem = msg.role === 'system'
+                      const processEvents = Array.isArray(msg.events) ? msg.events : []
                       const sender = isUser ? '我' : isSystem ? '系统' : stageLabel
                       const initials = sender.slice(0, 2)
                       const senderColor = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : (stageInfo?.color || 'var(--fg)')
@@ -730,14 +1368,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               }
                             : undefined}
                           data-stage-last-message={i === msgs.length - 1 ? stageKey : undefined}
-                          style={{ display: 'flex', flexDirection: 'column', gap: 4, maxWidth: '85%', alignSelf: isUser ? 'flex-end' : 'flex-start' }}
+                          style={{ width: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, alignSelf: isUser ? 'flex-end' : 'flex-start' }}
                         >
                           {/* Time above message */}
                           <div style={{ fontSize: 10, color: 'var(--meta)', textAlign: isUser ? 'right' : 'left', paddingLeft: isUser ? 0 : 44, paddingRight: isUser ? 44 : 0 }}>
                             {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
                           </div>
                           {/* Message row */}
-                          <div style={{ display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                          <div style={{ width: '100%', minWidth: 0, display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}>
                             <div style={{
                               width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                               background: senderColor, color: '#fff',
@@ -747,14 +1385,35 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               {initials}
                             </div>
                             <div style={{
-                              flex: 1, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
-                              color: isUser ? '#fff' : 'var(--fg-2)',
-                              background: isUser ? 'var(--accent)' : 'var(--surface)',
-                              padding: '10px 14px', borderRadius: 12,
-                              borderBottomRightRadius: isUser ? 4 : 12,
-                              borderBottomLeftRadius: isUser ? 12 : 4,
+                              flex: 1, minWidth: 0, display: 'flex',
+                              flexDirection: 'column', gap: 6,
                             }}>
-                              {msg.content}
+                              {!isUser && !isSystem && (
+                                <ProcessTrace
+                                  events={processEvents}
+                                  startedAt={msg.started_at}
+                                  endedAt={msg.ended_at}
+                                />
+                              )}
+                              {msg.content && (
+                                <div style={{
+                                  fontSize: 13, lineHeight: 1.6,
+                                  color: isUser ? '#fff' : 'var(--fg-2)',
+                                  background: isUser ? 'var(--accent)' : 'var(--surface)',
+                                  padding: '10px 14px', borderRadius: 12,
+                                  borderBottomRightRadius: isUser ? 4 : 12,
+                                  borderBottomLeftRadius: isUser ? 12 : 4,
+                                  minWidth: 0, maxWidth: '100%', overflow: 'hidden',
+                                }}>
+                                  {isUser
+                                    ? (
+                                      <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                                        {msg.content}
+                                      </div>
+                                    )
+                                    : <MarkdownMessage content={String(msg.content)} />}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -765,39 +1424,22 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               })
             })()}
 
-            {/* Live tool use events */}
-            {events.filter((e: any) => e.type === 'tool_use').map((ev: any, i: number) => (
-              <div key={`tool-${i}`} style={{ display: 'flex', gap: 12, maxWidth: '85%' }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--warn)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>!</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{
-                    padding: '10px 14px', borderRadius: 12, fontSize: 12, lineHeight: 1.5,
-                    background: 'color-mix(in oklab, var(--warn), transparent 90%)',
-                    color: 'var(--fg-2)', border: '1px dashed var(--border)',
-                  }}>
-                    🔧 <strong>{String(ev.data.name)}</strong>
-                    {ev.data.input ? (
-                      <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                        {JSON.stringify(ev.data.input).slice(0, 120)}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* AI response as assistant bubble */}
-            {content && (
-              <div style={{ display: 'flex', gap: 12, maxWidth: '85%' }}>
+            {/* Live assistant process and response */}
+            {(hasProcessEvents(events) || content) && (
+              <div style={{ width: '85%', minWidth: 0, display: 'flex', gap: 12 }}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>AI</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{
-                    padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
-                    background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
-                    fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap',
-                  }}>
-                    {content}
-                  </div>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <ProcessTrace events={events} running={running} />
+                  {content && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
+                      background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
+                      minWidth: 0, maxWidth: '100%', overflow: 'hidden',
+                      fontSize: 13, lineHeight: 1.5,
+                    }}>
+                      <MarkdownMessage content={content} streaming={running} />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -827,11 +1469,24 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
             />
             {running ? (
-              <button onClick={handleCancel} style={{
-                width: 40, height: 40, borderRadius: '50%',
+              <button
+                onClick={handleCancel}
+                aria-label="停止运行"
+                title="停止运行"
+                style={{
+                width: 44, height: 44, borderRadius: '50%',
                 background: 'var(--danger)', color: '#fff', border: 'none', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>■</button>
+                padding: 0,
+              }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 14, height: 14, borderRadius: 2,
+                    background: 'currentColor', display: 'block',
+                  }}
+                />
+              </button>
             ) : (
               <button onClick={handleRun} style={{
                 width: 40, height: 40, borderRadius: '50%',
@@ -848,12 +1503,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       {/* ── Footer ── */}
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
         <button className="btn-ghost" onClick={onClose}>关闭</button>
-        <button className="btn-primary" onClick={() => {
-          if (selectedStage < stages.length - 1) {
-            setSelectedStage(selectedStage + 1)
-          }
-        }}>
-          推进到下一阶段
+        <button
+          className="btn-primary"
+          disabled={globalAdvanceState.disabled}
+          onClick={globalAdvance}
+          style={globalAdvanceState.disabled ? {
+            background: 'var(--border)',
+            color: 'var(--meta)',
+            borderColor: 'var(--border)',
+            cursor: 'not-allowed',
+            opacity: 1,
+          } : undefined}
+        >
+          {reviewActionPending ? '处理中…' : globalAdvanceState.label}
         </button>
       </div>
 

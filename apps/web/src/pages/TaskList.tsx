@@ -47,6 +47,8 @@ const addCardStyle: React.CSSProperties = {
 /* ── Status machine ── */
 const STATUS_LABELS: Record<string, string> = {
   ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
+  reviewing: '审核中', awaiting_review: '等待审核',
+  retrying: '自动重跑', rejected: '审核未通过',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -56,6 +58,10 @@ const STATUS_COLORS: Record<string, string> = {
   stopped: 'var(--status-stopped)',
   passed: 'var(--status-done)',
   failed: 'var(--status-failed)',
+  reviewing: 'var(--accent)',
+  awaiting_review: 'var(--status-paused)',
+  retrying: 'var(--warn)',
+  rejected: 'var(--status-failed)',
 }
 
 /* ── Extract lanes from steps.json ── */
@@ -125,7 +131,11 @@ function deriveTaskLane(
     steps.find((step) => step.status === status && laneKeys.has(step.step_key))?.step_key
 
   // Keep this priority aligned with the task detail's "current stage" rule.
-  return findLane('running')
+  return findLane('reviewing')
+    || findLane('awaiting_review')
+    || findLane('retrying')
+    || findLane('running')
+    || findLane('rejected')
     || findLane('failed')
     || findLane('pending')
     || [...steps].reverse().find(
@@ -468,7 +478,12 @@ export default function TaskList() {
               >
                 {laneTasks.map((t: any) => {
                   const status = t.status || 'ready'
-                  const statusColor = STATUS_COLORS[status] || 'var(--status-ready)'
+                  const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
+                    .find((candidate) =>
+                      (t.steps || []).some((step: any) => step.status === candidate)
+                    )
+                  const displayStatus = stageStatus || status
+                  const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
                   return (
                     <div
                       key={t.id}
@@ -498,9 +513,13 @@ export default function TaskList() {
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1 }}>{t.title}</span>
                         <span
                           className="status-badge"
-                          data-s={status}
+                          data-s={displayStatus}
+                          style={stageStatus ? {
+                            color: statusColor,
+                            background: `color-mix(in oklab, ${statusColor}, transparent 86%)`,
+                          } : undefined}
                         >
-                          {STATUS_LABELS[status] || status}
+                          {STATUS_LABELS[displayStatus] || displayStatus}
                         </span>
                       </div>
                       {t.description && (

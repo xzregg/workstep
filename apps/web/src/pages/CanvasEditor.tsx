@@ -9,7 +9,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useProjectStore } from '../stores/projectStore'
-import { engineApi, type EngineInfo } from '../api/client'
+import { engineApi, type EngineInfo, type EngineModel } from '../api/client'
 import { engineLabel } from '../engineMeta'
 
 /* ══════════════════════════════════════════
@@ -19,6 +19,13 @@ import { engineLabel } from '../engineMeta'
 interface SubOutput { name: string; type: string }
 interface InputField { name: string; type: string; outputs: SubOutput[] }
 interface OutputField { name: string; type: string }
+interface ReviewConfig {
+  auto: boolean
+  maxRetries: number
+  engine: string
+  model: string
+  prompt: string
+}
 
 interface StepNodeData {
   nodeId: number
@@ -30,6 +37,7 @@ interface StepNodeData {
   prompt: string
   inputs: InputField[]
   outputs: OutputField[]
+  review?: ReviewConfig
   [k: string]: unknown
 }
 
@@ -141,6 +149,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       model: n.model || '',
       color: n.color || '#888888',
       prompt: n.prompt || '',
+      review: n.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       position: n.position,
       inputs: (n.inputs || []).map((inp: any) => ({
         name: inp.name || '', type: inp.type || 'any',
@@ -186,6 +195,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       model: s.model || '',
       color: s.color || '#888888',
       prompt: s.prompt || '',
+      review: s.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       inputs: (s.inputs || []).map((inp: any) => ({
         name: inp.name || inp, type: inp.type || 'document',
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })),
@@ -422,6 +432,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   onClose: () => void
 }) {
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
+  const [stageModels, setStageModels] = useState<EngineModel[]>([])
+  const [reviewModels, setReviewModels] = useState<EngineModel[]>([])
+  const [stageModelsLoading, setStageModelsLoading] = useState(false)
+  const [reviewModelsLoading, setReviewModelsLoading] = useState(false)
 
   // Sync draft when node changes (e.g. clicking different node)
   useEffect(() => {
@@ -451,6 +465,53 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   const currentEngineInstalled = installedEngines.some(
     (engine) => engine.id === draft.engine
   )
+  const review = draft.review || {
+    auto: false, maxRetries: 1, engine: '', model: '', prompt: '',
+  }
+  const updateReview = (field: keyof ReviewConfig, value: string | number | boolean) => {
+    updateDraft('review', { ...review, [field]: value })
+  }
+  const reviewEngine = review.engine || draft.engine
+
+  useEffect(() => {
+    if (!draft.engine) {
+      setStageModels([])
+      return
+    }
+    let active = true
+    setStageModelsLoading(true)
+    engineApi.models(draft.engine)
+      .then((result) => {
+        if (active) setStageModels(result.models || [])
+      })
+      .catch(() => {
+        if (active) setStageModels([])
+      })
+      .finally(() => {
+        if (active) setStageModelsLoading(false)
+      })
+    return () => { active = false }
+  }, [draft.engine])
+
+  useEffect(() => {
+    if (!reviewEngine) {
+      setReviewModels([])
+      return
+    }
+    let active = true
+    setReviewModelsLoading(true)
+    engineApi.models(reviewEngine)
+      .then((result) => {
+        if (active) setReviewModels(result.models || [])
+      })
+      .catch(() => {
+        if (active) setReviewModels([])
+      })
+      .finally(() => {
+        if (active) setReviewModelsLoading(false)
+      })
+    return () => { active = false }
+  }, [reviewEngine])
 
   return (
     <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -512,7 +573,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
               <select
                 value={draft.engine}
-                onChange={(e) => updateDraft('engine', e.target.value)}
+                onChange={(e) => {
+                  updateDraft('engine', e.target.value)
+                  setDraft((current) => ({ ...current, engine: e.target.value, model: '' }))
+                }}
                 disabled={enginesLoading || installedEngines.length === 0}
                 style={{ height: 32 }}
               >
@@ -569,8 +633,121 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </div>
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
-            <input value={draft.model} onChange={(e) => updateDraft('model', e.target.value)} placeholder="如 gpt-5.5 / 留空用默认" />
+            <select
+              value={draft.model}
+              disabled={stageModelsLoading}
+              onChange={(e) => updateDraft('model', e.target.value)}
+            >
+              <option value="">
+                {stageModelsLoading ? '模型加载中…' : '使用引擎默认模型'}
+              </option>
+              {draft.model && !stageModels.some((model) => model.id === draft.model) && (
+                <option value={draft.model}>{draft.model}（当前配置）</option>
+              )}
+              {stageModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label || model.id}
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
+      </div>
+
+      <div>
+        <div style={sectionTitle}>阶段审核</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={review.auto}
+              onChange={(e) => updateReview('auto', e.target.checked)}
+              style={{ width: 16, height: 16 }}
+            />
+            自动启动审核 Agent
+          </label>
+          {!review.auto && (
+            <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+              阶段完成后将暂停，等待用户确认进入下一阶段。
+            </div>
+          )}
+          {review.auto && (
+            <>
+              <div>
+                <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                  审核不通过自动重跑次数
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={review.maxRetries}
+                  onChange={(e) => updateReview(
+                    'maxRetries',
+                    Math.max(0, Number.parseInt(e.target.value || '0', 10)),
+                  )}
+                />
+                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--meta)' }}>
+                  指首次执行之外允许的额外重跑次数。
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核引擎</label>
+                  <select
+                    value={review.engine}
+                    onChange={(e) => {
+                      updateDraft('review', {
+                        ...review,
+                        engine: e.target.value,
+                        model: '',
+                      })
+                    }}
+                  >
+                    <option value="">继承阶段引擎</option>
+                    {installedEngines.map((engine) => (
+                      <option key={engine.id} value={engine.id}>
+                        {engineLabel(engine.id)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核模型</label>
+                  <select
+                    value={review.model}
+                    disabled={reviewModelsLoading}
+                    onChange={(e) => updateReview('model', e.target.value)}
+                  >
+                    <option value="">
+                      {reviewModelsLoading
+                        ? '模型加载中…'
+                        : review.engine
+                          ? '使用审核引擎默认模型'
+                          : '继承阶段模型'}
+                    </option>
+                    {review.model && !reviewModels.some((model) => model.id === review.model) && (
+                      <option value={review.model}>{review.model}（当前配置）</option>
+                    )}
+                    {reviewModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label || model.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核要求</label>
+                <textarea
+                  rows={4}
+                  value={review.prompt}
+                  onChange={(e) => updateReview('prompt', e.target.value)}
+                  placeholder="描述审核标准、必需产物和验收条件…"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -672,7 +849,7 @@ function CanvasEditorInner() {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
   }, [setEdges])
 
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+  const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as StepNodeData)
     setContextMenu(null)
   }, [])
@@ -699,7 +876,7 @@ function CanvasEditorInner() {
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -751,6 +928,7 @@ function CanvasEditorInner() {
         position: n.position,
         engine: d.engine, model: d.model,
         prompt: d.prompt,
+        review: d.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
         inputs: d.inputs,
         outputs: d.outputs,
       }
@@ -898,7 +1076,7 @@ function CanvasEditorInner() {
         <div style={{ flex: 1 }}>
           <ReactFlow nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect} onNodeClick={onNodeClick}
+            onConnect={onConnect} onNodeDoubleClick={onNodeDoubleClick}
             onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView deleteKeyCode={null}
             connectionLineStyle={{ stroke: '#999', strokeWidth: 2, strokeDasharray: '5 5' }}
