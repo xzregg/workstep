@@ -106,6 +106,29 @@ CREATE INDEX idx_artifacts_task_step ON artifacts(task_id, step_key);
 CREATE INDEX idx_agent_sessions_task ON agent_sessions(task_id, step_key);
 ```
 
+## 状态字段语义
+
+`tasks.status` 与 `task_steps.status` 是两个不同层级的状态机，前端不得互相替代：
+
+| 字段 | 当前状态 | 含义 | UI 消费 |
+|---|---|---|---|
+| `tasks.status` | `ready / running / paused / stopped` | 整张任务是否运行、暂停或停止 | 看板卡片左边框和状态徽标 |
+| `task_steps.status` | `pending / running / passed / failed / skipped` | 单个阶段的执行结果 | 泳道位置、阶段时间线、产物完成状态 |
+
+任务状态颜色的唯一规范见 `plans/05-frontend.md` 的“看板任务状态与颜色规范”。
+
+### `ready` 的已知歧义
+
+当前实现同时在新建任务和所有阶段成功结束后写入 `tasks.status = "ready"`。数据库因此无法仅凭任务状态区分“从未运行”和“已经完成”。
+
+目标迁移方案：
+
+1. 保留 `ready` 表示未开始；
+2. 新增 `passed`（或最终统一为 `completed`）表示全部阶段完成；
+3. 保留 `paused` 表示可继续的人为暂停；
+4. 用 `stopped` 表示主动停止/取消，用 `failed` 表示执行失败；
+5. 迁移时结合 `task_steps` 判断旧 `ready` 记录：全部阶段为 `passed/skipped` 时迁移为完成态，否则仍为 `ready`。
+
 ## Peewee 模型
 
 ```python

@@ -18,6 +18,7 @@ class Step:
     inputs: list[dict] = field(default_factory=list)
     outputs: list[dict] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
+    condition: str = ""  # Optional condition expression for conditional routing
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -31,6 +32,7 @@ class Step:
             inputs=d.get("inputs", []),
             outputs=d.get("outputs", []),
             depends_on=d.get("dependsOn", []),
+            condition=d.get("condition", ""),
         )
 
 
@@ -72,20 +74,82 @@ class DAGScheduler:
         for key in self.steps:
             dfs(key)
 
-    def get_ready_steps(self, completed: set[str], running: set[str] | None = None) -> list[Step]:
+    def get_ready_steps(
+        self,
+        completed: set[str],
+        running: set[str] | None = None,
+        step_results: dict[str, bool] | None = None,
+    ) -> list[Step]:
         """Return steps whose dependencies are all completed and not already running.
 
         Args:
             completed: Set of step keys that have passed.
             running: Set of step keys currently executing.
+            step_results: Optional dict mapping step_key → passed (bool) for condition evaluation.
         """
         running = running or set()
+        step_results = step_results or {}
         return [
             s for s in self.steps.values()
             if s.key not in completed
             and s.key not in running
             and all(dep in completed for dep in s.depends_on)
+            and self._evaluate_condition(s.condition, step_results)
         ]
+
+    def _evaluate_condition(self, condition: str, step_results: dict[str, bool]) -> bool:
+        """Evaluate a condition expression against step results.
+
+        Condition syntax:
+        - Empty string: always true (no condition)
+        - "step_key:passed" or "step_key:failed": check step result
+        - "step_key:passed && other_key:failed": AND conditions
+        - "step_key:passed || other_key:passed": OR conditions
+
+        Returns True if the step should run, False if it should be skipped.
+        """
+        if not condition:
+            return True
+
+        # Simple condition evaluation
+        try:
+            # Handle OR conditions
+            if "||" in condition:
+                parts = condition.split("||")
+                return any(self._eval_single_condition(p.strip(), step_results) for p in parts)
+
+            # Handle AND conditions
+            if "&&" in condition:
+                parts = condition.split("&&")
+                return all(self._eval_single_condition(p.strip(), step_results) for p in parts)
+
+            # Single condition
+            return self._eval_single_condition(condition.strip(), step_results)
+
+        except Exception:
+            # If condition parsing fails, default to running the step
+            return True
+
+    def _eval_single_condition(self, cond: str, step_results: dict[str, bool]) -> bool:
+        """Evaluate a single condition like 'step_key:passed' or 'step_key:failed'."""
+        if ":" not in cond:
+            return True
+
+        step_key, expected = cond.split(":", 1)
+        step_key = step_key.strip()
+        expected = expected.strip().lower()
+
+        actual = step_results.get(step_key)
+        if actual is None:
+            # Step hasn't run yet, can't evaluate
+            return True
+
+        if expected == "passed":
+            return actual is True
+        elif expected == "failed":
+            return actual is False
+        else:
+            return True
 
     def get_downstream(self, step_key: str) -> list[Step]:
         """Return all steps that directly depend on the given step."""

@@ -15,9 +15,13 @@ from api.project import router as project_router
 from api.task import router as task_router
 from api.history import router as history_router
 from api.fs import router as fs_router
+from api.search import router as search_router
+from api.templates import router as templates_router
+from api.engine import router as engine_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
+from services.workflow_runtime import WorkflowRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +30,24 @@ event_bus = EventBus()
 
 # Task service — initialized in lifespan
 task_service: TaskService | None = None
+workflow_runtime: WorkflowRuntime | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service
+    global task_service, workflow_runtime
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     project_manager._load_saved_projects()
     task_service = TaskService(event_bus)
-    yield
-    logger.info("WorkStep Daemon shutting down")
-    await event_bus.close()
-    project_manager.close_all()
+    workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    try:
+        yield
+    finally:
+        logger.info("WorkStep Daemon shutting down")
+        await workflow_runtime.shutdown()
+        await event_bus.close()
+        project_manager.close_all()
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan)
@@ -48,6 +57,9 @@ app.include_router(project_router)
 app.include_router(task_router)
 app.include_router(history_router)
 app.include_router(fs_router)
+app.include_router(search_router)
+app.include_router(templates_router)
+app.include_router(engine_router)
 
 
 # --- REST API ---
@@ -116,8 +128,8 @@ async def _handle_client_message(raw: str):
 
         elif msg_type == "cancel":
             task_id = msg.get("task_id")
-            if task_id and task_service:
-                await task_service.cancel_task(task_id)
+            if task_id and workflow_runtime:
+                await workflow_runtime.cancel(task_id)
                 logger.info("Cancelled task: %s", task_id)
 
         else:

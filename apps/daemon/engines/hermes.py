@@ -7,13 +7,13 @@ import os
 import shutil
 from typing import AsyncIterator
 
-from engines.base import BaseLLMEngine
+from engines.acp_base import AcpEngineBase
 from engines.events import InternalEvent
 
 logger = logging.getLogger(__name__)
 
 
-class HermesEngine(BaseLLMEngine):
+class HermesEngine(AcpEngineBase):
     """Hermes ACP engine using JSON-RPC over stdin/stdout.
 
     Lifecycle: initialize → session/new → session/prompt → stream updates.
@@ -43,10 +43,17 @@ class HermesEngine(BaseLLMEngine):
 
     @staticmethod
     def resolve_binary() -> str | None:
+        override = HermesEngine.get_binary_override()
+        if override is not None:
+            return override if os.path.isfile(override) else None
         env_bin = os.environ.get("HERMES_BIN")
         if env_bin and os.path.isfile(env_bin):
             return env_bin
         return shutil.which("hermes")
+
+    def get_command(self) -> list[str]:
+        binary = self.resolve_binary()
+        return [binary, "acp", "--accept-hooks"] if binary else []
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -82,67 +89,14 @@ class HermesEngine(BaseLLMEngine):
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        binary = self.resolve_binary()
-        if not binary:
-            yield InternalEvent(type="error", data={"message": "hermes binary not found"})
-            return
-
-        cmd = [binary, "acp", "--accept-hooks"]
-        logger.info("Spawning: %s (cwd=%s)", " ".join(cmd), cwd)
-
-        self._process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        async for event in super().spawn(
+            prompt=prompt,
             cwd=cwd,
-        )
-        self._running = True
-
-        yield InternalEvent(type="status", data={"status": "initializing"})
-
-        # 1. Initialize
-        await self._send_rpc("initialize", {
-            "protocolVersion": 1,
-            "clientInfo": {"name": "WorkStep", "version": "0.1.0"},
-        })
-
-        # 2. Read init response, then create session
-        init_resp = await self._read_until_response(self._request_id)
-        if not init_resp:
-            yield InternalEvent(type="error", data={"message": "Hermes init failed"})
-            return
-
-        # 3. Create session
-        await self._send_rpc("session/new", {})
-        sess_resp = await self._read_until_response(self._request_id)
-        if not sess_resp:
-            yield InternalEvent(type="error", data={"message": "Hermes session/new failed"})
-            return
-
-        # 4. Set model if specified
-        if model:
-            await self._send_rpc("session/set_model", {"model": model})
-
-        # 5. Send prompt
-        await self._send_rpc("session/prompt", {
-            "content": [{"type": "text", "text": prompt}],
-        })
-        prompt_id = self._request_id
-
-        yield InternalEvent(type="status", data={"status": "running"})
-
-        # 6. Stream responses until prompt completes
-        async for event in self._stream_until_prompt_done(prompt_id):
+            model=model,
+            add_dirs=add_dirs,
+            session_id=session_id,
+        ):
             yield event
-
-        exit_code = await self._process.wait()
-        self._running = False
-
-        if exit_code != 0:
-            yield InternalEvent(type="error", data={"message": f"Exit code {exit_code}"})
-        else:
-            yield InternalEvent(type="status", data={"status": "done"})
 
     async def _read_until_response(self, target_id: int) -> dict | None:
         """Read lines until we get a response matching target_id."""

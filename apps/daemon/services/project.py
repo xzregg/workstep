@@ -98,6 +98,35 @@ class Project:
         return self.workstep_dir / "steps.json"
 
 
+@dataclass
+class ProjectContext:
+    """A scoped activation of one project's database for shared Peewee models."""
+
+    project: Project
+    _token: object | None = field(default=None, init=False, repr=False)
+
+    def __enter__(self) -> Project:
+        if self._token is not None:
+            raise RuntimeError("ProjectContext is already active")
+        if self.project.db.is_closed():
+            self.project.db.connect(reuse_if_open=True)
+        from models import db_proxy
+        self._token = db_proxy.activate(self.project.db)
+        return self.project
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        from models import db_proxy
+        token, self._token = self._token, None
+        if token is not None:
+            db_proxy.reset(token)
+
+    async def __aenter__(self) -> Project:
+        return self.__enter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.__exit__(exc_type, exc_val, exc_tb)
+
+
 class ProjectManager:
     """Manages multiple project workspaces.
 
@@ -124,7 +153,12 @@ class ProjectManager:
         config_store.set("projects", list(existing_by_path.values()))
 
     def bind_project(self, path: str | Path) -> "Project":
-        """Switch db_proxy to the given project's database. Must call before querying tasks."""
+        """Bind this execution context to a project's database.
+
+        This compatibility API intentionally leaves the project active for the
+        caller. New code that needs a bounded lifetime should use
+        :meth:`activate_project` instead.
+        """
         from models import db_proxy
         path_str = str(Path(path).resolve())
         proj = self._projects.get(path_str)
@@ -132,8 +166,16 @@ class ProjectManager:
             raise ValueError(f"Project not registered: {path_str}")
         if proj.db.is_closed():
             proj.db.connect(reuse_if_open=True)
-        db_proxy.initialize(proj.db)
+        db_proxy.activate(proj.db)
         return proj
+
+    def activate_project(self, path: str | Path) -> ProjectContext:
+        """Return a context manager that activates a project and then restores."""
+        path_str = str(Path(path).resolve())
+        proj = self._projects.get(path_str)
+        if not proj:
+            raise ValueError(f"Project not registered: {path_str}")
+        return ProjectContext(proj)
 
     def get_project_by_id(self, project_id: str) -> "Project | None":
         """Find a project by its unique ID."""
@@ -143,13 +185,18 @@ class ProjectManager:
         return None
 
     def bind_project_by_id(self, project_id: str) -> "Project":
-        """Switch db_proxy to the project identified by ID."""
+        """Bind this execution context to the project identified by ID."""
         proj = self.get_project_by_id(project_id)
         if not proj:
             raise ValueError(f"Project not found: {project_id}")
         return self.bind_project(str(proj.path))
-        db_proxy.initialize(proj.db)
-        return proj
+
+    def activate_project_by_id(self, project_id: str) -> ProjectContext:
+        """Return a scoped database activation for a project ID."""
+        proj = self.get_project_by_id(project_id)
+        if not proj:
+            raise ValueError(f"Project not found: {project_id}")
+        return ProjectContext(proj)
 
     def _load_saved_projects(self):
         """Load and register projects from config store on startup."""

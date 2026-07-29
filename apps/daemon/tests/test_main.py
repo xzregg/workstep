@@ -59,3 +59,69 @@ async def test_event_bus_unsubscribe():
     await event_bus.publish({"type": "after_unsub"})
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(q.get(), timeout=0.1)
+
+
+@pytest.mark.anyio
+async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch):
+    """Daemon shutdown drains owned workflow tasks before DB and event teardown."""
+    import main
+
+    events = []
+
+    class RuntimeStub:
+        async def shutdown(self):
+            events.append("runtime-shutdown")
+
+    class BusStub:
+        async def close(self):
+            events.append("bus-close")
+
+    class ProjectManagerStub:
+        def _load_saved_projects(self):
+            events.append("projects-load")
+
+        def close_all(self):
+            events.append("projects-close")
+
+    monkeypatch.setattr(main, "event_bus", BusStub())
+    monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
+    monkeypatch.setattr(main, "TaskService", lambda bus: object())
+    monkeypatch.setattr(
+        main,
+        "WorkflowRuntime",
+        lambda bus, project_manager: RuntimeStub(),
+    )
+
+    async with main.lifespan(main.app):
+        events.append("serving")
+
+    assert events == [
+        "projects-load",
+        "serving",
+        "runtime-shutdown",
+        "bus-close",
+        "projects-close",
+    ]
+
+
+@pytest.mark.anyio
+async def test_websocket_cancel_reaches_the_pipeline_runtime(monkeypatch):
+    """The WebSocket cancel command targets the owner of multi-step runs."""
+    import json
+    import main
+
+    cancelled = []
+
+    class RuntimeStub:
+        async def cancel(self, task_id):
+            cancelled.append(task_id)
+            return True
+
+    monkeypatch.setattr(main, "workflow_runtime", RuntimeStub())
+    monkeypatch.setattr(main, "task_service", None)
+
+    await main._handle_client_message(
+        json.dumps({"type": "cancel", "task_id": "task-1"})
+    )
+
+    assert cancelled == ["task-1"]

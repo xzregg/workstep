@@ -7,9 +7,10 @@ import time
 import uuid
 from pathlib import Path
 
-from models import Task, TaskStep, Message
+from models import Message, StepRun, Task, TaskStep, WorkflowRun
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt
+from services.config import config_store
 from engines.registry import create_engine
 from engines.events import InternalEvent
 from streaming.bus import EventBus
@@ -31,6 +32,7 @@ class TaskRunner:
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
+        self._cancelled_steps: set[str] = set()
 
     async def run_pipeline(
         self,
@@ -38,6 +40,7 @@ class TaskRunner:
         steps_config: dict,
         artifacts_dir: Path,
         user_input: str = "",
+        workflow_run: WorkflowRun | None = None,
     ) -> None:
         """Run the full pipeline for a task.
 
@@ -71,16 +74,40 @@ class TaskRunner:
         # Track completed/running steps
         completed = set()
         running = set()
+        failed = set()
 
-        # Load already-completed steps
+        # A task may intentionally start from a later stage. Persisted skipped
+        # stages satisfy their DAG dependencies without producing artifacts.
         for ts in TaskStep.select().where(
-            (TaskStep.task == task) & (TaskStep.status == "passed")
+            (TaskStep.task == task) & (TaskStep.status == "skipped")
         ):
             completed.add(ts.step_key)
 
+        # Completion belongs to a workflow run, not permanently to the task.
+        # Legacy direct calls have no run record, so retain their old TaskStep
+        # resume behavior.
+        if workflow_run is not None:
+            for step_run in StepRun.select().where(
+                (StepRun.run == workflow_run)
+                & (StepRun.status == "succeeded")
+            ):
+                completed.add(step_run.step_key)
+        else:
+            for ts in TaskStep.select().where(
+                (TaskStep.task == task) & (TaskStep.status == "passed")
+            ):
+                completed.add(ts.step_key)
+
         try:
             await self._execute_dag(
-                task, scheduler, artifacts_dir, user_input, completed, running
+                task,
+                scheduler,
+                artifacts_dir,
+                user_input,
+                completed,
+                running,
+                failed,
+                workflow_run,
             )
         except Exception as e:
             logger.exception("Pipeline failed for task %s", task.id)
@@ -104,21 +131,41 @@ class TaskRunner:
         user_input: str,
         completed: set[str],
         running: set[str],
+        failed: set[str],
+        workflow_run: WorkflowRun | None,
     ) -> None:
         """Recursively execute ready steps, respecting DAG dependencies."""
-        ready = scheduler.get_ready_steps(completed, running)
+        ready = scheduler.get_ready_steps(completed, running | failed)
         if not ready:
             return  # Pipeline complete or no more work
 
         # Fan-out: run all ready steps in parallel
         coros = [
-            self._run_step(task, step, artifacts_dir, user_input, completed, running)
+            self._run_step(
+                task,
+                step,
+                artifacts_dir,
+                user_input,
+                completed,
+                running,
+                failed,
+                workflow_run,
+            )
             for step in ready
         ]
         await asyncio.gather(*coros)
 
         # Recurse: check for newly ready steps
-        await self._execute_dag(task, scheduler, artifacts_dir, user_input, completed, running)
+        await self._execute_dag(
+            task,
+            scheduler,
+            artifacts_dir,
+            user_input,
+            completed,
+            running,
+            failed,
+            workflow_run,
+        )
 
     async def _run_step(
         self,
@@ -128,10 +175,17 @@ class TaskRunner:
         user_input: str,
         completed: set[str],
         running: set[str],
+        failed: set[str],
+        workflow_run: WorkflowRun | None,
     ) -> None:
         """Execute a single pipeline step."""
         step_key = step.key
         run_key = f"{task.id}:{step_key}"
+        resolved_model = (
+            step.model
+            or config_store.get_engine_default_model(step.engine)
+            or None
+        )
 
         # Update step status
         ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == step_key))
@@ -141,6 +195,28 @@ class TaskRunner:
         ts.save()
 
         running.add(step_key)
+
+        step_run = None
+        if workflow_run is not None:
+            attempt = (
+                StepRun.select()
+                .where(
+                    (StepRun.run == workflow_run)
+                    & (StepRun.step_key == step_key)
+                )
+                .count()
+                + 1
+            )
+            step_run = StepRun.create(
+                id=str(uuid.uuid4()),
+                run=workflow_run,
+                step_key=step_key,
+                attempt=attempt,
+                status="running",
+                engine=step.engine,
+                model=resolved_model,
+                started_at=int(time.time()),
+            )
 
         await self._publish(task.id, step_key, {
             "type": "status",
@@ -162,7 +238,7 @@ class TaskRunner:
             step_key=step_key,
             role="assistant",
             engine=step.engine,
-            model=step.model or None,
+            model=resolved_model,
             run_id=msg_id,
             run_status="running",
             position=1,
@@ -172,38 +248,70 @@ class TaskRunner:
         # Select engine
         engine = create_engine(step.engine)
         if not engine:
-            await self._fail_step(ts, task, step_key, f"Engine '{step.engine}' not available")
+            error = f"Engine '{step.engine}' not available"
+            await self._fail_step(ts, task, step_key, error)
+            failed.add(step_key)
+            message = Message.get_by_id(msg_id)
+            message.events_json = json.dumps([
+                InternalEvent(type="error", data={"message": error}).to_dict()
+            ])
+            message.run_status = "failed"
+            message.ended_at = int(time.time())
+            message.save()
+            if step_run is not None:
+                step_run.status = "failed"
+                step_run.error = error
+                step_run.ended_at = int(time.time())
+                step_run.save()
             running.discard(step_key)
             return
 
+        self._cancelled_steps.discard(run_key)
         self._running_engines[run_key] = engine
         events_collected = []
         content_parts = []
+        reported_error: str | None = None
 
         try:
-            async for event in engine.spawn(prompt=prompt, cwd=task.cwd, model=step.model or None):
+            async for event in engine.spawn(
+                prompt=prompt,
+                cwd=task.cwd,
+                model=resolved_model,
+            ):
                 events_collected.append(event.to_dict())
                 if event.type == "text_delta":
                     content_parts.append(event.data.get("delta", ""))
+                elif event.type == "error" and reported_error is None:
+                    reported_error = str(
+                        event.data.get("message") or "Engine reported an error"
+                    )
                 await self._publish(task.id, step_key, {
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
 
-            # Step passed
-            ts.status = "passed"
-            ts.ended_at = int(time.time())
-            ts.save()
-            completed.add(step_key)
+            if run_key in self._cancelled_steps:
+                await self._fail_step(ts, task, step_key, "Cancelled")
+                failed.add(step_key)
+            elif reported_error is not None:
+                await self._fail_step(ts, task, step_key, reported_error)
+                failed.add(step_key)
+            else:
+                # Step passed
+                ts.status = "passed"
+                ts.ended_at = int(time.time())
+                ts.save()
+                completed.add(step_key)
 
-            await self._publish(task.id, step_key, {
-                "type": "status",
-                "data": {"status": "passed", "step_key": step_key, "task_id": task.id},
-            })
+                await self._publish(task.id, step_key, {
+                    "type": "status",
+                    "data": {"status": "passed", "step_key": step_key, "task_id": task.id},
+                })
 
         except Exception as e:
             logger.exception("Step %s failed", step_key)
             await self._fail_step(ts, task, step_key, str(e))
+            failed.add(step_key)
             events_collected.append(InternalEvent(type="error", data={"message": str(e)}).to_dict())
 
         finally:
@@ -219,7 +327,15 @@ class TaskRunner:
                 logger.exception("Failed to update message %s", msg_id)
 
             self._running_engines.pop(run_key, None)
+            self._cancelled_steps.discard(run_key)
             running.discard(step_key)
+            if step_run is not None:
+                step_run.status = (
+                    "succeeded" if ts.status == "passed" else "failed"
+                )
+                step_run.error = ts.error
+                step_run.ended_at = int(time.time())
+                step_run.save()
 
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""
@@ -232,6 +348,10 @@ class TaskRunner:
             "type": "error",
             "data": {"message": error, "task_id": task.id, "step_key": step_key},
         })
+        await self._publish(task.id, step_key, {
+            "type": "status",
+            "data": {"status": "failed", "task_id": task.id, "step_key": step_key},
+        })
 
     async def cancel_step(self, task_id: str, step_key: str) -> bool:
         """Cancel a running step."""
@@ -239,7 +359,25 @@ class TaskRunner:
         engine = self._running_engines.get(run_key)
         if not engine:
             return False
+        self._cancelled_steps.add(run_key)
         await engine.stop()
+        return True
+
+    async def cancel_task(self, task_id: str) -> bool:
+        """Cancel every running step for a task."""
+        prefix = f"{task_id}:"
+        run_keys = [
+            run_key
+            for run_key in self._running_engines
+            if run_key.startswith(prefix)
+        ]
+        if not run_keys:
+            return False
+        for run_key in run_keys:
+            self._cancelled_steps.add(run_key)
+        await asyncio.gather(
+            *(self._running_engines[run_key].stop() for run_key in run_keys)
+        )
         return True
 
     async def _publish(self, task_id: str, step_key: str, event: dict):

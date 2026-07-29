@@ -9,6 +9,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useProjectStore } from '../stores/projectStore'
+import { engineApi, type EngineInfo } from '../api/client'
+import { engineLabel } from '../engineMeta'
 
 /* ══════════════════════════════════════════
    Types — matching canvas-editor.html JSON
@@ -146,11 +148,32 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       })),
       outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
     }))
-    const connections: CanvasConnection[] = (stepsJson.connections || []).map((c: any) => ({
-      from: c.from, fromPort: c.fromPort || 0,
-      to: c.to, toPort: c.toPort || 0,
-      label: c.label || '',
-    }))
+    const nodeById = new Map(nodes.map((node) => [node.nodeId, node]))
+    const connections: CanvasConnection[] = (stepsJson.connections || [])
+      .map((c: any) => ({
+        from: c.from, fromPort: c.fromPort || 0,
+        to: c.to, toPort: c.toPort || 0,
+        label: c.label || '',
+      }))
+      .filter((connection: CanvasConnection) => {
+        const source = nodeById.get(connection.from)
+        const target = nodeById.get(connection.to)
+        if (!source || !target) return false
+        const sourcePortCount = Math.max(
+          1,
+          source.inputs.reduce(
+            (count, input) => count + (input.outputs?.length || 0),
+            0,
+          ),
+        )
+        const targetPortCount = Math.max(1, target.inputs.length)
+        return (
+          connection.fromPort >= 0 &&
+          connection.fromPort < sourcePortCount &&
+          connection.toPort >= 0 &&
+          connection.toPort < targetPortCount
+        )
+      })
     return { nodes, connections }
   }
   // Legacy format: { steps }
@@ -375,8 +398,25 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
 /* ══════════════════════════════════════════
    Node Config Panel — edits are local until saved
    ══════════════════════════════════════════ */
-function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
+const STEP_TYPE_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/
+const STAGE_COLOR_PALETTE = [
+  '#0071e3', '#7c3aed', '#db2777', '#dc2626',
+  '#d97706', '#16a34a', '#059669', '#0891b2',
+  '#2563eb', '#4f46e5', '#9333ea', '#c026d3',
+]
+
+function randomStageColor(currentColor?: string) {
+  const candidates = STAGE_COLOR_PALETTE.filter((color) => color !== currentColor)
+  return candidates[Math.floor(Math.random() * candidates.length)]
+}
+
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose }: {
   node: StepNodeData
+  unavailableKeys: string[]
+  engines: EngineInfo[]
+  enginesLoading: boolean
+  enginesError: string
+  onValidationChange: (error: string) => void
   onSave: (data: StepNodeData) => void
   onRequestDelete: () => void
   onClose: () => void
@@ -386,7 +426,7 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
   // Sync draft when node changes (e.g. clicking different node)
   useEffect(() => {
     setDraft({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
-  }, [node.nodeId])
+  }, [node])
 
   const updateDraft = (field: string, value: any) => {
     let updated = { ...draft, [field]: value }
@@ -394,8 +434,26 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
     setDraft(updated)
   }
 
+  const normalizedKey = draft.key.trim()
+  const keyError = !normalizedKey
+    ? '阶段标识不能为空'
+    : !STEP_TYPE_PATTERN.test(normalizedKey)
+      ? '需以英文字母开头，只能包含字母、数字、下划线或连字符'
+      : unavailableKeys.includes(normalizedKey)
+        ? `阶段标识 “${normalizedKey}” 已存在`
+        : ''
+
+  useEffect(() => {
+    onValidationChange(keyError)
+  }, [keyError, onValidationChange])
+
+  const installedEngines = engines.filter((engine) => engine.installed)
+  const currentEngineInstalled = installedEngines.some(
+    (engine) => engine.id === draft.engine
+  )
+
   return (
-    <div style={{ width: 340, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
@@ -404,7 +462,12 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
           <span style={{ fontSize: 15, fontWeight: 600 }}>{draft.label}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button className="btn-primary" style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => onSave(draft)}>
+          <button
+            className="btn-primary"
+            style={{ fontSize: 12, padding: '4px 12px' }}
+            disabled={Boolean(keyError)}
+            onClick={() => onSave({ ...draft, key: normalizedKey })}
+          >
             保存
           </button>
           <button className="btn-icon" onClick={onClose}>✕</button>
@@ -419,6 +482,27 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
             <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
           </div>
           <div>
+            <label htmlFor="step-type" style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+              阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
+            </label>
+            <input
+              id="step-type"
+              value={draft.key}
+              onChange={(e) => updateDraft('key', e.target.value)}
+              required
+              aria-invalid={Boolean(keyError)}
+              aria-describedby={keyError ? 'step-type-error' : 'step-type-help'}
+              style={keyError ? { borderColor: 'var(--danger)' } : undefined}
+              placeholder="如 frontend"
+            />
+            <div
+              id={keyError ? 'step-type-error' : 'step-type-help'}
+              style={{ marginTop: 4, fontSize: 11, color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
+            >
+              {keyError || '用于阶段状态和依赖引用，当前流程内必须唯一'}
+            </div>
+          </div>
+          <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
             <textarea value={draft.prompt} onChange={(e) => updateDraft('prompt', e.target.value)}
               rows={6} style={{ minHeight: 120, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
@@ -426,15 +510,61 @@ function NodeConfigPanel({ node, onSave, onRequestDelete, onClose }: {
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
-              <select value={draft.engine} onChange={(e) => updateDraft('engine', e.target.value)} style={{ height: 32 }}>
-                <option value="claude">Claude Code</option>
-                <option value="codex">Codex CLI</option>
-                <option value="hermes">Hermes ACP</option>
+              <select
+                value={draft.engine}
+                onChange={(e) => updateDraft('engine', e.target.value)}
+                disabled={enginesLoading || installedEngines.length === 0}
+                style={{ height: 32 }}
+              >
+                {!currentEngineInstalled && draft.engine && (
+                  <option value={draft.engine} disabled>
+                    {engineLabel(draft.engine)}（未安装）
+                  </option>
+                )}
+                {installedEngines.map((engine) => (
+                  <option key={engine.id} value={engine.id}>
+                    {engineLabel(engine.id)}
+                    {engine.mode ? ` · ${engine.mode.toUpperCase()}` : ''}
+                  </option>
+                ))}
               </select>
+              <div style={{
+                marginTop: 4, fontSize: 10, lineHeight: 1.4,
+                color: enginesError
+                  ? 'var(--danger)'
+                  : currentEngineInstalled
+                    ? 'var(--meta)'
+                    : 'var(--warn)',
+              }}>
+                {enginesLoading
+                  ? '正在扫描本机执行引擎…'
+                  : enginesError
+                    ? `引擎扫描失败：${enginesError}`
+                    : currentEngineInstalled
+                      ? `已安装 ${installedEngines.length} 个执行引擎`
+                      : '当前引擎未安装，请选择已安装引擎'}
+              </div>
             </div>
-            <div style={{ width: 60 }}>
+            <div style={{ width: 116 }}>
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
-              <input type="color" value={draft.color} onChange={(e) => updateDraft('color', e.target.value)} style={{ height: 32, width: '100%', cursor: 'pointer', padding: 2 }} />
+              <div style={{ display: 'flex', gap: 5 }}>
+                <input
+                  type="color"
+                  aria-label="阶段颜色"
+                  value={draft.color}
+                  onChange={(e) => updateDraft('color', e.target.value)}
+                  style={{ height: 32, width: 42, cursor: 'pointer', padding: 2 }}
+                />
+                <button
+                  className="btn-ghost"
+                  aria-label="随机颜色"
+                  title="随机颜色"
+                  onClick={() => updateDraft('color', randomStageColor(draft.color))}
+                  style={{ height: 32, flex: 1, padding: '0 7px', fontSize: 11 }}
+                >
+                  随机
+                </button>
+              </div>
             </div>
           </div>
           <div>
@@ -487,9 +617,27 @@ function CanvasEditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(canvasNodes))
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(canvasConns, canvasNodes))
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
+  const [nodeConfigError, setNodeConfigError] = useState('')
   const [showJson, setShowJson] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
+  const [enginesLoading, setEnginesLoading] = useState(true)
+  const [enginesError, setEnginesError] = useState('')
+
+  useEffect(() => {
+    setEnginesLoading(true)
+    engineApi.list()
+      .then(({ engines }) => {
+        setAvailableEngines(engines)
+        setEnginesError('')
+      })
+      .catch((error) => {
+        setAvailableEngines([])
+        setEnginesError(error instanceof Error ? error.message : '未知错误')
+      })
+      .finally(() => setEnginesLoading(false))
+  }, [])
 
   // Reload canvas when project steps change (e.g. after re-fetch)
   const stepsKey = JSON.stringify(activeProject?.steps)
@@ -498,6 +646,7 @@ function CanvasEditorInner() {
     setNodes(canvasToFlowNodes(nn))
     setEdges(canvasToFlowEdges(nc, nn))
     setSelectedNode(null)
+    setNodeConfigError('')
     setTimeout(() => fitView({ padding: 0.2 }), 100)
   }, [stepsKey]) // eslint-disable-line
 
@@ -536,17 +685,21 @@ function CanvasEditorInner() {
   const deleteNode = useCallback((nodeId: string) => {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
-    if (selectedNode && String(selectedNode.nodeId) === nodeId) setSelectedNode(null)
+    if (selectedNode && String(selectedNode.nodeId) === nodeId) {
+      setSelectedNode(null)
+      setNodeConfigError('')
+    }
     setContextMenu(null)
   }, [setNodes, setEdges, selectedNode])
 
   const handleAddNode = () => {
     const id = Date.now()
     const maxId = Math.max(0, ...nodes.map((n) => (n.data as StepNodeData).nodeId))
+    const nodeId = maxId + 1
     const newNode: Node = {
-      id: String(id), type: 'step',
+      id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId: maxId + 1, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: '#888888', prompt: '', inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -636,22 +789,62 @@ function CanvasEditorInner() {
 
   const handleSave = async () => {
     if (!activeProject) return
+    if (nodeConfigError) {
+      setSaveMsg(`保存失败：${nodeConfigError}`)
+      setTimeout(() => setSaveMsg(''), 5000)
+      return
+    }
+
+    const stepTypes = nodes.map((node, index) => {
+      const data = node.data as StepNodeData
+      return {
+        index,
+        label: data.label || `阶段 ${index + 1}`,
+        value: data.key.trim(),
+      }
+    })
+    const missingType = stepTypes.find((step) => !step.value)
+    if (missingType) {
+      setSaveMsg(`保存失败：阶段“${missingType.label}”的 type 不能为空`)
+      setTimeout(() => setSaveMsg(''), 5000)
+      return
+    }
+    const invalidType = stepTypes.find((step) => !STEP_TYPE_PATTERN.test(step.value))
+    if (invalidType) {
+      setSaveMsg(`保存失败：阶段“${invalidType.label}”的 type 格式不正确`)
+      setTimeout(() => setSaveMsg(''), 5000)
+      return
+    }
+    const seenTypes = new Map<string, string>()
+    for (const step of stepTypes) {
+      const previousLabel = seenTypes.get(step.value)
+      if (previousLabel) {
+        setSaveMsg(`保存失败：type “${step.value}” 在“${previousLabel}”和“${step.label}”中重复`)
+        setTimeout(() => setSaveMsg(''), 5000)
+        return
+      }
+      seenTypes.set(step.value, step.label)
+    }
+
     try {
+      const steps = buildCanvasJson()
       const res = await fetch(`/api/project/save-steps?project_id=${encodeURIComponent(activeProject.id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ steps: buildCanvasJson() }),
+        body: JSON.stringify({ steps }),
       })
       if (res.ok) {
+        setActiveProject({ ...activeProject, steps })
         setSaveMsg('保存成功')
         setTimeout(() => setSaveMsg(''), 2000)
       } else {
-        setSaveMsg('保存失败')
-        setTimeout(() => setSaveMsg(''), 2000)
+        const error = await res.json().catch(() => null)
+        setSaveMsg(`保存失败：${error?.detail || `HTTP ${res.status}`}`)
+        setTimeout(() => setSaveMsg(''), 5000)
       }
     } catch (e) {
       console.error('Save failed:', e)
-      setSaveMsg('保存失败')
-      setTimeout(() => setSaveMsg(''), 2000)
+      setSaveMsg(`保存失败：${e instanceof Error ? e.message : '网络错误'}`)
+      setTimeout(() => setSaveMsg(''), 5000)
     }
   }
 
@@ -667,7 +860,7 @@ function CanvasEditorInner() {
   }, [contextMenu])
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* Toast notification */}
       {saveMsg && (
         <div style={{
@@ -682,11 +875,17 @@ function CanvasEditorInner() {
       )}
 
       {/* Toolbar */}
-      <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0 }}>
-        <button className="btn-icon" onClick={() => navigate(-1)}>←</button>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14 }}>流程编辑器</span>
-        <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
-        <span style={{ fontSize: 13, color: 'var(--fg-2)' }}>{activeProject?.name || '项目'}</span>
+      <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
+        <button
+          className="btn-ghost"
+          aria-label="返回任务看板"
+          title="返回当前项目的任务看板"
+          onClick={() => navigate('/tasks')}
+          style={{ height: 30, padding: '0 9px' }}
+        >
+          ← 看板
+        </button>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' }}>流程编辑器</span>
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={handleLoadDefault}>↻ 加载默认</button>
         <button className="btn-ghost" onClick={() => setShowJson(true)}>{'{ }'} JSON</button>
@@ -712,14 +911,26 @@ function CanvasEditorInner() {
         {selectedNode && (
           <NodeConfigPanel
             node={selectedNode}
+            engines={availableEngines}
+            enginesLoading={enginesLoading}
+            enginesError={enginesError}
+            unavailableKeys={nodes
+              .map((node) => node.data as StepNodeData)
+              .filter((node) => node.nodeId !== selectedNode.nodeId)
+              .map((node) => node.key)}
+            onValidationChange={setNodeConfigError}
             onSave={(data) => {
               setNodes((nds) => nds.map((n) =>
                 n.id === String(data.nodeId) ? { ...n, data } : n
               ))
               setSelectedNode(data)
+              setNodeConfigError('')
             }}
             onRequestDelete={() => setConfirmDeleteId(String(selectedNode.nodeId))}
-            onClose={() => setSelectedNode(null)}
+            onClose={() => {
+              setNodeConfigError('')
+              setSelectedNode(null)
+            }}
           />
         )}
       </div>

@@ -1,9 +1,51 @@
 """Tests for engine layer: events, registry, ClaudeCodeEngine mapping."""
 
 import pytest
+
+from engines.base import BaseLLMEngine
 from engines.events import InternalEvent
 from engines.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
+
+
+class StubEngine(BaseLLMEngine):
+    def __init__(self, events):
+        self.events = events
+        self.last_prompt = ""
+
+    @staticmethod
+    def is_installed():
+        return True
+
+    @staticmethod
+    def get_version():
+        return "test"
+
+    @staticmethod
+    def resolve_binary():
+        return "test"
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.last_prompt = prompt
+        for event in self.events:
+            yield event
+
+    async def stop(self):
+        pass
+
+    async def inject_response(self, tool_use_id, content):
+        pass
+
+    @property
+    def supports_resume(self):
+        return False
+
+    @property
+    def supports_interactive(self):
+        return False
+
+    def build_resume_params(self, session_id):
+        return {}
 
 
 def test_internal_event_creation():
@@ -19,6 +61,38 @@ def test_internal_event_to_dict():
     event = InternalEvent(type="status", data={"status": "running"}, timestamp=1000)
     d = event.to_dict()
     assert d == {"type": "status", "data": {"status": "running"}, "timestamp": 1000}
+
+
+@pytest.mark.anyio
+async def test_base_engine_connection_test_uses_the_execution_interface(tmp_path):
+    engine = StubEngine([
+        InternalEvent("text_delta", {"delta": "WORKSTEP_ENGINE_OK"}),
+    ])
+
+    result = await engine.test_connection(str(tmp_path))
+
+    assert result.success is True
+    assert result.message == "连接和对话测试通过"
+    assert "Do not use tools" in engine.last_prompt
+
+
+@pytest.mark.anyio
+async def test_base_engine_connection_test_reports_engine_errors(tmp_path):
+    engine = StubEngine([
+        InternalEvent("error", {"message": "authentication failed"}),
+    ])
+
+    result = await engine.test_connection(str(tmp_path))
+
+    assert result.success is False
+    assert result.message == "authentication failed"
+
+
+@pytest.mark.anyio
+async def test_base_engine_model_list_defaults_to_engine_configuration(tmp_path):
+    engine = StubEngine([])
+
+    assert await engine.list_models(str(tmp_path)) == []
 
 
 def test_registry_has_claude():

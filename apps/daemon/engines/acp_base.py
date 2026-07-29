@@ -5,11 +5,48 @@ import logging
 from typing import AsyncIterator
 
 import acp
+from acp import schema
 
-from engines.base import BaseLLMEngine
+from engines.base import BaseLLMEngine, EngineModel
 from engines.events import InternalEvent
 
 logger = logging.getLogger(__name__)
+
+
+class _StreamingClient:
+    """Receive ACP notifications and approve explicit permission requests."""
+
+    def __init__(self):
+        self.updates: asyncio.Queue = asyncio.Queue()
+
+    async def session_update(self, session_id, update, **kwargs):
+        await self.updates.put(update)
+
+    async def request_permission(self, session_id, tool_call, options, **kwargs):
+        allowed = next(
+            (
+                option
+                for option in options
+                if option.kind in ("allow_once", "allow_always")
+            ),
+            None,
+        )
+        if allowed is None:
+            return schema.RequestPermissionResponse(
+                outcome=schema.DeniedOutcome(outcome="cancelled")
+            )
+        return schema.RequestPermissionResponse(
+            outcome=schema.AllowedOutcome(
+                outcome="selected",
+                option_id=allowed.option_id,
+            )
+        )
+
+    async def write_text_file(self, session_id, path, content, **kwargs):
+        raise acp.RequestError.method_not_found("fs/write_text_file")
+
+    async def read_text_file(self, session_id, path, line=None, limit=None, **kwargs):
+        raise acp.RequestError.method_not_found("fs/read_text_file")
 
 
 class AcpEngineBase(BaseLLMEngine):
@@ -31,6 +68,59 @@ class AcpEngineBase(BaseLLMEngine):
         """Return the command to spawn the ACP agent process."""
         return self.COMMAND
 
+    async def list_models(self, cwd: str) -> list[EngineModel]:
+        """Read the ACP session's model configuration options."""
+        cmd = self.get_command()
+        if not cmd:
+            return []
+
+        handler = _StreamingClient()
+        async with acp.spawn_agent_process(
+            handler,
+            cmd[0],
+            *cmd[1:],
+            cwd=cwd,
+        ) as (client, process):
+            self._process = process
+            self._running = True
+            try:
+                await client.initialize(
+                    protocol_version=acp.PROTOCOL_VERSION,
+                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                )
+                session = await client.new_session(
+                    cwd=cwd,
+                    additional_directories=[],
+                    mcp_servers=[],
+                )
+                model_option = next(
+                    (
+                        option
+                        for option in (session.config_options or [])
+                        if getattr(option, "id", None) == "model"
+                    ),
+                    None,
+                )
+                if model_option is None:
+                    return []
+
+                models: list[EngineModel] = []
+                for option in model_option.options:
+                    nested = getattr(option, "options", None)
+                    choices = nested if nested is not None else [option]
+                    for choice in choices:
+                        models.append(
+                            EngineModel(
+                                id=choice.value,
+                                label=choice.name,
+                                description=choice.description,
+                            )
+                        )
+                return models
+            finally:
+                self._running = False
+                self._process = None
+
     async def spawn(
         self,
         prompt: str,
@@ -47,91 +137,116 @@ class AcpEngineBase(BaseLLMEngine):
         logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
         yield InternalEvent(type="status", data={"status": "initializing"})
 
+        handler = _StreamingClient()
         try:
-            # Use ACP SDK to spawn and connect
-            transport = await acp.spawn_stdio_connection(
-                command=cmd[0],
-                args=cmd[1:] if len(cmd) > 1 else [],
+            async with acp.spawn_agent_process(
+                handler,
+                cmd[0],
+                *cmd[1:],
                 cwd=cwd,
-            )
-        except Exception as e:
-            yield InternalEvent(type="error", data={"message": f"ACP spawn failed: {e}"})
-            return
+            ) as (client, process):
+                self._process = process
+                self._running = True
 
-        try:
-            client = acp.Client(transport)
+                init_resp = await client.initialize(
+                    protocol_version=acp.PROTOCOL_VERSION,
+                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                )
+                logger.info("ACP initialized: %s", init_resp)
 
-            # Initialize
-            init_resp = await client.initialize(acp.InitializeRequest(
-                protocol_version=acp.PROTOCOL_VERSION,
-                client_info={"name": "WorkStep", "version": "0.1.0"},
-            ))
-            logger.info("ACP initialized: %s", init_resp)
+                if session_id:
+                    await client.load_session(
+                        cwd=cwd,
+                        session_id=session_id,
+                        mcp_servers=[],
+                        additional_directories=add_dirs or [],
+                    )
+                    active_session_id = session_id
+                else:
+                    session = await client.new_session(
+                        cwd=cwd,
+                        additional_directories=add_dirs or [],
+                        mcp_servers=[],
+                    )
+                    active_session_id = session.session_id
 
-            # Create or resume session
-            if session_id:
-                await client.load_session(acp.LoadSessionRequest(session_id=session_id))
-            else:
-                await client.new_session(acp.NewSessionRequest())
-
-            # Set model if specified
-            if model:
-                try:
-                    await client.set_session_config_option(
-                        acp.SetSessionConfigOptionSelectRequest(
-                            option_id="model",
+                if model:
+                    try:
+                        await client.set_config_option(
+                            config_id="model",
+                            session_id=active_session_id,
                             value=model,
                         )
+                    except Exception:
+                        logger.warning("Failed to set model %s", model)
+
+                yield InternalEvent(type="status", data={"status": "running"})
+                prompt_task = asyncio.create_task(
+                    client.prompt(
+                        session_id=active_session_id,
+                        prompt=[acp.text_block(prompt)],
                     )
-                except Exception:
-                    logger.warning("Failed to set model %s", model)
+                )
+                while not prompt_task.done() or not handler.updates.empty():
+                    try:
+                        update = await asyncio.wait_for(
+                            handler.updates.get(),
+                            timeout=0.1,
+                        )
+                    except asyncio.TimeoutError:
+                        continue
+                    event = self._map_notification(update)
+                    if event:
+                        yield event
 
-            yield InternalEvent(type="status", data={"status": "running"})
-
-            # Send prompt and stream responses
-            async for notification in client.prompt(acp.PromptRequest(
-                content=[acp.TextBlock(text=prompt)],
-            )):
-                event = self._map_notification(notification)
-                if event:
-                    yield event
-
-            yield InternalEvent(type="status", data={"status": "done"})
+                await prompt_task
+                yield InternalEvent(type="status", data={"status": "done"})
 
         except Exception as e:
             logger.exception("ACP session error")
             yield InternalEvent(type="error", data={"message": str(e)})
         finally:
             self._running = False
+            self._process = None
 
-    def _map_notification(self, notification: acp.SessionNotification) -> InternalEvent | None:
-        """Map ACP session notification to InternalEvent."""
-        for update in notification.updates:
-            if isinstance(update, acp.AgentMessageChunk):
-                if isinstance(update.content, acp.TextBlock):
-                    return InternalEvent(type="text_delta", data={"delta": update.content.text})
-
-            if isinstance(update, acp.AgentThoughtChunk):
-                if isinstance(update.content, acp.TextBlock):
-                    return InternalEvent(type="thinking_delta", data={"delta": update.content.text})
-
-            if isinstance(update, acp.ToolCallUpdate):
-                if update.status in ("completed", "failed"):
-                    return InternalEvent(type="tool_result", data={
-                        "tool_use_id": update.id,
+    def _map_notification(self, update) -> InternalEvent | None:
+        """Map one ACP session update to the internal event vocabulary."""
+        if isinstance(update, schema.AgentMessageChunk):
+            if isinstance(update.content, schema.TextContentBlock):
+                return InternalEvent(
+                    type="text_delta",
+                    data={"delta": update.content.text},
+                )
+        if isinstance(update, schema.AgentThoughtChunk):
+            if isinstance(update.content, schema.TextContentBlock):
+                return InternalEvent(
+                    type="thinking_delta",
+                    data={"delta": update.content.text},
+                )
+        if isinstance(update, schema.ToolCallStart):
+            return InternalEvent(
+                type="tool_use",
+                data={
+                    "id": update.tool_call_id,
+                    "name": update.title or "",
+                    "input": update.raw_input or {},
+                },
+            )
+        if isinstance(update, schema.ToolCallProgress):
+            if update.status in ("completed", "failed"):
+                return InternalEvent(
+                    type="tool_result",
+                    data={
+                        "tool_use_id": update.tool_call_id,
                         "content": str(update.raw_output or ""),
                         "is_error": update.status == "failed",
-                    })
-                else:
-                    return InternalEvent(type="tool_use", data={
-                        "id": update.id,
-                        "name": update.title or "",
-                        "input": {},
-                    })
-
-            if isinstance(update, acp.PlanUpdate):
-                return None  # Plans not rendered in P1
-
+                    },
+                )
+        if isinstance(update, schema.UsageUpdate):
+            return InternalEvent(
+                type="usage",
+                data={"used": update.used, "size": update.size},
+            )
         return None
 
     async def stop(self) -> None:

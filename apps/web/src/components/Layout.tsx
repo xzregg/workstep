@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import DirectoryBrowser from './DirectoryBrowser'
+import SettingsPage from '../pages/SettingsPage'
 import type { Project } from '../api/client'
 
 const sidebarStyle: React.CSSProperties = {
@@ -36,7 +37,7 @@ const projectItemStyle = (active: boolean): React.CSSProperties => ({
 })
 
 const addButtonStyle: React.CSSProperties = {
-  margin: '8px 12px 12px',
+  margin: '8px 12px 8px',
   padding: 8,
   border: '1.5px dashed var(--border)',
   borderRadius: 'var(--radius-sm)',
@@ -63,19 +64,20 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [showBrowser, setShowBrowser] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
   // Auto-select project from URL ?project=name (only once)
+  const projectName = searchParams.get('project')
   useEffect(() => {
-    const projectName = searchParams.get('project')
     if (projectName && projects.length > 0 && (!activeProject || activeProject.name !== projectName)) {
       const match = projects.find((p) => p.name === projectName)
       if (match) {
         setActiveProject(match)
       }
     }
-  }, [projects]) // Only re-run when projects list changes
+  }, [projectName, projects, activeProject, setActiveProject])
 
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
@@ -167,12 +169,31 @@ export default function Layout({ onSelectProject, children }: Props) {
         <button style={addButtonStyle} onClick={() => setShowInitModal(true)}>
           + 添加项目
         </button>
+        <button
+          onClick={() => setShowSettings(true)}
+          aria-current={showSettings ? 'page' : undefined}
+          style={{
+            margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
+            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
+            borderRadius: 9, fontSize: 13,
+            color: showSettings ? 'var(--fg)' : 'var(--fg-2)',
+            background: showSettings ? 'var(--surface)' : 'transparent',
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.37.36.7.66.96.3.26.68.4 1.08.4H21a2 2 0 1 1 0 4h-.09c-.4 0-.78.14-1.08.4-.3.26-.52.59-.66.96z"/>
+          </svg>
+          设置
+        </button>
       </aside>
 
       {/* Main content */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {children}
       </main>
+
+      {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
 
       {/* Init project modal */}
       {showInitModal && (

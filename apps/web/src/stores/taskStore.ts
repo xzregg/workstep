@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { taskApi, type Task } from '../api/client'
+import { taskApi, type Task, type TaskStepState } from '../api/client'
 
 interface TaskEvent {
   type: string
@@ -18,9 +18,23 @@ interface TaskState {
 
   fetchTasks: (projectId: string) => Promise<void>
   setActiveTask: (id: string | null) => void
-  createTask: (title: string, cwd: string, projectId: string) => Promise<Task>
+  createTask: (
+    title: string,
+    cwd: string,
+    projectId: string,
+    description?: string,
+    startStepKey?: string,
+  ) => Promise<Task>
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string) => Promise<void>
+  pauseTask: (taskId: string, projectId: string) => Promise<void>
+  updateTaskDescription: (
+    taskId: string,
+    description: string,
+    projectId: string,
+  ) => Promise<Task>
+  deleteTask: (taskId: string, projectId: string) => Promise<void>
+  copyTask: (taskId: string, newTitle: string, projectId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
 }
 
@@ -43,8 +57,15 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   setActiveTask: (id) => set({ activeTaskId: id }),
 
-  createTask: async (title, cwd, projectId) => {
-    const task = await taskApi.create(title, cwd, projectId)
+  createTask: async (title, cwd, projectId, description, startStepKey) => {
+    const task = await taskApi.create(
+      title,
+      cwd,
+      projectId,
+      'claude',
+      description,
+      startStepKey,
+    )
     set((s) => ({ tasks: [...s.tasks, task] }))
     return task
   },
@@ -59,6 +80,40 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   cancelTask: async (taskId) => {
     await taskApi.cancel(taskId)
+  },
+
+  pauseTask: async (taskId, projectId) => {
+    await taskApi.pause(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.id === taskId ? { ...t, status: 'paused' } : t,
+      ),
+    }))
+  },
+
+  updateTaskDescription: async (taskId, description, projectId) => {
+    const updated = await taskApi.updateDescription(
+      taskId,
+      projectId,
+      description,
+    )
+    set((s) => ({
+      tasks: s.tasks.map((task) => task.id === taskId ? updated : task),
+    }))
+    return updated
+  },
+
+  deleteTask: async (taskId, projectId) => {
+    await taskApi.delete(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.filter((t) => t.id !== taskId),
+      activeTaskId: s.activeTaskId === taskId ? null : s.activeTaskId,
+    }))
+  },
+
+  copyTask: async (taskId, newTitle, projectId) => {
+    const copied = await taskApi.copy(taskId, newTitle, projectId)
+    set((s) => ({ tasks: [...s.tasks, copied] }))
   },
 
   handleWsEvent: (event) => {
@@ -77,17 +132,28 @@ export const useTaskStore = create<TaskState>((set) => ({
       let newTasks = s.tasks
       if (event.type === 'status') {
         const status = event.data.status as string
+        const stepKey = event.step_key || event.data.step_key as string | undefined
+        const isStepStatus = ['pending', 'running', 'passed', 'failed', 'skipped'].includes(status)
+        const stepStatus = status as TaskStepState['status']
+        const updateTaskStep = (task: Task) => ({
+          ...task,
+          steps: isStepStatus && stepKey
+            ? (task.steps || []).map((step) =>
+                step.step_key === stepKey ? { ...step, status: stepStatus } : step
+              )
+            : task.steps,
+        })
         if (status === 'passed') {
           newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...t, status: 'ready' } : t,
+            t.id === taskId ? { ...updateTaskStep(t), status: 'ready' } : t,
           )
         } else if (status === 'running') {
           newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...t, status: 'running' } : t,
+            t.id === taskId ? { ...updateTaskStep(t), status: 'running' } : t,
           )
         } else if (status === 'failed') {
           newTasks = s.tasks.map((t) =>
-            t.id === taskId ? { ...t, status: 'stopped' } : t,
+            t.id === taskId ? { ...updateTaskStep(t), status: 'stopped' } : t,
           )
         }
       }

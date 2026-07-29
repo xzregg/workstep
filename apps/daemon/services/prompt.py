@@ -28,6 +28,9 @@ def assemble_prompt(
     """
     parts = [SYSTEM_PROMPT]
 
+    if task.description:
+        parts.append(f"## 任务说明\n{task.description}")
+
     # Upstream artifacts
     upstream = _collect_upstream_artifacts(task, step, artifacts_dir)
     if upstream:

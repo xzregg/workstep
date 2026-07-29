@@ -7,7 +7,7 @@ import os
 import shutil
 from typing import AsyncIterator
 
-from engines.base import BaseLLMEngine
+from engines.base import BaseLLMEngine, EngineModel
 from engines.events import InternalEvent
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,9 @@ class ClaudeCodeEngine(BaseLLMEngine):
     @staticmethod
     def resolve_binary() -> str | None:
         """Resolve claude binary: CLAUDE_BIN env → PATH → 'claude'."""
+        override = ClaudeCodeEngine.get_binary_override()
+        if override is not None:
+            return override if os.path.isfile(override) else None
         env_bin = os.environ.get("CLAUDE_BIN")
         if env_bin and os.path.isfile(env_bin):
             return env_bin
@@ -51,6 +54,13 @@ class ClaudeCodeEngine(BaseLLMEngine):
         return found
 
     # --- Execution ---
+
+    async def list_models(self, cwd: str) -> list[EngineModel]:
+        return [
+            EngineModel("sonnet", "Sonnet"),
+            EngineModel("opus", "Opus"),
+            EngineModel("haiku", "Haiku"),
+        ]
 
     async def spawn(
         self,

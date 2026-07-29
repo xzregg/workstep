@@ -1,10 +1,12 @@
 """Tests for project service: init, register, list."""
 
+import asyncio
 import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch
 
+from models import Task
 from services.project import ProjectManager, DEFAULT_STEPS
 from services.config import ConfigStore
 
@@ -121,6 +123,90 @@ def test_close_all(tmp_path, manager):
     m.close_all()
 
     assert m.list_projects() == []
+
+
+async def test_bind_project_is_isolated_between_interleaved_async_tasks(tmp_path, manager):
+    """Each asyncio task keeps querying the project it bound before awaiting."""
+    m, _, _ = manager
+    project_a_path = tmp_path / "project-a"
+    project_b_path = tmp_path / "project-b"
+    project_a_path.mkdir()
+    project_b_path.mkdir()
+    project_a = m.init_project(project_a_path)
+    project_b = m.init_project(project_b_path)
+
+    project_a_bound = asyncio.Event()
+    project_b_written = asyncio.Event()
+
+    async def use_project_a():
+        m.bind_project_by_id(project_a.id)
+        Task.create(
+            id="task-a",
+            title="Only in A",
+            cwd=str(project_a.path),
+            created_at=1,
+            updated_at=1,
+        )
+        project_a_bound.set()
+        await project_b_written.wait()
+        return [task.id for task in Task.select().order_by(Task.id)]
+
+    async def use_project_b():
+        await project_a_bound.wait()
+        m.bind_project_by_id(project_b.id)
+        Task.create(
+            id="task-b",
+            title="Only in B",
+            cwd=str(project_b.path),
+            created_at=1,
+            updated_at=1,
+        )
+        project_b_written.set()
+        await asyncio.sleep(0)
+        return [task.id for task in Task.select().order_by(Task.id)]
+
+    project_a_tasks, project_b_tasks = await asyncio.gather(
+        use_project_a(),
+        use_project_b(),
+    )
+
+    assert project_a_tasks == ["task-a"]
+    assert project_b_tasks == ["task-b"]
+
+
+async def test_activate_project_by_id_scopes_and_restores_the_binding(tmp_path, manager):
+    """ProjectContext restores the caller's prior database after its scope."""
+    m, _, _ = manager
+    project_a_path = tmp_path / "scoped-a"
+    project_b_path = tmp_path / "scoped-b"
+    project_a_path.mkdir()
+    project_b_path.mkdir()
+    project_a = m.init_project(project_a_path)
+    project_b = m.init_project(project_b_path)
+
+    m.bind_project_by_id(project_a.id)
+    async with m.activate_project_by_id(project_b.id) as active_project:
+        assert active_project is project_b
+        Task.create(
+            id="task-b",
+            title="B",
+            cwd=str(project_b.path),
+            created_at=1,
+            updated_at=1,
+        )
+
+    Task.create(
+        id="task-a",
+        title="A",
+        cwd=str(project_a.path),
+        created_at=1,
+        updated_at=1,
+    )
+
+    m.bind_project_by_id(project_a.id)
+    assert [task.id for task in Task.select()] == ["task-a"]
+    m.bind_project_by_id(project_b.id)
+    assert [task.id for task in Task.select()] == ["task-b"]
 
 
 def test_save_config_persists_paths(tmp_path, manager):

@@ -1,9 +1,31 @@
 """BaseLLMEngine — abstract interface for all LLM engines."""
 
+import asyncio
+import time
 from abc import ABC, abstractmethod
-from typing import AsyncIterator
+from contextlib import suppress
+from dataclasses import dataclass
+from typing import AsyncIterator, ClassVar
 
 from engines.events import InternalEvent
+
+
+@dataclass(frozen=True)
+class EngineTestResult:
+    """Result returned by the common engine connectivity test."""
+
+    success: bool
+    message: str
+    duration_ms: int
+
+
+@dataclass(frozen=True)
+class EngineModel:
+    """A model exposed by an engine adapter."""
+
+    id: str
+    label: str
+    description: str | None = None
 
 
 class BaseLLMEngine(ABC):
@@ -13,7 +35,17 @@ class BaseLLMEngine(ABC):
     Adding a new engine = creating one file that implements these methods.
     """
 
+    _binary_override: ClassVar[str | None] = None
+
     # --- Engine discovery ---
+
+    @classmethod
+    def set_binary_override(cls, path: str | None) -> None:
+        cls._binary_override = path or None
+
+    @classmethod
+    def get_binary_override(cls) -> str | None:
+        return cls._binary_override
 
     @staticmethod
     @abstractmethod
@@ -27,7 +59,7 @@ class BaseLLMEngine(ABC):
 
     @staticmethod
     @abstractmethod
-    def resolve_binary() -> str:
+    def resolve_binary() -> str | None:
         """Resolve the actual binary path (env var → PATH → fallback)."""
 
     # --- Execution ---
@@ -49,6 +81,71 @@ class BaseLLMEngine(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """Terminate the running subprocess."""
+
+    async def test_connection(
+        self,
+        cwd: str,
+        timeout_seconds: float = 30,
+    ) -> EngineTestResult:
+        """Run a harmless minimal conversation through this engine.
+
+        Adapters with a cheaper native health check may override this method.
+        """
+        started = time.monotonic()
+        text_parts: list[str] = []
+        errors: list[str] = []
+
+        async def collect_events():
+            async for event in self.spawn(
+                prompt=(
+                    "Reply with WORKSTEP_ENGINE_OK only. "
+                    "Do not use tools and do not modify files."
+                ),
+                cwd=cwd,
+            ):
+                if event.type == "text_delta":
+                    text_parts.append(str(event.data.get("delta", "")))
+                elif event.type == "error":
+                    errors.append(
+                        str(
+                            event.data.get("message")
+                            or event.data.get("error")
+                            or "引擎返回错误"
+                        )
+                    )
+
+        try:
+            await asyncio.wait_for(collect_events(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            with suppress(Exception):
+                await self.stop()
+            return EngineTestResult(
+                success=False,
+                message=f"测试超时（{timeout_seconds:g} 秒）",
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+        except Exception as exc:
+            with suppress(Exception):
+                await self.stop()
+            return EngineTestResult(
+                success=False,
+                message=str(exc) or "引擎启动失败",
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+
+        duration_ms = round((time.monotonic() - started) * 1000)
+        if errors:
+            return EngineTestResult(False, errors[0], duration_ms)
+        if not "".join(text_parts).strip():
+            return EngineTestResult(False, "引擎未返回文本", duration_ms)
+        return EngineTestResult(True, "连接和对话测试通过", duration_ms)
+
+    async def list_models(self, cwd: str) -> list[EngineModel]:
+        """Return models selectable for this adapter.
+
+        An empty list means the adapter only exposes its own configured default.
+        """
+        return []
 
     # --- Interaction ---
 

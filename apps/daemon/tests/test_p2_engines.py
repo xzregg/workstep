@@ -6,6 +6,7 @@ from engines.hermes import HermesEngine
 from engines.claude_code_acp import ClaudeCodeAcpEngine
 from engines.codex_acp import CodexAcpEngine
 from engines.qoder_acp import QoderAcpEngine
+from engines.api import APIEngine
 from engines.registry import (
     ENGINE_REGISTRY,
     get_available_engines,
@@ -21,6 +22,18 @@ from engines.events import InternalEvent
 def test_codex_resolve_binary():
     binary = CodexEngine.resolve_binary()
     assert binary is None or isinstance(binary, str)
+
+
+def test_codex_broken_launcher_is_not_reported_as_installed(monkeypatch):
+    """A PATH shim that cannot start Codex is not a usable engine."""
+    class FailedVersion:
+        returncode = 1
+        stdout = ""
+
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr("subprocess.run", lambda *args, **kwargs: FailedVersion())
+
+    assert CodexEngine.is_installed() is False
 
 
 def test_codex_not_resume():
@@ -177,17 +190,43 @@ def test_acp_supports_resume():
     assert engine.supports_interactive is True
 
 
+def test_acp_engines_require_the_bridge_binary(monkeypatch):
+    """An unrelated CLI plus npx must not make an unavailable ACP bridge active."""
+    def fake_which(name):
+        return f"/fake/{name}" if name in {"node", "npx", "claude", "codex"} else None
+
+    monkeypatch.setattr("shutil.which", fake_which)
+
+    assert ClaudeCodeAcpEngine.is_installed() is False
+    assert CodexAcpEngine.is_installed() is False
+    assert ClaudeCodeAcpEngine().get_command() == []
+    assert CodexAcpEngine().get_command() == []
+
+
+def test_api_engine_requires_credentials(monkeypatch):
+    """The engine picker must not advertise an API backend with no key."""
+    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert APIEngine.is_installed() is False
+
+    monkeypatch.setenv("API_KEY", "configured")
+    assert APIEngine.is_installed() is True
+
+
 # --- Registry ---
 
 def test_all_engines_registered():
-    """All 6 engines are in the full list."""
-    assert len(_ALL_ENGINES) == 6
+    """All 9 engines are in the full list."""
+    assert len(_ALL_ENGINES) == 9
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
     assert "claude_acp" in _ALL_ENGINES
     assert "codex_acp" in _ALL_ENGINES
     assert "qoder_acp" in _ALL_ENGINES
+    assert "qcode" in _ALL_ENGINES
+    assert "openclaw" in _ALL_ENGINES
+    assert "api" in _ALL_ENGINES
 
 
 def test_registry_resolves_installed():

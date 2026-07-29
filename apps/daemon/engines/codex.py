@@ -26,7 +26,7 @@ class CodexEngine(BaseLLMEngine):
 
     @staticmethod
     def is_installed() -> bool:
-        return CodexEngine.resolve_binary() is not None
+        return CodexEngine.get_version() is not None
 
     @staticmethod
     def get_version() -> str | None:
@@ -42,6 +42,9 @@ class CodexEngine(BaseLLMEngine):
 
     @staticmethod
     def resolve_binary() -> str | None:
+        override = CodexEngine.get_binary_override()
+        if override is not None:
+            return override if os.path.isfile(override) else None
         env_bin = os.environ.get("CODEX_BIN")
         if env_bin and os.path.isfile(env_bin):
             return env_bin

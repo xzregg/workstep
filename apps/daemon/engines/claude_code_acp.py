@@ -16,11 +16,7 @@ class ClaudeCodeAcpEngine(AcpEngineBase):
 
     @staticmethod
     def is_installed() -> bool:
-        # Need node + the npm bridge package
-        if not shutil.which("node"):
-            return False
-        # Check if the bridge is available
-        return shutil.which("claude") is not None
+        return ClaudeCodeAcpEngine.resolve_binary() is not None
 
     @staticmethod
     def get_version() -> str | None:
@@ -28,27 +24,15 @@ class ClaudeCodeAcpEngine(AcpEngineBase):
 
     @staticmethod
     def resolve_binary() -> str | None:
-        return shutil.which("node")
+        configured = os.environ.get("CLAUDE_ACP_BIN")
+        if configured and os.path.isfile(configured):
+            return configured
+        return shutil.which("claude-agent-acp")
 
     def get_command(self) -> list[str]:
         """Resolve the ACP bridge command.
 
         Looks for the npm bridge entrypoint in common locations.
         """
-        node = shutil.which("node")
-        if not node:
-            return []
-
-        # Try common bridge locations
-        import subprocess
-        # Use npx to find and run the bridge
-        npx = shutil.which("npx")
-        if npx:
-            return [npx, "@agentclientprotocol/claude-agent-acp"]
-
-        # Fallback: try running claude with --acp flag
-        claude = shutil.which("claude") or os.environ.get("CLAUDE_BIN")
-        if claude:
-            return [claude, "--acp"]
-
-        return []
+        bridge = self.resolve_binary()
+        return [bridge] if bridge else []

@@ -4,7 +4,10 @@ import asyncio
 import json
 import time
 import uuid
+from types import SimpleNamespace
+
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from models import init_db
 from streaming.bus import EventBus
@@ -59,14 +62,14 @@ class MockEngine(BaseLLMEngine):
 
 
 @pytest.fixture
-def db_and_service(tmp_path):
+async def db_and_service(tmp_path):
     """Set up DB + TaskService with EventBus."""
     db_path = str(tmp_path / "test.db")
     db = init_db(db_path)
     bus = EventBus()
     service = TaskService(bus)
     yield service, bus
-    bus.close() if hasattr(bus, '_closed') else None
+    await bus.close()
     db.close()
 
 
@@ -94,6 +97,155 @@ def test_create_task(db_and_service):
     assert steps.count() == 1
     assert steps[0].step_key == "do"
     assert steps[0].status == "pending"
+
+
+def test_create_task_from_later_stage_skips_predecessors(db_and_service):
+    """A stage-specific task does not require outputs from earlier stages."""
+    service, _ = db_and_service
+    task = service.create_task(
+        title="Frontend only",
+        cwd="/tmp",
+        start_step_key="frontend",
+        workflow={
+            "steps": [
+                {"key": "req", "engine": "claude"},
+                {"key": "ui", "engine": "claude", "dependsOn": ["req"]},
+                {
+                    "key": "frontend",
+                    "engine": "codex",
+                    "dependsOn": ["ui"],
+                },
+            ],
+        },
+    )
+
+    assert {
+        step["step_key"]: step["status"]
+        for step in task["steps"]
+    } == {
+        "req": "skipped",
+        "ui": "skipped",
+        "frontend": "pending",
+    }
+
+
+def test_create_task_rejects_unknown_start_stage(db_and_service):
+    service, _ = db_and_service
+
+    with pytest.raises(ValueError, match="does not exist"):
+        service.create_task(
+            title="Invalid start",
+            cwd="/tmp",
+            start_step_key="missing",
+            workflow={"steps": [{"key": "req"}]},
+        )
+
+
+@pytest.mark.anyio
+async def test_create_task_api_initializes_steps_from_project_workflow(
+    tmp_path,
+    monkeypatch,
+):
+    """A task starts with every stage from the project's saved canvas."""
+    import main
+    from main import app
+    from models import TaskStep
+
+    db = init_db(str(tmp_path / "workflow-task.db"))
+    bus = EventBus()
+    service = TaskService(bus)
+    workflow = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "plan",
+                "title": "Plan",
+                "engine": "claude",
+            },
+            {
+                "id": 2,
+                "type": "build",
+                "title": "Build",
+                "engine": "codex",
+            },
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+        ],
+    }
+
+    class ProjectManagerStub:
+        def bind_project_by_id(self, project_id):
+            if project_id != "project-1":
+                raise ValueError("Project not found")
+            return SimpleNamespace(steps=workflow)
+
+    monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
+    monkeypatch.setattr(main, "task_service", service)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/task/create?project_id=project-1",
+            json={"title": "Workflow task", "cwd": str(tmp_path)},
+        )
+
+    assert response.status_code == 200
+    task_id = response.json()["id"]
+    steps = {
+        step.step_key: (step.status, step.engine)
+        for step in TaskStep.select().where(TaskStep.task == task_id)
+    }
+    assert steps == {
+        "plan": ("pending", "claude"),
+        "build": ("pending", "codex"),
+    }
+    db.close()
+
+
+def test_copy_task_resets_workflow_steps_to_pending(db_and_service):
+    """A copied task keeps its stages but starts with no execution history."""
+    from models import TaskStep
+
+    service, _ = db_and_service
+    original = service.create_task(
+        title="Original",
+        cwd="/tmp",
+        workflow={
+            "steps": [
+                {"key": "plan", "engine": "claude"},
+                {"key": "build", "engine": "codex", "dependsOn": ["plan"]},
+            ]
+        },
+    )
+    for step in TaskStep.select().where(TaskStep.task == original["id"]):
+        step.status = "passed" if step.step_key == "plan" else "failed"
+        step.started_at = 10
+        step.ended_at = 20
+        step.error = "old failure" if step.step_key == "build" else None
+        step.save()
+
+    copied = service.copy_task(original["id"], "Copy", "project-1")
+
+    copied_steps = list(
+        TaskStep.select()
+        .where(TaskStep.task == copied["id"])
+        .order_by(TaskStep.step_key)
+    )
+    assert [
+        (
+            step.step_key,
+            step.status,
+            step.engine,
+            step.started_at,
+            step.ended_at,
+            step.error,
+        )
+        for step in copied_steps
+    ] == [
+        ("build", "pending", "codex", None, None, None),
+        ("plan", "pending", "claude", None, None, None),
+    ]
 
 
 def test_list_tasks(db_and_service):
@@ -185,6 +337,49 @@ async def test_run_task_failure(subscriber):
 
 
 @pytest.mark.anyio
+async def test_run_task_error_event_is_a_failed_run(subscriber):
+    """An engine-reported error is terminal even when the iterator exits normally."""
+    q, service, bus = subscriber
+
+    from engines import registry
+    from models import Message, TaskStep
+
+    original = registry.ENGINE_REGISTRY.copy()
+    registry.ENGINE_REGISTRY["claude"] = lambda: MockEngine(events=[
+        InternalEvent(type="error", data={"message": "binary not found"}),
+    ])
+
+    try:
+        task = service.create_task(title="Reported failure", cwd="/tmp")
+        await service.run_task(task["id"], "do something")
+
+        updated = service.get_task(task["id"])
+        step = TaskStep.get(
+            (TaskStep.task == task["id"]) & (TaskStep.step_key == "do")
+        )
+        message = (
+            Message.select()
+            .where(Message.task == task["id"])
+            .order_by(Message.created_at.desc())
+            .get()
+        )
+        events = []
+        while not q.empty():
+            events.append(await q.get())
+
+        assert updated["status"] == "stopped"
+        assert step.status == "failed"
+        assert step.error == "binary not found"
+        assert message.run_status == "failed"
+        assert events[-1]["type"] == "status"
+        assert events[-1]["data"]["status"] == "failed"
+
+    finally:
+        registry.ENGINE_REGISTRY.clear()
+        registry.ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_cancel_task(db_and_service):
     """cancel_task stops a running engine."""
     service, bus = db_and_service
@@ -199,3 +394,66 @@ async def test_cancel_task(db_and_service):
 
     # Cancel non-running returns False
     assert await service.cancel_task("nonexistent") is False
+
+
+@pytest.mark.anyio
+async def test_cancel_task_finalizes_running_records(subscriber):
+    """Stopping an active engine leaves no run or step in a successful/running state."""
+    q, service, bus = subscriber
+
+    from engines import registry
+    from models import Message, TaskStep
+
+    class BlockingEngine(MockEngine):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            self.started.set()
+            await self.release.wait()
+            if False:
+                yield InternalEvent(type="status", data={"status": "done"})
+
+        async def stop(self):
+            self._stopped = True
+            self.release.set()
+
+    engine = BlockingEngine()
+    original = registry.ENGINE_REGISTRY.copy()
+    registry.ENGINE_REGISTRY["claude"] = lambda: engine
+
+    try:
+        task = service.create_task(title="Cancel active run", cwd="/tmp")
+        run = asyncio.create_task(service.run_task(task["id"], "keep working"))
+        await engine.started.wait()
+
+        assert await service.cancel_task(task["id"]) is True
+        await asyncio.wait_for(run, timeout=1)
+
+        updated = service.get_task(task["id"])
+        step = TaskStep.get(
+            (TaskStep.task == task["id"]) & (TaskStep.step_key == "do")
+        )
+        message = (
+            Message.select()
+            .where(Message.task == task["id"])
+            .order_by(Message.created_at.desc())
+            .get()
+        )
+        events = []
+        while not q.empty():
+            events.append(await q.get())
+
+        assert updated["status"] == "paused"
+        assert step.status == "failed"
+        assert step.error == "Cancelled"
+        assert message.run_status == "failed"
+        assert task["id"] not in service._running_engines
+        assert events[-1]["type"] == "status"
+        assert events[-1]["data"]["status"] == "failed"
+
+    finally:
+        registry.ENGINE_REGISTRY.clear()
+        registry.ENGINE_REGISTRY.update(original)

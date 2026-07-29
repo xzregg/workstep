@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
@@ -7,27 +7,26 @@ import type { Project } from './api/client'
 
 function AppRoutes() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { activeProject } = useProjectStore()
 
-  const handleSelectProject = (_p: Project) => {
+  const handleSelectProject = (project: Project) => {
+    if (location.pathname === '/canvas') {
+      navigate(`/canvas?project=${encodeURIComponent(project.name)}`)
+      return
+    }
     navigate('/tasks')
   }
 
   return (
-    <Routes>
-      {/* Full-screen pages, outside Layout */}
-      <Route path="/canvas" element={<CanvasEditor />} />
-
-      {/* Pages inside Layout with sidebar */}
-      <Route path="*" element={
-        <Layout onSelectProject={handleSelectProject}>
-          <Routes>
-            <Route path="/" element={<WelcomeView />} />
-            <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
-          </Routes>
-        </Layout>
-      } />
-    </Routes>
+    <Layout onSelectProject={handleSelectProject}>
+      <Routes>
+        <Route path="/" element={<WelcomeView />} />
+        <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
+        <Route path="/canvas" element={<CanvasEditor />} />
+        <Route path="*" element={<WelcomeView />} />
+      </Routes>
+    </Layout>
   )
 }
 

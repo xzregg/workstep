@@ -9,6 +9,17 @@ from engines.events import InternalEvent
 from engines.base import BaseLLMEngine
 
 
+class MemoryConfigStore:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
+    def set(self, key, value):
+        self.values[key] = value
+
+
 class FakeEngine(BaseLLMEngine):
     """Simulates a Claude-like engine yielding events."""
 
@@ -57,17 +68,19 @@ class FakeEngine(BaseLLMEngine):
 
 
 @pytest.mark.anyio
-async def test_e2e_task_run_publishes_events(tmp_path):
+async def test_e2e_task_run_publishes_events(tmp_path, monkeypatch):
     """Full flow: init project → create task → run → events on bus."""
     from models import init_db
     from streaming.bus import EventBus
     from services.project import ProjectManager
+    import services.project as project_service
     from services.task import TaskService
     from engines.registry import ENGINE_REGISTRY
 
     # Patch engine
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = FakeEngine
+    monkeypatch.setattr(project_service, "config_store", MemoryConfigStore())
     try:
         # Setup
         bus = EventBus()
@@ -134,14 +147,16 @@ async def test_e2e_task_run_publishes_events(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_e2e_multiple_subscribers_receive_events(tmp_path):
+async def test_e2e_multiple_subscribers_receive_events(tmp_path, monkeypatch):
     """Multiple WebSocket clients all receive the same events."""
     from streaming.bus import EventBus
     from services.task import TaskService
     from engines.registry import ENGINE_REGISTRY
+    import services.project as project_service
 
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = FakeEngine
+    monkeypatch.setattr(project_service, "config_store", MemoryConfigStore())
     try:
         bus = EventBus()
         pm_cls = __import__("services.project", fromlist=["ProjectManager"]).ProjectManager

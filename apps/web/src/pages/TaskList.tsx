@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
+import { fsApi, type DirectoryOpener } from '../api/client'
 import TaskDetail from './TaskDetail'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -44,9 +45,17 @@ const addCardStyle: React.CSSProperties = {
 }
 
 /* ── Status machine ── */
-const STATUS_CYCLE = ['ready', 'running', 'paused', 'stopped'] as const
 const STATUS_LABELS: Record<string, string> = {
   ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  ready: 'var(--status-ready)',
+  running: 'var(--status-running)',
+  paused: 'var(--status-paused)',
+  stopped: 'var(--status-stopped)',
+  passed: 'var(--status-done)',
+  failed: 'var(--status-failed)',
 }
 
 /* ── Extract lanes from steps.json ── */
@@ -56,6 +65,33 @@ interface Lane { key: string; label: string; color: string }
 const STAGE_COLORS: Record<string, string> = {
   req: '#0071e3', ui: '#7c3aed', frontend: '#059669',
   backend: '#d97706', test: '#dc2626', deploy: '#16a34a',
+}
+
+const FALLBACK_OPENERS: DirectoryOpener[] = [
+  { id: 'file_manager', label: '打开位置', available: true },
+]
+
+function OpenerIcon({ id }: { id: string }) {
+  const visual: Record<string, { text: string; bg: string; color: string }> = {
+    vscode: { text: '⌁', bg: '#eaf6ff', color: '#168bd2' },
+    sublime: { text: 'S', bg: '#333', color: '#ff9800' },
+    file_manager: { text: '⌂', bg: '#eaf4ff', color: '#2684ff' },
+    terminal: { text: '>_', bg: '#454545', color: '#fff' },
+    iterm: { text: '$', bg: '#3e2945', color: '#59e391' },
+    intellij: { text: 'IJ', bg: '#ef476f', color: '#fff' },
+    pycharm: { text: 'PC', bg: '#32c787', color: '#fff' },
+  }
+  const item = visual[id] || visual.file_manager
+  return (
+    <span style={{
+      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      background: item.bg, color: item.color, fontSize: id === 'terminal' ? 8 : 10,
+      fontWeight: 700, lineHeight: 1,
+    }}>
+      {item.text}
+    </span>
+  )
 }
 
 function getLanesFromSteps(steps: any): Lane[] {
@@ -79,20 +115,48 @@ function getLanesFromSteps(steps: any): Lane[] {
   return [{ key: 'do', label: '执行', color: '#0071e3' }]
 }
 
+function deriveTaskLane(
+  task: { steps?: Array<{ step_key: string; status: string }> },
+  lanes: Lane[],
+): string {
+  const laneKeys = new Set(lanes.map((lane) => lane.key))
+  const steps = task.steps || []
+  const findLane = (status: string) =>
+    steps.find((step) => step.status === status && laneKeys.has(step.step_key))?.step_key
+
+  // Keep this priority aligned with the task detail's "current stage" rule.
+  return findLane('running')
+    || findLane('failed')
+    || findLane('pending')
+    || [...steps].reverse().find(
+      (step) => laneKeys.has(step.step_key)
+        && (step.status === 'passed' || step.status === 'skipped')
+    )?.step_key
+    || lanes[0]?.key
+    || 'do'
+}
+
 export default function TaskList() {
   const navigate = useNavigate()
-  const { tasks, loading, fetchTasks, createTask, setActiveTask } = useTaskStore()
+  const { tasks, loading, fetchTasks, createTask, deleteTask, setActiveTask } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
   const [showNewPanel, setShowNewPanel] = useState(false)
+  const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
-  // Local card state: lane assignment + status (until backend supports it)
+  const [directoryNotice, setDirectoryNotice] = useState('')
+  const [directoryOpeners, setDirectoryOpeners] = useState<DirectoryOpener[]>(FALLBACK_OPENERS)
+  const [selectedOpener, setSelectedOpener] = useState(
+    () => localStorage.getItem('workstep-directory-opener') || 'file_manager'
+  )
+  const [showOpenerMenu, setShowOpenerMenu] = useState(false)
+  const openerMenuRef = useRef<HTMLDivElement>(null)
+  // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
-  const [cardStatuses, setCardStatuses] = useState<Record<string, string>>({})
   const tasksFetchedRef = useRef<string>('')
 
   useEffect(() => {
@@ -105,19 +169,59 @@ export default function TaskList() {
   // Reset local state when project changes
   useEffect(() => {
     setCardLanes({})
-    setCardStatuses({})
+    setShowNewPanel(false)
+    setCreateStartStepKey(null)
   }, [activeProject?.path])
 
+  useEffect(() => {
+    fsApi.directoryOpeners()
+      .then(({ openers }) => {
+        const available = openers.filter((opener) => opener.available)
+        setDirectoryOpeners(available.length ? available : FALLBACK_OPENERS)
+        if (!available.some((opener) => opener.id === selectedOpener)) {
+          setSelectedOpener('file_manager')
+          localStorage.setItem('workstep-directory-opener', 'file_manager')
+        }
+      })
+      .catch(() => setDirectoryOpeners(FALLBACK_OPENERS))
+  }, [selectedOpener])
+
+  useEffect(() => {
+    if (!showOpenerMenu) return
+    const closeMenu = (event: MouseEvent) => {
+      if (!openerMenuRef.current?.contains(event.target as Node)) {
+        setShowOpenerMenu(false)
+      }
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowOpenerMenu(false)
+    }
+    document.addEventListener('mousedown', closeMenu)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('mousedown', closeMenu)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showOpenerMenu])
+
   const lanes = useMemo(() => getLanesFromSteps(activeProject?.steps), [activeProject?.steps])
+  const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
+  const createLaneIndex = Math.max(0, lanes.findIndex((lane) => lane.key === createLane?.key))
 
-  // Assign default lane (first lane) to new tasks
+  const openNewPanel = (stepKey?: string) => {
+    setCreateStartStepKey(stepKey || lanes[0]?.key || null)
+    setShowNewPanel(true)
+  }
+
+  // Backend step progress is the source of truth; local assignment is only a
+  // temporary override before a task has started executing.
   const getCardLane = useCallback((taskId: string): string => {
-    return cardLanes[taskId] || lanes[0]?.key || 'do'
-  }, [cardLanes, lanes])
-
-  const getCardStatus = useCallback((taskId: string): string => {
-    return cardStatuses[taskId] || 'ready'
-  }, [cardStatuses])
+    const task = tasks.find((item) => item.id === taskId)
+    const hasRecordedProgress = task?.steps.some((step) => step.status !== 'pending')
+    if (task && hasRecordedProgress) return deriveTaskLane(task, lanes)
+    return cardLanes[taskId]
+      || (task ? deriveTaskLane(task, lanes) : lanes[0]?.key || 'do')
+  }, [cardLanes, lanes, tasks])
 
   const tasksByLane = useMemo(() => {
     const map: Record<string, typeof tasks> = {}
@@ -133,7 +237,13 @@ export default function TaskList() {
   const handleCreate = async () => {
     if (!newTitle.trim() || !activeProject) return
     try {
-      await createTask(newTitle.trim(), activeProject.path, activeProject.id)
+      await createTask(
+        newTitle.trim(),
+        activeProject.path,
+        activeProject.id,
+        newDesc.trim() || undefined,
+        createLane?.key,
+      )
       setNewTitle('')
       setNewDesc('')
       setShowNewPanel(false)
@@ -145,12 +255,24 @@ export default function TaskList() {
     setSelectedTaskId(taskId)
   }
 
-  const cycleStatus = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    const cur = getCardStatus(taskId)
-    const idx = STATUS_CYCLE.indexOf(cur as any)
-    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
-    setCardStatuses((prev) => ({ ...prev, [taskId]: next }))
+  const openProjectDirectory = async (openerId = selectedOpener) => {
+    if (!activeProject) return
+    try {
+      const result = await fsApi.openDirectory(activeProject.path, openerId)
+      setDirectoryNotice(`已打开：${result.path}`)
+    } catch (error) {
+      setDirectoryNotice(
+        `打开失败：${error instanceof Error ? error.message : '未知错误'}`
+      )
+    }
+    setTimeout(() => setDirectoryNotice(''), 3000)
+  }
+
+  const selectDirectoryOpener = (opener: DirectoryOpener) => {
+    setSelectedOpener(opener.id)
+    localStorage.setItem('workstep-directory-opener', opener.id)
+    setShowOpenerMenu(false)
+    void openProjectDirectory(opener.id)
   }
 
   const advanceCard = (e: React.MouseEvent, taskId: string) => {
@@ -176,9 +298,9 @@ export default function TaskList() {
     setConfirmDeleteTaskId(taskId)
   }
 
-  const handleDeleteConfirm = () => {
-    if (confirmDeleteTaskId) {
-      // TODO: call backend delete API
+  const handleDeleteConfirm = async () => {
+    if (confirmDeleteTaskId && activeProject) {
+      await deleteTask(confirmDeleteTaskId, activeProject.id)
       setCardLanes((prev) => { const next = { ...prev }; delete next[confirmDeleteTaskId]; return next })
       setConfirmDeleteTaskId(null)
     }
@@ -221,11 +343,85 @@ export default function TaskList() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           阶段编辑
         </button>
-        <button className="btn-primary" onClick={() => setShowNewPanel(true)} style={{ fontSize: 13, gap: 5 }}>
+        <button className="btn-primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           新建
         </button>
         <div style={{ flex: 1 }} />
+        {directoryNotice && (
+          <span
+            role="status"
+            style={{
+              maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', color: 'var(--meta)', fontSize: 12,
+            }}
+            title={directoryNotice}
+          >
+            {directoryNotice}
+          </span>
+        )}
+        <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
+          <button
+            className="btn-ghost"
+            onClick={() => void openProjectDirectory()}
+            disabled={!activeProject}
+            title={activeProject ? `使用${directoryOpeners.find((item) => item.id === selectedOpener)?.label || '文件管理器'}打开：${activeProject.path}` : '请先选择项目'}
+            style={{
+              fontSize: 13, gap: 6, borderTopRightRadius: 0,
+              borderBottomRightRadius: 0, paddingRight: 10,
+            }}
+          >
+            <OpenerIcon id={selectedOpener} />
+            打开位置
+          </button>
+          <button
+            className="btn-ghost"
+            aria-label="选择打开方式"
+            aria-expanded={showOpenerMenu}
+            onClick={() => setShowOpenerMenu((value) => !value)}
+            disabled={!activeProject}
+            style={{
+              width: 30, padding: 0, justifyContent: 'center',
+              borderLeft: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </button>
+          {showOpenerMenu && (
+            <div
+              role="menu"
+              aria-label="打开项目目录方式"
+              style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1200,
+                width: 230, padding: 8, background: 'var(--bg)',
+                border: '1px solid var(--border)', borderRadius: 14,
+                boxShadow: '0 14px 36px rgba(0,0,0,0.16)',
+              }}
+            >
+              {directoryOpeners.map((opener) => (
+                <button
+                  key={opener.id}
+                  role="menuitem"
+                  onClick={() => selectDirectoryOpener(opener)}
+                  style={{
+                    width: '100%', height: 40, padding: '0 10px', gap: 10,
+                    justifyContent: 'flex-start', borderRadius: 9,
+                    background: opener.id === selectedOpener ? 'var(--surface)' : 'transparent',
+                    color: 'var(--fg)', fontSize: 14,
+                  }}
+                >
+                  <OpenerIcon id={opener.id} />
+                  {opener.label}
+                  {opener.id === selectedOpener && (
+                    <span style={{ marginLeft: 'auto', color: 'var(--accent)' }}>✓</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Kanban board */}
@@ -257,7 +453,7 @@ export default function TaskList() {
                   {lane.label}
                   <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
-                <button className="btn-icon" title="添加" onClick={() => setShowNewPanel(true)} style={{ width: 24, height: 24 }}>
+                <button className="btn-icon" title={`新建${lane.label}任务`} onClick={() => openNewPanel(lane.key)} style={{ width: 24, height: 24 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </button>
               </div>
@@ -271,10 +467,12 @@ export default function TaskList() {
                 onDrop={(e) => onDrop(e, lane.key)}
               >
                 {laneTasks.map((t: any) => {
-                  const status = getCardStatus(t.id)
+                  const status = t.status || 'ready'
+                  const statusColor = STATUS_COLORS[status] || 'var(--status-ready)'
                   return (
                     <div
                       key={t.id}
+                      data-task-status={status}
                       draggable
                       onDragStart={(e) => onDragStart(e, t.id)}
                       onDragEnd={onDragEnd}
@@ -282,7 +480,7 @@ export default function TaskList() {
                       style={{
                         background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
                         padding: '10px 12px', cursor: 'grab',
-                        borderLeft: `3px solid ${lane.color}`,
+                        borderLeft: `3px solid ${statusColor}`,
                         transition: 'box-shadow var(--motion-fast)',
                       }}
                       onMouseEnter={(e) => {
@@ -301,8 +499,6 @@ export default function TaskList() {
                         <span
                           className="status-badge"
                           data-s={status}
-                          onClick={(e) => cycleStatus(e, t.id)}
-                          style={{ cursor: 'pointer' }}
                         >
                           {STATUS_LABELS[status] || status}
                         </span>
@@ -340,7 +536,7 @@ export default function TaskList() {
                     </div>
                   )
                 })}
-                <button style={addCardStyle} onClick={() => setShowNewPanel(true)}>+ 添加</button>
+                <button style={addCardStyle} onClick={() => openNewPanel(lane.key)}>+ 添加{lane.label}任务</button>
               </div>
             </div>
           )
@@ -350,7 +546,7 @@ export default function TaskList() {
       {/* ── New requirement panel (slide-in from right, fixed to viewport) ── */}
       <div style={{
         position: 'fixed', right: 0, top: 0, bottom: 0,
-        width: 360, background: 'var(--bg)',
+        width: '50vw', minWidth: 420, background: 'var(--bg)',
         borderLeft: '1px solid var(--border-soft)',
         boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
         display: 'flex', flexDirection: 'column',
@@ -359,22 +555,34 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>新建需求</span>
+          <span style={{ fontWeight: 600, fontSize: 14 }}>新建{createLane?.label || '需求'}任务</span>
           <button className="btn-icon" onClick={() => setShowNewPanel(false)}>✕</button>
         </div>
         <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>标题</label>
+          {createLaneIndex > 0 && (
+            <div style={{
+              marginBottom: 10, padding: '11px 12px', borderRadius: 8,
+              background: `color-mix(in oklab, ${createLane?.color || 'var(--accent)'}, transparent 91%)`,
+              borderLeft: `3px solid ${createLane?.color || 'var(--accent)'}`,
+              color: 'var(--fg-2)', fontSize: 12, lineHeight: 1.55,
+            }}>
+              此任务将直接从“{createLane?.label}”阶段开始。
+              之前的 {lanes.slice(0, createLaneIndex).map((lane) => `“${lane.label}”`).join('、')}
+              阶段会标记为已跳过，不读取这些阶段的输出物。
+            </div>
+          )}
+          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>任务标题</label>
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="输入标题..."
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
           />
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>需求内容</label>
+          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
           <textarea
             value={newDesc}
             onChange={(e) => setNewDesc(e.target.value)}
-            placeholder="输入需求内容..."
+            placeholder={`输入${createLane?.label || '当前阶段'}任务说明...`}
             style={{ minHeight: 160, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 13 }}
           />
         </div>

@@ -63,6 +63,42 @@ class ConfigStore:
         """Clear cache, force reload on next access."""
         self._cache = None
 
+    def get_engine_default_model(self, engine_id: str) -> str:
+        defaults = self.get("engine_default_models", {})
+        if not isinstance(defaults, dict):
+            return ""
+        value = defaults.get(engine_id, "")
+        return value if isinstance(value, str) else ""
+
+    def set_engine_default_model(self, engine_id: str, model: str):
+        defaults = self.get("engine_default_models", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        defaults = dict(defaults)
+        if model:
+            defaults[engine_id] = model
+        else:
+            defaults.pop(engine_id, None)
+        self.set("engine_default_models", defaults)
+
+    def get_engine_binary_path(self, engine_id: str) -> str:
+        paths = self.get("engine_binary_paths", {})
+        if not isinstance(paths, dict):
+            return ""
+        value = paths.get(engine_id, "")
+        return value if isinstance(value, str) else ""
+
+    def set_engine_binary_path(self, engine_id: str, path: str):
+        paths = self.get("engine_binary_paths", {})
+        if not isinstance(paths, dict):
+            paths = {}
+        paths = dict(paths)
+        if path:
+            paths[engine_id] = path
+        else:
+            paths.pop(engine_id, None)
+        self.set("engine_binary_paths", paths)
+
 
 # Global singleton
 config_store = ConfigStore()

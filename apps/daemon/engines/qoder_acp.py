@@ -1,5 +1,6 @@
 """QoderAcpEngine — ACP mode for Qoder CLI."""
 
+import os
 import shutil
 
 from engines.acp_base import AcpEngineBase
@@ -31,6 +32,9 @@ class QoderAcpEngine(AcpEngineBase):
 
     @staticmethod
     def resolve_binary() -> str | None:
+        override = QoderAcpEngine.get_binary_override()
+        if override is not None:
+            return override if os.path.isfile(override) else None
         return shutil.which("qodercli") or shutil.which("qoder")
 
     def get_command(self) -> list[str]:

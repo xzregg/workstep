@@ -151,7 +151,8 @@ def test_assemble_prompt_basic(tmp_path):
 
     db = init_db(str(tmp_path / "test.db"))
     task = Task.create(
-        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        id=str(uuid.uuid4()), title="Test", description="Current task context",
+        cwd=str(tmp_path),
         created_at=int(time.time()), updated_at=int(time.time()),
     )
     step = Step(key="req", label="需求", prompt="Write a PRD")
@@ -160,6 +161,7 @@ def test_assemble_prompt_basic(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
     assert SYSTEM_PROMPT in prompt
+    assert "## 任务说明\nCurrent task context" in prompt
     assert "Write a PRD" in prompt
     assert str(artifacts_dir / "req" / task.id) in prompt
     db.close()
@@ -293,6 +295,318 @@ async def test_task_runner_linear_pipeline(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_task_runner_inherits_the_engine_default_model(tmp_path, monkeypatch):
+    from engines.registry import ENGINE_REGISTRY
+    from models import Task, init_db
+    import services.task_runner as task_runner_module
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "default-model.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Default model",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()),
+        updated_at=int(time.time()),
+    )
+    received_models = []
+
+    class RecordingEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            received_models.append(kwargs.get("model"))
+            yield InternalEvent(type="text_delta", data={"delta": "done"})
+
+    monkeypatch.setattr(
+        task_runner_module.config_store,
+        "get_engine_default_model",
+        lambda engine_id: "sonnet",
+    )
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecordingEngine
+    try:
+        runner = TaskRunner(EventBus())
+        await runner.run_pipeline(
+            task,
+            {"steps": [{"key": "a", "engine": "claude"}]},
+            tmp_path / "artifacts",
+        )
+
+        assert received_models == ["sonnet"]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_starts_after_persisted_skipped_stages(tmp_path):
+    """Skipped predecessors satisfy the DAG without invoking their engines."""
+    from models import Task, TaskStep, init_db
+    from engines.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    now = int(time.time())
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Frontend only",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    TaskStep.create(task=task, step_key="req", status="skipped")
+    TaskStep.create(task=task, step_key="ui", status="skipped")
+    TaskStep.create(task=task, step_key="frontend", status="pending")
+    calls = []
+
+    class RecordingEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            calls.append(prompt)
+            yield InternalEvent(type="text_delta", data={"delta": "frontend"})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecordingEngine
+    try:
+        runner = TaskRunner(EventBus())
+        await runner.run_pipeline(
+            task,
+            {
+                "steps": [
+                    {"key": "req", "engine": "claude"},
+                    {"key": "ui", "engine": "claude", "dependsOn": ["req"]},
+                    {
+                        "key": "frontend",
+                        "engine": "claude",
+                        "dependsOn": ["ui"],
+                    },
+                ],
+            },
+            tmp_path / "artifacts",
+        )
+
+        statuses = {
+            step.step_key: step.status
+            for step in TaskStep.select().where(TaskStep.task == task)
+        }
+        assert statuses == {
+            "req": "skipped",
+            "ui": "skipped",
+            "frontend": "passed",
+        }
+        assert len(calls) == 1
+        assert "上游产物" not in calls[0]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path):
+    """A reported engine error fails its step without retrying or unblocking dependants."""
+    from models import init_db, Message, Task, TaskStep
+    from engines.registry import ENGINE_REGISTRY
+    import time, uuid
+
+    class ReportedErrorEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            yield InternalEvent(type="error", data={"message": "engine unavailable"})
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Failure", cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+
+    created_engines = 0
+
+    def create_fake_engine():
+        nonlocal created_engines
+        created_engines += 1
+        if created_engines == 1:
+            return ReportedErrorEngine()
+        return PipelineFakeEngine("must not run")
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = create_fake_engine
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        q = bus.subscribe()
+        steps_config = {
+            "steps": [
+                {"key": "a", "label": "A", "engine": "claude", "prompt": "Do A"},
+                {
+                    "key": "b",
+                    "label": "B",
+                    "engine": "claude",
+                    "prompt": "Do B",
+                    "dependsOn": ["a"],
+                },
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        await runner.run_pipeline(task, steps_config, artifacts_dir)
+
+        task = Task.get_by_id(task.id)
+        steps = {
+            step.step_key: step
+            for step in TaskStep.select().where(TaskStep.task == task)
+        }
+        message = Message.get(
+            (Message.task == task) & (Message.step_key == "a")
+        )
+        events = []
+        while not q.empty():
+            events.append(await q.get())
+
+        assert created_engines == 1
+        assert task.status == "paused"
+        assert steps["a"].status == "failed"
+        assert steps["a"].error == "engine unavailable"
+        assert steps["b"].status == "pending"
+        assert message.run_status == "failed"
+        assert events[-1]["type"] == "status"
+        assert events[-1]["data"]["status"] == "failed"
+
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
+    """Cancelling a running step fails the run and leaves the pipeline paused."""
+    from models import init_db, Message, Task, TaskStep
+    from engines.registry import ENGINE_REGISTRY
+    import time, uuid
+
+    class BlockingPipelineEngine(PipelineFakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            self.started.set()
+            await self.release.wait()
+            if False:
+                yield InternalEvent(type="status", data={"status": "done"})
+
+        async def stop(self):
+            self.release.set()
+
+    engine = BlockingPipelineEngine()
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Cancel pipeline", cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: engine
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        q = bus.subscribe()
+        steps_config = {
+            "steps": [
+                {"key": "a", "label": "A", "engine": "claude", "prompt": "Do A"},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        run = asyncio.create_task(
+            runner.run_pipeline(task, steps_config, artifacts_dir)
+        )
+        await engine.started.wait()
+
+        assert await runner.cancel_step(task.id, "a") is True
+        await asyncio.wait_for(run, timeout=1)
+
+        task = Task.get_by_id(task.id)
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "a")
+        )
+        message = Message.get(
+            (Message.task == task) & (Message.step_key == "a")
+        )
+        events = []
+        while not q.empty():
+            events.append(await q.get())
+
+        assert task.status == "paused"
+        assert step.status == "failed"
+        assert step.error == "Cancelled"
+        assert message.run_status == "failed"
+        assert f"{task.id}:a" not in runner._running_engines
+        assert events[-1]["type"] == "status"
+        assert events[-1]["data"]["status"] == "failed"
+
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_unavailable_engine_finalizes_message(tmp_path):
+    """Engine selection failures finalize the message created for the step."""
+    from models import init_db, Message, Task, TaskStep
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Missing engine", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        steps_config = {
+            "steps": [
+                {
+                    "key": "a",
+                    "label": "A",
+                    "engine": "definitely-missing",
+                    "prompt": "Do A",
+                },
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        await runner.run_pipeline(task, steps_config, artifacts_dir)
+
+        task = Task.get_by_id(task.id)
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "a")
+        )
+        message = Message.get(
+            (Message.task == task) & (Message.step_key == "a")
+        )
+
+        assert task.status == "paused"
+        assert step.status == "failed"
+        assert "not available" in step.error
+        assert message.run_status == "failed"
+        assert message.ended_at is not None
+
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_task_runner_parallel_branches(tmp_path):
     """Run a pipeline with parallel branches: A → {B, C} → D."""
     from models import init_db, Task
@@ -333,6 +647,81 @@ async def test_task_runner_parallel_branches(tmp_path):
         task = Task.get_by_id(task.id)
         assert task.status == "ready"
 
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_new_workflow_run_executes_steps_again(tmp_path):
+    """A new workflow run creates a new attempt instead of reusing prior success."""
+    from models import Message, StepRun, Task, WorkflowRun, init_db
+    from engines.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    now = int(time.time())
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Run twice",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    calls = 0
+
+    class CountingEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            nonlocal calls
+            calls += 1
+            yield InternalEvent(type="text_delta", data={"delta": f"run-{calls}"})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = CountingEngine
+    try:
+        runner = TaskRunner(EventBus())
+        steps_config = {
+            "steps": [
+                {"key": "build", "label": "Build", "engine": "claude"},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        first_run = WorkflowRun.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            started_at=now,
+        )
+        await runner.run_pipeline(
+            task,
+            steps_config,
+            artifacts_dir,
+            workflow_run=first_run,
+        )
+
+        second_run = WorkflowRun.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            started_at=now + 1,
+        )
+        await runner.run_pipeline(
+            task,
+            steps_config,
+            artifacts_dir,
+            workflow_run=second_run,
+        )
+
+        assert calls == 2
+        assert StepRun.select().count() == 2
+        assert Message.select().count() == 2
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

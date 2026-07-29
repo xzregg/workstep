@@ -1,5 +1,6 @@
 """CodexAcpEngine — ACP mode for Codex CLI."""
 
+import os
 import shutil
 
 from engines.acp_base import AcpEngineBase
@@ -15,7 +16,7 @@ class CodexAcpEngine(AcpEngineBase):
 
     @staticmethod
     def is_installed() -> bool:
-        return shutil.which("node") is not None and shutil.which("codex") is not None
+        return CodexAcpEngine.resolve_binary() is not None
 
     @staticmethod
     def get_version() -> str | None:
@@ -23,15 +24,11 @@ class CodexAcpEngine(AcpEngineBase):
 
     @staticmethod
     def resolve_binary() -> str | None:
-        return shutil.which("node")
+        configured = os.environ.get("CODEX_ACP_BIN")
+        if configured and os.path.isfile(configured):
+            return configured
+        return shutil.which("codex-acp")
 
     def get_command(self) -> list[str]:
-        npx = shutil.which("npx")
-        if npx:
-            return [npx, "@agentclientprotocol/codex-acp"]
-
-        codex = shutil.which("codex")
-        if codex:
-            return [codex, "--acp"]
-
-        return []
+        bridge = self.resolve_binary()
+        return [bridge] if bridge else []

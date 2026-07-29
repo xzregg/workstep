@@ -10,6 +10,7 @@ from models import Task, TaskStep, Message
 from models.base import db_proxy
 from engines.registry import create_engine
 from engines.events import InternalEvent
+from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class TaskService:
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self._running_engines: dict[str, object] = {}  # task_id → engine
+        self._cancelled_tasks: set[str] = set()
 
     def create_task(
         self,
@@ -28,8 +30,25 @@ class TaskService:
         cwd: str,
         description: str | None = None,
         engine: str = "claude",
+        workflow: dict | None = None,
+        start_step_key: str | None = None,
     ) -> dict:
-        """Create a new task. Returns task dict."""
+        """Create a task, optionally skipping stages before its start stage."""
+        steps = (
+            WorkflowDefinition.load(workflow).compile().to_steps_config()["steps"]
+            if workflow is not None
+            else [{"key": "do", "engine": None}]
+        )
+        step_keys = [step["key"] for step in steps]
+        if start_step_key is not None and start_step_key not in step_keys:
+            raise WorkflowValidationError(
+                f"start_step_key: stage '{start_step_key}' does not exist"
+            )
+        start_index = (
+            step_keys.index(start_step_key)
+            if start_step_key is not None
+            else 0
+        )
         now = int(time.time())
         task_id = str(uuid.uuid4())
 
@@ -43,12 +62,13 @@ class TaskService:
             updated_at=now,
         )
 
-        # Create default step
-        TaskStep.create(
-            task=task,
-            step_key="do",
-            status="pending",
-        )
+        for index, step in enumerate(steps):
+            TaskStep.create(
+                task=task,
+                step_key=step["key"],
+                status="skipped" if index < start_index else "pending",
+                engine=step.get("engine"),
+            )
 
         return self._task_to_dict(task)
 
@@ -64,6 +84,22 @@ class TaskService:
             return self._task_to_dict(task)
         except Task.DoesNotExist:
             return None
+
+    def update_task_description(
+        self,
+        task_id: str,
+        description: str | None,
+    ) -> dict | None:
+        """Update task context without interrupting an active engine run."""
+        try:
+            task = Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            return None
+        normalized = description.strip() if description else None
+        task.description = normalized or None
+        task.updated_at = int(time.time())
+        task.save()
+        return self._task_to_dict(task)
 
     def get_task_history(self, task_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
         """Get chat history for a task with pagination."""
@@ -149,10 +185,12 @@ class TaskService:
         })
 
         # Store engine reference for cancellation
+        self._cancelled_tasks.discard(task_id)
         self._running_engines[task_id] = engine
 
         events_collected = []
         content_parts = []
+        reported_error: str | None = None
 
         try:
             async for event in engine.spawn(prompt=prompt, cwd=task.cwd):
@@ -161,6 +199,10 @@ class TaskService:
                 # Collect text content
                 if event.type == "text_delta":
                     content_parts.append(event.data.get("delta", ""))
+                elif event.type == "error" and reported_error is None:
+                    reported_error = str(
+                        event.data.get("message") or "Engine reported an error"
+                    )
 
                 # Broadcast to WebSocket
                 await self._publish(task_id, "do", {
@@ -178,8 +220,17 @@ class TaskService:
             step.error = str(e)
             task.status = "stopped"
         else:
-            step.status = "passed"
-            task.status = "ready"
+            if task_id in self._cancelled_tasks:
+                step.status = "failed"
+                step.error = "Cancelled"
+                task.status = "paused"
+            elif reported_error is not None:
+                step.status = "failed"
+                step.error = reported_error
+                task.status = "stopped"
+            else:
+                step.status = "passed"
+                task.status = "ready"
         finally:
             step.ended_at = int(time.time())
             step.save()
@@ -199,6 +250,7 @@ class TaskService:
 
             # Clean up engine reference
             self._running_engines.pop(task_id, None)
+            self._cancelled_tasks.discard(task_id)
 
             await self._publish(task_id, "do", {
                 "type": "status",
@@ -210,8 +262,62 @@ class TaskService:
         engine = self._running_engines.get(task_id)
         if not engine:
             return False
+        self._cancelled_tasks.add(task_id)
         await engine.stop()
         return True
+
+    async def pause_task(self, task_id: str) -> bool:
+        """Pause a running task."""
+        try:
+            task = Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            return False
+
+        # Update task status to paused
+        task.status = "paused"
+        task.updated_at = int(time.time())
+        task.save()
+        return True
+
+    def delete_task(self, task_id: str, project_id: str) -> bool:
+        """Delete a task."""
+        try:
+            task = Task.get_by_id(task_id)
+            task.delete_instance(recursive=True)
+            return True
+        except Task.DoesNotExist:
+            return False
+
+    def copy_task(self, task_id: str, new_title: str, project_id: str) -> dict | None:
+        """Copy a task with a new title."""
+        try:
+            original = Task.get_by_id(task_id)
+            now = int(time.time())
+            new_id = str(uuid.uuid4())
+
+            # Create new task
+            new_task = Task.create(
+                id=new_id,
+                title=new_title,
+                description=original.description,
+                cwd=original.cwd,
+                engine=original.engine or "claude",
+                created_at=now,
+                updated_at=now,
+            )
+
+            # Copy task steps
+            for step in TaskStep.select().where(TaskStep.task == original):
+                TaskStep.create(
+                    task=new_task,
+                    step_key=step.step_key,
+                    status="pending",
+                    engine=step.engine,
+                )
+
+            return self._task_to_dict(new_task)
+        except Task.DoesNotExist:
+            return None
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
         """Publish event with task/step routing info."""
@@ -222,6 +328,7 @@ class TaskService:
         })
 
     def _task_to_dict(self, task: Task) -> dict:
+        steps = list(TaskStep.select().where(TaskStep.task == task))
         return {
             "id": task.id,
             "title": task.title,
@@ -232,6 +339,17 @@ class TaskService:
             "model": task.model,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
+            "steps": [
+                {
+                    "step_key": step.step_key,
+                    "status": step.status,
+                    "engine": step.engine,
+                    "started_at": step.started_at,
+                    "ended_at": step.ended_at,
+                    "error": step.error,
+                }
+                for step in steps
+            ],
         }
 
 

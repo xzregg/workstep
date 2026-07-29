@@ -13,54 +13,7 @@ const WS_RECONNECT_MAX_MS = 30000
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const reconnectAttemptRef = useRef(0)
   const handleEvent = useTaskStore((s) => s.handleWsEvent)
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
-
-    ws.onopen = () => {
-      console.log('[WS] connected')
-      reconnectAttemptRef.current = 0
-    }
-
-    ws.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data)
-        handleEvent(event)
-      } catch (err) {
-        console.warn('[WS] invalid message:', err)
-      }
-    }
-
-    ws.onclose = () => {
-      console.log('[WS] disconnected, scheduling reconnect')
-      scheduleReconnect()
-    }
-
-    ws.onerror = () => {
-      ws.close()
-    }
-
-    wsRef.current = ws
-  }, [handleEvent])
-
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimerRef.current) return
-    const delay = Math.min(
-      WS_RECONNECT_BASE_MS * 2 ** reconnectAttemptRef.current,
-      WS_RECONNECT_MAX_MS,
-    )
-    reconnectAttemptRef.current++
-    reconnectTimerRef.current = setTimeout(() => {
-      reconnectTimerRef.current = null
-      connect()
-    }, delay)
-  }, [connect])
 
   const send = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -69,12 +22,57 @@ export function useWebSocket() {
   }, [])
 
   useEffect(() => {
+    let active = true
+    let reconnectAttempt = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      if (!active) return
+      if (
+        wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING
+      ) return
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        console.log('[WS] connected')
+        reconnectAttempt = 0
+      }
+      ws.onmessage = (event) => {
+        try {
+          handleEvent(JSON.parse(event.data))
+        } catch (error) {
+          console.warn('[WS] invalid message:', error)
+        }
+      }
+      ws.onerror = () => ws.close()
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null
+        if (!active || reconnectTimer) return
+        const delay = Math.min(
+          WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt,
+          WS_RECONNECT_MAX_MS,
+        )
+        reconnectAttempt++
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          connect()
+        }, delay)
+      }
+    }
+
     connect()
     return () => {
-      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-      wsRef.current?.close()
+      active = false
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      const ws = wsRef.current
+      wsRef.current = null
+      ws?.close()
     }
-  }, [connect])
+  }, [handleEvent])
 
   return { send }
 }

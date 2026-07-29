@@ -1,18 +1,17 @@
 """Project API routes."""
 
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
 from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveStepsRequest
-from services.project import project_manager
+from services.project import DEFAULT_STEPS, project_manager
+from services.workflow_definition import (
+    WorkflowDefinition,
+    WorkflowValidationError,
+)
 
 router = APIRouter(prefix="/api/project")
-
-# Path to default steps template
-DEFAULT_STEPS_PATH = Path(__file__).parent.parent / "data" / "steps.json"
-
 
 @router.post("/init")
 async def init_project(req: InitRequest):
@@ -29,7 +28,12 @@ async def register_project(req: RegisterRequest):
     """Register an existing project path."""
     try:
         proj = project_manager.register_and_save(req.path, name=req.name)
-        return {"path": str(proj.path), "name": proj.name, "steps": proj.steps}
+        return {
+            "id": proj.id,
+            "path": str(proj.path),
+            "name": proj.name,
+            "steps": proj.steps,
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -56,6 +60,11 @@ async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    try:
+        WorkflowDefinition.load(req.steps).validate()
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     steps_path = proj.workstep_dir / "steps.json"
     steps_path.write_text(json.dumps(req.steps, ensure_ascii=False, indent=2))
 
@@ -67,6 +76,4 @@ async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project
 @router.get("/default-steps")
 async def get_default_steps():
     """Return the default steps.json template."""
-    if not DEFAULT_STEPS_PATH.exists():
-        raise HTTPException(status_code=404, detail="Default steps template not found")
-    return json.loads(DEFAULT_STEPS_PATH.read_text())
+    return DEFAULT_STEPS
