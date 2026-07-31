@@ -7,14 +7,19 @@ from models.base import BaseModel
 class Task(BaseModel):
     """A task (card) in the workflow pipeline."""
 
+    class Meta:
+        table_name = "tasks"
+
     id = pw.TextField(primary_key=True)
     title = pw.TextField()
     description = pw.TextField(null=True)
     cwd = pw.TextField()
+    workflow_id = pw.TextField(null=True)  # FK-like: which workflow this task belongs to
     status = pw.TextField(default="ready")  # ready / running / paused / stopped
     engine = pw.TextField(null=True)  # claude / codex / hermes
     model = pw.TextField(null=True)
     pipeline_version = pw.TextField(null=True)
+    review_overrides_json = pw.TextField(null=True)
     created_at = pw.IntegerField()
     updated_at = pw.IntegerField()
 

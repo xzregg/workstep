@@ -581,8 +581,8 @@ function addCanvasNode() {
     engine: type.engine || 'claude',
     model: '',
     prompt: '',
-    inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }],
-    outputs: [{ name: 'output', type: 'any' }],
+    inputs: [{ name: 'input', type: 'file', outputs: [{ name: 'output', type: 'file' }] }],
+    outputs: [{ name: 'output', type: 'file' }],
   });
   renderCanvas();
 }
@@ -1016,10 +1016,10 @@ function openCanvasNodePanel(id) {
   html += `<div class="canvas-io-list">`;
   node.inputs.forEach((inp, i) => {
     html += `<div class="canvas-io-group">`;
-    html += `<div class="canvas-io-item"><input type="text" value="${inp.name}" placeholder="名称" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'name', this.value)"><input type="text" value="${inp.type}" placeholder="类型" style="width:60px;" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'type', this.value)"><button class="canvas-io-remove" onclick="removeCanvasNodeIO(${id}, 'inputs', ${i})">×</button></div>`;
+    html += `<div class="canvas-io-item"><input type="text" value="${inp.name}" placeholder="名称" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'name', this.value)"><input type="text" value="${inp.type}" placeholder="类型" list="outputTypeList" style="width:72px;" onchange="updateCanvasNodeIO(${id}, 'inputs', ${i}, 'type', this.value)"><button class="canvas-io-remove" onclick="removeCanvasNodeIO(${id}, 'inputs', ${i})">×</button></div>`;
     const subOutputs = inp.outputs || [];
     subOutputs.forEach((out, j) => {
-      html += `<div class="canvas-io-sub"><span class="canvas-io-arrow">↳</span><input type="text" value="${out.name}" placeholder="输出名称" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'name', this.value)"><select style="width:72px;" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'type', this.value)"><option value="string" ${out.type === 'string' ? 'selected' : ''}>字符串</option><option value="json" ${out.type === 'json' ? 'selected' : ''}>JSON</option><option value="file" ${out.type === 'file' ? 'selected' : ''}>文件</option></select><button class="canvas-io-remove" onclick="removeCanvasNodeSubIO(${id}, ${i}, ${j})">×</button></div>`;
+      html += `<div class="canvas-io-sub"><span class="canvas-io-arrow">↳</span><input type="text" value="${out.name}" placeholder="输出名称" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'name', this.value)"><input type="text" value="${out.type}" placeholder="类型" list="outputTypeList" style="width:72px;" onchange="updateCanvasNodeSubIO(${id}, ${i}, ${j}, 'type', this.value)"><button class="canvas-io-remove" onclick="removeCanvasNodeSubIO(${id}, ${i}, ${j})">×</button></div>`;
     });
     html += `<button class="canvas-io-add-sub" onclick="addCanvasNodeSubIO(${id}, ${i})">+ 对应输出</button>`;
     html += `</div>`;
@@ -1070,7 +1070,7 @@ function updateCanvasNodeIO(id, ioType, index, field, value) {
 function addCanvasNodeIO(id, ioType) {
   const node = canvasNodes.find(n => n.id === id);
   if (node) {
-    node[ioType].push({ name: 'new_' + ioType, type: 'any' });
+    node[ioType].push({ name: 'new_' + ioType, type: 'file' });
     openCanvasNodePanel(id);
   }
 }
@@ -1096,7 +1096,7 @@ function addCanvasNodeSubIO(id, inputIndex) {
   const node = canvasNodes.find(n => n.id === id);
   if (node && node.inputs[inputIndex]) {
     if (!node.inputs[inputIndex].outputs) node.inputs[inputIndex].outputs = [];
-    node.inputs[inputIndex].outputs.push({ name: 'output', type: 'any' });
+    node.inputs[inputIndex].outputs.push({ name: 'output', type: 'file' });
     syncNodeOutputs(node);
     openCanvasNodePanel(id);
   }
@@ -1309,5 +1309,28 @@ fetch('steps.json').then(r => r.json()).then(data => {
 updateCanvasZoom();
 </script>
 
+<datalist id="outputTypeList">
+  <option value="Markdown">
+  <option value="md">
+  <option value="HTML">
+  <option value="html">
+  <option value="json">
+  <option value="txt">
+  <option value="file">
+  <option value="jpg">
+  <option value="png">
+  <option value="svg">
+  <option value="pdf">
+  <option value="csv">
+  <option value="xml">
+  <option value="yaml">
+  <option value="js">
+  <option value="ts">
+  <option value="jsx">
+  <option value="tsx">
+  <option value="go">
+  <option value="py">
+  <option value="sql">
+</datalist>
 </body>
 </html>

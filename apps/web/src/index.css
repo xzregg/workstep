@@ -486,6 +486,14 @@ details[open] > summary > .process-trace-chevron {
   white-space: pre;
 }
 
+.markdown-message img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 6px 0;
+}
+
 .markdown-message blockquote {
   padding: 2px 0 2px 12px;
   border-left: 3px solid var(--border);

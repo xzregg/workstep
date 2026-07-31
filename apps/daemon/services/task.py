@@ -32,6 +32,8 @@ class TaskService:
         engine: str = "claude",
         workflow: dict | None = None,
         start_step_key: str | None = None,
+        review_overrides: dict[str, object] | None = None,
+        workflow_id: str | None = None,
     ) -> dict:
         """Create a task, optionally skipping stages before its start stage."""
         steps = (
@@ -58,9 +60,13 @@ class TaskService:
             description=description,
             cwd=cwd,
             engine=engine,
+            workflow_id=workflow_id,
             created_at=now,
             updated_at=now,
         )
+        if review_overrides:
+            task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
+            task.save()
 
         for index, step in enumerate(steps):
             TaskStep.create(
@@ -72,10 +78,12 @@ class TaskService:
 
         return self._task_to_dict(task)
 
-    def list_tasks(self) -> list[dict]:
-        """List all tasks, newest first."""
-        tasks = Task.select().order_by(Task.updated_at.desc())
-        return [self._task_to_dict(t) for t in tasks]
+    def list_tasks(self, workflow_id: str | None = None) -> list[dict]:
+        """List tasks, optionally filtered by workflow."""
+        q = Task.select().order_by(Task.updated_at.desc())
+        if workflow_id:
+            q = q.where(Task.workflow_id == workflow_id)
+        return [self._task_to_dict(t) for t in q]
 
     def get_task(self, task_id: str) -> dict | None:
         """Get a single task by ID."""
@@ -89,15 +97,20 @@ class TaskService:
         self,
         task_id: str,
         description: str | None,
+        review_overrides: dict[str, object] | None = None,
     ) -> dict | None:
         """Update task context without interrupting an active engine run."""
         try:
             task = Task.get_by_id(task_id)
         except Task.DoesNotExist:
             return None
-        normalized = description.strip() if description else None
-        task.description = normalized or None
+        if description is not None:
+            normalized = description.strip()
+            if normalized:
+                task.description = normalized
         task.updated_at = int(time.time())
+        if review_overrides is not None:
+            task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
         task.save()
         return self._task_to_dict(task)
 
@@ -343,6 +356,7 @@ class TaskService:
             "model": task.model,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
+            "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,
             "steps": [
                 {
                     "step_key": step.step_key,

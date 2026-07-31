@@ -9,6 +9,8 @@ class CreateTaskRequest(BaseSchema):
     description: str | None = None
     engine: str = "claude"
     start_step_key: str | None = None
+    review_overrides: dict[str, object] | None = None
+    workflow_id: str | None = None
 
 
 class RunTaskRequest(BaseSchema):
@@ -18,6 +20,7 @@ class RunTaskRequest(BaseSchema):
 
 class UpdateTaskRequest(BaseSchema):
     description: str | None = None
+    review_overrides: dict[str, object] | None = None
 
 
 class ReviewDecisionRequest(BaseSchema):

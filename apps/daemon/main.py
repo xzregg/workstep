@@ -18,6 +18,7 @@ from api.fs import router as fs_router
 from api.search import router as search_router
 from api.templates import router as templates_router
 from api.engine import router as engine_router
+from api.workflow import router as workflow_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
@@ -60,6 +61,7 @@ app.include_router(fs_router)
 app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(engine_router)
+app.include_router(workflow_router)
 
 
 # --- REST API ---

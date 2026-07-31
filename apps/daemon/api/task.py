@@ -43,19 +43,21 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             engine=req.engine,
             workflow=project.steps,
             start_step_key=req.start_step_key,
+            review_overrides=req.review_overrides,
+            workflow_id=req.workflow_id,
         )
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/list")
-async def list_tasks(pid: str = Query(..., alias="project_id")):
-    """List all tasks for a project."""
+async def list_tasks(pid: str = Query(..., alias="project_id"), wf: str | None = Query(None, alias="workflow_id")):
+    """List tasks for a project, optionally filtered by workflow."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     _bind(pid)
-    return {"tasks": task_service.list_tasks()}
+    return {"tasks": task_service.list_tasks(workflow_id=wf)}
 
 
 @router.get("/{task_id}")
@@ -82,7 +84,7 @@ async def update_task(
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     _bind(pid)
-    task = task_service.update_task_description(task_id, req.description)
+    task = task_service.update_task_description(task_id, req.description, req.review_overrides)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task

@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { fsApi, type DirectoryOpener } from '../api/client'
 import TaskDetail from './TaskDetail'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MarkdownMessage from '../components/MarkdownMessage'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -150,12 +151,19 @@ export default function TaskList() {
   const navigate = useNavigate()
   const { tasks, loading, fetchTasks, createTask, deleteTask, setActiveTask } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
+  const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
   const [showNewPanel, setShowNewPanel] = useState(false)
   const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
+  const [createError, setCreateError] = useState('')
+  const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
   const [newDesc, setNewDesc] = useState('')
+  const [descMode, setDescMode] = useState<'edit' | 'preview'>('edit')
+  const descInputRef = useRef<HTMLTextAreaElement>(null)
+  const imgInputRef = useRef<HTMLInputElement>(null)
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [directoryNotice, setDirectoryNotice] = useState('')
@@ -173,8 +181,12 @@ export default function TaskList() {
     if (!activeProject?.id) { tasksFetchedRef.current = ''; return }
     if (tasksFetchedRef.current === activeProject.id) return
     tasksFetchedRef.current = activeProject.id
-    fetchTasks(activeProject.id)
+    fetchTasks(activeProject.id, activeWorkflowId)
   }, [fetchTasks, activeProject?.id])
+
+  useEffect(() => {
+    if (activeProject?.id) fetchTasks(activeProject.id, activeWorkflowId)
+  }, [fetchTasks, activeProject?.id, activeWorkflowId])
 
   // Reset local state when project changes
   useEffect(() => {
@@ -218,8 +230,29 @@ export default function TaskList() {
   const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
   const createLaneIndex = Math.max(0, lanes.findIndex((lane) => lane.key === createLane?.key))
 
+  const [reviewOverrides, setReviewOverrides] = useState<Record<string, { auto: boolean; prompt: string; maxRetries: number }>>({})
+
   const openNewPanel = (stepKey?: string) => {
     setCreateStartStepKey(stepKey || lanes[0]?.key || null)
+    setNewTitle('')
+    setNewDesc('')
+    setCreateError('')
+    setActiveTab('content')
+    // Initialize review overrides from canvas stage config
+    const nodeConfigs: Record<string, { auto: boolean; prompt: string; maxRetries: number }> = {}
+    const canvasSteps = activeProject?.steps
+    if (canvasSteps?.nodes) {
+      for (const n of canvasSteps.nodes) {
+        const key = (n.type || n.key || String(n.id)) as string
+        const rv = n.review || {}
+        nodeConfigs[key] = {
+          auto: !!rv.auto,
+          prompt: String(rv.prompt || ''),
+          maxRetries: Math.max(1, Math.min(5, Number(rv.maxRetries) || 1)),
+        }
+      }
+    }
+    setReviewOverrides(nodeConfigs)
     setShowNewPanel(true)
   }
 
@@ -253,11 +286,16 @@ export default function TaskList() {
         activeProject.id,
         newDesc.trim() || undefined,
         createLane?.key,
+        Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
+        activeWorkflowId,
       )
       setNewTitle('')
       setNewDesc('')
       setShowNewPanel(false)
-    } catch (e) { console.error('Create failed:', e) }
+      setCreateError('')
+    } catch (e: any) {
+      setCreateError(e?.message || '创建任务失败，请检查后台服务是否正常')
+    }
   }
 
   const handleSelectTask = (taskId: string) => {
@@ -300,6 +338,39 @@ export default function TaskList() {
     const idx = lanes.findIndex((l) => l.key === curLane)
     if (idx > 0) {
       setCardLanes((prev) => ({ ...prev, [taskId]: lanes[idx - 1].key }))
+    }
+  }
+
+  const insertImageMarkdown = (dataUrl: string, alt = '图片') => {
+    const snippet = '![' + alt + '](' + dataUrl + ')'
+    const ta = descInputRef.current
+    if (ta) {
+      const start = ta.selectionStart ?? newDesc.length
+      const end = ta.selectionEnd ?? newDesc.length
+      const next = newDesc.slice(0, start) + snippet + newDesc.slice(end)
+      setNewDesc(next)
+      requestAnimationFrame(() => {
+        ta.focus()
+        const pos = start + snippet.length
+        ta.setSelectionRange(pos, pos)
+      })
+    } else {
+      setNewDesc((d) => d + (d && !d.endsWith('\n') ? '\n' : '') + snippet)
+    }
+  }
+
+  const handleImageFile = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => insertImageMarkdown(String(reader.result))
+    reader.readAsDataURL(file)
+  }
+
+  const handleDescPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imgItem = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'))
+    if (imgItem) {
+      e.preventDefault()
+      const file = imgItem.getAsFile()
+      if (file) handleImageFile(file)
     }
   }
 
@@ -357,6 +428,21 @@ export default function TaskList() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           新建
         </button>
+        {activeWorkflowName && (
+          <span
+            title={activeWorkflowName}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 13, color: 'var(--fg-2)', fontWeight: 500,
+              maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+            </svg>
+            {activeWorkflowName}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         {directoryNotice && (
           <span
@@ -457,7 +543,7 @@ export default function TaskList() {
           const laneTasks = tasksByLane[lane.key] || []
           return (
             <div key={lane.key} style={laneStyle}>
-              <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ padding: '12px 14px 8px', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
                   {lane.label}
@@ -476,6 +562,7 @@ export default function TaskList() {
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDrop(e, lane.key)}
               >
+                <button style={addCardStyle} onClick={() => openNewPanel(lane.key)}>+ 添加{lane.label}任务</button>
                 {laneTasks.map((t: any) => {
                   const status = t.status || 'ready'
                   const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
@@ -525,7 +612,7 @@ export default function TaskList() {
                       {t.description && (
                         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{t.description}</div>
                       )}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <span style={{
                           fontSize: 11, padding: '2px 7px', borderRadius: 'var(--radius-pill)', fontWeight: 500,
                           background: `color-mix(in oklab, ${lane.color}, transparent 90%)`,
@@ -555,7 +642,6 @@ export default function TaskList() {
                     </div>
                   )
                 })}
-                <button style={addCardStyle} onClick={() => openNewPanel(lane.key)}>+ 添加{lane.label}任务</button>
               </div>
             </div>
           )
@@ -573,10 +659,36 @@ export default function TaskList() {
         transform: showNewPanel ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>新建{createLane?.label || '需求'}任务</span>
           <button className="btn-icon" onClick={() => setShowNewPanel(false)}>✕</button>
         </div>
+        {/* ── Tab bar ── */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
+          <button
+            onClick={() => setActiveTab('content')}
+            style={{
+              padding: '10px 16px', fontSize: 13, fontWeight: activeTab === 'content' ? 600 : 400,
+              border: 'none', borderBottom: activeTab === 'content' ? '2px solid var(--accent)' : '2px solid transparent',
+              background: 'none', cursor: 'pointer',
+              color: activeTab === 'content' ? 'var(--fg)' : 'var(--meta)',
+              fontFamily: 'var(--font-body)',
+            }}
+          >任务内容</button>
+          <button
+            onClick={() => setActiveTab('review')}
+            style={{
+              padding: '10px 16px', fontSize: 13, fontWeight: activeTab === 'review' ? 600 : 400,
+              border: 'none', borderBottom: activeTab === 'review' ? '2px solid var(--accent)' : '2px solid transparent',
+              background: 'none', cursor: 'pointer',
+              color: activeTab === 'review' ? 'var(--fg)' : 'var(--meta)',
+              fontFamily: 'var(--font-body)',
+            }}
+          >审核配置</button>
+        </div>
+
+        {/* ── Tab: content ── */}
+        {activeTab === 'content' && (
         <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {createLaneIndex > 0 && (
             <div style={{
@@ -598,13 +710,129 @@ export default function TaskList() {
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
           />
           <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
-          <textarea
-            value={newDesc}
-            onChange={(e) => setNewDesc(e.target.value)}
-            placeholder={`输入${createLane?.label || '当前阶段'}任务说明...`}
-            style={{ minHeight: 160, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 13 }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
+            <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+              <button
+                onClick={() => setDescMode('edit')}
+                style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: descMode === 'edit' ? 'var(--accent)' : 'transparent', color: descMode === 'edit' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+              >编辑</button>
+              <button
+                onClick={() => setDescMode('preview')}
+                style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: descMode === 'preview' ? 'var(--accent)' : 'transparent', color: descMode === 'preview' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+              >预览</button>
+            </div>
+            <button className="btn-ghost" onClick={() => imgInputRef.current?.click()} style={{ fontSize: 12, padding: '3px 8px', gap: 4 }}>
+              🖼 图片
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--meta)' }}>支持 Markdown，可粘贴/插入图片</span>
+            <input
+              ref={imgInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = '' }}
+            />
+          </div>
+          {descMode === 'edit' ? (
+            <textarea
+              ref={descInputRef}
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              onPaste={handleDescPaste}
+              placeholder={`输入${createLane?.label || '当前阶段'}任务说明...（支持 Markdown，可直接粘贴图片）`}
+              style={{ minHeight: 160, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 13 }}
+            />
+          ) : (
+            <div style={{
+              minHeight: 160, maxHeight: '45vh', overflowY: 'auto', padding: '10px 12px',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+              background: 'var(--surface)', fontSize: 13, lineHeight: 1.6,
+            }}>
+              {newDesc.trim() ? <MarkdownMessage content={newDesc} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>暂无内容</span>}
+            </div>
+          )}
         </div>
+        )}
+
+        {/* ── Tab: review ── */}
+        {activeTab === 'review' && (
+        <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Object.keys(reviewOverrides).length === 0 ? (
+            <div style={{ color: 'var(--meta)', fontSize: 13, textAlign: 'center', paddingTop: 40 }}>
+              当前流程暂无阶段审核配置
+            </div>
+          ) : (
+            Object.entries(reviewOverrides).map(([key, cfg]) => {
+              const lane = lanes.find((l) => l.key === key)
+              const label = lane?.label || key
+              const color = lane?.color || '#888'
+              const laneIdx = lanes.findIndex((l) => l.key === key)
+              const isUpstream = createLaneIndex >= 0 && laneIdx >= 0 && laneIdx < createLaneIndex
+              return (
+                <div key={key} style={{
+                  padding: '10px 12px', borderRadius: 6,
+                  background: isUpstream ? 'transparent' : `color-mix(in oklab, ${color}, transparent 96%)`,
+                  border: `1px solid ${isUpstream ? 'var(--border)' : 'color-mix(in oklab, ' + color + ', transparent 85%)'}`,
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  opacity: isUpstream ? 0.4 : 1,
+                }}>
+                  {/* Row 1: stage name + controls */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}>{label}</span>
+                      {isUpstream && (
+                        <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 5px', borderRadius: 3, lineHeight: '18px' }}>已跳过</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--fg-2)', cursor: isUpstream ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={cfg.auto}
+                          disabled={isUpstream}
+                          onChange={() => !isUpstream && setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], auto: !prev[key].auto } }))}
+                          style={{ accentColor: 'var(--accent)', width: 13, height: 13, margin: 0, flexShrink: 0 }}
+                        />
+                        自动审核
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                        <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
+                        <input
+                          type="number"
+                          min={1} max={5}
+                          value={cfg.maxRetries}
+                          disabled={isUpstream}
+                          onChange={(e) => {
+                            if (isUpstream) return
+                            const v = Math.max(1, Math.min(5, Number(e.target.value) || 1))
+                            setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], maxRetries: v } }))
+                          }}
+                          style={{ width: 36, height: 22, fontSize: 11, padding: '0 4px', border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center', background: isUpstream ? 'var(--surface)' : 'var(--bg)', color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Row 2: prompt textarea */}
+                  <textarea
+                    value={cfg.prompt}
+                    disabled={isUpstream}
+                    onChange={(e) => !isUpstream && setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], prompt: e.target.value } }))}
+                    placeholder="审核提示词（留空使用默认）"
+                    rows={1}
+                    style={{ width: '100%', fontSize: 11, lineHeight: 1.5, resize: 'vertical', fontFamily: 'var(--font-body)', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: isUpstream ? 'var(--surface)' : 'var(--bg)', color: 'var(--fg)', opacity: isUpstream ? 0.6 : 1, minHeight: 28 }}
+                  />
+                </div>
+              )
+            })
+          )}
+        </div>
+        )}
+
+        {/* ── Error & Footer ── */}
+        {createError && (
+          <div style={{ padding: '8px 16px 0', fontSize: 12, color: 'var(--danger)' }}>{createError}</div>
+        )}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn-ghost" onClick={() => setShowNewPanel(false)}>取消</button>
           <button className="btn-primary" onClick={handleCreate}>创建</button>

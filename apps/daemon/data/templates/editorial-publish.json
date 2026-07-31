@@ -1,0 +1,362 @@
+{
+  "id": "editorial-publish",
+  "name": "内容发布",
+  "description": "选题策划 → 写作 → 审核 → 排版发布",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "topic_planning",
+        "title": "选题策划",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据目标受众画像、热点趋势和内容日历进行选题策划：分析竞品内容策略、挖掘用户搜索意图、评估选题商业价值。产出选题清单（含标题方案、关键词、预期阅读量、SEO 评分），每个选题标注优先级（P0/P1/P2）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "内容策略",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "选题清单",
+                "type": "json"
+              },
+              {
+                "name": "竞品分析",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "选题清单",
+            "type": "json"
+          },
+          {
+            "name": "竞品分析",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "outline",
+        "title": "大纲撰写",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据选定选题撰写内容大纲：确定文章结构（引言-正文-结论）、每部分核心论点和数据支撑、信息图/图表需求、参考文献和引用来源。产出详细大纲和素材需求清单（图片、数据、案例等）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "选题清单",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "内容大纲",
+                "type": "Markdown"
+              },
+              {
+                "name": "素材需求",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "内容大纲",
+            "type": "Markdown"
+          },
+          {
+            "name": "素材需求",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "draft_writing",
+        "title": "初稿撰写",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据大纲撰写初稿：遵循品牌语调规范、确保信息准确性和逻辑连贯性、嵌入 SEO 关键词和内部链接、标注图表和数据可视化位置。产出完整初稿（含元描述、OG 标签建议），标注需人工确认的事实和数据。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "内容大纲",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "初稿",
+                "type": "Markdown"
+              },
+              {
+                "name": "事实核查清单",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "初稿",
+            "type": "Markdown"
+          },
+          {
+            "name": "事实核查清单",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "editing",
+        "title": "编辑审核",
+        "position": {
+          "x": 680,
+          "y": 380
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "对初稿进行编辑审核：检查逻辑结构、语法错误、风格一致性、事实准确性。对比竞品内容差异化程度，评估标题吸引力（A/B 测试方案），审核品牌合规性和法律风险。产出审核意见和修改建议（分必须修改和建议优化两级）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "初稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "审核意见",
+                "type": "file"
+              },
+              {
+                "name": "修改建议",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "审核意见",
+            "type": "file"
+          },
+          {
+            "name": "修改建议",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "layout_design",
+        "title": "排版设计",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据审核通过的终稿进行排版设计：配置文章排版样式（标题层级、引用块、代码块、信息图嵌入位）、生成封面图和内文配图方案、适配移动端和桌面端阅读体验。产出发布就绪的排版文件。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "初稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "排版文件",
+                "type": "file"
+              },
+              {
+                "name": "配图方案",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "排版文件",
+            "type": "file"
+          },
+          {
+            "name": "配图方案",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "publish",
+        "title": "终审发布",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "执行最终发布检查：确认所有审核意见已处理、检查排版在各端渲染效果、验证链接和多媒体资源可访问性、设置发布时间（即时/定时）。发布至内容平台并同步分发至社交媒体、邮件推送和 RSS。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "排版文件",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "发布记录",
+                "type": "json"
+              },
+              {
+                "name": "分发状态",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "发布记录",
+            "type": "json"
+          },
+          {
+            "name": "分发状态",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "performance_analysis",
+        "title": "数据分析",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "对已发布内容进行数据追踪和分析：阅读量、完读率、分享率、转化率（CTA 点击）、SEO 排名变化、用户评论情感分析。产出内容效果报告和迭代优化建议，更新内容日历和选题库。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "发布记录",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "效果报告",
+                "type": "file"
+              },
+              {
+                "name": "优化建议",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "效果报告",
+            "type": "file"
+          },
+          {
+            "name": "优化建议",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      }
+    ]
+  }
+}

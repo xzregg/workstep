@@ -1,7 +1,5 @@
 """Project API routes."""
 
-import json
-
 from fastapi import APIRouter, HTTPException, Query
 
 from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveStepsRequest
@@ -54,23 +52,26 @@ async def list_projects():
 
 
 @router.post("/save-steps")
-async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project_id")):
-    """Save workflow steps.json for a project."""
-    proj = project_manager.get_project_by_id(pid)
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
+async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project_id"),
+                     workflow_id: str | None = Query(None)):
+    """Save workflow steps for a project. Defaults to the default workflow."""
+    with project_manager.activate_project_by_id(pid) as proj:
+        try:
+            WorkflowDefinition.load(req.steps).validate()
+        except WorkflowValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    try:
-        WorkflowDefinition.load(req.steps).validate()
-    except WorkflowValidationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if workflow_id:
+            wf = project_manager.update_workflow(proj, workflow_id, steps=req.steps)
+            if wf is None:
+                raise HTTPException(status_code=404, detail="Workflow not found")
+        else:
+            default = proj.default_workflow()
+            if default is None:
+                raise HTTPException(status_code=400, detail="No workflow exists")
+            project_manager.update_workflow(proj, default["id"], steps=req.steps)
 
-    steps_path = proj.workstep_dir / "steps.json"
-    steps_path.write_text(json.dumps(req.steps, ensure_ascii=False, indent=2))
-
-    # Update in-memory steps
-    proj.steps = req.steps
-    return {"path": str(steps_path), "saved": True}
+        return {"saved": True}
 
 
 @router.get("/default-steps")

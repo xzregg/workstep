@@ -6,7 +6,9 @@
 
 本仓库包含 **WorkStep** 的设计原型与技术文档——一个本地优先的工作流编排工具，将多个 LLM 引擎（Codex、Codex CLI、Hermes ACP 等）串联为可定制的研发管道。
 
-当前项目不是可运行的应用，包含：
+当前项目包含可运行的前后端应用、早期静态原型与设计文档：
+- `apps/daemon` — Python + FastAPI 本地后台服务
+- `apps/web` — React + TypeScript + Vite Web 前端
 - 静态 HTML 原型（无需构建）
 - 产品需求与技术架构文档
 - 示例数据结构
@@ -14,12 +16,50 @@
 ## 目录结构
 
 ```
+apps/            # 可运行应用（daemon 后端 + web 前端）
 ui/              # 前端原型（浏览器直接打开）
 docs/            # 产品文档（PRD、引擎协议设计）
 plans/           # 技术架构文档（按功能拆分）
 steps.json       # 示例工作流定义
 cards.json       # 示例任务数据
 AGENTS.md        # 本文件
+```
+
+## 应用目录
+
+### `apps/daemon`
+
+WorkStep 本地后台服务，使用 Python 3.11+、FastAPI、Peewee 构建，负责 REST API、WebSocket 实时事件、项目管理、工作流编排、LLM 引擎调用与 SQLite 持久化。
+
+主要目录：
+- `api/` — API 路由与接口
+- `services/` — 业务逻辑、DAG 调度与任务执行
+- `engines/` — LLM 引擎及 ACP、CLI、API 适配
+- `models/` — Peewee 数据模型与迁移
+- `schemas/` — Pydantic 请求、响应模型
+- `streaming/` — 实时事件总线
+- `tests/` — 后端测试
+
+开发命令：
+
+```bash
+cd apps/daemon
+uv sync --dev
+uv run uvicorn main:app --reload --port 8765
+uv run pytest
+```
+
+### `apps/web`
+
+WorkStep Web 前端，使用 React、TypeScript、Vite、React Flow 和 Zustand 构建，包含任务列表、任务详情、工作流画布与设置页面。
+
+开发命令：
+
+```bash
+cd apps/web
+npm install
+npm run dev
+npm run build
 ```
 
 ## 查看原型
@@ -29,6 +69,12 @@ AGENTS.md        # 本文件
 - `ui/canvas-editor.html` — Dify 风格节点画布编辑器
 - `ui/card-detail.html` — 任务详情（阶段时间线 + LLM 对话）
 - `ui/ai-research-harness.html` — 备选界面
+
+## 前端开发规范（`apps/web`）
+
+- 禁止使用原生 `window.alert()` / `window.confirm()` 弹窗；确认类交互一律使用通用组件 `apps/web/src/components/ConfirmDialog.tsx`（删除、离开/切换前有未保存更改等场景）。
+- 新建 / 重命名项目与工作流的名称禁止包含空白字符（空格、Tab 等），前端输入即时校验，后端 schema 同样强制。
+- 新建流程默认为空白画布（`{ nodes: [], connections: [] }`），不自动加载默认模板；需要模板时由用户从「流程模板」下拉选择（内置模板 + `apps/daemon/data/templates/` 下的自定义模板，均带 `id` / `name` / `description` / `steps` 元数据）。
 
 ## 技术架构（已确定）
 

@@ -333,9 +333,19 @@ class TaskRunner:
                     step_run.status = "succeeded"
                     step_run.ended_at = int(time.time())
                     step_run.save()
+                    # Merge task-level review overrides with stage config
+                    review_config = dict(step.review or {})
+                    if task.review_overrides_json:
+                        try:
+                            overrides = json.loads(task.review_overrides_json)
+                            step_ov = overrides.get(step_key, {}) if isinstance(overrides, dict) else {}
+                            if isinstance(step_ov, dict):
+                                review_config.update(step_ov)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
                     ts.status = (
                         "reviewing"
-                        if step.review.get("auto", False)
+                        if review_config.get("auto", False)
                         else "awaiting_review"
                     )
                     ts.save()
@@ -371,7 +381,7 @@ class TaskRunner:
                         ts.ended_at = None
                         ts.save()
                         failed.add(step_key)
-                    elif step_run.attempt <= int(step.review.get("maxRetries", 1)):
+                    elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
                         retry_feedback = outcome.feedback
                         ts.status = "retrying"
                         ts.error = outcome.feedback
@@ -382,7 +392,7 @@ class TaskRunner:
                                 "task_id": task.id,
                                 "step_key": step_key,
                                 "attempt": step_run.attempt + 1,
-                                "max_retries": step.review.get("maxRetries", 1),
+                                "max_retries": review_config.get("maxRetries", 1),
                             },
                         })
                     else:
@@ -391,6 +401,31 @@ class TaskRunner:
                         ts.ended_at = int(time.time())
                         ts.save()
                         failed.add(step_key)
+
+                # Persist review result as a chat message
+                rmsg_id = str(uuid.uuid4())
+                rnow = int(time.time())
+                rsummary = outcome.report.get("summary", "")
+                rissues = outcome.report.get("issues", [])
+                ritems = "".join(
+                    f"- {i.get('description', '')}"
+                    + (f" → {i.get('suggestion', '')}" if i.get('suggestion') else "")
+                    + "\n"
+                    for i in (rissues or [])
+                )
+                rcontent = f"**审核结果：{'通过' if outcome.status == 'passed' else '未通过'}**\n{rsummary}\n{ritems}"
+                Message.create(
+                    id=rmsg_id,
+                    task=task,
+                    step_key=step_key,
+                    role="review",
+                    content=rcontent,
+                    engine=review_config.get("engine") or step.engine,
+                    run_id=rmsg_id,
+                    run_status="completed",
+                    position=0,
+                    created_at=rnow,
+                )
 
                 await self._publish(task.id, step_key, {
                     "type": "status",

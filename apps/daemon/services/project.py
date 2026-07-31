@@ -9,7 +9,7 @@ from pathlib import Path
 
 import peewee as pw
 
-from models import init_db, Task, TaskStep, Message, ALL_MODELS
+from models import init_db, Task, TaskStep, Message, Workflow, ALL_MODELS
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,8 @@ class Project:
 
     path: Path
     db: pw.SqliteDatabase
-    steps: dict  # Parsed steps.json
+    steps: dict  # Cached steps from the default workflow (backward compatible)
+    workflows: list[dict] = field(default_factory=list)  # [{id, name, is_default, steps, ...}]
     name: str = ""  # Display name, defaults to directory name
     id: str = ""  # Unique project ID
 
@@ -96,6 +97,15 @@ class Project:
     @property
     def steps_path(self) -> Path:
         return self.workstep_dir / "steps.json"
+
+    def default_workflow(self) -> dict | None:
+        for wf in self.workflows:
+            if wf.get("is_default") and not wf.get("deleted"):
+                return wf
+        for wf in self.workflows:
+            if not wf.get("deleted"):
+                return wf
+        return None
 
 
 @dataclass
@@ -198,6 +208,115 @@ class ProjectManager:
             raise ValueError(f"Project not found: {project_id}")
         return ProjectContext(proj)
 
+    # ── Workflow helpers ──────────────────────────────────────────────
+
+    def _load_workflows_from_db(self) -> list[dict]:
+        """Load all workflow rows from the project DB into dicts."""
+        rows = list(Workflow.select().order_by(Workflow.created_at))
+        result = []
+        for r in rows:
+            try:
+                steps = json.loads(r.steps_json)
+            except (json.JSONDecodeError, TypeError):
+                steps = {}
+            result.append({
+                "id": r.id,
+                "name": r.name,
+                "steps": steps,
+                "is_default": bool(r.is_default),
+                "deleted": bool(r.deleted),
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            })
+        return result
+
+    def _maybe_migrate_steps_json(self, proj: Project) -> None:
+        """If workflows table is empty, seed it from the legacy steps.json file."""
+        if Workflow.select().count() > 0:
+            return
+        steps_path = proj.steps_path
+        steps = json.loads(steps_path.read_text()) if steps_path.exists() else dict(DEFAULT_STEPS)
+        now = int(time.time())
+        wf_id = str(uuid.uuid4())[:8]
+        Workflow.create(
+            id=wf_id,
+            name="默认流程",
+            steps_json=json.dumps(steps, ensure_ascii=False),
+            is_default=1,
+            created_at=now,
+            updated_at=now,
+        )
+        logger.info("Migrated steps.json to workflows table for %s", proj.path)
+
+    def _sync_project_workflows(self, proj: Project) -> None:
+        """Load workflows from DB into the Project dataclass and update cached steps."""
+        proj.workflows = self._load_workflows_from_db()
+        default = proj.default_workflow()
+        if default:
+            proj.steps = default["steps"]
+
+    def create_workflow(self, proj: Project, name: str, steps: dict | None = None,
+                        is_default: bool = False) -> dict:
+        """Create a new workflow and return its dict."""
+        if is_default:
+            Workflow.update(is_default=0).where(Workflow.is_default == 1).execute()
+        now = int(time.time())
+        wf_id = str(uuid.uuid4())[:8]
+        wf_steps = steps if steps is not None else {"nodes": [], "connections": []}
+        Workflow.create(
+            id=wf_id, name=name,
+            steps_json=json.dumps(wf_steps, ensure_ascii=False),
+            is_default=1 if is_default else 0,
+            created_at=now, updated_at=now,
+        )
+        self._sync_project_workflows(proj)
+        return next(w for w in proj.workflows if w["id"] == wf_id)
+
+    def update_workflow(self, proj: Project, workflow_id: str,
+                        name: str | None = None, steps: dict | None = None) -> dict | None:
+        """Update a workflow's name and/or steps. Returns the updated dict or None."""
+        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        if row is None:
+            return None
+        if name is not None:
+            row.name = name
+        if steps is not None:
+            row.steps_json = json.dumps(steps, ensure_ascii=False)
+        row.updated_at = int(time.time())
+        row.save()
+        self._sync_project_workflows(proj)
+        return next((w for w in proj.workflows if w["id"] == workflow_id), None)
+
+    def delete_workflow(self, proj: Project, workflow_id: str) -> dict | None:
+        """Delete a workflow — two-stage (recycle bin).
+
+        First call soft-deletes (row stays, `deleted=1`); deleting again
+        permanently removes the row. The default workflow and the last
+        remaining active workflow cannot be deleted.
+        """
+        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        if row is None:
+            return None
+
+        if bool(row.deleted):
+            # Already in the recycle bin → permanent delete
+            row.delete_instance()
+            self._sync_project_workflows(proj)
+            return {"deleted": True, "soft": False}
+
+        if bool(row.is_default):
+            return {"deleted": False, "reason": "default"}
+        active_count = Workflow.select().where(Workflow.deleted == 0).count()
+        if active_count <= 1:
+            return {"deleted": False, "reason": "last"}
+
+        row.deleted = 1
+        row.updated_at = int(time.time())
+        row.save()
+        self._sync_project_workflows(proj)
+        return {"deleted": True, "soft": True}
+    # ── Project lifecycle ────────────────────────────────────────────
+
     def _load_saved_projects(self):
         """Load and register projects from config store on startup."""
         projects_data = config_store.get("projects")
@@ -258,11 +377,17 @@ class ProjectManager:
         db_path = ws_dir / "workstep.db"
         db = init_db(str(db_path))
 
-        # Read steps
+        # Read steps from steps.json for initial seed
         steps = json.loads(steps_path.read_text())
 
         project = Project(path=path, db=db, steps=steps, name=name or path.name, id=str(uuid.uuid4())[:8])
         self._projects[path_str] = project
+
+        # Seed workflows table from steps.json
+        with ProjectContext(project):
+            self._maybe_migrate_steps_json(project)
+            self._sync_project_workflows(project)
+
         self._save_config()
         logger.info("Initialized project: %s (name=%s, id=%s)", path_str, project.name, project.id)
         return project
@@ -288,10 +413,16 @@ class ProjectManager:
 
         db = init_db(str(db_path))
         steps_path = ws_dir / "steps.json"
-        steps = json.loads(steps_path.read_text()) if steps_path.exists() else DEFAULT_STEPS
+        steps = json.loads(steps_path.read_text()) if steps_path.exists() else dict(DEFAULT_STEPS)
 
         project = Project(path=path, db=db, steps=steps, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
         self._projects[path_str] = project
+
+        # Auto-migrate legacy steps.json → workflows table, then sync
+        with ProjectContext(project):
+            self._maybe_migrate_steps_json(project)
+            self._sync_project_workflows(project)
+
         logger.info("Registered project: %s (id=%s)", path_str, project.id)
         return project
 
@@ -314,13 +445,24 @@ class ProjectManager:
     def list_projects(self) -> list[dict]:
         """List all registered projects."""
         result = []
-        for path_str, proj in self._projects.items():
-            result.append({
+        for _path_str, proj in self._projects.items():
+            entry = {
                 "id": proj.id,
-                "path": path_str,
+                "path": str(proj.path),
                 "name": proj.name,
                 "steps": proj.steps,
-            })
+                "workflows": [
+                    {
+                        "id": w["id"],
+                        "name": w["name"],
+                        "is_default": w["is_default"],
+                        "deleted": w["deleted"],
+                        "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
+                    }
+                    for w in proj.workflows
+                ],
+            }
+            result.append(entry)
         return result
 
     def get_project(self, path: str | Path) -> Project | None:

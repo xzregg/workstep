@@ -133,14 +133,25 @@ def test_init_db_migrates_a_legacy_database_idempotently(tmp_path):
     legacy_db = pw.SqliteDatabase(db_path, pragmas={"foreign_keys": 1})
     db_proxy.initialize(legacy_db)
     legacy_db.connect()
-    legacy_db.create_tables([Task, TaskStep, Message])
+    # Simulate old database with legacy table name "task" (before rename to "tasks")
+    legacy_db.execute_sql("""CREATE TABLE IF NOT EXISTS task (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        cwd TEXT DEFAULT '',
+        status TEXT DEFAULT 'ready',
+        engine TEXT,
+        model TEXT,
+        pipeline_version TEXT,
+        review_overrides_json TEXT,
+        created_at INTEGER,
+        updated_at INTEGER
+    )""")
+    legacy_db.create_tables([TaskStep, Message])
     now = int(time.time())
-    Task.create(
-        id="legacy-task",
-        title="Keep me",
-        cwd="/tmp/legacy",
-        created_at=now,
-        updated_at=now,
+    legacy_db.execute_sql(
+        "INSERT INTO task (id, title, cwd, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("legacy-task", "Keep me", "/tmp/legacy", now, now)
     )
     assert set(legacy_db.get_tables()) == {"message", "task", "taskstep"}
     legacy_db.close()
@@ -153,7 +164,7 @@ def test_init_db_migrates_a_legacy_database_idempotently(tmp_path):
             "message",
             "schema_version",
             "step_runs",
-            "task",
+            "tasks",
             "taskstep",
             "workflow_runs",
         }.issubset(reopened_db.get_tables())

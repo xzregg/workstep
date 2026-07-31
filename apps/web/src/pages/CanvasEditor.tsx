@@ -1,6 +1,8 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Combobox from '../components/Combobox'
 import {
   ReactFlow, Controls, Background, addEdge,
   useNodesState, useEdgesState,
@@ -9,8 +11,67 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useProjectStore } from '../stores/projectStore'
-import { engineApi, type EngineInfo, type EngineModel } from '../api/client'
+import { engineApi, templateApi, type EngineInfo, type EngineModel, type TemplateInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
+import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
+
+/* ══════════════════════════════════════════
+   Shared dropdown menu (portal-rendered so it
+   is never clipped/covered by the canvas)
+   ══════════════════════════════════════════ */
+
+function MenuItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', fontSize: 13, border: 'none', background: 'transparent', color: 'var(--fg)', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap' }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function DropdownMenu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const close = useCallback(() => setOpen(false), [])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as HTMLElement)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <>
+      <button className="btn-ghost" onClick={(e) => {
+        if (!open) {
+          const rect = e.currentTarget.getBoundingClientRect()
+          setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+        }
+        setOpen((s) => !s)
+      }}>{label}</button>
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed', top: pos.top, right: pos.right, zIndex: 1000,
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
+            padding: 4, minWidth: 160, maxHeight: '60vh', overflowY: 'auto',
+          }}
+        >
+          {children(close)}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
 
 /* ══════════════════════════════════════════
    Types — matching canvas-editor.html JSON
@@ -139,6 +200,10 @@ function canvasToFlowEdges(conns: CanvasConnection[], nodesData: StepNodeData[])
 }
 
 function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: CanvasConnection[] } {
+  // Explicitly empty workflow → blank canvas (no default template)
+  if (stepsJson && !stepsJson?.nodes?.length && !stepsJson?.steps?.length) {
+    return { nodes: [], connections: [] }
+  }
   // New format: { nodes, connections }
   if (stepsJson?.nodes?.length) {
     const nodes: StepNodeData[] = stepsJson.nodes.map((n: any) => ({
@@ -152,7 +217,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       review: n.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       position: n.position,
       inputs: (n.inputs || []).map((inp: any) => ({
-        name: inp.name || '', type: inp.type || 'any',
+        name: inp.name || '', type: inp.type || DEFAULT_OUTPUT_TYPE,
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
       })),
       outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
@@ -198,7 +263,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       review: s.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       inputs: (s.inputs || []).map((inp: any) => ({
         name: inp.name || inp, type: inp.type || 'document',
-        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })),
+        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE })),
       })),
       outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
     }))
@@ -347,12 +412,12 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
   const updateInput = (i: number, field: 'name' | 'type', val: string) => {
     const next = [...inputs]; next[i] = { ...next[i], [field]: val }; onChange(next)
   }
-  const addInput = () => onChange([...inputs, { name: '', type: 'any', outputs: [] }])
+  const addInput = () => onChange([...inputs, { name: '', type: DEFAULT_OUTPUT_TYPE, outputs: [] }])
   const removeInput = (i: number) => onChange(inputs.filter((_, idx) => idx !== i))
 
   const addSubOutput = (i: number) => {
     const next = [...inputs]
-    next[i] = { ...next[i], outputs: [...next[i].outputs, { name: '', type: 'any' }] }
+    next[i] = { ...next[i], outputs: [...next[i].outputs, { name: '', type: DEFAULT_OUTPUT_TYPE }] }
     onChange(next)
   }
   const updateSubOutput = (i: number, j: number, field: 'name' | 'type', val: string) => {
@@ -376,7 +441,7 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12 }} />
-              <input value={inp.type} onChange={(e) => updateInput(i, 'type', e.target.value)} placeholder="类型" style={{ width: 60, height: 28, fontSize: 12 }} />
+              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder="类型" style={{ width: 80, height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }} />
               <button className="btn-icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 14 }}>×</button>
             </div>
             {/* Sub-outputs */}
@@ -384,11 +449,7 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
               <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
                 <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
                 <input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
-                <select value={sub.type} onChange={(e) => updateSubOutput(i, j, 'type', e.target.value)} style={{ width: 72, height: 24, fontSize: 11 }}>
-                  <option value="string">字符串</option>
-                  <option value="json">JSON</option>
-                  <option value="file">文件</option>
-                </select>
+                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder="类型" style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
                 <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 12 }}>×</button>
               </div>
             ))}
@@ -420,7 +481,7 @@ function randomStageColor(currentColor?: string) {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose }: {
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange }: {
   node: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
@@ -430,6 +491,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   onSave: (data: StepNodeData) => void
   onRequestDelete: () => void
   onClose: () => void
+  onDirtyChange: (dirty: boolean) => void
 }) {
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
   const [stageModels, setStageModels] = useState<EngineModel[]>([])
@@ -438,6 +500,12 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   const [reviewModelsLoading, setReviewModelsLoading] = useState(false)
 
   // Sync draft when node changes (e.g. clicking different node)
+
+  // Detect dirty state
+  useEffect(() => {
+    const changed = JSON.stringify(draft) !== JSON.stringify(node)
+    onDirtyChange(changed)
+  }, [draft, node, onDirtyChange])
   useEffect(() => {
     setDraft({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
   }, [node])
@@ -521,6 +589,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             {draft.label.charAt(0)}
           </div>
           <span style={{ fontSize: 15, fontWeight: 600 }}>{draft.label}</span>
+          <button onClick={onRequestDelete}
+            style={{ fontSize: 12, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
+            删除
+          </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
@@ -529,7 +601,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             disabled={Boolean(keyError)}
             onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
-            保存
+            暂存
           </button>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
@@ -657,26 +729,19 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       <div>
         <div style={sectionTitle}>阶段审核</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={review.auto}
-              onChange={(e) => updateReview('auto', e.target.checked)}
-              style={{ width: 16, height: 16 }}
-            />
-            自动启动审核 Agent
-          </label>
-          {!review.auto && (
-            <div style={{ fontSize: 11, color: 'var(--meta)' }}>
-              阶段完成后将暂停，等待用户确认进入下一阶段。
-            </div>
-          )}
-          {review.auto && (
-            <>
-              <div>
-                <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                  审核不通过自动重跑次数
-                </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={review.auto}
+                onChange={(e) => updateReview('auto', e.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              自动审核
+            </label>
+            {review.auto && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
                 <input
                   type="number"
                   min={0}
@@ -686,11 +751,18 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     'maxRetries',
                     Math.max(0, Number.parseInt(e.target.value || '0', 10)),
                   )}
+                  style={{ width: 48, height: 24, fontSize: 12, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }}
                 />
-                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--meta)' }}>
-                  指首次执行之外允许的额外重跑次数。
-                </div>
               </div>
+            )}
+          </div>
+          {!review.auto && (
+            <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+              阶段完成后将暂停，等待用户确认进入下一阶段。
+            </div>
+          )}
+          {review.auto && (
+            <>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核引擎</label>
@@ -756,10 +828,6 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         onChange={(inputs) => updateDraft('inputs', inputs)}
       />
 
-      <button onClick={onRequestDelete}
-        style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: 8, borderRadius: 'var(--radius-sm)' }}>
-        删除此阶段
-      </button>
     </div>
   )
 }
@@ -773,31 +841,55 @@ function CanvasEditorInner() {
   const { fitView } = useReactFlow()
   const activeProject = useProjectStore((s) => s.activeProject)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
+  const saveSteps = useProjectStore((s) => s.saveSteps)
   const fetchProjects = useProjectStore((s) => s.fetchProjects)
 
-  // Always re-fetch project on mount to get latest steps.json
+  // Project + workflow loading (re-run when URL params change)
+  const activeWorkflowId = useProjectStore(s => s.activeWorkflowId)
+  const setActiveWorkflow = useProjectStore(s => s.setActiveWorkflow)
+  const wfParam = searchParams.get('workflow')
+  const projectParam = searchParams.get('project')
+
   useEffect(() => {
-    const projectName = searchParams.get('project')
-    if (!projectName) return
+    if (!projectParam) return
 
     const doLoad = async () => {
       await fetchProjects()
       const currentProjects = useProjectStore.getState().projects
-      const match = currentProjects.find((p) => p.name === projectName)
-      if (match) setActiveProject(match)
+      const match = currentProjects.find((p) => p.name === projectParam)
+      if (match) {
+        setActiveProject(match)
+        const targetWf = wfParam
+          ? match.workflows?.find(w => w.id === wfParam)
+          : match.workflows?.find(w => w.is_default) || match.workflows?.[0]
+        if (targetWf) setActiveWorkflow(targetWf.id)
+      }
     }
     doLoad()
-  }, []) // eslint-disable-line -- run once on mount
+  }, [projectParam, wfParam]) // eslint-disable-line
 
-  const { nodes: canvasNodes, connections: canvasConns } = loadCanvasData(activeProject?.steps)
+  // Resolve current steps from active workflow or project default
+  const workflowSteps = activeWorkflowId
+    ? activeProject?.steps  // steps always reflects default/current in ProjectManager
+    : activeProject?.steps
+  const { nodes: canvasNodes, connections: canvasConns } = loadCanvasData(workflowSteps)
 
   const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(canvasNodes))
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(canvasConns, canvasNodes))
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
   const [nodeConfigError, setNodeConfigError] = useState('')
+  const [nodeConfigDirty, setNodeConfigDirty] = useState(false)
   const [showJson, setShowJson] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importError, setImportError] = useState('')
+  const [templates, setTemplates] = useState<TemplateInfo[]>([])
+  const [pendingTemplate, setPendingTemplate] = useState<TemplateInfo | null>(null)
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+  const [pendingWfId, setPendingWfId] = useState<string | null>(null)
   const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
   const [enginesLoading, setEnginesLoading] = useState(true)
   const [enginesError, setEnginesError] = useState('')
@@ -814,6 +906,12 @@ function CanvasEditorInner() {
         setEnginesError(error instanceof Error ? error.message : '未知错误')
       })
       .finally(() => setEnginesLoading(false))
+  }, [])
+
+  useEffect(() => {
+    templateApi.list()
+      .then(({ templates: list }) => setTemplates(list))
+      .catch(() => setTemplates([]))
   }, [])
 
   // Reload canvas when project steps change (e.g. after re-fetch)
@@ -876,7 +974,7 @@ function CanvasEditorInner() {
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: 'any', outputs: [{ name: 'output', type: 'any' }] }], outputs: [{ name: 'output', type: 'any' }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -917,25 +1015,19 @@ function CanvasEditorInner() {
   }, [nodes, edges, setNodes, fitView])
 
   // Build canvas-editor JSON for save/preview
-  const buildCanvasJson = () => {
-    const nodesArr = nodes.map((n) => {
+  const buildCanvasJsonFromNodes = (nds: typeof nodes, conns: typeof edges) => {
+    const idToNum = new Map(nds.map((n) => [n.id, (n.data as StepNodeData).nodeId]))
+    const nodesArr = nds.map((n) => {
       const d = n.data as StepNodeData
       return {
-        id: d.nodeId,
-        type: d.key,
-        title: d.label,
-        color: d.color,
-        position: n.position,
-        engine: d.engine, model: d.model,
+        id: d.nodeId, type: d.key, title: d.label, color: d.color,
+        position: n.position, engine: d.engine, model: d.model,
         prompt: d.prompt,
         review: d.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
-        inputs: d.inputs,
-        outputs: d.outputs,
+        inputs: d.inputs, outputs: d.outputs,
       }
     })
-    // Build connections from edges
-    const idToNum = new Map(nodes.map((n) => [n.id, (n.data as StepNodeData).nodeId]))
-    const conns = edges.map((e) => {
+    const connsArr = conns.map((e) => {
       const sourceHandle = e.sourceHandle || 'out-0'
       const targetHandle = e.targetHandle || 'in-0'
       return {
@@ -945,24 +1037,42 @@ function CanvasEditorInner() {
         toPort: parseInt(targetHandle.replace('in-', '')) || 0,
       }
     })
-    return { nodes: nodesArr, connections: conns }
+    return { nodes: nodesArr, connections: connsArr }
   }
+  const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 
   const [saveMsg, setSaveMsg] = useState('')
+  const dirty = useProjectStore(s => s.canvasDirty)
+  const setDirty = useProjectStore(s => s.setCanvasDirty)
 
-  const handleLoadDefault = async () => {
+  // Warn on page leave when there are unsaved changes
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
+
+  const applyTemplate = async (t: TemplateInfo) => {
     try {
-      const res = await fetch('/api/project/default-steps')
-      if (!res.ok) return
-      const data = await res.json()
-      const { nodes: newNodes, connections: newConns } = loadCanvasData(data)
-      setNodes(canvasToFlowNodes(newNodes))
-      setEdges(canvasToFlowEdges(newConns, newNodes))
+      const full = await templateApi.get(t.id)
+      const { nodes: tNodes, connections: tConns } = loadCanvasData(full.steps ?? full)
+      setNodes(canvasToFlowNodes(tNodes))
+      setEdges(canvasToFlowEdges(tConns, tNodes))
       setSelectedNode(null)
+      setNodeConfigError('')
+      setDirty(true)
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     } catch (e) {
-      console.error('Load default failed:', e)
+      setSaveMsg(`模板加载失败：${e instanceof Error ? e.message : '网络错误'}`)
+      setTimeout(() => setSaveMsg(''), 5000)
     }
+  }
+
+  const switchWorkflow = (id: string) => {
+    setActiveWorkflow(id || null)
+    setDirty(false)
+    navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}&workflow=${encodeURIComponent(id)}`, { replace: true })
   }
 
   const handleSave = async () => {
@@ -1006,19 +1116,11 @@ function CanvasEditorInner() {
 
     try {
       const steps = buildCanvasJson()
-      const res = await fetch(`/api/project/save-steps?project_id=${encodeURIComponent(activeProject.id)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ steps }),
-      })
-      if (res.ok) {
-        setActiveProject({ ...activeProject, steps })
-        setSaveMsg('保存成功')
-        setTimeout(() => setSaveMsg(''), 2000)
-      } else {
-        const error = await res.json().catch(() => null)
-        setSaveMsg(`保存失败：${error?.detail || `HTTP ${res.status}`}`)
-        setTimeout(() => setSaveMsg(''), 5000)
-      }
+      await saveSteps(activeProject.id, steps)
+      setActiveProject({ ...activeProject, steps })
+      setSaveMsg('保存成功')
+      setDirty(false)
+      setTimeout(() => setSaveMsg(''), 2000)
     } catch (e) {
       console.error('Save failed:', e)
       setSaveMsg(`保存失败：${e instanceof Error ? e.message : '网络错误'}`)
@@ -1026,8 +1128,41 @@ function CanvasEditorInner() {
     }
   }
 
+  const handleExportJson = () => {
+    const text = JSON.stringify(buildCanvasJson(), null, 2)
+    setShowJson(true)
+    navigator.clipboard.writeText(text)
+      .then(() => setSaveMsg('复制成功，JSON 已复制到剪贴板'))
+      .catch(() => setSaveMsg('复制失败，请点击弹窗内的「复制」按钮'))
+    setTimeout(() => setSaveMsg(''), 3000)
+  }
+
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(buildCanvasJson(), null, 2))
+      .then(() => setSaveMsg('复制成功，JSON 已复制到剪贴板'))
+      .catch(() => setSaveMsg('复制失败，请重试'))
+    setTimeout(() => setSaveMsg(''), 3000)
+  }
+
+  const handleImport = () => {
+    try {
+      const parsed = JSON.parse(importText)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('JSON 必须是对象，包含 nodes 或 steps 字段')
+      }
+      const { nodes: impNodes, connections: impConns } = loadCanvasData(parsed)
+      setNodes(canvasToFlowNodes(impNodes))
+      setEdges(canvasToFlowEdges(impConns, impNodes))
+      setSelectedNode(null)
+      setNodeConfigError('')
+      setDirty(true)
+      setShowImport(false)
+      setImportText('')
+      setImportError('')
+      setTimeout(() => fitView({ padding: 0.2 }), 100)
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : 'JSON 解析失败，请检查格式')
+    }
   }
 
   useEffect(() => {
@@ -1058,22 +1193,49 @@ function CanvasEditorInner() {
           className="btn-ghost"
           aria-label="返回任务看板"
           title="返回当前项目的任务看板"
-          onClick={() => navigate('/tasks')}
+          onClick={() => {
+            if (dirty) { setConfirmLeave(true); return }
+            setDirty(false)
+            navigate('/tasks')
+          }}
           style={{ height: 30, padding: '0 9px' }}
         >
           ← 看板
         </button>
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' }}>流程编辑器</span>
+        {dirty && <span style={{ color: '#856404', fontSize: 11, marginLeft: 12 }}>⚠ 有未保存的更改，请点击「保存」持久化</span>}
+        {(activeProject?.workflows || []).length > 1 && (
+          <select
+            value={activeWorkflowId || ''}
+            onChange={(e) => {
+              const id = e.target.value
+              if (dirty) { setPendingWfId(id); return }
+              switchWorkflow(id)
+            }}
+            style={{ height: 28, fontSize: 12, marginLeft: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 6px', maxWidth: 160 }}
+          >
+            {(activeProject?.workflows || []).map(wf => (
+              <option key={wf.id} value={wf.id}>{wf.name}{wf.is_default ? ' (默认)' : ''}</option>
+            ))}
+          </select>
+        )}
         <div style={{ flex: 1 }} />
-        <button className="btn-ghost" onClick={handleLoadDefault}>↻ 加载默认</button>
-        <button className="btn-ghost" onClick={() => setShowJson(true)}>{'{ }'} JSON</button>
+        <button className="btn-ghost" onClick={() => setShowTemplateModal(true)}>流程模板</button>
+        <DropdownMenu label="JSON ▾">
+          {(close) => (
+            <>
+              <MenuItem onClick={() => { close(); handleExportJson() }}>⬇ 导出 JSON</MenuItem>
+              <MenuItem onClick={() => { close(); setImportText(''); setImportError(''); setShowImport(true) }}>⬆ 导入 JSON</MenuItem>
+            </>
+          )}
+        </DropdownMenu>
         <button className="btn-ghost" onClick={handleAutoLayout}>⊞ 布局</button>
         <button className="btn-ghost" onClick={handleAddNode}>+ 阶段</button>
-        <button className="btn-primary" onClick={handleSave}>保存</button>
+        <button className="btn-primary" onClick={handleSave} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>保存</button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1 }} onClick={() => { if (selectedNode && !nodeConfigDirty) { setNodeConfigError(""); setSelectedNode(null); setNodeConfigDirty(false); } } }>
           <ReactFlow nodes={nodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
             onConnect={onConnect} onNodeDoubleClick={onNodeDoubleClick}
@@ -1103,8 +1265,10 @@ function CanvasEditorInner() {
               ))
               setSelectedNode(data)
               setNodeConfigError('')
+              setDirty(true)
             }}
             onRequestDelete={() => setConfirmDeleteId(String(selectedNode.nodeId))}
+            onDirtyChange={setNodeConfigDirty}
             onClose={() => {
               setNodeConfigError('')
               setSelectedNode(null)
@@ -1116,7 +1280,7 @@ function CanvasEditorInner() {
       {/* Context menu */}
       {contextMenu && (
         <div style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)', padding: '4px 0', zIndex: 500, minWidth: 140 }}>
-          <div onClick={() => { const n = nodes.find((nd) => nd.id === contextMenu.nodeId); if (n) setSelectedNode(n.data as StepNodeData); setContextMenu(null) }}
+          <div onClick={() => { const n = nodes.find((nd) => nd.id === contextMenu.nodeId); if (n) { setSelectedNode(n.data as StepNodeData); setNodeConfigDirty(false); } setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
@@ -1131,7 +1295,42 @@ function CanvasEditorInner() {
         </div>
       )}
 
-      {/* JSON Preview */}
+      {/* Template list modal */}
+      {showTemplateModal && (
+        <div className="modal-overlay" onClick={() => setShowTemplateModal(false)} style={{ zIndex: 400 }}>
+          <div className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">流程模板</span>
+              <button className="btn-icon" onClick={() => setShowTemplateModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: '8px 16px 16px', overflowY: 'auto' }}>
+              {templates.length === 0 && (
+                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>暂无模板</div>
+              )}
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => { setShowTemplateModal(false); setPendingTemplate(t) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                >
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 500 }}>{t.name}</span>
+                    {t.description && (
+                      <span style={{ display: 'block', fontSize: 12, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</span>
+                    )}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount}步</span>
+                </button>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={() => setShowTemplateModal(false)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export workflow JSON preview */}
       {showJson && (
         <div className="modal-overlay" onClick={() => setShowJson(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
@@ -1152,6 +1351,32 @@ function CanvasEditorInner() {
         </div>
       )}
 
+      {/* Import workflow JSON */}
+      {showImport && (
+        <div className="modal-overlay" onClick={() => setShowImport(false)} style={{ zIndex: 400 }}>
+          <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">导入工作流 JSON</span>
+              <button className="btn-icon" onClick={() => setShowImport(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <textarea
+                value={importText}
+                onChange={(e) => { setImportText(e.target.value); setImportError('') }}
+                placeholder={'粘贴工作流 JSON，例如：\n{"nodes": [{ "id": 1, "type": "req", "title": "需求", ... }], "connections": []}'}
+                spellCheck={false}
+                style={{ width: '100%', height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+              {importError && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{importError}</p>}
+            </div>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={() => setShowImport(false)}>取消</button>
+              <button className="btn-primary" onClick={handleImport} disabled={!importText.trim()}>确认导入</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete confirm dialog */}
       <ConfirmDialog
         open={confirmDeleteId !== null}
@@ -1161,6 +1386,35 @@ function CanvasEditorInner() {
         danger
         onConfirm={() => { if (confirmDeleteId) { deleteNode(confirmDeleteId); setConfirmDeleteId(null) } }}
         onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      {/* Apply template confirm dialog */}
+      <ConfirmDialog
+        open={pendingTemplate !== null}
+        title="应用流程模板"
+        message={pendingTemplate ? `应用模板「${pendingTemplate.name}」将替换当前画布上的所有阶段和连线，未保存的更改会丢失。确定继续？` : undefined}
+        confirmText="应用模板"
+        danger
+        onConfirm={() => { const t = pendingTemplate; setPendingTemplate(null); if (t) void applyTemplate(t) }}
+        onCancel={() => setPendingTemplate(null)}
+      />
+
+      {/* Unsaved changes confirm dialog */}
+      <ConfirmDialog
+        open={confirmLeave}
+        title="未保存的更改"
+        message="有未保存的更改，确定离开？"
+        confirmText="离开"
+        onConfirm={() => { setConfirmLeave(false); setDirty(false); navigate('/tasks') }}
+        onCancel={() => setConfirmLeave(false)}
+      />
+      <ConfirmDialog
+        open={pendingWfId !== null}
+        title="未保存的更改"
+        message="有未保存的更改，确定切换工作流？"
+        confirmText="切换"
+        onConfirm={() => { if (pendingWfId !== null) switchWorkflow(pendingWfId); setPendingWfId(null) }}
+        onCancel={() => setPendingWfId(null)}
       />
     </div>
   )

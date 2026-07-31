@@ -1,0 +1,333 @@
+{
+  "id": "data-analysis",
+  "name": "数据分析",
+  "description": "数据采集 → 清洗 → 建模 → 评估 → 报告",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "data_collection",
+        "title": "数据采集",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "根据分析需求采集原始数据：对接数据源（数据库/API/日志/文件/爬虫）、定义数据抽取规则和时间窗口、处理增量或全量数据同步。产出原始数据集和数据字典（字段说明、类型、来源、质量标记）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "分析需求",
+            "type": "文档",
+            "outputs": [
+              {
+                "name": "原始数据",
+                "type": "json"
+              },
+              {
+                "name": "数据字典",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "原始数据",
+            "type": "json"
+          },
+          {
+            "name": "数据字典",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "data_cleaning",
+        "title": "数据清洗",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "对原始数据执行清洗和预处理：处理缺失值（删除/均值填充/模型预测）、检测和处理异常值（IQR/Z-score/业务规则）、格式标准化（日期/金额/编码统一）、去重和一致性校验。产出清洗后数据集和数据质量报告（含清洗前后对比）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "原始数据",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "清洗数据",
+                "type": "json"
+              },
+              {
+                "name": "质量报告",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "清洗数据",
+            "type": "json"
+          },
+          {
+            "name": "质量报告",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "feature_engineering",
+        "title": "特征工程",
+        "position": {
+          "x": 380,
+          "y": 300
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "从清洗后数据中构建分析特征：特征衍生（交叉特征/聚合特征/时间窗口特征）、特征编码（One-Hot/Label/Target Encoding）、特征选择（相关性分析/IV值/特征重要性）、特征缩放和降维。产出特征宽表和特征重要性分析。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "清洗数据",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "特征宽表",
+                "type": "json"
+              },
+              {
+                "name": "特征分析",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "特征宽表",
+            "type": "json"
+          },
+          {
+            "name": "特征分析",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "modeling",
+        "title": "模型构建",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "构建分析和预测模型：根据问题类型选择算法（回归/分类/聚类/时序预测/因果推断）、划分训练集和验证集、调参优化（网格搜索/贝叶斯优化）、模型评估（准确率/AUC/RMSE/业务指标）。产出训练好的模型和模型评估报告（含可解释性分析）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "特征宽表",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "训练模型",
+                "type": "file"
+              },
+              {
+                "name": "评估报告",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "质量报告",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "训练模型",
+            "type": "file"
+          },
+          {
+            "name": "评估报告",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "report_generation",
+        "title": "报告生成",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "将分析结果转化为商业报告：提炼核心发现和洞察、制作数据可视化图表（趋势图/对比图/分布图/热力图/漏斗图）、撰写分析结论和可执行建议。产出正式分析报告（含执行摘要、方法论、详细发现、建议方案）和汇报 PPT。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "评估报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "分析报告",
+                "type": "file"
+              },
+              {
+                "name": "汇报 PPT",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "特征分析",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "分析报告",
+            "type": "file"
+          },
+          {
+            "name": "汇报 PPT",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "decision_support",
+        "title": "决策建议",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "基于分析结论输出决策支持方案：评估各方案的成本收益和风险、模拟不同决策路径的业务影响、给出优先级排序和实施路线图。产出行决策建议书和行动计划（含 KPI 追踪框架），更新业务知识库。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "分析报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "决策建议书",
+                "type": "file"
+              },
+              {
+                "name": "行动计划",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "决策建议书",
+            "type": "file"
+          },
+          {
+            "name": "行动计划",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 1
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  }
+}

@@ -16,7 +16,7 @@ interface TaskState {
   content: Record<string, string>     // task_id → accumulated text
   loading: boolean
 
-  fetchTasks: (projectId: string) => Promise<void>
+  fetchTasks: (projectId: string, workflowId?: string | null) => Promise<void>
   setActiveTask: (id: string | null) => void
   createTask: (
     title: string,
@@ -24,14 +24,17 @@ interface TaskState {
     projectId: string,
     description?: string,
     startStepKey?: string,
+    reviewOverrides?: Record<string, any> | null,
+    workflowId?: string | null,
   ) => Promise<Task>
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string) => Promise<void>
   pauseTask: (taskId: string, projectId: string) => Promise<void>
   updateTaskDescription: (
     taskId: string,
-    description: string,
+    description: string | undefined,
     projectId: string,
+    reviewOverrides?: Record<string, any> | null,
   ) => Promise<Task>
   deleteTask: (taskId: string, projectId: string) => Promise<void>
   copyTask: (taskId: string, newTitle: string, projectId: string) => Promise<void>
@@ -45,10 +48,10 @@ export const useTaskStore = create<TaskState>((set) => ({
   content: {},
   loading: false,
 
-  fetchTasks: async (projectId: string) => {
+  fetchTasks: async (projectId: string, workflowId?: string | null) => {
     set({ loading: true })
     try {
-      const { tasks } = await taskApi.list(projectId)
+      const { tasks } = await taskApi.list(projectId, workflowId)
       set({ tasks, loading: false })
     } catch {
       set({ loading: false })
@@ -57,14 +60,16 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   setActiveTask: (id) => set({ activeTaskId: id }),
 
-  createTask: async (title, cwd, projectId, description, startStepKey) => {
+  createTask: async (title, cwd, projectId, description, startStepKey, reviewOverrides, workflowId) => {
     const task = await taskApi.create(
       title,
       cwd,
       projectId,
       'claude',
       description,
-      startStepKey,
+      startStepKey || null,
+      reviewOverrides || null,
+      workflowId || null,
     )
     set((s) => ({ tasks: [...s.tasks, task] }))
     return task
@@ -91,11 +96,12 @@ export const useTaskStore = create<TaskState>((set) => ({
     }))
   },
 
-  updateTaskDescription: async (taskId, description, projectId) => {
+  updateTaskDescription: async (taskId, description, projectId, reviewOverrides) => {
     const updated = await taskApi.updateDescription(
       taskId,
       projectId,
       description,
+      reviewOverrides,
     )
     set((s) => ({
       tasks: s.tasks.map((task) => task.id === taskId ? updated : task),

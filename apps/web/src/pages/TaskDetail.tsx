@@ -221,9 +221,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
   const runTask = useTaskStore((s) => s.runTask)
+  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
-  const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
@@ -252,6 +252,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [editReviewAuto, setEditReviewAuto] = useState(false)
+  const [editReviewRetries, setEditReviewRetries] = useState(1)
+  const [editReviewPrompt, setEditReviewPrompt] = useState('')
+  const [showReviewDrawer, setShowReviewDrawer] = useState(false)
   const [promptDraft, setPromptDraft] = useState('')
   const [promptSaving, setPromptSaving] = useState(false)
   const [promptSaveError, setPromptSaveError] = useState('')
@@ -621,6 +625,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setDescriptionSaving(false)
     }
   }
+
+  // Sync review editing state with current stage
+  useEffect(() => {
+    const cfg = (task?.review_overrides || {})[currentStage.key]
+    setEditReviewAuto(cfg?.auto ?? false)
+    setEditReviewRetries(cfg?.maxRetries ?? 1)
+    setEditReviewPrompt(cfg?.prompt ?? '')
+  }, [currentStage.key, task?.review_overrides])
 
   const openPromptEditor = () => {
     setPromptDraft(currentStage.prompt)
@@ -1263,6 +1275,59 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 })()}
               </div>
             </div>
+          </div>
+
+          {/* Per-stage review config (collapsible) */}
+          <div style={{ marginTop: 20 }}>
+            <button
+              onClick={() => setShowReviewDrawer(!showReviewDrawer)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--muted)', fontSize: 13, fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.5px',
+                padding: '0', fontFamily: 'var(--font-body)',
+              }}
+            >
+              <span style={{
+                transform: showReviewDrawer ? 'rotate(90deg)' : 'none',
+                transition: 'transform 150ms', display: 'inline-block', fontSize: 10,
+              }}>&#9654;</span>
+              阶段审核配置
+            </button>
+            {showReviewDrawer && (
+              <div style={{
+                marginTop: 10, padding: '10px 12px', borderRadius: 6,
+                border: '1px solid var(--border)', background: 'var(--surface)',
+                display: 'flex', flexDirection: 'column', gap: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={editReviewAuto} onChange={(e) => setEditReviewAuto(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 14, height: 14, margin: 0 }} />
+                    自动审核
+                  </label>
+                  <span style={{ fontSize: 12, color: 'var(--meta)' }}>重试</span>
+                  <input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
+                    style={{ width: 40, height: 22, fontSize: 12, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
+                </div>
+                <textarea
+                  value={editReviewPrompt}
+                  onChange={(e) => setEditReviewPrompt(e.target.value)}
+                  placeholder="审核提示词（留空使用阶段默认）"
+                  rows={2}
+                  style={{ width: '100%', fontSize: 12, lineHeight: 1.5, resize: 'vertical', fontFamily: 'var(--font-body)', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg)', color: 'var(--fg)' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button className="btn-ghost"
+                    onClick={async () => {
+                      const updated = { ...(task.review_overrides || {}), [currentStage.key]: { auto: editReviewAuto, maxRetries: editReviewRetries, prompt: editReviewPrompt } }
+                      await updateTaskDescription(task.id, undefined, projectId!, updated)
+                    }}
+                    style={{ fontSize: 11, padding: '3px 10px' }}
+                  >保存</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Prompt section */}

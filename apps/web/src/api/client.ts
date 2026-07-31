@@ -16,11 +16,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // --- Project API ---
 
+export interface WorkflowSummary {
+  id: string
+  name: string
+  is_default: boolean
+  deleted?: boolean
+  nodeCount: number
+}
+
 export interface Project {
   id: string
   path: string
   name: string
   steps: any
+  workflows: WorkflowSummary[]
 }
 
 export const projectApi = {
@@ -40,14 +49,62 @@ export const projectApi = {
       method: 'POST',
       body: JSON.stringify({ path, name }),
     }),
-  saveSteps: (projectId: string, steps: any) =>
-    request<{ path: string; saved: boolean }>(
-      `/project/save-steps?project_id=${encodeURIComponent(projectId)}`,
+  saveSteps: (projectId: string, steps: any, workflowId?: string) =>
+    request<{ saved: boolean }>(
+      `/project/save-steps?project_id=${encodeURIComponent(projectId)}${workflowId ? `&workflow_id=${encodeURIComponent(workflowId)}` : ''}`,
       {
         method: 'POST',
         body: JSON.stringify({ steps }),
       },
     ),
+}
+
+// --- Workflow API ---
+
+export interface WorkflowDetail {
+  id: string
+  name: string
+  steps: any
+  is_default: boolean
+  created_at: number
+  updated_at: number
+}
+
+export const workflowApi = {
+  list: (projectId: string) =>
+    request<{ workflows: WorkflowSummary[] }>(`/workflow/list?project_id=${encodeURIComponent(projectId)}`),
+  get: (id: string, projectId: string) =>
+    request<WorkflowDetail>(`/workflow/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`),
+  create: (projectId: string, name: string, steps?: any, templateId?: string) =>
+    request<WorkflowDetail>(`/workflow/create?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ name, steps, template_id: templateId, is_default: false }),
+    }),
+  update: (id: string, projectId: string, name?: string, steps?: any) =>
+    request<WorkflowDetail>(`/workflow/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, steps }),
+    }),
+  delete: (id: string, projectId: string) =>
+    request<{ deleted: boolean; soft?: boolean }>(`/workflow/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    }),
+}
+
+// --- Template API ---
+
+export interface TemplateInfo {
+  id: string
+  name: string
+  description: string
+  nodeCount: number
+  custom?: boolean
+  steps?: any
+}
+
+export const templateApi = {
+  list: () => request<{ templates: TemplateInfo[] }>('/templates/list'),
+  get: (id: string) => request<TemplateInfo>(`/templates/${encodeURIComponent(id)}`),
 }
 
 // --- Task API ---
@@ -59,6 +116,7 @@ export interface Task {
   cwd: string
   status: string
   engine: string
+  review_overrides?: Record<string, any> | null
   created_at: number
   updated_at: number
   steps: TaskStepState[]
@@ -110,15 +168,17 @@ export interface TaskArtifact {
 }
 
 export const taskApi = {
-  list: (projectId: string) =>
-    request<{ tasks: Task[] }>(`/task/list?project_id=${encodeURIComponent(projectId)}`),
+  list: (projectId: string, workflowId?: string | null) =>
+    request<{ tasks: Task[] }>(`/task/list?project_id=${encodeURIComponent(projectId)}${workflowId ? '&workflow_id=' + encodeURIComponent(workflowId) : ''}`),
   create: (
     title: string,
     cwd: string,
     projectId: string,
     engine = 'claude',
     description?: string,
-    startStepKey?: string,
+    startStepKey?: string | null,
+    reviewOverrides?: Record<string, any> | null,
+    workflowId?: string | null,
   ) =>
     request<Task>(`/task/create?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
@@ -128,14 +188,16 @@ export const taskApi = {
         engine,
         description,
         start_step_key: startStepKey,
+        review_overrides: reviewOverrides,
+        workflow_id: workflowId,
       }),
     }),
   get: (id: string, projectId: string) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`),
-  updateDescription: (id: string, projectId: string, description: string) =>
+  updateDescription: (id: string, projectId: string, description: string | undefined, reviewOverrides?: Record<string, any> | null) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PATCH',
-      body: JSON.stringify({ description }),
+      body: JSON.stringify({ description, review_overrides: reviewOverrides }),
     }),
   history: (taskId: string, projectId: string, limit = 50, offset = 0) =>
     request<{ messages: any[]; limit: number; offset: number }>(

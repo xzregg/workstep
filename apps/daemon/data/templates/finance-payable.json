@@ -1,0 +1,311 @@
+{
+  "id": "finance-payable",
+  "name": "应付账款",
+  "description": "发票接收 → 校验 → 付款审批 → 支付",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "invoice_receive",
+        "title": "发票接收",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "接收供应商发票，提取关键信息：发票号码、金额、税额、开票日期、供应商名称、采购内容。对发票进行 OCR 识别和字段校验，生成结构化发票数据。若发票信息不完整或格式异常，标记并通知补正。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "原始发票",
+            "type": "PDF/图片",
+            "outputs": [
+              {
+                "name": "发票数据",
+                "type": "json"
+              },
+              {
+                "name": "异常清单",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "发票数据",
+            "type": "json"
+          },
+          {
+            "name": "异常清单",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "invoice_audit",
+        "title": "发票审核",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "审核发票数据的合规性：核对发票金额与采购订单是否一致、税率是否正确、供应商资质是否有效、发票真伪查验。对不合规项生成审核意见，标记风险等级（低/中/高），通过则流转至账务处理。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "发票数据",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "审核结果",
+                "type": "json"
+              },
+              {
+                "name": "风险报告",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "审核结果",
+            "type": "json"
+          },
+          {
+            "name": "风险报告",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "accounting",
+        "title": "账务处理",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据审核通过的发票数据生成会计凭证：确定借方科目和贷方科目、计算进项税额、生成会计分录。匹配对应的采购订单和入库单，确保三单匹配一致。产出记账凭证和应付账款明细。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "审核结果",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "记账凭证",
+                "type": "json"
+              },
+              {
+                "name": "应付明细",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "记账凭证",
+            "type": "json"
+          },
+          {
+            "name": "应付明细",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "payment_approval",
+        "title": "付款审批",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据应付账款明细和资金计划发起付款审批：检查付款条件是否满足（账期、质保金等）、核对收款方银行信息、匹配预算额度。生成付款申请单，按金额分级触发审批流程（部门经理/财务总监/总经理）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "应付明细",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "付款申请",
+                "type": "json"
+              },
+              {
+                "name": "审批记录",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "付款申请",
+            "type": "json"
+          },
+          {
+            "name": "审批记录",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "payment_execute",
+        "title": "付款执行",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "执行审批通过的付款：对接银行接口或网银系统完成转账、生成付款凭证、更新应付账款状态为已付。记录实际付款时间、银行流水号，处理付款异常（账号错误、余额不足等）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "付款申请",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "付款凭证",
+                "type": "json"
+              },
+              {
+                "name": "银行回执",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "付款凭证",
+            "type": "json"
+          },
+          {
+            "name": "银行回执",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "archive",
+        "title": "归档",
+        "position": {
+          "x": 1580,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "将完整的付款链路文件归档：发票、审核记录、记账凭证、付款申请、银行回执按财务档案规范整理归档。生成应付账款月报摘要，标记已完成和待处理事项，更新供应商应付台账。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "付款凭证",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "归档文件",
+                "type": "json"
+              },
+              {
+                "name": "应付月报",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "归档文件",
+            "type": "json"
+          },
+          {
+            "name": "应付月报",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  }
+}
