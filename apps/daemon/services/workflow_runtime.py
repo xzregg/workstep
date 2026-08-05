@@ -3,15 +3,45 @@
 import asyncio
 import functools
 import json
-import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from models import ReviewRun, Task, TaskStep, WorkflowRun
+from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models.fields import utc_now
+from models.base import db_proxy
 from services.task_runner import TaskRunner
 from services.workflow_definition import WorkflowDefinition
+from services.messages import create_task_message
+from services.pipeline import DAGScheduler, Step
 from streaming.bus import EventBus
+
+
+def resolve_message_step_key(
+    steps_config: dict,
+    step_statuses: dict[str, str],
+) -> str:
+    ordered_keys = [
+        step["key"]
+        for step in steps_config.get("steps", [])
+        if step.get("key")
+    ]
+    for statuses in (
+        {"running", "reviewing", "awaiting_review", "retrying"},
+        {"failed", "rejected"},
+        {"pending"},
+    ):
+        current = next(
+            (
+                step_key
+                for step_key in ordered_keys
+                if step_statuses.get(step_key) in statuses
+            ),
+            None,
+        )
+        if current:
+            return current
+    return ordered_keys[-1] if ordered_keys else "do"
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +60,7 @@ class WorkflowRuntime:
         self._project_manager = project_manager
         self._runners: dict[str, TaskRunner] = {}
         self._active_tasks: set[asyncio.Task[str]] = set()
+        self._operation_locks: dict[str, asyncio.Lock] = {}
 
     async def run(
         self,
@@ -63,17 +94,23 @@ class WorkflowRuntime:
         except Task.DoesNotExist as exc:
             raise ValueError(f"Task not found: {task_id}") from exc
 
-        workflow = WorkflowDefinition.load(project.steps)
+        workflow_data = project.steps
+        if task.workflow_id:
+            selected_workflow = project.workflow_by_id(task.workflow_id)
+            if selected_workflow is None:
+                raise ValueError(f"Workflow not found: {task.workflow_id}")
+            workflow_data = selected_workflow["steps"]
+        workflow = WorkflowDefinition.load(workflow_data)
         compiled = workflow.compile()
         steps_config = compiled.to_steps_config()
-        now = int(time.time())
+        now = utc_now()
         workflow_run = WorkflowRun.create(
             id=str(uuid.uuid4()),
             task=task,
             status="running",
             workflow_schema_version=compiled.schema_version,
             workflow_snapshot_json=json.dumps(
-                project.steps,
+                workflow_data,
                 ensure_ascii=False,
                 sort_keys=True,
             ),
@@ -86,10 +123,40 @@ class WorkflowRuntime:
         runner = TaskRunner(self._event_bus)
         if task.id in self._runners:
             workflow_run.status = "failed"
-            workflow_run.ended_at = int(time.time())
+            workflow_run.ended_at = utc_now()
             workflow_run.save()
             raise RuntimeError(f"Task is already running: {task.id}")
         self._runners[task.id] = runner
+        task.status = "running"
+        task.active_workflow_run_id = workflow_run.id
+        task.state_version += 1
+        task.updated_at = now
+        task.save()
+
+        normalized_input = user_input.strip()
+        if normalized_input:
+            step_statuses = {
+                task_step.step_key: task_step.status
+                for task_step in TaskStep.select().where(TaskStep.task == task)
+            }
+            message_step_key = resolve_message_step_key(
+                steps_config,
+                step_statuses,
+            )
+            create_task_message(
+                id=str(uuid.uuid4()),
+                task=task,
+                channel="execution",
+                step_key=message_step_key,
+                role="user",
+                content=normalized_input,
+                run_id=workflow_run.id,
+                run_status="completed",
+                position=0,
+                started_at=now,
+                ended_at=now,
+                created_at=now,
+            )
 
         completion = asyncio.create_task(
             self._execute(
@@ -151,7 +218,7 @@ class WorkflowRuntime:
                     return None
                 raise RuntimeError("Review already has a different decision")
 
-            now = int(time.time())
+            now = utc_now()
             approved = decision in {"approve", "force_approve"}
             review.decision = decision
             review.decision_comment = comment
@@ -169,6 +236,7 @@ class WorkflowRuntime:
             task_step.save()
             task = Task.get_by_id(task_id)
             task.status = "running" if approved else "paused"
+            task.state_version += 1
             task.updated_at = now
             task.save()
 
@@ -223,6 +291,302 @@ class WorkflowRuntime:
         )
         return WorkflowRunHandle(workflow_run.id, completion)
 
+    async def restart_from_stage(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        *,
+        expected_run_id: str | None = None,
+    ) -> WorkflowRunHandle:
+        """Stop the current runner and start a child run from one DAG stage."""
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            with self._project_manager.activate_project_by_id(project_id) as project:
+                task = Task.get_or_none(Task.id == task_id)
+                if task is None:
+                    raise ValueError(f"Task not found: {task_id}")
+                parent_run_id = expected_run_id or task.active_workflow_run_id
+                if not parent_run_id:
+                    return self._start_from_stage_without_parent(
+                        project,
+                        task,
+                        step_key,
+                    )
+                parent = WorkflowRun.get_or_none(
+                    (WorkflowRun.id == parent_run_id)
+                    & (WorkflowRun.task == task)
+                )
+                if parent is None:
+                    raise RuntimeError("The referenced workflow run no longer exists")
+                if expected_run_id and task.active_workflow_run_id != expected_run_id:
+                    raise RuntimeError("The active workflow run has changed")
+                workflow_data = json.loads(parent.workflow_snapshot_json)
+                compiled = WorkflowDefinition.load(workflow_data).compile()
+                steps_config = compiled.to_steps_config()
+                step_list = [Step.from_dict(item) for item in steps_config["steps"]]
+                scheduler = DAGScheduler(step_list)
+                if step_key not in scheduler.steps:
+                    raise ValueError(f"Stage does not exist: {step_key}")
+                affected = {step_key, *scheduler.get_all_downstream(step_key)}
+                interrupted = {
+                    row.step_key
+                    for row in TaskStep.select().where(
+                        (TaskStep.task == task)
+                        & (
+                            TaskStep.status.in_(
+                                ["running", "reviewing", "retrying"]
+                            )
+                        )
+                    )
+                }
+
+            runner = self._runners.get(task_id)
+            if runner is not None:
+                await runner.cancel_task(task_id)
+                for _ in range(500):
+                    if task_id not in self._runners:
+                        break
+                    await asyncio.sleep(0.01)
+                if task_id in self._runners:
+                    raise RuntimeError("Task runner did not stop in time")
+
+            with self._project_manager.activate_project_by_id(project_id) as project:
+                task = Task.get_by_id(task_id)
+                parent = WorkflowRun.get_by_id(parent_run_id)
+                execution_keys = affected | interrupted
+                archived = self._archive_stage_artifacts(
+                    project,
+                    task,
+                    parent,
+                    execution_keys,
+                )
+                try:
+                    task, child = self._create_restart_run(
+                        task,
+                        parent,
+                        compiled.schema_version,
+                        step_key,
+                        execution_keys,
+                    )
+                except Exception:
+                    self._restore_archived_artifacts(archived)
+                    raise
+                new_runner = TaskRunner(self._event_bus)
+                self._runners[task.id] = new_runner
+                completion = asyncio.create_task(
+                    self._execute(
+                        task=task,
+                        runner=new_runner,
+                        workflow_run=child,
+                        steps_config=steps_config,
+                        artifacts_dir=Path(project.workstep_dir) / "artifacts",
+                        user_input="",
+                    ),
+                    name=f"workflow-run:{child.id}:restart",
+                )
+                self._active_tasks.add(completion)
+                completion.add_done_callback(
+                    functools.partial(
+                        self._consume_completion,
+                        task_id=task.id,
+                        runner=new_runner,
+                        workflow_run=child,
+                    )
+                )
+                return WorkflowRunHandle(child.id, completion)
+
+    def _start_from_stage_without_parent(
+        self,
+        project,
+        task: Task,
+        step_key: str,
+    ) -> WorkflowRunHandle:
+        workflow_data = project.steps
+        if task.workflow_id:
+            selected_workflow = project.workflow_by_id(task.workflow_id)
+            if selected_workflow is None:
+                raise ValueError(f"Workflow not found: {task.workflow_id}")
+            workflow_data = selected_workflow["steps"]
+        compiled = WorkflowDefinition.load(workflow_data).compile()
+        steps_config = compiled.to_steps_config()
+        scheduler = DAGScheduler([
+            Step.from_dict(item) for item in steps_config["steps"]
+        ])
+        if step_key not in scheduler.steps:
+            raise ValueError(f"Stage does not exist: {step_key}")
+        execution_keys = {step_key, *scheduler.get_all_downstream(step_key)}
+        reusable_keys = {
+            row.step_key
+            for row in TaskStep.select().where(
+                (TaskStep.task == task)
+                & (TaskStep.status == "passed")
+                & (~(TaskStep.step_key.in_(execution_keys)))
+            )
+            if row.step_key in scheduler.steps
+        }
+
+        with db_proxy.atomic():
+            TaskStep.update(
+                status="pending",
+                started_at=None,
+                ended_at=None,
+                error=None,
+            ).where(
+                (TaskStep.task == task)
+                & (TaskStep.step_key.in_(execution_keys))
+            ).execute()
+            TaskStep.update(
+                status="skipped",
+                started_at=None,
+                ended_at=None,
+                error=None,
+            ).where(
+                (TaskStep.task == task)
+                & (~(TaskStep.step_key.in_(execution_keys)))
+                & (TaskStep.status != "passed")
+            ).execute()
+            task.status = "ready"
+            task.updated_at = utc_now()
+            task.save()
+
+        handle = self._start_in_project(project, task.id, "")
+        now = utc_now()
+        workflow_run = WorkflowRun.get_by_id(handle.id)
+        workflow_run.restart_from_step_key = step_key
+        workflow_run.save(only=[WorkflowRun.restart_from_step_key])
+        for reusable_key in reusable_keys:
+            step = scheduler.steps[reusable_key]
+            StepRun.create(
+                id=str(uuid.uuid4()),
+                run=workflow_run,
+                step_key=reusable_key,
+                attempt=1,
+                status="reused",
+                engine=step.engine,
+                model=step.model or None,
+                started_at=now,
+                ended_at=now,
+            )
+        return handle
+
+    def _create_restart_run(
+        self,
+        task: Task,
+        parent: WorkflowRun,
+        schema_version: int,
+        step_key: str,
+        execution_keys: set[str],
+    ) -> tuple[Task, WorkflowRun]:
+        now = utc_now()
+        with db_proxy.atomic():
+            parent.status = "superseded"
+            parent.ended_at = parent.ended_at or now
+            parent.save()
+            StepRun.update(
+                status="cancelled",
+                ended_at=now,
+            ).where(
+                (StepRun.run == parent)
+                & (StepRun.status == "running")
+            ).execute()
+            child = WorkflowRun.create(
+                id=str(uuid.uuid4()),
+                task=task,
+                status="running",
+                workflow_schema_version=schema_version,
+                workflow_snapshot_json=parent.workflow_snapshot_json,
+                parent_run_id=parent.id,
+                restart_from_step_key=step_key,
+                started_at=now,
+            )
+            reusable = {
+                row.step_key
+                for row in TaskStep.select().where(
+                    (TaskStep.task == task)
+                    & (TaskStep.status == "passed")
+                    & (~(TaskStep.step_key.in_(execution_keys)))
+                )
+            }
+            for reusable_key in reusable:
+                source = (
+                    StepRun.select()
+                    .where(
+                        (StepRun.run == parent)
+                        & (StepRun.step_key == reusable_key)
+                        & (StepRun.status.in_(["succeeded", "reused"]))
+                    )
+                    .order_by(StepRun.attempt.desc())
+                    .first()
+                )
+                if source is None:
+                    continue
+                StepRun.create(
+                    id=str(uuid.uuid4()),
+                    run=child,
+                    step_key=reusable_key,
+                    attempt=1,
+                    status="reused",
+                    engine=source.engine,
+                    model=source.model,
+                    source_step_run_id=source.id,
+                    started_at=now,
+                    ended_at=now,
+                )
+            TaskStep.update(
+                status="pending",
+                started_at=None,
+                ended_at=None,
+                error=None,
+            ).where(
+                (TaskStep.task == task)
+                & (TaskStep.step_key.in_(execution_keys))
+            ).execute()
+            task.status = "running"
+            task.active_workflow_run_id = child.id
+            task.state_version += 1
+            task.updated_at = now
+            task.save()
+        return task, child
+
+    def _archive_stage_artifacts(
+        self,
+        project,
+        task: Task,
+        workflow_run: WorkflowRun,
+        step_keys: set[str],
+    ) -> list[tuple[Path, Path]]:
+        artifacts_root = Path(project.workstep_dir) / "artifacts"
+        history_root = (
+            Path(project.workstep_dir)
+            / "artifact-history"
+            / task.id
+            / workflow_run.id
+        )
+        archived: list[tuple[Path, Path]] = []
+        for key in sorted(step_keys):
+            source = artifacts_root / key / task.id
+            if not source.exists():
+                continue
+            destination = history_root / key
+            if destination.exists():
+                raise RuntimeError(
+                    f"Artifact history already exists for stage '{key}'"
+                )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            source.rename(destination)
+            archived.append((source, destination))
+        return archived
+
+    def _restore_archived_artifacts(
+        self,
+        archived: list[tuple[Path, Path]],
+    ) -> None:
+        for source, destination in reversed(archived):
+            if destination.exists() and not source.exists():
+                source.parent.mkdir(parents=True, exist_ok=True)
+                destination.rename(source)
+
     async def shutdown(self) -> None:
         """Cancel and await every workflow owned by this runtime."""
         runners = tuple(self._runners.items())
@@ -253,7 +617,7 @@ class WorkflowRuntime:
         if completion.cancelled():
             if workflow_run.status == "running":
                 workflow_run.status = "failed"
-                workflow_run.ended_at = int(time.time())
+                workflow_run.ended_at = utc_now()
                 workflow_run.save()
         else:
             completion.exception()
@@ -296,7 +660,7 @@ class WorkflowRuntime:
             else:
                 workflow_run.status = "failed"
         finally:
-            workflow_run.ended_at = int(time.time())
+            workflow_run.ended_at = utc_now()
             workflow_run.save()
             if self._runners.get(task.id) is runner:
                 self._runners.pop(task.id, None)

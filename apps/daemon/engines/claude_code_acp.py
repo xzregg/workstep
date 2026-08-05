@@ -4,6 +4,7 @@ import os
 import shutil
 
 from engines.acp_base import AcpEngineBase
+from services.config import config_store
 
 
 class ClaudeCodeAcpEngine(AcpEngineBase):
@@ -13,6 +14,10 @@ class ClaudeCodeAcpEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "claude_acp"
+    REQUIRES_PERMISSION_MODE = True
+
+    def get_permission_mode(self) -> str | None:
+        return config_store.get_claude_permission_mode() or None
 
     @staticmethod
     def is_installed() -> bool:

@@ -8,37 +8,57 @@ import acp
 from acp import schema
 
 from engines.base import BaseLLMEngine, EngineModel
-from engines.events import InternalEvent
+from engines.events import InternalEvent, normalize_token_usage
 
 logger = logging.getLogger(__name__)
 
 
 class _StreamingClient:
-    """Receive ACP notifications and approve explicit permission requests."""
+    """Receive ACP notifications and apply the configured permission policy."""
 
-    def __init__(self):
+    def __init__(self, permission_mode: str | None = None):
         self.updates: asyncio.Queue = asyncio.Queue()
+        self.permission_mode = permission_mode
 
     async def session_update(self, session_id, update, **kwargs):
         await self.updates.put(update)
 
     async def request_permission(self, session_id, tool_call, options, **kwargs):
-        allowed = next(
+        tool_kind = getattr(tool_call, "kind", None)
+        should_allow = (
+            self.permission_mode is None
+            or self.permission_mode in {"auto", "bypassPermissions"}
+            or (
+                self.permission_mode == "acceptEdits"
+                and tool_kind == "edit"
+            )
+            or (
+                self.permission_mode == "plan"
+                and tool_kind in {"read", "search", "think", "fetch"}
+            )
+        )
+        preferred_kinds = (
+            ("allow_always", "allow_once")
+            if self.permission_mode == "bypassPermissions"
+            else ("allow_once", "allow_always")
+        ) if should_allow else ("reject_once", "reject_always")
+        selected = next(
             (
                 option
+                for preferred_kind in preferred_kinds
                 for option in options
-                if option.kind in ("allow_once", "allow_always")
+                if option.kind == preferred_kind
             ),
             None,
         )
-        if allowed is None:
+        if selected is None or not should_allow:
             return schema.RequestPermissionResponse(
                 outcome=schema.DeniedOutcome(outcome="cancelled")
             )
         return schema.RequestPermissionResponse(
             outcome=schema.AllowedOutcome(
                 outcome="selected",
-                option_id=allowed.option_id,
+                option_id=selected.option_id,
             )
         )
 
@@ -59,6 +79,7 @@ class AcpEngineBase(BaseLLMEngine):
     # Subclasses must override these
     COMMAND: list[str] = []
     ENGINE_ID: str = ""
+    REQUIRES_PERMISSION_MODE = False
 
     def __init__(self):
         self._process = None
@@ -67,6 +88,9 @@ class AcpEngineBase(BaseLLMEngine):
     def get_command(self) -> list[str]:
         """Return the command to spawn the ACP agent process."""
         return self.COMMAND
+
+    def get_permission_mode(self) -> str | None:
+        return None
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
@@ -134,10 +158,17 @@ class AcpEngineBase(BaseLLMEngine):
             yield InternalEvent(type="error", data={"message": f"{self.ENGINE_ID}: no command configured"})
             return
 
+        permission_mode = self.get_permission_mode()
+        if self.REQUIRES_PERMISSION_MODE and not permission_mode:
+            yield InternalEvent(type="error", data={
+                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+            })
+            return
+
         logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
         yield InternalEvent(type="status", data={"status": "initializing"})
 
-        handler = _StreamingClient()
+        handler = _StreamingClient(permission_mode)
         try:
             async with acp.spawn_agent_process(
                 handler,
@@ -170,6 +201,11 @@ class AcpEngineBase(BaseLLMEngine):
                     )
                     active_session_id = session.session_id
 
+                yield InternalEvent(
+                    type="session_started",
+                    data={"session_id": active_session_id},
+                )
+
                 if model:
                     try:
                         await client.set_config_option(
@@ -199,7 +235,10 @@ class AcpEngineBase(BaseLLMEngine):
                     if event:
                         yield event
 
-                await prompt_task
+                prompt_response = await prompt_task
+                usage_event = self._map_prompt_response_usage(prompt_response)
+                if usage_event:
+                    yield usage_event
                 yield InternalEvent(type="status", data={"status": "done"})
 
         except Exception as e:
@@ -243,11 +282,37 @@ class AcpEngineBase(BaseLLMEngine):
                     },
                 )
         if isinstance(update, schema.UsageUpdate):
+            data = {
+                "usage_kind": "context_window",
+                "used": update.used,
+                "size": update.size,
+            }
+            if update.cost is not None:
+                data["cost"] = {
+                    "amount": update.cost.amount,
+                    "currency": update.cost.currency,
+                }
             return InternalEvent(
                 type="usage",
-                data={"used": update.used, "size": update.size},
+                data=data,
             )
         return None
+
+    @staticmethod
+    def _map_prompt_response_usage(response) -> InternalEvent | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+        data = normalize_token_usage({
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+            "cached_read_tokens": usage.cached_read_tokens,
+            "cached_write_tokens": usage.cached_write_tokens,
+        })
+        if usage.thought_tokens is not None:
+            data["thought_tokens"] = usage.thought_tokens
+        return InternalEvent(type="usage", data=data)
 
     async def stop(self) -> None:
         if self._process:

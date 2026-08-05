@@ -4,8 +4,9 @@ import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { fsApi, type DirectoryOpener } from '../api/client'
 import TaskDetail from './TaskDetail'
+import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
 import ConfirmDialog from '../components/ConfirmDialog'
-import MarkdownMessage from '../components/MarkdownMessage'
+import MarkdownEditor from '../components/MarkdownEditor'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -35,19 +36,10 @@ const laneBodyStyle: React.CSSProperties = {
   minHeight: 120,
 }
 
-const addCardStyle: React.CSSProperties = {
-  border: '1.5px dashed var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  padding: 8, textAlign: 'center',
-  cursor: 'pointer', color: 'var(--meta)',
-  fontSize: 12, background: 'transparent',
-  width: '100%', fontFamily: 'var(--font-body)',
-  marginTop: 4,
-}
-
 /* ── Status machine ── */
 const STATUS_LABELS: Record<string, string> = {
-  ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
+  ready: '预备中', running: '进行中', paused: '暂停', stopped: '停止',
+  done: '已完成',
   reviewing: '审核中', awaiting_review: '等待审核',
   retrying: '自动重跑', rejected: '审核未通过',
 }
@@ -149,7 +141,7 @@ function deriveTaskLane(
 
 export default function TaskList() {
   const navigate = useNavigate()
-  const { tasks, loading, fetchTasks, createTask, deleteTask, setActiveTask } = useTaskStore()
+  const { tasks, loading, fetchTasks, createTask, runTask, deleteTask, setActiveTask } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
@@ -157,13 +149,13 @@ export default function TaskList() {
   const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
+  const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
   const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
   const [newDesc, setNewDesc] = useState('')
-  const [descMode, setDescMode] = useState<'edit' | 'preview'>('edit')
-  const descInputRef = useRef<HTMLTextAreaElement>(null)
-  const imgInputRef = useRef<HTMLInputElement>(null)
+  const [newAutoStart, setNewAutoStart] = useState(false)
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [directoryNotice, setDirectoryNotice] = useState('')
@@ -233,7 +225,8 @@ export default function TaskList() {
   const [reviewOverrides, setReviewOverrides] = useState<Record<string, { auto: boolean; prompt: string; maxRetries: number }>>({})
 
   const openNewPanel = (stepKey?: string) => {
-    setCreateStartStepKey(stepKey || lanes[0]?.key || null)
+    const selectedStepKey = stepKey || lanes[0]?.key || null
+    setCreateStartStepKey(selectedStepKey)
     setNewTitle('')
     setNewDesc('')
     setCreateError('')
@@ -241,6 +234,13 @@ export default function TaskList() {
     // Initialize review overrides from canvas stage config
     const nodeConfigs: Record<string, { auto: boolean; prompt: string; maxRetries: number }> = {}
     const canvasSteps = activeProject?.steps
+    const selectedStage = [
+      ...(canvasSteps?.nodes || []),
+      ...(canvasSteps?.steps || []),
+    ].find((stage: any) => (
+      stage.type || stage.key || String(stage.id)
+    ) === selectedStepKey)
+    setNewAutoStart(Boolean(selectedStage?.autoStart))
     if (canvasSteps?.nodes) {
       for (const n of canvasSteps.nodes) {
         const key = (n.type || n.key || String(n.id)) as string
@@ -288,6 +288,7 @@ export default function TaskList() {
         createLane?.key,
         Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
         activeWorkflowId,
+        newAutoStart,
       )
       setNewTitle('')
       setNewDesc('')
@@ -323,60 +324,32 @@ export default function TaskList() {
     void openProjectDirectory(opener.id)
   }
 
-  const advanceCard = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    const curLane = getCardLane(taskId)
-    const idx = lanes.findIndex((l) => l.key === curLane)
-    if (idx < lanes.length - 1) {
-      setCardLanes((prev) => ({ ...prev, [taskId]: lanes[idx + 1].key }))
-    }
-  }
-
-  const retreatCard = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation()
-    const curLane = getCardLane(taskId)
-    const idx = lanes.findIndex((l) => l.key === curLane)
-    if (idx > 0) {
-      setCardLanes((prev) => ({ ...prev, [taskId]: lanes[idx - 1].key }))
-    }
-  }
-
-  const insertImageMarkdown = (dataUrl: string, alt = '图片') => {
-    const snippet = '![' + alt + '](' + dataUrl + ')'
-    const ta = descInputRef.current
-    if (ta) {
-      const start = ta.selectionStart ?? newDesc.length
-      const end = ta.selectionEnd ?? newDesc.length
-      const next = newDesc.slice(0, start) + snippet + newDesc.slice(end)
-      setNewDesc(next)
-      requestAnimationFrame(() => {
-        ta.focus()
-        const pos = start + snippet.length
-        ta.setSelectionRange(pos, pos)
-      })
-    } else {
-      setNewDesc((d) => d + (d && !d.endsWith('\n') ? '\n' : '') + snippet)
-    }
-  }
-
-  const handleImageFile = (file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => insertImageMarkdown(String(reader.result))
-    reader.readAsDataURL(file)
-  }
-
-  const handleDescPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const imgItem = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'))
-    if (imgItem) {
-      e.preventDefault()
-      const file = imgItem.getAsFile()
-      if (file) handleImageFile(file)
-    }
-  }
-
   const deleteCard = (e: React.MouseEvent, taskId: string) => {
     e.stopPropagation()
     setConfirmDeleteTaskId(taskId)
+  }
+
+  const requestStartCard = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()
+    setConfirmStartTaskId(taskId)
+  }
+
+  const handleStartConfirm = async () => {
+    if (!confirmStartTaskId || !activeProject || startingTaskId) return
+    const taskId = confirmStartTaskId
+    setConfirmStartTaskId(null)
+    setStartingTaskId(taskId)
+    try {
+      await runTask(taskId, '', activeProject.id)
+      await fetchTasks(activeProject.id, activeWorkflowId)
+    } catch (error) {
+      setDirectoryNotice(
+        `启动失败：${error instanceof Error ? error.message : '未知错误'}`
+      )
+      setTimeout(() => setDirectoryNotice(''), 3000)
+    } finally {
+      setStartingTaskId(null)
+    }
   }
 
   const handleDeleteConfirm = async () => {
@@ -420,7 +393,17 @@ export default function TaskList() {
     <>
       {/* Topbar */}
       <div style={topbarStyle}>
-        <button className="btn-ghost" onClick={() => navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}`)} style={{ fontSize: 13, gap: 5 }}>
+        <button
+          className="btn-ghost"
+          onClick={() => {
+            const params = new URLSearchParams({
+              project: activeProject?.name || '',
+            })
+            if (activeWorkflowId) params.set('workflow', activeWorkflowId)
+            navigate(`/canvas?${params.toString()}`)
+          }}
+          style={{ fontSize: 13, gap: 5 }}
+        >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           阶段编辑
         </button>
@@ -539,18 +522,25 @@ export default function TaskList() {
           </div>
         )}
 
-        {!loading && activeProject && lanes.map((lane, li) => {
+        {!loading && activeProject && lanes.map((lane) => {
           const laneTasks = tasksByLane[lane.key] || []
           return (
             <div key={lane.key} style={laneStyle}>
-              <div style={{ padding: '12px 14px 8px', display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
+              <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
                   {lane.label}
                   <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
-                <button className="btn-icon" title={`新建${lane.label}任务`} onClick={() => openNewPanel(lane.key)} style={{ width: 24, height: 24 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  aria-label={`添加${lane.label}任务`}
+                  title={`添加${lane.label}任务`}
+                  onClick={() => openNewPanel(lane.key)}
+                  style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
+                >
+                  + 添加
                 </button>
               </div>
               <div
@@ -562,14 +552,15 @@ export default function TaskList() {
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDrop(e, lane.key)}
               >
-                <button style={addCardStyle} onClick={() => openNewPanel(lane.key)}>+ 添加{lane.label}任务</button>
                 {laneTasks.map((t: any) => {
                   const status = t.status || 'ready'
+                  const taskNotStarted = isTaskNotStarted(t.steps || [])
+                  const taskCompleted = isTaskCompleted(t.steps || [])
                   const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
                     .find((candidate) =>
                       (t.steps || []).some((step: any) => step.status === candidate)
                     )
-                  const displayStatus = stageStatus || status
+                  const displayStatus = taskCompleted ? 'done' : stageStatus || status
                   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
                   return (
                     <div
@@ -606,6 +597,9 @@ export default function TaskList() {
                             background: `color-mix(in oklab, ${statusColor}, transparent 86%)`,
                           } : undefined}
                         >
+                          {(displayStatus === 'running' || displayStatus === 'reviewing') && (
+                            <span className="task-status-spinner" aria-hidden="true" />
+                          )}
                           {STATUS_LABELS[displayStatus] || displayStatus}
                         </span>
                       </div>
@@ -620,23 +614,27 @@ export default function TaskList() {
                         }}>
                           {lane.label}
                         </span>
-                        <div className="card-actions" style={{ display: 'flex', gap: 2, opacity: 0, transition: 'opacity var(--motion-fast)' }}>
-                          {li < lanes.length - 1 && (
-                            <button className="btn-icon" title="推进" onClick={(e) => advanceCard(e, t.id)} style={{ width: 22, height: 22, color: 'var(--success)' }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-                            </button>
-                          )}
-                          {li > 0 && (
-                            <button className="btn-icon" title="回退" onClick={(e) => retreatCard(e, t.id)} style={{ width: 22, height: 22 }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                        <div className="card-actions" style={{ display: 'flex', gap: 2, width: '100%', opacity: 0, transition: 'opacity var(--motion-fast)' }}>
+                          {taskNotStarted && status !== 'running' && (
+                            <button
+                              className="btn-icon"
+                              title="开始任务"
+                              aria-label="开始任务"
+                              disabled={startingTaskId === t.id}
+                              onClick={(e) => requestStartCard(e, t.id)}
+                              style={{ width: 22, height: 22, color: 'var(--success)' }}
+                            >
+                              ▶️
                             </button>
                           )}
                           <button className="btn-icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </button>
-                          <button className="btn-icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, color: 'var(--danger)' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          </button>
+                          {status !== 'running' && (
+                            <button className="btn-icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -659,9 +657,9 @@ export default function TaskList() {
         transform: showNewPanel ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>新建{createLane?.label || '需求'}任务</span>
-          <button className="btn-icon" onClick={() => setShowNewPanel(false)}>✕</button>
+          <button className="btn-icon" onClick={() => setShowNewPanel(false)} aria-label="关闭">✕</button>
         </div>
         {/* ── Tab bar ── */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
@@ -703,54 +701,34 @@ export default function TaskList() {
             </div>
           )}
           <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>任务标题</label>
-          <input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="输入标题..."
-            onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-          />
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '4px 0' }}>
-            <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-              <button
-                onClick={() => setDescMode('edit')}
-                style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: descMode === 'edit' ? 'var(--accent)' : 'transparent', color: descMode === 'edit' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
-              >编辑</button>
-              <button
-                onClick={() => setDescMode('preview')}
-                style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: descMode === 'preview' ? 'var(--accent)' : 'transparent', color: descMode === 'preview' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
-              >预览</button>
-            </div>
-            <button className="btn-ghost" onClick={() => imgInputRef.current?.click()} style={{ fontSize: 12, padding: '3px 8px', gap: 4 }}>
-              🖼 图片
-            </button>
-            <span style={{ fontSize: 11, color: 'var(--meta)' }}>支持 Markdown，可粘贴/插入图片</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <input
-              ref={imgInputRef}
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageFile(f); e.target.value = '' }}
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="输入标题..."
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              style={{ flex: 1 }}
             />
+            <label
+              title={`当前任务在“${createLane?.label || '当前阶段'}”创建后自动开始`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              <input
+                type="checkbox"
+                checked={newAutoStart}
+                onChange={(event) => setNewAutoStart(event.target.checked)}
+                style={{ width: 16, height: 16 }}
+              />
+              自动开始
+            </label>
           </div>
-          {descMode === 'edit' ? (
-            <textarea
-              ref={descInputRef}
-              value={newDesc}
-              onChange={(e) => setNewDesc(e.target.value)}
-              onPaste={handleDescPaste}
-              placeholder={`输入${createLane?.label || '当前阶段'}任务说明...（支持 Markdown，可直接粘贴图片）`}
-              style={{ minHeight: 160, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 13 }}
-            />
-          ) : (
-            <div style={{
-              minHeight: 160, maxHeight: '45vh', overflowY: 'auto', padding: '10px 12px',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-              background: 'var(--surface)', fontSize: 13, lineHeight: 1.6,
-            }}>
-              {newDesc.trim() ? <MarkdownMessage content={newDesc} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>暂无内容</span>}
-            </div>
-          )}
+          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
+          <MarkdownEditor
+            value={newDesc}
+            onChange={setNewDesc}
+            projectId={activeProject?.id}
+            placeholder={`输入${createLane?.label || '当前阶段'}任务说明...（支持 Markdown，可直接粘贴图片）`}
+          />
         </div>
         )}
 
@@ -813,14 +791,16 @@ export default function TaskList() {
                       </div>
                     </div>
                   </div>
-                  {/* Row 2: prompt textarea */}
-                  <textarea
+                  {/* Row 2: prompt editor */}
+                  <MarkdownEditor
                     value={cfg.prompt}
+                    onChange={(v) => { if (!isUpstream) setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], prompt: v } })) }}
                     disabled={isUpstream}
-                    onChange={(e) => !isUpstream && setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], prompt: e.target.value } }))}
+                    projectId={activeProject?.id}
                     placeholder="审核提示词（留空使用默认）"
-                    rows={1}
-                    style={{ width: '100%', fontSize: 11, lineHeight: 1.5, resize: 'vertical', fontFamily: 'var(--font-body)', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 4, background: isUpstream ? 'var(--surface)' : 'var(--bg)', color: 'var(--fg)', opacity: isUpstream ? 0.6 : 1, minHeight: 28 }}
+                    minHeight={28}
+                    maxHeight={120}
+                    ariaLabel={`${label}审核提示词`}
                   />
                 </div>
               )
@@ -855,6 +835,15 @@ export default function TaskList() {
       )}
 
       {/* ── Delete confirm dialog ── */}
+      <ConfirmDialog
+        open={confirmStartTaskId !== null}
+        title="开始任务"
+        message={`确定开始“${tasks.find((task) => task.id === confirmStartTaskId)?.title || '该任务'}”吗？流程将从当前阶段开始执行。`}
+        confirmText="开始"
+        onConfirm={handleStartConfirm}
+        onCancel={() => setConfirmStartTaskId(null)}
+      />
+
       <ConfirmDialog
         open={confirmDeleteTaskId !== null}
         title="删除任务"

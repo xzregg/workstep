@@ -3,16 +3,19 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from schemas.base import BaseSchema
 from schemas.task import (
     CreateTaskRequest,
+    CoordinatorChatRequest,
+    CoordinatorConfigRequest,
     ReviewDecisionRequest,
     RunTaskRequest,
     UpdateTaskRequest,
 )
-from services.workflow_definition import WorkflowValidationError
+from services.config import config_store
+from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 
 router = APIRouter(prefix="/api/task")
 
@@ -35,17 +38,56 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     project = _bind(pid)
+    if req.workflow_id:
+        workflow = (
+            project.workflow_by_id(req.workflow_id)
+            if hasattr(project, "workflow_by_id")
+            else next(
+                (
+                    item
+                    for item in getattr(project, "workflows", [])
+                    if item.get("id") == req.workflow_id
+                    and not item.get("deleted")
+                ),
+                None,
+            )
+        )
+    elif hasattr(project, "default_workflow"):
+        workflow = project.default_workflow()
+    else:
+        workflow = {"id": None, "steps": project.steps}
+    if workflow is None:
+        if req.workflow_id:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        raise HTTPException(status_code=400, detail="No workflow exists")
     try:
-        return task_service.create_task(
+        created = task_service.create_task(
             title=req.title,
             cwd=req.cwd,
             description=req.description,
-            engine=req.engine,
-            workflow=project.steps,
+            engine=(
+                req.engine
+                or config_store.get_execution_default_engine()
+                or "claude"
+            ),
+            workflow=workflow["steps"],
             start_step_key=req.start_step_key,
             review_overrides=req.review_overrides,
-            workflow_id=req.workflow_id,
+            workflow_id=workflow["id"],
         )
+        definition = WorkflowDefinition.load(workflow["steps"])
+        should_auto_start = (
+            req.auto_start
+            if req.auto_start is not None
+            else definition.auto_start_enabled(req.start_step_key)
+        )
+        if should_auto_start:
+            from main import workflow_runtime
+            if not workflow_runtime:
+                raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+            await workflow_runtime.start(pid, created["id"], "")
+            return task_service.get_task(created["id"]) or created
+        return created
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -106,6 +148,104 @@ async def get_task_history(
     return {"messages": history, "limit": limit, "offset": offset}
 
 
+@router.post("/{task_id}/chat")
+async def chat_with_coordinator(
+    task_id: str,
+    req: CoordinatorChatRequest,
+    pid: str = Query(..., alias="project_id"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+):
+    """Queue one engine-backed coordinator turn without starting a workflow."""
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        accepted = await coordinator_module.submit_message(
+            pid,
+            task_id,
+            req.content,
+            idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return accepted.to_dict()
+
+
+@router.get("/{task_id}/coordinator-config")
+async def get_coordinator_config(
+    task_id: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        return await coordinator_module.get_config(pid, task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/{task_id}/coordinator-config")
+async def update_coordinator_config(
+    task_id: str,
+    req: CoordinatorConfigRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        return await coordinator_module.update_config(
+            pid,
+            task_id,
+            req.engine,
+            req.model,
+            req.fast_model,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/actions/{proposal_id}/confirm")
+async def confirm_coordinator_action(
+    task_id: str,
+    proposal_id: str,
+    pid: str = Query(..., alias="project_id"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+):
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        return await coordinator_module.confirm_action(
+            pid,
+            task_id,
+            proposal_id,
+            idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/actions/{proposal_id}/cancel")
+async def cancel_coordinator_action(
+    task_id: str,
+    proposal_id: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        return await coordinator_module.cancel_action(pid, task_id, proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/{task_id}/artifacts")
 async def get_task_artifacts(
     task_id: str,
@@ -124,8 +264,10 @@ async def get_task_artifacts(
         return {"artifacts": []}
 
     artifacts = []
-    for stage_dir in sorted(artifacts_root.iterdir()):
-        task_dir = (stage_dir / task_id).resolve()
+    for workflow_dir in sorted(artifacts_root.iterdir()):
+        if not workflow_dir.is_dir():
+            continue
+        task_dir = (workflow_dir / task_id).resolve()
         try:
             task_dir.relative_to(artifacts_root)
         except ValueError:
@@ -133,39 +275,43 @@ async def get_task_artifacts(
         if not task_dir.is_dir():
             continue
 
-        manifest_entries: dict[Path, dict] = {}
-        manifest_path = task_dir / "manifest.json"
-        if manifest_path.is_file():
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                for entry in manifest.get("artifacts", []):
-                    artifact_path = (task_dir / str(entry.get("path", ""))).resolve()
-                    try:
-                        artifact_path.relative_to(task_dir)
-                    except ValueError:
-                        continue
-                    manifest_entries[artifact_path] = entry
-            except (OSError, ValueError, TypeError):
-                pass
+        for step_dir in sorted(task_dir.iterdir()):
+            if not step_dir.is_dir():
+                continue
 
-        for file_path in sorted(task_dir.rglob("*")):
-            if not file_path.is_file() or file_path.name == "manifest.json":
-                continue
-            resolved = file_path.resolve()
-            try:
-                resolved.relative_to(task_dir)
-            except ValueError:
-                continue
-            metadata = manifest_entries.get(resolved, {})
-            artifacts.append({
-                "step_key": stage_dir.name,
-                "name": file_path.name,
-                "logical_name": metadata.get("name"),
-                "artifact_type": metadata.get("type"),
-                "path": str(resolved),
-                "relative_path": str(resolved.relative_to(task_dir)),
-                "size": resolved.stat().st_size,
-            })
+            manifest_entries: dict[Path, dict] = {}
+            manifest_path = step_dir / "manifest.json"
+            if manifest_path.is_file():
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    for entry in manifest.get("artifacts", []):
+                        artifact_path = (step_dir / str(entry.get("path", ""))).resolve()
+                        try:
+                            artifact_path.relative_to(step_dir)
+                        except ValueError:
+                            continue
+                        manifest_entries[artifact_path] = entry
+                except (OSError, ValueError, TypeError):
+                    pass
+
+            for file_path in sorted(step_dir.rglob("*")):
+                if not file_path.is_file() or file_path.name == "manifest.json":
+                    continue
+                resolved = file_path.resolve()
+                try:
+                    resolved.relative_to(step_dir)
+                except ValueError:
+                    continue
+                metadata = manifest_entries.get(resolved, {})
+                artifacts.append({
+                    "step_key": step_dir.name,
+                    "name": file_path.name,
+                    "logical_name": metadata.get("name"),
+                    "artifact_type": metadata.get("type"),
+                    "path": str(resolved),
+                    "relative_path": str(resolved.relative_to(step_dir)),
+                    "size": resolved.stat().st_size,
+                })
     return {"artifacts": artifacts}
 
 
@@ -321,7 +467,10 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     _bind(pid)
-    deleted = task_service.delete_task(req.task_id, pid)
+    try:
+        deleted = task_service.delete_task(req.task_id, pid)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"deleted": deleted}

@@ -157,6 +157,20 @@ class DAGScheduler:
         """Return all steps that directly depend on the given step."""
         return [s for s in self.steps.values() if step_key in s.depends_on]
 
+    def get_all_downstream(self, step_key: str) -> set[str]:
+        """Return all transitive downstream step keys."""
+        if step_key not in self.steps:
+            raise KeyError(step_key)
+        result: set[str] = set()
+        stack = [step.key for step in self.get_downstream(step_key)]
+        while stack:
+            key = stack.pop()
+            if key in result:
+                continue
+            result.add(key)
+            stack.extend(step.key for step in self.get_downstream(key))
+        return result
+
     def get_all_upstream(self, step_key: str) -> set[str]:
         """Return all transitive upstream step keys."""
         result = set()

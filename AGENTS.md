@@ -75,6 +75,8 @@ npm run build
 - 禁止使用原生 `window.alert()` / `window.confirm()` 弹窗；确认类交互一律使用通用组件 `apps/web/src/components/ConfirmDialog.tsx`（删除、离开/切换前有未保存更改等场景）。
 - 新建 / 重命名项目与工作流的名称禁止包含空白字符（空格、Tab 等），前端输入即时校验，后端 schema 同样强制。
 - 新建流程默认为空白画布（`{ nodes: [], connections: [] }`），不自动加载默认模板；需要模板时由用户从「流程模板」下拉选择（内置模板 + `apps/daemon/data/templates/` 下的自定义模板，均带 `id` / `name` / `description` / `steps` 元数据）。
+- 任务说明等任何 markdown 富文本**编辑**一律使用通用组件 `apps/web/src/components/MarkdownEditor.tsx`（编辑/预览切换 + 图片粘贴/插入）；纯展示用 `apps/web/src/components/MarkdownMessage.tsx`。禁止自建 textarea + 图片上传的重复实现。图片经 `/api/fs/upload/image` 上传到项目 `.workstep/uploads/`，markdown 中以项目相对路径 `项目名/.workstep/uploads/<uuid>.<ext>` 存储（对 LLM prompt 有意义），预览时由 `MarkdownMessage` 自动映射回 `/api/fs/serve/...`。
+- 前端展示「进行中」「审核中」等异步处理中状态时，状态文字旁必须显示持续旋转的加载图标，明确反馈任务仍在执行；任务结束、暂停或等待用户操作后停止旋转。
 
 ## 技术架构（已确定）
 

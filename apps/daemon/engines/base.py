@@ -28,6 +28,17 @@ class EngineModel:
     description: str | None = None
 
 
+@dataclass(frozen=True)
+class EngineCapabilities:
+    """Capabilities consumed by coordinator and workflow callers."""
+
+    supports_coordinator: bool
+    supports_resume: bool
+    supports_tool_disable: bool
+    supports_native_schema: bool
+    supports_live_stage_message: bool
+
+
 class BaseLLMEngine(ABC):
     """Abstract base class for all LLM engine implementations.
 
@@ -61,6 +72,11 @@ class BaseLLMEngine(ABC):
     @abstractmethod
     def resolve_binary() -> str | None:
         """Resolve the actual binary path (env var → PATH → fallback)."""
+
+    @staticmethod
+    def is_configured() -> bool:
+        """Whether this installed adapter has enough configuration to run."""
+        return True
 
     # --- Execution ---
 
@@ -146,6 +162,37 @@ class BaseLLMEngine(ABC):
         An empty list means the adapter only exposes its own configured default.
         """
         return []
+
+    @property
+    def capabilities(self) -> EngineCapabilities:
+        return EngineCapabilities(
+            supports_coordinator=self.is_configured(),
+            supports_resume=self.supports_resume,
+            supports_tool_disable=True,
+            supports_native_schema=False,
+            supports_live_stage_message=False,
+        )
+
+    async def spawn_coordinator(
+        self,
+        prompt: str,
+        cwd: str,
+        model: str | None = None,
+        session_id: str | None = None,
+    ) -> AsyncIterator[InternalEvent]:
+        """Run a no-tools coordinator turn through this adapter seam."""
+        guarded_prompt = (
+            "You are a read-only task coordinator. Do not call tools, execute "
+            "commands, or modify files. Return only the requested JSON.\n\n"
+            f"{prompt}"
+        )
+        async for event in self.spawn(
+            prompt=guarded_prompt,
+            cwd=cwd,
+            model=model,
+            session_id=session_id,
+        ):
+            yield event
 
     # --- Interaction ---
 

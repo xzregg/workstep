@@ -99,6 +99,42 @@ def test_create_task(db_and_service):
     assert steps[0].status == "pending"
 
 
+def test_running_task_cannot_be_deleted(db_and_service):
+    service, _ = db_and_service
+    created = service.create_task(title="Running", cwd="/tmp")
+    from models import Task
+
+    task = Task.get_by_id(created["id"])
+    task.status = "running"
+    task.save()
+
+    with pytest.raises(RuntimeError, match="Running tasks cannot be deleted"):
+        service.delete_task(task.id, "project-1")
+
+    assert Task.get_or_none(Task.id == task.id) is not None
+
+
+def test_task_history_returns_latest_page_in_chronological_order(db_and_service):
+    service, _ = db_and_service
+    task = service.create_task(title="History", cwd="/tmp")
+    from models import Message
+
+    for index, content in enumerate(("first", "second", "third"), start=1):
+        Message.create(
+            id=str(uuid.uuid4()),
+            task=task["id"],
+            step_key="do",
+            role="assistant",
+            content=content,
+            position=index,
+            created_at=index,
+        )
+
+    history = service.get_task_history(task["id"], limit=2)
+
+    assert [message["content"] for message in history] == ["second", "third"]
+
+
 def test_create_task_from_later_stage_skips_predecessors(db_and_service):
     """A stage-specific task does not require outputs from earlier stages."""
     service, _ = db_and_service
@@ -282,7 +318,12 @@ async def test_run_task_success(subscriber):
     registry.ENGINE_REGISTRY["claude"] = lambda: MockEngine(events=[
         InternalEvent(type="text_delta", data={"delta": "Hello"}),
         InternalEvent(type="text_delta", data={"delta": " world"}),
-        InternalEvent(type="usage", data={"input_tokens": 10, "output_tokens": 5}),
+        InternalEvent(type="usage", data={
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cache_creation_input_tokens": 6,
+            "cache_read_input_tokens": 7,
+        }),
     ])
 
     try:
@@ -302,6 +343,17 @@ async def test_run_task_success(subscriber):
         # Task should be back to ready (single stage completed)
         updated = service.get_task(task["id"])
         assert updated["status"] == "ready"
+
+        # Usage (incl. cache hit) must be persisted to message.usage_json
+        from models import Message
+        msg = Message.select().where(Message.task == task["id"]).order_by(Message.created_at.desc()).get()
+        assert msg.usage_json is not None
+        import json as _json
+        usage = _json.loads(msg.usage_json)
+        assert usage["input_tokens"] == 10
+        assert usage["output_tokens"] == 5
+        assert usage["cache_creation_input_tokens"] == 6
+        assert usage["cache_read_input_tokens"] == 7
 
     finally:
         registry.ENGINE_REGISTRY.clear()

@@ -1,12 +1,32 @@
 import { create } from 'zustand'
 import { taskApi, type Task, type TaskStepState } from '../api/client'
 
-interface TaskEvent {
+export interface TaskEvent {
   type: string
   data: Record<string, unknown>
   task_id?: string
   step_key?: string
+  channel?: 'coordinator' | 'execution' | 'review'
+  message_id?: string
+  engine?: string
+  model?: string
+  event_sequence?: number
+  created_at?: string
   timestamp?: number
+}
+
+export interface LiveMessage {
+  id: string
+  channel: 'coordinator' | 'execution' | 'review'
+  step_key?: string
+  content: string
+  events: TaskEvent[]
+  status: string
+  engine?: string
+  model?: string
+  prompt?: string
+  created_at?: string
+  proposals: Array<Record<string, unknown>>
 }
 
 interface TaskState {
@@ -14,6 +34,7 @@ interface TaskState {
   activeTaskId: string | null
   events: Record<string, TaskEvent[]> // task_id → events
   content: Record<string, string>     // task_id → accumulated text
+  liveMessages: Record<string, Record<string, LiveMessage>>
   loading: boolean
 
   fetchTasks: (projectId: string, workflowId?: string | null) => Promise<void>
@@ -26,6 +47,7 @@ interface TaskState {
     startStepKey?: string,
     reviewOverrides?: Record<string, any> | null,
     workflowId?: string | null,
+    autoStart?: boolean,
   ) => Promise<Task>
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string) => Promise<void>
@@ -46,6 +68,7 @@ export const useTaskStore = create<TaskState>((set) => ({
   activeTaskId: null,
   events: {},
   content: {},
+  liveMessages: {},
   loading: false,
 
   fetchTasks: async (projectId: string, workflowId?: string | null) => {
@@ -60,16 +83,17 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   setActiveTask: (id) => set({ activeTaskId: id }),
 
-  createTask: async (title, cwd, projectId, description, startStepKey, reviewOverrides, workflowId) => {
+  createTask: async (title, cwd, projectId, description, startStepKey, reviewOverrides, workflowId, autoStart) => {
     const task = await taskApi.create(
       title,
       cwd,
       projectId,
-      'claude',
+      undefined,
       description,
       startStepKey || null,
       reviewOverrides || null,
       workflowId || null,
+      autoStart,
     )
     set((s) => ({ tasks: [...s.tasks, task] }))
     return task
@@ -130,6 +154,56 @@ export const useTaskStore = create<TaskState>((set) => ({
       : { ...event, timestamp: Date.now() }
 
     set((s) => {
+      if (event.message_id) {
+        const taskMessages = s.liveMessages[taskId] || {}
+        const current = taskMessages[event.message_id] || {
+          id: event.message_id,
+          channel: event.channel || 'execution',
+          step_key: event.step_key,
+          content: '',
+          events: [],
+          status: 'running',
+          engine: event.engine,
+          model: event.model,
+          prompt: event.type === 'message_started'
+            ? String(event.data.prompt || '')
+            : undefined,
+          created_at: event.created_at,
+          proposals: [],
+        }
+        const nextContent = event.type === 'text_delta'
+          ? current.content + String(event.data.delta || '')
+          : event.type === 'message_snapshot'
+            ? String(event.data.content || '')
+            : current.content
+        const nextStatus = event.type === 'message_completed'
+          ? String(event.data.status || 'succeeded')
+          : current.status
+        const nextProposals = event.type === 'action_proposal'
+          ? [...current.proposals, event.data]
+          : current.proposals
+        return {
+          liveMessages: {
+            ...s.liveMessages,
+            [taskId]: {
+              ...taskMessages,
+              [event.message_id]: {
+                ...current,
+                content: nextContent,
+                status: nextStatus,
+                engine: event.engine || current.engine,
+                model: event.model || current.model,
+                prompt: event.type === 'message_started'
+                  ? String(event.data.prompt || '')
+                  : current.prompt,
+                created_at: current.created_at || event.created_at,
+                proposals: nextProposals,
+                events: [...current.events, timedEvent],
+              },
+            },
+          },
+        }
+      }
       const prevEvents = s.events[taskId] || []
       const prevContent = s.content[taskId] || ''
 

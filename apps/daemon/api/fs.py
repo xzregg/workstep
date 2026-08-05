@@ -5,12 +5,18 @@ import mimetypes
 import os
 import platform
 import shutil
+import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/fs")
+
+# Root-level router for project-relative upload URLs:
+# /{project_name}/.workstep/uploads/{filename} (as stored in markdown).
+uploads_router = APIRouter()
 
 
 class OpenDirectoryRequest(BaseModel):
@@ -131,13 +137,110 @@ async def _open_with(directory: Path, opener_id: str) -> None:
     await _run_open_command(_open_command(directory, opener_id), directory)
 
 
+class UploadImageRequest(BaseModel):
+    filename: str = "image.png"
+    data_url: str  # data:image/png;base64,...
+
+@router.post("/upload/image")
+async def upload_image(
+    req: UploadImageRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Upload an image (as base64 data URL) to the project's uploads directory."""
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        project = project_manager.bind_project_by_id(pid)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    import base64
+    import re as _re
+
+    data_url = req.data_url
+    # Parse data URL: data:image/png;base64,xxxx
+    match = _re.match(r'data:(image/[^;]+);base64,(.+)', data_url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid data URL format")
+
+    content_type = match.group(1)
+    b64data = match.group(2)
+    try:
+        content = base64.b64decode(b64data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
+
+    ext_map = {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+               "image/webp": ".webp", "image/svg+xml": ".svg", "image/bmp": ".bmp"}
+    ext = ext_map.get(content_type, ".png")
+
+    upload_dir = Path(project.workstep_dir) / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = upload_dir / filename
+    filepath.write_bytes(content)
+
+    # Project-relative path (e.g. my_project/.workstep/uploads/abc.png).
+    # Kept in markdown as-is so it stays meaningful for LLM prompts;
+    # the frontend maps it back to /api/fs/serve/... for preview.
+    rel_path = f"{project.name}/.workstep/uploads/{filename}"
+    return {"url": rel_path, "filename": filename, "size": len(content)}
+
+
+def _serve_upload_file(project, filename: str) -> FileResponse:
+    """Serve an uploaded file from a project's uploads directory."""
+    upload_dir = Path(project.workstep_dir) / "uploads"
+    filepath = upload_dir / filename
+
+    # Security: prevent traversal
+    try:
+        filepath.resolve().relative_to(upload_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not filepath.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(str(filepath))
+
+
+@router.get("/serve/{filename}")
+async def serve_upload(
+    filename: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Serve an uploaded file from the project's uploads directory."""
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        project = project_manager.bind_project_by_id(pid)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return _serve_upload_file(project, filename)
+
+
+@uploads_router.get("/{project_name}/.workstep/uploads/{filename}")
+async def serve_upload_by_project_name(project_name: str, filename: str):
+    """Serve an uploaded file via its project-relative markdown path.
+
+    Matches the format stored in markdown (e.g. 测试项目/.workstep/uploads/abc.png)
+    so the URL works as-is in the browser.
+    """
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    project = project_manager.get_project_by_name(project_name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _serve_upload_file(project, filename)
+
+
 @router.get("/browse")
 async def browse_directory(path: str | None = None):
-    """List directory contents for the file picker.
-
-    If path is None, returns the user's home directory.
-    Returns: { path, parent, entries: [{name, type, path}] }
-    """
+    """List directory contents for the file picker."""
     if path is None:
         target = Path.home()
     else:
@@ -171,14 +274,7 @@ async def browse_directory(path: str | None = None):
 
 @router.get("/preview")
 async def preview_file(path: str):
-    """Preview a file content for display.
-
-    Returns content based on file type:
-    - Text/Markdown: HTML content
-    - Code: syntax-highlighted HTML
-    - Images: base64 encoded
-    - Other: plain text or error
-    """
+    """Preview a file content for display."""
     file_path = Path(path).expanduser().resolve()
 
     if not file_path.exists():
@@ -189,14 +285,13 @@ async def preview_file(path: str):
 
     content_type, _ = mimetypes.guess_type(str(file_path))
     file_size = file_path.stat().st_size
-    max_size = 1024 * 1024  # 1MB limit
+    max_size = 1024 * 1024
     if file_size > max_size:
         raise HTTPException(
             status_code=413,
             detail=f"File is too large to preview ({file_size} bytes; limit {max_size})",
         )
 
-    # Image files - return base64 encoded
     if content_type and content_type.startswith('image/'):
         try:
             import base64
@@ -211,7 +306,6 @@ async def preview_file(path: str):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read image: {str(e)}")
 
-    # Text/Code files - return content
     try:
         content = file_path.read_text(encoding='utf-8')
         return {
@@ -222,7 +316,6 @@ async def preview_file(path: str):
             "extension": file_path.suffix,
         }
     except UnicodeDecodeError:
-        # Binary file - return base64
         import base64
         content = file_path.read_bytes()
         encoded = base64.b64encode(content).decode('utf-8')

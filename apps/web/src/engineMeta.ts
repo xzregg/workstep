@@ -6,6 +6,7 @@ export const ENGINE_LABELS: Record<string, string> = {
   qcode: 'QCode',
   openclaw: 'OpenClaw',
   api: 'API / BYOK',
+  pydantic_ai: 'Pydantic AI',
 }
 
 export const ENGINE_DESCRIPTIONS: Record<string, string> = {
@@ -15,7 +16,8 @@ export const ENGINE_DESCRIPTIONS: Record<string, string> = {
   qoder: 'Qoder ACP 执行引擎',
   qcode: 'QCode 本机执行引擎',
   openclaw: 'OpenClaw 本机执行引擎',
-  api: '通过 API 密钥直接调用模型',
+  api: '直连 OpenAI-compatible 或 Anthropic API',
+  pydantic_ai: '内置 Python Agent，由 Pydantic AI 加载 Provider',
 }
 
 export const ENGINE_COLORS: Record<string, string> = {
@@ -26,6 +28,7 @@ export const ENGINE_COLORS: Record<string, string> = {
   qcode: '#0891b2',
   openclaw: '#7c3aed',
   api: '#db2777',
+  pydantic_ai: '#db2777',
 }
 
 export function engineLabel(id: string) {

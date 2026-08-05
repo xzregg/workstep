@@ -149,6 +149,16 @@ class CodexEngine(BaseLLMEngine):
                 if text:
                     return InternalEvent(type="text_delta", data={"delta": text})
 
+            elif item_type in {"reasoning", "analysis"}:
+                thinking = item.get("text") or item.get("summary") or ""
+                if isinstance(thinking, list):
+                    thinking = "\n".join(str(part) for part in thinking)
+                if thinking:
+                    return InternalEvent(
+                        type="thinking_delta",
+                        data={"delta": str(thinking)},
+                    )
+
             elif item_type == "command_execution":
                 cmd = item.get("command", "")
                 output = item.get("output", "")
@@ -172,6 +182,8 @@ class CodexEngine(BaseLLMEngine):
             return InternalEvent(type="usage", data={
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
+                "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
+                "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
             })
 
         if event_type in ("error", "turn.failed"):

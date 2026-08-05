@@ -1,0 +1,1128 @@
+"""Engine-backed task coordinator conversation module."""
+
+import asyncio
+import hashlib
+import json
+import logging
+import re
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Awaitable, Callable
+
+from engines.events import InternalEvent
+from engines.registry import create_engine, get_available_engines
+from models import (
+    ActionProposal,
+    CoordinatorSession,
+    CoordinatorTurn,
+    Message,
+    ReviewRun,
+    StageSupplement,
+    Task,
+    TaskStep,
+)
+from models.base import db_proxy
+from models.fields import utc_now
+from services.config import config_store
+from services.task_runner import extract_usage_json
+from services.workflow_definition import WorkflowDefinition
+from streaming.bus import EventBus
+
+logger = logging.getLogger(__name__)
+
+COORDINATOR_CHANNEL = "coordinator"
+ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
+
+
+def extract_streaming_reply(raw: str) -> str:
+    """Extract the currently complete part of a JSON reply string."""
+    match = re.search(r'"reply"\s*:\s*"', raw)
+    if match is None:
+        return ""
+    index = match.end()
+    result: list[str] = []
+    escapes = {
+        '"': '"',
+        "\\": "\\",
+        "/": "/",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+    }
+    while index < len(raw):
+        character = raw[index]
+        if character == '"':
+            break
+        if character != "\\":
+            result.append(character)
+            index += 1
+            continue
+        if index + 1 >= len(raw):
+            break
+        escape = raw[index + 1]
+        if escape == "u":
+            digits = raw[index + 2:index + 6]
+            if len(digits) != 4 or not all(char in "0123456789abcdefABCDEF" for char in digits):
+                break
+            result.append(chr(int(digits, 16)))
+            index += 6
+            continue
+        if escape not in escapes:
+            break
+        result.append(escapes[escape])
+        index += 2
+    return "".join(result)
+
+
+@dataclass(frozen=True, slots=True)
+class ChatAccepted:
+    turn_id: str
+    user_message_id: str
+    assistant_message_id: str
+    status: str
+
+    def to_dict(self) -> dict:
+        return {
+            "turn_id": self.turn_id,
+            "user_message_id": self.user_message_id,
+            "assistant_message_id": self.assistant_message_id,
+            "status": self.status,
+        }
+
+
+class CoordinatorModule:
+    """Coordinate task conversations behind a small persistent interface."""
+
+    def __init__(self, event_bus: EventBus, project_manager, workflow_runtime):
+        self._event_bus = event_bus
+        self._project_manager = project_manager
+        self._workflow_runtime = workflow_runtime
+        self._turn_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._operation_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._active_tasks: set[asyncio.Task] = set()
+
+    async def submit_message(
+        self,
+        project_id: str,
+        task_id: str,
+        content: str,
+        idempotency_key: str,
+    ) -> ChatAccepted:
+        normalized = content.strip()
+        if not normalized:
+            raise ValueError("Message content cannot be empty")
+        if not idempotency_key.strip():
+            raise ValueError("Idempotency-Key is required")
+
+        with self._project_manager.activate_project_by_id(project_id) as project:
+            existing = CoordinatorTurn.get_or_none(
+                (CoordinatorTurn.task == task_id)
+                & (CoordinatorTurn.idempotency_key == idempotency_key)
+            )
+            if existing is not None:
+                return ChatAccepted(
+                    turn_id=existing.id,
+                    user_message_id=existing.user_message_id,
+                    assistant_message_id=existing.assistant_message_id,
+                    status=existing.status,
+                )
+
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            engine, model, _ = self._resolve_engine_models(task)
+            context_step_key = self._single_active_step(task)
+            now = utc_now()
+            turn_id = str(uuid.uuid4())
+            user_message_id = str(uuid.uuid4())
+            assistant_message_id = str(uuid.uuid4())
+
+            with db_proxy.atomic():
+                current = Task.get_by_id(task.id)
+                user_sequence = current.next_message_sequence
+                assistant_sequence = user_sequence + 1
+                current.next_message_sequence = assistant_sequence + 1
+                current.save(only=[Task.next_message_sequence])
+                Message.create(
+                    id=user_message_id,
+                    task=current,
+                    step_key=context_step_key or COORDINATOR_CHANNEL,
+                    context_step_key=context_step_key,
+                    channel=COORDINATOR_CHANNEL,
+                    sequence=user_sequence,
+                    role="user",
+                    content=normalized,
+                    run_id=turn_id,
+                    run_status="completed",
+                    position=0,
+                    started_at=now,
+                    ended_at=now,
+                    created_at=now,
+                )
+                Message.create(
+                    id=assistant_message_id,
+                    task=current,
+                    step_key=context_step_key or COORDINATOR_CHANNEL,
+                    context_step_key=context_step_key,
+                    channel=COORDINATOR_CHANNEL,
+                    sequence=assistant_sequence,
+                    reply_to_message_id=user_message_id,
+                    role="assistant",
+                    content="",
+                    engine=engine,
+                    model=model,
+                    run_id=turn_id,
+                    run_status="queued",
+                    position=1,
+                    created_at=now,
+                )
+                CoordinatorTurn.create(
+                    id=turn_id,
+                    task=current,
+                    user_message=user_message_id,
+                    assistant_message=assistant_message_id,
+                    idempotency_key=idempotency_key,
+                    status="queued",
+                    engine=engine,
+                    model=model,
+                    created_at=now,
+                )
+
+            background = asyncio.create_task(
+                self._run_turn(project_id, task_id, turn_id),
+                name=f"coordinator-turn:{turn_id}",
+            )
+            self._active_tasks.add(background)
+            background.add_done_callback(self._consume_background)
+            return ChatAccepted(
+                turn_id=turn_id,
+                user_message_id=user_message_id,
+                assistant_message_id=assistant_message_id,
+                status="queued",
+            )
+
+    async def get_config(self, project_id: str, task_id: str) -> dict:
+        with self._project_manager.activate_project_by_id(project_id):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            resolved_engine, resolved_model, resolved_fast_model = (
+                self._resolve_engine_models(task)
+            )
+            available = [
+                item
+                for item in get_available_engines()
+                if item.get("installed")
+                and (
+                    item.get("supports_coordinator")
+                    or item.get("id") in {"api", "pydantic_ai"}
+                )
+            ]
+            return {
+                "configured": {
+                    "engine": task.coordinator_engine,
+                    "model": task.coordinator_model,
+                    "fast_model": task.coordinator_fast_model,
+                },
+                "resolved": {
+                    "engine": resolved_engine,
+                    "model": resolved_model,
+                    "fast_model": resolved_fast_model,
+                },
+                "available_engines": available,
+            }
+
+    async def update_config(
+        self,
+        project_id: str,
+        task_id: str,
+        engine_id: str | None,
+        model: str | None,
+        fast_model: str | None,
+    ) -> dict:
+        with self._project_manager.activate_project_by_id(project_id):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            normalized_engine = engine_id.strip() if engine_id else None
+            normalized_model = model.strip() if model else None
+            normalized_fast_model = fast_model.strip() if fast_model else None
+            if normalized_engine is not None:
+                engine = create_engine(normalized_engine)
+                if engine is None or not engine.capabilities.supports_coordinator:
+                    raise ValueError(
+                        f"Coordinator engine is unavailable: {normalized_engine}"
+                    )
+                if not config_store.is_engine_verified(normalized_engine):
+                    raise ValueError(
+                        f"Coordinator engine is not verified: {normalized_engine}"
+                    )
+            elif normalized_model is not None or normalized_fast_model is not None:
+                raise ValueError("A coordinator model requires an engine")
+
+            task.coordinator_engine = normalized_engine
+            task.coordinator_model = normalized_model
+            task.coordinator_fast_model = normalized_fast_model
+            task.updated_at = utc_now()
+            task.save()
+            session = CoordinatorSession.get_or_none(
+                CoordinatorSession.task == task
+            )
+            if session is not None:
+                session.status = "reset"
+                session.session_id = None
+                session.version += 1
+                session.updated_at = utc_now()
+                session.save()
+            resolved_engine, resolved_model, resolved_fast_model = (
+                self._resolve_engine_models(task)
+            )
+            return {
+                "configured": {
+                    "engine": task.coordinator_engine,
+                    "model": task.coordinator_model,
+                    "fast_model": task.coordinator_fast_model,
+                },
+                "resolved": {
+                    "engine": resolved_engine,
+                    "model": resolved_model,
+                    "fast_model": resolved_fast_model,
+                },
+            }
+
+    async def confirm_action(
+        self,
+        project_id: str,
+        task_id: str,
+        proposal_id: str,
+        idempotency_key: str,
+    ) -> dict:
+        if not idempotency_key.strip():
+            raise ValueError("Idempotency-Key is required")
+        lock = self._operation_locks.setdefault(
+            (project_id, task_id),
+            asyncio.Lock(),
+        )
+        async with lock:
+            with self._project_manager.activate_project_by_id(project_id):
+                proposal = ActionProposal.get_or_none(
+                    (ActionProposal.id == proposal_id)
+                    & (ActionProposal.task == task_id)
+                )
+                if proposal is None:
+                    raise ValueError("Action proposal not found")
+                if proposal.status == "succeeded":
+                    if proposal.confirm_idempotency_key == idempotency_key:
+                        return self._proposal_to_dict(proposal)
+                    raise RuntimeError("Action proposal has already executed")
+                if proposal.status == "failed" and proposal.type == "rerun_from_stage":
+                    proposal.status = "pending"
+                    proposal.error = None
+                if proposal.status != "pending":
+                    raise RuntimeError(
+                        f"Action proposal is not pending: {proposal.status}"
+                    )
+                task = Task.get_by_id(task_id)
+                if task.state_version != proposal.expected_task_version:
+                    proposal.status = "expired"
+                    proposal.error = "Task state changed after this proposal"
+                    proposal.updated_at = utc_now()
+                    proposal.save()
+                    raise RuntimeError(proposal.error)
+                proposal.status = "executing"
+                proposal.confirm_idempotency_key = idempotency_key
+                proposal.confirmed_at = utc_now()
+                proposal.updated_at = proposal.confirmed_at
+                proposal.save()
+                proposal_type = proposal.type
+                payload = json.loads(proposal.payload_json)
+
+            try:
+                if proposal_type == "supplement_stage":
+                    result = self._execute_supplement(
+                        project_id,
+                        task_id,
+                        proposal_id,
+                        payload,
+                    )
+                elif proposal_type == "review_decision":
+                    result = await self._execute_review_decision(
+                        project_id,
+                        task_id,
+                        proposal,
+                        payload,
+                    )
+                elif proposal_type == "rerun_from_stage":
+                    handle = await self._workflow_runtime.restart_from_stage(
+                        project_id,
+                        task_id,
+                        proposal.target_step_key or "",
+                        expected_run_id=proposal.expected_workflow_run_id,
+                    )
+                    result = {"run_id": handle.id, "status": "started"}
+                else:
+                    raise RuntimeError(f"Unsupported action: {proposal_type}")
+            except Exception as exc:
+                with self._project_manager.activate_project_by_id(project_id):
+                    failed = ActionProposal.get_by_id(proposal_id)
+                    failed.status = "failed"
+                    failed.error = str(exc)
+                    failed.updated_at = utc_now()
+                    failed.save()
+                raise
+
+            with self._project_manager.activate_project_by_id(project_id):
+                completed = ActionProposal.get_by_id(proposal_id)
+                completed.status = "succeeded"
+                completed.result_json = json.dumps(result, ensure_ascii=False)
+                completed.executed_at = utc_now()
+                completed.updated_at = completed.executed_at
+                completed.error = None
+                completed.save()
+                return self._proposal_to_dict(completed)
+
+    async def cancel_action(
+        self,
+        project_id: str,
+        task_id: str,
+        proposal_id: str,
+    ) -> dict:
+        with self._project_manager.activate_project_by_id(project_id):
+            proposal = ActionProposal.get_or_none(
+                (ActionProposal.id == proposal_id)
+                & (ActionProposal.task == task_id)
+            )
+            if proposal is None:
+                raise ValueError("Action proposal not found")
+            if proposal.status != "pending":
+                raise RuntimeError(
+                    f"Action proposal is not pending: {proposal.status}"
+                )
+            proposal.status = "cancelled"
+            proposal.updated_at = utc_now()
+            proposal.save()
+            return self._proposal_to_dict(proposal)
+
+    async def shutdown(self) -> None:
+        tasks = tuple(self._active_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _run_turn(self, project_id: str, task_id: str, turn_id: str) -> None:
+        lock = self._turn_locks.setdefault((project_id, task_id), asyncio.Lock())
+        async with lock:
+            with self._project_manager.activate_project_by_id(project_id) as project:
+                turn = CoordinatorTurn.get_by_id(turn_id)
+                task = Task.get_by_id(task_id)
+                assistant = Message.get_by_id(turn.assistant_message_id)
+                turn.status = "running"
+                turn.started_at = utc_now()
+                turn.save()
+                assistant.run_status = "running"
+                assistant.started_at = turn.started_at
+                assistant.save()
+                session = self._prepare_session(task, turn.engine or "", turn.model)
+                _, _, fast_model = self._resolve_engine_models(task)
+                prompt, artifacts = self._assemble_context(project, task, turn)
+                assistant.prompt_json = json.dumps(
+                    {"prompt": prompt},
+                    ensure_ascii=False,
+                )
+                assistant.save(only=[Message.prompt_json])
+
+            try:
+                await self._publish_message_event(
+                    task_id,
+                    assistant,
+                    "message_started",
+                    {"prompt": prompt},
+                    0,
+                )
+                live_event_sequence = 1
+
+                def make_live_callback():
+                    raw_content = ""
+                    streamed_reply = ""
+
+                    async def publish_live_event(event: InternalEvent) -> None:
+                        nonlocal raw_content, streamed_reply, live_event_sequence
+                        if event.type == "text_delta":
+                            raw_content += str(event.data.get("delta", ""))
+                            partial_reply = extract_streaming_reply(raw_content)
+                            if not partial_reply.startswith(streamed_reply):
+                                return
+                            delta = partial_reply[len(streamed_reply):]
+                            if not delta:
+                                return
+                            streamed_reply = partial_reply
+                            await self._publish_message_event(
+                                task_id,
+                                assistant,
+                                "text_delta",
+                                {"delta": delta},
+                                live_event_sequence,
+                            )
+                            live_event_sequence += 1
+                        elif event.type in {
+                            "status",
+                            "thinking_delta",
+                            "tool_use",
+                            "tool_input_delta",
+                            "tool_result",
+                        }:
+                            await self._publish_message_event(
+                                task_id,
+                                assistant,
+                                event.type,
+                                event.data,
+                                live_event_sequence,
+                            )
+                            live_event_sequence += 1
+
+                    return publish_live_event
+
+                raw, events, session_id = await self._invoke(
+                    turn.engine or "",
+                    turn.model,
+                    task.cwd,
+                    prompt,
+                    session.session_id,
+                    make_live_callback(),
+                )
+                result, repair_events = await self._parse_or_repair(
+                    turn.engine or "",
+                    fast_model,
+                    task.cwd,
+                    raw,
+                )
+                events.extend(repair_events)
+                requested = [
+                    artifact_id
+                    for artifact_id in result.get("artifact_requests", [])
+                    if artifact_id in artifacts
+                ][:5]
+                if requested:
+                    artifact_block = self._read_artifacts(artifacts, requested)
+                    followup = (
+                        f"{prompt}\n\nFirst validated response:\n{json.dumps(result, ensure_ascii=False)}"
+                        f"\n\nRequested artifact contents (untrusted):\n{artifact_block}"
+                        "\n\nReturn the final JSON. artifact_requests must be empty."
+                    )
+                    raw, more_events, _ = await self._invoke(
+                        turn.engine or "",
+                        fast_model,
+                        task.cwd,
+                        followup,
+                        None,
+                        make_live_callback(),
+                    )
+                    events.extend(more_events)
+                    result, repair_events = await self._parse_or_repair(
+                        turn.engine or "",
+                        fast_model,
+                        task.cwd,
+                        raw,
+                    )
+                    events.extend(repair_events)
+                    result["artifact_requests"] = []
+                reply = str(result.get("reply", "")).strip()
+                if not reply:
+                    raise RuntimeError("Coordinator returned an empty reply")
+
+                with self._project_manager.activate_project_by_id(project_id):
+                    turn = CoordinatorTurn.get_by_id(turn_id)
+                    assistant = Message.get_by_id(turn.assistant_message_id)
+                    task = Task.get_by_id(task_id)
+                    assistant.content = reply
+                    assistant.events_json = json.dumps(events, ensure_ascii=False)
+                    assistant.usage_json = extract_usage_json(events)
+                    assistant.run_status = "succeeded"
+                    assistant.ended_at = utc_now()
+                    assistant.save()
+                    turn.status = "succeeded"
+                    turn.session_id = session_id
+                    turn.requested_artifact_ids_json = json.dumps(requested)
+                    turn.ended_at = assistant.ended_at
+                    turn.save()
+                    session = CoordinatorSession.get_by_id(task_id)
+                    session.session_id = session_id
+                    session.status = "active"
+                    session.last_error = None
+                    session.updated_at = assistant.ended_at
+                    session.save()
+                    self._refresh_summary(task, session)
+                    proposal = self._create_proposal(task, turn, assistant, result)
+
+                await self._publish_message_event(
+                    task_id,
+                    assistant,
+                    "message_snapshot",
+                    {"content": reply},
+                    live_event_sequence,
+                )
+                live_event_sequence += 1
+                usage_event = next(
+                    (
+                        event for event in reversed(events)
+                        if event.get("type") == "usage"
+                    ),
+                    None,
+                )
+                next_event_sequence = live_event_sequence
+                if usage_event is not None:
+                    await self._publish_message_event(
+                        task_id,
+                        assistant,
+                        "usage",
+                        usage_event.get("data", {}),
+                        next_event_sequence,
+                    )
+                    next_event_sequence += 1
+                if proposal is not None:
+                    await self._publish_message_event(
+                        task_id,
+                        assistant,
+                        "action_proposal",
+                        self._proposal_to_dict(proposal),
+                        next_event_sequence,
+                    )
+                    next_event_sequence += 1
+                await self._publish_message_event(
+                    task_id,
+                    assistant,
+                    "message_completed",
+                    {"status": "succeeded"},
+                    next_event_sequence,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("Coordinator turn %s failed", turn_id)
+                with self._project_manager.activate_project_by_id(project_id):
+                    turn = CoordinatorTurn.get_by_id(turn_id)
+                    assistant = Message.get_by_id(turn.assistant_message_id)
+                    turn.status = "failed"
+                    turn.error = str(exc)
+                    turn.ended_at = utc_now()
+                    turn.save()
+                    assistant.run_status = "failed"
+                    assistant.content = str(exc)
+                    assistant.ended_at = turn.ended_at
+                    assistant.save()
+                await self._publish_message_event(
+                    task_id,
+                    assistant,
+                    "message_snapshot",
+                    {"content": str(exc)},
+                    1,
+                )
+                await self._publish_message_event(
+                    task_id,
+                    assistant,
+                    "message_completed",
+                    {"status": "failed", "error": str(exc)},
+                    2,
+                )
+
+    def _resolve_engine_models(
+        self,
+        task: Task,
+    ) -> tuple[str, str | None, str | None]:
+        engine_id = (
+            task.coordinator_engine
+            or config_store.get_coordinator_default_engine()
+            or task.engine
+            or "claude"
+        )
+        engine = create_engine(engine_id)
+        if engine is None or not engine.capabilities.supports_coordinator:
+            raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
+        model = (
+            task.coordinator_model
+            or config_store.get_coordinator_default_model()
+            or config_store.get_engine_default_model(engine_id)
+            or None
+        )
+        get_default_fast_model = getattr(
+            config_store,
+            "get_coordinator_default_fast_model",
+            lambda: "",
+        )
+        fast_model = (
+            task.coordinator_fast_model
+            or get_default_fast_model()
+            or model
+        )
+        return engine_id, model, fast_model
+
+    def _prepare_session(
+        self,
+        task: Task,
+        engine: str,
+        model: str | None,
+    ) -> CoordinatorSession:
+        session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
+        now = utc_now()
+        if session is None:
+            return CoordinatorSession.create(
+                task=task,
+                engine=engine,
+                model=model,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            )
+        if session.engine != engine or session.model != model:
+            session.engine = engine
+            session.model = model
+            session.session_id = None
+            session.status = "reset"
+            session.version += 1
+            session.updated_at = now
+            session.save()
+        return session
+
+    def _assemble_context(self, project, task: Task, turn: CoordinatorTurn):
+        workflow_data = project.steps
+        if task.workflow_id:
+            workflow = project.workflow_by_id(task.workflow_id)
+            if workflow is not None:
+                workflow_data = workflow["steps"]
+        compiled = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
+        steps = [
+            {
+                "step_key": step.step_key,
+                "status": step.status,
+                "engine": step.engine,
+                "error": step.error,
+            }
+            for step in TaskStep.select().where(TaskStep.task == task)
+        ]
+        active_step_keys = [
+            step["step_key"]
+            for step in steps
+            if step["status"]
+            in {"running", "reviewing", "awaiting_review", "retrying"}
+        ]
+        reviews = [
+            {
+                "id": review.id,
+                "step_key": review.step_key,
+                "status": review.status,
+                "decision": review.decision,
+                "step_run_id": review.step_run_id,
+                "workflow_run_id": review.workflow_run_id,
+            }
+            for review in ReviewRun.select()
+            .where(ReviewRun.task == task)
+            .order_by(ReviewRun.started_at.desc())
+            .limit(10)
+        ]
+        messages = [
+            {"role": item.role, "content": item.content}
+            for item in Message.select()
+            .where(
+                (Message.task == task)
+                & (Message.channel == COORDINATOR_CHANNEL)
+                & (Message.id != turn.assistant_message_id)
+            )
+            .order_by(Message.sequence.desc())
+            .limit(20)
+        ]
+        messages.reverse()
+        session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
+        artifacts = self._artifact_index(project, task)
+        artifact_views = [metadata[0] for metadata in artifacts.values()]
+        schema = {
+            "version": 1,
+            "reply": "natural language answer",
+            "intent": "answer | clarify | propose_action",
+            "target_step_key": None,
+            "artifact_requests": [],
+            "proposal": None,
+        }
+        context = {
+            "task": {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "status": task.status,
+                "state_version": task.state_version,
+                "active_workflow_run_id": task.active_workflow_run_id,
+            },
+            "workflow": compiled,
+            "steps": steps,
+            "active_step_keys": active_step_keys,
+            "reviews": reviews,
+            "artifacts": artifact_views,
+            "recent_coordinator_messages": messages,
+            "coordinator_summary": session.summary if session else None,
+        }
+        prompt = (
+            "Understand the task and answer the user. You may propose at most one "
+            "action, but never execute it. Allowed proposal types are "
+            "supplement_stage, rerun_from_stage, review_decision. For a proposal "
+            "return {type, target_step_key, payload}. supplement payload requires "
+            "content; review_decision requires review_run_id and decision; rerun "
+            "requires a target step. If active_workflow_run_id is null, rerun starts "
+            "a new first workflow run from that stage. Request artifacts only by "
+            "artifact_id. Return "
+            f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
+            f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
+        )
+        return prompt, artifacts
+
+    def _refresh_summary(
+        self,
+        task: Task,
+        session: CoordinatorSession,
+    ) -> None:
+        messages = list(
+            Message.select()
+            .where(
+                (Message.task == task)
+                & (Message.channel == COORDINATOR_CHANNEL)
+                & (Message.run_status.in_(["completed", "succeeded"]))
+            )
+            .order_by(Message.sequence)
+        )
+        if len(messages) <= 20:
+            return
+        summarized = messages[:-20]
+        through = summarized[-1].sequence
+        if through is None or through == session.summary_through_sequence:
+            return
+        lines = [
+            f"{message.role}: {message.content.strip()}"
+            for message in summarized
+            if message.content.strip()
+        ]
+        session.summary = "\n".join(lines)[-12000:]
+        session.summary_through_sequence = through
+        session.updated_at = utc_now()
+        session.save()
+
+    async def _invoke(
+        self,
+        engine_id: str,
+        model: str | None,
+        cwd: str,
+        prompt: str,
+        session_id: str | None,
+        on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
+    ) -> tuple[str, list[dict], str | None]:
+        engine = create_engine(engine_id)
+        if engine is None:
+            raise RuntimeError(f"Coordinator engine is unavailable: {engine_id}")
+        content: list[str] = []
+        events: list[dict] = []
+        resolved_session_id = session_id
+        error: str | None = None
+        async for event in engine.spawn_coordinator(
+            prompt=prompt,
+            cwd=cwd,
+            model=model,
+            session_id=session_id if engine.supports_resume else None,
+        ):
+            events.append(event.to_dict())
+            if on_event is not None:
+                await on_event(event)
+            if event.type == "text_delta":
+                content.append(str(event.data.get("delta", "")))
+            elif event.type == "session_started":
+                resolved_session_id = str(event.data.get("session_id") or "") or None
+            elif event.type == "usage" and event.data.get("session_id"):
+                resolved_session_id = str(event.data["session_id"])
+            elif event.type == "error" and error is None:
+                error = str(event.data.get("message") or "Coordinator engine failed")
+        if error:
+            raise RuntimeError(error)
+        return "".join(content).strip(), events, resolved_session_id
+
+    def _parse_result(self, raw: str) -> dict:
+        candidates = [raw]
+        fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
+        if fenced:
+            candidates.insert(0, fenced.group(1))
+        start, end = raw.find("{"), raw.rfind("}")
+        if start >= 0 and end > start:
+            candidates.append(raw[start : end + 1])
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            if not isinstance(parsed.get("reply"), str):
+                continue
+            requests = parsed.get("artifact_requests", [])
+            parsed["artifact_requests"] = requests if isinstance(requests, list) else []
+            return parsed
+        raise RuntimeError("Coordinator returned invalid JSON")
+
+    async def _parse_or_repair(
+        self,
+        engine_id: str,
+        model: str | None,
+        cwd: str,
+        raw: str,
+    ) -> tuple[dict, list[dict]]:
+        try:
+            return self._parse_result(raw), []
+        except RuntimeError:
+            repair_prompt = (
+                "Repair the following response into valid coordinator JSON. "
+                "Do not add an action that was not present. Return JSON only.\n\n"
+                f"{raw}"
+            )
+            repaired, events, _ = await self._invoke(
+                engine_id,
+                model,
+                cwd,
+                repair_prompt,
+                None,
+            )
+            return self._parse_result(repaired), events
+
+    def _artifact_index(self, project, task: Task):
+        root = (Path(project.workstep_dir) / "artifacts").resolve()
+        result: dict[str, tuple[dict, Path]] = {}
+        if not root.is_dir():
+            return result
+        for workflow_dir in root.iterdir():
+            if not workflow_dir.is_dir():
+                continue
+            task_dir = workflow_dir / task.id
+            if not task_dir.is_dir():
+                continue
+            for step_dir in task_dir.iterdir():
+                if not step_dir.is_dir():
+                    continue
+                for path in step_dir.rglob("*"):
+                    if not path.is_file() or path.is_symlink():
+                        continue
+                    resolved = path.resolve()
+                    try:
+                        relative = resolved.relative_to(step_dir.resolve())
+                    except ValueError:
+                        continue
+                    digest = hashlib.sha256(
+                        f"{workflow_dir.name}/{step_dir.name}/{relative}".encode()
+                    ).hexdigest()[:20]
+                    artifact_id = f"artifact-{digest}"
+                    result[artifact_id] = (
+                        {
+                            "artifact_id": artifact_id,
+                            "step_key": step_dir.name,
+                            "workflow": workflow_dir.name,
+                            "relative_path": str(relative),
+                            "size": resolved.stat().st_size,
+                        },
+                        resolved,
+                    )
+        return result
+
+    def _read_artifacts(self, artifacts, requested: list[str]) -> str:
+        blocks = []
+        total = 0
+        for artifact_id in requested:
+            metadata, path = artifacts[artifact_id]
+            size = path.stat().st_size
+            if size > 64 * 1024 or total + size > 192 * 1024:
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            total += len(content.encode("utf-8"))
+            blocks.append(
+                f"<artifact id={json.dumps(artifact_id)} "
+                f"path={json.dumps(metadata['relative_path'])}>\n"
+                f"{content}\n</artifact>"
+            )
+        return "\n\n".join(blocks)
+
+    def _create_proposal(self, task, turn, assistant, result):
+        proposal_data = result.get("proposal")
+        if not isinstance(proposal_data, dict):
+            return None
+        proposal_type = proposal_data.get("type")
+        if proposal_type not in ALLOWED_ACTIONS:
+            return None
+        target_step_key = (
+            proposal_data.get("target_step_key")
+            or result.get("target_step_key")
+        )
+        payload = proposal_data.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        step_keys = {
+            row.step_key for row in TaskStep.select().where(TaskStep.task == task)
+        }
+        if proposal_type != "review_decision" and target_step_key not in step_keys:
+            return None
+        expected_review_run_id = None
+        expected_step_run_id = None
+        expected_workflow_run_id = task.active_workflow_run_id
+        if proposal_type == "supplement_stage":
+            content = str(payload.get("content", "")).strip()
+            if not content:
+                return None
+            payload = {"content": content}
+        elif proposal_type == "review_decision":
+            review_id = str(payload.get("review_run_id", ""))
+            decision = str(payload.get("decision", "")).replace("-", "_")
+            if decision not in {"approve", "reject", "force_approve"}:
+                return None
+            review = ReviewRun.get_or_none(
+                (ReviewRun.id == review_id) & (ReviewRun.task == task)
+            )
+            if review is None or review.decision:
+                return None
+            target_step_key = review.step_key
+            expected_review_run_id = review.id
+            expected_step_run_id = review.step_run_id
+            expected_workflow_run_id = review.workflow_run_id
+            payload = {
+                "review_run_id": review.id,
+                "decision": decision,
+                "comment": payload.get("comment"),
+            }
+        impact = {
+            "target_step_key": target_step_key,
+            "summary": self._impact_summary(proposal_type, target_step_key),
+        }
+        now = utc_now()
+        return ActionProposal.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            source_turn=turn,
+            source_message=assistant,
+            type=proposal_type,
+            target_step_key=target_step_key,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            impact_json=json.dumps(impact, ensure_ascii=False),
+            expected_task_version=task.state_version,
+            expected_workflow_run_id=expected_workflow_run_id,
+            expected_step_run_id=expected_step_run_id,
+            expected_review_run_id=expected_review_run_id,
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        )
+
+    def _execute_supplement(self, project_id, task_id, proposal_id, payload):
+        with self._project_manager.activate_project_by_id(project_id):
+            proposal = ActionProposal.get_by_id(proposal_id)
+            task = Task.get_by_id(task_id)
+            content = str(payload.get("content", "")).strip()
+            if not content:
+                raise RuntimeError("Supplement content cannot be empty")
+            supplement = StageSupplement.create(
+                id=str(uuid.uuid4()),
+                task=task,
+                step_key=proposal.target_step_key,
+                content=content,
+                source_proposal=proposal,
+                created_sequence=proposal.source_message.sequence or 0,
+                created_at=utc_now(),
+            )
+            task.state_version += 1
+            task.updated_at = utc_now()
+            task.save()
+            return {"supplement_id": supplement.id, "status": "saved"}
+
+    async def _execute_review_decision(
+        self,
+        project_id,
+        task_id,
+        proposal,
+        payload,
+    ):
+        handle = await self._workflow_runtime.decide_review(
+            project_id,
+            task_id,
+            proposal.target_step_key or "",
+            payload["review_run_id"],
+            payload["decision"],
+            payload.get("comment"),
+        )
+        return {
+            "decision": payload["decision"],
+            "resumed": handle is not None,
+            "run_id": handle.id if handle else None,
+        }
+
+    def _single_active_step(self, task: Task) -> str | None:
+        keys = [
+            row.step_key
+            for row in TaskStep.select().where(
+                (TaskStep.task == task)
+                & (
+                    TaskStep.status.in_(
+                        ["running", "reviewing", "awaiting_review", "retrying"]
+                    )
+                )
+            )
+        ]
+        return keys[0] if len(keys) == 1 else None
+
+    def _impact_summary(self, proposal_type, step_key):
+        if proposal_type == "supplement_stage":
+            return f"Save context for future attempts of stage '{step_key}'"
+        if proposal_type == "review_decision":
+            return f"Apply the review decision for stage '{step_key}'"
+        return f"Restart stage '{step_key}' and its downstream stages"
+
+    def _proposal_to_dict(self, proposal: ActionProposal) -> dict:
+        return {
+            "id": proposal.id,
+            "type": proposal.type,
+            "target_step_key": proposal.target_step_key,
+            "payload": json.loads(proposal.payload_json),
+            "impact": (
+                json.loads(proposal.impact_json) if proposal.impact_json else None
+            ),
+            "status": proposal.status,
+            "result": (
+                json.loads(proposal.result_json) if proposal.result_json else None
+            ),
+            "error": proposal.error,
+            "created_at": proposal.created_at,
+            "updated_at": proposal.updated_at,
+        }
+
+    async def _publish_message_event(
+        self,
+        task_id: str,
+        message: Message,
+        event_type: str,
+        data: dict,
+        event_sequence: int,
+    ) -> None:
+        await self._event_bus.publish(
+            {
+                "event_id": str(uuid.uuid4()),
+                "task_id": task_id,
+                "channel": message.channel,
+                "message_id": message.id,
+                "engine": message.engine,
+                "model": message.model,
+                "step_key": message.context_step_key,
+                "event_sequence": event_sequence,
+                "type": event_type,
+                "data": data,
+                "created_at": utc_now().isoformat(),
+            }
+        )
+
+    def _consume_background(self, task: asyncio.Task) -> None:
+        self._active_tasks.discard(task)
+        if not task.cancelled():
+            task.exception()

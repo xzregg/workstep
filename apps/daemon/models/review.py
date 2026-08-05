@@ -3,6 +3,7 @@
 import peewee as pw
 
 from models.base import BaseModel
+from models.fields import UTCDateTimeField
 from models.run import StepRun, WorkflowRun
 from models.task import Task
 
@@ -25,9 +26,9 @@ class ReviewRun(BaseModel):
     report_json = pw.TextField(null=True)
     decision = pw.TextField(null=True)
     decision_comment = pw.TextField(null=True)
-    decided_at = pw.IntegerField(null=True)
-    started_at = pw.IntegerField(null=True)
-    ended_at = pw.IntegerField(null=True)
+    decided_at = UTCDateTimeField(null=True)
+    started_at = UTCDateTimeField(null=True)
+    ended_at = UTCDateTimeField(null=True)
     error = pw.TextField(null=True)
 
     class Meta:

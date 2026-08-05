@@ -4,11 +4,13 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import shutil
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine, EngineModel
 from engines.events import InternalEvent
+from services.config import config_store
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,30 @@ class ClaudeCodeEngine(BaseLLMEngine):
             EngineModel("haiku", "Haiku"),
         ]
 
+    @staticmethod
+    def build_command(
+        binary: str,
+        permission_mode: str,
+        model: str | None = None,
+        session_id: str | None = None,
+        add_dirs: list[str] | None = None,
+    ) -> list[str]:
+        cmd = [
+            binary,
+            "-p",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--permission-mode", permission_mode,
+        ]
+        if model:
+            cmd.extend(["--model", model])
+        if session_id:
+            cmd.extend(["--resume", session_id])
+        if add_dirs:
+            for directory in add_dirs:
+                cmd.extend(["--add-dir", directory])
+        return cmd
+
     async def spawn(
         self,
         prompt: str,
@@ -76,22 +102,29 @@ class ClaudeCodeEngine(BaseLLMEngine):
             yield InternalEvent(type="error", data={"message": "claude binary not found"})
             return
 
-        cmd = [
+        permission_mode = config_store.get_claude_permission_mode()
+        if not permission_mode:
+            yield InternalEvent(type="error", data={
+                "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
+            })
+            return
+
+        cmd = self.build_command(
             binary,
-            "-p",                          # print mode (non-interactive)
-            "--output-format", "stream-json",  # JSONL output
-            "--verbose",
-        ]
+            permission_mode,
+            model=model,
+            session_id=session_id,
+            add_dirs=add_dirs,
+        )
 
-        if model:
-            cmd.extend(["--model", model])
-        if session_id:
-            cmd.extend(["--resume", session_id])
-        if add_dirs:
-            for d in add_dirs:
-                cmd.extend(["--add-dir", d])
-
-        logger.info("Spawning: %s (cwd=%s)", " ".join(cmd), cwd)
+        command_text = shlex.join(cmd)
+        logger.info("Spawning: %s (cwd=%s)", command_text, cwd)
+        print(
+            "[ClaudeCodeEngine] "
+            f"session={'resume:' + session_id if session_id else 'new'} "
+            f"cwd={cwd} command={command_text}",
+            flush=True,
+        )
 
         self._process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -166,9 +199,12 @@ class ClaudeCodeEngine(BaseLLMEngine):
                     })
 
         if event_type == "result":
+            usage = obj.get("usage") or obj
             return InternalEvent(type="usage", data={
-                "input_tokens": obj.get("input_tokens", 0),
-                "output_tokens": obj.get("output_tokens", 0),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
+                "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
                 "session_id": obj.get("session_id"),
             })
 

@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from services.project import ProjectManager
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
+from services.coordinator import CoordinatorModule
 from streaming.bus import EventBus
 
 
@@ -28,14 +29,49 @@ class MemoryConfigStore:
     def set(self, key, value):
         self.values[key] = value
 
+    def is_engine_verified(self, engine_id):
+        return self.values.get("verified_engines", {}).get(engine_id) is True
+
+    def set_engine_verified(self, engine_id, verified):
+        values = dict(self.values.get("verified_engines", {}))
+        if verified:
+            values[engine_id] = True
+        else:
+            values.pop(engine_id, None)
+        self.values["verified_engines"] = values
+
+    def get_engine_default_model(self, engine_id):
+        return self.values.get("engine_default_models", {}).get(engine_id, "")
+
+    def set_engine_default_model(self, engine_id, model):
+        values = dict(self.values.get("engine_default_models", {}))
+        values[engine_id] = model
+        self.values["engine_default_models"] = values
+
+    def get_engine_binary_path(self, engine_id):
+        return self.values.get("engine_binary_paths", {}).get(engine_id, "")
+
+    def set_engine_binary_path(self, engine_id, path):
+        values = dict(self.values.get("engine_binary_paths", {}))
+        values[engine_id] = path
+        self.values["engine_binary_paths"] = values
+
+    def get_claude_permission_mode(self):
+        return self.values.get("claude_permission_mode", "")
+
+    def set_claude_permission_mode(self, mode):
+        self.values["claude_permission_mode"] = mode
+
 
 @pytest.fixture
 async def api_context(tmp_path, monkeypatch):
     """Run the real FastAPI routes against isolated project databases."""
     import api.history as history_api
+    import api.engine as engine_api
     import api.project as project_api
     import api.search as search_api
     import api.templates as templates_api
+    import api.workflow as workflow_api
     import main
     import services.project as project_service
 
@@ -44,15 +80,19 @@ async def api_context(tmp_path, monkeypatch):
     bus = EventBus()
     task_service = TaskService(bus)
     runtime = WorkflowRuntime(bus, manager)
+    coordinator = CoordinatorModule(bus, manager, runtime)
 
     monkeypatch.setattr(project_service, "config_store", config_store)
+    monkeypatch.setattr(engine_api, "config_store", config_store)
     monkeypatch.setattr(project_api, "project_manager", manager)
     monkeypatch.setattr(history_api, "project_manager", manager)
     monkeypatch.setattr(search_api, "project_manager", manager)
+    monkeypatch.setattr(workflow_api, "project_manager", manager)
     monkeypatch.setattr(templates_api, "TEMPLATES_DIR", tmp_path / "templates")
     monkeypatch.setattr(main, "project_manager", manager)
     monkeypatch.setattr(main, "task_service", task_service)
     monkeypatch.setattr(main, "workflow_runtime", runtime)
+    monkeypatch.setattr(main, "coordinator_module", coordinator)
 
     transport = ASGITransport(app=main.app)
     async with AsyncExitStack() as stack:
@@ -61,9 +101,150 @@ async def api_context(tmp_path, monkeypatch):
         )
         yield client, tmp_path
 
+    await coordinator.shutdown()
     await runtime.shutdown()
     await bus.close()
     manager.close_all()
+
+
+@pytest.mark.anyio
+async def test_task_creation_binds_selected_workflow(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "selected-workflow-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflow = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": "SelectedWorkflow",
+            "steps": {
+                "nodes": [
+                    {
+                        "id": "selected",
+                        "title": "Selected",
+                        "engine": "claude",
+                        "inputs": [],
+                        "outputs": [],
+                    }
+                ],
+                "connections": [],
+            },
+        },
+    )
+    workflow_id = workflow.json()["id"]
+
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Selected task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+        },
+    )
+
+    assert created.status_code == 200
+    assert created.json()["workflow_id"] == workflow_id
+    assert [step["step_key"] for step in created.json()["steps"]] == ["selected"]
+
+
+@pytest.mark.anyio
+async def test_task_creation_auto_starts_the_selected_stage(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "auto-start-stage-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflow = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": "AutoStartStages",
+            "steps": {
+                "nodes": [
+                    {"id": 1, "type": "plan", "title": "Plan", "autoStart": False},
+                    {"id": 2, "type": "build", "title": "Build", "autoStart": False},
+                ],
+                "connections": [],
+            },
+        },
+    )
+    workflow_id = workflow.json()["id"]
+    saved = await client.post(
+        f"/api/project/save-steps?project_id={project_id}&workflow_id={workflow_id}",
+        json={
+            "steps": {
+                "nodes": [
+                    {"id": 1, "type": "plan", "title": "Plan", "autoStart": False},
+                    {"id": 2, "type": "build", "title": "Build", "autoStart": True},
+                ],
+                "connections": [],
+            },
+        },
+    )
+    assert saved.status_code == 200
+    runtime = AsyncMock()
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Auto-start build",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "start_step_key": "build",
+        },
+    )
+
+    assert created.status_code == 200
+    runtime.start.assert_awaited_once_with(project_id, created.json()["id"], "")
+
+    runtime.start.reset_mock()
+    manual = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Manual build",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "start_step_key": "build",
+            "auto_start": False,
+        },
+    )
+    assert manual.status_code == 200
+    runtime.start.assert_not_awaited()
+
+    disabled = await client.post(
+        f"/api/project/save-steps?project_id={project_id}&workflow_id={workflow_id}",
+        json={
+            "steps": {
+                "nodes": [
+                    {"id": 1, "type": "plan", "title": "Plan", "autoStart": False},
+                    {"id": 2, "type": "build", "title": "Build", "autoStart": False},
+                ],
+                "connections": [],
+            },
+        },
+    )
+    assert disabled.status_code == 200
+    forced = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Forced auto-start build",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "start_step_key": "build",
+            "auto_start": True,
+        },
+    )
+    assert forced.status_code == 200
+    runtime.start.assert_awaited_once_with(project_id, forced.json()["id"], "")
 
 
 @pytest.mark.anyio
@@ -97,6 +278,78 @@ async def test_project_http_lifecycle_returns_a_stable_identity(api_context):
     )
     assert registered.status_code == 200
     assert registered.json()["id"] == project_id
+
+
+@pytest.mark.anyio
+async def test_upload_image_returns_project_relative_path(api_context):
+    """Uploaded image url is the project-relative path, not an API url."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "test_workstep"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nfake-image-bytes").decode()
+    uploaded = await client.post(
+        f"/api/fs/upload/image?project_id={project_id}",
+        json={"filename": "shot.png", "data_url": f"data:image/png;base64,{png}"},
+    )
+    assert uploaded.status_code == 200
+    body = uploaded.json()
+    assert body["url"].startswith("test_workstep/.workstep/uploads/")
+    assert body["url"].endswith(".png")
+    filename = body["filename"]
+    assert body["url"] == f"test_workstep/.workstep/uploads/{filename}"
+
+    # File physically lands in the project uploads directory
+    assert (project_dir / ".workstep" / "uploads" / filename).is_file()
+
+    # The serve endpoint (used by the preview) still works for that file
+    served = await client.get(
+        f"/api/fs/serve/{filename}?project_id={project_id}"
+    )
+    assert served.status_code == 200
+
+    # The project-relative URL itself resolves to the file (via daemon route)
+    via_name = await client.get(
+        f"/test_workstep/.workstep/uploads/{filename}"
+    )
+    assert via_name.status_code == 200
+    assert via_name.content == b"\x89PNG\r\n\x1a\nfake-image-bytes"
+
+
+@pytest.mark.anyio
+async def test_upload_served_via_unicode_project_relative_url(api_context):
+    """Chinese project names in the relative URL decode and serve correctly."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "测试项目"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nchinese-name").decode()
+    uploaded = await client.post(
+        f"/api/fs/upload/image?project_id={project_id}",
+        json={"filename": "shot.png", "data_url": f"data:image/png;base64,{png}"},
+    )
+    assert uploaded.status_code == 200
+    filename = uploaded.json()["filename"]
+
+    via_name = await client.get(f"/测试项目/.workstep/uploads/{filename}")
+    assert via_name.status_code == 200
+    assert via_name.content == b"\x89PNG\r\n\x1a\nchinese-name"
+
+    # Unknown project name → 404
+    missing = await client.get(f"/不存在项目/.workstep/uploads/{filename}")
+    assert missing.status_code == 404
 
 
 @pytest.mark.anyio
@@ -341,9 +594,10 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
         "hermes",
         "qoder",
         "qcode",
-        "openclaw",
-        "api",
-    }
+            "openclaw",
+            "api",
+            "pydantic_ai",
+        }
     assert all("installed" in engine for engine in engines)
 
 
@@ -477,6 +731,64 @@ async def test_engine_default_model_can_be_saved(api_context, monkeypatch):
     assert response.status_code == 200
     assert response.json()["saved"] is True
     assert saved == {"claude": "sonnet"}
+
+
+@pytest.mark.anyio
+async def test_claude_permission_mode_requires_dangerous_confirmation(
+    api_context,
+    monkeypatch,
+):
+    client, _ = api_context
+    import api.engine as engine_api
+
+    saved = []
+    monkeypatch.setattr(
+        engine_api.config_store,
+        "get_claude_permission_mode",
+        lambda: "dontAsk",
+    )
+    monkeypatch.setattr(
+        engine_api.config_store,
+        "set_claude_permission_mode",
+        lambda mode: saved.append(mode),
+    )
+
+    rejected = await client.put(
+        "/api/engine/claude/permission-mode",
+        json={"mode": "bypassPermissions", "confirmed_dangerous": False},
+    )
+    accepted = await client.put(
+        "/api/engine/claude/permission-mode",
+        json={"mode": "bypassPermissions", "confirmed_dangerous": True},
+    )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["saved"] is False
+    assert saved == ["bypassPermissions"]
+    assert accepted.json() == {
+        "saved": True,
+        "mode": "bypassPermissions",
+        "confirmed": True,
+    }
+
+
+@pytest.mark.anyio
+async def test_claude_permission_mode_can_be_read(api_context, monkeypatch):
+    client, _ = api_context
+    import api.engine as engine_api
+
+    monkeypatch.setattr(
+        engine_api.config_store,
+        "get_claude_permission_mode",
+        lambda: "acceptEdits",
+    )
+
+    response = await client.get("/api/engine/claude/permission-mode")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "acceptEdits"
+    assert response.json()["confirmed"] is True
+    assert "bypassPermissions" in response.json()["options"]
 
 
 @pytest.mark.anyio
@@ -797,6 +1109,8 @@ async def test_step_history_binds_the_requested_project(api_context):
             content="persisted output",
             run_status="succeeded",
             events_json=json.dumps([{"type": "text_delta"}]),
+            prompt_json=json.dumps({"prompt": "complete stage prompt"}),
+            usage_json=json.dumps({"input_tokens": 12, "output_tokens": 3}),
             position=1,
             started_at=100,
             ended_at=284,
@@ -820,8 +1134,13 @@ async def test_step_history_binds_the_requested_project(api_context):
         params={"project_id": first_id},
     )
     assert task_history.status_code == 200
-    assert task_history.json()["messages"][0]["started_at"] == 100
-    assert task_history.json()["messages"][0]["ended_at"] == 284
+    assert task_history.json()["messages"][0]["started_at"] == "1970-01-01T00:01:40+00:00"
+    assert task_history.json()["messages"][0]["ended_at"] == "1970-01-01T00:04:44+00:00"
+    assert task_history.json()["messages"][0]["prompt"] == "complete stage prompt"
+    assert task_history.json()["messages"][0]["usage"] == {
+        "input_tokens": 12,
+        "output_tokens": 3,
+    }
 
 
 @pytest.mark.anyio

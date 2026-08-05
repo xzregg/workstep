@@ -1,0 +1,44 @@
+{
+  "types": [
+    {
+      "value": "md",
+      "description": "Markdown 文档，结构清晰，使用标题、列表、表格等标准 Markdown 语法。"
+    },
+    {
+      "value": "html",
+      "description": "HTML 网页文件，完整的文档结构，可直接在浏览器打开。"
+    },
+    {
+      "value": "json",
+      "description": "JSON 数据文件，UTF-8 编码，结构合法可被解析。"
+    },
+    {
+      "value": "txt",
+      "description": "UTF-8 编码的纯文本文件，内容结构清晰、可直接阅读。"
+    },
+    {
+      "value": "jpg",
+      "description": "JPEG 图片文件（二进制），内容与产物要求一致。"
+    },
+    {
+      "value": "png",
+      "description": "PNG 图片文件（二进制），内容与产物要求一致。"
+    },
+    {
+      "value": "docx",
+      "description": "Microsoft Word 文档（二进制 .docx 格式）。"
+    },
+    {
+      "value": "xlsx",
+      "description": "Microsoft Excel 工作簿（二进制 .xlsx 格式）。"
+    },
+    {
+      "value": "csv",
+      "description": "CSV 表格文件，UTF-8 编码，逗号分隔，首行表头。"
+    },
+    {
+      "value": "pdf",
+      "description": "PDF 文档文件（二进制），内容与产物要求一致。"
+    }
+  ]
+}

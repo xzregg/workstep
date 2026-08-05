@@ -1,7 +1,9 @@
 """Tests for FastAPI skeleton: health, WebSocket, EventBus."""
 
 import asyncio
+from datetime import datetime, timezone
 import pytest
+from fastapi.encoders import jsonable_encoder
 from httpx import AsyncClient, ASGITransport
 from main import app, event_bus
 
@@ -34,6 +36,23 @@ async def test_event_bus_pubsub():
         assert event["data"] == "hello"
     finally:
         event_bus.unsubscribe(q)
+
+
+def test_websocket_events_encode_datetime_values():
+    """WebSocket events remain JSON-safe after timestamp fields became datetime."""
+    encoded = jsonable_encoder({
+        "type": "action_proposal",
+        "created_at": datetime(2026, 8, 4, 10, 29, tzinfo=timezone.utc),
+        "data": {
+            "updated_at": datetime(2026, 8, 4, 10, 30, tzinfo=timezone.utc),
+        },
+    })
+
+    assert encoded == {
+        "type": "action_proposal",
+        "created_at": "2026-08-04T10:29:00+00:00",
+        "data": {"updated_at": "2026-08-04T10:30:00+00:00"},
+    }
 
 
 @pytest.mark.anyio

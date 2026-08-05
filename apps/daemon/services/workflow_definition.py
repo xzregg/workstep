@@ -101,7 +101,10 @@ class WorkflowDefinition:
                             f"does not exist on node '{node_id}'"
                         )
             key_by_id = {
-                node.get("id"): node.get("key", node.get("type", "")) for node in items
+                node.get("id"): node.get(
+                    "key", node.get("type", node.get("id", ""))
+                )
+                for node in items
             }
             dependencies = {key: [] for key in key_by_id.values()}
             for connection in self._raw.get("connections", []):
@@ -125,6 +128,24 @@ class WorkflowDefinition:
         self._validate_acyclic(dependencies)
         return self
 
+    def auto_start_enabled(self, start_step_key: str | None = None) -> bool:
+        """Return whether tasks created at the selected stage should start."""
+        self.validate()
+        collection_name = "nodes" if "nodes" in self._raw else "steps"
+        items = self._raw.get(collection_name, [])
+        if not items:
+            return False
+        selected = items[0] if start_step_key is None else next(
+            (
+                item
+                for item in items
+                if item.get("key", item.get("type", item.get("id", "")))
+                == start_step_key
+            ),
+            None,
+        )
+        return bool(selected and selected.get("autoStart", False))
+
     def compile(self) -> CompiledWorkflow:
         """Compile this definition to TaskRunner's canonical step format."""
         self.validate()
@@ -139,7 +160,9 @@ class WorkflowDefinition:
                 self._normalize_step(
                     {
                         **node,
-                        "key": node.get("key", node.get("type", "")),
+                        "key": node.get(
+                            "key", node.get("type", node.get("id", ""))
+                        ),
                         "label": node.get(
                             "label", node.get("title", node.get("type", ""))
                         ),
@@ -160,7 +183,9 @@ class WorkflowDefinition:
     def _node_key_by_id(self, node_id: Any) -> str:
         for node in self._raw.get("nodes", []):
             if node.get("id") == node_id:
-                return node.get("key", node.get("type", ""))
+                return node.get(
+                    "key", node.get("type", node.get("id", ""))
+                )
         raise KeyError(node_id)
 
     @staticmethod

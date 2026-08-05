@@ -12,6 +12,7 @@ from engines.qoder_acp import QoderAcpEngine
 from engines.qcode import QCodeEngine
 from engines.openclaw import OpenClawEngine
 from engines.api import APIEngine
+from engines.pydantic_ai import PydanticAIEngine
 from engines.registry import (
     ENGINE_REGISTRY,
     get_available_engines,
@@ -35,6 +36,7 @@ __all__ = [
     "QCodeEngine",
     "OpenClawEngine",
     "APIEngine",
+    "PydanticAIEngine",
     "ENGINE_REGISTRY",
     "get_available_engines",
     "create_engine",

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Awaitable, Callable
 
 from engines.registry import create_engine
 from models import ReviewRun, StepRun, Task, WorkflowRun
+from models.fields import utc_now
 from services.config import config_store
 from services.pipeline import Step
 
@@ -24,6 +24,7 @@ class ReviewOutcome:
     status: str  # passed / rejected / awaiting_review
     review_run: ReviewRun
     report: dict
+    events: tuple[dict, ...] = ()
 
     @property
     def feedback(self) -> str:
@@ -68,7 +69,7 @@ class ReviewGate:
         prompt = self._assemble_prompt(
             task, step, artifacts_dir, execution_output, str(config.get("prompt", ""))
         )
-        now = int(time.time())
+        now = utc_now()
         review_run = ReviewRun.create(
             id=str(uuid.uuid4()),
             workflow_run=workflow_run,
@@ -100,6 +101,7 @@ class ReviewGate:
         await self._emit(task, step, step_run, review_run, "reviewing")
         engine = create_engine(engine_id)
         response_parts: list[str] = []
+        events_collected: list[dict] = []
         error: str | None = None
         if not engine:
             error = f"Review engine '{engine_id}' not available"
@@ -110,6 +112,7 @@ class ReviewGate:
                     cwd=task.cwd,
                     model=model or None,
                 ):
+                    events_collected.append(event.to_dict())
                     if event.type == "text_delta":
                         response_parts.append(str(event.data.get("delta", "")))
                     elif event.type == "error" and error is None:
@@ -140,14 +143,17 @@ class ReviewGate:
         review_run.report_json = json.dumps(report, ensure_ascii=False)
         review_run.status = "passed" if passed else "rejected"
         review_run.error = error
-        review_run.ended_at = int(time.time())
+        review_run.ended_at = utc_now()
         review_run.save()
         await self._emit(
             task, step, step_run, review_run,
             "passed" if passed else "rejected", report,
         )
         return ReviewOutcome(
-            "passed" if passed else "rejected", review_run, report
+            "passed" if passed else "rejected",
+            review_run,
+            report,
+            tuple(events_collected),
         )
 
     @staticmethod
@@ -158,7 +164,8 @@ class ReviewGate:
         execution_output: str,
         review_prompt: str,
     ) -> str:
-        out_dir = artifacts_dir / step.key / task.id
+        wf_name = task.workflow_id or "default"
+        out_dir = artifacts_dir / wf_name / task.id / step.key
         files = (
             [str(path) for path in sorted(out_dir.rglob("*")) if path.is_file()]
             if out_dir.exists()

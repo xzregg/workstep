@@ -6,14 +6,47 @@ import {
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
-import { useTaskStore } from '../stores/taskStore'
+import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
-import { fsApi, projectApi, taskApi, type ReviewRun, type TaskArtifact, type TaskStepState } from '../api/client'
+import {
+  fsApi,
+  engineApi,
+  projectApi,
+  taskApi,
+  type ActionProposal,
+  type CoordinatorConfig,
+  type EngineModel,
+  type ReviewRun,
+  type TaskArtifact,
+  type TaskStepState,
+} from '../api/client'
 import ArtifactPreview from '../components/ArtifactPreview'
+import MarkdownEditor from '../components/MarkdownEditor'
 import MarkdownMessage from '../components/MarkdownMessage'
 import ProcessTrace from '../components/ProcessTrace'
+import EngineSelect from '../components/EngineSelect'
+import {
+  createOptimisticUserMessage,
+  isVisibleHistoryMessage,
+  isVisibleLiveExecutionMessage,
+  isUnpersistedLiveMessage,
+  isTaskCompleted,
+  isTaskNotStarted,
+  isNearConversationBottom,
+  liveExecutionStatus,
+  mergeHistoryMessageWithLive,
+  shouldRenderLegacyExecution,
+  stageAvatarText,
+} from './taskDetailChat'
+import {
+  formatConversationDateTime,
+  formatDurationBetween,
+  toMilliseconds,
+} from '../utils/datetime'
+import { engineLabel } from '../engineMeta'
 
 const EMPTY_EVENTS: any[] = []
+const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
 const PROCESS_EVENT_TYPES = new Set([
   'thinking_delta',
   'tool_use',
@@ -25,8 +58,290 @@ function hasProcessEvents(events: any[]) {
   return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
 }
 
+type MessageUsage = Record<string, unknown> | null | undefined
+
+function usageFromEvents(events: any[]): MessageUsage {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event?.type === 'usage' && event.data && typeof event.data === 'object') {
+      return event.data as Record<string, unknown>
+    }
+  }
+  return null
+}
+
+function usageValue(usage: MessageUsage, ...keys: string[]) {
+  for (const key of keys) {
+    const value = usage?.[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  return 0
+}
+
+function formatTokenUsage(usage?: MessageUsage) {
+  if (!usage || Object.keys(usage).length === 0) {
+    return 'Token：暂无数据'
+  }
+  if (usage.usage_kind === 'context_window') {
+    const used = usageValue(usage, 'used')
+    const size = usageValue(usage, 'size')
+    const number = new Intl.NumberFormat('zh-CN')
+    const occupancy = size > 0 ? ` · 占用 ${Math.min(100, (used / size) * 100).toFixed(1)}%` : ''
+    return `Token · 上下文 ${number.format(used)} / ${number.format(size)}${occupancy}`
+  }
+  const input = usageValue(usage, 'input_tokens', 'prompt_tokens')
+  const output = usageValue(usage, 'output_tokens', 'completion_tokens')
+  const cacheRead = usageValue(
+    usage,
+    'cache_read_input_tokens',
+    'cached_tokens',
+  )
+  const cacheWrite = usageValue(usage, 'cache_creation_input_tokens')
+  const reportedTotal = usageValue(usage, 'total_tokens')
+  const total = reportedTotal || input + output
+  const number = new Intl.NumberFormat('zh-CN')
+  const parts = input > 0 || output > 0
+    ? [`输入 ${number.format(input)}`, `输出 ${number.format(output)}`]
+    : []
+  if (cacheRead > 0) parts.push(`缓存读取 ${number.format(cacheRead)}`)
+  if (cacheWrite > 0) parts.push(`缓存写入 ${number.format(cacheWrite)}`)
+  const cacheInput = 'prompt_tokens' in usage
+    ? input
+    : input + cacheRead + cacheWrite
+  if (cacheInput > 0) {
+    const cacheHitRate = Math.min(100, (cacheRead / cacheInput) * 100)
+    parts.push(`缓存命中 ${cacheHitRate.toFixed(1)}%`)
+  }
+  parts.push(`总计 ${number.format(total)}`)
+  return `Token · ${parts.join(' · ')}`
+}
+
+async function copyMessageText(content: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = content
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('Copy failed')
+}
+
+function MessageResponseFooter({
+  content,
+  usage,
+  engine,
+  running = false,
+}: {
+  content: string
+  usage?: MessageUsage
+  engine?: string | null
+  running?: boolean
+}) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const usageSummary = running ? '' : formatTokenUsage(usage)
+
+  const copy = async () => {
+    try {
+      await copyMessageText(content)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
+
+  return (
+    <div style={{
+      minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
+      color: 'var(--meta)', fontSize: 10,
+    }}>
+      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+        {usageSummary}
+        {!running && engine ? ` · ${engineLabel(engine)}` : ''}
+      </span>
+      <button
+        type="button"
+        className="btn-ghost"
+        aria-label={copyState === 'copied' ? '消息已复制' : '复制 LLM 消息'}
+        title={running
+          ? '消息生成完成后可复制'
+          : copyState === 'copied'
+            ? '已复制'
+            : copyState === 'failed'
+              ? '复制失败'
+              : '复制消息'}
+        disabled={running || !content}
+        onClick={() => void copy()}
+        style={{
+          width: 24, height: 24, minWidth: 24, padding: 0,
+          justifyContent: 'center',
+          color: copyState === 'failed'
+            ? 'var(--danger)'
+            : copyState === 'copied'
+              ? 'var(--success)'
+              : 'var(--muted)',
+          fontSize: 10,
+        }}
+      >
+        {copyState === 'copied' ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+            <path d="m5 12 4 4L19 6" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <rect x="9" y="9" width="11" height="11" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        )}
+      </button>
+    </div>
+  )
+}
+
+function MessageMetaBar({
+  createdAt,
+  startedAt,
+  endedAt,
+  running = false,
+  events,
+  prompt,
+  onViewPrompt,
+}: {
+  createdAt?: string | number | null
+  startedAt?: string | number | null
+  endedAt?: string | number | null
+  running?: boolean
+  events?: any[]
+  prompt?: string | null
+  onViewPrompt: (prompt: string) => void
+}) {
+  const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
+    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
+    if (timestamp === null) return earliest
+    return earliest === null ? timestamp : Math.min(earliest, timestamp)
+  }, null)
+  const displayStartedAt = startedAt || createdAt || eventStartedAt
+
+  return (
+    <div style={{
+      width: '100%', minHeight: 30,
+      display: 'flex', alignItems: 'flex-start', gap: 12,
+      paddingBottom: 6, borderBottom: '1px solid var(--border-soft)',
+      color: 'var(--meta)', fontSize: 11, flexWrap: 'wrap',
+    }}>
+      <span style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>{formatConversationDateTime(displayStartedAt)}</span>
+      <ProcessTrace
+        events={events || []}
+        running={running}
+        startedAt={displayStartedAt}
+        endedAt={endedAt}
+        compact
+      />
+      {prompt && (
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => onViewPrompt(prompt)}
+          style={{ marginLeft: 'auto', padding: 0, minHeight: 24, color: 'var(--accent)', fontSize: 11, alignItems: 'center' }}
+        >
+          查看提示词
+        </button>
+      )}
+    </div>
+  )
+}
+
+function CoordinatorProposalCard({
+  proposal,
+  taskId,
+  projectId,
+  onChanged,
+}: {
+  proposal: ActionProposal
+  taskId: string
+  projectId: string
+  onChanged: (proposal: ActionProposal) => void
+}) {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const current = proposal
+  const retryable = current.status === 'failed' && current.type === 'rerun_from_stage'
+  const canAct = (current.status === 'pending' || retryable) && !pending
+
+  const confirm = async () => {
+    setPending(true)
+    setError('')
+    try {
+      onChanged(await taskApi.confirmAction(
+        taskId,
+        current.id,
+        projectId,
+        crypto.randomUUID(),
+      ))
+    } catch (reason) {
+      const fallbackError = reason instanceof Error ? reason.message : '确认失败'
+      try {
+        const history = await taskApi.history(taskId, projectId)
+        const latest = [...history.messages]
+          .reverse()
+          .flatMap((message) => message.proposals || [])
+          .find((item) => item.id === current.id) as ActionProposal | undefined
+        if (latest && latest.status !== 'pending') {
+          onChanged(latest)
+          setError('')
+        } else {
+          setError(fallbackError)
+        }
+      } catch {
+        setError(fallbackError)
+      }
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const cancel = async () => {
+    setPending(true)
+    setError('')
+    try {
+      onChanged(await taskApi.cancelAction(taskId, current.id, projectId))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '取消失败')
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ fontSize: 12, fontWeight: 700 }}>协调动作 · {current.type}</div>
+      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+        {current.impact?.summary || `目标阶段：${current.target_step_key || '无'}`}
+      </div>
+      <div style={{ fontSize: 11, color: current.status === 'failed' ? 'var(--danger)' : 'var(--meta)' }}>
+        状态：{current.status}{current.error ? ` · ${current.error}` : ''}
+      </div>
+      {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
+      {(current.status === 'pending' || retryable) && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-primary" disabled={!canAct} onClick={() => void confirm()}>{pending ? '处理中...' : retryable ? '重试' : '确认'}</button>
+          {current.status === 'pending' && (
+            <button className="btn-ghost" disabled={!canAct} onClick={() => void cancel()}>取消</button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const STATUS_LABELS: Record<string, string> = {
   ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
+  done: '已完成',
 }
 
 type StageVisualState =
@@ -65,20 +380,6 @@ const STAGE_STATE_LABELS: Record<StageVisualState, string> = {
   failed: '失败',
   skipped: '已跳过',
   pending: '待处理',
-}
-
-function formatStageDuration(startedAt?: number | null, endedAt?: number | null) {
-  if (!startedAt || !endedAt || endedAt < startedAt) return null
-  const totalSeconds = Math.max(1, endedAt - startedAt)
-  if (totalSeconds < 60) return `${totalSeconds}秒`
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (totalMinutes < 60) {
-    return seconds > 0 ? `${totalMinutes}分${seconds}秒` : `${totalMinutes}分钟`
-  }
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return minutes > 0 ? `${hours}小时${minutes}分` : `${hours}小时`
 }
 
 interface TaskDetailProps {
@@ -220,14 +521,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
+  const liveMessages = useTaskStore((s) => (
+    taskId ? s.liveMessages[taskId] : undefined
+  ) ?? EMPTY_LIVE_MESSAGES)
   const runTask = useTaskStore((s) => s.runTask)
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
-  const cancelTask = useTaskStore((s) => s.cancelTask)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
   const taskStatus = task?.status
+  const taskNotStarted = isTaskNotStarted(task?.steps || [])
+  const taskCompleted = isTaskCompleted(task?.steps || [])
   const reviewEventSignal = useMemo(() => {
     const event = [...events].reverse().find((item) =>
       ['review_status', 'review_result', 'step_retrying'].includes(item.type)
@@ -238,8 +543,24 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [events])
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
+  const [coordinatorRunning, setCoordinatorRunning] = useState(false)
+  const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
+  const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
+  const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
+  const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
+  const [coordinatorConfigNotice, setCoordinatorConfigNotice] = useState('')
+  const [coordinatorModels, setCoordinatorModels] = useState<EngineModel[]>([])
+  const [proposalOverrides, setProposalOverrides] = useState<Record<string, ActionProposal>>({})
+  const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
+  const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
+  const [taskIdCopied, setTaskIdCopied] = useState(false)
+  const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStage, setSelectedStage] = useState(0)
+  const selectedStageTaskRef = useRef<string | null>(null)
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const shouldFollowMessagesRef = useRef(true)
   const stageLastMessageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const pendingStageScrollRef = useRef<string | null>(null)
   const [historyMessages, setHistoryMessages] = useState<any[]>([])
@@ -268,6 +589,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const historyFetchedRef = useRef<string>('')
   const contentSplitRef = useRef<HTMLDivElement>(null)
   const interactionCleanupRef = useRef<(() => void) | null>(null)
+  const persistedMessageIds = useMemo(
+    () => new Set(historyMessages.map((message) => String(message.id))),
+    [historyMessages],
+  )
+  const liveCoordinatorMessages = useMemo(
+    () => Object.values(liveMessages).filter(
+      (message) => message.channel === 'coordinator'
+        && isUnpersistedLiveMessage(message, persistedMessageIds),
+    ),
+    [liveMessages, persistedMessageIds],
+  )
+  const liveExecutionMessages = useMemo(
+    () => Object.values(liveMessages).filter(
+      (message) => isVisibleLiveExecutionMessage(message)
+        && isUnpersistedLiveMessage(message, persistedMessageIds),
+    ),
+    [liveMessages, persistedMessageIds],
+  )
+  const missingLivePromptIds = useMemo(
+    () => liveExecutionMessages
+      .filter((message) => !message.prompt && !livePromptOverrides[message.id])
+      .map((message) => message.id)
+      .sort(),
+    [liveExecutionMessages, livePromptOverrides],
+  )
+  const hasStructuredExecutionMessage = useMemo(
+    () => Object.values(liveMessages).some(
+      (message) => message.channel === 'execution',
+    ) || historyMessages.some(
+      (message) => message.channel === 'execution',
+    ),
+    [historyMessages, liveMessages],
+  )
 
   useEffect(() => {
     sessionStorage.setItem(PANEL_BOUNDS_KEY, JSON.stringify(panelBounds))
@@ -470,6 +824,54 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [taskId, projectId])
 
   useEffect(() => {
+    if (!taskId || !projectId || missingLivePromptIds.length === 0) return
+    let cancelled = false
+    const missingIds = new Set(missingLivePromptIds)
+    taskApi.history(taskId, projectId, 50, 0)
+      .then((response) => {
+        if (cancelled) return
+        const prompts = Object.fromEntries(
+          (response.messages || [])
+            .filter((message: any) => missingIds.has(String(message.id)) && message.prompt)
+            .map((message: any) => [String(message.id), String(message.prompt)]),
+        )
+        if (Object.keys(prompts).length > 0) {
+          setLivePromptOverrides((current) => ({ ...current, ...prompts }))
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [missingLivePromptIds.join('|'), projectId, taskId])
+
+  useEffect(() => {
+    const engineId = coordinatorConfig?.resolved.engine
+    if (!engineId) {
+      setCoordinatorModels([])
+      return
+    }
+    engineApi.models(engineId)
+      .then((result) => setCoordinatorModels(result.models || []))
+      .catch(() => setCoordinatorModels([]))
+  }, [coordinatorConfig?.resolved.engine])
+
+  useEffect(() => {
+    if (!taskId || !projectId) {
+      setCoordinatorConfig(null)
+      return
+    }
+    taskApi.coordinatorConfig(taskId, projectId)
+      .then((config) => {
+        setCoordinatorConfig(config)
+        setCoordinatorConfigError('')
+      })
+      .catch((reason) => setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : '协调引擎加载失败',
+      ))
+  }, [taskId, projectId])
+
+  useEffect(() => {
     if (!taskId || !projectId) {
       setReviews([])
       return
@@ -478,6 +880,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .then((res) => setReviews(res.reviews || []))
       .catch(() => setReviews([]))
   }, [taskId, projectId, task?.updated_at, reviewEventSignal])
+
+  useEffect(() => {
+    if (!taskId || !projectId || !reviewEventSignal) return
+    const timer = window.setTimeout(() => {
+      taskApi.history(taskId, projectId, 50, 0)
+        .then((response) => setHistoryMessages(response.messages || []))
+        .catch(() => undefined)
+    }, 50)
+    return () => window.clearTimeout(timer)
+  }, [projectId, reviewEventSignal, taskId])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -497,8 +909,33 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [tasks.length, fetchTasks, projectId])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events, content])
+    if (historyLoading) return
+    if (shouldFollowMessagesRef.current) {
+      const container = chatScrollRef.current
+      if (container) container.scrollTop = container.scrollHeight
+      setHasUnreadMessages(false)
+    } else {
+      setHasUnreadMessages(true)
+    }
+  }, [events, content, historyMessages, historyLoading, liveCoordinatorMessages, liveExecutionMessages])
+
+  useEffect(() => {
+    shouldFollowMessagesRef.current = true
+    setHasUnreadMessages(false)
+  }, [taskId])
+
+  useEffect(() => {
+    if (!activeCoordinatorMessageId) return
+    const activeMessage = liveMessages[activeCoordinatorMessageId]
+    if (!activeMessage || !['succeeded', 'failed'].includes(activeMessage.status)) return
+    setCoordinatorRunning(false)
+    setActiveCoordinatorMessageId(null)
+    if (taskId && projectId) {
+      taskApi.history(taskId, projectId)
+        .then((res) => setHistoryMessages(res.messages || []))
+        .catch(() => undefined)
+    }
+  }, [activeCoordinatorMessageId, liveMessages, projectId, taskId])
 
   useEffect(() => {
     if (historyLoading || !pendingStageScrollRef.current) return
@@ -571,18 +1008,166 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return failed >= 0 ? failed : Math.max(0, stages.length - 1)
   }, [stageProgress, stages.length])
 
+  const currentStage = stages[selectedStage] || stages[0]
+  const activeStage = stages[activeStageIndex] || stages[0]
+
+  useEffect(() => {
+    if (!task?.id || selectedStageTaskRef.current === task.id) return
+    setSelectedStage(activeStageIndex)
+    selectedStageTaskRef.current = task.id
+  }, [activeStageIndex, task?.id])
+
+  useEffect(() => {
+    const config = (task?.review_overrides || {})[currentStage.key]
+    setEditReviewAuto(config?.auto ?? false)
+    setEditReviewRetries(config?.maxRetries ?? 1)
+    setEditReviewPrompt(config?.prompt ?? '')
+  }, [currentStage.key, task?.review_overrides])
+
+  const shouldTickDuration = taskStatus === 'running' || stageProgress.some(
+    (progress) => [
+      'reviewing', 'awaiting_review', 'retrying',
+    ].includes(progress.visualState)
+  )
+
+  useEffect(() => {
+    if (!shouldTickDuration) return
+    setDurationNowMs(Date.now())
+    const timer = window.setInterval(() => setDurationNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [shouldTickDuration])
+
   const handleRun = async () => {
-    if (!taskId || !prompt.trim() || !projectId) return
-    setRunning(true)
+    if (!taskId || !prompt.trim() || !projectId || coordinatorRunning) return
+    const submittedPrompt = prompt.trim()
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticMessage = createOptimisticUserMessage(
+      optimisticId,
+      submittedPrompt,
+      activeStage.key,
+      new Date().toISOString(),
+    )
+    shouldFollowMessagesRef.current = true
+    setHasUnreadMessages(false)
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    setPrompt('')
+    setCoordinatorRunning(true)
     try {
-      await runTask(taskId, prompt.trim(), projectId)
-      setPrompt('')
-    } catch { setRunning(false) }
+      const accepted = await taskApi.chat(
+        taskId,
+        submittedPrompt,
+        projectId,
+        crypto.randomUUID(),
+      )
+      setHistoryMessages((current) => current.map((message) => (
+        message.id === optimisticId
+          ? {
+              ...message,
+              id: accepted.user_message_id,
+              channel: 'coordinator',
+              run_status: 'completed',
+            }
+          : message
+      )))
+      setActiveCoordinatorMessageId(accepted.assistant_message_id)
+    } catch {
+      setHistoryMessages((current) => current.filter(
+        (message) => message.id !== optimisticId
+      ))
+      setPrompt(submittedPrompt)
+      setCoordinatorRunning(false)
+    }
   }
 
-  const handleCancel = async () => {
-    if (!taskId) return
-    try { await cancelTask(taskId); setRunning(false) } catch {}
+  const handleCoordinatorEngineChange = async (engineId: string) => {
+    if (!taskId || !projectId) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        engineId || null,
+        null,
+        null,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : '协调引擎切换失败',
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleCoordinatorModelChange = async (model: string) => {
+    if (!taskId || !projectId || !coordinatorConfig) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
+        model || null,
+        coordinatorConfig.configured.fast_model,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : '协调模型切换失败',
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleCoordinatorFastModelChange = async (fastModel: string) => {
+    if (!taskId || !projectId || !coordinatorConfig) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
+        coordinatorConfig.configured.model,
+        fastModel || null,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : '协调快速模型切换失败',
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleStart = async () => {
+    if (!taskId || !projectId || !taskNotStarted || running) return
+    setRunning(true)
+    try {
+      await runTask(taskId, '', projectId)
+    } catch {
+      setRunning(false)
+    }
   }
 
   if (!task) {
@@ -595,14 +1180,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     )
   }
 
-  const currentStage = stages[selectedStage] || stages[0]
-  const activeStage = stages[activeStageIndex] || stages[0]
   const currentStageColor = currentStage.color || 'var(--accent)'
   const activeStageColor = activeStage.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
   const activeReview = reviews.find((review) => review.step_key === activeStage.key)
   const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
-  const time = new Date(task.created_at * 1000).toLocaleString('zh-CN')
+  const time = new Date(task.created_at).toLocaleString('zh-CN')
 
   const openDescriptionEditor = () => {
     setDescriptionDraft(task.description || '')
@@ -625,14 +1208,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setDescriptionSaving(false)
     }
   }
-
-  // Sync review editing state with current stage
-  useEffect(() => {
-    const cfg = (task?.review_overrides || {})[currentStage.key]
-    setEditReviewAuto(cfg?.auto ?? false)
-    setEditReviewRetries(cfg?.maxRetries ?? 1)
-    setEditReviewPrompt(cfg?.prompt ?? '')
-  }, [currentStage.key, task?.review_overrides])
 
   const openPromptEditor = () => {
     setPromptDraft(currentStage.prompt)
@@ -724,6 +1299,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const globalAdvance = () => {
+    if (taskNotStarted) {
+      void handleStart()
+      return
+    }
     if (!activeReview) return
     if (activeStepStatus === 'awaiting_review') {
       void decideReview('approve', activeReview, activeStage.key)
@@ -733,6 +1312,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const globalAdvanceState = (() => {
+    if (taskNotStarted) {
+      return {
+        label: running ? '启动中…' : '开始',
+        disabled: running,
+      }
+    }
     if (
       task.status === 'ready'
       && task.steps.every(
@@ -848,10 +1433,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onDoubleClick={() => setPanelBounds(initialPanelBounds())}
         title="拖动移动任务详情，双击恢复默认大小"
         style={{
-          padding: '18px 24px',
+          padding: '10px',
           borderBottom: '1px solid var(--border-soft)',
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           gap: 16,
           flexShrink: 0,
           cursor: 'move',
@@ -859,25 +1444,47 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         }}
       >
         <span className="task-detail-drag-grip" aria-hidden="true">⠿</span>
-        <button className="btn-icon" onClick={onClose} style={{ marginTop: 2 }}>←</button>
+        <button className="btn-icon" onClick={onClose}>←</button>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>{task.title}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
+            <button
+              type="button"
+              className="btn-ghost"
+              title="点击复制任务 ID"
+              aria-label="复制任务 ID"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={async () => {
+                await copyMessageText(task.id)
+                setTaskIdCopied(true)
+                window.setTimeout(() => setTaskIdCopied(false), 1500)
+              }}
+              style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10,
+                color: taskIdCopied ? 'var(--success)' : 'var(--meta)',
+                minHeight: 22, padding: '0 5px', marginLeft: 'auto', order: 99,
+              }}
+            >
+              {taskIdCopied ? '已复制' : `ID: ${task.id}`}
+            </button>
             <span style={{
-              fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4, lineHeight: 1.6,
-              background: `color-mix(in oklab, var(--status-${task.status === 'ready' ? 'ready' : task.status}), transparent 85%)`,
-              color: `var(--status-${task.status === 'ready' ? 'ready' : task.status})`,
-            }}>
-              {STATUS_LABELS[task.status] || task.status}
-            </span>
-            <span style={{
-              fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 4,
+              display: 'inline-flex', alignItems: 'center', minHeight: 22,
+              fontSize: 11, fontWeight: 500, padding: '0 8px', borderRadius: 4, lineHeight: 1,
               background: `color-mix(in oklab, ${activeStageColor}, transparent 85%)`,
               color: activeStageColor,
             }}>
-              {activeStage.label} · 当前阶段
+              当前:{activeStage.label} 
             </span>
-            <span style={{ fontSize: 12, color: 'var(--meta)' }}>{time}</span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', minHeight: 22,
+              fontSize: 11, fontWeight: 500, padding: '0 8px', borderRadius: 4, lineHeight: 1,
+              background: `color-mix(in oklab, var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status}), transparent 85%)`,
+              color: `var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status})`,
+            }}>
+              {STATUS_LABELS[taskCompleted ? 'done' : task.status] || task.status}
+            </span>
+
+            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 22, fontSize: 12, lineHeight: 1, color: 'var(--meta)' }}>{time}</span>
           </div>
         </div>
       </div>
@@ -922,17 +1529,15 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
             {editingDescription ? (
               <div>
-                <textarea
-                  aria-label="编辑任务说明"
+                <MarkdownEditor
                   value={descriptionDraft}
+                  onChange={setDescriptionDraft}
+                  projectId={projectId}
+                  placeholder="输入任务说明…（支持 Markdown，可直接粘贴图片）"
+                  minHeight={140}
+                  maxHeight="33vh"
                   disabled={descriptionSaving}
-                  onChange={(event) => setDescriptionDraft(event.target.value)}
-                  placeholder="输入任务说明…"
                   autoFocus
-                  style={{
-                    width: '100%', height: 'min(33vh, 260px)', minHeight: 140,
-                    padding: '10px 12px', fontSize: 13, lineHeight: 1.6,
-                  }}
                 />
                 {descriptionError && (
                   <div role="alert" style={{
@@ -965,20 +1570,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <div style={{
                 padding: '10px 12px', borderRadius: 8,
                 border: '1px solid var(--border-soft)',
-                background: 'var(--surface)',
-                color: task.description ? 'var(--fg-2)' : 'var(--meta)',
-                fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                fontSize: 13, lineHeight: 1.6,
                 overflowWrap: 'anywhere', maxHeight: '33vh', overflowY: 'auto',
-                fontStyle: task.description ? 'normal' : 'italic',
               }}>
-                {task.description || '暂无任务说明'}
+                {task.description ? <MarkdownMessage content={task.description} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>暂无任务说明</span>}
               </div>
             )}
           </div>
 
           {/* Progress timeline */}
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 12 }}>进度</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14 }}>进度</div>
             <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
               {stages.map((stage: any, i: number) => {
                 const progress = stageProgress[i]
@@ -992,8 +1594,21 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 const isSelected = i === selectedStage
                 const stageColor = stage.color || 'var(--accent)'
                 const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
-                const completedDuration = isCompleted
-                  ? formatStageDuration(progress?.started_at, progress?.ended_at)
+                const finishedDuration = progress?.ended_at
+                  ? formatDurationBetween(progress?.started_at, progress.ended_at)
+                  : null
+                const startedAtMs = toMilliseconds(progress?.started_at)
+                  ?? toMilliseconds(task.created_at)
+                  ?? Date.now()
+                const updatedAtMs = toMilliseconds(task.updated_at) ?? Date.now()
+                const isDurationLive = task.status === 'running' || [
+                  'reviewing', 'awaiting_review', 'retrying',
+                ].includes(visualState)
+                const activeDuration = isCurrentActive && progress?.started_at
+                  ? formatDurationBetween(
+                      progress.started_at,
+                      isDurationLive ? durationNowMs : updatedAtMs,
+                    )
                   : null
                 const activeStateColor = task.status === 'paused'
                   ? 'var(--status-paused)'
@@ -1044,21 +1659,27 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       color: '#fff', fontSize: 12, fontWeight: 700,
+                      boxShadow: isSelected
+                        ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
+                        : 'none',
                     }}>
                       {isCompleted ? '✓' : isFailed ? '×' : isSkipped ? '–' : ''}
                     </div>
                     <span style={{
-                      fontSize: 11, marginTop: 8, textAlign: 'center', whiteSpace: 'nowrap',
+                      fontSize: 13, marginTop: 9, textAlign: 'center', whiteSpace: 'nowrap',
                       color: stageLabelColor,
-                      fontWeight: isSelected || isCurrentActive ? 600 : 400,
-                      textDecoration: isSelected ? 'underline' : 'none',
-                      textUnderlineOffset: '3px',
+                      fontWeight: isSelected ? 750 : isCurrentActive ? 650 : 500,
+                      padding: '3px 8px', borderRadius: 6,
+                      border: isSelected ? `1px solid ${stageColor}` : '1px solid transparent',
+                      background: isSelected
+                        ? `color-mix(in oklab, ${stageColor}, transparent 88%)`
+                        : 'transparent',
                     }}>
                       {stage.label}
                     </span>
                     {visualState !== 'pending' && (
                       <span style={{
-                        fontSize: 9, marginTop: 3, padding: '1px 5px',
+                        fontSize: 10, marginTop: 4, padding: '2px 6px',
                         borderRadius: 999,
                         color: stateColor,
                         background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
@@ -1067,21 +1688,21 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         {STAGE_STATE_LABELS[visualState]}
                       </span>
                     )}
-                    {completedDuration && (
+                    {finishedDuration && (
                       <div style={{
-                        fontSize: 10, color: 'var(--meta)', marginTop: 4,
+                        fontSize: 11, color: 'var(--meta)', marginTop: 5,
                         textAlign: 'center', lineHeight: 1.5, whiteSpace: 'nowrap',
                       }}>
-                        耗时 {completedDuration}
+                        耗时 {finishedDuration}
                       </div>
                     )}
                     {/* Time info for active stage */}
                     {isCurrentActive && (
-                      <div style={{ fontSize: 10, color: 'var(--meta)', marginTop: 4, textAlign: 'center', lineHeight: 1.5 }}>
-                        <div>开始: {new Date((progress?.started_at || task.created_at) * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
-                        {progress?.started_at && task.updated_at > progress.started_at && (
+                      <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 5, textAlign: 'center', lineHeight: 1.5 }}>
+                        <div>开始: {new Date(startedAtMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        {activeDuration && (
                           <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>
-                            {Math.max(1, Math.round((task.updated_at - progress.started_at) / 60))}分钟
+                            耗时 {activeDuration}
                           </span>
                         )}
                       </div>
@@ -1092,10 +1713,122 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
           </div>
 
+          {/* Prompt section */}
+          <div>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 ,color: `${currentStageColor}`}}> {currentStage.label} </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>阶段提示词</div>
+              <button
+                className="btn-ghost"
+                onClick={openPromptEditor}
+                style={{ height: 28, padding: '0 9px', fontSize: 12, gap: 4 }}
+              >
+                <span aria-hidden="true">✎</span>
+                快速编辑
+              </button>
+            </div>
+            <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px', borderLeft: `3px solid ${currentStageColor}` }}>
+              {currentStage.prompt
+                ? <MarkdownMessage content={currentStage.prompt} projectId={projectId} />
+                : <div style={{ fontSize: 13, color: 'var(--meta)' }}>尚未配置阶段提示词</div>}
+            </div>
+          </div>
+
+          {/* I/O section — matching card-detail.html layout */}
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+              阶段输入输出
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ color: 'var(--meta)' }}>→</span> 输入
+                </div>
+                {(() => {
+                  const isStageDone = stageProgress[selectedStage]?.visualState === 'completed'
+                  const nextStageIdx = selectedStage + 1
+                  const nextStage = nextStageIdx < stages.length ? stages[nextStageIdx] : null
+                  const nextInputs = nextStage ? (nextStage.inputs || []) : []
+                  // Outputs are attached to the FIRST input only (matching card-detail.html)
+                  const stageOutputs = currentStage.outputs || (currentStage.inputs || [])[0]?.outputs || []
+
+                  return (currentStage.inputs || []).map((inp: any, inpIdx: number) => {
+                    const subOutputs = inpIdx === 0 ? stageOutputs : []
+                    return (
+                      <div key={inpIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {/* Input item */}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`打开输入文件 ${inp.name}`}
+                          onClick={() => openArtifact(inp.name)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              openArtifact(inp.name)
+                            }
+                          }}
+                          title={`打开“${inp.name}”对应的文件`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', cursor: 'pointer' }}
+                        >
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: currentStageColor, flexShrink: 0 }} />
+                          <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
+                          <span style={{ fontSize: 11, color: currentStageColor }}>查看</span>
+                          <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
+                        </div>
+                        {/* Sub-outputs (only on first input) */}
+                        {subOutputs.map((out: any, outIdx: number) => {
+                          const nextInput = nextInputs[outIdx]
+                          const statusDone = isStageDone
+                          return (
+                            <div
+                              key={outIdx}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`打开输出文件 ${out.name}`}
+                              onClick={() => openArtifact(out.name, currentStage.key)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  openArtifact(out.name, currentStage.key)
+                                }
+                              }}
+                              title={`打开“${out.name}”对应的文件`}
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px', cursor: 'pointer', borderRadius: 4 }}
+                            >
+                              <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
+                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusDone ? 'var(--success)' : currentStageColor, flexShrink: 0 }} />
+                              <span style={{ fontSize: 12, flex: 1 }}>{out.name}</span>
+                              <span style={{ fontSize: 10, color: currentStageColor }}>打开</span>
+                              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
+                              <span style={{
+                                fontSize: 9, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
+                                background: statusDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
+                                color: statusDone ? 'var(--success)' : 'var(--meta)',
+                                border: statusDone ? 'none' : '1px solid var(--border-soft)',
+                              }}>
+                                {statusDone ? '完成' : '待生成'}
+                              </span>
+                              {nextInput && (
+                                <span style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <span style={{ color: 'var(--meta)', fontSize: 9 }}>→</span> {nextStage?.label}: {nextInput.name}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+            </div>
+          </div>
+
           {selectedReview && (
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
-                阶段审核
+                审核结果
               </div>
               <div style={{
                 border: '1px solid var(--border-soft)', borderRadius: 8,
@@ -1186,97 +1919,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
           )}
 
-          {/* I/O section — matching card-detail.html layout */}
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: currentStageColor, marginBottom: 8 }}>
-              阶段输入输出 — {currentStage.label}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: 'var(--meta)' }}>→</span> 输入
-                </div>
-                {(() => {
-                  const isStageDone = stageProgress[selectedStage]?.visualState === 'completed'
-                  const nextStageIdx = selectedStage + 1
-                  const nextStage = nextStageIdx < stages.length ? stages[nextStageIdx] : null
-                  const nextInputs = nextStage ? (nextStage.inputs || []) : []
-                  // Outputs are attached to the FIRST input only (matching card-detail.html)
-                  const stageOutputs = currentStage.outputs || (currentStage.inputs || [])[0]?.outputs || []
-
-                  return (currentStage.inputs || []).map((inp: any, inpIdx: number) => {
-                    const subOutputs = inpIdx === 0 ? stageOutputs : []
-                    return (
-                      <div key={inpIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {/* Input item */}
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          aria-label={`打开输入文件 ${inp.name}`}
-                          onClick={() => openArtifact(inp.name)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              openArtifact(inp.name)
-                            }
-                          }}
-                          title={`打开“${inp.name}”对应的文件`}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', cursor: 'pointer' }}
-                        >
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: currentStageColor, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
-                          <span style={{ fontSize: 11, color: currentStageColor }}>查看</span>
-                          <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
-                        </div>
-                        {/* Sub-outputs (only on first input) */}
-                        {subOutputs.map((out: any, outIdx: number) => {
-                          const nextInput = nextInputs[outIdx]
-                          const statusDone = isStageDone
-                          return (
-                            <div
-                              key={outIdx}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={`打开输出文件 ${out.name}`}
-                              onClick={() => openArtifact(out.name, currentStage.key)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  openArtifact(out.name, currentStage.key)
-                                }
-                              }}
-                              title={`打开“${out.name}”对应的文件`}
-                              style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px', cursor: 'pointer', borderRadius: 4 }}
-                            >
-                              <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusDone ? 'var(--success)' : currentStageColor, flexShrink: 0 }} />
-                              <span style={{ fontSize: 12, flex: 1 }}>{out.name}</span>
-                              <span style={{ fontSize: 10, color: currentStageColor }}>打开</span>
-                              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
-                              <span style={{
-                                fontSize: 9, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
-                                background: statusDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
-                                color: statusDone ? 'var(--success)' : 'var(--meta)',
-                                border: statusDone ? 'none' : '1px solid var(--border-soft)',
-                              }}>
-                                {statusDone ? '完成' : '待生成'}
-                              </span>
-                              {nextInput && (
-                                <span style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <span style={{ color: 'var(--meta)', fontSize: 9 }}>→</span> {nextStage?.label}: {nextInput.name}
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })
-                })()}
-              </div>
-            </div>
-          </div>
-
           {/* Per-stage review config (collapsible) */}
           <div style={{ marginTop: 20 }}>
             <button
@@ -1310,12 +1952,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   <input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
                     style={{ width: 40, height: 22, fontSize: 12, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
                 </div>
-                <textarea
+                <MarkdownEditor
                   value={editReviewPrompt}
-                  onChange={(e) => setEditReviewPrompt(e.target.value)}
+                  onChange={setEditReviewPrompt}
+                  projectId={projectId}
                   placeholder="审核提示词（留空使用阶段默认）"
-                  rows={2}
-                  style={{ width: '100%', fontSize: 12, lineHeight: 1.5, resize: 'vertical', fontFamily: 'var(--font-body)', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg)', color: 'var(--fg)' }}
+                  minHeight={64}
+                  maxHeight={160}
+                  ariaLabel="审核提示词"
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button className="btn-ghost"
@@ -1330,25 +1974,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             )}
           </div>
 
-          {/* Prompt section */}
-          <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>阶段提示词</div>
-                <button
-                  className="btn-ghost"
-                  onClick={openPromptEditor}
-                  style={{ height: 28, padding: '0 9px', fontSize: 12, gap: 4 }}
-                >
-                  <span aria-hidden="true">✎</span>
-                  快速编辑
-                </button>
-              </div>
-              <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px', borderLeft: `3px solid ${currentStageColor}` }}>
-                <div style={{ fontSize: 13, color: currentStage.prompt ? 'var(--fg-2)' : 'var(--meta)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                  {currentStage.prompt || '尚未配置阶段提示词'}
-                </div>
-              </div>
-            </div>
         </div>
 
         <div
@@ -1376,53 +2001,132 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <span style={{ fontSize: 11, fontWeight: 600, color: currentStageColor, background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`, padding: '2px 8px', borderRadius: 4 }}>
               {currentStage.label}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--muted)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '2px 8px', borderRadius: 4 }}>{task.engine || 'claude'}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--meta)' }}>协调引擎</span>
+            <EngineSelect
+              engines={coordinatorConfig?.available_engines || []}
+              value={coordinatorConfig?.configured.engine || ''}
+              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning}
+              onChange={(engineId) => void handleCoordinatorEngineChange(engineId)}
+              requireCoordinator
+              defaultOption={{
+                value: '',
+                label: `默认（${engineLabel(coordinatorConfig?.resolved.engine || task.coordinator_engine || task.engine || 'claude')}）`,
+              }}
+              ariaLabel="协调引擎"
+              title="只影响后续协调消息，不修改工作流阶段引擎"
+              style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
+            />
+            <select
+              value={coordinatorConfig?.configured.model || ''}
+              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning || coordinatorModels.length === 0}
+              onChange={(event) => void handleCoordinatorModelChange(event.target.value)}
+              title="推理模型：负责理解、决策与回复；从下一条消息生效"
+              style={{ maxWidth: 150, fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
+            >
+              <option value="">推理模型（默认）</option>
+              {coordinatorModels.map((model) => (
+                <option key={model.id} value={model.id}>{model.label || model.id}</option>
+              ))}
+            </select>
+            <select
+              value={coordinatorConfig?.configured.fast_model || ''}
+              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning || coordinatorModels.length === 0}
+              onChange={(event) => void handleCoordinatorFastModelChange(event.target.value)}
+              title="快速模型：负责读取产物和修复结构化输出；从下一条消息生效"
+              style={{ maxWidth: 150, fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
+            >
+              <option value="">快速模型（跟随推理）</option>
+              {coordinatorModels.map((model) => (
+                <option key={model.id} value={model.id}>{model.label || model.id}</option>
+              ))}
+            </select>
           </div>
+          {coordinatorConfigError && (
+            <div style={{ padding: '6px 20px', color: 'var(--danger)', fontSize: 11, background: 'var(--bg)' }}>
+              {coordinatorConfigError}
+            </div>
+          )}
+          {coordinatorConfigNotice && !coordinatorConfigError && (
+            <div style={{ padding: '6px 20px', color: 'var(--success)', fontSize: 11, background: 'var(--bg)' }}>
+              {coordinatorConfigNotice}
+            </div>
+          )}
 
           {/* Chat messages */}
-          <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
+          <div
+            ref={chatScrollRef}
+            onScroll={(event) => {
+              const container = event.currentTarget
+              const nearBottom = isNearConversationBottom(
+                container.scrollHeight,
+                container.scrollTop,
+                container.clientHeight,
+              )
+              shouldFollowMessagesRef.current = nearBottom
+              if (nearBottom) setHasUnreadMessages(false)
+            }}
+            style={{ height: '100%', minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}
+          >
             {historyLoading && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>加载中...</div>
             )}
 
-            {!historyLoading && historyMessages.length === 0 && events.length === 0 && !content && !running && (
+            {!historyLoading && historyMessages.length === 0 && events.length === 0 && !content && liveCoordinatorMessages.length === 0 && !running && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 40, fontSize: 13 }}>
                 输入补充说明或追问开始对话
               </div>
             )}
 
-            {/* Historical messages grouped by stage */}
+            {/* Historical messages in persistent task sequence order */}
             {(() => {
-              const stageMessages: Record<string, any[]> = {}
-              historyMessages.forEach((msg: any) => {
-                const stage = msg.step_key || 'unknown'
-                if (!stageMessages[stage]) stageMessages[stage] = []
-                stageMessages[stage].push(msg)
-              })
-
-              return Object.entries(stageMessages).map(([stageKey, msgs]) => {
+              const orderedMessages = [...historyMessages]
+                .filter(isVisibleHistoryMessage)
+                .map((message: any) => mergeHistoryMessageWithLive(
+                  message,
+                  liveMessages[String(message.id)],
+                ))
+                .sort((left: any, right: any) => (
+                  (left.sequence ?? Number.MAX_SAFE_INTEGER)
+                  - (right.sequence ?? Number.MAX_SAFE_INTEGER)
+                ))
+              return orderedMessages.map((message: any) => {
+                const stageKey = message.context_step_key || message.step_key || 'unknown'
+                const msgs = [message]
                 const stageInfo = stages.find((s: any) => s.key === stageKey)
-                const stageLabel = stageInfo?.label || stageKey
+                const stageLabel = message.channel === 'coordinator'
+                  ? '协调 Agent'
+                  : stageInfo?.label || stageKey
                 return (
-                  <div key={stageKey} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Stage header */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border-soft)' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: stageInfo?.color || 'var(--accent)', background: `color-mix(in oklab, ${stageInfo?.color || 'var(--accent)'}, transparent 85%)`, padding: '2px 8px', borderRadius: 4 }}>
-                        {stageLabel}
-                      </span>
-                      <span style={{ fontSize: 10, color: 'var(--meta)' }}>
-                        {msgs[0]?.created_at ? new Date(msgs[0].created_at * 1000).toLocaleString('zh-CN') : ''}
-                      </span>
-                    </div>
-
+                  <div key={message.id} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {/* Messages in this stage */}
                     {msgs.map((msg: any, i: number) => {
                       const isUser = msg.role === 'user'
                       const isSystem = msg.role === 'system'
+                      const isReview = msg.channel === 'review' || msg.role === 'review'
+                      const isCoordinator = msg.channel === 'coordinator'
                       const processEvents = Array.isArray(msg.events) ? msg.events : []
-                      const sender = isUser ? '我' : isSystem ? '系统' : stageLabel
-                      const initials = sender.slice(0, 2)
-                      const senderColor = isUser ? 'var(--accent)' : isSystem ? 'var(--warn)' : (stageInfo?.color || 'var(--fg)')
+                      const sender = isUser
+                        ? '我'
+                        : isSystem
+                          ? '系统'
+                          : isCoordinator
+                            ? '协调 Agent'
+                            : stageLabel
+                      const initials = isUser || isSystem
+                          ? sender.slice(0, 2)
+                          : isCoordinator
+                            ? '协'
+                          : stageAvatarText(stageLabel)
+                      const senderColor = isUser
+                        ? 'var(--accent)'
+                        : isSystem
+                          ? 'var(--warn)'
+                          : isReview
+                            ? (stageInfo?.color || 'var(--warn)')
+                          : isCoordinator
+                            ? '#7c3aed'
+                            : (stageInfo?.color || 'var(--fg)')
 
                       return (
                         <div
@@ -1433,32 +2137,74 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               }
                             : undefined}
                           data-stage-last-message={i === msgs.length - 1 ? stageKey : undefined}
-                          style={{ width: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, alignSelf: isUser ? 'flex-end' : 'flex-start' }}
+                          style={{
+                            width: isUser ? 'fit-content' : '85%',
+                            maxWidth: '85%', minWidth: 0,
+                            display: 'flex', flexDirection: 'column', gap: 4,
+                            alignSelf: isUser ? 'flex-end' : 'flex-start',
+                          }}
                         >
-                          {/* Time above message */}
-                          <div style={{ fontSize: 10, color: 'var(--meta)', textAlign: isUser ? 'right' : 'left', paddingLeft: isUser ? 0 : 44, paddingRight: isUser ? 44 : 0 }}>
-                            {msg.created_at ? new Date(msg.created_at * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
-                          </div>
+                          {isUser && (
+                            <div style={{ fontSize: 10, color: 'var(--meta)', textAlign: 'right', paddingRight: 44 }}>
+                              {formatConversationDateTime(msg.started_at || msg.created_at)}
+                            </div>
+                          )}
                           {/* Message row */}
-                          <div style={{ width: '100%', minWidth: 0, display: 'flex', gap: 12, flexDirection: isUser ? 'row-reverse' : 'row' }}>
+                          <div style={{
+                            width: isUser ? 'fit-content' : '100%',
+                            maxWidth: '100%', minWidth: 0,
+                            display: 'flex', gap: 12,
+                            flexDirection: isUser ? 'row-reverse' : 'row',
+                          }}>
                             <div style={{
                               width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                               background: senderColor, color: '#fff',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 12, fontWeight: 600,
+                              fontSize: 12, fontWeight: 600, position: 'relative',
                             }}>
                               {initials}
+                              {isReview && (
+                                <span
+                                  title="Review"
+                                  aria-label="Review 消息"
+                                  style={{
+                                    position: 'absolute', right: -4, bottom: -4,
+                                    width: 16, height: 16, borderRadius: '50%',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    background: '#7c3aed', color: '#fff',
+                                    border: '2px solid var(--bg)',
+                                    fontSize: 9, fontWeight: 800, lineHeight: 1,
+                                  }}
+                                >
+                                  R
+                                </span>
+                              )}
                             </div>
                             <div style={{
-                              flex: 1, minWidth: 0, display: 'flex',
+                              flex: isUser ? '0 1 auto' : 1,
+                              minWidth: 0, display: 'flex',
                               flexDirection: 'column', gap: 6,
                             }}>
-                              {!isUser && !isSystem && (
-                                <ProcessTrace
-                                  events={processEvents}
+                              {!isUser && (
+                                <MessageMetaBar
+                                  createdAt={msg.created_at}
                                   startedAt={msg.started_at}
                                   endedAt={msg.ended_at}
+                                  running={msg.run_status === 'running'}
+                                  events={processEvents}
+                                  prompt={msg.prompt}
+                                  onViewPrompt={setViewingPrompt}
                                 />
+                              )}
+                              {!isUser && !isCoordinator && msg.run_status === 'running' && !msg.content && (
+                                <div className="engine-loading-message" role="status" aria-live="polite">
+                                  <span>{liveExecutionStatus(processEvents)}</span>
+                                  <span className="engine-loading-dots" aria-hidden="true">
+                                    <i />
+                                    <i />
+                                    <i />
+                                  </span>
+                                </div>
                               )}
                               {msg.content && (
                                 <div style={{
@@ -1468,6 +2214,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                   padding: '10px 14px', borderRadius: 12,
                                   borderBottomRightRadius: isUser ? 4 : 12,
                                   borderBottomLeftRadius: isUser ? 12 : 4,
+                                  width: isUser ? 'fit-content' : undefined,
                                   minWidth: 0, maxWidth: '100%', overflow: 'hidden',
                                 }}>
                                   {isUser
@@ -1479,6 +2226,29 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                     : <MarkdownMessage content={String(msg.content)} />}
                                 </div>
                               )}
+                              {!isUser && !isSystem && msg.content && (
+                                <MessageResponseFooter
+                                  content={String(msg.content)}
+                                  usage={msg.usage || usageFromEvents(processEvents)}
+                                  engine={msg.engine}
+                                  running={msg.run_status === 'running'}
+                                />
+                              )}
+                              {(msg.proposals || []).map((proposal: ActionProposal) => {
+                                const currentProposal = proposalOverrides[proposal.id] || proposal
+                                return (
+                                  <CoordinatorProposalCard
+                                    key={proposal.id}
+                                    proposal={currentProposal}
+                                    taskId={taskId || ''}
+                                    projectId={projectId}
+                                    onChanged={(updated) => setProposalOverrides((current) => ({
+                                      ...current,
+                                      [updated.id]: updated,
+                                    }))}
+                                  />
+                                )
+                              })}
                             </div>
                           </div>
                         </div>
@@ -1489,27 +2259,167 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               })
             })()}
 
+            {liveCoordinatorMessages.map((message) => (
+              <div key={message.id} style={{ width: '85%', maxWidth: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, alignSelf: 'flex-start' }}>
+                <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, display: 'flex', gap: 12 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>协</div>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <MessageMetaBar
+                      createdAt={message.created_at}
+                      running={message.status === 'running'}
+                      events={message.events}
+                      prompt={message.prompt || livePromptOverrides[message.id]}
+                      onViewPrompt={setViewingPrompt}
+                    />
+                    {!message.content && message.status === 'running' && (
+                      <div className="engine-loading-message" role="status">协调 Agent 思考中...</div>
+                    )}
+                    {message.content && (
+                      <>
+                        <div style={{ padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: 13, lineHeight: 1.5 }}>
+                          <MarkdownMessage content={message.content} streaming={message.status === 'running'} />
+                        </div>
+                        <MessageResponseFooter
+                          content={message.content}
+                          usage={usageFromEvents(message.events)}
+                          engine={message.engine}
+                          running={message.status === 'running'}
+                        />
+                      </>
+                    )}
+                    {message.proposals.map((rawProposal) => {
+                      const proposal = rawProposal as unknown as ActionProposal
+                      const currentProposal = proposalOverrides[proposal.id] || proposal
+                      return (
+                        <CoordinatorProposalCard
+                          key={proposal.id}
+                          proposal={currentProposal}
+                          taskId={taskId || ''}
+                          projectId={projectId}
+                          onChanged={(updated) => setProposalOverrides((current) => ({
+                            ...current,
+                            [updated.id]: updated,
+                          }))}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {liveExecutionMessages.map((message) => {
+              const stage = stages.find((item) => item.key === message.step_key)
+              const stageLabel = stage?.label || message.step_key || '执行阶段'
+              return (
+                <div key={message.id} style={{ width: '85%', maxWidth: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ width: '100%', minWidth: 0, display: 'flex', gap: 12 }}>
+                    <div title={stageLabel} aria-label={`${stageLabel}阶段`} style={{ width: 32, height: 32, borderRadius: '50%', background: stage?.color || activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{stageAvatarText(stageLabel)}</div>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <MessageMetaBar
+                      createdAt={message.created_at}
+                      running={message.status === 'running'}
+                      events={message.events}
+                      prompt={message.prompt || livePromptOverrides[message.id]}
+                      onViewPrompt={setViewingPrompt}
+                    />
+                    {!message.content && message.status === 'running' && (
+                      <div className="engine-loading-message" role="status" aria-live="polite">
+                        <span>{liveExecutionStatus(message.events)}</span>
+                        <span className="engine-loading-dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      </div>
+                    )}
+                    {message.content && (
+                      <>
+                        <div style={{ padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: 13, lineHeight: 1.5 }}>
+                          <MarkdownMessage content={message.content} streaming={message.status === 'running'} />
+                        </div>
+                        <MessageResponseFooter
+                          content={message.content}
+                          usage={usageFromEvents(message.events)}
+                          engine={message.engine}
+                          running={message.status === 'running'}
+                        />
+                      </>
+                    )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+
             {/* Live assistant process and response */}
-            {(hasProcessEvents(events) || content) && (
+            {shouldRenderLegacyExecution(
+              running,
+              hasProcessEvents(events),
+              content,
+              hasStructuredExecutionMessage,
+            ) && (
               <div style={{ width: '85%', minWidth: 0, display: 'flex', gap: 12 }}>
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>AI</div>
+                <div title={activeStage.label} aria-label={`${activeStage.label}阶段`} style={{ width: 32, height: 32, borderRadius: '50%', background: activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{stageAvatarText(activeStage.label)}</div>
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <ProcessTrace events={events} running={running} />
-                  {content && (
-                    <div style={{
-                      padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
-                      background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
-                      minWidth: 0, maxWidth: '100%', overflow: 'hidden',
-                      fontSize: 13, lineHeight: 1.5,
-                    }}>
-                      <MarkdownMessage content={content} streaming={running} />
+                  {running && !content && !hasProcessEvents(events) && (
+                    <div className="engine-loading-message" role="status" aria-live="polite">
+                      <span>引擎处理中</span>
+                      <span className="engine-loading-dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
                     </div>
+                  )}
+                  {content && (
+                    <>
+                      <div style={{
+                        padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
+                        background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
+                        minWidth: 0, maxWidth: '100%', overflow: 'hidden',
+                        fontSize: 13, lineHeight: 1.5,
+                      }}>
+                        <MarkdownMessage content={content} streaming={running} />
+                      </div>
+                      <MessageResponseFooter
+                        content={content}
+                        usage={usageFromEvents(events)}
+                        engine={task.engine}
+                        running={running}
+                      />
+                    </>
                   )}
                 </div>
               </div>
             )}
 
             <div ref={chatEndRef} />
+          </div>
+          {hasUnreadMessages && (
+            <button
+              type="button"
+              onClick={() => {
+                shouldFollowMessagesRef.current = true
+                setHasUnreadMessages(false)
+                const container = chatScrollRef.current
+                if (container) container.scrollTop = container.scrollHeight
+              }}
+              aria-label="查看新消息"
+              style={{
+                position: 'absolute', right: 12, bottom: 12, zIndex: 2,
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '6px 10px', borderRadius: 999,
+                border: '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
+                background: 'var(--bg)', color: 'var(--accent)',
+                boxShadow: '0 3px 12px rgba(0,0,0,0.14)',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              有新消息 <span aria-hidden="true">↓</span>
+            </button>
+          )}
           </div>
 
           {/* Chat input */}
@@ -1518,10 +2428,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !running) { e.preventDefault(); handleRun() }
+                if (e.key === 'Enter' && !e.shiftKey && !coordinatorRunning) { e.preventDefault(); handleRun() }
               }}
-              placeholder={running ? '运行中...' : '输入补充说明或追问...'}
-              disabled={running}
+              placeholder={coordinatorRunning ? '协调 Agent 处理中...' : '输入问题、补充说明或操作请求...'}
+              disabled={coordinatorRunning}
               rows={1}
               style={{
                 flex: 1, fontSize: 13, padding: '10px 14px',
@@ -1533,34 +2443,20 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
               onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
             />
-            {running ? (
-              <button
-                onClick={handleCancel}
-                aria-label="停止运行"
-                title="停止运行"
-                style={{
-                width: 44, height: 44, borderRadius: '50%',
-                background: 'var(--danger)', color: '#fff', border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                padding: 0,
-              }}>
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 14, height: 14, borderRadius: 2,
-                    background: 'currentColor', display: 'block',
-                  }}
-                />
-              </button>
-            ) : (
-              <button onClick={handleRun} style={{
+            <button
+              onClick={handleRun}
+              disabled={coordinatorRunning || !prompt.trim()}
+              aria-label="发送给协调 Agent"
+              title="发送给协调 Agent"
+              style={{
                 width: 40, height: 40, borderRadius: '50%',
-                background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+                background: coordinatorRunning || !prompt.trim() ? 'var(--border)' : 'var(--accent)',
+                color: coordinatorRunning || !prompt.trim() ? 'var(--meta)' : '#fff',
+                border: 'none', cursor: coordinatorRunning || !prompt.trim() ? 'not-allowed' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              </button>
-            )}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
           </div>
         </div>
       </div>
@@ -1595,6 +2491,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         </div>
       )}
 
+      {viewingPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="完整提示词"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1350,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={() => setViewingPrompt(null)}
+        >
+          <div
+            style={{
+              width: 'min(860px, 92vw)', maxHeight: '84vh',
+              background: 'var(--bg)', borderRadius: 12,
+              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
+              display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <strong style={{ flex: 1, fontSize: 15 }}>完整提示词</strong>
+              <button type="button" className="btn-icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</button>
+            </div>
+            <div style={{ padding: 18, overflow: 'auto', fontSize: 12, lineHeight: 1.65 }}>
+              <MarkdownMessage content={viewingPrompt} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPromptEditor && (
         <div
           role="dialog"
@@ -1625,16 +2554,15 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <button className="btn-icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</button>
             </div>
             <div style={{ padding: 18 }}>
-              <textarea
-                autoFocus
+              <MarkdownEditor
                 value={promptDraft}
-                onChange={(event) => setPromptDraft(event.target.value)}
+                onChange={setPromptDraft}
+                projectId={projectId}
                 placeholder="描述该阶段的目标、输入、执行要求和输出规范……"
-                rows={12}
-                style={{
-                  minHeight: 260, resize: 'vertical',
-                  fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6,
-                }}
+                minHeight={260}
+                maxHeight="55vh"
+                autoFocus
+                ariaLabel={`${currentStage.label}阶段提示词`}
               />
               {promptSaveError && (
                 <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 12 }}>

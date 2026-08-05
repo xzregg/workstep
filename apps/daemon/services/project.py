@@ -2,7 +2,6 @@
 
 import json
 import logging
-import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +9,7 @@ from pathlib import Path
 import peewee as pw
 
 from models import init_db, Task, TaskStep, Message, Workflow, ALL_MODELS
+from models.fields import utc_now
 from settings import settings
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,17 @@ class Project:
                 return wf
         return None
 
+    def workflow_by_id(self, workflow_id: str) -> dict | None:
+        return next(
+            (
+                workflow
+                for workflow in self.workflows
+                if workflow.get("id") == workflow_id
+                and not workflow.get("deleted")
+            ),
+            None,
+        )
+
 
 @dataclass
 class ProjectContext:
@@ -201,6 +212,13 @@ class ProjectManager:
             raise ValueError(f"Project not found: {project_id}")
         return self.bind_project(str(proj.path))
 
+    def get_project_by_name(self, name: str) -> "Project | None":
+        """Find a project by its display name (defaults to directory name)."""
+        for proj in self._projects.values():
+            if proj.name == name:
+                return proj
+        return None
+
     def activate_project_by_id(self, project_id: str) -> ProjectContext:
         """Return a scoped database activation for a project ID."""
         proj = self.get_project_by_id(project_id)
@@ -236,7 +254,7 @@ class ProjectManager:
             return
         steps_path = proj.steps_path
         steps = json.loads(steps_path.read_text()) if steps_path.exists() else dict(DEFAULT_STEPS)
-        now = int(time.time())
+        now = utc_now()
         wf_id = str(uuid.uuid4())[:8]
         Workflow.create(
             id=wf_id,
@@ -260,7 +278,7 @@ class ProjectManager:
         """Create a new workflow and return its dict."""
         if is_default:
             Workflow.update(is_default=0).where(Workflow.is_default == 1).execute()
-        now = int(time.time())
+        now = utc_now()
         wf_id = str(uuid.uuid4())[:8]
         wf_steps = steps if steps is not None else {"nodes": [], "connections": []}
         Workflow.create(
@@ -282,7 +300,7 @@ class ProjectManager:
             row.name = name
         if steps is not None:
             row.steps_json = json.dumps(steps, ensure_ascii=False)
-        row.updated_at = int(time.time())
+        row.updated_at = utc_now()
         row.save()
         self._sync_project_workflows(proj)
         return next((w for w in proj.workflows if w["id"] == workflow_id), None)
@@ -311,7 +329,7 @@ class ProjectManager:
             return {"deleted": False, "reason": "last"}
 
         row.deleted = 1
-        row.updated_at = int(time.time())
+        row.updated_at = utc_now()
         row.save()
         self._sync_project_workflows(proj)
         return {"deleted": True, "soft": True}

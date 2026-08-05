@@ -2,7 +2,9 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MarkdownEditor from '../components/MarkdownEditor'
 import Combobox from '../components/Combobox'
+import EngineSelect from '../components/EngineSelect'
 import {
   ReactFlow, Controls, Background, addEdge,
   useNodesState, useEdgesState,
@@ -12,7 +14,6 @@ import {
 import '@xyflow/react/dist/style.css'
 import { useProjectStore } from '../stores/projectStore'
 import { engineApi, templateApi, type EngineInfo, type EngineModel, type TemplateInfo } from '../api/client'
-import { engineLabel } from '../engineMeta'
 import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 
 /* ══════════════════════════════════════════
@@ -92,6 +93,7 @@ interface StepNodeData {
   nodeId: number
   key: string
   label: string
+  autoStart?: boolean
   engine: string
   model: string
   color: string
@@ -210,6 +212,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       nodeId: n.id,
       key: n.type || n.key,
       label: n.title || n.label || n.type,
+      autoStart: Boolean(n.autoStart),
       engine: n.engine || 'claude',
       model: n.model || '',
       color: n.color || '#888888',
@@ -481,7 +484,7 @@ function randomStageColor(currentColor?: string) {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange }: {
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
   node: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
@@ -492,6 +495,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   onRequestDelete: () => void
   onClose: () => void
   onDirtyChange: (dirty: boolean) => void
+  projectId?: string
 }) {
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
   const [stageModels, setStageModels] = useState<EngineModel[]>([])
@@ -529,8 +533,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     onValidationChange(keyError)
   }, [keyError, onValidationChange])
 
-  const installedEngines = engines.filter((engine) => engine.installed)
-  const currentEngineInstalled = installedEngines.some(
+  const selectableEngines = engines.filter(
+    (engine) => engine.installed && engine.configured
+  )
+  const currentEngineSelectable = selectableEngines.some(
     (engine) => engine.id === draft.engine
   )
   const review = draft.review || {
@@ -610,76 +616,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       <div>
         <div style={sectionTitle}>基本信息</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
-            <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="step-type" style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
-              阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
-            </label>
-            <input
-              id="step-type"
-              value={draft.key}
-              onChange={(e) => updateDraft('key', e.target.value)}
-              required
-              aria-invalid={Boolean(keyError)}
-              aria-describedby={keyError ? 'step-type-error' : 'step-type-help'}
-              style={keyError ? { borderColor: 'var(--danger)' } : undefined}
-              placeholder="如 frontend"
-            />
-            <div
-              id={keyError ? 'step-type-error' : 'step-type-help'}
-              style={{ marginTop: 4, fontSize: 11, color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
-            >
-              {keyError || '用于阶段状态和依赖引用，当前流程内必须唯一'}
-            </div>
-          </div>
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
-            <textarea value={draft.prompt} onChange={(e) => updateDraft('prompt', e.target.value)}
-              rows={6} style={{ minHeight: 120, fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5 }} placeholder="描述这个阶段要做什么..." />
-          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
-              <select
-                value={draft.engine}
-                onChange={(e) => {
-                  updateDraft('engine', e.target.value)
-                  setDraft((current) => ({ ...current, engine: e.target.value, model: '' }))
-                }}
-                disabled={enginesLoading || installedEngines.length === 0}
-                style={{ height: 32 }}
-              >
-                {!currentEngineInstalled && draft.engine && (
-                  <option value={draft.engine} disabled>
-                    {engineLabel(draft.engine)}（未安装）
-                  </option>
-                )}
-                {installedEngines.map((engine) => (
-                  <option key={engine.id} value={engine.id}>
-                    {engineLabel(engine.id)}
-                    {engine.mode ? ` · ${engine.mode.toUpperCase()}` : ''}
-                  </option>
-                ))}
-              </select>
-              <div style={{
-                marginTop: 4, fontSize: 10, lineHeight: 1.4,
-                color: enginesError
-                  ? 'var(--danger)'
-                  : currentEngineInstalled
-                    ? 'var(--meta)'
-                    : 'var(--warn)',
-              }}>
-                {enginesLoading
-                  ? '正在扫描本机执行引擎…'
-                  : enginesError
-                    ? `引擎扫描失败：${enginesError}`
-                    : currentEngineInstalled
-                      ? `已安装 ${installedEngines.length} 个执行引擎`
-                      : '当前引擎未安装，请选择已安装引擎'}
-              </div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
+              <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
             </div>
             <div style={{ width: 116 }}>
               <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
@@ -704,24 +644,104 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
-            <select
-              value={draft.model}
-              disabled={stageModelsLoading}
-              onChange={(e) => updateDraft('model', e.target.value)}
+            <label htmlFor="step-type" style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+              阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <input
+                id="step-type"
+                value={draft.key}
+                onChange={(e) => updateDraft('key', e.target.value)}
+                required
+                aria-invalid={Boolean(keyError)}
+                aria-describedby={keyError ? 'step-type-error' : 'step-type-help'}
+                style={{ flex: 1, ...(keyError ? { borderColor: 'var(--danger)' } : {}) }}
+                placeholder="如 frontend"
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <input
+                type="checkbox"
+                checked={Boolean(draft.autoStart)}
+                onChange={(e) => {
+                  const updated = { ...draft, autoStart: e.target.checked }
+                  setDraft(updated)
+                  onSave({ ...updated, key: normalizedKey })
+                }}
+                style={{ width: 16, height: 16 }}
+                />
+                创建后自动开始
+              </label>
+            </div>
+            <div
+              id={keyError ? 'step-type-error' : 'step-type-help'}
+              style={{ marginTop: 4, fontSize: 11, color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
             >
-              <option value="">
-                {stageModelsLoading ? '模型加载中…' : '使用引擎默认模型'}
-              </option>
-              {draft.model && !stageModels.some((model) => model.id === draft.model) && (
-                <option value={draft.model}>{draft.model}（当前配置）</option>
-              )}
-              {stageModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label || model.id}
+              {keyError || '用于阶段状态和依赖引用，当前流程内必须唯一'}
+            </div>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
+            <MarkdownEditor
+              value={draft.prompt}
+              onChange={(v) => updateDraft('prompt', v)}
+              projectId={projectId}
+              minHeight={120}
+              placeholder="描述这个阶段要做什么..."
+              ariaLabel="阶段提示词"
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
+              <EngineSelect
+                engines={engines}
+                value={draft.engine}
+                onChange={(engineId) => {
+                  updateDraft('engine', engineId)
+                  setDraft((current) => ({ ...current, engine: engineId, model: '' }))
+                }}
+                disabled={enginesLoading}
+                ariaLabel="阶段引擎"
+                style={{ height: 32 }}
+              />
+              <div style={{
+                marginTop: 4, fontSize: 10, lineHeight: 1.4,
+                color: enginesError
+                  ? 'var(--danger)'
+                  : currentEngineSelectable
+                    ? 'var(--meta)'
+                    : 'var(--warn)',
+              }}>
+                {enginesLoading
+                  ? '正在扫描本机执行引擎…'
+                  : enginesError
+                    ? `引擎扫描失败：${enginesError}`
+                    : currentEngineSelectable
+                      ? `已配置 ${selectableEngines.length} 个执行引擎`
+                      : '当前引擎不可用，请安装或在设置中完成配置'}
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
+              <select
+                value={draft.model}
+                disabled={stageModelsLoading}
+                onChange={(e) => updateDraft('model', e.target.value)}
+                style={{ height: 32 }}
+              >
+                <option value="">
+                  {stageModelsLoading ? '模型加载中…' : '使用引擎默认模型'}
                 </option>
-              ))}
-            </select>
+                {draft.model && !stageModels.some((model) => model.id === draft.model) && (
+                  <option value={draft.model}>{draft.model}（当前配置）</option>
+                )}
+                {stageModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label || model.id}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -766,23 +786,20 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核引擎</label>
-                  <select
+                  <EngineSelect
+                    engines={engines}
                     value={review.engine}
-                    onChange={(e) => {
+                    onChange={(engineId) => {
                       updateDraft('review', {
                         ...review,
-                        engine: e.target.value,
+                        engine: engineId,
                         model: '',
                       })
                     }}
-                  >
-                    <option value="">继承阶段引擎</option>
-                    {installedEngines.map((engine) => (
-                      <option key={engine.id} value={engine.id}>
-                        {engineLabel(engine.id)}
-                      </option>
-                    ))}
-                  </select>
+                    disabled={enginesLoading}
+                    defaultOption={{ value: '', label: '继承阶段引擎' }}
+                    ariaLabel="审核引擎"
+                  />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核模型</label>
@@ -811,11 +828,14 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               </div>
               <div>
                 <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核要求</label>
-                <textarea
-                  rows={4}
+                <MarkdownEditor
                   value={review.prompt}
-                  onChange={(e) => updateReview('prompt', e.target.value)}
+                  onChange={(v) => updateReview('prompt', v)}
+                  projectId={projectId}
+                  minHeight={96}
+                  maxHeight={200}
                   placeholder="描述审核标准、必需产物和验收条件…"
+                  ariaLabel="审核要求"
                 />
               </div>
             </>
@@ -891,6 +911,7 @@ function CanvasEditorInner() {
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [pendingWfId, setPendingWfId] = useState<string | null>(null)
   const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
+  const [defaultExecutionEngine, setDefaultExecutionEngine] = useState('claude')
   const [enginesLoading, setEnginesLoading] = useState(true)
   const [enginesError, setEnginesError] = useState('')
 
@@ -906,6 +927,12 @@ function CanvasEditorInner() {
         setEnginesError(error instanceof Error ? error.message : '未知错误')
       })
       .finally(() => setEnginesLoading(false))
+  }, [])
+
+  useEffect(() => {
+    engineApi.executionConfig()
+      .then((config) => setDefaultExecutionEngine(config.resolved_engine || 'claude'))
+      .catch(() => setDefaultExecutionEngine('claude'))
   }, [])
 
   useEffect(() => {
@@ -974,7 +1001,7 @@ function CanvasEditorInner() {
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: '新阶段', engine: 'claude', model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: '新阶段', autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -1021,6 +1048,7 @@ function CanvasEditorInner() {
       const d = n.data as StepNodeData
       return {
         id: d.nodeId, type: d.key, title: d.label, color: d.color,
+        autoStart: Boolean(d.autoStart),
         position: n.position, engine: d.engine, model: d.model,
         prompt: d.prompt,
         review: d.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
@@ -1269,6 +1297,7 @@ function CanvasEditorInner() {
             }}
             onRequestDelete={() => setConfirmDeleteId(String(selectedNode.nodeId))}
             onDirtyChange={setNodeConfigDirty}
+            projectId={activeProject?.id}
             onClose={() => {
               setNodeConfigError('')
               setSelectedNode(null)

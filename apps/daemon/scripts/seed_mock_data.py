@@ -1,5 +1,6 @@
 """Add rich mock data for ALL tasks, each with full stage chain messages."""
 import sys, json, time, uuid
+from datetime import datetime, timezone
 sys.path.insert(0, '.')
 from services.project import project_manager
 from models import Task, TaskStep, Message
@@ -98,7 +99,8 @@ for task in tasks:
                 task=task, step_key=sk, role=role,
                 content=content, run_status='succeeded',
                 events_json=json.dumps(events),
-                position=pos, created_at=created_at,
+                position=pos,
+                created_at=datetime.fromtimestamp(created_at, timezone.utc),
             )
             pos += 1
         print(f"  {sk}: {len(msgs)} messages")

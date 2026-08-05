@@ -172,6 +172,8 @@ class HermesEngine(AcpEngineBase):
             return InternalEvent(type="usage", data={
                 "input_tokens": params.get("input_tokens", 0),
                 "output_tokens": params.get("output_tokens", 0),
+                "cache_creation_input_tokens": params.get("cache_creation_input_tokens", 0),
+                "cache_read_input_tokens": params.get("cache_read_input_tokens", 0),
             })
 
         return None

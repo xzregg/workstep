@@ -3,20 +3,32 @@
 import asyncio
 import json
 import logging
-import time
 import uuid
 from pathlib import Path
 
 from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models.fields import utc_now
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt
 from services.review_gate import ReviewGate
 from services.config import config_store
+from services.messages import create_task_message
 from engines.registry import create_engine
 from engines.events import InternalEvent
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
+
+
+def extract_usage_json(events_collected: list[dict]) -> str | None:
+    """Extract the last usage event's data as JSON for message.usage_json.
+
+    Returns None when no usage event was collected.
+    """
+    for event in reversed(events_collected):
+        if event.get("type") == "usage":
+            return json.dumps(event.get("data", {}))
+    return None
 
 
 class TaskRunner:
@@ -69,7 +81,7 @@ class TaskRunner:
 
         # Mark task as running
         task.status = "running"
-        task.updated_at = int(time.time())
+        task.updated_at = utc_now()
         task.save()
 
         # Track completed/running steps
@@ -90,7 +102,7 @@ class TaskRunner:
         if workflow_run is not None:
             for step_run in StepRun.select().where(
                 (StepRun.run == workflow_run)
-                & (StepRun.status == "succeeded")
+                & (StepRun.status.in_(["succeeded", "reused"]))
             ):
                 reviews = list(
                     ReviewRun.select()
@@ -127,7 +139,7 @@ class TaskRunner:
             else:
                 task.status = "paused"  # some failed
         finally:
-            task.updated_at = int(time.time())
+            task.updated_at = utc_now()
             task.save()
 
     async def _execute_dag(
@@ -203,7 +215,7 @@ class TaskRunner:
         # first attempt's start time so the final duration includes execution,
         # automatic review, and every retry.
         if not is_review_retry:
-            ts.started_at = int(time.time())
+            ts.started_at = utc_now()
         ts.ended_at = None
         ts.engine = step.engine
         ts.save()
@@ -229,7 +241,7 @@ class TaskRunner:
                 status="running",
                 engine=step.engine,
                 model=resolved_model,
-                started_at=int(time.time()),
+                started_at=utc_now(),
             )
 
         await self._publish(task.id, step_key, {
@@ -246,26 +258,39 @@ class TaskRunner:
                 "请保留已有正确结果，并修复以上问题。"
             )
 
-        # Ensure artifact output directory
-        out_dir = artifacts_dir / step_key / task.id
+        # Ensure artifact output directory (workflow / task / stage)
+        wf_name = task.workflow_id or "default"
+        out_dir = artifacts_dir / wf_name / task.id / step_key
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Create message record
         msg_id = str(uuid.uuid4())
-        message_started_at = int(time.time())
-        Message.create(
+        message_started_at = utc_now()
+        create_task_message(
             id=msg_id,
             task=task,
+            channel="execution",
             step_key=step_key,
             role="assistant",
             engine=step.engine,
             model=resolved_model,
             run_id=msg_id,
             run_status="running",
+            prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
             position=1,
             started_at=message_started_at,
             created_at=message_started_at,
         )
+        await self._publish(task.id, step_key, {
+            "channel": "execution",
+            "message_id": msg_id,
+            "engine": step.engine,
+            "model": resolved_model,
+            "event_sequence": 0,
+            "type": "message_started",
+            "data": {"prompt": prompt},
+            "created_at": message_started_at.isoformat(),
+        })
 
         # Select engine
         engine = create_engine(step.engine)
@@ -278,12 +303,12 @@ class TaskRunner:
                 InternalEvent(type="error", data={"message": error}).to_dict()
             ])
             message.run_status = "failed"
-            message.ended_at = int(time.time())
+            message.ended_at = utc_now()
             message.save()
             if step_run is not None:
                 step_run.status = "failed"
                 step_run.error = error
-                step_run.ended_at = int(time.time())
+                step_run.ended_at = utc_now()
                 step_run.save()
             running.discard(step_key)
             return
@@ -310,6 +335,11 @@ class TaskRunner:
                         event.data.get("message") or "Engine reported an error"
                     )
                 await self._publish(task.id, step_key, {
+                    "channel": "execution",
+                    "message_id": msg_id,
+                    "engine": step.engine,
+                    "model": resolved_model,
+                    "event_sequence": len(events_collected),
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
@@ -326,12 +356,12 @@ class TaskRunner:
                 # execution-success-is-passed behavior.
                 if step.review is None or workflow_run is None or step_run is None:
                     ts.status = "passed"
-                    ts.ended_at = int(time.time())
+                    ts.ended_at = utc_now()
                     ts.save()
                     completed.add(step_key)
                 else:
                     step_run.status = "succeeded"
-                    step_run.ended_at = int(time.time())
+                    step_run.ended_at = utc_now()
                     step_run.save()
                     # Merge task-level review overrides with stage config
                     review_config = dict(step.review or {})
@@ -370,7 +400,7 @@ class TaskRunner:
                     )
                     if outcome.status == "passed":
                         ts.status = "passed"
-                        ts.ended_at = int(time.time())
+                        ts.ended_at = utc_now()
                         ts.error = None
                         ts.save()
                         completed.add(step_key)
@@ -398,34 +428,56 @@ class TaskRunner:
                     else:
                         ts.status = "rejected"
                         ts.error = outcome.feedback
-                        ts.ended_at = int(time.time())
+                        ts.ended_at = utc_now()
                         ts.save()
                         failed.add(step_key)
 
-                # Persist review result as a chat message
-                rmsg_id = str(uuid.uuid4())
-                rnow = int(time.time())
-                rsummary = outcome.report.get("summary", "")
-                rissues = outcome.report.get("issues", [])
-                ritems = "".join(
-                    f"- {i.get('description', '')}"
-                    + (f" → {i.get('suggestion', '')}" if i.get('suggestion') else "")
-                    + "\n"
-                    for i in (rissues or [])
-                )
-                rcontent = f"**审核结果：{'通过' if outcome.status == 'passed' else '未通过'}**\n{rsummary}\n{ritems}"
-                Message.create(
-                    id=rmsg_id,
-                    task=task,
-                    step_key=step_key,
-                    role="review",
-                    content=rcontent,
-                    engine=review_config.get("engine") or step.engine,
-                    run_id=rmsg_id,
-                    run_status="completed",
-                    position=0,
-                    created_at=rnow,
-                )
+                if (
+                    step.review is not None
+                    and workflow_run is not None
+                    and step_run is not None
+                ):
+                    rmsg_id = str(uuid.uuid4())
+                    rnow = utc_now()
+                    rsummary = outcome.report.get("summary", "")
+                    rissues = outcome.report.get("issues", [])
+                    ritems = "".join(
+                        f"- {i.get('description', '')}"
+                        + (
+                            f" → {i.get('suggestion', '')}"
+                            if i.get("suggestion")
+                            else ""
+                        )
+                        + "\n"
+                        for i in (rissues or [])
+                    )
+                    rcontent = (
+                        "**审核结果："
+                        f"{'通过' if outcome.status == 'passed' else '未通过'}**\n"
+                        f"{rsummary}\n{ritems}"
+                    )
+                    create_task_message(
+                        id=rmsg_id,
+                        task=task,
+                        channel="review",
+                        step_key=step_key,
+                        role="assistant",
+                        content=rcontent,
+                        engine=outcome.review_run.engine,
+                        model=outcome.review_run.model,
+                        run_id=rmsg_id,
+                        run_status="completed",
+                        prompt_json=outcome.review_run.prompt_json,
+                        events_json=json.dumps(
+                            outcome.events,
+                            ensure_ascii=False,
+                        ),
+                        usage_json=extract_usage_json(list(outcome.events)),
+                        position=0,
+                        started_at=outcome.review_run.started_at,
+                        ended_at=outcome.review_run.ended_at,
+                        created_at=rnow,
+                    )
 
                 await self._publish(task.id, step_key, {
                     "type": "status",
@@ -447,10 +499,28 @@ class TaskRunner:
             try:
                 msg = Message.get_by_id(msg_id)
                 msg.events_json = json.dumps(events_collected)
+                msg.usage_json = extract_usage_json(events_collected)
                 msg.content = "".join(content_parts)
                 msg.run_status = "succeeded" if execution_succeeded else "failed"
-                msg.ended_at = int(time.time())
+                msg.ended_at = utc_now()
                 msg.save()
+                await self._publish(task.id, step_key, {
+                    "channel": "execution",
+                    "message_id": msg_id,
+                    "engine": msg.engine,
+                    "model": msg.model,
+                    "event_sequence": len(events_collected) + 1,
+                    "type": "message_completed",
+                    "data": {"status": msg.run_status},
+                })
+                await self._publish(task.id, step_key, {
+                    "type": "status",
+                    "data": {
+                        "status": ts.status,
+                        "task_id": task.id,
+                        "step_key": step_key,
+                    },
+                })
             except Exception:
                 logger.exception("Failed to update message %s", msg_id)
 
@@ -463,7 +533,7 @@ class TaskRunner:
                         "succeeded" if execution_succeeded else "failed"
                     )
                     step_run.error = None if execution_succeeded else ts.error
-                    step_run.ended_at = int(time.time())
+                    step_run.ended_at = utc_now()
                     step_run.save()
 
         if retry_feedback is not None:
@@ -483,7 +553,7 @@ class TaskRunner:
         """Mark a step as failed."""
         ts.status = "failed"
         ts.error = error
-        ts.ended_at = int(time.time())
+        ts.ended_at = utc_now()
         ts.save()
 
         await self._publish(task.id, step_key, {

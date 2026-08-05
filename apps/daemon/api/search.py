@@ -29,7 +29,7 @@ async def search_tasks(
     - limit: Max results
     - offset: Pagination offset
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from models import Task
 
     projects = (
@@ -40,20 +40,24 @@ async def search_tasks(
     if not projects or projects == [None]:
         return {"tasks": [], "limit": limit, "offset": offset, "total": 0}
 
-    start_timestamp = None
-    end_timestamp = None
+    start_datetime = None
+    end_datetime = None
     if start_date:
         try:
-            start_timestamp = int(
-                datetime.fromisoformat(start_date.replace("Z", "+00:00")).timestamp()
-            )
+            start_datetime = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            if start_datetime.tzinfo is None:
+                start_datetime = start_datetime.replace(tzinfo=timezone.utc)
+            else:
+                start_datetime = start_datetime.astimezone(timezone.utc)
         except ValueError:
             pass
     if end_date:
         try:
-            end_timestamp = int(
-                datetime.fromisoformat(end_date.replace("Z", "+00:00")).timestamp()
-            )
+            end_datetime = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+            if end_datetime.tzinfo is None:
+                end_datetime = end_datetime.replace(tzinfo=timezone.utc)
+            else:
+                end_datetime = end_datetime.astimezone(timezone.utc)
         except ValueError:
             pass
 
@@ -72,10 +76,10 @@ async def search_tasks(
                 conditions.append(Task.status == status)
             if engine:
                 conditions.append(Task.engine == engine)
-            if start_timestamp is not None:
-                conditions.append(Task.created_at >= start_timestamp)
-            if end_timestamp is not None:
-                conditions.append(Task.created_at <= end_timestamp)
+            if start_datetime is not None:
+                conditions.append(Task.created_at >= start_datetime)
+            if end_datetime is not None:
+                conditions.append(Task.created_at <= end_datetime)
 
             task_query = Task.select()
             if conditions:

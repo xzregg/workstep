@@ -1,6 +1,7 @@
 """Tests for P2 engines: Codex, Hermes, ACP engines, registry strategy."""
 
 import pytest
+from acp import schema
 from engines.codex import CodexEngine
 from engines.hermes import HermesEngine
 from engines.claude_code_acp import ClaudeCodeAcpEngine
@@ -93,6 +94,26 @@ def test_codex_map_turn_completed():
     assert event.data["input_tokens"] == 200
 
 
+def test_codex_map_turn_completed_with_cache():
+    """Codex turn usage includes cache hit tokens (creation + read)."""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "turn.completed",
+        "usage": {
+            "input_tokens": 300,
+            "output_tokens": 100,
+            "cache_creation_input_tokens": 150,
+            "cache_read_input_tokens": 120,
+        },
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["input_tokens"] == 300
+    assert event.data["output_tokens"] == 100
+    assert event.data["cache_creation_input_tokens"] == 150
+    assert event.data["cache_read_input_tokens"] == 120
+
+
 def test_codex_map_error():
     engine = CodexEngine()
     event = engine._map_event({"type": "error", "message": "something broke"})
@@ -165,7 +186,51 @@ def test_hermes_map_update_tool_result():
     assert not event.data["is_error"]
 
 
+def test_hermes_map_usage_update_with_cache():
+    """Hermes usage_update includes cache hit tokens (creation + read)."""
+    engine = HermesEngine()
+    event = engine._map_update({
+        "type": "usage_update",
+        "input_tokens": 300,
+        "output_tokens": 100,
+        "cache_creation_input_tokens": 150,
+        "cache_read_input_tokens": 120,
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["input_tokens"] == 300
+    assert event.data["output_tokens"] == 100
+    assert event.data["cache_creation_input_tokens"] == 150
+    assert event.data["cache_read_input_tokens"] == 120
+
+
 # --- ACP Engines ---
+
+
+@pytest.mark.anyio
+async def test_claude_acp_permission_policy_respects_confirmed_mode():
+    from types import SimpleNamespace
+    from engines.acp_base import _StreamingClient
+
+    options = [
+        SimpleNamespace(kind="allow_once", option_id="allow-once"),
+        SimpleNamespace(kind="allow_always", option_id="allow-always"),
+        SimpleNamespace(kind="reject_once", option_id="reject-once"),
+    ]
+
+    edit_response = await _StreamingClient("acceptEdits").request_permission(
+        "session", SimpleNamespace(kind="edit"), options
+    )
+    execute_response = await _StreamingClient("acceptEdits").request_permission(
+        "session", SimpleNamespace(kind="execute"), options
+    )
+    bypass_response = await _StreamingClient("bypassPermissions").request_permission(
+        "session", SimpleNamespace(kind="execute"), options
+    )
+
+    assert edit_response.outcome.option_id == "allow-once"
+    assert execute_response.outcome.outcome == "cancelled"
+    assert bypass_response.outcome.option_id == "allow-always"
 
 def test_claude_acp_engine_id():
     assert ClaudeCodeAcpEngine.ENGINE_ID == "claude_acp"
@@ -190,6 +255,51 @@ def test_acp_supports_resume():
     assert engine.supports_interactive is True
 
 
+def test_acp_maps_prompt_response_token_usage():
+    response = schema.PromptResponse(
+        stopReason="end_turn",
+        usage=schema.Usage(
+            totalTokens=42,
+            inputTokens=30,
+            outputTokens=12,
+            thoughtTokens=3,
+            cachedReadTokens=8,
+            cachedWriteTokens=4,
+        ),
+    )
+
+    event = ClaudeCodeAcpEngine._map_prompt_response_usage(response)
+
+    assert event is not None
+    assert event.data == {
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "cache_creation_input_tokens": 4,
+        "cache_read_input_tokens": 8,
+        "total_tokens": 42,
+        "thought_tokens": 3,
+    }
+
+
+def test_acp_usage_update_keeps_context_window_semantics():
+    update = schema.UsageUpdate(
+        sessionUpdate="usage_update",
+        used=53_000,
+        size=200_000,
+        cost=schema.Cost(amount=0.045, currency="USD"),
+    )
+
+    event = ClaudeCodeAcpEngine()._map_notification(update)
+
+    assert event is not None
+    assert event.data == {
+        "usage_kind": "context_window",
+        "used": 53_000,
+        "size": 200_000,
+        "cost": {"amount": 0.045, "currency": "USD"},
+    }
+
+
 def test_acp_engines_require_the_bridge_binary(monkeypatch):
     """An unrelated CLI plus npx must not make an unavailable ACP bridge active."""
     def fake_which(name):
@@ -203,21 +313,26 @@ def test_acp_engines_require_the_bridge_binary(monkeypatch):
     assert CodexAcpEngine().get_command() == []
 
 
-def test_api_engine_requires_credentials(monkeypatch):
-    """The engine picker must not advertise an API backend with no key."""
-    monkeypatch.delenv("API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    assert APIEngine.is_installed() is False
-
-    monkeypatch.setenv("API_KEY", "configured")
+def test_api_engine_tracks_configuration(monkeypatch):
+    """The direct API adapter tracks configuration readiness."""
+    monkeypatch.setattr(
+        "engines.api.config_store.get_api_engine_config",
+        lambda: {
+            "provider": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "",
+            "model": "",
+        },
+    )
     assert APIEngine.is_installed() is True
+    assert APIEngine.is_configured() is False
 
 
 # --- Registry ---
 
 def test_all_engines_registered():
-    """All 9 engines are in the full list."""
-    assert len(_ALL_ENGINES) == 9
+    """All engines are in the full list."""
+    assert len(_ALL_ENGINES) == 10
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
@@ -227,6 +342,7 @@ def test_all_engines_registered():
     assert "qcode" in _ALL_ENGINES
     assert "openclaw" in _ALL_ENGINES
     assert "api" in _ALL_ENGINES
+    assert "pydantic_ai" in _ALL_ENGINES
 
 
 def test_registry_resolves_installed():

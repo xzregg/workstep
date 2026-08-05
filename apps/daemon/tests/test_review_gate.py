@@ -6,7 +6,7 @@ import pytest
 
 from engines.events import InternalEvent
 from engines.registry import ENGINE_REGISTRY
-from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun, init_db
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun, init_db
 from services.task_runner import TaskRunner
 from streaming.bus import EventBus
 
@@ -40,6 +40,11 @@ class SequencedReviewEngine:
         else:
             text = "阶段执行完成"
         yield InternalEvent(type="text_delta", data={"delta": text})
+        yield InternalEvent(type="usage", data={
+            "input_tokens": 100 + call_number,
+            "output_tokens": 20,
+            "cache_read_input_tokens": 40,
+        })
 
     async def stop(self):
         return None
@@ -108,6 +113,17 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
         assert task_step.ended_at >= max(
             review.ended_at for review in reviews if review.ended_at is not None
         )
+        review_messages = list(
+            Message.select()
+            .where((Message.task == task) & (Message.channel == "review"))
+            .order_by(Message.sequence)
+        )
+        assert len(review_messages) == 2
+        assert all(message.usage_json is not None for message in review_messages)
+        usage = json.loads(review_messages[-1].usage_json)
+        assert usage["input_tokens"] == 104
+        assert usage["output_tokens"] == 20
+        assert usage["cache_read_input_tokens"] == 40
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

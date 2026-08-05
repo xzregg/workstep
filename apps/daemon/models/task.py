@@ -2,6 +2,7 @@
 
 import peewee as pw
 from models.base import BaseModel
+from models.fields import UTCDateTimeField
 
 
 class Task(BaseModel):
@@ -18,10 +19,16 @@ class Task(BaseModel):
     status = pw.TextField(default="ready")  # ready / running / paused / stopped
     engine = pw.TextField(null=True)  # claude / codex / hermes
     model = pw.TextField(null=True)
+    coordinator_engine = pw.TextField(null=True)
+    coordinator_model = pw.TextField(null=True)
+    coordinator_fast_model = pw.TextField(null=True)
+    active_workflow_run_id = pw.TextField(null=True)
+    state_version = pw.IntegerField(default=0)
+    next_message_sequence = pw.IntegerField(default=1)
     pipeline_version = pw.TextField(null=True)
     review_overrides_json = pw.TextField(null=True)
-    created_at = pw.IntegerField()
-    updated_at = pw.IntegerField()
+    created_at = UTCDateTimeField()
+    updated_at = UTCDateTimeField()
 
 
 class TaskStep(BaseModel):
@@ -31,8 +38,8 @@ class TaskStep(BaseModel):
     step_key = pw.TextField()  # 'req' / 'ui' / 'frontend' / etc.
     status = pw.TextField(default="pending")  # pending / running / passed / failed / skipped
     engine = pw.TextField(null=True)
-    started_at = pw.IntegerField(null=True)
-    ended_at = pw.IntegerField(null=True)
+    started_at = UTCDateTimeField(null=True)
+    ended_at = UTCDateTimeField(null=True)
     error = pw.TextField(null=True)
 
     class Meta:

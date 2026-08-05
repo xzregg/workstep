@@ -35,6 +35,7 @@ def get_task_history(task_id: str) -> list[dict]:
             "started_at": msg.started_at,
             "ended_at": msg.ended_at,
             "events": [],
+            "prompt": None,
             "usage": None,
         }
 
@@ -50,6 +51,12 @@ def get_task_history(task_id: str) -> list[dict]:
             try:
                 entry["usage"] = json.loads(msg.usage_json)
             except json.JSONDecodeError:
+                pass
+
+        if msg.prompt_json:
+            try:
+                entry["prompt"] = json.loads(msg.prompt_json).get("prompt")
+            except (json.JSONDecodeError, AttributeError):
                 pass
 
         result.append(entry)
@@ -76,10 +83,22 @@ def get_step_history(task_id: str, step_key: str) -> list[dict]:
             "content": msg.content,
             "run_status": msg.run_status,
             "events": [],
+            "prompt": None,
+            "usage": None,
         }
         if msg.events_json:
             try:
                 entry["events"] = json.loads(msg.events_json)
+            except json.JSONDecodeError:
+                pass
+        if msg.prompt_json:
+            try:
+                entry["prompt"] = json.loads(msg.prompt_json).get("prompt")
+            except (json.JSONDecodeError, AttributeError):
+                pass
+        if msg.usage_json:
+            try:
+                entry["usage"] = json.loads(msg.usage_json)
             except json.JSONDecodeError:
                 pass
         result.append(entry)

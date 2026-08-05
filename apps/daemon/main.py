@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 from fastapi.staticfiles import StaticFiles
 
 from settings import settings
@@ -15,6 +16,7 @@ from api.project import router as project_router
 from api.task import router as task_router
 from api.history import router as history_router
 from api.fs import router as fs_router
+from api.fs import uploads_router
 from api.search import router as search_router
 from api.templates import router as templates_router
 from api.engine import router as engine_router
@@ -23,6 +25,7 @@ from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
+from services.coordinator import CoordinatorModule
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +35,27 @@ event_bus = EventBus()
 # Task service — initialized in lifespan
 task_service: TaskService | None = None
 workflow_runtime: WorkflowRuntime | None = None
+coordinator_module: CoordinatorModule | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service, workflow_runtime
+    global task_service, workflow_runtime, coordinator_module
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     project_manager._load_saved_projects()
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    coordinator_module = CoordinatorModule(
+        event_bus,
+        project_manager,
+        workflow_runtime,
+    )
     try:
         yield
     finally:
         logger.info("WorkStep Daemon shutting down")
+        await coordinator_module.shutdown()
         await workflow_runtime.shutdown()
         await event_bus.close()
         project_manager.close_all()
@@ -58,6 +68,7 @@ app.include_router(project_router)
 app.include_router(task_router)
 app.include_router(history_router)
 app.include_router(fs_router)
+app.include_router(uploads_router)
 app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(engine_router)
@@ -101,7 +112,7 @@ async def ws_endpoint(ws: WebSocket):
                 event = bus_task.result()
                 if event is None:  # shutdown sentinel
                     break
-                await ws.send_json(event)
+                await ws.send_json(jsonable_encoder(event))
 
             if ws_task in done:
                 raw = ws_task.result()

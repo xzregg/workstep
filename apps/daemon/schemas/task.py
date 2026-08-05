@@ -7,8 +7,9 @@ class CreateTaskRequest(BaseSchema):
     title: str
     cwd: str
     description: str | None = None
-    engine: str = "claude"
+    engine: str | None = None
     start_step_key: str | None = None
+    auto_start: bool | None = None
     review_overrides: dict[str, object] | None = None
     workflow_id: str | None = None
 
@@ -26,3 +27,13 @@ class UpdateTaskRequest(BaseSchema):
 class ReviewDecisionRequest(BaseSchema):
     review_run_id: str
     comment: str | None = None
+
+
+class CoordinatorChatRequest(BaseSchema):
+    content: str
+
+
+class CoordinatorConfigRequest(BaseSchema):
+    engine: str | None = None
+    model: str | None = None
+    fast_model: str | None = None

@@ -1,9 +1,15 @@
 import { useEffect, useState } from 'react'
+import {
+  durationMilliseconds,
+  formatDuration,
+  toMilliseconds,
+  type DateTimeValue,
+} from '../utils/datetime'
 
 type ProcessEvent = {
   type: string
   data?: Record<string, unknown>
-  timestamp?: number
+  timestamp?: DateTimeValue
 }
 
 type ToolActivity = {
@@ -17,23 +23,9 @@ type ToolActivity = {
 interface ProcessTraceProps {
   events: ProcessEvent[]
   running?: boolean
-  startedAt?: number | null
-  endedAt?: number | null
-}
-
-function toMilliseconds(value?: number | null): number | null {
-  if (!value || !Number.isFinite(value)) return null
-  return value < 1_000_000_000_000 ? value * 1000 : value
-}
-
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
-  if (minutes > 0) return `${minutes}m ${seconds}s`
-  return `${seconds}s`
+  startedAt?: DateTimeValue
+  endedAt?: DateTimeValue
+  compact?: boolean
 }
 
 function textValue(value: unknown): string {
@@ -151,6 +143,7 @@ export default function ProcessTrace({
   running = false,
   startedAt,
   endedAt,
+  compact = false,
 }: ProcessTraceProps) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -175,14 +168,13 @@ export default function ProcessTrace({
     ? now
     : toMilliseconds(endedAt)
       ?? (eventTimes.length ? Math.max(...eventTimes) : null)
-  const duration = startTime !== null && endTime !== null
-    ? formatDuration(Math.max(0, endTime - startTime))
-    : ''
+  const elapsedMs = durationMilliseconds(startTime, endTime)
+  const duration = elapsedMs === null ? '' : formatDuration(elapsedMs)
 
   if (!duration && !thinking && activities.length === 0) return null
 
   return (
-    <div className="process-trace">
+    <div className={`process-trace${compact ? ' process-trace-compact' : ''}`}>
       <details className="process-trace-session">
         <summary>
           <span>{running ? '处理中' : '已处理'}{duration ? ` ${duration}` : ''}</span>

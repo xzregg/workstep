@@ -3,6 +3,7 @@
 import peewee as pw
 
 from models.base import BaseModel
+from models.fields import UTCDateTimeField
 from models.task import Task
 
 
@@ -14,8 +15,10 @@ class WorkflowRun(BaseModel):
     status = pw.TextField(default="running")
     workflow_schema_version = pw.IntegerField()
     workflow_snapshot_json = pw.TextField()
-    started_at = pw.IntegerField(null=True)
-    ended_at = pw.IntegerField(null=True)
+    parent_run_id = pw.TextField(null=True)
+    restart_from_step_key = pw.TextField(null=True)
+    started_at = UTCDateTimeField(null=True)
+    ended_at = UTCDateTimeField(null=True)
 
     class Meta:
         table_name = "workflow_runs"
@@ -31,9 +34,10 @@ class StepRun(BaseModel):
     status = pw.TextField(default="running")
     engine = pw.TextField(null=True)
     model = pw.TextField(null=True)
+    source_step_run_id = pw.TextField(null=True)
     error = pw.TextField(null=True)
-    started_at = pw.IntegerField(null=True)
-    ended_at = pw.IntegerField(null=True)
+    started_at = UTCDateTimeField(null=True)
+    ended_at = UTCDateTimeField(null=True)
 
     class Meta:
         table_name = "step_runs"

@@ -209,6 +209,52 @@ def test_assemble_prompt_with_user_input(tmp_path):
     db.close()
 
 
+def test_assemble_prompt_unknown_output_type_uses_default_constraint(tmp_path):
+    """Unknown output types fall back to the default constraint without crashing."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="do", label="Do", prompt="Do it", outputs=[
+        {"name": "mystery", "type": "weird_type"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+    assert "## 输出规范" in prompt
+    assert "mystery" in prompt
+    assert "格式要求" in prompt
+    db.close()
+
+
+def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch):
+    """An empty constraint table (missing config file) must not crash prompts."""
+    import services.prompt as prompt_mod
+    from models import init_db, Task
+    import time, uuid
+
+    monkeypatch.setattr(prompt_mod, "OUTPUT_TYPE_CONSTRAINTS", {})
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="do", label="Do", prompt="Do it", outputs=[
+        {"name": "prd", "type": "md"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+    assert "## 输出规范" in prompt
+    db.close()
+
+
 # --- TaskRunner integration ---
 
 class PipelineFakeEngine(BaseLLMEngine):
@@ -233,6 +279,67 @@ class PipelineFakeEngine(BaseLLMEngine):
     @property
     def supports_interactive(self): return False
     def build_resume_params(self, session_id): return {}
+
+
+class PipelineUsageEngine(PipelineFakeEngine):
+    """Fake engine that also emits a usage event with cache fields."""
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield InternalEvent(type="text_delta", data={"delta": self._text})
+        yield InternalEvent(type="usage", data={
+            "input_tokens": 300,
+            "output_tokens": 100,
+            "cache_creation_input_tokens": 150,
+            "cache_read_input_tokens": 120,
+        })
+        yield InternalEvent(type="status", data={"status": "done"})
+
+
+@pytest.mark.anyio
+async def test_task_runner_persists_usage_json(tmp_path):
+    """TaskRunner persists usage (incl. cache) to message.usage_json."""
+    from models import init_db, Task, Message
+    from engines.registry import ENGINE_REGISTRY
+    import time, uuid, json as _json
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Usage", cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+
+        steps_config = {
+            "steps": [
+                {"key": "a", "label": "A", "engine": "claude", "prompt": "Do A"},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        await runner.run_pipeline(task, steps_config, artifacts_dir)
+
+        msg = Message.select().where(Message.task == task).get()
+        assert _json.loads(msg.prompt_json)["prompt"].endswith(
+            str(artifacts_dir / "a" / task.id)
+        )
+        assert "## 阶段要求\nDo A" in _json.loads(msg.prompt_json)["prompt"]
+        assert msg.usage_json is not None
+        usage = _json.loads(msg.usage_json)
+        assert usage["input_tokens"] == 300
+        assert usage["output_tokens"] == 100
+        assert usage["cache_creation_input_tokens"] == 150
+        assert usage["cache_read_input_tokens"] == 120
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
 
 
 @pytest.mark.anyio

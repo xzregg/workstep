@@ -8,7 +8,7 @@ import shutil
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine
-from engines.events import InternalEvent
+from engines.events import InternalEvent, normalize_token_usage
 
 logger = logging.getLogger(__name__)
 
@@ -139,16 +139,35 @@ class QCodeEngine(BaseLLMEngine):
         if event_type == "output":
             return InternalEvent(type="text_delta", data={"delta": obj.get("text", "")})
 
+        if event_type in {"thinking", "reasoning"}:
+            return InternalEvent(
+                type="thinking_delta",
+                data={"delta": obj.get("text", obj.get("content", ""))},
+            )
+
         if event_type == "tool":
+            if obj.get("status") in {"completed", "failed", "error"}:
+                return InternalEvent(type="tool_result", data={
+                    "tool_use_id": obj.get("id", obj.get("tool_use_id", "")),
+                    "content": obj.get("output", obj.get("result", "")),
+                    "is_error": obj.get("status") in {"failed", "error"},
+                })
             return InternalEvent(type="tool_use", data={
+                "id": obj.get("id", obj.get("tool_use_id", "")),
                 "name": obj.get("tool", ""),
                 "input": obj.get("input", {}),
             })
 
-        if event_type == "usage":
-            return InternalEvent(type="usage", data={
-                "tokens": obj.get("tokens", 0),
+        if event_type == "tool_result":
+            return InternalEvent(type="tool_result", data={
+                "tool_use_id": obj.get("tool_use_id", obj.get("id", "")),
+                "content": obj.get("content", obj.get("output", "")),
+                "is_error": bool(obj.get("is_error", False)),
             })
+
+        if event_type == "usage":
+            usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else obj
+            return InternalEvent(type="usage", data=normalize_token_usage(usage))
 
         return None
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -104,7 +105,7 @@ def stage_messages(task_title: str, stage_key: str, stage_label: str) -> list[tu
             "| 运行编号 | 阶段标识 | 执行引擎 | 默认模型 | 最近事件序号 | 产物目录 | 恢复策略 |\n"
             "| --- | --- | --- | --- | --- | --- | --- |\n"
             "| run-demo-001 | req | claude | sonnet | 1234567890 | "
-            "`.workstep/artifacts/req/mock-stage-req-v1` | manual_resume |\n"
+            "`.workstep/artifacts/default/mock-stage-req-v1/req` | manual_resume |\n"
         )
     return [
         ("user", f"开始处理「{task_title}」的{stage_label}阶段。"),
@@ -194,7 +195,7 @@ def message_events(
                         "id": write_id,
                         "name": "Write",
                         "input": {
-                            "path": f".workstep/artifacts/{stage_key}/result.md",
+                            "path": f".workstep/artifacts/default/mock-task/{stage_key}/result.md",
                         },
                     },
                     "timestamp": timestamp + 300,
@@ -251,8 +252,11 @@ def seed(project_path: Path) -> None:
                         "cwd": str(project_path),
                         "status": "running",
                         "engine": engines[current_key],
-                        "created_at": now - (len(step_keys) - current_index) * 600,
-                        "updated_at": now,
+                        "created_at": datetime.fromtimestamp(
+                            now - (len(step_keys) - current_index) * 600,
+                            timezone.utc,
+                        ),
+                        "updated_at": datetime.fromtimestamp(now, timezone.utc),
                     },
                 )
                 if created:
@@ -263,7 +267,7 @@ def seed(project_path: Path) -> None:
                     task.cwd = str(project_path)
                     task.status = "running"
                     task.engine = engines[current_key]
-                    task.updated_at = now
+                    task.updated_at = datetime.fromtimestamp(now, timezone.utc)
                     task.save()
 
                 TaskStep.delete().where(TaskStep.task == task).execute()
@@ -278,8 +282,19 @@ def seed(project_path: Path) -> None:
                         if step_index == current_index
                         else "pending"
                     )
-                    started_at = now - (current_index - step_index + 1) * 300 if step_index <= current_index else None
-                    ended_at = started_at + 180 if status == "passed" and started_at else None
+                    started_at = (
+                        datetime.fromtimestamp(
+                            now - (current_index - step_index + 1) * 300,
+                            timezone.utc,
+                        )
+                        if step_index <= current_index
+                        else None
+                    )
+                    ended_at = (
+                        started_at + timedelta(seconds=180)
+                        if status == "passed" and started_at
+                        else None
+                    )
                     TaskStep.create(
                         task=task,
                         step_key=step_key,
@@ -313,14 +328,24 @@ def seed(project_path: Path) -> None:
                                 created_at,
                             ), ensure_ascii=False),
                             position=position,
-                            started_at=created_at if role == "assistant" else None,
-                            ended_at=created_at + 184 if role == "assistant" else None,
-                            created_at=created_at,
+                            started_at=(
+                                datetime.fromtimestamp(created_at, timezone.utc)
+                                if role == "assistant"
+                                else None
+                            ),
+                            ended_at=(
+                                datetime.fromtimestamp(created_at, timezone.utc)
+                                + timedelta(seconds=184)
+                                if role == "assistant"
+                                else None
+                            ),
+                            created_at=datetime.fromtimestamp(created_at, timezone.utc),
                         )
                         position += 1
                         created_messages += 1
 
-                    artifact_dir = workstep_dir / "artifacts" / step_key / task_id
+                    workflow_name = task.workflow_id or "default"
+                    artifact_dir = workstep_dir / "artifacts" / workflow_name / task_id / step_key
                     artifact_dir.mkdir(parents=True, exist_ok=True)
                     artifact_specs = STAGE_ARTIFACTS.get(
                         step_key,

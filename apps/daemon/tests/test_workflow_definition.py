@@ -89,6 +89,20 @@ def test_canvas_connections_compile_to_dependencies():
     assert steps[0]["prompt"] == "Plan it"
 
 
+def test_auto_start_uses_the_stage_selected_for_task_creation():
+    workflow = WorkflowDefinition.load({
+        "nodes": [
+            {"id": 1, "type": "plan", "autoStart": False},
+            {"id": 2, "type": "build", "autoStart": True},
+        ],
+        "connections": [],
+    })
+
+    assert workflow.auto_start_enabled() is False
+    assert workflow.auto_start_enabled("plan") is False
+    assert workflow.auto_start_enabled("build") is True
+
+
 def test_duplicate_step_keys_are_rejected_with_the_node_location():
     raw = {
         "nodes": [

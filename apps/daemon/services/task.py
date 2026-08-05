@@ -3,14 +3,16 @@
 import asyncio
 import json
 import logging
-import time
 import uuid
 
-from models import Task, TaskStep, Message
+from models import ActionProposal, Task, TaskStep, Message
 from models.base import db_proxy
+from models.fields import utc_now
 from engines.registry import create_engine
 from engines.events import InternalEvent
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
+from services.task_runner import extract_usage_json
+from services.messages import create_task_message
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,7 @@ class TaskService:
             if start_step_key is not None
             else 0
         )
-        now = int(time.time())
+        now = utc_now()
         task_id = str(uuid.uuid4())
 
         task = Task.create(
@@ -108,7 +110,7 @@ class TaskService:
             normalized = description.strip()
             if normalized:
                 task.description = normalized
-        task.updated_at = int(time.time())
+        task.updated_at = utc_now()
         if review_overrides is not None:
             task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
         task.save()
@@ -121,32 +123,72 @@ class TaskService:
         except Task.DoesNotExist:
             return []
 
-        messages = (
+        messages = list(
             Message.select()
             .where(Message.task == task_id)
-            .order_by(Message.created_at.desc())
+            .order_by(Message.sequence.desc(), Message.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
         result = []
         import json as json_mod
-        for msg in messages:
+        for msg in reversed(messages):
             entry = {
                 "id": msg.id,
                 "role": msg.role,
                 "content": msg.content,
                 "step_key": msg.step_key,
+                "context_step_key": msg.context_step_key,
+                "channel": msg.channel,
+                "sequence": msg.sequence,
                 "run_status": msg.run_status,
+                "engine": msg.engine,
+                "model": msg.model,
                 "started_at": msg.started_at,
                 "ended_at": msg.ended_at,
                 "created_at": msg.created_at,
                 "events": [],
+                "prompt": None,
+                "usage": None,
+                "proposals": [],
             }
             if msg.events_json:
                 try:
                     entry["events"] = json_mod.loads(msg.events_json)
                 except Exception:
                     pass
+            if msg.prompt_json:
+                try:
+                    prompt_data = json_mod.loads(msg.prompt_json)
+                    entry["prompt"] = prompt_data.get("prompt")
+                except Exception:
+                    pass
+            if msg.usage_json:
+                try:
+                    entry["usage"] = json_mod.loads(msg.usage_json)
+                except Exception:
+                    pass
+            entry["proposals"] = [
+                {
+                    "id": proposal.id,
+                    "type": proposal.type,
+                    "target_step_key": proposal.target_step_key,
+                    "payload": json_mod.loads(proposal.payload_json),
+                    "impact": (
+                        json_mod.loads(proposal.impact_json)
+                        if proposal.impact_json else None
+                    ),
+                    "status": proposal.status,
+                    "result": (
+                        json_mod.loads(proposal.result_json)
+                        if proposal.result_json else None
+                    ),
+                    "error": proposal.error,
+                }
+                for proposal in ActionProposal.select().where(
+                    ActionProposal.source_message == msg
+                )
+            ]
             result.append(entry)
         return result
 
@@ -172,21 +214,22 @@ class TaskService:
 
         # Update task status
         task.status = "running"
-        task.updated_at = int(time.time())
+        task.updated_at = utc_now()
         task.save()
 
         # Update step status
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         step.status = "running"
-        step.started_at = int(time.time())
+        step.started_at = utc_now()
         step.save()
 
         # Create message record
         msg_id = str(uuid.uuid4())
-        message_started_at = int(time.time())
-        Message.create(
+        message_started_at = utc_now()
+        create_task_message(
             id=msg_id,
             task=task,
+            channel="execution",
             step_key="do",
             role="assistant",
             run_id=msg_id,
@@ -249,18 +292,19 @@ class TaskService:
                 step.status = "passed"
                 task.status = "ready"
         finally:
-            step.ended_at = int(time.time())
+            step.ended_at = utc_now()
             step.save()
-            task.updated_at = int(time.time())
+            task.updated_at = utc_now()
             task.save()
 
             # Update message with collected events and content
             try:
                 msg = Message.get_by_id(msg_id)
                 msg.events_json = json.dumps(events_collected)
+                msg.usage_json = extract_usage_json(events_collected)
                 msg.content = "".join(content_parts)
                 msg.run_status = "succeeded" if step.status == "passed" else "failed"
-                msg.ended_at = int(time.time())
+                msg.ended_at = utc_now()
                 msg.save()
             except Exception:
                 logger.exception("Failed to update message %s", msg_id)
@@ -292,7 +336,7 @@ class TaskService:
 
         # Update task status to paused
         task.status = "paused"
-        task.updated_at = int(time.time())
+        task.updated_at = utc_now()
         task.save()
         return True
 
@@ -300,6 +344,8 @@ class TaskService:
         """Delete a task."""
         try:
             task = Task.get_by_id(task_id)
+            if task.status == "running":
+                raise RuntimeError("Running tasks cannot be deleted")
             task.delete_instance(recursive=True)
             return True
         except Task.DoesNotExist:
@@ -309,7 +355,7 @@ class TaskService:
         """Copy a task with a new title."""
         try:
             original = Task.get_by_id(task_id)
-            now = int(time.time())
+            now = utc_now()
             new_id = str(uuid.uuid4())
 
             # Create new task
@@ -354,6 +400,12 @@ class TaskService:
             "status": task.status,
             "engine": task.engine,
             "model": task.model,
+            "coordinator_engine": task.coordinator_engine,
+            "coordinator_model": task.coordinator_model,
+            "coordinator_fast_model": task.coordinator_fast_model,
+            "active_workflow_run_id": task.active_workflow_run_id,
+            "state_version": task.state_version,
+            "workflow_id": task.workflow_id,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,

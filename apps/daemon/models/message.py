@@ -2,6 +2,7 @@
 
 import peewee as pw
 from models.base import BaseModel
+from models.fields import UTCDateTimeField
 from models.task import Task
 
 
@@ -11,6 +12,10 @@ class Message(BaseModel):
     id = pw.TextField(primary_key=True)
     task = pw.ForeignKeyField(Task, backref="messages")
     step_key = pw.TextField()
+    context_step_key = pw.TextField(null=True)
+    channel = pw.TextField(default="execution")
+    sequence = pw.IntegerField(null=True)
+    reply_to_message_id = pw.TextField(null=True)
     role = pw.TextField()  # 'user' / 'assistant'
     content = pw.TextField(default="")  # user input / concatenated text_delta
     engine = pw.TextField(null=True)
@@ -21,6 +26,12 @@ class Message(BaseModel):
     prompt_json = pw.TextField(null=True)
     usage_json = pw.TextField(null=True)
     position = pw.IntegerField()
-    started_at = pw.IntegerField(null=True)
-    ended_at = pw.IntegerField(null=True)
-    created_at = pw.IntegerField()
+    started_at = UTCDateTimeField(null=True)
+    ended_at = UTCDateTimeField(null=True)
+    created_at = UTCDateTimeField()
+
+    class Meta:
+        indexes = (
+            (("task", "sequence"), True),
+            (("task", "channel", "sequence"), False),
+        )

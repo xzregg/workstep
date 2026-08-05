@@ -14,6 +14,7 @@ from engines.qoder_acp import QoderAcpEngine
 from engines.qcode import QCodeEngine
 from engines.openclaw import OpenClawEngine
 from engines.api import APIEngine
+from engines.pydantic_ai import PydanticAIEngine
 from services.config import config_store
 
 # All engine classes indexed by full key
@@ -26,6 +27,7 @@ _ALL_ENGINES: dict[str, type[BaseLLMEngine]] = {
     "openclaw": OpenClawEngine,
     # API modes
     "api": APIEngine,
+    "pydantic_ai": PydanticAIEngine,
     # ACP modes
     "claude_acp": ClaudeCodeAcpEngine,
     "codex_acp": CodexAcpEngine,
@@ -41,6 +43,7 @@ _BACKEND_PREFERENCE: dict[str, list[str]] = {
     "qcode": ["qcode"],
     "openclaw": ["openclaw"],
     "api": ["api"],
+    "pydantic_ai": ["pydantic_ai"],
 }
 
 _PATH_TARGETS: dict[str, str] = {
@@ -99,16 +102,27 @@ def get_available_engines() -> list[dict]:
                 mode = "acp"
             elif backend == "api":
                 mode = "api"
+            elif backend == "pydantic_ai":
+                mode = "agent"
             else:
                 mode = "cli"
             result.append({
                 "id": backend,
                 "installed": True,
+                "configured": instance.is_configured(),
+                "verified": config_store.is_engine_verified(backend),
+                "built_in": backend == "pydantic_ai",
                 "version": resolved.get_version(),
                 "mode": mode,
                 "supports_resume": instance.supports_resume,
+                "supports_coordinator": instance.capabilities.supports_coordinator,
+                "supports_tool_disable": instance.capabilities.supports_tool_disable,
+                "supports_native_schema": instance.capabilities.supports_native_schema,
+                "supports_live_stage_message": instance.capabilities.supports_live_stage_message,
                 "binary_path": (
-                    resolved.resolve_binary() if backend != "api" else None
+                    resolved.resolve_binary()
+                    if backend not in {"api", "pydantic_ai"}
+                    else None
                 ),
                 "configured_path": configured_path or None,
             })
@@ -116,9 +130,16 @@ def get_available_engines() -> list[dict]:
             result.append({
                 "id": backend,
                 "installed": False,
+                "configured": False,
+                "verified": False,
+                "built_in": backend == "pydantic_ai",
                 "version": None,
                 "mode": None,
                 "supports_resume": False,
+                "supports_coordinator": False,
+                "supports_tool_disable": False,
+                "supports_native_schema": False,
+                "supports_live_stage_message": False,
                 "binary_path": target.resolve_binary() if target else None,
                 "configured_path": configured_path or None,
             })

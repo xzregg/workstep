@@ -8,6 +8,65 @@ interface ArtifactPreviewProps {
   onClose?: () => void
 }
 
+async function copyText(content: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(content)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = content
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  textarea.remove()
+  if (!copied) throw new Error('Copy failed')
+}
+
+function CopyTextButton({ content }: { content: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  const copy = async () => {
+    try {
+      await copyText(content)
+      setState('copied')
+    } catch {
+      setState('failed')
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn-ghost"
+      aria-label={state === 'copied' ? '文本已复制' : '复制文本'}
+      title={state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制文本'}
+      onClick={() => void copy()}
+      style={{
+        width: 28, height: 28, minWidth: 28, padding: 0,
+        justifyContent: 'center',
+        color: state === 'failed'
+          ? 'var(--danger)'
+          : state === 'copied'
+            ? 'var(--success)'
+            : 'var(--muted)',
+      }}
+    >
+      {state === 'copied' ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+          <path d="m5 12 4 4L19 6" />
+        </svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps) {
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,11 +154,14 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
             {extension} 文件
           </div>
-          {onClose && (
-            <button className="btn-ghost" onClick={onClose}>
-              关闭
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CopyTextButton content={content} />
+            {onClose && (
+              <button className="btn-ghost" onClick={onClose}>
+                关闭
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8 }}>
           <pre style={{ padding: 16, margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -120,11 +182,14 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
           {extension || '文件'} 预览
         </div>
-        {onClose && (
-          <button className="btn-ghost" onClick={onClose}>
-            关闭
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <CopyTextButton content={content} />
+          {onClose && (
+            <button className="btn-ghost" onClick={onClose}>
+              关闭
+            </button>
+          )}
+        </div>
       </div>
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 16 }}>
         <pre style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

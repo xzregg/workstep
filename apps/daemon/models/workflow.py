@@ -2,6 +2,7 @@
 
 import peewee as pw
 from models.base import BaseModel
+from models.fields import UTCDateTimeField
 
 
 class Workflow(BaseModel):
@@ -10,8 +11,8 @@ class Workflow(BaseModel):
     steps_json = pw.TextField()
     is_default = pw.IntegerField(default=0)
     deleted = pw.IntegerField(default=0)
-    created_at = pw.IntegerField()
-    updated_at = pw.IntegerField()
+    created_at = UTCDateTimeField()
+    updated_at = UTCDateTimeField()
 
     class Meta:
         table_name = "workflows"
