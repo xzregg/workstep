@@ -1,5 +1,7 @@
 """Tests for P2 engines: Codex, Hermes, ACP engines, registry strategy."""
 
+import asyncio
+
 import pytest
 from acp import schema
 from engines.codex import CodexEngine
@@ -114,6 +116,22 @@ def test_codex_map_turn_completed_with_cache():
     assert event.data["cache_read_input_tokens"] == 120
 
 
+def test_codex_map_turn_completed_with_cost():
+    """Codex turn usage carries billing info (订单金额) when provided."""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "turn.completed",
+        "usage": {
+            "input_tokens": 200,
+            "output_tokens": 100,
+            "cost_usd": 0.0123,
+        },
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["cost"] == {"amount": 0.0123, "currency": "USD"}
+
+
 def test_codex_map_error():
     engine = CodexEngine()
     event = engine._map_event({"type": "error", "message": "something broke"})
@@ -204,6 +222,20 @@ def test_hermes_map_usage_update_with_cache():
     assert event.data["cache_read_input_tokens"] == 120
 
 
+def test_hermes_map_usage_update_with_cost():
+    """Hermes usage_update carries ACP-style cost when provided."""
+    engine = HermesEngine()
+    event = engine._map_update({
+        "type": "usage_update",
+        "input_tokens": 300,
+        "output_tokens": 100,
+        "cost": {"amount": 1.5, "currency": "CNY"},
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["cost"] == {"amount": 1.5, "currency": "CNY"}
+
+
 # --- ACP Engines ---
 
 
@@ -231,6 +263,133 @@ async def test_claude_acp_permission_policy_respects_confirmed_mode():
     assert edit_response.outcome.option_id == "allow-once"
     assert execute_response.outcome.outcome == "cancelled"
     assert bypass_response.outcome.option_id == "allow-always"
+
+
+@pytest.mark.anyio
+async def test_acp_client_ask_mode_parks_permission_until_approved():
+    from types import SimpleNamespace
+    from engines.acp_base import _StreamingClient
+
+    client = _StreamingClient(permission_mode="ask")
+    options = [
+        SimpleNamespace(kind="allow_once", option_id="allow-once"),
+        SimpleNamespace(kind="reject_once", option_id="reject-once"),
+    ]
+    tool_call = SimpleNamespace(
+        tool_call_id="tool-1",
+        title="Bash",
+        kind="execute",
+        raw_input={"command": "ls"},
+    )
+
+    request_task = asyncio.create_task(
+        client.request_permission("session-1", tool_call, options)
+    )
+    await asyncio.sleep(0)
+
+    assert client.pending_permissions == [
+        {
+            "tool_call_id": "tool-1",
+            "name": "Bash",
+            "kind": "execute",
+            "input": {"command": "ls"},
+        }
+    ]
+    assert client.resolve_approval("tool-1", True) is True
+
+    response = await request_task
+    assert response.outcome.outcome == "selected"
+    assert response.outcome.option_id == "allow-once"
+    assert client.pending_permissions == []
+
+
+@pytest.mark.anyio
+async def test_acp_client_ask_mode_rejects_when_denied():
+    from types import SimpleNamespace
+    from engines.acp_base import _StreamingClient
+
+    client = _StreamingClient(permission_mode="ask")
+    options = [SimpleNamespace(kind="allow_once", option_id="allow-once")]
+    tool_call = SimpleNamespace(
+        tool_call_id="tool-2",
+        title="Bash",
+        kind="execute",
+        raw_input={},
+    )
+
+    request_task = asyncio.create_task(
+        client.request_permission("session-1", tool_call, options)
+    )
+    await asyncio.sleep(0)
+
+    assert client.resolve_approval("tool-2", False) is True
+    response = await request_task
+    assert response.outcome.outcome == "cancelled"
+    assert client.pending_permissions == []
+
+
+def test_acp_client_resolve_approval_unknown_id_returns_false():
+    from engines.acp_base import _StreamingClient
+
+    client = _StreamingClient(permission_mode="ask")
+    assert client.resolve_approval("missing-tool", True) is False
+
+
+def test_acp_tool_use_flags_needs_approval_in_ask_mode():
+    engine = ClaudeCodeAcpEngine()
+    engine.get_permission_mode = lambda: "ask"  # type: ignore[method-assign]
+    update = schema.ToolCallStart(
+        sessionUpdate="tool_call",
+        toolCallId="tool-3",
+        title="Bash",
+        kind="execute",
+        rawInput={"command": "ls"},
+    )
+
+    event = engine._map_notification(update)
+
+    assert event is not None
+    assert event.type == "tool_use"
+    assert event.data["needs_approval"] is True
+    assert event.data["id"] == "tool-3"
+
+
+def test_acp_tool_use_has_no_approval_flag_in_auto_mode():
+    engine = ClaudeCodeAcpEngine()
+    update = schema.ToolCallStart(
+        sessionUpdate="tool_call",
+        toolCallId="tool-4",
+        title="Bash",
+        kind="execute",
+        rawInput={"command": "ls"},
+    )
+
+    event = engine._map_notification(update)
+
+    assert event is not None
+    assert event.type == "tool_use"
+    assert "needs_approval" not in event.data
+
+
+def test_acp_engine_session_capabilities():
+    engine = ClaudeCodeAcpEngine()
+    assert engine.supports_sessions is True
+    assert engine.supports_tool_approval is True
+
+
+@pytest.mark.anyio
+async def test_acp_list_sessions_requires_cwd():
+    engine = ClaudeCodeAcpEngine()
+    assert await engine.list_sessions() == []
+
+
+@pytest.mark.anyio
+async def test_acp_lifecycle_safe_noops_without_binary():
+    engine = ClaudeCodeAcpEngine()
+    await engine.reset_options()
+    await engine.set_config_option("model", "gpt-5")  # no session_id → ignored
+    await engine.approve_tool("tool-x")  # no active session → ignored
+
 
 def test_claude_acp_engine_id():
     assert ClaudeCodeAcpEngine.ENGINE_ID == "claude_acp"

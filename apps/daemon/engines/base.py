@@ -37,6 +37,8 @@ class EngineCapabilities:
     supports_tool_disable: bool
     supports_native_schema: bool
     supports_live_stage_message: bool
+    supports_sessions: bool = False
+    supports_tool_approval: bool = False
 
 
 class BaseLLMEngine(ABC):
@@ -171,6 +173,8 @@ class BaseLLMEngine(ABC):
             supports_tool_disable=True,
             supports_native_schema=False,
             supports_live_stage_message=False,
+            supports_sessions=self.supports_sessions,
+            supports_tool_approval=self.supports_tool_approval,
         )
 
     async def spawn_coordinator(
@@ -199,6 +203,85 @@ class BaseLLMEngine(ABC):
     @abstractmethod
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         """Inject user response mid-execution (AskUserQuestion / permission)."""
+
+    # --- ACP-aligned session lifecycle (session/new, load, list, resume, ...) ---
+
+    @property
+    def supports_sessions(self) -> bool:
+        """Whether this engine exposes ACP-style persistent sessions.
+
+        Engines backed by the ACP protocol (session/new, session/load,
+        session/resume, ...) return True here.
+        """
+        return False
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """session/new — create a fresh session, return its session id.
+
+        Returns None when the engine has no session concept.
+        """
+        return None
+
+    async def load_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """session/load — restore a persisted session's context/memory/config."""
+        return False
+
+    async def list_sessions(self, cwd: str | None = None) -> list[str]:
+        """session/list — list local archived session ids."""
+        return []
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """session/resume — restore a session and replay its history."""
+        return False
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """session/close — close a session and release its resources."""
+        return None
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """session/cancel — force-stop current reasoning / tool execution."""
+        return None
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """session/set_config_option — change model / cwd / max turns / permission mode."""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """session/reset-options — restore process-global defaults."""
+        return None
+
+    # --- Tool approval (tool_call → tool_approve → tool_result) ---
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """Whether pending tool calls can be approved/rejected via approve_tool."""
+        return False
+
+    async def approve_tool(self, tool_use_id: str, approved: bool = True) -> None:
+        """tool_approve — accept or reject a pending tool_call (request_permission)."""
+        return None
 
     # --- Session resume ---
 

@@ -8,7 +8,7 @@ import shutil
 from typing import AsyncIterator
 
 from engines.acp_base import AcpEngineBase
-from engines.events import InternalEvent
+from engines.events import InternalEvent, normalize_cost
 
 logger = logging.getLogger(__name__)
 
@@ -169,12 +169,16 @@ class HermesEngine(AcpEngineBase):
             })
 
         if update_type == "usage_update":
-            return InternalEvent(type="usage", data={
+            data = {
                 "input_tokens": params.get("input_tokens", 0),
                 "output_tokens": params.get("output_tokens", 0),
                 "cache_creation_input_tokens": params.get("cache_creation_input_tokens", 0),
                 "cache_read_input_tokens": params.get("cache_read_input_tokens", 0),
-            })
+            }
+            cost = normalize_cost(params)
+            if cost is not None:
+                data["cost"] = cost
+            return InternalEvent(type="usage", data=data)
 
         return None
 

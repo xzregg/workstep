@@ -119,6 +119,8 @@ def get_available_engines() -> list[dict]:
                 "supports_tool_disable": instance.capabilities.supports_tool_disable,
                 "supports_native_schema": instance.capabilities.supports_native_schema,
                 "supports_live_stage_message": instance.capabilities.supports_live_stage_message,
+                "supports_sessions": instance.capabilities.supports_sessions,
+                "supports_tool_approval": instance.capabilities.supports_tool_approval,
                 "binary_path": (
                     resolved.resolve_binary()
                     if backend not in {"api", "pydantic_ai"}
@@ -140,6 +142,8 @@ def get_available_engines() -> list[dict]:
                 "supports_tool_disable": False,
                 "supports_native_schema": False,
                 "supports_live_stage_message": False,
+                "supports_sessions": False,
+                "supports_tool_approval": False,
                 "binary_path": target.resolve_binary() if target else None,
                 "configured_path": configured_path or None,
             })

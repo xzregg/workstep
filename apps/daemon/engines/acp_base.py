@@ -19,11 +19,63 @@ class _StreamingClient:
     def __init__(self, permission_mode: str | None = None):
         self.updates: asyncio.Queue = asyncio.Queue()
         self.permission_mode = permission_mode
+        # tool_call_id → Future[bool], parked by "ask" mode until approve_tool
+        self._approval_futures: dict[str, asyncio.Future[bool]] = {}
+        self.pending_permissions: list[dict] = []
+
+    @property
+    def needs_approval(self) -> bool:
+        """Human-in-the-loop mode: every tool call waits for an explicit decision."""
+        return self.permission_mode == "ask"
+
+    def resolve_approval(self, tool_call_id: str, approved: bool) -> bool:
+        """Resolve a parked permission request; returns False if none is pending."""
+        future = self._approval_futures.get(tool_call_id)
+        if future is None or future.done():
+            return False
+        future.set_result(approved)
+        return True
 
     async def session_update(self, session_id, update, **kwargs):
         await self.updates.put(update)
 
     async def request_permission(self, session_id, tool_call, options, **kwargs):
+        tool_call_id = getattr(tool_call, "tool_call_id", None) or getattr(tool_call, "id", None)
+        if self.needs_approval and tool_call_id is not None:
+            # Park the request until the client calls approve_tool(...).
+            future = asyncio.get_running_loop().create_future()
+            self._approval_futures[tool_call_id] = future
+            self.pending_permissions.append({
+                "tool_call_id": tool_call_id,
+                "name": getattr(tool_call, "title", "") or "",
+                "kind": getattr(tool_call, "kind", None),
+                "input": getattr(tool_call, "raw_input", None) or {},
+            })
+            approved = await future
+            self.pending_permissions = [
+                pending
+                for pending in self.pending_permissions
+                if pending.get("tool_call_id") != tool_call_id
+            ]
+            if not approved:
+                return schema.RequestPermissionResponse(
+                    outcome=schema.DeniedOutcome(outcome="cancelled")
+                )
+            selected = next(
+                (option for option in options if option.kind == "allow_once"),
+                None,
+            )
+            if selected is None:
+                return schema.RequestPermissionResponse(
+                    outcome=schema.DeniedOutcome(outcome="cancelled")
+                )
+            return schema.RequestPermissionResponse(
+                outcome=schema.AllowedOutcome(
+                    outcome="selected",
+                    option_id=selected.option_id,
+                )
+            )
+
         tool_kind = getattr(tool_call, "kind", None)
         should_allow = (
             self.permission_mode is None
@@ -84,6 +136,8 @@ class AcpEngineBase(BaseLLMEngine):
     def __init__(self):
         self._process = None
         self._running = False
+        self._handler: _StreamingClient | None = None
+        self._last_cwd: str | None = None
 
     def get_command(self) -> list[str]:
         """Return the command to spawn the ACP agent process."""
@@ -145,6 +199,170 @@ class AcpEngineBase(BaseLLMEngine):
                 self._running = False
                 self._process = None
 
+    async def _with_agent(self, cwd: str, action):
+        """Open a short-lived ACP connection, run ``action(client)``, close it."""
+        cmd = self.get_command()
+        if not cmd:
+            raise RuntimeError(f"{self.ENGINE_ID}: no command configured")
+        handler = _StreamingClient(self.get_permission_mode())
+        async with acp.spawn_agent_process(
+            handler,
+            cmd[0],
+            *cmd[1:],
+            cwd=cwd,
+        ) as (client, process):
+            self._process = process
+            self._running = True
+            try:
+                await client.initialize(
+                    protocol_version=acp.PROTOCOL_VERSION,
+                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                )
+                return await action(client)
+            finally:
+                self._running = False
+                self._process = None
+
+    # --- ACP-aligned session lifecycle (session/*) ---
+
+    @property
+    def supports_sessions(self) -> bool:
+        return True
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """session/new — create a fresh session, return its session id."""
+
+        async def action(client):
+            session = await client.new_session(
+                cwd=cwd,
+                additional_directories=add_dirs or [],
+                mcp_servers=mcp_servers or [],
+            )
+            return session.session_id
+
+        return await self._with_agent(cwd, action)
+
+    async def load_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """session/load — restore a persisted session's context/memory/config."""
+
+        async def action(client):
+            response = await client.load_session(
+                cwd=cwd,
+                session_id=session_id,
+                additional_directories=add_dirs or [],
+                mcp_servers=mcp_servers or [],
+            )
+            return response is not None
+
+        return await self._with_agent(cwd, action)
+
+    async def list_sessions(self, cwd: str | None = None) -> list[str]:
+        """session/list — list local archived session ids."""
+        if not cwd:
+            return []
+
+        async def action(client):
+            response = await client.list_sessions(cwd=cwd)
+            return [item.session_id for item in (response.sessions or [])]
+
+        return await self._with_agent(cwd, action)
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """session/resume — restore a session and replay its history."""
+
+        async def action(client):
+            response = await client.resume_session(
+                session_id=session_id,
+                cwd=cwd,
+                additional_directories=add_dirs or [],
+                mcp_servers=mcp_servers or [],
+            )
+            return response is not None
+
+        return await self._with_agent(cwd, action)
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """session/close — close a session and release its resources."""
+        cwd = cwd or self._last_cwd or "."
+
+        async def action(client):
+            await client.close_session(session_id=session_id)
+
+        await self._with_agent(cwd, action)
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """session/cancel — force-stop current reasoning / tool execution."""
+        cwd = cwd or self._last_cwd or "."
+
+        async def action(client):
+            await client.cancel(session_id=session_id)
+
+        await self._with_agent(cwd, action)
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """session/set_config_option — change model / cwd / max turns / permission mode."""
+        if not session_id:
+            logger.warning(
+                "ACP set_config_option(%s) requires session_id; ignored", config_id
+            )
+            return None
+
+        async def action(client):
+            await client.set_config_option(
+                config_id=config_id,
+                session_id=session_id,
+                value=value,
+            )
+
+        await self._with_agent(self._last_cwd or ".", action)
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """session/reset-options — restore process-global defaults.
+
+        ACP has no native reset primitive; agents start from process-global
+        defaults with a fresh session (session/new), so this is a no-op.
+        """
+        logger.info(
+            "ACP reset_options: not supported natively (start a new session instead)"
+        )
+        return None
+
+    async def approve_tool(self, tool_use_id: str, approved: bool = True) -> None:
+        """tool_approve — accept or reject a pending tool_call (request_permission)."""
+        handler = self._handler
+        if handler is None:
+            logger.warning("ACP approve_tool: no active session to approve")
+            return None
+        if not handler.resolve_approval(tool_use_id, approved):
+            logger.warning("ACP approve_tool: no pending request for %s", tool_use_id)
+        return None
+
     async def spawn(
         self,
         prompt: str,
@@ -169,6 +387,8 @@ class AcpEngineBase(BaseLLMEngine):
         yield InternalEvent(type="status", data={"status": "initializing"})
 
         handler = _StreamingClient(permission_mode)
+        self._handler = handler
+        self._last_cwd = cwd
         try:
             async with acp.spawn_agent_process(
                 handler,
@@ -247,6 +467,7 @@ class AcpEngineBase(BaseLLMEngine):
         finally:
             self._running = False
             self._process = None
+            self._handler = None
 
     def _map_notification(self, update) -> InternalEvent | None:
         """Map one ACP session update to the internal event vocabulary."""
@@ -263,14 +484,14 @@ class AcpEngineBase(BaseLLMEngine):
                     data={"delta": update.content.text},
                 )
         if isinstance(update, schema.ToolCallStart):
-            return InternalEvent(
-                type="tool_use",
-                data={
-                    "id": update.tool_call_id,
-                    "name": update.title or "",
-                    "input": update.raw_input or {},
-                },
-            )
+            data = {
+                "id": update.tool_call_id,
+                "name": update.title or "",
+                "input": update.raw_input or {},
+            }
+            if self.get_permission_mode() == "ask":
+                data["needs_approval"] = True
+            return InternalEvent(type="tool_use", data=data)
         if isinstance(update, schema.ToolCallProgress):
             if update.status in ("completed", "failed"):
                 return InternalEvent(

@@ -3,7 +3,7 @@
 import pytest
 
 from engines.base import BaseLLMEngine
-from engines.events import InternalEvent
+from engines.events import InternalEvent, normalize_cost, normalize_token_usage
 from engines.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
 
@@ -63,6 +63,41 @@ def test_internal_event_to_dict():
     assert d == {"type": "status", "data": {"status": "running"}, "timestamp": 1000}
 
 
+def test_normalize_cost_accepts_acp_style_dict():
+    assert normalize_cost({"cost": {"amount": 0.045, "currency": "USD"}}) == {
+        "amount": 0.045,
+        "currency": "USD",
+    }
+
+
+def test_normalize_cost_accepts_bare_number_as_usd():
+    assert normalize_cost({"cost": 1.2}) == {"amount": 1.2, "currency": "USD"}
+
+
+def test_normalize_cost_accepts_openai_style_fields():
+    assert normalize_cost({"cost_usd": 0.123456789}) == {
+        "amount": 0.123457,
+        "currency": "USD",
+    }
+    assert normalize_cost({"total_cost": 0.5, "currency_code": "CNY"}) == {
+        "amount": 0.5,
+        "currency": "USD",
+    }
+
+
+def test_normalize_cost_returns_none_without_cost_info():
+    assert normalize_cost({"input_tokens": 10, "output_tokens": 5}) is None
+
+
+def test_normalize_token_usage_appends_cost():
+    result = normalize_token_usage(
+        {"input_tokens": 10, "output_tokens": 5, "cost_usd": 0.01}
+    )
+    assert result["input_tokens"] == 10
+    assert result["total_tokens"] == 15
+    assert result["cost"] == {"amount": 0.01, "currency": "USD"}
+
+
 @pytest.mark.anyio
 async def test_base_engine_connection_test_uses_the_execution_interface(tmp_path):
     engine = StubEngine([
@@ -93,6 +128,24 @@ async def test_base_engine_model_list_defaults_to_engine_configuration(tmp_path)
     engine = StubEngine([])
 
     assert await engine.list_models(str(tmp_path)) == []
+
+
+@pytest.mark.anyio
+async def test_base_engine_acp_session_defaults_are_safe_noops(tmp_path):
+    """Non-ACP engines expose ACP session/tool methods as safe defaults."""
+    engine = StubEngine([])
+
+    assert engine.supports_sessions is False
+    assert engine.supports_tool_approval is False
+    assert await engine.create_session(str(tmp_path)) is None
+    assert await engine.load_session("s1", str(tmp_path)) is False
+    assert await engine.list_sessions() == []
+    assert await engine.resume_session("s1", str(tmp_path)) is False
+    await engine.close_session("s1")
+    await engine.cancel_session("s1")
+    await engine.set_config_option("model", "gpt-5")
+    await engine.reset_options()
+    await engine.approve_tool("tool-1")
 
 
 def test_registry_has_claude():
@@ -295,6 +348,22 @@ def test_claude_map_event_usage_from_nested_result_payload():
         "cache_read_input_tokens": 120,
         "session_id": "a37b97f3-58ac-4dbe-9b20-b2057b026acc",
     }
+
+
+def test_claude_map_event_usage_with_cost():
+    """Claude result usage carries ACP-style cost (订单金额)."""
+    engine = ClaudeCodeEngine()
+    event = engine._map_event({
+        "type": "result",
+        "usage": {
+            "input_tokens": 300,
+            "output_tokens": 50,
+            "cost": {"amount": 0.045, "currency": "USD"},
+        },
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["cost"] == {"amount": 0.045, "currency": "USD"}
 
 
 def test_claude_map_event_unknown_returns_none():

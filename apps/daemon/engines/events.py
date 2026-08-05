@@ -5,8 +5,41 @@ from typing import Any, Literal, Mapping
 import time
 
 
-def normalize_token_usage(usage: Mapping[str, Any]) -> dict[str, int]:
-    """Normalize provider-specific token fields to WorkStep's event schema."""
+def normalize_cost(usage: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Extract a unified ``{amount, currency}`` cost record (订单金额) from provider usage.
+
+    Mirrors ACP's ``cost`` field (amount + ISO 4217 currency) so every engine
+    surfaces billing through the same ``usage`` event shape. Supported inputs:
+
+    - ``{"cost": {"amount": 0.045, "currency": "USD"}}``  ACP style
+    - ``{"cost": 0.045}``                                 bare number, assumed USD
+    - ``{"cost_usd": 0.045}`` / ``{"total_cost": 0.045}`` OpenAI-style
+
+    Returns None when no cost information is present.
+    """
+
+    raw = usage.get("cost")
+    if isinstance(raw, Mapping):
+        amount = raw.get("amount")
+        if isinstance(amount, (int, float)) and not isinstance(amount, bool):
+            currency = raw.get("currency") or raw.get("currency_code") or "USD"
+            return {"amount": round(float(amount), 6), "currency": str(currency)}
+    elif isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return {"amount": round(float(raw), 6), "currency": "USD"}
+
+    for key in ("cost_usd", "total_cost", "total_cost_usd", "amount"):
+        value = usage.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return {"amount": round(float(value), 6), "currency": "USD"}
+    return None
+
+
+def normalize_token_usage(usage: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize provider-specific token fields to WorkStep's event schema.
+
+    Token fields keep their normalized names; any cost/billing info present in
+    the source dict is appended as a unified ``cost: {amount, currency}``.
+    """
 
     def value(*keys: str) -> int:
         for key in keys:
@@ -18,7 +51,7 @@ def normalize_token_usage(usage: Mapping[str, Any]) -> dict[str, int]:
     input_tokens = value("input_tokens", "prompt_tokens")
     output_tokens = value("output_tokens", "completion_tokens")
     total_tokens = value("total_tokens", "tokens") or input_tokens + output_tokens
-    return {
+    result: dict[str, Any] = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_creation_input_tokens": value(
@@ -34,6 +67,10 @@ def normalize_token_usage(usage: Mapping[str, Any]) -> dict[str, int]:
         ),
         "total_tokens": total_tokens,
     }
+    cost = normalize_cost(usage)
+    if cost is not None:
+        result["cost"] = cost
+    return result
 
 
 @dataclass

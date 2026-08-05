@@ -53,6 +53,45 @@ class BaseLLMEngine(ABC):
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         """中途注入用户回答（AskUserQuestion / 权限请求）"""
 
+    # ── ACP 对齐的会话生命周期（session/*）──
+
+    @property
+    def supports_sessions(self) -> bool:
+        """是否支持 ACP 风格持久会话（ACP 引擎返回 True）"""
+
+    async def create_session(self, cwd, add_dirs=None, mcp_servers=None) -> str | None:
+        """session/new — 创建全新会话，返回 sessionId"""
+
+    async def load_session(self, session_id, cwd, add_dirs=None, mcp_servers=None) -> bool:
+        """session/load — 读取历史持久会话，恢复上下文/记忆/配置"""
+
+    async def list_sessions(self, cwd=None) -> list[str]:
+        """session/list — 列出本地全部存档会话 ID"""
+
+    async def resume_session(self, session_id, cwd, add_dirs=None, mcp_servers=None) -> bool:
+        """session/resume — 恢复指定会话并回放历史"""
+
+    async def close_session(self, session_id, cwd=None) -> None:
+        """session/close — 关闭会话，释放资源"""
+
+    async def cancel_session(self, session_id, cwd=None) -> None:
+        """session/cancel — 强制终止当前推理 / 中断工具执行"""
+
+    async def set_config_option(self, config_id, value, session_id=None) -> None:
+        """session/set_config_option — 动态修改 model / cwd / 最大轮次 / 权限模式"""
+
+    async def reset_options(self, session_id=None) -> None:
+        """session/reset-options — 会话配置恢复为进程全局默认"""
+
+    # ── 工具审批（tool_call → tool_approve → tool_result）──
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """是否支持外部 approve_tool 审批待执行的工具调用"""
+
+    async def approve_tool(self, tool_use_id: str, approved: bool = True) -> None:
+        """tool_approve — 同意 / 拒绝模型申请执行的工具（响应 session/request_permission）"""
+
     # ── 会话恢复 ──
 
     @property
@@ -84,14 +123,39 @@ class InternalEvent:
         "status",           # 状态变更（initializing / running）
         "text_delta",       # 助手回复增量
         "thinking_delta",   # 思考过程增量
-        "tool_use",         # 工具调用（完整）
+        "tool_use",         # 工具调用（ACP tool_call 等价，含 id/name/input）
         "tool_input_delta", # 工具输入增量（仅实时，不持久化）
         "tool_result",      # 工具返回结果
-        "usage",            # token 计费
+        "usage",            # token 用量 + cost 计费（订单金额）
         "error",            # 错误
     ]
     data: dict
     timestamp: int           # epoch ms
+```
+
+**usage 事件统一结构**（对齐 ACP `UsageUpdate` / `PromptResponse.usage`）：
+
+```python
+{
+    "input_tokens": 300,
+    "output_tokens": 50,
+    "cache_creation_input_tokens": 150,
+    "cache_read_input_tokens": 120,
+    "total_tokens": 350,
+    # 订单金额（可选，来自 ACP cost / cost_usd / total_cost）
+    "cost": {"amount": 0.045, "currency": "USD"},
+}
+```
+
+**tool_use 事件**（ACP `tool_call` 通知的等价物）：
+
+```python
+{
+    "id": "tool-3",                # tool_call_id
+    "name": "Bash",                # 工具名
+    "input": {"command": "ls"},    # 入参
+    "needs_approval": True,        # 权限模式为 ask 时置位，等待 tool_approve
+}
 ```
 
 ## 引擎实现

@@ -9,7 +9,7 @@ import shutil
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine, EngineModel
-from engines.events import InternalEvent
+from engines.events import InternalEvent, normalize_cost
 from services.config import config_store
 
 logger = logging.getLogger(__name__)
@@ -200,13 +200,17 @@ class ClaudeCodeEngine(BaseLLMEngine):
 
         if event_type == "result":
             usage = obj.get("usage") or obj
-            return InternalEvent(type="usage", data={
+            data = {
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
                 "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
                 "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
                 "session_id": obj.get("session_id"),
-            })
+            }
+            cost = normalize_cost(usage)
+            if cost is not None:
+                data["cost"] = cost
+            return InternalEvent(type="usage", data=data)
 
         if event_type == "user":
             # Tool results from Claude
