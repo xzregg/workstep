@@ -103,7 +103,7 @@ export default function ChatMessageBubble({
               position: 'absolute', right: -4, bottom: -4,
               width: 16, height: 16, borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: '#7c3aed', color: 'var(--accent-fg)',
+              background: 'var(--ai-assistant)', color: 'var(--accent-fg)',
               border: '2px solid var(--bg)',
               fontSize: 11, fontWeight: 800, lineHeight: 1,
             }}>

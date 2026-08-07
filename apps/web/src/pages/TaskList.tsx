@@ -80,9 +80,9 @@ const FALLBACK_OPENERS: DirectoryOpener[] = [
 
 function OpenerIcon({ id }: { id: string }) {
   const visual: Record<string, { text: string; bg: string; color: string }> = {
-    vscode: { text: '⌁', bg: '#eaf6ff', color: '#168bd2' },
+    vscode: { text: '⌁', bg: 'var(--accent-light)', color: '#168bd2' },
     sublime: { text: 'S', bg: '#333', color: '#ff9800' },
-    file_manager: { text: '⌂', bg: '#eaf4ff', color: '#2684ff' },
+    file_manager: { text: '⌂', bg: 'var(--accent-light)', color: '#2684ff' },
     terminal: { text: '>_', bg: '#454545', color: 'var(--accent-fg)' },
     iterm: { text: '$', bg: '#3e2945', color: '#59e391' },
     intellij: { text: 'IJ', bg: '#ef476f', color: 'var(--accent-fg)' },
@@ -892,7 +892,7 @@ export default function TaskList() {
         transform: showNewPanel ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div className="panel-header">
           <span style={{ fontWeight: 600, fontSize: 13 }}>新建{createLane?.label || '需求'}任务</span>
           <Button variant="icon" onClick={closeNewPanel} aria-label="关闭">✕</Button>
         </div>
@@ -1050,7 +1050,7 @@ export default function TaskList() {
         {createError && (
           <div style={{ padding: '8px 16px 0', fontSize: 13, color: 'var(--danger)' }}>{createError}</div>
         )}
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div className="panel-footer">
           <Button variant="ghost" onClick={closeNewPanel}>取消</Button>
           <Button variant="primary" onClick={handleCreate}>创建</Button>
         </div>
@@ -1145,7 +1145,7 @@ export default function TaskList() {
         transform: showMemoryPanel ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.3s ease',
       }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div className="panel-header">
           <span style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
             编辑记忆
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
@@ -1172,7 +1172,7 @@ export default function TaskList() {
             />
           )}
         </div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+        <div className="panel-footer" style={{ alignItems: 'center' }}>
           {memoryNotice && (
             <span style={{ color: 'var(--success)', fontSize: 13, marginRight: 'auto' }} role="status">
               {memoryNotice}

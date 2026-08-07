@@ -179,7 +179,7 @@ export default function AiFlowChat({
             role={m.role}
             sender={m.role === 'user' ? '我' : '协调 Agent'}
             initials={m.role === 'user' ? '我' : '协'}
-            color={m.role === 'user' ? 'var(--accent)' : '#7c3aed'}
+            color={m.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
             content={m.content}
             streaming={m.status === 'running'}
             projectId={projectId}
@@ -197,7 +197,7 @@ export default function AiFlowChat({
                     padding: '1px 6px', borderRadius: 999, fontSize: 11,
                     border: '1px solid var(--border-soft)',
                     background: 'rgba(124,58,237,0.08)',
-                    color: '#7c3aed',
+                    color: 'var(--ai-assistant)',
                   }}
                 >
                   AI 助手

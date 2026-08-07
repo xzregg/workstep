@@ -1485,9 +1485,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
-            <button
-              type="button"
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               title="点击复制任务 ID"
               aria-label="复制任务 ID"
               onPointerDown={(event) => event.stopPropagation()}
@@ -1503,7 +1502,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}
             >
               {taskIdCopied ? '已复制' : `ID: ${task.id}`}
-            </button>
+            </Button>
             <span style={{
               display: 'inline-flex', alignItems: 'center', minHeight: 22,
               fontSize: 11, fontWeight: 500, padding: '0 8px', borderRadius: 4, lineHeight: 1,
@@ -2168,7 +2167,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           : isReview
                             ? (stageInfo?.color || 'var(--warn)')
                           : isCoordinator
-                            ? '#7c3aed'
+                            ? 'var(--ai-assistant)'
                             : (stageInfo?.color || 'var(--fg)')
 
                       return (
@@ -2209,7 +2208,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                       ? 'var(--accent)'
                                       : 'rgba(0,113,227,0.08)',
                                   color: isCoordinator
-                                    ? '#7c3aed'
+                                    ? 'var(--ai-assistant)'
                                     : isLiveInsert ? 'var(--accent-fg)' : 'var(--accent)',
                                 }}
                               >
@@ -2287,7 +2286,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 role="assistant"
                 sender="协调 Agent"
                 initials="协"
-                color="#7c3aed"
+                color="var(--ai-assistant)"
                 content={message.content || ''}
                 streaming={message.status === 'running'}
                 variant="bg"
@@ -2724,7 +2723,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 prefix: taskId?.slice(0, 8) ?? '',
                 onError: (message) => setChatError(message),
               } : undefined}
-              stopTitle={chatTargetStage ? '停止当前阶段执行' : '停止生成'}
               config={{
                 engines: coordinatorConfig?.available_engines || [],
                 engine: coordinatorConfig?.configured.engine || '',
@@ -2814,7 +2812,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="dialog-header">
               <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
               <Button variant="icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</Button>
             </div>
@@ -2846,7 +2844,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="dialog-header">
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>快速编辑阶段提示词</div>
@@ -2871,7 +2869,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 </div>
               )}
             </div>
-            <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div className="dialog-footer">
               <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>取消</Button>
               <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStagePrompt}>
                 保存提示词
@@ -2901,7 +2899,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="dialog-header" style={{ padding: '12px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
                   {previewArtifact.logical_name || previewArtifact.name}

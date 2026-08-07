@@ -1306,7 +1306,7 @@ function FlowCanvasInner({
             onConnect={onConnect} onNodeDoubleClick={onNodeDoubleClick}
             onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView deleteKeyCode={null}
-            connectionLineStyle={{ stroke: '#999', strokeWidth: 2, strokeDasharray: '5 5' }}
+            connectionLineStyle={{ stroke: 'var(--meta)', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>
             <Controls position="top-right" /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>

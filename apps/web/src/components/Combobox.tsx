@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import Input from './Input'
 
 interface ComboboxProps {
   value: string
@@ -40,7 +41,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
   return (
     <div ref={containerRef} style={{ position: 'relative', ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
-        <input
+        <Input
           ref={inputRef}
           value={inputVal}
           placeholder={placeholder}
@@ -73,7 +74,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
               onMouseDown={(e) => { e.preventDefault(); commit(opt) }}
               style={{
                 padding: '4px 8px', fontSize: 13, cursor: 'pointer',
-                background: opt === value ? 'var(--accent-light, #e6f0ff)' : undefined,
+                background: opt === value ? 'var(--accent-light)' : undefined,
               }}
             >
               {opt}

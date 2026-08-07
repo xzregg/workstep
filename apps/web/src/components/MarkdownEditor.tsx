@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { fsApi } from '../api/client'
+import Button from './Button'
 import MarkdownMessage from './MarkdownMessage'
+import Textarea from './Textarea'
 
 interface MarkdownEditorProps {
   value: string
@@ -99,15 +101,15 @@ export default function MarkdownEditor({
             style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? 'var(--accent-fg)' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
           >预览</button>
         </div>
-        <button
-          className="btn-ghost"
+        <Button
+          variant="ghost"
           onClick={() => imgInputRef.current?.click()}
           disabled={!projectId}
           title={projectId ? undefined : '需先选择项目'}
           style={{ fontSize: 13, padding: '3px 8px', gap: 4, opacity: projectId ? 1 : 0.45, cursor: projectId ? 'pointer' : 'not-allowed' }}
         >
           🖼 图片
-        </button>
+        </Button>
         <span style={{ fontSize: 11, color: 'var(--meta)' }}>支持 Markdown，可粘贴/插入图片</span>
         <input
           ref={imgInputRef}
@@ -118,7 +120,7 @@ export default function MarkdownEditor({
         />
       </div>
       {mode === 'edit' ? (
-        <textarea
+        <Textarea
           ref={textareaRef}
           aria-label={ariaLabel}
           value={value}

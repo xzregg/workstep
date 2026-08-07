@@ -223,7 +223,7 @@ export default function ChatInput({
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <Icon name="check" size={7} strokeWidth={4} color="#fff" />
+                  <Icon name="check" size={7} strokeWidth={4} color="var(--accent-fg)" />
                 </span>
               )}
             </label>

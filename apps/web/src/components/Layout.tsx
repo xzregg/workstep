@@ -384,11 +384,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                     {p.name}
                   </span>
                 )}
-                <button
+                <Button
+                  variant="icon"
                   onClick={(e) => { e.stopPropagation(); openAddWorkflow(p.id) }}
                   title="添加工作流"
-                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: 0.7 }}
-                >+</button>
+                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, opacity: 0.7 }}
+                >+</Button>
               </div>
 
               {renameId === p.path && renameError && (
@@ -423,7 +424,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         cursor: deleted ? 'default' : 'pointer',
                         fontSize: 13,
                         color: deleted ? 'var(--meta)' : (activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
-                        background: activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent-light, #e6f0ff)' : 'transparent',
+                        background: activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent-light)' : 'transparent',
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
                       }}
                     >
@@ -462,24 +463,26 @@ export default function Layout({ onSelectProject, children }: Props) {
                       {wf.is_default ? <span style={{ fontSize: 11, opacity: 0.6 }}>默认</span> : null}
                       <span style={{ fontSize: 11, opacity: 0.5 }}>{wf.nodeCount}步</span>
                       {deleted && (
-                        <button
+                        <Button
+                          variant="icon"
                           onClick={(e) => {
                             e.stopPropagation()
                             restoreWorkflow(wf.id, p.id)
                           }}
                           title="恢复流程"
-                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', cursor: 'pointer', fontSize: 13, lineHeight: '14px', padding: 0 }}
-                        >↩</button>
+                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', fontSize: 13, lineHeight: '14px', padding: 0 }}
+                        >↩</Button>
                       )}
                       {!wf.is_default && (deleted || activeCount > 1) && (
-                        <button
+                        <Button
+                          variant="icon"
                           onClick={(e) => {
                             e.stopPropagation()
                             setDeleteWf({ id: wf.id, projectId: p.id, name: wf.name, soft: deleted })
                           }}
                           title={deleted ? '永久删除' : '删除（移入回收站）'}
-                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--danger)', cursor: 'pointer', fontSize: 11, lineHeight: '14px', padding: 0 }}
-                        >×</button>
+                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--danger)', fontSize: 11, lineHeight: '14px', padding: 0 }}
+                        >×</Button>
                       )}
                     </div>
                   )
@@ -494,10 +497,11 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        <button style={addButtonStyle} onClick={() => setShowInitModal(true)}>
+        <Button variant="ghost" style={addButtonStyle} onClick={() => setShowInitModal(true)}>
           + 添加项目
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setShowSettings(true)}
           aria-current={showSettings ? 'page' : undefined}
           style={{
@@ -510,7 +514,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         >
           <Icon name="settings" size={17} strokeWidth={2} />
           设置
-        </button>
+        </Button>
       </aside>
 
       {/* Main content */}

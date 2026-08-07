@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { engineLabel } from '../engineMeta'
+import Select from './Select'
 
 export interface EngineSelectOption {
   id: string
@@ -86,7 +87,7 @@ export default function EngineSelect({
   )
 
   return (
-    <select
+    <Select
       value={value}
       disabled={disabled || visibleEngines.length === 0}
       onChange={(event) => onChange(event.target.value)}
@@ -115,6 +116,6 @@ export default function EngineSelect({
       {visibleEngines.length === 0 && !defaultOption && (
         <option value="" disabled>暂无引擎</option>
       )}
-    </select>
+    </Select>
   )
 }
