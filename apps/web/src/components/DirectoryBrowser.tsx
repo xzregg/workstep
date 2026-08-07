@@ -68,7 +68,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
         padding: '8px 12px',
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border-soft)',
-        fontSize: 12, color: 'var(--fg-2)',
+        fontSize: 13, color: 'var(--fg-2)',
       }}>
         <button
           className="btn-icon"
@@ -122,7 +122,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
             onMouseEnter={(e) => { if (entry.type === 'directory') e.currentTarget.style.background = 'var(--surface)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
           >
-            <span style={{ fontSize: 14 }}>
+            <span style={{ fontSize: 13 }}>
               {entry.type === 'directory' ? '📁' : '📄'}
             </span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

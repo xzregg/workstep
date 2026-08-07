@@ -18,7 +18,7 @@ const inputStyle: React.CSSProperties = {
   width: '100%', height: 30,
   border: '1px solid var(--border)', borderRadius: 7,
   background: 'var(--bg)', color: 'var(--fg)',
-  padding: '0 9px', fontSize: 12,
+  padding: '0 9px', fontSize: 13,
 }
 
 /**
@@ -257,7 +257,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
             style={{
               width: '100%', border: '1px solid var(--border)', borderRadius: 7,
               background: 'var(--bg)', color: 'var(--fg)',
-              padding: '7px 9px', fontSize: 12, resize: 'vertical',
+              padding: '7px 9px', fontSize: 13, resize: 'vertical',
             }}
           />
         ) : (
@@ -299,12 +299,12 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
           </label>
         )}
         {field.help && (
-          <div style={{ marginTop: 4, fontSize: 10, color: 'var(--meta)' }}>
+          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--meta)' }}>
             {field.help}
           </div>
         )}
         {field.required && !value.trim() && (
-          <div style={{ marginTop: 4, fontSize: 10, color: 'var(--danger)' }}>
+          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)' }}>
             该项为必填
           </div>
         )}

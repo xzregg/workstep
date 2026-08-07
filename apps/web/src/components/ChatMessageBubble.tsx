@@ -75,7 +75,7 @@ export default function ChatMessageBubble({
     <div {...rootProps} style={rootStyle}>
       {isUser && header && (
         <div style={{
-          fontSize: 10, color: 'var(--meta)', textAlign: 'right', paddingRight: 44,
+          fontSize: 11, color: 'var(--meta)', textAlign: 'right', paddingRight: 44,
           display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6,
         }}>
           {header}
@@ -94,7 +94,7 @@ export default function ChatMessageBubble({
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
             background: color, color: '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 600, position: 'relative',
+            fontSize: 13, fontWeight: 600, position: 'relative',
           }}
         >
           {initials}
@@ -105,7 +105,7 @@ export default function ChatMessageBubble({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: '#7c3aed', color: '#fff',
               border: '2px solid var(--bg)',
-              fontSize: 9, fontWeight: 800, lineHeight: 1,
+              fontSize: 11, fontWeight: 800, lineHeight: 1,
             }}>
               {badge}
             </span>
@@ -148,7 +148,7 @@ export default function ChatMessageBubble({
             )
           )}
           {!isUser && error && (
-            <div style={{ color: 'var(--danger)', fontSize: 12, marginTop: 4 }}>{error}</div>
+            <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 4 }}>{error}</div>
           )}
           {footer}
           {children}

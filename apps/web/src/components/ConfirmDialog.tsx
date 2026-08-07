@@ -41,7 +41,7 @@ export default function ConfirmDialog({ open, title, message, confirmText = '确
       >
         {/* Header */}
         <div style={{ padding: '16px 20px 0' }}>
-          <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
             {title}
           </div>
           {message && (

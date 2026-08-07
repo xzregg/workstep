@@ -168,7 +168,7 @@ export default function AiFlowChat({
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
         {messages.length === 0 && (
-          <div style={{ fontSize: 12, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
             描述你的目标（例如“做一个内容发布流程”），我会先追问几个关键问题，然后为你生成可直接编辑的流程编排。
           </div>
         )}
@@ -193,7 +193,7 @@ export default function AiFlowChat({
                 <span
                   title="发给 AI 流程助手（协调引擎生成模式）"
                   style={{
-                    padding: '1px 6px', borderRadius: 999, fontSize: 10,
+                    padding: '1px 6px', borderRadius: 999, fontSize: 11,
                     border: '1px solid var(--border-soft)',
                     background: 'rgba(124,58,237,0.08)',
                     color: '#7c3aed',
@@ -221,7 +221,7 @@ export default function AiFlowChat({
         ))}
         {latestProposals.length > 0 && (
           <div style={{ marginTop: 2 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
               选择流程方案
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -252,7 +252,7 @@ export default function AiFlowChat({
                       </span>
                     </div>
                     {card.summary && (
-                      <div style={{ fontSize: 12, color: 'var(--meta)', marginTop: 3, lineHeight: 1.5 }}>
+                      <div style={{ fontSize: 13, color: 'var(--meta)', marginTop: 3, lineHeight: 1.5 }}>
                         {card.summary}
                       </div>
                     )}
@@ -264,7 +264,7 @@ export default function AiFlowChat({
         )}
         {rejectionMessage && latestProposals.length === 0 && (
           <div style={{
-            marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 12,
+            marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 13,
             color: 'var(--danger)',
             background: 'color-mix(in oklab, var(--danger), transparent 94%)',
             border: '1px solid color-mix(in oklab, var(--danger), transparent 75%)',
@@ -277,7 +277,7 @@ export default function AiFlowChat({
       </div>
 
       {sendError && (
-        <div style={{ padding: '6px 12px', fontSize: 12, color: 'var(--danger)' }}>{sendError}</div>
+        <div style={{ padding: '6px 12px', fontSize: 13, color: 'var(--danger)' }}>{sendError}</div>
       )}
 
       <div style={{
@@ -345,10 +345,10 @@ export default function AiFlowChat({
             onClick={(event) => event.stopPropagation()}
           >
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <strong style={{ flex: 1, fontSize: 15 }}>完整提示词</strong>
+              <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
               <button type="button" className="btn-icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</button>
             </div>
-            <div style={{ padding: 18, overflow: 'auto', fontSize: 12, lineHeight: 1.65 }}>
+            <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />
             </div>
           </div>

@@ -103,7 +103,7 @@ export default function CoordinatorConfigBar({
     ? { ...selectStyle, width: '100%', maxWidth: 'none' }
     : { ...selectStyle, maxWidth: 170 }
   const statusStyle: CSSProperties = {
-    fontSize: 10,
+    fontSize: 11,
     ...(isMenu ? { marginTop: 2 } : {}),
   }
   const menuLabel: CSSProperties = {
@@ -120,7 +120,7 @@ export default function CoordinatorConfigBar({
       }}
     >
       {!isMenu && (
-        <span style={{ fontSize: 10, color: 'var(--meta)' }}>引擎/模型</span>
+        <span style={{ fontSize: 11, color: 'var(--meta)' }}>引擎/模型</span>
       )}
       {isMenu ? (
         <>

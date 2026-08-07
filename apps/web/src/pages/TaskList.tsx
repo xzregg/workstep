@@ -585,7 +585,7 @@ export default function TaskList() {
             role="status"
             style={{
               maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', color: 'var(--meta)', fontSize: 12,
+              whiteSpace: 'nowrap', color: 'var(--meta)', fontSize: 13,
             }}
             title={directoryNotice}
           >
@@ -670,7 +670,7 @@ export default function TaskList() {
                     width: '100%', height: 40, padding: '0 10px', gap: 10,
                     justifyContent: 'flex-start', borderRadius: 9,
                     background: opener.id === selectedOpener ? 'var(--surface)' : 'transparent',
-                    color: 'var(--fg)', fontSize: 14,
+                    color: 'var(--fg)', fontSize: 13,
                   }}
                 >
                   <OpenerIcon id={opener.id} />
@@ -699,7 +699,7 @@ export default function TaskList() {
             <path d="M10 12h4"/>
           </svg>
           正在查看归档任务
-          <span style={{ marginLeft: 'auto', fontSize: 12 }}>
+          <span style={{ marginLeft: 'auto', fontSize: 13 }}>
             {visibleTasks.length} 个任务
           </span>
         </div>
@@ -719,7 +719,7 @@ export default function TaskList() {
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 12, opacity: 0.5 }}>
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              <div style={{ fontSize: 14 }}>请在左侧选择一个项目</div>
+              <div style={{ fontSize: 13 }}>请在左侧选择一个项目</div>
             </div>
           </div>
         )}
@@ -729,10 +729,10 @@ export default function TaskList() {
           return (
             <div key={lane.key} style={laneStyle}>
               <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
                   {lane.label}
-                  <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
+                  <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
                 {!showArchived && (
                   <button
@@ -812,7 +812,7 @@ export default function TaskList() {
                             title={`上次进程中断后已自动恢复续跑（累计 ${t.recovered_count} 次）`}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 4,
-                              fontSize: 10, fontWeight: 600, padding: '2px 7px',
+                              fontSize: 11, fontWeight: 600, padding: '2px 7px',
                               borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
                               color: 'var(--accent)',
                               background: 'color-mix(in oklab, var(--accent), transparent 88%)',
@@ -824,7 +824,7 @@ export default function TaskList() {
                         )}
                       </div>
                       {t.description && (
-                        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{t.description}</div>
+                        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{t.description}</div>
                       )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <span style={{
@@ -908,7 +908,7 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <span style={{ fontWeight: 600, fontSize: 14 }}>新建{createLane?.label || '需求'}任务</span>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>新建{createLane?.label || '需求'}任务</span>
           <button className="btn-icon" onClick={closeNewPanel} aria-label="关闭">✕</button>
         </div>
         {/* ── Tab bar ── */}
@@ -943,14 +943,14 @@ export default function TaskList() {
               marginBottom: 10, padding: '11px 12px', borderRadius: 8,
               background: `color-mix(in oklab, ${createLane?.color || 'var(--accent)'}, transparent 91%)`,
               borderLeft: `3px solid ${createLane?.color || 'var(--accent)'}`,
-              color: 'var(--fg-2)', fontSize: 12, lineHeight: 1.55,
+              color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.55,
             }}>
               此任务将直接从“{createLane?.label}”阶段开始。
               之前的 {lanes.slice(0, createLaneIndex).map((lane) => `“${lane.label}”`).join('、')}
               阶段会标记为已跳过，不读取这些阶段的输出物。
             </div>
           )}
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}>任务标题</label>
+          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)' }}>任务标题</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <input
               value={newTitle}
@@ -961,7 +961,7 @@ export default function TaskList() {
             />
             <label
               title={`当前任务在“${createLane?.label || '当前阶段'}”创建后自动开始`}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
             >
               <input
                 type="checkbox"
@@ -972,7 +972,7 @@ export default function TaskList() {
               自动开始
             </label>
           </div>
-          <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
+          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
           <MarkdownEditor
             value={newDesc}
             onChange={setNewDesc}
@@ -1010,7 +1010,7 @@ export default function TaskList() {
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, fontWeight: 600, color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}>{label}</span>
                       {isUpstream && (
-                        <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 5px', borderRadius: 3, lineHeight: '18px' }}>已跳过</span>
+                        <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', padding: '0 5px', borderRadius: 3, lineHeight: '18px' }}>已跳过</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1061,7 +1061,7 @@ export default function TaskList() {
 
         {/* ── Error & Footer ── */}
         {createError && (
-          <div style={{ padding: '8px 16px 0', fontSize: 12, color: 'var(--danger)' }}>{createError}</div>
+          <div style={{ padding: '8px 16px 0', fontSize: 13, color: 'var(--danger)' }}>{createError}</div>
         )}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn-ghost" onClick={closeNewPanel}>取消</button>
@@ -1159,7 +1159,7 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
             编辑记忆
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
           </span>
@@ -1167,7 +1167,7 @@ export default function TaskList() {
         </div>
         {memoryError && (
           <div style={{
-            padding: '8px 16px', fontSize: 12, color: 'var(--danger)',
+            padding: '8px 16px', fontSize: 13, color: 'var(--danger)',
             background: 'color-mix(in oklab, var(--danger), transparent 90%)',
           }}>
             {memoryError}
@@ -1187,7 +1187,7 @@ export default function TaskList() {
         </div>
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
           {memoryNotice && (
-            <span style={{ color: 'var(--success)', fontSize: 12, marginRight: 'auto' }} role="status">
+            <span style={{ color: 'var(--success)', fontSize: 13, marginRight: 'auto' }} role="status">
               {memoryNotice}
             </span>
           )}

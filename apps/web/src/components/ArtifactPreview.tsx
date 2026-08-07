@@ -140,7 +140,7 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--meta)' }}>
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
           {content_type} | {(content.length / 1024).toFixed(2)} KB
         </div>
       </div>
@@ -168,7 +168,7 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
             {content}
           </pre>
         </div>
-        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--meta)' }}>
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
           {content_type} | {(content.length / 1024).toFixed(2)} KB
         </div>
       </div>
@@ -196,7 +196,7 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
           {content}
         </pre>
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--meta)' }}>
+      <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
         {content_type} | {(content.length / 1024).toFixed(2)} KB
       </div>
     </div>

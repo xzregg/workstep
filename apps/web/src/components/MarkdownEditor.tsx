@@ -92,11 +92,11 @@ export default function MarkdownEditor({
         <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
           <button
             onClick={() => setMode('edit')}
-            style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: mode === 'edit' ? 'var(--accent)' : 'transparent', color: mode === 'edit' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'edit' ? 'var(--accent)' : 'transparent', color: mode === 'edit' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
           >编辑</button>
           <button
             onClick={() => setMode('preview')}
-            style={{ padding: '3px 10px', fontSize: 12, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
           >预览</button>
         </div>
         <button
@@ -104,7 +104,7 @@ export default function MarkdownEditor({
           onClick={() => imgInputRef.current?.click()}
           disabled={!projectId}
           title={projectId ? undefined : '需先选择项目'}
-          style={{ fontSize: 12, padding: '3px 8px', gap: 4, opacity: projectId ? 1 : 0.45, cursor: projectId ? 'pointer' : 'not-allowed' }}
+          style={{ fontSize: 13, padding: '3px 8px', gap: 4, opacity: projectId ? 1 : 0.45, cursor: projectId ? 'pointer' : 'not-allowed' }}
         >
           🖼 图片
         </button>

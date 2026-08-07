@@ -57,7 +57,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
         />
         <span
           onMouseDown={(e) => { e.preventDefault(); toggle() }}
-          style={{ cursor: 'pointer', padding: '0 4px', fontSize: 10, color: 'var(--meta)', userSelect: 'none', lineHeight: 1 }}
+          style={{ cursor: 'pointer', padding: '0 4px', fontSize: 11, color: 'var(--meta)', userSelect: 'none', lineHeight: 1 }}
         >▼</span>
       </div>
       {open && (
@@ -72,7 +72,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
               key={opt}
               onMouseDown={(e) => { e.preventDefault(); commit(opt) }}
               style={{
-                padding: '4px 8px', fontSize: 12, cursor: 'pointer',
+                padding: '4px 8px', fontSize: 13, cursor: 'pointer',
                 background: opt === value ? 'var(--accent-light, #e6f0ff)' : undefined,
               }}
             >

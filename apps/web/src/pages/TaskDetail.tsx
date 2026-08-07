@@ -79,7 +79,7 @@ function StageStopButton({
       aria-label="停止当前阶段执行"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: '2px 8px', borderRadius: 999, fontSize: 10,
+        padding: '2px 8px', borderRadius: 999, fontSize: 11,
         border: '1px solid rgba(217,45,32,0.4)',
         background: 'transparent', color: '#d92d20',
         cursor: 'pointer', whiteSpace: 'nowrap',
@@ -156,8 +156,8 @@ function CoordinatorProposalCard({
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 12, fontWeight: 700 }}>协调动作 · {current.type}</div>
-      <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>协调动作 · {current.type}</div>
+      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
         {current.impact?.summary || `目标阶段：${current.target_step_key || '无'}`}
       </div>
       <div style={{ fontSize: 11, color: current.status === 'failed' ? 'var(--danger)' : 'var(--meta)' }}>
@@ -1482,7 +1482,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <button className="btn-icon" onClick={onClose}>←</button>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
+            <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
             <button
               type="button"
               className="btn-ghost"
@@ -1495,7 +1495,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 window.setTimeout(() => setTaskIdCopied(false), 1500)
               }}
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 10,
+                fontFamily: 'var(--font-mono)', fontSize: 11,
                 color: taskIdCopied ? 'var(--success)' : 'var(--meta)',
                 minHeight: 22, padding: '0 5px', marginLeft: 'auto', order: 99,
               }}
@@ -1519,7 +1519,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               {STATUS_LABELS[taskCompleted ? 'done' : task.status] || task.status}
             </span>
 
-            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 22, fontSize: 12, lineHeight: 1, color: 'var(--meta)' }}>{time}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 22, fontSize: 13, lineHeight: 1, color: 'var(--meta)' }}>{time}</span>
           </div>
         </div>
       </div>
@@ -1530,7 +1530,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           role="status"
           style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 16px', fontSize: 12, lineHeight: 1.4,
+            padding: '8px 16px', fontSize: 13, lineHeight: 1.4,
             color: 'var(--accent)',
             background: 'color-mix(in oklab, var(--accent), transparent 92%)',
             borderBottom: '1px solid var(--border-soft)',
@@ -1567,8 +1567,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               marginBottom: 8,
             }}>
               <div style={{
-                fontSize: 13, fontWeight: 600, color: 'var(--muted)',
-                textTransform: 'uppercase', letterSpacing: '0.5px',
+                fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase', letterSpacing: '0.08em',
               }}>
                 任务说明
               </div>
@@ -1640,7 +1640,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           {/* Progress timeline */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>进度</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>进度</div>
               {(task?.run_round ?? 1) > 1 && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, color: 'var(--accent)', background: 'color-mix(in oklab, var(--accent), transparent 90%)' }}>
                   第 {task?.run_round} 轮执行
@@ -1734,7 +1734,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       border: `2px solid ${stateColor}`,
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontSize: 12, fontWeight: 700,
+                      color: '#fff', fontSize: 13, fontWeight: 700,
                       boxShadow: isSelected
                         ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
                         : 'none',
@@ -1755,7 +1755,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     </span>
                     {visualState !== 'pending' && (
                       <span style={{
-                        fontSize: 10, marginTop: 4, padding: '2px 6px',
+                        fontSize: 11, marginTop: 4, padding: '2px 6px',
                         borderRadius: 999,
                         color: stateColor,
                         background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
@@ -1766,7 +1766,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     )}
                     {currentRound > 1 && (
                       <span style={{
-                        fontSize: 10, marginTop: 4, padding: '2px 6px',
+                        fontSize: 11, marginTop: 4, padding: '2px 6px',
                         borderRadius: 999,
                         color: stageRoundColor,
                         background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
@@ -1804,11 +1804,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           <div>
              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 ,color: `${currentStageColor}`}}> {currentStage.label} </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>阶段提示词</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>阶段提示词</div>
               <button
                 className="btn-ghost"
                 onClick={openPromptEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 12, gap: 4 }}
+                style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
               >
                 <span aria-hidden="true">✎</span>
                 快速编辑
@@ -1823,12 +1823,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
           {/* I/O section — matching card-detail.html layout */}
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
               阶段输入输出
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ color: 'var(--meta)' }}>→</span> 输入
                 </div>
                 {(() => {
@@ -1885,11 +1885,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             >
                               <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
                               <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusDone ? 'var(--success)' : currentStageColor, flexShrink: 0 }} />
-                              <span style={{ fontSize: 12, flex: 1 }}>{out.name}</span>
-                              <span style={{ fontSize: 10, color: currentStageColor }}>打开</span>
-                              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
+                              <span style={{ fontSize: 13, flex: 1 }}>{out.name}</span>
+                              <span style={{ fontSize: 11, color: currentStageColor }}>打开</span>
+                              <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
                               <span style={{
-                                fontSize: 9, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
+                                fontSize: 11, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
                                 background: statusDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
                                 color: statusDone ? 'var(--success)' : 'var(--meta)',
                                 border: statusDone ? 'none' : '1px solid var(--border-soft)',
@@ -1897,8 +1897,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                 {statusDone ? '完成' : '待生成'}
                               </span>
                               {nextInput && (
-                                <span style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <span style={{ color: 'var(--meta)', fontSize: 9 }}>→</span> {nextStage?.label}: {nextInput.name}
+                                <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <span style={{ color: 'var(--meta)', fontSize: 11 }}>→</span> {nextStage?.label}: {nextInput.name}
                                 </span>
                               )}
                             </div>
@@ -1914,7 +1914,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
           {selectedReview && (
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
                 审核结果
               </div>
               <div style={{
@@ -1944,7 +1944,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 </div>
                 {selectedReview.report && (
                   <>
-                    <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 13, lineHeight: 1.6 }}>
                       {selectedReview.report.score !== null && (
                         <strong>{selectedReview.report.score} 分 · </strong>
                       )}
@@ -2013,14 +2013,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, width: '100%',
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--muted)', fontSize: 13, fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.5px',
-                padding: '0', fontFamily: 'var(--font-body)',
+                color: 'var(--muted)', fontSize: 11, fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                padding: '0', fontFamily: 'var(--font-mono)',
               }}
             >
               <span style={{
                 transform: showReviewDrawer ? 'rotate(90deg)' : 'none',
-                transition: 'transform 150ms', display: 'inline-block', fontSize: 10,
+                transition: 'transform 150ms', display: 'inline-block', fontSize: 11,
               }}>&#9654;</span>
               阶段审核配置
             </button>
@@ -2035,9 +2035,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     <input type="checkbox" checked={editReviewAuto} onChange={(e) => setEditReviewAuto(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 14, height: 14, margin: 0 }} />
                     自动审核
                   </label>
-                  <span style={{ fontSize: 12, color: 'var(--meta)' }}>重试</span>
+                  <span style={{ fontSize: 13, color: 'var(--meta)' }}>重试</span>
                   <input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
-                    style={{ width: 40, height: 22, fontSize: 12, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
+                    style={{ width: 40, height: 22, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
                 </div>
                 <MarkdownEditor
                   value={editReviewPrompt}
@@ -2084,7 +2084,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
           {/* Chat header */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: currentStageColor, background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`, padding: '2px 8px', borderRadius: 4 }}>
               {currentStage.label}
             </span>
@@ -2197,7 +2197,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                     ? '执行中插入的消息，引擎对此二次处理'
                                     : '阶段初始输入，进入阶段执行上下文'}
                                 style={{
-                                  padding: '1px 6px', borderRadius: 999, fontSize: 10,
+                                  padding: '1px 6px', borderRadius: 999, fontSize: 11,
                                   border: isLiveInsert ? 'none' : '1px solid var(--border-soft)',
                                   background: isCoordinator
                                     ? 'rgba(124,58,237,0.08)'
@@ -2463,10 +2463,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}>
                 <div
                   title={`发送后实时注入「${activeStage.label}」阶段执行`}
-                  style={{ fontSize: 10, fontWeight: 600, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}
+                  style={{ fontSize: 11, fontWeight: 600, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
                   插入消息
-                  <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>
                     {stageInserts.length} 条
                   </span>
                 </div>
@@ -2508,7 +2508,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           <line x1="2" y1="12" x2="10" y2="12"/>
                         </svg>
                         <div style={{
-                          flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.4,
+                          flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4,
                           color: 'var(--fg)',
                           whiteSpace: 'nowrap', overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -2708,7 +2708,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
             {chatError && (
               <div role="alert" style={{
-                fontSize: 12, color: '#d92d20', padding: '6px 10px',
+                fontSize: 13, color: '#d92d20', padding: '6px 10px',
                 borderRadius: 6, border: '1px solid rgba(217,45,32,0.25)',
                 background: 'rgba(217,45,32,0.06)',
               }}>
@@ -2813,10 +2813,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             onClick={(event) => event.stopPropagation()}
           >
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <strong style={{ flex: 1, fontSize: 15 }}>完整提示词</strong>
+              <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
               <button type="button" className="btn-icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</button>
             </div>
-            <div style={{ padding: 18, overflow: 'auto', fontSize: 12, lineHeight: 1.65 }}>
+            <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />
             </div>
           </div>
@@ -2847,7 +2847,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>快速编辑阶段提示词</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>快速编辑阶段提示词</div>
                 <div style={{ marginTop: 2, fontSize: 11, color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
               </div>
               <button className="btn-icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</button>
@@ -2864,7 +2864,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 ariaLabel={`${currentStage.label}阶段提示词`}
               />
               {promptSaveError && (
-                <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 12 }}>
+                <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 13 }}>
                   {promptSaveError}
                 </div>
               )}
@@ -2901,7 +2901,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           >
             <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
                   {previewArtifact.logical_name || previewArtifact.name}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--meta)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

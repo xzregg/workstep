@@ -220,14 +220,14 @@ function CoordinatorAgentSettings() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>协调 Agent</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>协调 Agent</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
           配置任务协调对话的全局默认引擎、推理模型、快速模型和图片理解模型。任务详情中的单独配置优先级更高。
         </p>
       </div>
       <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             协调引擎
           </label>
           <EngineSelect
@@ -242,7 +242,7 @@ function CoordinatorAgentSettings() {
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             推理模型
           </label>
           <select
@@ -253,7 +253,7 @@ function CoordinatorAgentSettings() {
             style={{
               flex: 1, minWidth: 0, height: 30,
               border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -278,7 +278,7 @@ function CoordinatorAgentSettings() {
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             快速模型
           </label>
           <select
@@ -289,7 +289,7 @@ function CoordinatorAgentSettings() {
             style={{
               flex: 1, minWidth: 0, height: 30,
               border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -304,7 +304,7 @@ function CoordinatorAgentSettings() {
           </select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             图片理解模型
           </label>
           <select
@@ -315,7 +315,7 @@ function CoordinatorAgentSettings() {
             style={{
               flex: 1, minWidth: 0, height: 30,
               border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -329,7 +329,7 @@ function CoordinatorAgentSettings() {
             ))}
           </select>
         </div>
-        <div style={{ marginBottom: 12, fontSize: 10, color: 'var(--meta)' }}>
+        <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--meta)' }}>
           推理模型负责理解、决策与回复；快速模型负责读取产物和修复结构化输出；图片理解模型在主模型不支持图片输入时，用于分析图片和截图内容。
         </div>
         {modelError && (
@@ -633,7 +633,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       }}>
         <div style={{
           padding: '0 10px 8px', color: 'var(--meta)',
-          fontSize: 10, fontWeight: 600, letterSpacing: '0.4px',
+          fontSize: 11, fontWeight: 600, letterSpacing: '0.4px',
         }}>
           设置
         </div>
@@ -644,7 +644,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             width: '100%', height: 38, padding: '0 11px',
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'engines' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 12, fontWeight: 600,
+            color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -660,7 +660,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'coordinator' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'coordinator' ? 'var(--fg)' : 'var(--muted)', fontSize: 12, fontWeight: 600,
+            color: activeSection === 'coordinator' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
           <span aria-hidden="true" style={{ fontSize: 16 }}>✦</span>
@@ -673,7 +673,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'templates' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 12, fontWeight: 600,
+            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -691,7 +691,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
-              <h1 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>执行引擎</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>执行引擎</h1>
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>
                 配置 WorkStep 内置引擎，并扫描本机可用的 CLI 与 ACP 执行引擎。
               </p>
@@ -710,7 +710,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginBottom: 8,
           }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>
               执行引擎配置
               {!loading && <span style={{ marginLeft: 6, color: 'var(--meta)', fontWeight: 400 }}>({installedCount}/{sortedEngines.length})</span>}
             </span>
@@ -723,7 +723,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             <div role="alert" style={{
               padding: '10px 12px', marginBottom: 12, borderRadius: 8,
               background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-              color: 'var(--danger)', fontSize: 12,
+              color: 'var(--danger)', fontSize: 13,
             }}>
               扫描失败：{error}
             </div>
@@ -775,7 +775,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         <span style={{
                           padding: '1px 6px', borderRadius: 999,
                           background: 'var(--surface)', color: 'var(--muted)',
-                          fontSize: 10, textTransform: 'uppercase',
+                          fontSize: 11, textTransform: 'uppercase',
                         }}>
                           {engine.mode}
                         </span>
@@ -819,7 +819,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   )}
                   <span style={{
                     minWidth: 60, textAlign: 'center', padding: '3px 8px',
-                    borderRadius: 999, fontSize: 10, fontWeight: 600,
+                    borderRadius: 999, fontSize: 11, fontWeight: 600,
                     color: engine.verified
                       ? 'var(--success)'
                       : engine.installed ? 'var(--warn)' : 'var(--meta)',
@@ -873,7 +873,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             flex: 1, minWidth: 0, height: 28,
                             border: '1px solid var(--border)', borderRadius: 7,
                             background: 'var(--bg)', color: 'var(--fg)',
-                            padding: '0 8px', fontSize: 12,
+                            padding: '0 8px', fontSize: 13,
                           }}
                         >
                           <option value="">
@@ -885,7 +885,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           <option value="__custom__">自定义…</option>
                         </select>
                         {savingModel === engine.id && (
-                          <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 10 }}>
+                          <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
                             保存中…
                           </span>
                         )}
@@ -901,7 +901,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       </div>
                       {modelErrors[engine.id] && (
                         <div style={{
-                          marginTop: 4, color: 'var(--meta)', fontSize: 10,
+                          marginTop: 4, color: 'var(--meta)', fontSize: 11,
                         }}>
                           {modelErrors[engine.id]}，可填写自定义模型 ID。
                         </div>
@@ -937,7 +937,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                               flex: 1, minWidth: 0, height: 28,
                               border: '1px solid var(--border)', borderRadius: 7,
                               background: 'var(--bg)', color: 'var(--fg)',
-                              padding: '0 8px', fontSize: 12,
+                              padding: '0 8px', fontSize: 13,
                             }}
                           />
                         </div>
@@ -949,7 +949,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       padding: '10px 14px 12px', borderTop: '1px solid var(--border-soft)',
                       background: 'var(--surface)', borderRadius: '0 0 12px 12px',
                     }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 7 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
                         可执行文件路径
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -962,7 +962,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             flex: 1, minWidth: 0, height: 30,
                             border: `1px solid ${pathError ? 'var(--danger)' : 'var(--border)'}`,
                             borderRadius: 7, background: 'var(--bg)', color: 'var(--fg)',
-                            padding: '0 9px', fontSize: 12,
+                            padding: '0 9px', fontSize: 13,
                           }}
                         />
                         <button
@@ -981,7 +981,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         </button>
                       </div>
                       <div style={{
-                        marginTop: 6, fontSize: 10,
+                        marginTop: 6, fontSize: 11,
                         color: pathError ? 'var(--danger)' : 'var(--meta)',
                       }}>
                         {pathError || '清空路径并保存，可恢复为系统 PATH 自动发现。'}

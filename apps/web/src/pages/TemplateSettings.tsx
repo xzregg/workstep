@@ -158,10 +158,10 @@ export default function TemplateSettings() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>流程模板</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>流程模板</h1>
           <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-            流程模板统一存放在 <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>~/.workstep/data/templates/</code> 
-            默认模板（<code style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>default: true</code>）不可删除，自建模板可删除。
+            流程模板统一存放在 <code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>~/.workstep/data/templates/</code> 
+            默认模板（<code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>default: true</code>）不可删除，自建模板可删除。
           </p>
         </div>
         <button className="btn-primary" onClick={() => { setCreateOpen(true); setCreateError('') }}>
@@ -170,7 +170,7 @@ export default function TemplateSettings() {
       </div>
 
       {error && (
-        <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--danger)' }}>{error}</div>
+        <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--danger)' }}>{error}</div>
       )}
 
       {loading ? (
@@ -186,9 +186,9 @@ export default function TemplateSettings() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
                   <span style={{
-                    fontSize: 10, padding: '1px 7px', borderRadius: 99, flexShrink: 0,
+                    fontSize: 11, padding: '1px 7px', borderRadius: 99, flexShrink: 0,
                     background: t.custom
                       ? (t.default
                         ? 'color-mix(in oklab, var(--success), transparent 90%)'
@@ -201,17 +201,17 @@ export default function TemplateSettings() {
                   </span>
                 </div>
                 {t.description && (
-                  <div style={{ fontSize: 12, color: 'var(--meta)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 13, color: 'var(--meta)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {t.description}
                   </div>
                 )}
               </div>
               <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount} 步</span>
-              <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => void openEditor(t)}>
+              <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(t)}>
                 编辑
               </button>
               {t.custom && !t.default && (
-                <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 12, color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
+                <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
                   删除
                 </button>
               )}
@@ -251,7 +251,7 @@ export default function TemplateSettings() {
                 placeholder="简短描述该模板的用途"
                 style={{ width: '100%', height: 36, boxSizing: 'border-box' }}
               />
-              {createError && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{createError}</p>}
+              {createError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{createError}</p>}
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setCreateOpen(false)}>取消</button>
@@ -280,7 +280,7 @@ export default function TemplateSettings() {
             >
               ← 返回
             </button>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
               模板元信息
             </span>
             {editing.default ? (
@@ -295,27 +295,27 @@ export default function TemplateSettings() {
               placeholder="标识（英数_-，≤64）"
               title="模板标识"
               spellCheck={false}
-              style={{ width: 150, height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 150, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
             />
             <input
               value={meta.name}
               onChange={(e) => { setMeta({ ...meta, name: e.target.value }); setMetaDirty(true) }}
               placeholder="模板名称"
               title="模板名称"
-              style={{ width: 170, height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 170, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
             />
             <input
               value={meta.description}
               onChange={(e) => { setMeta({ ...meta, description: e.target.value }); setMetaDirty(true) }}
               placeholder="模板描述（可选）"
               title="模板描述"
-              style={{ width: 220, height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 220, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
             />
             {metaDirty && <span style={{ color: '#856404', fontSize: 11, whiteSpace: 'nowrap' }}>⚠ 元信息未保存</span>}
           </div>
           {metaError && (
             <div style={{
-              padding: '6px 14px', fontSize: 12, color: 'var(--danger)', flexShrink: 0,
+              padding: '6px 14px', fontSize: 13, color: 'var(--danger)', flexShrink: 0,
               background: 'color-mix(in oklab, var(--danger), transparent 92%)',
               borderBottom: '1px solid var(--border-soft)',
             }}>

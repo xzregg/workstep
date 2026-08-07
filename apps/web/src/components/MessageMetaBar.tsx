@@ -96,7 +96,7 @@ export default function MessageMetaBar({
             display: 'inline-flex', alignItems: 'center', gap: 4,
             height: 18, padding: '0 7px', borderRadius: 9,
             background: 'color-mix(in oklab, var(--meta), transparent 88%)',
-            color: 'var(--meta)', fontSize: 10, flexShrink: 0,
+            color: 'var(--meta)', fontSize: 11, flexShrink: 0,
             whiteSpace: 'nowrap',
           }}
         >
@@ -118,7 +118,7 @@ export default function MessageMetaBar({
               aria-label="复制会话 ID"
               onClick={() => void copySessionId()}
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 10,
+                fontFamily: 'var(--font-mono)', fontSize: 11,
                 color: sessionCopied ? 'var(--success)' : 'var(--meta)',
                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
               }}

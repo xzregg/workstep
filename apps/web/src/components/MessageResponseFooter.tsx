@@ -122,7 +122,7 @@ export default function MessageResponseFooter({
   return (
     <div style={{
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--meta)', fontSize: 10,
+      color: 'var(--meta)', fontSize: 11,
     }}>
       <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         {usageSummary}
@@ -153,7 +153,7 @@ export default function MessageResponseFooter({
             : copyState === 'copied'
               ? 'var(--success)'
               : 'var(--muted)',
-          fontSize: 10,
+          fontSize: 11,
         }}
       >
         {copyState === 'copied' ? (

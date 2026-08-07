@@ -25,10 +25,11 @@ const sidebarStyle: React.CSSProperties = {
 
 const sectionLabel: React.CSSProperties = {
   padding: '14px 14px 6px',
-  fontSize: 12, fontWeight: 600,
-  color: 'var(--meta)',
+  fontSize: 11, fontWeight: 600,
+  color: 'var(--muted)',
+  fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
+  letterSpacing: '0.08em',
   display: 'flex', alignItems: 'center',
   justifyContent: 'space-between',
 }
@@ -36,7 +37,7 @@ const sectionLabel: React.CSSProperties = {
 const projectItemStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 14,
+  cursor: 'pointer', fontSize: 13,
   color: active ? 'var(--fg)' : 'var(--fg-2)',
   background: active ? 'var(--surface)' : 'transparent',
   fontWeight: active ? 500 : 400,
@@ -51,7 +52,7 @@ const addButtonStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-sm)',
   textAlign: 'center' as const,
   cursor: 'pointer', color: 'var(--meta)',
-  fontSize: 12, background: 'transparent',
+  fontSize: 13, background: 'transparent',
   width: 'calc(100% - 24px)',
   fontFamily: 'var(--font-body)',
 }
@@ -317,7 +318,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Sidebar */}
       <aside style={sidebarStyle}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-display)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
@@ -387,7 +388,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <button
                   onClick={(e) => { e.stopPropagation(); openAddWorkflow(p.id) }}
                   title="添加工作流"
-                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: 0.7 }}
+                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: 0.7 }}
                 >+</button>
               </div>
 
@@ -421,7 +422,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       style={{
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 12,
+                        fontSize: 13,
                         color: deleted ? 'var(--meta)' : (activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
                         background: activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent-light, #e6f0ff)' : 'transparent',
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
@@ -449,7 +450,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameWfId(null)
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 20, fontSize: 12, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                          style={{ flex: 1, height: 20, fontSize: 13, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                         />
                       ) : (
                         <span
@@ -460,9 +461,9 @@ export default function Layout({ onSelectProject, children }: Props) {
                       {wf.running && !deleted && (
                         <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0 }} title="流程执行中" aria-hidden="true" />
                       )}
-                      {deleted && <span style={{ fontSize: 10, color: 'var(--danger)', opacity: 0.8 }}>回收站</span>}
-                      {wf.is_default ? <span style={{ fontSize: 10, opacity: 0.6 }}>默认</span> : null}
-                      <span style={{ fontSize: 10, opacity: 0.5 }}>{wf.nodeCount}步</span>
+                      {deleted && <span style={{ fontSize: 11, color: 'var(--danger)', opacity: 0.8 }}>回收站</span>}
+                      {wf.is_default ? <span style={{ fontSize: 11, opacity: 0.6 }}>默认</span> : null}
+                      <span style={{ fontSize: 11, opacity: 0.5 }}>{wf.nodeCount}步</span>
                       {deleted && (
                         <button
                           onClick={(e) => {
@@ -470,7 +471,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             restoreWorkflow(wf.id, p.id)
                           }}
                           title="恢复流程"
-                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', cursor: 'pointer', fontSize: 12, lineHeight: '14px', padding: 0 }}
+                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', cursor: 'pointer', fontSize: 13, lineHeight: '14px', padding: 0 }}
                         >↩</button>
                       )}
                       {!wf.is_default && (deleted || activeCount > 1) && (
@@ -560,7 +561,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleInit()}
               />
-              {error && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{error}</p>}
+              {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>取消</button>
@@ -595,7 +596,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               display: 'flex', gap: 14, alignItems: 'flex-start',
             }}>
               <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
                   流程名称 <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input
@@ -608,7 +609,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   style={{ border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}` }}
                 />
                 {/* Fixed-height hint area: keeps the form layout stable, no layout shift. */}
-                <div style={{ minHeight: 18, fontSize: 12, lineHeight: 1.5, color: 'var(--danger)', marginTop: 4 }}>
+                <div style={{ minHeight: 18, fontSize: 13, lineHeight: 1.5, color: 'var(--danger)', marginTop: 4 }}>
                   {hasWhitespace(newWfName)
                     ? '名称不能包含空白字符（空格、Tab 等）'
                     : addWfNameAttempted && !newWfName.trim()
@@ -617,7 +618,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 </div>
               </div>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>流程模板</label>
+                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>流程模板</label>
                 <select
                   value={addWfTemplateId}
                   onChange={(e) => void handleTemplateChange(e.target.value)}
@@ -631,16 +632,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                 {(() => {
                   const selected = templates.find((t) => t.id === addWfTemplateId)
                   return selected?.description ? (
-                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
+                    <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
                   ) : (
-                    <p style={{ fontSize: 12, color: 'var(--meta)', marginTop: 4 }}>也可在右侧让 AI 根据目标生成流程</p>
+                    <p style={{ fontSize: 13, color: 'var(--meta)', marginTop: 4 }}>也可在右侧让 AI 根据目标生成流程</p>
                   )
                 })()}
               </div>
             </div>
             {addWfError && (
               <div style={{
-                flexShrink: 0, padding: '5px 18px', fontSize: 12, color: 'var(--danger)',
+                flexShrink: 0, padding: '5px 18px', fontSize: 13, color: 'var(--danger)',
                 background: 'color-mix(in oklab, var(--danger), transparent 94%)',
                 borderBottom: '1px solid var(--border-soft)',
               }}>{addWfError}</div>

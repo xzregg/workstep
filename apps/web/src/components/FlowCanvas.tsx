@@ -317,11 +317,11 @@ function StepNode({ data }: { data: StepNodeData }) {
 
       {/* Header */}
       <div style={{ height: HEADER_H, padding: '0 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
+        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
           {data.label.charAt(0)}
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{data.label}</span>
-        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{data.engine}</span>
+        <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{data.engine}</span>
       </div>
 
       {hasPrompt && (
@@ -339,17 +339,17 @@ function StepNode({ data }: { data: StepNodeData }) {
             <div style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.name}</span>
-              <span style={{ fontSize: 10, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
+              <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
             </div>
             {/* Sub-output rows */}
             {inp.outputs.map((sub, j) => {
               let subTop = labelTop + PORT_ROW_H
               for (let k = 0; k < j; k++) subTop += SUB_ROW_H
               return (
-                <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--meta)' }}>
+                <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--meta)' }}>
                   <span>↳</span>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
-                  <span style={{ fontSize: 9, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
+                  <span style={{ fontSize: 11, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
                 </div>
               )
@@ -367,8 +367,8 @@ const nodeTypes: NodeTypes = { step: StepNode }
    Section title style
    ══════════════════════════════════════════ */
 const sectionTitle: React.CSSProperties = {
-  fontSize: 12, fontWeight: 600, color: 'var(--muted)',
-  textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8,
+  fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
+  textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
 }
 
 /* ══════════════════════════════════════════
@@ -406,9 +406,9 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 12 }} />
-              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder="类型" style={{ width: 80, height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4 }} />
-              <button className="btn-icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 14 }}>×</button>
+              <input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 13 }} />
+              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder="类型" style={{ width: 80, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }} />
+              <button className="btn-icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 13 }}>×</button>
             </div>
             {/* Sub-outputs */}
             {inp.outputs.map((sub, j) => (
@@ -416,7 +416,7 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
                 <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
                 <input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
                 <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder="类型" style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
-                <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 12 }}>×</button>
+                <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 13 }}>×</button>
               </div>
             ))}
             <button onClick={() => addSubOutput(i)} style={{ fontSize: 11, color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
@@ -424,7 +424,7 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
             </button>
           </div>
         ))}
-        <button onClick={addInput} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+        <button onClick={addInput} style={{ fontSize: 13, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
           + 添加输入
         </button>
       </div>
@@ -569,16 +569,16 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           <div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
             {draft.label.charAt(0)}
           </div>
-          <span style={{ fontSize: 15, fontWeight: 600 }}>{draft.label}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{draft.label}</span>
           <button onClick={onRequestDelete}
-            style={{ fontSize: 12, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
+            style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
             删除
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             className="btn-primary"
-            style={{ fontSize: 12, padding: '4px 12px' }}
+            style={{ fontSize: 13, padding: '4px 12px' }}
             disabled={Boolean(keyError)}
             onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
@@ -593,11 +593,11 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
               <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
             </div>
             <div style={{ width: 116 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
               <div style={{ display: 'flex', gap: 5 }}>
                 <input
                   type="color"
@@ -619,7 +619,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           </div>
           <div>
-            <label htmlFor="step-type" style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+            <label htmlFor="step-type" style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
               阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -633,7 +633,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 style={{ flex: 1, ...(keyError ? { borderColor: 'var(--danger)' } : {}) }}
                 placeholder="如 frontend"
               />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
                 type="checkbox"
                 checked={Boolean(draft.autoStart)}
@@ -655,7 +655,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
             <MarkdownEditor
               value={draft.prompt}
               onChange={(v) => updateDraft('prompt', v)}
@@ -667,7 +667,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
               <EngineSelect
                 engines={engines}
                 value={draft.engine}
@@ -680,7 +680,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 style={{ height: 32 }}
               />
               <div style={{
-                marginTop: 4, fontSize: 10, lineHeight: 1.4,
+                marginTop: 4, fontSize: 11, lineHeight: 1.4,
                 color: enginesError
                   ? 'var(--danger)'
                   : currentEngineSelectable
@@ -697,7 +697,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
               <select
                 value={draft.model}
                 disabled={stageModelsLoading}
@@ -735,7 +735,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               自动审核
             </label>
             {review.auto && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
                 <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
                 <input
                   type="number"
@@ -746,7 +746,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     'maxRetries',
                     Math.max(0, Number.parseInt(e.target.value || '0', 10)),
                   )}
-                  style={{ width: 48, height: 24, fontSize: 12, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }}
+                  style={{ width: 48, height: 24, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }}
                 />
               </div>
             )}
@@ -760,7 +760,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核引擎</label>
+                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核引擎</label>
                   <EngineSelect
                     engines={engines}
                     value={review.engine}
@@ -777,7 +777,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核模型</label>
+                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核模型</label>
                   <select
                     value={review.model}
                     disabled={reviewModelsLoading}
@@ -802,7 +802,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>审核要求</label>
+                <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核要求</label>
                 <MarkdownEditor
                   value={review.prompt}
                   onChange={(v) => updateReview('prompt', v)}
@@ -1276,11 +1276,11 @@ function FlowCanvasInner({
       {/* Toolbar */}
       <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
         {toolbarLeft}
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap' }}>{title}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{title}</span>
         {toolbarMid}
         <div style={{ flex: 1 }} />
         {dirty && <span style={{ color: '#856404', fontSize: 11, marginLeft: 12 }}>⚠ 有未保存的更改，请点击「保存」持久化</span>}
-         {hint && <span style={{ fontSize: 12, color: 'var(--meta)', marginRight: 10 }}>{hint}</span>}
+         {hint && <span style={{ fontSize: 13, color: 'var(--meta)', marginRight: 10 }}>{hint}</span>}
         {showTemplatePicker && <button className="btn-ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>流程模板</button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
@@ -1419,7 +1419,7 @@ function FlowCanvasInner({
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontWeight: 500 }}>{t.name}</span>
                     {t.description && (
-                      <span style={{ display: 'block', fontSize: 12, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</span>
+                      <span style={{ display: 'block', fontSize: 13, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</span>
                     )}
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount}步</span>
@@ -1472,7 +1472,7 @@ function FlowCanvasInner({
                 spellCheck={false}
                 style={{ width: '100%', height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
               />
-              {importError && <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 8 }}>{importError}</p>}
+              {importError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</p>}
             </div>
             <div className="modal-footer">
               <button className="btn-ghost" onClick={() => setShowImport(false)}>取消</button>

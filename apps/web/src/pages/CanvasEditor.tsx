@@ -92,7 +92,7 @@ function CanvasEditorInner() {
                   if (dirty) { setPendingWfId(id); return }
                   switchWorkflow(id)
                 }}
-                style={{ height: 28, fontSize: 12, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 6px', maxWidth: 160 }}
+                style={{ height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 6px', maxWidth: 160 }}
               >
                 {(activeProject?.workflows || []).map(wf => (
                   <option key={wf.id} value={wf.id}>{wf.name}{wf.is_default ? ' (默认)' : ''}</option>
@@ -103,7 +103,7 @@ function CanvasEditorInner() {
               className="btn-ghost"
               title="让 AI 根据目标生成或调整当前流程"
               onClick={() => { setAiPanelOpen(true); setAiConfirmClose(false) }}
-              style={{ height: 28, fontSize: 12, whiteSpace: 'nowrap' }}
+              style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
             >
               AI 编辑
             </button>

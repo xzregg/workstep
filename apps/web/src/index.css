@@ -1,14 +1,16 @@
 :root {
   --bg: #ffffff;
-  --surface: #f6f6f7;
+  --surface: #f5f5f7;
   --fg: #1d1d1f;
   --fg-2: #424245;
   --muted: #6e6e73;
   --meta: #86868b;
-  --border: #e5e5e7;
+  --border: #d2d2d7;
   --border-soft: #eeeef0;
   --accent: #0071e3;
   --accent-hover: #0077ed;
+  --accent-2: #6e6e73;
+  --accent-fg: #ffffff;
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
@@ -21,16 +23,50 @@
   --status-done: #16a34a;
   --status-failed: #dc2626;
 
-  --font-display: "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-body: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, monospace;
-  --radius-sm: 8px;
+  --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  /* Radius scale */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
   --radius-md: 12px;
-  --radius-pill: 980px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Type scale: 全站最多 5 档（按嵌套层级） */
+  --text-title-1: 20px;
+  --text-title-2: 16px;
+  --text-title-3: 14px;
+  --text-body: 13px;
+  --text-caption: 11px;
+
+  /* Text role aliases */
+  --text-primary: var(--fg);
+  --text-secondary: var(--fg-2);
+  --text-muted: var(--muted);
+  --text-tertiary: var(--meta);
+  --text-accent: var(--accent);
+  --text-on-accent: var(--accent-fg);
+
   --elev-raised: 0 12px 32px rgba(0,0,0,0.08);
+  --elev-overlay: 0 30px 80px rgba(0,0,0,0.06), 0 12px 30px rgba(0,0,0,0.04);
+  --ring: inset 0 0 0 1px var(--border);
   --focus-ring: 0 0 0 4px color-mix(in oklab, var(--accent), transparent 65%);
   --motion-fast: 150ms;
   --ease: cubic-bezier(0.28, 0, 0.22, 1);
+  --bp-mobile: 600px;
+  --bp-tablet: 920px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -58,7 +94,7 @@
 
 body {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--fg);
   background: var(--surface);
   line-height: 1.47;
@@ -342,7 +378,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .process-trace-count {
   color: var(--meta);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .process-trace-chevron {
@@ -383,7 +419,7 @@ details[open] > summary > .process-trace-chevron {
   max-height: 220px;
   overflow: auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -392,7 +428,7 @@ details[open] > summary > .process-trace-chevron {
 
 .process-trace-tool > summary {
   padding: 2px 6px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .process-trace-tool-detail {
@@ -403,7 +439,7 @@ details[open] > summary > .process-trace-chevron {
   max-width: calc(100% - 38px);
   margin: 2px 6px 8px 32px;
   color: var(--meta);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .process-trace-tool-detail pre {
@@ -417,7 +453,7 @@ details[open] > summary > .process-trace-chevron {
   background: var(--bg);
   color: var(--fg-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -428,7 +464,7 @@ details[open] > summary > .process-trace-chevron {
   border-radius: 3px;
   background: color-mix(in oklab, var(--danger), transparent 88%);
   color: var(--danger);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .process-trace-empty {
@@ -476,10 +512,10 @@ details[open] > summary > .process-trace-chevron {
   line-height: 1.3;
 }
 
-.markdown-message h1 { font-size: 18px; }
-.markdown-message h2 { font-size: 16px; }
-.markdown-message h3 { font-size: 14px; }
-.markdown-message h4 { font-size: 13px; }
+.markdown-message h1 { font-size: var(--text-title-1); }
+.markdown-message h2 { font-size: var(--text-title-2); }
+.markdown-message h3 { font-size: var(--text-title-3); }
+.markdown-message h4 { font-size: var(--text-body); }
 
 .markdown-message ul,
 .markdown-message ol {
@@ -768,7 +804,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   align-items: center;
   gap: 8px;
   width: 100%;
-  font-size: 12px;
+  font-size: 13px;
   padding: 7px 8px;
   border-radius: 8px;
   border: none;
@@ -856,8 +892,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   border-bottom: 1px solid var(--border-soft);
   display: flex; align-items: center; justify-content: space-between;
 }
-.modal-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.modal-title { font-family: var(--font-display); font-size: var(--text-title-3); font-weight: 600; }
 .modal-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
 .modal-footer { padding: 12px 18px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px; }
-.modal-body label { display: block; font-size: 12px; font-weight: 600; color: var(--fg-2); margin-bottom: 4px; margin-top: 10px; }
+.modal-body label { display: block; font-size: 13px; font-weight: 600; color: var(--fg-2); margin-bottom: 4px; margin-top: 10px; }
 .modal-body label:first-child { margin-top: 0; }
