@@ -83,10 +83,10 @@ function OpenerIcon({ id }: { id: string }) {
     vscode: { text: '⌁', bg: '#eaf6ff', color: '#168bd2' },
     sublime: { text: 'S', bg: '#333', color: '#ff9800' },
     file_manager: { text: '⌂', bg: '#eaf4ff', color: '#2684ff' },
-    terminal: { text: '>_', bg: '#454545', color: '#fff' },
+    terminal: { text: '>_', bg: '#454545', color: 'var(--accent-fg)' },
     iterm: { text: '$', bg: '#3e2945', color: '#59e391' },
-    intellij: { text: 'IJ', bg: '#ef476f', color: '#fff' },
-    pycharm: { text: 'PC', bg: '#32c787', color: '#fff' },
+    intellij: { text: 'IJ', bg: '#ef476f', color: 'var(--accent-fg)' },
+    pycharm: { text: 'PC', bg: '#32c787', color: 'var(--accent-fg)' },
   }
   const item = visual[id] || visual.file_manager
   return (
@@ -108,7 +108,7 @@ function getLanesFromSteps(steps: any): Lane[] {
       return {
         key,
         label: n.title || n.label || n.type,
-        color: n.color || STAGE_COLORS[key] || '#888',
+        color: n.color || STAGE_COLORS[key] || 'var(--meta)',
       }
     })
   }
@@ -116,10 +116,10 @@ function getLanesFromSteps(steps: any): Lane[] {
     return steps.steps.map((s: any) => ({
       key: s.key || s.id,
       label: s.label || s.name || s.key,
-      color: s.color || '#888',
+      color: s.color || 'var(--meta)',
     }))
   }
-  return [{ key: 'do', label: '执行', color: '#0071e3' }]
+  return [{ key: 'do', label: '执行', color: 'var(--accent)' }]
 }
 
 function deriveTaskLane(
@@ -980,7 +980,7 @@ export default function TaskList() {
             Object.entries(reviewOverrides).map(([key, cfg]) => {
               const lane = lanes.find((l) => l.key === key)
               const label = lane?.label || key
-              const color = lane?.color || '#888'
+              const color = lane?.color || 'var(--meta)'
               const laneIdx = lanes.findIndex((l) => l.key === key)
               const isUpstream = createLaneIndex >= 0 && laneIdx >= 0 && laneIdx < createLaneIndex
               return (
@@ -1013,7 +1013,7 @@ export default function TaskList() {
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
                         <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
-                        <input
+                        <Input
                           type="number"
                           min={1} max={5}
                           value={cfg.maxRetries}
@@ -1023,7 +1023,7 @@ export default function TaskList() {
                             const v = Math.max(1, Math.min(5, Number(e.target.value) || 1))
                             setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], maxRetries: v } }))
                           }}
-                          style={{ width: 36, height: 22, fontSize: 11, padding: '0 4px', border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center', background: isUpstream ? 'var(--surface)' : 'var(--bg)', color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}
+                          style={{ width: 36, height: 22, fontSize: 11, padding: '0 4px', textAlign: 'center', background: isUpstream ? 'var(--surface)' : 'var(--bg)', color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}
                         />
                       </div>
                     </div>

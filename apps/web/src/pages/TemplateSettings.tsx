@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import Button from '../components/Button'
 import FlowCanvas from '../components/FlowCanvas'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Field from '../components/Field'
+import Input from '../components/Input'
 import {
   fetchTemplates,
   invalidateTemplates,
@@ -164,9 +167,9 @@ export default function TemplateSettings() {
             默认模板（<code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>default: true</code>）不可删除，自建模板可删除。
           </p>
         </div>
-        <button className="btn-primary" onClick={() => { setCreateOpen(true); setCreateError('') }}>
+        <Button variant="primary" onClick={() => { setCreateOpen(true); setCreateError('') }}>
           + 新建模板
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -207,13 +210,13 @@ export default function TemplateSettings() {
                 )}
               </div>
               <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount} 步</span>
-              <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(t)}>
+              <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(t)}>
                 编辑
-              </button>
+              </Button>
               {t.custom && !t.default && (
-                <button className="btn-ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
+                <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
                   删除
-                </button>
+                </Button>
               )}
             </div>
           ))}
@@ -226,38 +229,40 @@ export default function TemplateSettings() {
           <div className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">新建流程模板</span>
-              <button className="btn-icon" aria-label="关闭" onClick={() => setCreateOpen(false)}>✕</button>
+              <Button variant="icon" aria-label="关闭" onClick={() => setCreateOpen(false)}>✕</Button>
             </div>
             <div className="modal-body">
-              <label>标识（id）</label>
-              <input
+              <Field label="标识（id）" htmlFor="tpl-id" error={createError}>
+              <Input
+                id="tpl-id"
                 value={newDraft.id}
                 onChange={(e) => { setNewDraft({ ...newDraft, id: e.target.value }); setCreateError('') }}
                 placeholder="例如：my-flow"
                 autoFocus
-                style={{ width: '100%', height: 36, boxSizing: 'border-box' }}
               />
-              <label>名称</label>
-              <input
+              </Field>
+              <Field label="名称" htmlFor="tpl-name">
+              <Input
+                id="tpl-name"
                 value={newDraft.name}
                 onChange={(e) => { setNewDraft({ ...newDraft, name: e.target.value }); setCreateError('') }}
                 placeholder="例如：我的研发流程"
-                style={{ width: '100%', height: 36, boxSizing: 'border-box' }}
               />
-              <label>描述</label>
-              <input
+              </Field>
+              <Field label="描述" htmlFor="tpl-desc">
+              <Input
+                id="tpl-desc"
                 value={newDraft.description}
                 onChange={(e) => { setNewDraft({ ...newDraft, description: e.target.value }); setCreateError('') }}
                 placeholder="简短描述该模板的用途"
-                style={{ width: '100%', height: 36, boxSizing: 'border-box' }}
               />
-              {createError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{createError}</p>}
+              </Field>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setCreateOpen(false)}>取消</button>
-              <button className="btn-primary" disabled={creating} onClick={() => void createTemplate()}>
-                {creating ? '创建中…' : '创建并编辑'}
-              </button>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button variant="primary" disabled={creating} loading={creating} onClick={() => void createTemplate()}>
+                创建并编辑
+              </Button>
             </div>
           </div>
         </div>
@@ -271,15 +276,15 @@ export default function TemplateSettings() {
             height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)',
             display: 'flex', alignItems: 'center', gap: 12, padding: '0 14px', flexShrink: 0,
           }}>
-            <button
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               aria-label="返回模板列表"
               title="返回模板列表"
               onClick={() => { if (editorDirty) { setConfirmClose(true); return } closeEditor() }}
               style={{ height: 30, padding: '0 9px' }}
             >
               ← 返回
-            </button>
+            </Button>
             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
               模板元信息
             </span>
@@ -289,29 +294,29 @@ export default function TemplateSettings() {
               <span style={{ fontSize: 11, color: 'var(--meta)' }}>自定义模板：保存将写回 ~/.workstep/data/templates/ 对应文件</span>
             )}
             <div style={{ flex: 1 }} />
-            <input
+            <Input
               value={meta.id}
               onChange={(e) => { setMeta({ ...meta, id: e.target.value }); setMetaDirty(true) }}
               placeholder="标识（英数_-，≤64）"
               title="模板标识"
               spellCheck={false}
-              style={{ width: 150, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 150, height: 28 }}
             />
-            <input
+            <Input
               value={meta.name}
               onChange={(e) => { setMeta({ ...meta, name: e.target.value }); setMetaDirty(true) }}
               placeholder="模板名称"
               title="模板名称"
-              style={{ width: 170, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 170, height: 28 }}
             />
-            <input
+            <Input
               value={meta.description}
               onChange={(e) => { setMeta({ ...meta, description: e.target.value }); setMetaDirty(true) }}
               placeholder="模板描述（可选）"
               title="模板描述"
-              style={{ width: 220, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px' }}
+              style={{ width: 220, height: 28 }}
             />
-            {metaDirty && <span style={{ color: '#856404', fontSize: 11, whiteSpace: 'nowrap' }}>⚠ 元信息未保存</span>}
+            {metaDirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, whiteSpace: 'nowrap' }}>⚠ 元信息未保存</span>}
           </div>
           {metaError && (
             <div style={{

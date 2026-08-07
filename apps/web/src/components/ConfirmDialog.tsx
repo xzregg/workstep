@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import Button from './Button'
 
 interface Props {
   open: boolean
@@ -53,18 +54,14 @@ export default function ConfirmDialog({ open, title, message, confirmText = '确
 
         {/* Footer */}
         <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-          <button className="btn-ghost" onClick={onCancel}>{cancelText}</button>
-          <button
+          <Button variant="ghost" onClick={onCancel}>{cancelText}</Button>
+          <Button
+            variant={danger ? 'danger' : 'primary'}
             onClick={onConfirm}
-            style={{
-              fontSize: 13, fontWeight: 500, padding: '6px 16px',
-              borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
-              background: danger ? 'var(--danger)' : 'var(--accent)',
-              color: '#fff',
-            }}
+            style={{ fontSize: 13, fontWeight: 500, padding: '6px 16px' }}
           >
             {confirmText}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

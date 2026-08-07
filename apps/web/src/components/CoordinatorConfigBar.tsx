@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import EngineSelect from './EngineSelect'
+import Select from './Select'
 import {
   fetchEngineModels,
   getCachedEngineModels,
@@ -145,7 +146,7 @@ export default function CoordinatorConfigBar({
           </div>
           <div style={menuRow}>
             <span style={menuLabel}>推理</span>
-            <select
+            <Select
               value={model}
               disabled={modelDisabled}
               onChange={(event) => onModelChange(event.target.value)}
@@ -156,11 +157,11 @@ export default function CoordinatorConfigBar({
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div style={menuRow}>
             <span style={menuLabel}>快速</span>
-            <select
+            <Select
               value={fastModel}
               disabled={modelDisabled}
               onChange={(event) => onFastModelChange(event.target.value)}
@@ -171,12 +172,12 @@ export default function CoordinatorConfigBar({
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}
-            </select>
+            </Select>
           </div>
           {showVision && onVisionModelChange && (
             <div style={menuRow}>
               <span style={menuLabel}>图片理解</span>
-              <select
+              <Select
                 value={visionModel || ''}
                 disabled={modelDisabled}
                 onChange={(event) => onVisionModelChange(event.target.value)}
@@ -187,7 +188,7 @@ export default function CoordinatorConfigBar({
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>{m.label || m.id}</option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
         </>
@@ -207,7 +208,7 @@ export default function CoordinatorConfigBar({
             title={engineTitle}
             style={engineStyle}
           />
-          <select
+          <Select
             value={model}
             disabled={modelDisabled}
             onChange={(event) => onModelChange(event.target.value)}
@@ -218,8 +219,8 @@ export default function CoordinatorConfigBar({
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label || m.id}</option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             value={fastModel}
             disabled={modelDisabled}
             onChange={(event) => onFastModelChange(event.target.value)}
@@ -230,9 +231,9 @@ export default function CoordinatorConfigBar({
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label || m.id}</option>
             ))}
-          </select>
+          </Select>
           {showVision && onVisionModelChange && (
-            <select
+            <Select
               value={visionModel || ''}
               disabled={modelDisabled}
               onChange={(event) => onVisionModelChange(event.target.value)}
@@ -243,7 +244,7 @@ export default function CoordinatorConfigBar({
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}
-            </select>
+            </Select>
           )}
         </>
       )}

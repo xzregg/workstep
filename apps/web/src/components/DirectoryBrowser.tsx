@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Button from './Button'
 
 interface DirEntry {
   name: string
@@ -70,25 +71,25 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
         borderBottom: '1px solid var(--border-soft)',
         fontSize: 13, color: 'var(--fg-2)',
       }}>
-        <button
-          className="btn-icon"
+        <Button
+          variant="icon"
           onClick={handleGoUp}
           disabled={!current?.parent}
           style={{ width: 24, height: 24 }}
         >
           ↑
-        </button>
+        </Button>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
           {current?.path || '加载中...'}
         </span>
-        <button
-          className="btn-primary"
+        <Button
+          variant="primary"
           onClick={handleSelect}
           style={{ fontSize: 11, padding: '4px 10px' }}
           disabled={!current}
         >
           选择此目录
-        </button>
+        </Button>
       </div>
 
       {/* File list */}

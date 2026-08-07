@@ -3,6 +3,7 @@
 import Icon from './Icon'
 import { useState, useEffect } from 'react'
 import { fsApi, type FilePreview } from '../api/client'
+import Button from './Button'
 
 interface ArtifactPreviewProps {
   path: string
@@ -38,9 +39,8 @@ function CopyTextButton({ content }: { content: string }) {
   }
 
   return (
-    <button
-      type="button"
-      className="btn-ghost"
+    <Button
+      variant="ghost"
       aria-label={state === 'copied' ? '文本已复制' : '复制文本'}
       title={state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制文本'}
       onClick={() => void copy()}
@@ -59,7 +59,7 @@ function CopyTextButton({ content }: { content: string }) {
       ) : (
         <Icon name="copy" size={13} strokeWidth={2} />
       )}
-    </button>
+    </Button>
   )
 }
 
@@ -102,9 +102,9 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
         加载失败: {error}
         {onClose && (
-          <button className="btn-ghost" style={{ marginTop: 12 }} onClick={onClose}>
+          <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>
             关闭
-          </button>
+          </Button>
         )}
       </div>
     )
@@ -124,9 +124,9 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {onClose && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <button className="btn-ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose}>
               关闭
-            </button>
+            </Button>
           </div>
         )}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
@@ -153,9 +153,9 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CopyTextButton content={content} />
             {onClose && (
-              <button className="btn-ghost" onClick={onClose}>
+              <Button variant="ghost" onClick={onClose}>
                 关闭
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -181,9 +181,9 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <CopyTextButton content={content} />
           {onClose && (
-            <button className="btn-ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose}>
               关闭
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -1,9 +1,13 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
+import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
+import Input from './Input'
 import MarkdownEditor from './MarkdownEditor'
 import Combobox from './Combobox'
+import Select from './Select'
 import EngineSelect from './EngineSelect'
+import Textarea from './Textarea'
 import {
   ReactFlow, Controls, Background, addEdge,
   useNodesState, useEdgesState,
@@ -59,13 +63,13 @@ function DropdownMenu({ label, children }: { label: string; children: (close: ()
 
   return (
     <>
-      <button className="btn-ghost" onClick={(e) => {
+      <Button variant="ghost" onClick={(e) => {
         if (!open) {
           const rect = e.currentTarget.getBoundingClientRect()
           setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
         }
         setOpen((s) => !s)
-      }}>{label}</button>
+      }}>{label}</Button>
       {open && pos && createPortal(
         <div
           ref={menuRef}
@@ -176,7 +180,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       autoStart: Boolean(n.autoStart),
       engine: n.engine || 'claude',
       model: n.model || '',
-      color: n.color || '#888888',
+      color: n.color || 'var(--meta)',
       prompt: n.prompt || '',
       review: n.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       position: n.position,
@@ -223,7 +227,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       label: s.label || s.name || s.key,
       engine: s.engine || 'claude',
       model: s.model || '',
-      color: s.color || '#888888',
+      color: s.color || 'var(--meta)',
       prompt: s.prompt || '',
       review: s.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
       inputs: (s.inputs || []).map((inp: any) => ({
@@ -406,17 +410,17 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 13 }} />
+              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 13 }} />
               <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder="类型" style={{ width: 80, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }} />
-              <button className="btn-icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 13 }}>×</button>
+              <Button variant="icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 13 }}>×</Button>
             </div>
             {/* Sub-outputs */}
             {inp.outputs.map((sub, j) => (
               <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
                 <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                <input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
+                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
                 <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder="类型" style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
-                <button className="btn-icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 13 }}>×</button>
+                <Button variant="icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 13 }}>×</Button>
               </div>
             ))}
             <button onClick={() => addSubOutput(i)} style={{ fontSize: 11, color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
@@ -576,15 +580,15 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            className="btn-primary"
+          <Button
+            variant="primary"
             style={{ fontSize: 13, padding: '4px 12px' }}
             disabled={Boolean(keyError)}
             onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
             暂存
-          </button>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+          </Button>
+          <Button variant="icon" onClick={onClose}>✕</Button>
         </div>
       </div>
 
@@ -594,7 +598,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
-              <input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
+              <Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
             </div>
             <div style={{ width: 116 }}>
               <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
@@ -606,15 +610,15 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   onChange={(e) => updateDraft('color', e.target.value)}
                   style={{ height: 32, width: 42, cursor: 'pointer', padding: 2 }}
                 />
-                <button
-                  className="btn-ghost"
+                <Button
+                  variant="ghost"
                   aria-label="随机颜色"
                   title="随机颜色"
                   onClick={() => updateDraft('color', randomStageColor(draft.color))}
                   style={{ height: 32, flex: 1, padding: '0 7px', fontSize: 11 }}
                 >
                   随机
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -623,7 +627,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <input
+              <Input
                 id="step-type"
                 value={draft.key}
                 onChange={(e) => updateDraft('key', e.target.value)}
@@ -698,7 +702,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
-              <select
+              <Select
                 value={draft.model}
                 disabled={stageModelsLoading}
                 onChange={(e) => updateDraft('model', e.target.value)}
@@ -715,7 +719,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     {model.label || model.id}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
         </div>
@@ -737,7 +741,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             {review.auto && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
                 <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
-                <input
+                <Input
                   type="number"
                   min={0}
                   step={1}
@@ -746,7 +750,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     'maxRetries',
                     Math.max(0, Number.parseInt(e.target.value || '0', 10)),
                   )}
-                  style={{ width: 48, height: 24, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }}
+                  style={{ width: 48, height: 24, fontSize: 13, padding: '0 6px' }}
                 />
               </div>
             )}
@@ -778,7 +782,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核模型</label>
-                  <select
+                  <Select
                     value={review.model}
                     disabled={reviewModelsLoading}
                     onChange={(e) => updateReview('model', e.target.value)}
@@ -798,7 +802,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                         {model.label || model.id}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
               <div>
@@ -1266,7 +1270,7 @@ function FlowCanvasInner({
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 600,
           padding: '8px 20px', borderRadius: 'var(--radius-sm)',
           background: saveMsg.includes('成功') ? 'var(--success)' : 'var(--danger)',
-          color: '#fff', fontSize: 13, fontWeight: 500,
+          color: 'var(--accent-fg)', fontSize: 13, fontWeight: 500,
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}>
           {saveMsg}
@@ -1279,9 +1283,9 @@ function FlowCanvasInner({
         <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{title}</span>
         {toolbarMid}
         <div style={{ flex: 1 }} />
-        {dirty && <span style={{ color: '#856404', fontSize: 11, marginLeft: 12 }}>⚠ 有未保存的更改，请点击「保存」持久化</span>}
+        {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, marginLeft: 12 }}>⚠ 有未保存的更改，请点击「保存」持久化</span>}
          {hint && <span style={{ fontSize: 13, color: 'var(--meta)', marginRight: 10 }}>{hint}</span>}
-        {showTemplatePicker && <button className="btn-ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>流程模板</button>}
+        {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>流程模板</Button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
             <>
@@ -1290,9 +1294,9 @@ function FlowCanvasInner({
             </>
           )}
         </DropdownMenu>
-        <button className="btn-ghost" onClick={handleAutoLayout}>⊞ 布局</button>
-        <button className="btn-ghost" onClick={handleAddNode}>+ 阶段</button>
-        <button className="btn-primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel}</button>
+        <Button variant="ghost" onClick={handleAutoLayout}>⊞ 布局</Button>
+        <Button variant="ghost" onClick={handleAddNode}>+ 阶段</Button>
+        <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel}</Button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -1363,36 +1367,35 @@ function FlowCanvasInner({
           <div className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">流程模板</span>
-              <button className="btn-icon" onClick={() => setShowTemplateModal(false)}>✕</button>
+              <Button variant="icon" onClick={() => setShowTemplateModal(false)}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: '8px 16px 16px', overflowY: 'auto' }}>
-              <input
+              <Input
                 value={templateSearch}
                 onChange={(e) => setTemplateSearch(e.target.value)}
                 placeholder="搜索模板名称、描述或 id…"
                 spellCheck={false}
-                style={{ width: '100%', fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 10px', outline: 'none', boxSizing: 'border-box', marginBottom: 10 }}
+                style={{ marginBottom: 10 }}
               />
               {showTemplateSave && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 10, background: 'var(--surface)' }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>保存当前画布为流程模板</div>
-                  <input
+                  <Input
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
                     placeholder="模板名称（必填）"
                     spellCheck={false}
-                    style={{ width: '100%', fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 10px', outline: 'none', boxSizing: 'border-box' }}
                   />
-                  <input
+                  <Input
                     value={templateDesc}
                     onChange={(e) => setTemplateDesc(e.target.value)}
                     placeholder="模板描述（可选）"
                     spellCheck={false}
-                    style={{ width: '100%', fontFamily: 'var(--font-body)', fontSize: 13, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '7px 10px', outline: 'none', boxSizing: 'border-box', marginTop: 8 }}
+                    style={{ marginTop: 8 }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <button className="btn-primary" onClick={() => void saveCurrentAsTemplate()} disabled={!templateName.trim()}>保存模板</button>
-                    <button className="btn-ghost" onClick={() => setShowTemplateSave(false)}>取消</button>
+                    <Button variant="primary" onClick={() => void saveCurrentAsTemplate()} disabled={!templateName.trim()}>保存模板</Button>
+                    <Button variant="ghost" onClick={() => setShowTemplateSave(false)}>取消</Button>
                   </div>
                 </div>
               )}
@@ -1428,8 +1431,8 @@ function FlowCanvasInner({
               })()}
             </div>
             <div className="modal-footer">
-              <button className="btn-primary" onClick={() => setShowTemplateSave(true)}>保存当前为流程模板</button>
-              <button className="btn-ghost" onClick={() => setShowTemplateModal(false)}>取消</button>
+              <Button variant="primary" onClick={() => setShowTemplateSave(true)}>保存当前为流程模板</Button>
+              <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>取消</Button>
             </div>
           </div>
         </div>
@@ -1441,7 +1444,7 @@ function FlowCanvasInner({
           <div className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">工作流 JSON 配置</span>
-              <button className="btn-icon" onClick={() => setShowJson(false)}>✕</button>
+              <Button variant="icon" onClick={() => setShowJson(false)}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: 0 }}>
               <pre style={{ margin: 0, padding: 16, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', overflow: 'auto', maxHeight: '60vh', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
@@ -1449,8 +1452,8 @@ function FlowCanvasInner({
               </pre>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={handleCopyJson}>复制</button>
-              <button className="btn-primary" onClick={() => setShowJson(false)}>关闭</button>
+              <Button variant="ghost" onClick={handleCopyJson}>复制</Button>
+              <Button variant="primary" onClick={() => setShowJson(false)}>关闭</Button>
             </div>
           </div>
         </div>
@@ -1462,21 +1465,21 @@ function FlowCanvasInner({
           <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">导入工作流 JSON</span>
-              <button className="btn-icon" onClick={() => setShowImport(false)}>✕</button>
+              <Button variant="icon" onClick={() => setShowImport(false)}>✕</Button>
             </div>
             <div className="modal-body">
-              <textarea
+              <Textarea
                 value={importText}
                 onChange={(e) => { setImportText(e.target.value); setImportError('') }}
                 placeholder={'粘贴工作流 JSON，例如：\n{"nodes": [{ "id": 1, "type": "req", "title": "需求", ... }], "connections": []}'}
                 spellCheck={false}
-                style={{ width: '100%', height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                style={{ height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', resize: 'vertical' }}
               />
               {importError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</p>}
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => setShowImport(false)}>取消</button>
-              <button className="btn-primary" onClick={handleImport} disabled={!importText.trim()}>确认导入</button>
+              <Button variant="ghost" onClick={() => setShowImport(false)}>取消</Button>
+              <Button variant="primary" onClick={handleImport} disabled={!importText.trim()}>确认导入</Button>
             </div>
           </div>
         </div>

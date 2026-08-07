@@ -5,20 +5,17 @@ import {
   type EngineConfigPayload,
   type EngineConfigSchema,
 } from '../api/client'
+import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
+import Input from './Input'
+import Select from './Select'
+import Textarea from './Textarea'
 
 interface Props {
   engineId: string
   /** Config template + masked values, embedded in /api/engine/list. */
   config: EngineConfigPayload | null
   onSaved?: (result: EngineConfigSchema) => void
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', height: 30,
-  border: '1px solid var(--border)', borderRadius: 7,
-  background: 'var(--bg)', color: 'var(--fg)',
-  padding: '0 9px', fontSize: 13,
 }
 
 /**
@@ -159,12 +156,11 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
           {field.required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
         </label>
         {isSelect ? (
-          <select
+          <Select
             id={`engine-config-${engineId}-${field.key}`}
             value={value}
             disabled={saving}
             onChange={(event) => setFieldValue(field.key, event.target.value)}
-            style={inputStyle}
           >
             <option value="">
               {field.placeholder || (field.required ? '请选择…' : '')}
@@ -172,10 +168,10 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
             {(field.options || []).map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
-          </select>
+          </Select>
         ) : isPassword ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
+            <Input
               id={`engine-config-${engineId}-${field.key}`}
               type={revealed[field.key] ? 'text' : 'password'}
               autoComplete="off"
@@ -186,17 +182,17 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
                 field.placeholder
                 || (secrets[field.key] ? '已保存，点击显示可查看' : '')
               }
-              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+              style={{ flex: 1, minWidth: 0 }}
             />
-            <button
-              type="button"
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               disabled={saving || revealing === field.key}
+              loading={revealing === field.key}
               onClick={() => void toggleReveal(field)}
               style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
             >
-              {revealing === field.key ? '读取中…' : revealed[field.key] ? '隐藏' : '显示'}
-            </button>
+              {revealed[field.key] ? '隐藏' : '显示'}
+            </Button>
             {field.sensitive && secrets[field.key] && (
               <label
                 title={`清除已保存的${field.label}`}
@@ -247,28 +243,23 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
             </span>
           </div>
         ) : isTextarea ? (
-          <textarea
+          <Textarea
             id={`engine-config-${engineId}-${field.key}`}
             value={value}
             disabled={saving}
             onChange={(event) => setFieldValue(field.key, event.target.value)}
             placeholder={field.placeholder}
             rows={3}
-            style={{
-              width: '100%', border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)',
-              padding: '7px 9px', fontSize: 13, resize: 'vertical',
-            }}
+            style={{ resize: 'vertical' }}
           />
         ) : (
-          <input
+          <Input
             id={`engine-config-${engineId}-${field.key}`}
             type={field.type === 'number' ? 'number' : 'text'}
             value={value}
             disabled={saving}
             onChange={(event) => setFieldValue(field.key, event.target.value)}
             placeholder={field.placeholder}
-            style={inputStyle}
           />
         )}
         {field.sensitive && secrets[field.key] && !isPassword && (
@@ -340,14 +331,15 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
         >
           {message || 'Key 仅保存在本机 ~/.workstep/config.json，不会返回到浏览器。'}
         </div>
-        <button
-          className="btn-primary"
+        <Button
+          variant="primary"
           disabled={saving || hasRequiredGaps}
+          loading={saving}
           onClick={() => save()}
           style={{ minWidth: 84, height: 30, justifyContent: 'center' }}
         >
-          {saving ? '保存中…' : '保存配置'}
-        </button>
+          保存配置
+        </Button>
       </div>
 
       <ConfirmDialog

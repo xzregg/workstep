@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Button from './Button'
 import ChatMessageBubble from './ChatMessageBubble'
 import ChatInput from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
@@ -159,7 +160,7 @@ export default function AiFlowChat({
         )}
         <div style={{ flex: 1 }} />
         {onClose && (
-          <button className="btn-icon" aria-label="关闭" onClick={onClose}>✕</button>
+          <Button variant="icon" aria-label="关闭" onClick={onClose}>✕</Button>
         )}
       </div>
 
@@ -346,7 +347,7 @@ export default function AiFlowChat({
           >
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
-              <button type="button" className="btn-icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</button>
+              <Button variant="icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</Button>
             </div>
             <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />

@@ -14,6 +14,7 @@
   --success: #16a34a;
   --warn: #eab308;
   --danger: #dc2626;
+  --warn-text: #856404;
 
   /* Status colors: gray=未开始, blue=进行中, green=完成, red=失败, yellow=暂停 */
   --status-ready: #86868b;

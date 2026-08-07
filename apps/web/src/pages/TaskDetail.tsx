@@ -1,4 +1,7 @@
 import Icon from '../components/Icon'
+import Button from '../components/Button'
+import Input from '../components/Input'
+import Textarea from '../components/Textarea'
 import {
   useState,
   useEffect,
@@ -165,9 +168,9 @@ function CoordinatorProposalCard({
       {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
       {(current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-primary" disabled={!canAct} onClick={() => void confirm()}>{pending ? '处理中...' : retryable ? '重试' : '确认'}</button>
+          <Button variant="primary" disabled={!canAct} loading={pending} onClick={() => void confirm()}>{retryable ? '重试' : '确认'}</Button>
           {current.status === 'pending' && (
-            <button className="btn-ghost" disabled={!canAct} onClick={() => void cancel()}>取消</button>
+            <Button variant="ghost" disabled={!canAct} onClick={() => void cancel()}>取消</Button>
           )}
         </div>
       )}
@@ -800,9 +803,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   // Get stages from project steps
   const stages = useMemo<StageData[]>(() => {
     const steps = activeProject?.steps
-    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || '#888', model: n.model || '', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
-    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || '#888', model: s.model || '', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
-    return [{ key: 'do', label: '执行', color: '#0071e3', prompt: '', inputs: [], outputs: [] }]
+    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', model: n.model || '', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
+    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', model: s.model || '', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
+    return [{ key: 'do', label: '执行', color: 'var(--accent)', prompt: '', inputs: [], outputs: [] }]
   }, [activeProject?.steps])
 
   const stageProgress = useMemo<StageProgress[]>(() => {
@@ -1210,7 +1213,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
         任务未找到
         <br />
-        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={onClose}>← 返回</button>
+        <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>← 返回</Button>
       </div>
     )
   }
@@ -1478,7 +1481,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         }}
       >
         <span className="task-detail-drag-grip" aria-hidden="true">⠿</span>
-        <button className="btn-icon" onClick={onClose}>←</button>
+        <Button variant="icon" onClick={onClose}>←</Button>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
@@ -1572,16 +1575,15 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 任务说明
               </div>
               {!editingDescription && (
-                <button
-                  type="button"
-                  className="btn-ghost"
+                <Button
+                  variant="ghost"
                   aria-label="编辑任务说明"
                   onClick={openDescriptionEditor}
                   style={{ height: 28, padding: '0 9px', fontSize: 11, gap: 4 }}
                 >
                   <span aria-hidden="true">✎</span>
                   编辑
-                </button>
+                </Button>
               )}
             </div>
             {editingDescription ? (
@@ -1608,20 +1610,21 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   display: 'flex', justifyContent: 'flex-end',
                   gap: 8, marginTop: 8,
                 }}>
-                  <button
-                    className="btn-ghost"
+                  <Button
+                    variant="ghost"
                     disabled={descriptionSaving}
                     onClick={() => setEditingDescription(false)}
                   >
                     取消
-                  </button>
-                  <button
-                    className="btn-primary"
+                  </Button>
+                  <Button
+                    variant="primary"
                     disabled={descriptionSaving}
+                    loading={descriptionSaving}
                     onClick={() => void saveDescription()}
                   >
-                    {descriptionSaving ? '保存中…' : '保存'}
-                  </button>
+                    保存
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -1804,14 +1807,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 ,color: `${currentStageColor}`}}> {currentStage.label} </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>阶段提示词</div>
-              <button
-                className="btn-ghost"
+              <Button
+                variant="ghost"
                 onClick={openPromptEditor}
                 style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
               >
                 <span aria-hidden="true">✎</span>
                 快速编辑
-              </button>
+              </Button>
             </div>
             <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px', borderLeft: `3px solid ${currentStageColor}` }}>
               {currentStage.prompt
@@ -1965,7 +1968,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 )}
                 {(selectedReview.status === 'pending' || selectedReview.status === 'rejected') && (
                   <>
-                    <textarea
+                    <Textarea
                       rows={2}
                       value={reviewComment}
                       onChange={(event) => setReviewComment(event.target.value)}
@@ -1974,29 +1977,31 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                       {selectedReview.status === 'pending' ? (
                         <>
-                          <button
-                            className="btn-ghost"
+                          <Button
+                            variant="ghost"
                             disabled={reviewActionPending}
                             onClick={() => void decideReview('reject')}
                           >
                             驳回
-                          </button>
-                          <button
-                            className="btn-primary"
+                          </Button>
+                          <Button
+                            variant="primary"
                             disabled={reviewActionPending}
+                            loading={reviewActionPending}
                             onClick={() => void decideReview('approve')}
                           >
                             通过并进入下一阶段
-                          </button>
+                          </Button>
                         </>
                       ) : (
-                        <button
-                          className="btn-primary"
+                        <Button
+                          variant="primary"
                           disabled={reviewActionPending}
+                          loading={reviewActionPending}
                           onClick={() => void decideReview('force-approve')}
                         >
                           强制通过
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </>
@@ -2035,7 +2040,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     自动审核
                   </label>
                   <span style={{ fontSize: 13, color: 'var(--meta)' }}>重试</span>
-                  <input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
+                  <Input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
                     style={{ width: 40, height: 22, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
                 </div>
                 <MarkdownEditor
@@ -2048,13 +2053,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   ariaLabel="审核提示词"
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="btn-ghost"
+                  <Button variant="ghost"
                     onClick={async () => {
                       const updated = { ...(task.review_overrides || {}), [currentStage.key]: { auto: editReviewAuto, maxRetries: editReviewRetries, prompt: editReviewPrompt } }
                       await updateTaskDescription(task.id, undefined, projectId!, updated)
                     }}
                     style={{ fontSize: 11, padding: '3px 10px' }}
-                  >保存</button>
+                  >保存</Button>
                 </div>
               </div>
             )}
@@ -2205,7 +2210,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                       : 'rgba(0,113,227,0.08)',
                                   color: isCoordinator
                                     ? '#7c3aed'
-                                    : isLiveInsert ? '#fff' : 'var(--accent)',
+                                    : isLiveInsert ? 'var(--accent-fg)' : 'var(--accent)',
                                 }}
                               >
                                 {isCoordinator ? '协调' : isLiveInsert ? '插入' : '阶段'}
@@ -2476,7 +2481,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     position: 'relative',
                   }}>
                     {editingInsertId === insert.id ? (
-                      <textarea
+                      <Textarea
                         autoFocus
                         value={editingInsertContent}
                         onChange={(e) => setEditingInsertContent(e.target.value)}
@@ -2521,7 +2526,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             title="保存修改"
                             style={{
                               padding: '2px 8px', borderRadius: 6, fontSize: 11,
-                              border: 'none', background: 'var(--accent)', color: '#fff',
+                              border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)',
                               cursor: 'pointer',
                             }}
                           >
@@ -2625,7 +2630,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                 style={{
                                   padding: '5px 8px', fontSize: 11, textAlign: 'left',
                                   border: 'none', background: 'transparent',
-                                  color: '#d92d20', cursor: 'pointer', borderRadius: 5,
+                                  color: 'var(--danger)', cursor: 'pointer', borderRadius: 5,
                                 }}
                               >
                                 删除
@@ -2666,7 +2671,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                     border: 'none', cursor: 'pointer',
                     background: chatTargetStage ? 'transparent' : 'var(--accent)',
-                    color: chatTargetStage ? 'var(--meta)' : '#fff',
+                    color: chatTargetStage ? 'var(--meta)' : 'var(--accent-fg)',
                   }}
                 >
                   协调 Agent
@@ -2683,7 +2688,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                     border: 'none', cursor: activeStageRunning ? 'pointer' : 'not-allowed',
                     background: chatTargetStage ? 'var(--accent)' : 'transparent',
-                    color: chatTargetStage ? '#fff' : 'var(--meta)',
+                    color: chatTargetStage ? 'var(--accent-fg)' : 'var(--meta)',
                     opacity: activeStageRunning ? 1 : 0.5,
                   }}
                 >
@@ -2703,7 +2708,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </div>
             {chatError && (
               <div role="alert" style={{
-                fontSize: 13, color: '#d92d20', padding: '6px 10px',
+                fontSize: 13, color: 'var(--danger)', padding: '6px 10px',
                 borderRadius: 6, border: '1px solid rgba(217,45,32,0.25)',
                 background: 'rgba(217,45,32,0.06)',
               }}>
@@ -2719,6 +2724,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 prefix: taskId?.slice(0, 8) ?? '',
                 onError: (message) => setChatError(message),
               } : undefined}
+              stopTitle={chatTargetStage ? '停止当前阶段执行' : '停止生成'}
               config={{
                 engines: coordinatorConfig?.available_engines || [],
                 engine: coordinatorConfig?.configured.engine || '',
@@ -2757,10 +2763,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
       {/* ── Footer ── */}
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-        <button className="btn-ghost" onClick={onClose}>关闭</button>
-        <button
-          className="btn-primary"
+        <Button variant="ghost" onClick={onClose}>关闭</Button>
+        <Button
+          variant="primary"
           disabled={globalAdvanceState.disabled}
+          loading={reviewActionPending}
           onClick={globalAdvance}
           style={globalAdvanceState.disabled ? {
             background: 'var(--border)',
@@ -2770,8 +2777,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             opacity: 1,
           } : undefined}
         >
-          {reviewActionPending ? '处理中…' : globalAdvanceState.label}
-        </button>
+          {globalAdvanceState.label}
+        </Button>
       </div>
 
       {artifactNotice && (
@@ -2809,7 +2816,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           >
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
-              <button type="button" className="btn-icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</button>
+              <Button variant="icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</Button>
             </div>
             <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />
@@ -2845,7 +2852,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 <div style={{ fontSize: 13, fontWeight: 600 }}>快速编辑阶段提示词</div>
                 <div style={{ marginTop: 2, fontSize: 11, color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
               </div>
-              <button className="btn-icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</button>
+              <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
             </div>
             <div style={{ padding: 18 }}>
               <MarkdownEditor
@@ -2865,10 +2872,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               )}
             </div>
             <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn-ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>取消</button>
-              <button className="btn-primary" disabled={promptSaving} onClick={saveStagePrompt}>
-                {promptSaving ? '保存中…' : '保存提示词'}
-              </button>
+              <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>取消</Button>
+              <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStagePrompt}>
+                保存提示词
+              </Button>
             </div>
           </div>
         </div>
@@ -2903,10 +2910,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   {previewArtifact.path}
                 </div>
               </div>
-              <button className="btn-ghost" onClick={openArtifactDirectory}>
+              <Button variant="ghost" onClick={openArtifactDirectory}>
                 打开所在目录
-              </button>
-              <button className="btn-icon" onClick={() => setPreviewArtifact(null)}>✕</button>
+              </Button>
+              <Button variant="icon" onClick={() => setPreviewArtifact(null)}>✕</Button>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               <ArtifactPreview path={previewArtifact.path} onClose={() => setPreviewArtifact(null)} />

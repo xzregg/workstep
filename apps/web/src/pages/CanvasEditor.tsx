@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import Button from '../components/Button'
 import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
 import AiFlowChat from '../components/AiFlowChat'
 import ConfirmDialog from '../components/ConfirmDialog'
+import Select from '../components/Select'
 import { useProjectStore } from '../stores/projectStore'
 
 /* ══════════════════════════════════════════
@@ -68,8 +70,8 @@ function CanvasEditorInner() {
           setActiveProject({ ...activeProject, steps })
         }}
         toolbarLeft={
-          <button
-            className="btn-ghost"
+          <Button
+            variant="ghost"
             aria-label="返回任务看板"
             title="返回当前项目的任务看板"
             onClick={() => {
@@ -80,33 +82,33 @@ function CanvasEditorInner() {
             style={{ height: 30, padding: '0 9px' }}
           >
             ← 看板
-          </button>
+          </Button>
         }
         toolbarMid={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {(activeProject?.workflows || []).length > 1 && (
-              <select
+              <Select
                 value={activeWorkflowId || ''}
                 onChange={(e) => {
                   const id = e.target.value
                   if (dirty) { setPendingWfId(id); return }
                   switchWorkflow(id)
                 }}
-                style={{ height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)', padding: '0 6px', maxWidth: 160 }}
+                style={{ height: 28, maxWidth: 160 }}
               >
                 {(activeProject?.workflows || []).map(wf => (
                   <option key={wf.id} value={wf.id}>{wf.name}{wf.is_default ? ' (默认)' : ''}</option>
                 ))}
-              </select>
+              </Select>
             )}
-            <button
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               title="让 AI 根据目标生成或调整当前流程"
               onClick={() => { setAiPanelOpen(true); setAiConfirmClose(false) }}
               style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
             >
               AI 编辑
-            </button>
+            </Button>
           </div>
         }
         ref={canvasRef}

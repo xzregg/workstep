@@ -92,11 +92,11 @@ export default function MarkdownEditor({
         <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
           <button
             onClick={() => setMode('edit')}
-            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'edit' ? 'var(--accent)' : 'transparent', color: mode === 'edit' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'edit' ? 'var(--accent)' : 'transparent', color: mode === 'edit' ? 'var(--accent-fg)' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
           >编辑</button>
           <button
             onClick={() => setMode('preview')}
-            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? '#fff' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
+            style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? 'var(--accent-fg)' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
           >预览</button>
         </div>
         <button

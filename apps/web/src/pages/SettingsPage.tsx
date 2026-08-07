@@ -1,5 +1,8 @@
 import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Button from '../components/Button'
+import Input from '../components/Input'
+import Select from '../components/Select'
 import {
   engineApi,
   fetchEngineModels,
@@ -98,17 +101,18 @@ function ExecutionDefaultSettings({
           ariaLabel="默认执行引擎"
           style={{ width: 300, height: 30 }}
         />
-        <button
-          className="btn-ghost"
+        <Button
+          variant="ghost"
           style={{ height: 30 }}
           disabled={loadingConfig || saving}
+          loading={loadingConfig}
           onClick={() => void loadExecutionConfig()}
         >
-          {loadingConfig ? '读取中…' : '读取默认'}
-        </button>
-        <button className="btn-primary" style={{ height: 30 }} disabled={saving || loading} onClick={() => void save()}>
-          {saving ? '保存中…' : '保存默认值'}
-        </button>
+          读取默认
+        </Button>
+        <Button variant="primary" style={{ height: 30 }} disabled={saving || loading} loading={saving} onClick={() => void save()}>
+          保存默认值
+        </Button>
       </div>
       {(error || notice) && (
         <div style={{ marginTop: 6, fontSize: 11, color: error ? 'var(--danger)' : 'var(--success)' }}>
@@ -246,15 +250,13 @@ function CoordinatorAgentSettings() {
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             推理模型
           </label>
-          <select
+          <Select
             value={model}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setModel(event.target.value)}
             aria-label="默认推理模型"
             style={{
               flex: 1, minWidth: 0, height: 30,
-              border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -266,31 +268,29 @@ function CoordinatorAgentSettings() {
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
             ))}
-          </select>
+          </Select>
           {engine && (
-            <button
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
               disabled={modelsLoading || saving}
               onClick={() => void loadCoordinatorModels(engine, true)}
             >
               ↻ 刷新
-            </button>
+            </Button>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             快速模型
           </label>
-          <select
+          <Select
             value={fastModel}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setFastModel(event.target.value)}
             aria-label="默认快速模型"
             style={{
               flex: 1, minWidth: 0, height: 30,
-              border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -302,21 +302,19 @@ function CoordinatorAgentSettings() {
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             图片理解模型
           </label>
-          <select
+          <Select
             value={visionModel}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setVisionModel(event.target.value)}
             aria-label="默认图片理解模型"
             style={{
               flex: 1, minWidth: 0, height: 30,
-              border: '1px solid var(--border)', borderRadius: 7,
-              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 13,
             }}
           >
             <option value="">
@@ -328,7 +326,7 @@ function CoordinatorAgentSettings() {
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--meta)' }}>
           推理模型负责理解、决策与回复；快速模型负责读取产物和修复结构化输出；图片理解模型在主模型不支持图片输入时，用于分析图片和截图内容。
@@ -342,9 +340,9 @@ function CoordinatorAgentSettings() {
           <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
             {error || notice || '当前进行中的协调回复不会中途切换引擎。'}
           </div>
-          <button className="btn-primary" disabled={loading || saving} onClick={() => void save()}>
-            {saving ? '保存中…' : '保存协调设置'}
-          </button>
+          <Button variant="primary" disabled={loading || saving} loading={saving} onClick={() => void save()}>
+            保存协调设置
+          </Button>
         </div>
       </div>
     </div>
@@ -621,7 +619,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">设置</span>
           </div>
-          <button className="btn-icon" aria-label="关闭设置" onClick={onClose}>✕</button>
+          <Button variant="icon" aria-label="关闭设置" onClick={onClose}>✕</Button>
         </div>
 
       <div className="settings-layout" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -686,14 +684,15 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 配置 WorkStep 内置引擎，并扫描本机可用的 CLI 与 ACP 执行引擎。
               </p>
             </div>
-            <button
-              className="btn-ghost"
+            <Button
+              variant="ghost"
               onClick={() => void loadEngines(true)}
               disabled={loading}
+              loading={loading}
             >
               <span aria-hidden="true">↻</span>
-              {loading ? '扫描中…' : '重新扫描'}
-            </button>
+              重新扫描
+            </Button>
           </div>
 
           <ExecutionDefaultSettings engines={engines} loading={loading} />          <div style={{
@@ -789,23 +788,24 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                     )}
                   </div>
                   {engine.installed && (
-                    <button
-                      className="btn-ghost"
+                    <Button
+                      variant="ghost"
                       style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
                       disabled={testingEngine !== null}
+                      loading={isTesting}
                       onClick={() => void testEngine(engine.id)}
                     >
-                      {isTesting ? '测试中…' : '测试'}
-                    </button>
+                      测试
+                    </Button>
                   )}
                   {engine.id !== 'api' && engine.id !== 'pydantic_ai' && (
-                    <button
-                      className="btn-ghost"
+                    <Button
+                      variant="ghost"
                       style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
                       onClick={() => openPathEditor(engine)}
                     >
                       编辑
-                    </button>
+                    </Button>
                   )}
                   <span style={{
                     minWidth: 60, textAlign: 'center', padding: '3px 8px',
@@ -852,7 +852,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         >
                           模型
                         </span>
-                        <select
+                        <Select
                           id={`default-model-${engine.id}`}
                           aria-label={`${engineLabel(engine.id)} 默认模型`}
                           title="选择阶段未单独指定模型时使用的默认模型"
@@ -861,9 +861,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
                           style={{
                             flex: 1, minWidth: 0, height: 28,
-                            border: '1px solid var(--border)', borderRadius: 7,
-                            background: 'var(--bg)', color: 'var(--fg)',
-                            padding: '0 8px', fontSize: 13,
                           }}
                         >
                           <option value="">
@@ -873,20 +870,20 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             <option key={model.id} value={model.id}>{model.label}</option>
                           ))}
                           <option value="__custom__">自定义…</option>
-                        </select>
+                        </Select>
                         {savingModel === engine.id && (
                           <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
                             保存中…
                           </span>
                         )}
                         {models[engine.id] && !modelsLoading[engine.id] && (
-                          <button
-                            className="btn-ghost"
+                          <Button
+                            variant="ghost"
                             style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
                             onClick={() => void loadEngineModels(engine.id, true)}
                           >
                             ↻ 刷新
-                          </button>
+                          </Button>
                         )}
                       </div>
                       {modelErrors[engine.id] && (
@@ -908,7 +905,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           >
                             自定义模型
                           </span>
-                          <input
+                          <Input
                             id={`custom-model-${engine.id}`}
                             value={customModelDrafts[engine.id] ?? savedDefaultModel}
                             placeholder="例如 model-id"
@@ -925,9 +922,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             }}
                             style={{
                               flex: 1, minWidth: 0, height: 28,
-                              border: '1px solid var(--border)', borderRadius: 7,
-                              background: 'var(--bg)', color: 'var(--fg)',
-                              padding: '0 8px', fontSize: 13,
                             }}
                           />
                         </div>
@@ -943,7 +937,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         可执行文件路径
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <input
+                        <Input
                           value={pathDraft}
                           onChange={(event) => setPathDraft(event.target.value)}
                           placeholder="输入 CLI 可执行文件的绝对路径"
@@ -951,24 +945,23 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           style={{
                             flex: 1, minWidth: 0, height: 30,
                             border: `1px solid ${pathError ? 'var(--danger)' : 'var(--border)'}`,
-                            borderRadius: 7, background: 'var(--bg)', color: 'var(--fg)',
-                            padding: '0 9px', fontSize: 13,
                           }}
                         />
-                        <button
-                          className="btn-ghost"
+                        <Button
+                          variant="ghost"
                           disabled={pathSaving}
                           onClick={() => setEditingEngine(null)}
                         >
                           取消
-                        </button>
-                        <button
-                          className="btn-primary"
+                        </Button>
+                        <Button
+                          variant="primary"
                           disabled={pathSaving}
+                          loading={pathSaving}
                           onClick={() => void saveBinaryPath(engine.id)}
                         >
-                          {pathSaving ? '保存中…' : '保存并扫描'}
-                        </button>
+                          保存并扫描
+                        </Button>
                       </div>
                       <div style={{
                         marginTop: 6, fontSize: 11,

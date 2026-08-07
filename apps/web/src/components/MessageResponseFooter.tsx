@@ -1,6 +1,7 @@
 import Icon from './Icon'
 import { useState } from 'react'
 import { engineLabel } from '../engineMeta'
+import Button from './Button'
 
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
@@ -133,9 +134,8 @@ export default function MessageResponseFooter({
           ? ` · 执行 ${executionModel}`
           : ''}
       </span>
-      <button
-        type="button"
-        className="btn-ghost"
+      <Button
+        variant="ghost"
         aria-label={copyState === 'copied' ? '消息已复制' : '复制 LLM 消息'}
         title={running
           ? '消息生成完成后可复制'
@@ -146,23 +146,23 @@ export default function MessageResponseFooter({
               : '复制消息'}
         disabled={running || !content}
         onClick={() => void copy()}
-        style={{
-          width: 24, height: 24, minWidth: 24, padding: 0,
-          justifyContent: 'center',
-          color: copyState === 'failed'
-            ? 'var(--danger)'
-            : copyState === 'copied'
-              ? 'var(--success)'
-              : 'var(--muted)',
-          fontSize: 11,
-        }}
+      style={{
+        width: 24, height: 24, minWidth: 24, padding: 0,
+        justifyContent: 'center',
+        color: copyState === 'failed'
+          ? 'var(--danger)'
+          : copyState === 'copied'
+            ? 'var(--success)'
+            : 'var(--muted)',
+        fontSize: 11,
+      }}
       >
         {copyState === 'copied' ? (
           <Icon name="check" size={13} strokeWidth={2.4} />
         ) : (
           <Icon name="copy" size={12} strokeWidth={2} />
         )}
-      </button>
+      </Button>
     </div>
   )
 }

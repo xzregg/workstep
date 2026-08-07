@@ -92,7 +92,7 @@ export default function ChatMessageBubble({
           aria-label={sender}
           style={{
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            background: color, color: '#fff',
+            background: color, color: 'var(--accent-fg)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13, fontWeight: 600, position: 'relative',
           }}
@@ -103,7 +103,7 @@ export default function ChatMessageBubble({
               position: 'absolute', right: -4, bottom: -4,
               width: 16, height: 16, borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: '#7c3aed', color: '#fff',
+              background: '#7c3aed', color: 'var(--accent-fg)',
               border: '2px solid var(--bg)',
               fontSize: 11, fontWeight: 800, lineHeight: 1,
             }}>
@@ -120,7 +120,7 @@ export default function ChatMessageBubble({
           {content ? (
             <div style={{
               fontSize: 13, lineHeight: 1.6,
-              color: isUser ? '#fff' : 'var(--fg-2)',
+              color: isUser ? 'var(--accent-fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--accent)' : (variant === 'bg' ? 'var(--bg)' : 'var(--surface)'),
               border: !isUser && variant === 'bg' ? '1px solid var(--border-soft)' : 'none',
               padding: '10px 14px', borderRadius: 12,
