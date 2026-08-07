@@ -15,17 +15,13 @@ router = APIRouter(prefix="/api/workflow", tags=["工作流管理"])
 
 
 def _resolve_template_steps(template_id: str) -> dict | None:
-    """Resolve template steps by ID from built-in or saved templates."""
-    from api.templates import BUILTIN_TEMPLATES
-    for t in BUILTIN_TEMPLATES:
-        if t["id"] == template_id:
-            return t["steps"]
-    from api.templates import TEMPLATES_DIR
-    custom_path = TEMPLATES_DIR / f"{template_id}.json"
-    if custom_path.exists():
+    """Resolve template steps by ID from ~/.workstep/data/templates/."""
+    from api.templates import GLOBAL_TEMPLATES_DIR
+    template_path = GLOBAL_TEMPLATES_DIR / f"{template_id}.json"
+    if template_path.exists():
         try:
-            data = json.loads(custom_path.read_text(encoding="utf-8"))
-            # Custom templates may be raw canvas JSON or wrapped in {"steps": ...}
+            data = json.loads(template_path.read_text(encoding="utf-8"))
+            # Templates may be raw canvas JSON or wrapped in {"steps": ...}
             if "steps" in data:
                 return data["steps"]
             if "nodes" in data:
@@ -54,6 +50,7 @@ async def list_workflows(pid: str = Query(..., alias="project_id")):
                     "name": w["name"],
                     "is_default": w["is_default"],
                     "deleted": w["deleted"],
+                    "running": project_manager.workflow_has_running_tasks(w["id"]),
                     "nodeCount": len(
                         w.get("steps", {}).get("nodes", [])
                         or w.get("steps", {}).get("steps", [])
@@ -98,6 +95,16 @@ async def update_workflow(workflow_id: str, req: UpdateWorkflowRequest, pid: str
         wf = project_manager.update_workflow(proj, workflow_id, name=req.name, steps=req.steps)
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
+        return wf
+
+
+@router.post("/{workflow_id}/restore")
+async def restore_workflow(workflow_id: str, pid: str = Query(..., alias="project_id")):
+    """Restore a soft-deleted workflow from the recycle bin."""
+    with project_manager.activate_project_by_id(pid) as proj:
+        wf = project_manager.restore_workflow(proj, workflow_id)
+        if wf is None:
+            raise HTTPException(status_code=404, detail="Workflow not found or not deleted")
         return wf
 
 

@@ -20,6 +20,7 @@ class Step:
     depends_on: list[str] = field(default_factory=list)
     condition: str = ""  # Optional condition expression for conditional routing
     review: dict | None = None
+    rework_upstream: list[str] = field(default_factory=list)  # 验证失败时返工的上游生产者
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -35,6 +36,7 @@ class Step:
             depends_on=d.get("dependsOn", []),
             condition=d.get("condition", ""),
             review=d.get("review"),
+            rework_upstream=list(d.get("reworkUpstream", [])),
         )
 
 

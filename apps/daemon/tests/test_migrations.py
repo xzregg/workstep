@@ -10,6 +10,7 @@ def test_init_db_records_latest_schema_version(tmp_path):
         assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION
         columns = {column.name for column in db.get_columns("tasks")}
         assert "coordinator_fast_model" in columns
+        assert "coordinator_vision_model" in columns
     finally:
         db.close()
 
@@ -189,6 +190,120 @@ def test_schema_v11_converts_all_project_times_to_datetime(tmp_path):
         assert migrated_review.decided_at == expected_start
         assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION
         assert migrated_db.execute_sql("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        migrated_db.close()
+
+
+def test_schema_v17_makes_stage_supplement_source_optional(tmp_path):
+    """Live stage guidance (as_guidance) may exist without a coordinator proposal."""
+    import peewee as pw
+    from playhouse.migrate import SqliteMigrator, migrate
+
+    from models import SchemaVersion, Task, init_db
+    from models import StageSupplement
+    from models.migrations import LATEST_SCHEMA_VERSION
+
+    db_path = str(tmp_path / "workstep.db")
+    db = init_db(db_path)
+    task = Task.create(
+        id="task-supplement-optional",
+        title="Supplement",
+        cwd="/tmp/project",
+        created_at=1,
+        updated_at=1,
+    )
+    # Simulate the pre-v17 schema where the FK is NOT NULL.
+    migrator = SqliteMigrator(db)
+    migrate(migrator.alter_column_type(
+        "stage_supplements", "source_proposal_id", pw.IntegerField()
+    ))
+    SchemaVersion.update(version=16).where(SchemaVersion.id == 1).execute()
+    db.close()
+
+    migrated_db = init_db(db_path)
+    try:
+        assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION
+        column = next(
+            column
+            for column in migrated_db.get_columns("stage_supplements")
+            if column.name == "source_proposal_id"
+        )
+        assert column.null is True
+        # Guidance created without a proposal is allowed after migration.
+        now = 1_700_000_000
+        StageSupplement.create(
+            id="supplement-optional",
+            task=task,
+            step_key="do",
+            content="请改用中文输出",
+            source_proposal=None,
+            created_sequence=0,
+            created_at=now,
+        )
+        fetched = StageSupplement.get_by_id("supplement-optional")
+        assert fetched.source_proposal is None
+    finally:
+        migrated_db.close()
+
+
+def test_schema_v20_adds_coordinator_vision_model_column(tmp_path):
+    """An existing v19 project gains the coordinator vision model column."""
+    from models import SchemaVersion, init_db
+    from models.migrations import LATEST_SCHEMA_VERSION
+
+    db_path = str(tmp_path / "workstep.db")
+    db = init_db(db_path)
+    SchemaVersion.update(version=19).where(SchemaVersion.id == 1).execute()
+    db.close()
+
+    migrated_db = init_db(db_path)
+    try:
+        assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION
+        columns = {column.name for column in migrated_db.get_columns("tasks")}
+        assert "coordinator_vision_model" in columns
+    finally:
+        migrated_db.close()
+
+
+def test_schema_v19_adds_workflow_run_recovery_columns(tmp_path):
+    """Recovery markers persist so the UI can show a resume hint."""
+    from models import SchemaVersion, Task, WorkflowRun, init_db
+    from models.migrations import LATEST_SCHEMA_VERSION
+
+    db_path = str(tmp_path / "workstep.db")
+    db = init_db(db_path)
+    task = Task.create(
+        id="task-recovery-markers",
+        title="Recovery markers",
+        cwd="/tmp/project",
+        created_at=1,
+        updated_at=1,
+    )
+    run = WorkflowRun.create(
+        id="run-recovery-markers",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    # Simulate the pre-v19 schema without the recovery columns.
+    db.execute_sql('ALTER TABLE workflow_runs DROP COLUMN recovered_at')
+    db.execute_sql('ALTER TABLE workflow_runs DROP COLUMN recovered_count')
+    SchemaVersion.update(version=18).where(SchemaVersion.id == 1).execute()
+    db.close()
+
+    migrated_db = init_db(db_path)
+    try:
+        assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION
+        columns = {
+            column.name for column in migrated_db.get_columns("workflow_runs")
+        }
+        assert "recovered_at" in columns
+        assert "recovered_count" in columns
+        migrated_run = WorkflowRun.get_by_id(run.id)
+        assert migrated_run.recovered_count == 0
+        assert migrated_run.recovered_at is None
     finally:
         migrated_db.close()
 

@@ -6,7 +6,19 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from models import Task
+from models import (
+    Task,
+    TaskStep,
+    Message,
+    Workflow,
+    WorkflowRun,
+    StepRun,
+    ReviewRun,
+    CoordinatorSession,
+    CoordinatorTurn,
+    ActionProposal,
+    StageSupplement,
+)
 from services.project import ProjectManager, DEFAULT_STEPS
 from services.config import ConfigStore
 
@@ -255,3 +267,192 @@ def test_load_saved_projects_restores(tmp_path, manager):
         assert len(projects) == 1
         assert projects[0]["name"] == "恢复测试"
     m2.close_all()
+
+
+def _seed_workflow_task_data(m, project, workflow_id, task_id="task-1"):
+    """Create a task plus a full set of FK-dependent rows for one workflow."""
+    task = Task.create(
+        id=task_id,
+        title="Flow task",
+        cwd=str(project.path),
+        workflow_id=workflow_id,
+        status="running",
+        created_at=1,
+        updated_at=1,
+    )
+    TaskStep.create(task=task, step_key="req", status="running")
+    message = Message.create(
+        id=f"{task_id}-msg",
+        task=task,
+        step_key="req",
+        role="assistant",
+        content="hello",
+        position=1,
+        created_at=1,
+    )
+    run = WorkflowRun.create(
+        id=f"{task_id}-run",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    StepRun.create(
+        id=f"{task_id}-sr",
+        run=run,
+        step_key="req",
+        attempt=1,
+        status="running",
+    )
+    ReviewRun.create(
+        id=f"{task_id}-rv",
+        workflow_run=run,
+        step_run=StepRun.get_by_id(f"{task_id}-sr"),
+        task=task,
+        step_key="req",
+        mode="auto",
+        status="running",
+    )
+    CoordinatorSession.create(
+        task=task,
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    turn = CoordinatorTurn.create(
+        id=f"{task_id}-ct",
+        task=task,
+        user_message=message,
+        assistant_message=message,
+        idempotency_key="k",
+        status="queued",
+        created_at=1,
+        updated_at=1,
+    )
+    proposal = ActionProposal.create(
+        id=f"{task_id}-ap",
+        task=task,
+        source_turn=turn,
+        source_message=message,
+        type="edit",
+        payload_json="{}",
+        expected_task_version=1,
+        status="pending",
+        created_at=1,
+        updated_at=1,
+    )
+    StageSupplement.create(
+        id=f"{task_id}-ss",
+        task=task,
+        step_key="req",
+        content="guidance",
+        source_proposal=proposal,
+        created_sequence=1,
+        created_at=1,
+    )
+    return task
+
+
+def test_workflow_running_flag_reflects_task_status(tmp_path, manager):
+    """list_projects marks a workflow running while any of its tasks run."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    wf = m.create_workflow(proj, "Flow")
+
+    _seed_workflow_task_data(m, proj, wf["id"])
+
+    assert m.workflow_has_running_tasks(wf["id"]) is True
+    workflows = next(p for p in m.list_projects() if p["id"] == proj.id)["workflows"]
+    assert next(w for w in workflows if w["id"] == wf["id"])["running"] is True
+
+    Task.update(status="ready").where(Task.id == "task-1").execute()
+    assert m.workflow_has_running_tasks(wf["id"]) is False
+    workflows = next(p for p in m.list_projects() if p["id"] == proj.id)["workflows"]
+    assert next(w for w in workflows if w["id"] == wf["id"])["running"] is False
+
+
+def test_workflow_running_flag_is_computed_per_project(tmp_path, manager):
+    """Running state must come from each project's own database."""
+    m, _, _ = manager
+    proj_a = tmp_path / "a"
+    proj_b = tmp_path / "b"
+    proj_a.mkdir()
+    proj_b.mkdir()
+    pa = m.init_project(proj_a)
+    pb = m.init_project(proj_b)
+    wf_a = pa.workflows[0]["id"]
+    wf_b = pb.workflows[0]["id"]
+
+    with m.activate_project(proj_a):
+        _seed_workflow_task_data(m, pa, wf_a, task_id="task-a")
+
+    # Bind to project B (as other API requests would leave the proxy) to
+    # ensure list_projects still queries each project's own database.
+    with m.activate_project(proj_b):
+        listed = m.list_projects()
+
+    running_by_name = {
+        p["name"]: next(w for w in p["workflows"] if not w["deleted"])["running"]
+        for p in listed
+    }
+    assert running_by_name["a"] is True
+    assert running_by_name["b"] is False
+
+
+def test_workflow_hard_delete_clears_all_flow_data(tmp_path, manager):
+    """Permanent delete removes tasks and every FK-related table row."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    wf = m.create_workflow(proj, "Flow")
+
+    _seed_workflow_task_data(m, proj, wf["id"])
+    # A task from another workflow must survive the deletion.
+    other = m.create_workflow(proj, "Other")
+    Task.create(
+        id="task-other",
+        title="Other",
+        cwd=str(proj.path),
+        workflow_id=other["id"],
+        created_at=1,
+        updated_at=1,
+    )
+
+    # Soft delete → data stays.
+    result = m.delete_workflow(proj, wf["id"])
+    assert result == {"deleted": True, "soft": True}
+    assert Task.select().where(Task.id == "task-1").count() == 1
+
+    # Hard delete → everything for the flow is gone, other flow untouched.
+    result = m.delete_workflow(proj, wf["id"])
+    assert result == {"deleted": True, "soft": False}
+
+    assert Task.select().where(Task.id == "task-1").count() == 0
+    assert Task.select().where(Task.id == "task-other").count() == 1
+    assert TaskStep.select().count() == 0
+    assert Message.select().count() == 0
+    assert WorkflowRun.select().count() == 0
+    assert StepRun.select().count() == 0
+    assert ReviewRun.select().count() == 0
+    assert CoordinatorSession.select().count() == 0
+    assert CoordinatorTurn.select().count() == 0
+    assert ActionProposal.select().count() == 0
+    assert StageSupplement.select().count() == 0
+    assert Workflow.select().where(Workflow.id == wf["id"]).count() == 0
+    assert Workflow.select().where(Workflow.id == other["id"]).count() == 1
+
+
+def test_workflow_restore_brings_it_back_from_recycle_bin(tmp_path, manager):
+    """restore_workflow reactivates a soft-deleted workflow."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    wf = m.create_workflow(proj, "Flow")
+    m.create_workflow(proj, "Other")  # so Flow can be soft-deleted
+
+    assert m.delete_workflow(proj, wf["id"])["soft"] is True
+    restored = m.restore_workflow(proj, wf["id"])
+    assert restored is not None
+    assert restored["deleted"] is False
+
+    # Restoring an already-active workflow is a no-op.
+    assert m.restore_workflow(proj, wf["id"]) is None

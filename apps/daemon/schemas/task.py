@@ -33,7 +33,13 @@ class CoordinatorChatRequest(BaseSchema):
     content: str
 
 
+class StageMessageRequest(BaseSchema):
+    content: str
+    as_guidance: bool = False
+
+
 class CoordinatorConfigRequest(BaseSchema):
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
+    vision_model: str | None = None

@@ -1,5 +1,6 @@
 {
   "id": "marketing-campaign",
+  "default": true,
   "name": "营销活动",
   "description": "市场调研 → 策划 → 落地 → 复盘",
   "steps": {

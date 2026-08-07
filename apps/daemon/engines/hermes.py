@@ -9,6 +9,7 @@ from typing import AsyncIterator
 
 from engines.acp_base import AcpEngineBase
 from engines.events import InternalEvent, normalize_cost
+from engines.schema import EngineImage
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class HermesEngine(AcpEngineBase):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in super().spawn(
             prompt=prompt,
@@ -95,6 +97,7 @@ class HermesEngine(AcpEngineBase):
             model=model,
             add_dirs=add_dirs,
             session_id=session_id,
+            images=images,
         ):
             yield event
 

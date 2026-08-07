@@ -5,9 +5,10 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import AsyncIterator, ClassVar
+from typing import Any, AsyncIterator, ClassVar
 
 from engines.events import InternalEvent
+from engines.schema import EngineConfigField, EngineImage
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class EngineCapabilities:
     supports_live_stage_message: bool
     supports_sessions: bool = False
     supports_tool_approval: bool = False
+    supports_vision: bool = False
 
 
 class BaseLLMEngine(ABC):
@@ -90,6 +92,7 @@ class BaseLLMEngine(ABC):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Start subprocess, stream unified internal events.
 
@@ -165,6 +168,46 @@ class BaseLLMEngine(ABC):
         """
         return []
 
+    # --- Config schema (backend-defined settings forms) ---
+
+    @classmethod
+    def config_schema(cls) -> list[EngineConfigField]:
+        """Declarative form template rendered by the settings UI.
+
+        An empty list means the engine has no engine-specific configuration;
+        only the generic binary path / default model settings apply.
+        """
+        return []
+
+    def get_config_values(self) -> dict[str, Any]:
+        """Current config values; sensitive fields are masked as empty strings."""
+        return {}
+
+    def get_config_secrets(self) -> dict[str, bool]:
+        """Which sensitive fields currently have a stored value."""
+        return {}
+
+    async def save_config_values(
+        self,
+        values: dict[str, Any],
+        clear: dict[str, bool] | None = None,
+        confirmed: dict[str, bool] | None = None,
+    ) -> None:
+        """Persist config values.
+
+        Raise ValueError with a user-facing message when input is invalid.
+        Sensitive keys keep their stored value unless replaced or listed in
+        ``clear``.
+        """
+
+    def reveal_config_value(self, key: str) -> str | None:
+        """Return a stored secret for the reveal action, or None."""
+        return None
+    @property
+    def supports_live_stage_message(self) -> bool:
+        """Whether ordinary user messages can be injected mid-execution."""
+        return False
+
     @property
     def capabilities(self) -> EngineCapabilities:
         return EngineCapabilities(
@@ -172,10 +215,16 @@ class BaseLLMEngine(ABC):
             supports_resume=self.supports_resume,
             supports_tool_disable=True,
             supports_native_schema=False,
-            supports_live_stage_message=False,
+            supports_live_stage_message=self.supports_live_stage_message,
             supports_sessions=self.supports_sessions,
             supports_tool_approval=self.supports_tool_approval,
+            supports_vision=self.supports_vision,
         )
+
+    @property
+    def supports_vision(self) -> bool:
+        """Whether the engine can accept image content for multimodal models."""
+        return False
 
     async def spawn_coordinator(
         self,
@@ -183,26 +232,63 @@ class BaseLLMEngine(ABC):
         cwd: str,
         model: str | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
-        guarded_prompt = (
-            "You are a read-only task coordinator. Do not call tools, execute "
-            "commands, or modify files. Return only the requested JSON.\n\n"
-            f"{prompt}"
-        )
+        guarded_prompt = self.coordinator_guard(prompt)
+        if images and not self.capabilities.supports_vision:
+            guarded_prompt = self.render_image_prompt(guarded_prompt, images)
         async for event in self.spawn(
             prompt=guarded_prompt,
             cwd=cwd,
             model=model,
             session_id=session_id,
+            images=images,
         ):
             yield event
+
+    @staticmethod
+    def coordinator_guard(prompt: str) -> str:
+        """Wrap a user prompt with the read-only coordinator instruction."""
+        return (
+            "You are a read-only task coordinator. Do not call tools, execute "
+            "commands, or modify files. Return only the requested JSON.\n\n"
+            f"{prompt}"
+        )
+
+    @staticmethod
+    def render_image_prompt(
+        prompt: str,
+        images: list[EngineImage] | None,
+    ) -> str:
+        """Append attached images as markdown references to a text prompt.
+
+        Vision-capable engines embed the references natively; engines without
+        vision keep the paths visible to the model as a best-effort fallback.
+        """
+        if not images:
+            return prompt
+        lines = [prompt, "", "Attached image(s); analyze them if possible:"]
+        for image in images:
+            alt = image.description or "attached image"
+            lines.append(f"![{alt}]({image.reference})")
+        return "\n".join(lines)
 
     # --- Interaction ---
 
     @abstractmethod
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         """Inject user response mid-execution (AskUserQuestion / permission)."""
+
+    async def send_live_stage_message(self, content: str) -> bool:
+        """Send a plain user message into a running stage execution.
+
+        Return True when the message was accepted by the engine, False when the
+        adapter cannot deliver ordinary messages mid-run (permission responses
+        go through inject_response instead). Adapters that implement this must
+        also advertise ``supports_live_stage_message`` in their capabilities.
+        """
+        return False
 
     # --- ACP-aligned session lifecycle (session/new, load, list, resume, ...) ---
 

@@ -16,8 +16,9 @@ interface ProjectState {
   setCanvasDirty: (d: boolean) => void
   initProject: (path: string, name?: string) => Promise<Project>
   renameProject: (path: string, name: string) => Promise<void>
-  createWorkflow: (projectId: string, name: string, templateId?: string) => Promise<WorkflowDetail>
+  createWorkflow: (projectId: string, name: string, templateId?: string, steps?: any) => Promise<WorkflowDetail>
   deleteWorkflow: (id: string, projectId: string) => Promise<void>
+  restoreWorkflow: (id: string, projectId: string) => Promise<void>
   renameWorkflow: (id: string, projectId: string, name: string) => Promise<WorkflowDetail>
   saveSteps: (projectId: string, steps: any) => Promise<void>
 }
@@ -52,6 +53,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setCanvasDirty: (d) => set({ canvasDirty: d }),
+
+  restoreWorkflow: async (id: string, projectId: string) => {
+    await workflowApi.restore(id, projectId)
+    const { activeProject } = get()
+    if (activeProject && activeProject.id === projectId) {
+      const updated = {
+        ...activeProject,
+        workflows: (activeProject.workflows || []).map((w: any) =>
+          w.id === id ? { ...w, deleted: false } : w
+        ),
+      }
+      set({ activeProject: updated })
+      set((s) => ({
+        projects: s.projects.map((p: any) => p.id === projectId ? updated : p),
+      }))
+    }
+  },
 
   renameWorkflow: async (id: string, projectId: string, name: string) => {
     if (hasWhitespace(name)) throw new Error('工作流名称不能包含空白字符（空格、Tab 等）')
@@ -106,9 +124,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }))
   },
 
-  createWorkflow: async (projectId, name, templateId) => {
+  createWorkflow: async (projectId, name, templateId, steps) => {
     if (hasWhitespace(name)) throw new Error('工作流名称不能包含空白字符（空格、Tab 等）')
-    const wf = await workflowApi.create(projectId, name, undefined, templateId)
+    const wf = await workflowApi.create(projectId, name, steps, templateId)
     const { activeProject } = get()
     if (activeProject && activeProject.id === projectId) {
       const summary = {

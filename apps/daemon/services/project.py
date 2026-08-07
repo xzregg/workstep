@@ -8,7 +8,21 @@ from pathlib import Path
 
 import peewee as pw
 
-from models import init_db, Task, TaskStep, Message, Workflow, ALL_MODELS
+from models import (
+    init_db,
+    Task,
+    TaskStep,
+    Message,
+    Workflow,
+    WorkflowRun,
+    StepRun,
+    ReviewRun,
+    CoordinatorSession,
+    CoordinatorTurn,
+    ActionProposal,
+    StageSupplement,
+    ALL_MODELS,
+)
 from models.fields import utc_now
 from settings import settings
 
@@ -157,6 +171,10 @@ class ProjectManager:
 
     def __init__(self):
         self._projects: dict[str, Project] = {}  # path_str -> Project
+
+    def iter_projects(self):
+        """Yield every registered project."""
+        return iter(self._projects.values())
 
     def _save_config(self):
         """Persist project list to config store.
@@ -317,7 +335,10 @@ class ProjectManager:
             return None
 
         if bool(row.deleted):
-            # Already in the recycle bin → permanent delete
+            # Already in the recycle bin → permanent delete. Clear every
+            # record owned by this workflow (tasks, messages, runs, reviews,
+            # coordinator data) before removing the workflow row itself.
+            self._delete_workflow_data(workflow_id)
             row.delete_instance()
             self._sync_project_workflows(proj)
             return {"deleted": True, "soft": False}
@@ -333,7 +354,59 @@ class ProjectManager:
         row.save()
         self._sync_project_workflows(proj)
         return {"deleted": True, "soft": True}
-    # ── Project lifecycle ────────────────────────────────────────────
+
+    def restore_workflow(self, proj: Project, workflow_id: str) -> dict | None:
+        """Restore a soft-deleted (recycle bin) workflow. Returns the dict or None."""
+        row = Workflow.get_or_none(Workflow.id == workflow_id)
+        if row is None or not bool(row.deleted):
+            return None
+        row.deleted = 0
+        row.updated_at = utc_now()
+        row.save()
+        self._sync_project_workflows(proj)
+        return next((w for w in proj.workflows if w["id"] == workflow_id), None)
+
+    def workflow_has_running_tasks(self, workflow_id: str) -> bool:
+        """True when any task of the workflow is currently executing."""
+        return Task.select().where(
+            (Task.workflow_id == workflow_id) & (Task.status == "running")
+        ).exists()
+
+    def _delete_workflow_data(self, workflow_id: str) -> None:
+        """Permanently delete every DB record owned by a workflow's tasks.
+
+        Tasks reference their workflow via ``tasks.workflow_id``; all other
+        tables cascade through ``tasks`` (messages, task steps, workflow/step
+        runs, reviews, coordinator sessions/turns/proposals/supplements), so
+        they are removed in FK dependency order before the tasks themselves.
+        """
+        task_ids = [
+            t.id
+            for t in Task.select(Task.id).where(Task.workflow_id == workflow_id)
+        ]
+        if not task_ids:
+            return
+        tasks = Task.id.in_(task_ids)
+        run_ids = [
+            r.id
+            for r in WorkflowRun.select(WorkflowRun.id).where(
+                WorkflowRun.task.in_(task_ids)
+            )
+        ]
+        runs = WorkflowRun.id.in_(run_ids)
+
+        StageSupplement.delete().where(StageSupplement.task.in_(task_ids)).execute()
+        ActionProposal.delete().where(ActionProposal.task.in_(task_ids)).execute()
+        CoordinatorTurn.delete().where(CoordinatorTurn.task.in_(task_ids)).execute()
+        CoordinatorSession.delete().where(CoordinatorSession.task.in_(task_ids)).execute()
+        ReviewRun.delete().where(ReviewRun.task.in_(task_ids)).execute()
+        StepRun.delete().where(StepRun.run.in_(run_ids)).execute()
+        WorkflowRun.delete().where(WorkflowRun.task.in_(task_ids)).execute()
+        Message.delete().where(Message.task.in_(task_ids)).execute()
+        TaskStep.delete().where(TaskStep.task.in_(task_ids)).execute()
+        Task.delete().where(tasks).execute()
+
+        # ── Project lifecycle ────────────────────────────────────────────
 
     def _load_saved_projects(self):
         """Load and register projects from config store on startup."""
@@ -463,22 +536,28 @@ class ProjectManager:
     def list_projects(self) -> list[dict]:
         """List all registered projects."""
         result = []
-        for _path_str, proj in self._projects.items():
-            entry = {
-                "id": proj.id,
-                "path": str(proj.path),
-                "name": proj.name,
-                "steps": proj.steps,
-                "workflows": [
+        for path_str, proj in self._projects.items():
+            # Each project has its own SQLite DB; activate it while computing
+            # per-workflow state (e.g. running tasks) so queries hit the
+            # correct database.
+            with self.activate_project(path_str):
+                workflows = [
                     {
                         "id": w["id"],
                         "name": w["name"],
                         "is_default": w["is_default"],
                         "deleted": w["deleted"],
+                        "running": self.workflow_has_running_tasks(w["id"]),
                         "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
                     }
                     for w in proj.workflows
-                ],
+                ]
+            entry = {
+                "id": proj.id,
+                "path": str(proj.path),
+                "name": proj.name,
+                "steps": proj.steps,
+                "workflows": workflows,
             }
             result.append(entry)
         return result

@@ -36,8 +36,10 @@ interface TaskState {
   content: Record<string, string>     // task_id → accumulated text
   liveMessages: Record<string, Record<string, LiveMessage>>
   loading: boolean
+  /** Incremented on every task status WS event, so the sidebar can refresh flow running state. */
+  taskStatusEvents: number
 
-  fetchTasks: (projectId: string, workflowId?: string | null) => Promise<void>
+  fetchTasks: (projectId: string, workflowId?: string | null, archived?: boolean) => Promise<void>
   setActiveTask: (id: string | null) => void
   createTask: (
     title: string,
@@ -59,6 +61,8 @@ interface TaskState {
     reviewOverrides?: Record<string, any> | null,
   ) => Promise<Task>
   deleteTask: (taskId: string, projectId: string) => Promise<void>
+  archiveTask: (taskId: string, projectId: string) => Promise<void>
+  unarchiveTask: (taskId: string, projectId: string) => Promise<void>
   copyTask: (taskId: string, newTitle: string, projectId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
 }
@@ -70,11 +74,12 @@ export const useTaskStore = create<TaskState>((set) => ({
   content: {},
   liveMessages: {},
   loading: false,
+  taskStatusEvents: 0,
 
-  fetchTasks: async (projectId: string, workflowId?: string | null) => {
+  fetchTasks: async (projectId: string, workflowId?: string | null, archived?: boolean) => {
     set({ loading: true })
     try {
-      const { tasks } = await taskApi.list(projectId, workflowId)
+      const { tasks } = await taskApi.list(projectId, workflowId, archived)
       set({ tasks, loading: false })
     } catch {
       set({ loading: false })
@@ -141,6 +146,20 @@ export const useTaskStore = create<TaskState>((set) => ({
     }))
   },
 
+  archiveTask: async (taskId, projectId) => {
+    await taskApi.archive(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: true } : t)),
+    }))
+  },
+
+  unarchiveTask: async (taskId, projectId) => {
+    await taskApi.unarchive(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: false } : t)),
+    }))
+  },
+
   copyTask: async (taskId, newTitle, projectId) => {
     const copied = await taskApi.copy(taskId, newTitle, projectId)
     set((s) => ({ tasks: [...s.tasks, copied] }))
@@ -152,6 +171,18 @@ export const useTaskStore = create<TaskState>((set) => ({
     const timedEvent = event.timestamp
       ? event
       : { ...event, timestamp: Date.now() }
+    const isStatusEvent = [
+      'status', 'review_status', 'review_result', 'step_retrying',
+    ].includes(event.type)
+    if (isStatusEvent) {
+      // Bump the counter so the sidebar can refresh flow running state.
+      useTaskStore.setState((st) => ({ taskStatusEvents: st.taskStatusEvents + 1 }))
+    }
+    const isRecoveredEvent = event.type === 'run_recovered'
+    if (isRecoveredEvent) {
+      // Daemon restart resumed the run from its last completed stage.
+      useTaskStore.setState((st) => ({ taskStatusEvents: st.taskStatusEvents + 1 }))
+    }
 
     set((s) => {
       if (event.message_id) {
@@ -213,9 +244,20 @@ export const useTaskStore = create<TaskState>((set) => ({
       }
 
       let newTasks = s.tasks
-      const isStatusEvent = [
-        'status', 'review_status', 'review_result', 'step_retrying',
-      ].includes(event.type)
+      if (isRecoveredEvent) {
+        const recoveredAt = event.data?.recovered_at as string | undefined
+        const recoveredCount = Number(event.data?.recovered_count ?? 1)
+        newTasks = s.tasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status: 'running',
+                recovered_at: recoveredAt || t.recovered_at,
+                recovered_count: recoveredCount,
+              }
+            : t,
+        )
+      }
       if (isStatusEvent) {
         const status = (
           event.type === 'step_retrying' ? 'retrying' : event.data.status

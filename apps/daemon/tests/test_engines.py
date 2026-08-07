@@ -149,9 +149,8 @@ async def test_base_engine_acp_session_defaults_are_safe_noops(tmp_path):
 
 
 def test_registry_has_claude():
-    """Registry includes claude engine (ACP or CLI)."""
+    """Registry includes the claude engine."""
     assert "claude" in ENGINE_REGISTRY
-    # Could be ClaudeCodeEngine or ClaudeCodeAcpEngine depending on install
 
 
 def test_create_engine():
@@ -188,10 +187,12 @@ def test_claude_supports_resume():
     assert engine.supports_resume is True
 
 
-def test_claude_not_interactive():
-    """Direct CLI mode doesn't support mid-execution interaction."""
+def test_claude_supports_live_stage_messages():
+    """Direct CLI mode supports mid-execution live stage messages."""
     engine = ClaudeCodeEngine()
-    assert engine.supports_interactive is False
+    assert engine.supports_interactive is True
+    assert engine.supports_live_stage_message is True
+    assert engine.capabilities.supports_live_stage_message is True
 
 
 def test_claude_command_includes_confirmed_permission_mode():
@@ -364,6 +365,25 @@ def test_claude_map_event_usage_with_cost():
     assert event is not None
     assert event.type == "usage"
     assert event.data["cost"] == {"amount": 0.045, "currency": "USD"}
+
+
+def test_claude_map_event_result_top_level_cost():
+    """claude CLI 把 total_cost_usd 放在 result 顶层而非 usage 内。"""
+    engine = ClaudeCodeEngine()
+    event = engine._map_event({
+        "type": "result",
+        "session_id": "s1",
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 30,
+            "cache_creation_input_tokens": 10,
+            "cache_read_input_tokens": 20,
+        },
+        "total_cost_usd": 0.456,
+    })
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["cost"] == {"amount": 0.456, "currency": "USD"}
 
 
 def test_claude_map_event_unknown_returns_none():

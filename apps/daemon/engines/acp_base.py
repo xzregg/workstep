@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
+import os
 from typing import AsyncIterator
 
 import acp
 from acp import schema
 
 from engines.base import BaseLLMEngine, EngineModel
+from engines.schema import EngineImage
 from engines.events import InternalEvent, normalize_token_usage
 
 logger = logging.getLogger(__name__)
@@ -122,6 +124,7 @@ class _StreamingClient:
 
 
 class AcpEngineBase(BaseLLMEngine):
+    _live_message_wait_seconds: float = 1.5
     """Base class for engines that communicate via ACP protocol.
 
     Subclasses define the command to spawn the ACP agent process.
@@ -158,6 +161,7 @@ class AcpEngineBase(BaseLLMEngine):
             cmd[0],
             *cmd[1:],
             cwd=cwd,
+            env=os.environ,
         ) as (client, process):
             self._process = process
             self._running = True
@@ -210,6 +214,7 @@ class AcpEngineBase(BaseLLMEngine):
             cmd[0],
             *cmd[1:],
             cwd=cwd,
+            env=os.environ,
         ) as (client, process):
             self._process = process
             self._running = True
@@ -370,6 +375,8 @@ class AcpEngineBase(BaseLLMEngine):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
+        live_message_queue: asyncio.Queue | None = None,
     ) -> AsyncIterator[InternalEvent]:
         cmd = self.get_command()
         if not cmd:
@@ -395,6 +402,7 @@ class AcpEngineBase(BaseLLMEngine):
                 cmd[0],
                 *cmd[1:],
                 cwd=cwd,
+                env=os.environ,
             ) as (client, process):
                 self._process = process
                 self._running = True
@@ -406,13 +414,26 @@ class AcpEngineBase(BaseLLMEngine):
                 logger.info("ACP initialized: %s", init_resp)
 
                 if session_id:
-                    await client.load_session(
-                        cwd=cwd,
-                        session_id=session_id,
-                        mcp_servers=[],
-                        additional_directories=add_dirs or [],
-                    )
-                    active_session_id = session_id
+                    try:
+                        await client.load_session(
+                            cwd=cwd,
+                            session_id=session_id,
+                            mcp_servers=[],
+                            additional_directories=add_dirs or [],
+                        )
+                        active_session_id = session_id
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to load session %s (%s); starting a new one",
+                            session_id,
+                            exc,
+                        )
+                        session = await client.new_session(
+                            cwd=cwd,
+                            additional_directories=add_dirs or [],
+                            mcp_servers=[],
+                        )
+                        active_session_id = session.session_id
                 else:
                     session = await client.new_session(
                         cwd=cwd,
@@ -459,6 +480,52 @@ class AcpEngineBase(BaseLLMEngine):
                 usage_event = self._map_prompt_response_usage(prompt_response)
                 if usage_event:
                     yield usage_event
+
+                if live_message_queue is not None:
+                    while True:
+                        live_items: list[tuple[str, str]] = []
+                        while not live_message_queue.empty():
+                            live_items.append(live_message_queue.get_nowait())
+                        if not live_items:
+                            # 轮间等待窗口：任务收尾时刚发出的插入消息不应静默丢失
+                            try:
+                                first = await asyncio.wait_for(
+                                    live_message_queue.get(),
+                                    timeout=self._live_message_wait_seconds,
+                                )
+                            except asyncio.TimeoutError:
+                                break
+                            live_items = [first]
+                            while not live_message_queue.empty():
+                                live_items.append(live_message_queue.get_nowait())
+                        injected = "\n\n".join(
+                            content for _, content in live_items
+                        )
+                        prompt_task = asyncio.create_task(
+                            client.prompt(
+                                session_id=active_session_id,
+                                prompt=[acp.text_block(injected)],
+                            )
+                        )
+                        while not prompt_task.done() or not handler.updates.empty():
+                            try:
+                                update = await asyncio.wait_for(
+                                    handler.updates.get(),
+                                    timeout=0.1,
+                                )
+                            except asyncio.TimeoutError:
+                                continue
+                            event = self._map_notification(update)
+                            if event:
+                                yield event
+                        await prompt_task
+                        for message_id, _ in live_items:
+                            yield InternalEvent(type="live_message", data={
+                                "message_id": message_id,
+                                "status": "delivered",
+                                "detail": "",
+                            })
+
                 yield InternalEvent(type="status", data={"status": "done"})
 
         except Exception as e:
@@ -549,6 +616,10 @@ class AcpEngineBase(BaseLLMEngine):
 
     @property
     def supports_interactive(self) -> bool:
+        return True
+
+    @property
+    def supports_live_stage_message(self) -> bool:
         return True
 
     def build_resume_params(self, session_id: str) -> dict:

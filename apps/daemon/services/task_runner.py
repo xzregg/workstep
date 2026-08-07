@@ -6,7 +6,15 @@ import logging
 import uuid
 from pathlib import Path
 
-from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models import (
+    Message,
+    ReviewRun,
+    StageSupplement,
+    StepRun,
+    Task,
+    TaskStep,
+    WorkflowRun,
+)
 from models.fields import utc_now
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt
@@ -45,7 +53,9 @@ class TaskRunner:
     def __init__(self, event_bus: EventBus):
         self._event_bus = event_bus
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
+        self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
+        self._graceful_shutdown = False
 
     async def run_pipeline(
         self,
@@ -163,6 +173,7 @@ class TaskRunner:
             self._run_step(
                 task,
                 step,
+                scheduler,
                 artifacts_dir,
                 user_input,
                 completed,
@@ -190,6 +201,7 @@ class TaskRunner:
         self,
         task: Task,
         step: Step,
+        scheduler: DAGScheduler,
         artifacts_dir: Path,
         user_input: str,
         completed: set[str],
@@ -209,7 +221,14 @@ class TaskRunner:
 
         # Update step status
         ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == step_key))
-        is_review_retry = ts.status == "retrying" and ts.started_at is not None
+        is_review_retry = (
+            ts.status in ("retrying", "rework_waiting") and ts.started_at is not None
+        )
+        # Consume any rework feedback queued by a downstream verifier.
+        rework_feedback = ts.rework_feedback
+        if rework_feedback:
+            ts.rework_feedback = None
+            ts.save()
         ts.status = "running"
         # A review retry is still part of the same stage lifecycle. Preserve the
         # first attempt's start time so the final duration includes execution,
@@ -250,11 +269,12 @@ class TaskRunner:
         })
 
         # Assemble prompt
+        feedback = review_feedback or rework_feedback
         prompt = assemble_prompt(task, step, artifacts_dir, user_input)
-        if review_feedback:
+        if feedback:
             prompt += (
-                "\n\n## 上一轮审核反馈\n"
-                f"{review_feedback}\n\n"
+                "\n\n## 上一轮验证反馈\n"
+                f"{feedback}\n\n"
                 "请保留已有正确结果，并修复以上问题。"
             )
 
@@ -315,34 +335,75 @@ class TaskRunner:
 
         self._cancelled_steps.discard(run_key)
         self._running_engines[run_key] = engine
+        live_queue: asyncio.Queue | None = None
+        engine_capabilities = getattr(engine, "capabilities", None)
+        if engine_capabilities is not None and engine_capabilities.supports_live_stage_message:
+            live_queue = asyncio.Queue()
+            self._live_message_queues[run_key] = live_queue
         events_collected = []
         content_parts = []
         reported_error: str | None = None
         execution_succeeded = False
         retry_feedback: str | None = None
+        captured_session_id = ts.session_id
+        interrupted = False
 
         try:
-            async for event in engine.spawn(
+            spawn_kwargs = dict(
                 prompt=prompt,
                 cwd=task.cwd,
                 model=resolved_model,
-            ):
+                session_id=ts.session_id if engine.supports_resume else None,
+            )
+            if live_queue is not None:
+                spawn_kwargs["live_message_queue"] = live_queue
+            async for event in engine.spawn(**spawn_kwargs):
                 events_collected.append(event.to_dict())
+                live_message_id = None
                 if event.type == "text_delta":
                     content_parts.append(event.data.get("delta", ""))
+                elif event.type == "session_started":
+                    captured_session_id = (
+                        str(event.data.get("session_id") or "") or None
+                    )
+                elif event.type == "usage" and event.data.get("session_id"):
+                    captured_session_id = str(event.data["session_id"])
                 elif event.type == "error" and reported_error is None:
                     reported_error = str(
                         event.data.get("message") or "Engine reported an error"
                     )
+                elif event.type == "live_message":
+                    live_data = event.data or {}
+                    live_message_id = live_data.get("message_id")
+                    if live_message_id:
+                        try:
+                            live_message = Message.get_by_id(live_message_id)
+                            live_message.run_status = (
+                                "succeeded"
+                                if live_data.get("status") == "delivered"
+                                else "failed"
+                            )
+                            live_message.ended_at = utc_now()
+                            live_message.save()
+                        except Message.DoesNotExist:
+                            pass
                 await self._publish(task.id, step_key, {
                     "channel": "execution",
-                    "message_id": msg_id,
+                    "message_id": live_message_id or msg_id,
                     "engine": step.engine,
                     "model": resolved_model,
                     "event_sequence": len(events_collected),
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
+
+            if captured_session_id:
+                # 同任务同阶段重跑时复用该会话（session/resume）。
+                ts = TaskStep.get(
+                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
+                )
+                ts.session_id = captured_session_id
+                ts.save()
 
             if run_key in self._cancelled_steps:
                 await self._fail_step(ts, task, step_key, "Cancelled")
@@ -412,19 +473,33 @@ class TaskRunner:
                         ts.save()
                         failed.add(step_key)
                     elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
-                        retry_feedback = outcome.feedback
-                        ts.status = "retrying"
-                        ts.error = outcome.feedback
-                        ts.save()
-                        await self._publish(task.id, step_key, {
-                            "type": "step_retrying",
-                            "data": {
-                                "task_id": task.id,
-                                "step_key": step_key,
-                                "attempt": step_run.attempt + 1,
-                                "max_retries": review_config.get("maxRetries", 1),
-                            },
-                        })
+                        if step.rework_upstream:
+                            await self._schedule_rework(
+                                task,
+                                step,
+                                scheduler,
+                                completed,
+                                outcome.feedback,
+                                step_run.attempt,
+                            )
+                            ts.status = "rework_waiting"
+                            ts.error = outcome.feedback
+                            ts.ended_at = None
+                            ts.save()
+                        else:
+                            retry_feedback = outcome.feedback
+                            ts.status = "retrying"
+                            ts.error = outcome.feedback
+                            ts.save()
+                            await self._publish(task.id, step_key, {
+                                "type": "step_retrying",
+                                "data": {
+                                    "task_id": task.id,
+                                    "step_key": step_key,
+                                    "attempt": step_run.attempt + 1,
+                                    "max_retries": review_config.get("maxRetries", 1),
+                                },
+                            })
                     else:
                         ts.status = "rejected"
                         ts.error = outcome.feedback
@@ -488,47 +563,61 @@ class TaskRunner:
                     },
                 })
 
+        except asyncio.CancelledError:
+            interrupted = True
+            raise
         except Exception as e:
+            if self._graceful_shutdown:
+                # The engine surfaced an error because we stopped it for a
+                # graceful shutdown; treat the attempt as interruptible.
+                interrupted = True
+                raise
             logger.exception("Step %s failed", step_key)
             await self._fail_step(ts, task, step_key, str(e))
             failed.add(step_key)
             events_collected.append(InternalEvent(type="error", data={"message": str(e)}).to_dict())
 
         finally:
+            interrupted_by_shutdown = interrupted and self._graceful_shutdown
             # Update message
             try:
-                msg = Message.get_by_id(msg_id)
-                msg.events_json = json.dumps(events_collected)
-                msg.usage_json = extract_usage_json(events_collected)
-                msg.content = "".join(content_parts)
-                msg.run_status = "succeeded" if execution_succeeded else "failed"
-                msg.ended_at = utc_now()
-                msg.save()
-                await self._publish(task.id, step_key, {
-                    "channel": "execution",
-                    "message_id": msg_id,
-                    "engine": msg.engine,
-                    "model": msg.model,
-                    "event_sequence": len(events_collected) + 1,
-                    "type": "message_completed",
-                    "data": {"status": msg.run_status},
-                })
-                await self._publish(task.id, step_key, {
-                    "type": "status",
-                    "data": {
-                        "status": ts.status,
-                        "task_id": task.id,
-                        "step_key": step_key,
-                    },
-                })
+                if not interrupted_by_shutdown:
+                    msg = Message.get_by_id(msg_id)
+                    msg.events_json = json.dumps(events_collected)
+                    msg.usage_json = extract_usage_json(events_collected)
+                    msg.content = "".join(content_parts)
+                    msg.run_status = "succeeded" if execution_succeeded else "failed"
+                    msg.ended_at = utc_now()
+                    msg.save()
+                    await self._publish(task.id, step_key, {
+                        "channel": "execution",
+                        "message_id": msg_id,
+                        "engine": msg.engine,
+                        "model": msg.model,
+                        "event_sequence": len(events_collected) + 1,
+                        "type": "message_completed",
+                        "data": {"status": msg.run_status},
+                    })
+                    await self._publish(task.id, step_key, {
+                        "type": "status",
+                        "data": {
+                            "status": ts.status,
+                            "task_id": task.id,
+                            "step_key": step_key,
+                        },
+                    })
             except Exception:
                 logger.exception("Failed to update message %s", msg_id)
 
             self._running_engines.pop(run_key, None)
+            self._live_message_queues.pop(run_key, None)
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
             if step_run is not None:
-                if step_run.status == "running":
+                if (
+                    step_run.status == "running"
+                    and not interrupted_by_shutdown
+                ):
                     step_run.status = (
                         "succeeded" if execution_succeeded else "failed"
                     )
@@ -540,6 +629,7 @@ class TaskRunner:
             await self._run_step(
                 task,
                 step,
+                scheduler,
                 artifacts_dir,
                 user_input,
                 completed,
@@ -548,6 +638,53 @@ class TaskRunner:
                 workflow_run,
                 retry_feedback,
             )
+
+    async def _schedule_rework(
+        self,
+        task: Task,
+        step: Step,
+        scheduler: DAGScheduler,
+        completed: set[str],
+        feedback: str,
+        attempt: int,
+    ) -> None:
+        """Reset upstream producers and their downstream so the DAG re-runs them.
+
+        Called when an automatic review rejects this (verifier) step and the
+        step declares rework targets via dashed feedback edges. Producers are
+        re-run reusing their own sessions (same task+stage), then the verifier
+        is re-picked by the scheduler for another verification attempt.
+        """
+        rewind: set[str] = set()
+        for upstream_key in step.rework_upstream:
+            rewind.add(upstream_key)
+            rewind.update(scheduler.get_all_downstream(upstream_key))
+
+        targets = set(step.rework_upstream)
+        for key in sorted(rewind):
+            if key == step.key:
+                continue  # verifier status is handled by the caller
+            completed.discard(key)
+            ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == key))
+            ts.status = "rework"
+            ts.rework_feedback = feedback if key in targets else None
+            ts.ended_at = None
+            ts.save()
+            await self._publish(task.id, key, {
+                "type": "status",
+                "data": {"status": "rework", "task_id": task.id, "step_key": key},
+            })
+
+        await self._publish(task.id, step.key, {
+            "type": "step_rework",
+            "data": {
+                "task_id": task.id,
+                "step_key": step.key,
+                "rework_targets": list(step.rework_upstream),
+                "attempt": attempt,
+                "max_retries": int((step.review or {}).get("maxRetries", 1)),
+            },
+        })
 
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""
@@ -575,6 +712,86 @@ class TaskRunner:
         await engine.stop()
         return True
 
+    async def send_live_message(
+        self,
+        task_id: str,
+        step_key: str,
+        content: str,
+        as_guidance: bool = False,
+    ) -> dict:
+        """Send an ordinary user message into a running stage execution.
+
+        Persists an ``execution``-channel user message and queues it for the
+        running engine to inject mid-run. With ``as_guidance`` the content is
+        also saved as active stage guidance (``StageSupplement``) so future
+        attempts include it in the stage prompt. Raises ValueError when the
+        stage is not running or its engine cannot deliver live messages.
+        """
+        normalized = content.strip()
+        if not normalized:
+            raise ValueError("消息内容不能为空")
+        run_key = f"{task_id}:{step_key}"
+        engine = self._running_engines.get(run_key)
+        if engine is None:
+            raise ValueError(f"阶段未在运行: {step_key}")
+        engine_capabilities = getattr(engine, "capabilities", None)
+        if engine_capabilities is None or not engine_capabilities.supports_live_stage_message:
+            raise ValueError("该引擎不支持执行中消息注入")
+        queue = self._live_message_queues.get(run_key)
+        if queue is None:
+            raise ValueError("阶段消息队列不可用")
+        try:
+            task = Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            raise ValueError(f"任务不存在: {task_id}")
+        now = utc_now()
+        message_id = str(uuid.uuid4())
+        create_task_message(
+            id=message_id,
+            task=task,
+            channel="execution",
+            step_key=step_key,
+            role="user",
+            content=normalized,
+            run_id=message_id,
+            run_status="running",
+            position=0,
+            started_at=now,
+            created_at=now,
+        )
+        if as_guidance:
+            StageSupplement.create(
+                id=str(uuid.uuid4()),
+                task=task,
+                step_key=step_key,
+                content=normalized,
+                source_proposal=None,
+                created_sequence=(
+                    task.next_message_sequence - 1
+                    if task.next_message_sequence > 0
+                    else 0
+                ),
+                created_at=now,
+            )
+            task.state_version += 1
+            task.save()
+        await self._publish(task_id, step_key, {
+            "channel": "execution",
+            "message_id": message_id,
+            "type": "message_started",
+            "data": {
+                "content": normalized,
+                "status": "queued",
+                "as_guidance": as_guidance,
+            },
+        })
+        queue.put_nowait((message_id, normalized))
+        return {
+            "message_id": message_id,
+            "step_key": step_key,
+            "status": "queued",
+        }
+
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel every running step for a task."""
         prefix = f"{task_id}:"
@@ -591,6 +808,20 @@ class TaskRunner:
             *(self._running_engines[run_key].stop() for run_key in run_keys)
         )
         return True
+
+    async def stop_for_shutdown(self) -> None:
+        """Stop engine subprocesses without marking steps failed.
+
+        Used by graceful daemon shutdown so interrupted runs stay ``running``
+        and are resumed from the last completed node on the next start.
+        """
+        self._graceful_shutdown = True
+        engines = list(self._running_engines.values())
+        await asyncio.gather(
+            *(engine.stop() for engine in engines),
+            return_exceptions=True,
+        )
+        self._running_engines.clear()
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
         await self._event_bus.publish({

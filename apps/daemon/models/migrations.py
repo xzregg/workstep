@@ -20,7 +20,7 @@ from models.coordinator import (
     StageSupplement,
 )
 
-LATEST_SCHEMA_VERSION = 14
+LATEST_SCHEMA_VERSION = 20
 
 
 def _create_initial_tables(db: pw.SqliteDatabase) -> None:
@@ -239,6 +239,46 @@ def _add_coordinator_fast_model_column(db: pw.SqliteDatabase) -> None:
     _add_column_if_missing(db, "tasks", "coordinator_fast_model", "TEXT")
 
 
+def _add_coordinator_vision_model_column(db: pw.SqliteDatabase) -> None:
+    """Multimodal fallback model for coordinator image analysis."""
+    _add_column_if_missing(db, "tasks", "coordinator_vision_model", "TEXT")
+
+
+def _add_task_step_session_id_column(db: pw.SqliteDatabase) -> None:
+    """Per-stage engine session: same task+stage reuses the same session id."""
+    _add_column_if_missing(db, "taskstep", "session_id", "TEXT")
+
+
+def _add_task_step_rework_feedback_column(db: pw.SqliteDatabase) -> None:
+    """Rework feedback sent from a downstream verifier to an upstream producer."""
+    _add_column_if_missing(db, "taskstep", "rework_feedback", "TEXT")
+
+
+def _add_task_archived_column(db: pw.SqliteDatabase) -> None:
+    """Archive support: add `archived` flag to the tasks table."""
+    _add_column_if_missing(db, "tasks", "archived", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _make_stage_supplement_source_optional(db: pw.SqliteDatabase) -> None:
+    """Live stage messages may add guidance without a coordinator proposal."""
+    migrator = SqliteMigrator(db)
+    migrate(
+        migrator.alter_column_type(
+            "stage_supplements",
+            "source_proposal_id",
+            pw.IntegerField(null=True),
+        ),
+    )
+
+
+def _add_workflow_run_recovery_columns(db: pw.SqliteDatabase) -> None:
+    """Track restart recovery so the UI can show a resume hint."""
+    _add_column_if_missing(db, "workflow_runs", "recovered_at", "DATETIME")
+    _add_column_if_missing(
+        db, "workflow_runs", "recovered_count", "INTEGER NOT NULL DEFAULT 0"
+    )
+
+
 MIGRATIONS: dict[int, Callable[[pw.SqliteDatabase], None]] = {
     1: _create_initial_tables,
     2: _create_workflow_runs_table,
@@ -254,6 +294,12 @@ MIGRATIONS: dict[int, Callable[[pw.SqliteDatabase], None]] = {
     12: _add_coordinator_columns,
     13: _create_coordinator_tables,
     14: _add_coordinator_fast_model_column,
+    15: _add_task_step_session_id_column,
+    16: _add_task_step_rework_feedback_column,
+    17: _make_stage_supplement_source_optional,
+    18: _add_task_archived_column,
+    19: _add_workflow_run_recovery_columns,
+    20: _add_coordinator_vision_model_column,
 }
 
 NON_ATOMIC_MIGRATIONS = {10, 11}

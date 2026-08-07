@@ -6,7 +6,7 @@ WorkStep 的本地后台服务，负责项目管理、工作流编排、LLM 引�
 
 - **API 层**：FastAPI 提供 REST API 和 WebSocket。
 - **服务层**：加载并执行工作流，处理任务、中途干预和项目生命周期。
-- **引擎层**：通过统一接口接入 Claude Code、Codex、Hermes、QCode、OpenClaw 和 API，优先使用 ACP，CLI 作为回退。
+- **引擎层**：通过统一接口接入 Claude Code、Codex、Hermes、Claude / Codex / Qoder Agent SDK、OpenClaw 和 API。
 - **数据层**：Peewee 管理每个项目 `.workstep/workstep.db` 中的 SQLite 数据。
 - **事件层**：EventBus 将任务状态、模型输出和工具调用实时推送给前端。
 

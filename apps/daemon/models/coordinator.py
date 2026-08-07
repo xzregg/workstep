@@ -86,13 +86,22 @@ class ActionProposal(BaseModel):
 
 
 class StageSupplement(BaseModel):
-    """Append-only user-confirmed context for future stage attempts."""
+    """Append-only stage guidance for current and future stage attempts.
+
+    Created either by a confirmed coordinator ``supplement_stage`` proposal
+    (source_proposal set) or directly by a live stage message marked
+    ``as_guidance`` (source_proposal NULL).
+    """
 
     id = pw.TextField(primary_key=True)
     task = pw.ForeignKeyField(Task, backref="stage_supplements")
     step_key = pw.TextField()
     content = pw.TextField()
-    source_proposal = pw.ForeignKeyField(ActionProposal, backref="supplements")
+    source_proposal = pw.ForeignKeyField(
+        ActionProposal,
+        null=True,
+        backref="supplements",
+    )
     created_sequence = pw.IntegerField()
     active = pw.BooleanField(default=True)
     created_at = UTCDateTimeField()

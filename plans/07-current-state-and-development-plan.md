@@ -19,7 +19,7 @@
 - 前端：修复重复 WebSocket 连接、StrictMode 重连泄漏、删除只改本地状态、描述未提交、状态徽标伪造、画布旧无效端口导致永远无法保存。
 - 安全/边界：模板 ID 防目录穿越并校验工作流；文件预览增加 1 MiB 上限；API engine 无凭证时默认不可用。
 
-当前尚不能宣称“产品所有规划功能完成”。本轮证明了现有公开主链路可运行；剩余产品级工作仍包括事件增量持久化与重启恢复、产物登记/版本、后端持久化泳道投影、WebSocket project/run 隔离、完整 intervention UI，以及外部 Qoder/Hermes 账号额度恢复后的成功响应复验。
+当前尚不能宣称“产品所有规划功能完成”。本轮证明了现有公开主链路可运行；剩余产品级工作仍包括事件增量持久化、产物登记/版本、后端持久化泳道投影、WebSocket project/run 隔离、完整 intervention UI，以及外部 Qoder/Hermes 账号额度恢复后的成功响应复验。工作流断点续跑（Daemon 重启后从上次未完成节点继续）已实现，见下。
 
 ## 1. 结论
 
@@ -41,7 +41,7 @@ WorkStep 已经具备一套可继续开发的原型骨架：
 7. `WorkflowRuntime` 统一托管后台任务，启动返回 `run_id`，Daemon 关闭前停止引擎并等待收尾。
 8. 创建和复制任务会按工作流生成全新的 pending 阶段；新 WorkflowRun 不会复用上次成功状态。
 
-仍需优先解决的产品级断点是：前端状态事实源分裂、消息/事件增量持久化、Daemon 重启恢复、产物闭环，以及“HTTP → WebSocket → 数据库 → 历史回放”的完整端到端验证。
+仍需优先解决的产品级断点是：前端状态事实源分裂、消息/事件增量持久化、产物闭环，以及“HTTP → WebSocket → 数据库 → 历史回放”的完整端到端验证。
 
 因此，现有 `06-build-order.md` 中 P1–P4 的“已完成”应理解为“模块骨架或局部测试已完成”，不能作为产品完成度依据。下一阶段应优先打通一条真实纵向链路，暂缓继续扩展更多引擎和外围功能。
 
@@ -86,7 +86,7 @@ CanvasEditor ──保存校验──> WorkflowDefinition ({nodes, connections})
 
 - **事件/持久化 seam**：运行中的事件尚未以可重放的 sequence 增量持久化。
 - **前端事实源 seam**：看板本地泳道状态仍未完全由后端 run/step 状态投影。
-- **恢复 seam**：进程重启后尚不能把残留 running 状态归档为 interrupted 并恢复事件。
+- **恢复 seam**：`WorkflowRuntime.recover_running_workflows()` 在 Daemon 启动时把残留 `running` 的 `WorkflowRun` 重新拉起，中断的 StepRun 标记 failed 并从最后完成节点继续；优雅关闭不再把运行中 run 标记 failed，留给下次启动恢复。恢复信息写入 `workflow_runs.recovered_at / recovered_count` 并广播 `run_recovered` 事件；前端 WS 重连后自动刷新任务列表，运行中的任务显示「断点续跑」徽标与恢复提示条。
 
 ### 3.2 建议的目标模块
 
@@ -133,7 +133,7 @@ await workflow_runtime.retry_step(handle.run_id, step_key)
 - `services/project.py::DEFAULT_STEPS`
 - `apps/daemon/data/steps.json`
 - `CanvasEditor.tsx::DEFAULT_NODES`
-- `api/templates.py::BUILTIN_TEMPLATES`
+- `apps/daemon/data/templates/*.json`（流程模板的统一文件来源）
 
 它们已经出现连接关系不一致，应收敛为一个版本化 schema 和一个默认模板来源。
 
@@ -190,7 +190,7 @@ PRD 同时要求“DAG”与“条件回到需求阶段”，两者互相冲突�
 | 任务创建/列表 | 部分 | REST、SQLite、看板；按工作流初始化 TaskStep | description 未从前端提交；前端阶段投影仍不完整 |
 | 卡片阶段进度 | 骨架 | `TaskStep` 表存在 | 看板泳道和状态主要为前端本地状态，刷新即丢 |
 | 卡片暂停 | 骨架 | 修改 task.status | 不暂停子进程，不阻止调度继续 |
-| 卡片取消 | 部分 | runtime 定位活动 runner、调用 engine.stop 并一致收尾 | 重启后运行归属与恢复尚未实现 |
+| 卡片取消 | 部分 | runtime 定位活动 runner、调用 engine.stop 并一致收尾 | 重启恢复已实现（启动时重新拉起 running run） |
 | 删除/复制 | 部分 | 后端复制会重建 pending 阶段，store 在建 | 看板删除仍为 TODO；UI/DB 一致性未验收 |
 | 工作流运行入口 | 部分 | `/api/task/run` 返回 run_id；`WorkflowRuntime` 托管、等待、取消和关闭 | 缺完整 HTTP/WS E2E |
 | 运行状态机 | 部分 | task/step/workflow run/step run 状态；error/cancel 一致收尾 | `ready` 仍同时表示未开始和完成；状态枚举尚未冻结 |
@@ -214,7 +214,7 @@ PRD 同时要求“DAG”与“条件回到需求阶段”，两者互相冲突�
 | Schema 迁移 | 已完成（当前版本） | schema version、v1–v3 幂等迁移和旧库升级测试 | 后续模型变更需持续追加 migration |
 | 安全 | 部分 | Codex 默认 workspace-write | 文件预览路径过宽；API Base SSRF 未限制；凭证剥离未实现 |
 | 可观测性 | 骨架 | Python logging、usage 事件 | 无 run 日志、duration/cost、指标、原始事件文件或 Langfuse |
-| 发布/恢复 | 部分 | start/stop/restart 脚本；关闭会停止并等待活动运行 | Daemon 异常退出后不恢复或清理 running 状态 |
+| 发布/恢复 | 部分 | start/stop/restart 脚本；关闭会停止并等待活动运行 | 断点续跑已实现：重启后从最后完成节点继续，`recovered_at/count` 落库且前端展示续跑徽标；未投递的实时消息在恢复时不补投 |
 | 文档一致性 | 未完成 | PRD 和多份计划较丰富 | 仍混用 Open Design/WorkStep、TS/Python、SSE/WebSocket、旧路径 |
 
 ## 5. P0 风险

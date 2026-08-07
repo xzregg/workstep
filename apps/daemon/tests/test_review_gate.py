@@ -15,6 +15,10 @@ class SequencedReviewEngine:
     def __init__(self, calls: list[str]):
         self.calls = calls
 
+    @property
+    def supports_resume(self):
+        return False
+
     async def spawn(self, prompt, cwd, **kwargs):
         self.calls.append(prompt)
         call_number = len(self.calls)

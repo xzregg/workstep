@@ -6,13 +6,12 @@ from engines.claude_code import ClaudeCodeEngine
 from engines.codex import CodexEngine
 from engines.hermes import HermesEngine
 from engines.acp_base import AcpEngineBase
-from engines.claude_code_acp import ClaudeCodeAcpEngine
-from engines.codex_acp import CodexAcpEngine
-from engines.qoder_acp import QoderAcpEngine
-from engines.qcode import QCodeEngine
+from engines.qoder_sdk import QoderSDKEngine
 from engines.openclaw import OpenClawEngine
 from engines.api import APIEngine
 from engines.pydantic_ai import PydanticAIEngine
+from engines.claude_agent_sdk import ClaudeAgentSDKEngine
+from engines.codex_sdk import CodexSDKEngine
 from engines.registry import (
     ENGINE_REGISTRY,
     get_available_engines,
@@ -30,13 +29,12 @@ __all__ = [
     "CodexEngine",
     "HermesEngine",
     "AcpEngineBase",
-    "ClaudeCodeAcpEngine",
-    "CodexAcpEngine",
-    "QoderAcpEngine",
-    "QCodeEngine",
+    "QoderSDKEngine",
     "OpenClawEngine",
     "APIEngine",
     "PydanticAIEngine",
+    "ClaudeAgentSDKEngine",
+    "CodexSDKEngine",
     "ENGINE_REGISTRY",
     "get_available_engines",
     "create_engine",

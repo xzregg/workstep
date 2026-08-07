@@ -639,7 +639,7 @@ async def test_start_returns_a_handle_that_can_be_waited(tmp_path):
 
 @pytest.mark.anyio
 async def test_shutdown_cancels_and_waits_for_active_runs(tmp_path):
-    """shutdown does not return until every active run has been cancelled."""
+    """A graceful shutdown stops engines but leaves runs recoverable."""
     from engines.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
@@ -705,8 +705,10 @@ async def test_shutdown_cancels_and_waits_for_active_runs(tmp_path):
         assert engine.cancelled.is_set()
         assert engine.stopped.is_set()
         workflow_run = WorkflowRun.get_by_id(handle.id)
-        assert workflow_run.status == "failed"
-        assert workflow_run.ended_at is not None
+        # Graceful shutdown leaves the run marked ``running`` so the next
+        # daemon start resumes it from the last completed node.
+        assert workflow_run.status == "running"
+        assert workflow_run.ended_at is None
         with pytest.raises(asyncio.CancelledError):
             await runtime.wait(handle)
 
@@ -721,10 +723,19 @@ async def test_shutdown_cancels_and_waits_for_active_runs(tmp_path):
 async def test_shutdown_finalizes_runs_cancelled_before_they_are_scheduled(
     tmp_path,
 ):
-    """Even never-scheduled background runs leave no running DB records."""
+    """Never-scheduled runs stay recoverable after a graceful shutdown."""
     from engines.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
+
+    class EarlyBlockingEngine(RuntimeFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                pass
+            if False:
+                yield InternalEvent(type="status", data={"status": "done"})
 
     db = init_db(str(tmp_path / "workstep.db"))
     tasks = [
@@ -760,7 +771,7 @@ async def test_shutdown_finalizes_runs_cancelled_before_they_are_scheduled(
             return nullcontext(project)
 
     original = ENGINE_REGISTRY.copy()
-    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    ENGINE_REGISTRY["claude"] = EarlyBlockingEngine
     try:
         runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
         handles = [
@@ -774,8 +785,10 @@ async def test_shutdown_finalizes_runs_cancelled_before_they_are_scheduled(
             WorkflowRun.get_by_id(handle.id)
             for handle in handles
         ]
-        assert [run.status for run in runs] == ["failed", "failed"]
-        assert all(run.ended_at is not None for run in runs)
+        # Interrupted runs stay ``running`` for restart recovery instead of
+        # being finalized as failed.
+        assert [run.status for run in runs] == ["running", "running"]
+        assert all(run.ended_at is None for run in runs)
         for handle in handles:
             with pytest.raises(asyncio.CancelledError):
                 await runtime.wait(handle)

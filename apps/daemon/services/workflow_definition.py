@@ -72,7 +72,14 @@ class WorkflowDefinition:
         if collection_name == "nodes":
             node_ids = {node.get("id") for node in items}
             nodes_by_id = {node.get("id"): node for node in items}
-            for index, connection in enumerate(self._raw.get("connections", [])):
+            connections = self._raw.get("connections", [])
+            for index, connection in enumerate(connections):
+                kind = connection.get("kind", "solid")
+                if kind not in ("solid", "dashed"):
+                    raise WorkflowValidationError(
+                        f"connections[{index}].kind: invalid value '{kind}'; "
+                        "expected 'solid' or 'dashed'"
+                    )
                 for endpoint in ("from", "to"):
                     node_id = connection.get(endpoint)
                     if node_id not in node_ids:
@@ -107,10 +114,44 @@ class WorkflowDefinition:
                 for node in items
             }
             dependencies = {key: [] for key in key_by_id.values()}
-            for connection in self._raw.get("connections", []):
-                dependencies[key_by_id[connection.get("to")]].append(
-                    key_by_id[connection.get("from")]
-                )
+            dashed_edges: list[tuple[int, str, str]] = []
+            for index, connection in enumerate(connections):
+                from_key = key_by_id[connection.get("from")]
+                to_key = key_by_id[connection.get("to")]
+                if connection.get("kind", "solid") == "dashed":
+                    dashed_edges.append((index, from_key, to_key))
+                else:
+                    dependencies[to_key].append(from_key)
+            self._validate_acyclic(dependencies)
+
+            upstream_cache: dict[str, set[str]] = {}
+
+            def upstream_of(key: str) -> set[str]:
+                if key in upstream_cache:
+                    return upstream_cache[key]
+                result: set[str] = set()
+                stack = list(dependencies[key])
+                while stack:
+                    dep = stack.pop()
+                    if dep in result:
+                        continue
+                    result.add(dep)
+                    stack.extend(dependencies[dep])
+                upstream_cache[key] = result
+                return result
+
+            for index, from_key, to_key in dashed_edges:
+                if from_key == to_key:
+                    raise WorkflowValidationError(
+                        f"connections[{index}].kind: dashed feedback edge "
+                        f"'{from_key}' cannot target itself"
+                    )
+                if to_key not in upstream_of(from_key):
+                    raise WorkflowValidationError(
+                        f"connections[{index}].kind: dashed edge "
+                        f"'{from_key} -> {to_key}' must target an upstream "
+                        f"producer of the verifier"
+                    )
         else:
             dependencies = {
                 step.get("key", step.get("id", "")): list(step.get("dependsOn", []))
@@ -125,7 +166,16 @@ class WorkflowDefinition:
                             f"steps[{step_index}].dependsOn[{dependency_index}]: "
                             f"step '{dependency}' does not exist"
                         )
-        self._validate_acyclic(dependencies)
+            for step_index, step in enumerate(items):
+                for rework_index, target in enumerate(
+                    step.get("reworkUpstream", [])
+                ):
+                    if target not in seen_keys:
+                        raise WorkflowValidationError(
+                            f"steps[{step_index}].reworkUpstream[{rework_index}]: "
+                            f"step '{target}' does not exist"
+                        )
+            self._validate_acyclic(dependencies)
         return self
 
     def auto_start_enabled(self, start_step_key: str | None = None) -> bool:
@@ -152,10 +202,18 @@ class WorkflowDefinition:
         if "nodes" in self._raw:
             nodes = self._raw.get("nodes", [])
             dependencies = {node["id"]: [] for node in nodes}
+            rework_by_id: dict[Any, list[str]] = {node["id"]: [] for node in nodes}
             for connection in self._raw.get("connections", []):
-                dependency = self._node_key_by_id(connection["from"])
-                if dependency not in dependencies[connection["to"]]:
-                    dependencies[connection["to"]].append(dependency)
+                if connection.get("kind", "solid") == "dashed":
+                    # Dashed edges point from the verifier to its producers:
+                    # the verifier declares the producers as rework targets.
+                    rework_by_id[connection["from"]].append(
+                        self._node_key_by_id(connection["to"])
+                    )
+                else:
+                    from_key = self._node_key_by_id(connection["from"])
+                    if from_key not in dependencies[connection["to"]]:
+                        dependencies[connection["to"]].append(from_key)
             steps = tuple(
                 self._normalize_step(
                     {
@@ -167,6 +225,7 @@ class WorkflowDefinition:
                             "label", node.get("title", node.get("type", ""))
                         ),
                         "dependsOn": dependencies[node["id"]],
+                        "reworkUpstream": rework_by_id[node["id"]],
                     }
                 )
                 for node in nodes
@@ -227,6 +286,7 @@ class WorkflowDefinition:
             "outputs": deepcopy(step.get("outputs", [])),
             "dependsOn": list(step.get("dependsOn", [])),
             "condition": step.get("condition", ""),
+            "reworkUpstream": list(step.get("reworkUpstream", [])),
         }
         # Absence means legacy pass-through. An explicit review object enables
         # the review gate, including manual review when auto is false.

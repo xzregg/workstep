@@ -84,7 +84,7 @@ export function liveExecutionStatus(
   if (latest?.type === 'status' && latest.data?.status === 'initializing') {
     return '引擎初始化中'
   }
-  return '引擎处理中'
+  return '处理中'
 }
 
 export function isNearConversationBottom(

@@ -1,5 +1,6 @@
 {
   "id": "data-analysis",
+  "default": true,
   "name": "数据分析",
   "description": "数据采集 → 清洗 → 建模 → 评估 → 报告",
   "steps": {

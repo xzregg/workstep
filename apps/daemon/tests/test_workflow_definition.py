@@ -38,7 +38,19 @@ def test_legacy_steps_compile_to_task_runner_config():
 
     assert compiled.to_steps_config() == {
         "steps": [
-            raw["steps"][0],
+            {
+                "key": "requirements",
+                "label": "Requirements",
+                "engine": "claude",
+                "model": "sonnet",
+                "prompt": "Write the requirements",
+                "color": "#123456",
+                "inputs": [{"name": "brief", "type": "document"}],
+                "outputs": [{"name": "prd", "type": "markdown"}],
+                "dependsOn": [],
+                "condition": "",
+                "reworkUpstream": [],
+            },
             {
                 "key": "build",
                 "label": "Build",
@@ -50,6 +62,7 @@ def test_legacy_steps_compile_to_task_runner_config():
                 "outputs": [],
                 "dependsOn": ["requirements"],
                 "condition": "",
+                "reworkUpstream": [],
             },
         ]
     }
@@ -210,6 +223,109 @@ def test_multiple_port_connections_between_nodes_create_one_dependency():
     steps = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
 
     assert steps[1]["dependsOn"] == ["design"]
+
+
+def test_dashed_feedback_edge_is_excluded_from_dependencies_and_cycles():
+    """A dashed (rework feedback) edge must not gate readiness nor form a cycle."""
+    raw = {
+        "nodes": [
+            {"id": 1, "type": "frontend", "title": "前端"},
+            {"id": 2, "type": "test", "title": "测试"},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 2, "fromPort": 0, "to": 1, "toPort": 0, "kind": "dashed"},
+        ],
+    }
+
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
+    steps = {s["key"]: s for s in compiled}
+    assert steps["test"]["dependsOn"] == ["frontend"]
+    assert steps["frontend"]["dependsOn"] == []
+    assert steps["test"]["reworkUpstream"] == ["frontend"]
+
+
+def test_dashed_edge_must_target_an_upstream_producer():
+    """A dashed edge pointing downstream (not an upstream producer) is rejected."""
+    raw = {
+        "nodes": [
+            {"id": 1, "type": "frontend", "title": "前端"},
+            {"id": 2, "type": "test", "title": "测试"},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0, "kind": "dashed"},
+        ],
+    }
+
+    with pytest.raises(
+        WorkflowValidationError,
+        match=r"dashed edge 'frontend -> test' must target an upstream producer",
+    ):
+        WorkflowDefinition.load(raw).validate()
+
+
+def test_dashed_self_edge_is_rejected():
+    raw = {
+        "nodes": [{"id": 1, "type": "test", "title": "测试"}],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 1, "toPort": 0, "kind": "dashed"},
+        ],
+    }
+
+    with pytest.raises(
+        WorkflowValidationError,
+        match=r"dashed feedback edge 'test' cannot target itself",
+    ):
+        WorkflowDefinition.load(raw).validate()
+
+
+def test_invalid_connection_kind_is_rejected():
+    raw = {
+        "nodes": [
+            {"id": 1, "type": "a", "title": "A"},
+            {"id": 2, "type": "b", "title": "B"},
+        ],
+        "connections": [{"from": 1, "to": 2, "kind": "dotted"}],
+    }
+
+    with pytest.raises(
+        WorkflowValidationError,
+        match=r"connections\[0\]\.kind: invalid value 'dotted'",
+    ):
+        WorkflowDefinition.load(raw).validate()
+
+
+def test_steps_format_rejects_rework_upstream_missing_target():
+    raw = {
+        "steps": [
+            {"key": "test", "label": "Test", "reworkUpstream": ["frontend"]},
+        ]
+    }
+
+    with pytest.raises(
+        WorkflowValidationError,
+        match=r"steps\[0\]\.reworkUpstream\[0\]: step 'frontend' does not exist",
+    ):
+        WorkflowDefinition.load(raw).validate()
+
+
+def test_steps_format_compiles_rework_upstream():
+    raw = {
+        "steps": [
+            {"key": "frontend", "label": "Frontend"},
+            {
+                "key": "test",
+                "label": "Test",
+                "dependsOn": ["frontend"],
+                "reworkUpstream": ["frontend"],
+            },
+        ]
+    }
+
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
+    steps = {s["key"]: s for s in compiled}
+    assert steps["test"]["reworkUpstream"] == ["frontend"]
 
 
 def test_connection_to_nonexistent_canvas_port_is_rejected():

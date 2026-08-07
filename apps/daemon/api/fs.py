@@ -140,6 +140,48 @@ async def _open_with(directory: Path, opener_id: str) -> None:
 class UploadImageRequest(BaseModel):
     filename: str = "image.png"
     data_url: str  # data:image/png;base64,...
+    prefix: str = ""
+
+
+class MemoryWriteRequest(BaseModel):
+    content: str
+
+
+@router.get("/memory")
+async def read_memory(pid: str = Query(..., alias="project_id")):
+    """Read the project's .workstep/MEMORY.md (empty string when missing)."""
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        project = project_manager.bind_project_by_id(pid)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    memory_path = project.workstep_dir / "MEMORY.md"
+    content = memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
+    return {"path": str(memory_path), "content": content}
+
+
+@router.put("/memory")
+async def write_memory(
+    req: MemoryWriteRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Overwrite the project's .workstep/MEMORY.md."""
+    from main import project_manager
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        project = project_manager.bind_project_by_id(pid)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    if len(req.content) > 500_000:
+        raise HTTPException(status_code=400, detail="记忆内容超过 500KB 上限")
+    memory_path = project.workstep_dir / "MEMORY.md"
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    memory_path.write_text(req.content, encoding="utf-8")
+    return {"path": str(memory_path), "saved": True}
+
 
 @router.post("/upload/image")
 async def upload_image(
@@ -175,10 +217,15 @@ async def upload_image(
                "image/webp": ".webp", "image/svg+xml": ".svg", "image/bmp": ".bmp"}
     ext = ext_map.get(content_type, ".png")
 
+    # Short flow/task prefix so uploads can be bulk-cleared later.
+    prefix = req.prefix.strip()
+    if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
+        raise HTTPException(status_code=400, detail="前缀仅允许字母、数字、下划线和连字符，长度不超过 32")
+
     upload_dir = Path(project.workstep_dir) / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{uuid.uuid4().hex}{ext}"
+    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
     filepath = upload_dir / filename
     filepath.write_bytes(content)
 

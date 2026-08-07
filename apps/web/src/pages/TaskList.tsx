@@ -42,6 +42,7 @@ const STATUS_LABELS: Record<string, string> = {
   done: '已完成',
   reviewing: '审核中', awaiting_review: '等待审核',
   retrying: '自动重跑', rejected: '审核未通过',
+  rework: '返工中', rework_waiting: '等待返工',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -55,6 +56,8 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_review: 'var(--status-paused)',
   retrying: 'var(--warn)',
   rejected: 'var(--status-failed)',
+  rework: 'var(--warn)',
+  rework_waiting: 'var(--warn)',
 }
 
 /* ── Extract lanes from steps.json ── */
@@ -127,6 +130,8 @@ function deriveTaskLane(
   return findLane('reviewing')
     || findLane('awaiting_review')
     || findLane('retrying')
+    || findLane('rework_waiting')
+    || findLane('rework')
     || findLane('running')
     || findLane('rejected')
     || findLane('failed')
@@ -141,7 +146,10 @@ function deriveTaskLane(
 
 export default function TaskList() {
   const navigate = useNavigate()
-  const { tasks, loading, fetchTasks, createTask, runTask, deleteTask, setActiveTask } = useTaskStore()
+  const {
+    tasks, loading, fetchTasks, createTask, runTask, deleteTask,
+    archiveTask, unarchiveTask, setActiveTask,
+  } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
@@ -150,7 +158,9 @@ export default function TaskList() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
+  const [confirmArchiveTaskId, setConfirmArchiveTaskId] = useState<string | null>(null)
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
   const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
@@ -158,6 +168,22 @@ export default function TaskList() {
   const [newAutoStart, setNewAutoStart] = useState(false)
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [copiedWorkflowId, setCopiedWorkflowId] = useState(false)
+  const [showMemoryPanel, setShowMemoryPanel] = useState(false)
+  const [memoryContent, setMemoryContent] = useState('')
+  const [memoryLoading, setMemoryLoading] = useState(false)
+  const [memorySaving, setMemorySaving] = useState(false)
+  const [memoryError, setMemoryError] = useState('')
+  const [memoryNotice, setMemoryNotice] = useState('')
+  const [confirmCloseMemory, setConfirmCloseMemory] = useState(false)
+  const [confirmCloseNewTask, setConfirmCloseNewTask] = useState(false)
+  const memorySavedRef = useRef('')
+  const newPanelBaselineRef = useRef<{
+    title: string
+    desc: string
+    autoStart: boolean
+    overrides: Record<string, { auto: boolean; prompt: string; maxRetries: number }>
+  }>({ title: '', desc: '', autoStart: false, overrides: {} })
   const [directoryNotice, setDirectoryNotice] = useState('')
   const [directoryOpeners, setDirectoryOpeners] = useState<DirectoryOpener[]>(FALLBACK_OPENERS)
   const [selectedOpener, setSelectedOpener] = useState(
@@ -173,18 +199,19 @@ export default function TaskList() {
     if (!activeProject?.id) { tasksFetchedRef.current = ''; return }
     if (tasksFetchedRef.current === activeProject.id) return
     tasksFetchedRef.current = activeProject.id
-    fetchTasks(activeProject.id, activeWorkflowId)
-  }, [fetchTasks, activeProject?.id])
+    fetchTasks(activeProject.id, activeWorkflowId, showArchived)
+  }, [fetchTasks, activeProject?.id, showArchived])
 
   useEffect(() => {
-    if (activeProject?.id) fetchTasks(activeProject.id, activeWorkflowId)
-  }, [fetchTasks, activeProject?.id, activeWorkflowId])
+    if (activeProject?.id) fetchTasks(activeProject.id, activeWorkflowId, showArchived)
+  }, [fetchTasks, activeProject?.id, activeWorkflowId, showArchived])
 
   // Reset local state when project changes
   useEffect(() => {
     setCardLanes({})
     setShowNewPanel(false)
     setCreateStartStepKey(null)
+    setShowArchived(false)
   }, [activeProject?.path])
 
   useEffect(() => {
@@ -253,6 +280,12 @@ export default function TaskList() {
       }
     }
     setReviewOverrides(nodeConfigs)
+    newPanelBaselineRef.current = {
+      title: '',
+      desc: '',
+      autoStart: Boolean(selectedStage?.autoStart),
+      overrides: JSON.parse(JSON.stringify(nodeConfigs)),
+    }
     setShowNewPanel(true)
   }
 
@@ -266,16 +299,21 @@ export default function TaskList() {
       || (task ? deriveTaskLane(task, lanes) : lanes[0]?.key || 'do')
   }, [cardLanes, lanes, tasks])
 
+  const visibleTasks = useMemo(
+    () => tasks.filter((t) => (showArchived ? t.archived : !t.archived)),
+    [tasks, showArchived],
+  )
+
   const tasksByLane = useMemo(() => {
-    const map: Record<string, typeof tasks> = {}
+    const map: Record<string, typeof visibleTasks> = {}
     lanes.forEach((l) => { map[l.key] = [] })
-    tasks.forEach((t: any) => {
+    visibleTasks.forEach((t: any) => {
       const lane = getCardLane(t.id)
       if (map[lane]) map[lane].push(t)
       else if (lanes[0]) map[lanes[0].key]?.push(t)
     })
     return map
-  }, [tasks, lanes, getCardLane])
+  }, [visibleTasks, lanes, getCardLane])
 
   const handleCreate = async () => {
     if (!newTitle.trim() || !activeProject) return
@@ -315,6 +353,70 @@ export default function TaskList() {
       )
     }
     setTimeout(() => setDirectoryNotice(''), 3000)
+  }
+
+  const copyWorkflowId = async () => {
+    try {
+      await navigator.clipboard.writeText(activeWorkflowId || 'default')
+      setCopiedWorkflowId(true)
+      setTimeout(() => setCopiedWorkflowId(false), 1500)
+    } catch {
+      // Clipboard unavailable — leave state untouched.
+    }
+  }
+
+  const openMemoryPanel = async () => {
+    setShowMemoryPanel(true)
+    setMemoryError('')
+    setMemoryNotice('')
+    if (!activeProject) return
+    setMemoryLoading(true)
+    try {
+      const result = await fsApi.readMemory(activeProject.id)
+      setMemoryContent(result.content)
+      memorySavedRef.current = result.content
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : '读取记忆失败')
+    } finally {
+      setMemoryLoading(false)
+    }
+  }
+
+  const handleSaveMemory = async () => {
+    if (!activeProject || memorySaving) return
+    setMemorySaving(true)
+    setMemoryError('')
+    setMemoryNotice('')
+    try {
+      await fsApi.saveMemory(activeProject.id, memoryContent)
+      memorySavedRef.current = memoryContent
+      setShowMemoryPanel(false)
+    } catch (error) {
+      setMemoryError(error instanceof Error ? error.message : '保存记忆失败')
+    } finally {
+      setMemorySaving(false)
+    }
+  }
+
+  const closeNewPanel = () => {
+    const baseline = newPanelBaselineRef.current
+    const dirty = newTitle !== baseline.title
+      || newDesc !== baseline.desc
+      || newAutoStart !== baseline.autoStart
+      || JSON.stringify(reviewOverrides) !== JSON.stringify(baseline.overrides)
+    if (dirty) {
+      setConfirmCloseNewTask(true)
+    } else {
+      setShowNewPanel(false)
+    }
+  }
+
+  const closeMemoryPanel = () => {
+    if (memoryContent !== memorySavedRef.current) {
+      setConfirmCloseMemory(true)
+    } else {
+      setShowMemoryPanel(false)
+    }
   }
 
   const selectDirectoryOpener = (opener: DirectoryOpener) => {
@@ -357,6 +459,39 @@ export default function TaskList() {
       await deleteTask(confirmDeleteTaskId, activeProject.id)
       setCardLanes((prev) => { const next = { ...prev }; delete next[confirmDeleteTaskId]; return next })
       setConfirmDeleteTaskId(null)
+    }
+  }
+
+  const requestArchiveCard = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()
+    setConfirmArchiveTaskId(taskId)
+  }
+
+  const handleArchiveConfirm = async () => {
+    if (!confirmArchiveTaskId || !activeProject) return
+    const taskId = confirmArchiveTaskId
+    setConfirmArchiveTaskId(null)
+    try {
+      await archiveTask(taskId, activeProject.id)
+      setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
+    } catch (error) {
+      setDirectoryNotice(
+        `归档失败：${error instanceof Error ? error.message : '未知错误'}`
+      )
+      setTimeout(() => setDirectoryNotice(''), 3000)
+    }
+  }
+
+  const handleUnarchive = async (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()
+    if (!activeProject) return
+    try {
+      await unarchiveTask(taskId, activeProject.id)
+    } catch (error) {
+      setDirectoryNotice(
+        `恢复失败：${error instanceof Error ? error.message : '未知错误'}`
+      )
+      setTimeout(() => setDirectoryNotice(''), 3000)
     }
   }
 
@@ -407,10 +542,12 @@ export default function TaskList() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
           阶段编辑
         </button>
-        <button className="btn-primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          新建
-        </button>
+        {!showArchived && (
+          <button className="btn-primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            新建
+          </button>
+        )}
         {activeWorkflowName && (
           <span
             title={activeWorkflowName}
@@ -426,6 +563,22 @@ export default function TaskList() {
             {activeWorkflowName}
           </span>
         )}
+        {activeProject && (
+          <button
+            type="button"
+            title={copiedWorkflowId ? '已复制' : '点击复制流程 ID'}
+            aria-label="复制流程 ID"
+            onClick={() => void copyWorkflowId()}
+            style={{
+              color: 'var(--meta)', fontSize: 11, fontFamily: 'var(--font-mono)',
+              whiteSpace: 'nowrap', background: 'none', border: 'none',
+              padding: '4px 6px', borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+            }}
+          >
+            {copiedWorkflowId ? '已复制' : `ID: ${activeWorkflowId || 'default'}`}
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         {directoryNotice && (
           <span
@@ -439,6 +592,35 @@ export default function TaskList() {
             {directoryNotice}
           </span>
         )}
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => void openMemoryPanel()}
+          disabled={!activeProject}
+          title="编辑 .workstep/MEMORY.md 项目记忆"
+          style={{ fontSize: 13, gap: 5 }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          </svg>
+          记忆
+        </button>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setShowArchived((value) => !value)}
+          disabled={!activeProject}
+          title={showArchived ? '返回任务看板' : '查看已归档任务'}
+          style={{ fontSize: 13, gap: 5 }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="3" width="20" height="5" rx="1"/>
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+            <path d="M10 12h4"/>
+          </svg>
+          {showArchived ? '返回看板' : '查看归档'}
+        </button>
         <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
           <button
             className="btn-ghost"
@@ -503,6 +685,26 @@ export default function TaskList() {
         </div>
       </div>
 
+      {/* Archive-view banner */}
+      {showArchived && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          padding: '8px 20px', fontSize: 13, color: 'var(--meta)',
+          background: 'color-mix(in oklab, var(--accent), transparent 94%)',
+          borderBottom: '1px solid var(--border-soft)',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="3" width="20" height="5" rx="1"/>
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
+            <path d="M10 12h4"/>
+          </svg>
+          正在查看归档任务
+          <span style={{ marginLeft: 'auto', fontSize: 12 }}>
+            {visibleTasks.length} 个任务
+          </span>
+        </div>
+      )}
+
       {/* Kanban board */}
       <div style={kanbanStyle}>
         {loading && (
@@ -532,16 +734,18 @@ export default function TaskList() {
                   {lane.label}
                   <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  aria-label={`添加${lane.label}任务`}
-                  title={`添加${lane.label}任务`}
-                  onClick={() => openNewPanel(lane.key)}
-                  style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
-                >
-                  + 添加
-                </button>
+                {!showArchived && (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    aria-label={`添加${lane.label}任务`}
+                    title={`添加${lane.label}任务`}
+                    onClick={() => openNewPanel(lane.key)}
+                    style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
+                  >
+                    + 添加
+                  </button>
+                )}
               </div>
               <div
                 style={{
@@ -556,6 +760,7 @@ export default function TaskList() {
                   const status = t.status || 'ready'
                   const taskNotStarted = isTaskNotStarted(t.steps || [])
                   const taskCompleted = isTaskCompleted(t.steps || [])
+                  const isLastLane = lane.key === lanes[lanes.length - 1]?.key
                   const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
                     .find((candidate) =>
                       (t.steps || []).some((step: any) => step.status === candidate)
@@ -566,7 +771,7 @@ export default function TaskList() {
                     <div
                       key={t.id}
                       data-task-status={status}
-                      draggable
+                      draggable={!showArchived}
                       onDragStart={(e) => onDragStart(e, t.id)}
                       onDragEnd={onDragEnd}
                       onClick={() => handleSelectTask(t.id)}
@@ -602,6 +807,21 @@ export default function TaskList() {
                           )}
                           {STATUS_LABELS[displayStatus] || displayStatus}
                         </span>
+                        {status === 'running' && (t.recovered_count || 0) > 0 && (
+                          <span
+                            title={`上次进程中断后已自动恢复续跑（累计 ${t.recovered_count} 次）`}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              fontSize: 10, fontWeight: 600, padding: '2px 7px',
+                              borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
+                              color: 'var(--accent)',
+                              background: 'color-mix(in oklab, var(--accent), transparent 88%)',
+                              border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)',
+                            }}
+                          >
+                            断点续跑
+                          </span>
+                        )}
                       </div>
                       {t.description && (
                         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{t.description}</div>
@@ -630,6 +850,28 @@ export default function TaskList() {
                           <button className="btn-icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                           </button>
+                          {!showArchived && taskCompleted && isLastLane && status !== 'running' && (
+                            <button
+                              className="btn-icon"
+                              title="归档任务"
+                              aria-label="归档任务"
+                              onClick={(e) => requestArchiveCard(e, t.id)}
+                              style={{ width: 22, height: 22, color: 'var(--meta)' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+                            </button>
+                          )}
+                          {showArchived && (
+                            <button
+                              className="btn-icon"
+                              title="恢复到看板"
+                              aria-label="恢复到看板"
+                              onClick={(e) => handleUnarchive(e, t.id)}
+                              style={{ width: 22, height: 22, color: 'var(--success)' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            </button>
+                          )}
                           {status !== 'running' && (
                             <button className="btn-icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -646,6 +888,14 @@ export default function TaskList() {
         })}
       </div>
 
+      {/* Backdrop: click outside closes the new-task panel when unchanged */}
+      {showNewPanel && (
+        <div
+          onClick={closeNewPanel}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
+        />
+      )}
+
       {/* ── New requirement panel (slide-in from right, fixed to viewport) ── */}
       <div style={{
         position: 'fixed', right: 0, top: 0, bottom: 0,
@@ -659,7 +909,7 @@ export default function TaskList() {
       }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <span style={{ fontWeight: 600, fontSize: 14 }}>新建{createLane?.label || '需求'}任务</span>
-          <button className="btn-icon" onClick={() => setShowNewPanel(false)} aria-label="关闭">✕</button>
+          <button className="btn-icon" onClick={closeNewPanel} aria-label="关闭">✕</button>
         </div>
         {/* ── Tab bar ── */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
@@ -814,7 +1064,7 @@ export default function TaskList() {
           <div style={{ padding: '8px 16px 0', fontSize: 12, color: 'var(--danger)' }}>{createError}</div>
         )}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn-ghost" onClick={() => setShowNewPanel(false)}>取消</button>
+          <button className="btn-ghost" onClick={closeNewPanel}>取消</button>
           <button className="btn-primary" onClick={handleCreate}>创建</button>
         </div>
       </div>
@@ -853,6 +1103,105 @@ export default function TaskList() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setConfirmDeleteTaskId(null)}
       />
+
+      <ConfirmDialog
+        open={confirmArchiveTaskId !== null}
+        title="归档任务"
+        message={`确定归档“${tasks.find((task) => task.id === confirmArchiveTaskId)?.title || '该任务'}”吗？归档后任务将不再显示在看板中，可在“查看归档”中恢复。`}
+        confirmText="归档"
+        onConfirm={handleArchiveConfirm}
+        onCancel={() => setConfirmArchiveTaskId(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmCloseNewTask}
+        title="放弃新建任务"
+        message="新建任务内容尚未保存，确定放弃并关闭？"
+        confirmText="放弃"
+        danger
+        onConfirm={() => {
+          setConfirmCloseNewTask(false)
+          setShowNewPanel(false)
+        }}
+        onCancel={() => setConfirmCloseNewTask(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmCloseMemory}
+        title="放弃记忆更改"
+        message="记忆内容有未保存的更改，确定放弃并关闭？"
+        confirmText="放弃更改"
+        danger
+        onConfirm={() => {
+          setConfirmCloseMemory(false)
+          setShowMemoryPanel(false)
+        }}
+        onCancel={() => setConfirmCloseMemory(false)}
+      />
+
+      {/* Backdrop: click outside closes the memory panel when unchanged */}
+      {showMemoryPanel && (
+        <div
+          onClick={closeMemoryPanel}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
+        />
+      )}
+
+      {/* ── Memory editor panel (slide-in from right) ── */}
+      <div style={{
+        position: 'fixed', right: 0, top: 0, bottom: 0,
+        width: '50vw', minWidth: 420, background: 'var(--bg)',
+        borderLeft: '1px solid var(--border-soft)',
+        boxShadow: '-4px 0 16px rgba(0,0,0,0.12)',
+        display: 'flex', flexDirection: 'column',
+        zIndex: 1000,
+        transform: showMemoryPanel ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.3s ease',
+      }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            编辑记忆
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
+          </span>
+          <button className="btn-icon" onClick={closeMemoryPanel} aria-label="关闭">✕</button>
+        </div>
+        {memoryError && (
+          <div style={{
+            padding: '8px 16px', fontSize: 12, color: 'var(--danger)',
+            background: 'color-mix(in oklab, var(--danger), transparent 90%)',
+          }}>
+            {memoryError}
+          </div>
+        )}
+        <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {memoryLoading ? (
+            <div style={{ color: 'var(--meta)', fontSize: 13 }}>加载中…</div>
+          ) : (
+            <MarkdownEditor
+              value={memoryContent}
+              onChange={setMemoryContent}
+              projectId={activeProject?.id}
+              ariaLabel="项目记忆"
+            />
+          )}
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+          {memoryNotice && (
+            <span style={{ color: 'var(--success)', fontSize: 12, marginRight: 'auto' }} role="status">
+              {memoryNotice}
+            </span>
+          )}
+          <button className="btn-ghost" onClick={closeMemoryPanel} style={{ fontSize: 13 }}>取消</button>
+          <button
+            className="btn-primary"
+            onClick={() => void handleSaveMemory()}
+            disabled={memoryLoading || memorySaving}
+            style={{ fontSize: 13 }}
+          >
+            {memorySaving ? '保存中…' : '保存记忆'}
+          </button>
+        </div>
+      </div>
     </>
   )
 }

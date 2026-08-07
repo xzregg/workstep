@@ -1,11 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
+import { useTaskStore } from '../stores/taskStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import DirectoryBrowser from './DirectoryBrowser'
 import SettingsPage from '../pages/SettingsPage'
 import ConfirmDialog from './ConfirmDialog'
-import type { Project } from '../api/client'
+import AiFlowChat from './AiFlowChat'
+import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
+import {
+  fetchTemplates,
+  templateApi,
+  type TemplateInfo,
+  type Project,
+} from '../api/client'
 
 const sidebarStyle: React.CSSProperties = {
   width: 280, minWidth: 280,
@@ -60,7 +68,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, setActiveProject, renameProject, renameWorkflow, createWorkflow, deleteWorkflow, setActiveWorkflow } = useProjectStore()
+  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, setActiveProject, renameProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [newPath, setNewPath] = useState('')
   const [newName, setNewName] = useState('')
@@ -71,6 +79,18 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameError, setRenameError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<TemplateInfo[]>([])
+  const [addWfTemplateId, setAddWfTemplateId] = useState('')
+  const [addWfSteps, setAddWfSteps] = useState<any>(null)
+  const [addWfPreviewDirty, setAddWfPreviewDirty] = useState(false)
+  const [addWfGenBusy, setAddWfGenBusy] = useState(false)
+  const [addWfCreating, setAddWfCreating] = useState(false)
+  const [addWfError, setAddWfError] = useState('')
+  const [addWfNameAttempted, setAddWfNameAttempted] = useState(false)
+  const [addWfConfirmClose, setAddWfConfirmClose] = useState(false)
+  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
+  const [addWfSize, setAddWfSize] = useState<{ width: number; height: number } | null>(null)
+  const [addWfChatWidth, setAddWfChatWidth] = useState(380)
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
   const [renameWfName, setRenameWfName] = useState('')
   const [newWfName, setNewWfName] = useState('')
@@ -79,7 +99,47 @@ export default function Layout({ onSelectProject, children }: Props) {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const wfInputRef = useRef<HTMLInputElement>(null)
   const renameWfInputRef = useRef<HTMLInputElement>(null)
-  const blurTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const previewCanvasRef = useRef<FlowCanvasHandle>(null)
+  const addWfModalRef = useRef<HTMLDivElement>(null)
+
+  const startDividerDrag = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = addWfChatWidth
+    const onMove = (ev: MouseEvent) => {
+      setAddWfChatWidth(Math.min(560, Math.max(280, startWidth - (ev.clientX - startX))))
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+  }
+
+  const startModalResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const rect = addWfModalRef.current?.getBoundingClientRect()
+    const startWidth = rect?.width ?? 1160
+    const startHeight = rect?.height ?? 780
+    const onMove = (ev: MouseEvent) => {
+      const width = Math.min(window.innerWidth - 24, Math.max(760, startWidth + (ev.clientX - startX)))
+      const height = Math.min(window.innerHeight - 24, Math.max(480, startHeight + (ev.clientY - startY)))
+      setAddWfSize({ width, height })
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'nwse-resize'
+  }
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
@@ -105,6 +165,14 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }, [renameWfId])
 
+  // Refresh flow running states whenever a task status event arrives
+  const taskStatusEvents = useTaskStore((s) => s.taskStatusEvents)
+  useEffect(() => {
+    if (!taskStatusEvents) return
+    const t = setTimeout(() => { fetchProjects() }, 300)
+    return () => clearTimeout(t)
+  }, [taskStatusEvents, fetchProjects])
+
   // Auto-select project from URL ?project=name (only once)
   const projectName = searchParams.get('project')
   useEffect(() => {
@@ -119,6 +187,104 @@ export default function Layout({ onSelectProject, children }: Props) {
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
     onSelectProject(p)
+  }
+
+  const openAddWorkflow = async (projectId: string) => {
+    setAddWfProjectId(projectId)
+    setNewWfName('')
+    setAddWfTemplateId('')
+    setAddWfSteps(null)
+    setAddWfPreviewDirty(false)
+    setAddWfGenBusy(false)
+    setAddWfError('')
+    setAddWfNameAttempted(false)
+    setAddWfConfirmClose(false)
+    setPendingAiSteps(null)
+    setAddWfSize(null)
+    setAddWfChatWidth(380)
+    try {
+      const { templates: list } = await fetchTemplates()
+      setTemplates(list)
+    } catch {
+      setTemplates([])
+    }
+  }
+
+  const closeAddWorkflow = () => {
+    setAddWfProjectId(null)
+    setNewWfName('')
+    setAddWfTemplateId('')
+    setAddWfSteps(null)
+    setAddWfPreviewDirty(false)
+    setAddWfGenBusy(false)
+    setAddWfError('')
+    setAddWfNameAttempted(false)
+    setAddWfConfirmClose(false)
+    setPendingAiSteps(null)
+    setAddWfSize(null)
+    setAddWfChatWidth(380)
+  }
+
+  const requestCloseAddWorkflow = () => {
+    if (addWfPreviewDirty || addWfGenBusy) {
+      setAddWfConfirmClose(true)
+      return
+    }
+    closeAddWorkflow()
+  }
+
+  const handleAiProposal = (steps: any) => {
+    // A new proposal replaces the preview; guard manual edits with a confirm.
+    if (addWfPreviewDirty) {
+      setPendingAiSteps(steps)
+      return
+    }
+    setAddWfSteps(steps)
+  }
+
+  const handleTemplateChange = async (templateId: string) => {
+    setAddWfTemplateId(templateId)
+    setAddWfError('')
+    if (!templateId) {
+      setAddWfSteps(null)
+      return
+    }
+    try {
+      const full = await templateApi.get(templateId)
+      setAddWfSteps(full.steps || { nodes: [], connections: [] })
+    } catch (reason) {
+      setAddWfError(reason instanceof Error ? reason.message : '加载模板失败')
+    }
+  }
+
+  const handleAddWorkflow = async () => {
+    if (!addWfProjectId || addWfGenBusy) return
+    if (!newWfName.trim()) {
+      setAddWfNameAttempted(true)
+      wfInputRef.current?.focus()
+      return
+    }
+    if (hasWhitespace(newWfName)) {
+      setAddWfNameAttempted(true)
+      wfInputRef.current?.focus()
+      return
+    }
+    const validationError = previewCanvasRef.current?.validate() ?? null
+    if (validationError) {
+      setAddWfError(validationError)
+      return
+    }
+    const steps = previewCanvasRef.current?.getSteps() ?? addWfSteps ?? undefined
+    setAddWfCreating(true)
+    setAddWfError('')
+    try {
+      await createWorkflow(addWfProjectId, newWfName.trim(), addWfTemplateId || undefined, steps)
+      closeAddWorkflow()
+    } catch (reason) {
+      setAddWfError(reason instanceof Error ? reason.message : '创建流程失败')
+    } finally {
+      setAddWfCreating(false)
+    }
   }
 
   const handleInit = async () => {
@@ -219,7 +385,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   </span>
                 )}
                 <button
-                  onClick={(e) => { e.stopPropagation(); setAddWfProjectId(p.id); setNewWfName('') }}
+                  onClick={(e) => { e.stopPropagation(); openAddWorkflow(p.id) }}
                   title="添加工作流"
                   style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, opacity: 0.7 }}
                 >+</button>
@@ -227,51 +393,6 @@ export default function Layout({ onSelectProject, children }: Props) {
 
               {renameId === p.path && renameError && (
                 <div style={{ marginLeft: 38, marginBottom: 4, fontSize: 11, color: 'var(--danger)' }}>{renameError}</div>
-              )}
-
-              {/* Inline workflow creation */}
-              {addWfProjectId === p.id && (
-                <div style={{ marginLeft: 28, marginBottom: 4 }}>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <input
-                      ref={wfInputRef}
-                      value={newWfName}
-                      onChange={(e) => setNewWfName(e.target.value)}
-                      placeholder="工作流名称"
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter' && newWfName.trim() && !hasWhitespace(newWfName)) {
-                          try {
-                            await createWorkflow(p.id, newWfName.trim())
-                          } finally {
-                            setAddWfProjectId(null)
-                          }
-                        }
-                        if (e.key === 'Escape') setAddWfProjectId(null)
-                      }}
-                      onBlur={() => {
-                        blurTimerRef.current = setTimeout(() => setAddWfProjectId(null), 150)
-                      }}
-                      style={{ flex: 1, height: 24, fontSize: 12, padding: '0 6px', border: `1px solid ${hasWhitespace(newWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
-                    />
-                    <button
-                      disabled={!newWfName.trim() || hasWhitespace(newWfName)}
-                      onMouseDown={() => clearTimeout(blurTimerRef.current)}
-                      onClick={async () => {
-                        if (newWfName.trim() && !hasWhitespace(newWfName)) {
-                          try {
-                            await createWorkflow(p.id, newWfName.trim())
-                          } finally {
-                            setAddWfProjectId(null)
-                          }
-                        }
-                      }}
-                      style={{ height: 24, fontSize: 11, padding: '0 8px', border: 'none', borderRadius: 4, background: 'var(--accent)', color: '#fff', cursor: 'pointer', opacity: !newWfName.trim() || hasWhitespace(newWfName) ? 0.5 : 1 }}
-                    >创建</button>
-                  </div>
-                  {hasWhitespace(newWfName) && (
-                    <div style={{ fontSize: 11, color: 'var(--danger)', marginTop: 3 }}>名称不能包含空白字符（空格、Tab 等）</div>
-                  )}
-                </div>
               )}
 
               {/* Workflow list under the selected project */}
@@ -336,9 +457,22 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) { setRenameWfId(wf.id); setRenameWfName(wf.name) } }}
                         >{wf.name}</span>
                       )}
+                      {wf.running && !deleted && (
+                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0 }} title="流程执行中" aria-hidden="true" />
+                      )}
                       {deleted && <span style={{ fontSize: 10, color: 'var(--danger)', opacity: 0.8 }}>回收站</span>}
                       {wf.is_default ? <span style={{ fontSize: 10, opacity: 0.6 }}>默认</span> : null}
                       <span style={{ fontSize: 10, opacity: 0.5 }}>{wf.nodeCount}步</span>
+                      {deleted && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            restoreWorkflow(wf.id, p.id)
+                          }}
+                          title="恢复流程"
+                          style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', cursor: 'pointer', fontSize: 12, lineHeight: '14px', padding: 0 }}
+                        >↩</button>
+                      )}
                       {!wf.is_default && (deleted || activeCount > 1) && (
                         <button
                           onClick={(e) => {
@@ -436,14 +570,184 @@ export default function Layout({ onSelectProject, children }: Props) {
         </div>
       )}
 
+      {/* Add workflow modal */}
+      {addWfProjectId && (
+        <div className="modal-overlay" onClick={requestCloseAddWorkflow} style={{ zIndex: 350 }}>
+          <div
+            ref={addWfModalRef}
+            className="modal"
+            style={{
+              width: addWfSize ? addWfSize.width : 1160, maxWidth: '96vw',
+              height: addWfSize ? addWfSize.height : 'min(92vh, 900px)', maxHeight: '92vh',
+              display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
+              position: 'relative',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <span className="modal-title">添加流程（AI 生成 / 模板）</span>
+              <button className="btn-icon" aria-label="关闭" onClick={requestCloseAddWorkflow}>✕</button>
+            </div>
+            {/* Top form: workflow name + template */}
+            <div style={{
+              flexShrink: 0, padding: '12px 18px', background: 'var(--bg)',
+              borderBottom: '1px solid var(--border-soft)',
+              display: 'flex', gap: 14, alignItems: 'flex-start',
+            }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+                  流程名称 <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  ref={wfInputRef}
+                  value={newWfName}
+                  onChange={(e) => setNewWfName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddWorkflow()}
+                  placeholder="流程名称（必填，不能包含空格）"
+                  autoFocus
+                  style={{ border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}` }}
+                />
+                {/* Fixed-height hint area: keeps the form layout stable, no layout shift. */}
+                <div style={{ minHeight: 18, fontSize: 12, lineHeight: 1.5, color: 'var(--danger)', marginTop: 4 }}>
+                  {hasWhitespace(newWfName)
+                    ? '名称不能包含空白字符（空格、Tab 等）'
+                    : addWfNameAttempted && !newWfName.trim()
+                      ? '流程名称为必填项，请输入流程名称'
+                      : ''}
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>流程模板</label>
+                <select
+                  value={addWfTemplateId}
+                  onChange={(e) => void handleTemplateChange(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">空白流程</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}（{t.nodeCount}步）</option>
+                  ))}
+                </select>
+                {(() => {
+                  const selected = templates.find((t) => t.id === addWfTemplateId)
+                  return selected?.description ? (
+                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
+                  ) : (
+                    <p style={{ fontSize: 12, color: 'var(--meta)', marginTop: 4 }}>也可在右侧让 AI 根据目标生成流程</p>
+                  )
+                })()}
+              </div>
+            </div>
+            {addWfError && (
+              <div style={{
+                flexShrink: 0, padding: '5px 18px', fontSize: 12, color: 'var(--danger)',
+                background: 'color-mix(in oklab, var(--danger), transparent 94%)',
+                borderBottom: '1px solid var(--border-soft)',
+              }}>{addWfError}</div>
+            )}
+            <div className="modal-body" style={{ padding: 0, display: 'flex', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+              {/* Left: live editable canvas preview */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <FlowCanvas
+                  ref={previewCanvasRef}
+                  initialSteps={addWfSteps}
+                  projectId={addWfProjectId}
+                  onDirtyChange={setAddWfPreviewDirty}
+                  onSave={async (steps) => { setAddWfSteps(steps); setAddWfPreviewDirty(false) }}
+                  showTemplatePicker={false}
+                  title="流程预览"
+                  saveLabel="更新预览"
+                  hint={null}
+                />
+              </div>
+              {/* Draggable divider to resize the chat column */}
+              <div
+                onMouseDown={startDividerDrag}
+                title="拖动调整聊天区宽度"
+                style={{
+                  width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
+                  background: 'transparent', userSelect: 'none',
+                }}
+              >
+                <div style={{
+                  position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)',
+                  width: 1, background: 'var(--border-soft)',
+                }} />
+              </div>
+              {/* Right: AI flow-design chat */}
+              <div style={{
+                width: addWfChatWidth, flexShrink: 0,
+                display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)',
+              }}>
+                <AiFlowChat
+                  projectId={addWfProjectId}
+                  onProposal={handleAiProposal}
+                  onBusyChange={setAddWfGenBusy}
+                  title="AI 流程助手"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={requestCloseAddWorkflow}>取消</button>
+              <button
+                className="btn-primary"
+                disabled={addWfGenBusy || addWfCreating}
+                onClick={handleAddWorkflow}
+              >{addWfCreating ? '创建中…' : '创建流程'}</button>
+            </div>
+            {/* Bottom-right corner resize handle */}
+            <div
+              onMouseDown={startModalResize}
+              title="拖动调整弹框大小"
+              style={{
+                position: 'absolute', right: 0, bottom: 0, width: 20, height: 20,
+                cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+                padding: 3, color: 'var(--meta)', userSelect: 'none', zIndex: 5,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M10.5 0.5v10h-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add workflow: confirm close with unsaved preview / running generation */}
+      <ConfirmDialog
+        open={addWfConfirmClose}
+        title="未保存的更改"
+        message={addWfGenBusy
+          ? 'AI 正在生成流程，确定放弃并关闭？'
+          : '流程预览有未保存的改动，确定放弃并关闭？'}
+        confirmText="放弃更改"
+        danger
+        onConfirm={closeAddWorkflow}
+        onCancel={() => setAddWfConfirmClose(false)}
+      />
+
+      {/* Add workflow: AI proposal overwrites manual preview edits */}
+      <ConfirmDialog
+        open={pendingAiSteps !== null}
+        title="AI 提案将覆盖预览"
+        message="新生成的流程提案将替换当前预览中的手动改动。确定应用？"
+        confirmText="应用提案"
+        danger
+        onConfirm={() => {
+          if (pendingAiSteps !== null) setAddWfSteps(pendingAiSteps)
+          setPendingAiSteps(null)
+        }}
+        onCancel={() => setPendingAiSteps(null)}
+      />
+
       {/* Delete workflow confirm */}
       <ConfirmDialog
         open={!!deleteWf}
         title={deleteWf?.soft ? '永久删除流程' : '删除流程'}
         message={deleteWf
           ? (deleteWf.soft
-            ? `确定永久删除流程「${deleteWf.name}」？此操作不可恢复。`
-            : `确定删除流程「${deleteWf.name}」？流程将移入回收站（以删除线显示），再次点击删除将永久删除。`)
+            ? `确定永久删除流程「${deleteWf.name}」？将同时清除该项目数据库中该流程的全部数据（任务、消息、执行记录、审核记录等所有相关表），此操作不可恢复。`
+            : `确定删除流程「${deleteWf.name}」？流程将移入回收站（以删除线显示），可随时恢复；再次点击删除将永久清除该流程的全部数据。`)
           : undefined}
         confirmText={deleteWf?.soft ? '永久删除' : '删除'}
         danger

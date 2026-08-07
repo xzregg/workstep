@@ -145,23 +145,39 @@ def test_dag_scheduler_condition_or():
 
 # --- Template Tests ---
 
-def test_builtin_templates_exist():
-    """Test that built-in templates are defined."""
-    from api.templates import BUILTIN_TEMPLATES
-    assert len(BUILTIN_TEMPLATES) == 4
+def _load_all_templates():
+    """Load every template file from data/templates/."""
+    import json
 
-    template_ids = {t["id"] for t in BUILTIN_TEMPLATES}
+    from api.templates import TEMPLATES_DIR
+
+    templates = []
+    if TEMPLATES_DIR.exists():
+        for f in TEMPLATES_DIR.glob("*.json"):
+            try:
+                templates.append(json.loads(f.read_text()))
+            except Exception:
+                pass
+    return templates
+
+
+def test_default_templates_exist():
+    """Shipped default templates are stored as files in data/templates/."""
+    templates = _load_all_templates()
+    template_ids = {t["id"] for t in templates}
     assert "dev-workflow" in template_ids
     assert "writing-workflow" in template_ids
     assert "data-workflow" in template_ids
     assert "blank" in template_ids
+    # Shipped defaults carry the default flag so they are not deletable
+    for template in templates:
+        if template["id"] in ("dev-workflow", "writing-workflow", "data-workflow", "blank"):
+            assert template.get("default") is True
 
 
 def test_template_structure():
     """Test template structure is valid."""
-    from api.templates import BUILTIN_TEMPLATES
-
-    for t in BUILTIN_TEMPLATES:
+    for t in _load_all_templates():
         assert "id" in t
         assert "name" in t
         assert "description" in t
@@ -172,9 +188,11 @@ def test_template_structure():
 
 def test_dev_workflow_template():
     """Test dev-workflow template has expected structure."""
-    from api.templates import BUILTIN_TEMPLATES
+    import json
 
-    dev_template = next(t for t in BUILTIN_TEMPLATES if t["id"] == "dev-workflow")
+    from api.templates import TEMPLATES_DIR
+
+    dev_template = json.loads((TEMPLATES_DIR / "dev-workflow.json").read_text())
     nodes = dev_template["steps"]["nodes"]
 
     # Should have 6 nodes: req, ui, frontend, backend, test, deploy
@@ -189,16 +207,17 @@ def test_dev_workflow_template():
     assert "deploy" in node_types
 
 
-def test_builtin_templates_compile_for_execution():
-    """Every template exposed to users is accepted by the workflow compiler."""
-    from api.templates import BUILTIN_TEMPLATES
+def test_all_templates_compile_for_execution():
+    """Every template file exposed to users is accepted by the workflow compiler."""
     from services.workflow_definition import WorkflowDefinition
 
+    templates = _load_all_templates()
+    assert templates, "no template files found"
     compiled = {
         template["id"]: WorkflowDefinition.load(template["steps"])
         .compile()
         .to_steps_config()
-        for template in BUILTIN_TEMPLATES
+        for template in templates
     }
 
     dev_steps = {

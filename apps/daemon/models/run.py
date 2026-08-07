@@ -17,6 +17,8 @@ class WorkflowRun(BaseModel):
     workflow_snapshot_json = pw.TextField()
     parent_run_id = pw.TextField(null=True)
     restart_from_step_key = pw.TextField(null=True)
+    recovered_at = UTCDateTimeField(null=True)
+    recovered_count = pw.IntegerField(default=0)
     started_at = UTCDateTimeField(null=True)
     ended_at = UTCDateTimeField(null=True)
 

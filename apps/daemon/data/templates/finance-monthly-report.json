@@ -1,5 +1,6 @@
 {
   "id": "finance-monthly-report",
+  "default": true,
   "name": "财务月报",
   "description": "数据收集 → 对账 → 计提 → 报表 → 分析",
   "steps": {

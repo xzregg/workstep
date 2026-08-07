@@ -296,6 +296,38 @@ def test_list_tasks(db_and_service):
     assert titles == {"First", "Second"}
 
 
+def test_archive_task_hides_from_list(db_and_service):
+    """Archived tasks are hidden by default and listed with archived=True."""
+    service, _ = db_and_service
+    archived_task = service.create_task(title="Archive me", cwd="/tmp")
+    service.create_task(title="Keep me", cwd="/tmp")
+
+    assert service.archive_task(archived_task["id"]) is True
+    assert service.archive_task("missing") is False
+
+    assert {t["title"] for t in service.list_tasks()} == {"Keep me"}
+    assert [t["archived"] for t in service.list_tasks()] == [False]
+    assert {t["title"] for t in service.list_tasks(archived=True)} == {"Archive me"}
+
+    assert service.unarchive_task(archived_task["id"]) is True
+    assert {t["title"] for t in service.list_tasks()} == {"Archive me", "Keep me"}
+    assert service.list_tasks(archived=True) == []
+
+
+def test_running_task_cannot_be_archived(db_and_service):
+    """Running tasks are rejected for archiving."""
+    service, _ = db_and_service
+    created = service.create_task(title="Running", cwd="/tmp")
+    from models import Task
+
+    task = Task.get_by_id(created["id"])
+    task.status = "running"
+    task.save()
+
+    with pytest.raises(RuntimeError):
+        service.archive_task(created["id"])
+
+
 def test_get_task(db_and_service):
     """get_task returns task by ID or None."""
     service, _ = db_and_service
@@ -305,6 +337,20 @@ def test_get_task(db_and_service):
     assert found["title"] == "Find me"
 
     assert service.get_task("nonexistent") is None
+
+
+def test_get_task_exposes_step_session_id(db_and_service):
+    """Step dicts include the engine session id stored per stage."""
+    from models import TaskStep
+
+    service, _ = db_and_service
+    created = service.create_task(title="Session", cwd="/tmp")
+    TaskStep.update(session_id="sess-abc-123").where(
+        TaskStep.task == created["id"]
+    ).execute()
+
+    found = service.get_task(created["id"])
+    assert found["steps"][0]["session_id"] == "sess-abc-123"
 
 
 @pytest.mark.anyio

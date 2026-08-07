@@ -88,6 +88,10 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     events = []
 
     class RuntimeStub:
+        async def recover_running_workflows(self):
+            events.append("workflows-recover")
+            return 0
+
         async def shutdown(self):
             events.append("runtime-shutdown")
 
@@ -103,6 +107,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
             events.append("projects-close")
 
     monkeypatch.setattr(main, "event_bus", BusStub())
+    monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
     monkeypatch.setattr(main, "TaskService", lambda bus: object())
     monkeypatch.setattr(
@@ -116,6 +121,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
 
     assert events == [
         "projects-load",
+        "workflows-recover",
         "serving",
         "runtime-shutdown",
         "bus-close",

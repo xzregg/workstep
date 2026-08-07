@@ -1,5 +1,6 @@
 {
   "id": "finance-payable",
+  "default": true,
   "name": "应付账款",
   "description": "发票接收 → 校验 → 付款审批 → 支付",
   "steps": {

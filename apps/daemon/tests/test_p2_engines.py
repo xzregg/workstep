@@ -1,15 +1,16 @@
-"""Tests for P2 engines: Codex, Hermes, ACP engines, registry strategy."""
+"""Tests for P2 engines: Codex, Hermes, SDK engines, registry strategy."""
 
 import asyncio
 
 import pytest
-from acp import schema
 from engines.codex import CodexEngine
 from engines.hermes import HermesEngine
-from engines.claude_code_acp import ClaudeCodeAcpEngine
-from engines.codex_acp import CodexAcpEngine
-from engines.qoder_acp import QoderAcpEngine
+from engines.claude_agent_sdk import ClaudeAgentSDKEngine
+from engines.qoder_sdk import QoderSDKEngine
+from engines.codex_sdk import CodexSDKEngine
+from engines.claude_code import ClaudeCodeEngine
 from engines.api import APIEngine
+from engines.pydantic_ai import PydanticAIEngine
 from engines.registry import (
     ENGINE_REGISTRY,
     get_available_engines,
@@ -42,7 +43,8 @@ def test_codex_broken_launcher_is_not_reported_as_installed(monkeypatch):
 def test_codex_not_resume():
     engine = CodexEngine()
     assert engine.supports_resume is False
-    assert engine.supports_interactive is False
+    assert engine.supports_interactive is True
+    assert engine.supports_live_stage_message is True
 
 
 def test_codex_map_thread_started():
@@ -62,6 +64,18 @@ def test_codex_map_agent_message():
     assert event is not None
     assert event.type == "text_delta"
     assert event.data["delta"] == "Hello from Codex"
+
+
+def test_codex_map_agent_message_text_field():
+    """Real codex JSONL carries agent text in the item's text field."""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": "你好！我是 Codex"},
+    })
+    assert event is not None
+    assert event.type == "text_delta"
+    assert event.data["delta"] == "你好！我是 Codex"
 
 
 def test_codex_map_command_execution():
@@ -97,15 +111,16 @@ def test_codex_map_turn_completed():
 
 
 def test_codex_map_turn_completed_with_cache():
-    """Codex turn usage includes cache hit tokens (creation + read)."""
+    """Real codex usage uses cached_input_tokens / cache_write_input_tokens."""
     engine = CodexEngine()
     event = engine._map_event({
         "type": "turn.completed",
         "usage": {
             "input_tokens": 300,
             "output_tokens": 100,
-            "cache_creation_input_tokens": 150,
-            "cache_read_input_tokens": 120,
+            "cached_input_tokens": 120,
+            "cache_write_input_tokens": 150,
+            "reasoning_output_tokens": 41,
         },
     })
     assert event is not None
@@ -114,6 +129,7 @@ def test_codex_map_turn_completed_with_cache():
     assert event.data["output_tokens"] == 100
     assert event.data["cache_creation_input_tokens"] == 150
     assert event.data["cache_read_input_tokens"] == 120
+    assert event.data["thought_tokens"] == 41
 
 
 def test_codex_map_turn_completed_with_cost():
@@ -144,6 +160,115 @@ def test_codex_sandbox_default():
     assert sandbox in ("workspace-write", "danger-full-access")
 
 
+class _FakeStdin:
+    def __init__(self):
+        self.written = b""
+
+    def write(self, data):
+        self.written += data
+
+    async def drain(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class _FakeCodexProcess:
+    def __init__(self, stdout: bytes, stderr: bytes, returncode: int = 0):
+        self.stdin = _FakeStdin()
+        self.stdout = asyncio.StreamReader()
+        self.stdout.feed_data(stdout)
+        self.stdout.feed_eof()
+        self.stderr = asyncio.StreamReader()
+        self.stderr.feed_data(stderr)
+        self.stderr.feed_eof()
+        self.returncode = returncode
+
+    async def wait(self) -> int:
+        return self.returncode
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_reports_stderr_when_silent_exit_zero(monkeypatch):
+    """codex exits 0 with empty stdout: stderr diagnostics must surface."""
+    process = _FakeCodexProcess(
+        stdout=b"",
+        stderr=b"Error: failed to initialize app-server client\n",
+    )
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+
+    events = [
+        event
+        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+    ]
+
+    errors = [event for event in events if event.type == "error"]
+    assert len(errors) == 1
+    assert errors[0].data["message"] == "codex 未产生任何输出"
+    assert "failed to initialize" in errors[0].data["stderr"]
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_ignores_stderr_when_output_present(monkeypatch):
+    """Benign stderr warnings must not shadow real text output."""
+    stdout = (
+        b'{"type":"item.completed","item":{"type":"agent_message",'
+        b'"message":"WORKSTEP_ENGINE_OK"}}\n'
+    )
+    process = _FakeCodexProcess(stdout=stdout, stderr=b"WARN benign\n")
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+
+    events = [
+        event
+        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+    ]
+
+    assert [event.type for event in events] == ["status", "text_delta", "status"]
+    assert events[1].data["delta"] == "WORKSTEP_ENGINE_OK"
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_applies_configured_sandbox_effort_policy(monkeypatch):
+    captured = {}
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured["cmd"] = [program, *args]
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr(
+        "engines.codex.config_store.get_codex_config",
+        lambda: {
+            "sandbox_mode": "danger-full-access",
+            "model_reasoning_effort": "high",
+            "approval_policy": "never",
+        },
+    )
+
+    events = [
+        event
+        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+    ]
+
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--sandbox") + 1] == "danger-full-access"
+    assert "-c" in cmd
+    assert "model_reasoning_effort=high" in cmd
+    assert "approval_policy=never" in cmd
+
+
 # --- HermesEngine ---
 
 def test_hermes_resolve_binary():
@@ -166,7 +291,6 @@ def test_hermes_map_update_text():
     assert event is not None
     assert event.type == "text_delta"
     assert event.data["delta"] == "Hello"
-
 
 def test_hermes_map_update_thinking():
     engine = HermesEngine()
@@ -335,141 +459,642 @@ def test_acp_client_resolve_approval_unknown_id_returns_false():
     assert client.resolve_approval("missing-tool", True) is False
 
 
-def test_acp_tool_use_flags_needs_approval_in_ask_mode():
-    engine = ClaudeCodeAcpEngine()
-    engine.get_permission_mode = lambda: "ask"  # type: ignore[method-assign]
-    update = schema.ToolCallStart(
-        sessionUpdate="tool_call",
-        toolCallId="tool-3",
-        title="Bash",
-        kind="execute",
-        rawInput={"command": "ls"},
-    )
+# --- ClaudeAgentSDKEngine ---
 
-    event = engine._map_notification(update)
+class _SdkFake:
+    """Duck-typed stand-in for claude-agent-sdk message/block objects."""
 
-    assert event is not None
-    assert event.type == "tool_use"
-    assert event.data["needs_approval"] is True
-    assert event.data["id"] == "tool-3"
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
 
-def test_acp_tool_use_has_no_approval_flag_in_auto_mode():
-    engine = ClaudeCodeAcpEngine()
-    update = schema.ToolCallStart(
-        sessionUpdate="tool_call",
-        toolCallId="tool-4",
-        title="Bash",
-        kind="execute",
-        rawInput={"command": "ls"},
-    )
-
-    event = engine._map_notification(update)
-
-    assert event is not None
-    assert event.type == "tool_use"
-    assert "needs_approval" not in event.data
+def test_claude_agent_sdk_engine_id():
+    assert ClaudeAgentSDKEngine.ENGINE_ID == "claude_agent_sdk"
 
 
-def test_acp_engine_session_capabilities():
-    engine = ClaudeCodeAcpEngine()
-    assert engine.supports_sessions is True
-    assert engine.supports_tool_approval is True
-
-
-@pytest.mark.anyio
-async def test_acp_list_sessions_requires_cwd():
-    engine = ClaudeCodeAcpEngine()
-    assert await engine.list_sessions() == []
-
-
-@pytest.mark.anyio
-async def test_acp_lifecycle_safe_noops_without_binary():
-    engine = ClaudeCodeAcpEngine()
-    await engine.reset_options()
-    await engine.set_config_option("model", "gpt-5")  # no session_id → ignored
-    await engine.approve_tool("tool-x")  # no active session → ignored
-
-
-def test_claude_acp_engine_id():
-    assert ClaudeCodeAcpEngine.ENGINE_ID == "claude_acp"
-
-
-def test_codex_acp_engine_id():
-    assert CodexAcpEngine.ENGINE_ID == "codex_acp"
-
-
-def test_qoder_acp_engine_id():
-    assert QoderAcpEngine.ENGINE_ID == "qoder_acp"
-
-
-def test_qoder_resolve_binary():
-    binary = QoderAcpEngine.resolve_binary()
+def test_claude_agent_sdk_resolve_binary():
+    binary = ClaudeAgentSDKEngine.resolve_binary()
     assert binary is None or isinstance(binary, str)
 
 
-def test_acp_supports_resume():
-    engine = ClaudeCodeAcpEngine()
+def test_claude_agent_sdk_resolve_bundled_cli(monkeypatch, tmp_path):
+    """The SDK wheel bundles claude, so no separate CLI install is needed."""
+    bundled = tmp_path / "_bundled"
+    bundled.mkdir()
+    (bundled / "claude").write_bytes(b"")
+    import claude_agent_sdk as sdk_module
+
+    monkeypatch.setattr(sdk_module, "__file__", str(tmp_path / "claude_agent_sdk.py"))
+    resolved = ClaudeAgentSDKEngine.resolve_binary()
+    assert resolved == str(bundled / "claude")
+    assert ClaudeAgentSDKEngine.is_installed() is True
+
+
+def test_claude_agent_sdk_not_installed_without_sdk(monkeypatch):
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "_sdk_available", staticmethod(lambda: False)
+    )
+    assert ClaudeAgentSDKEngine.is_installed() is False
+
+
+def test_claude_agent_sdk_is_reported_as_sdk_mode(monkeypatch):
+    """The SDK-backed engine is not a plain CLI mode."""
+    from engines.registry import get_available_engines, refresh_registry
+
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "is_installed", staticmethod(lambda: True)
+    )
+    refresh_registry()
+    try:
+        engines = {item["id"]: item for item in get_available_engines()}
+    finally:
+        refresh_registry()
+    assert engines["claude_agent_sdk"]["installed"] is True
+    assert engines["claude_agent_sdk"]["mode"] == "sdk"
+
+
+def test_claude_agent_sdk_not_resume():
+    engine = ClaudeAgentSDKEngine()
+    assert engine.supports_resume is False
+    assert engine.supports_interactive is True
+    assert engine.supports_live_stage_message is True
+
+
+def test_claude_agent_sdk_maps_system_init():
+    engine = ClaudeAgentSDKEngine()
+    msg = _SdkFake(type="system", subtype="init")
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["status"]
+    assert events[0].data["status"] == "initializing"
+
+
+def test_claude_agent_sdk_maps_assistant_text():
+    engine = ClaudeAgentSDKEngine()
+    block = _SdkFake(type="text", text="你好，Claude！")
+    message = _SdkFake(content=[block])
+    msg = _SdkFake(type="assistant", message=message)
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["text_delta"]
+    assert events[0].data["delta"] == "你好，Claude！"
+
+
+def test_claude_agent_sdk_maps_thinking_and_tool_use():
+    engine = ClaudeAgentSDKEngine()
+    message = _SdkFake(content=[
+        _SdkFake(type="thinking", thinking="让我想想"),
+        _SdkFake(type="tool_use", id="tool-1", name="Read", input={"path": "a.py"}),
+    ])
+    msg = _SdkFake(type="assistant", message=message)
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["thinking_delta", "tool_use"]
+    assert events[0].data["delta"] == "让我想想"
+    assert events[1].data["id"] == "tool-1"
+    assert events[1].data["name"] == "Read"
+    assert events[1].data["input"] == {"path": "a.py"}
+
+
+def test_claude_agent_sdk_maps_tool_result():
+    engine = ClaudeAgentSDKEngine()
+    message = _SdkFake(content=[
+        _SdkFake(type="tool_result", tool_use_id="tool-1", content="file content", is_error=False),
+    ])
+    msg = _SdkFake(type="user", message=message)
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["tool_result"]
+    assert events[0].data["tool_use_id"] == "tool-1"
+    assert events[0].data["content"] == "file content"
+    assert events[0].data["is_error"] is False
+
+
+def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
+    engine = ClaudeAgentSDKEngine()
+    result = _SdkFake(
+        is_error=False,
+        output="",
+        subtype="success",
+        usage={
+            "input_tokens": 100,
+            "cache_creation_input_tokens": 40,
+            "cache_read_input_tokens": 20,
+            "output_tokens": 30,
+        },
+        total_cost_usd=0.12,
+    )
+    msg = _SdkFake(type="result", result=result)
+    events = engine._map_message(msg, state={"emitted_text": False})
+    assert [event.type for event in events] == ["usage", "status"]
+    usage = events[0].data
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 30
+    assert usage["cache_creation_input_tokens"] == 40
+    assert usage["cache_read_input_tokens"] == 20
+    assert usage["cost"] == {"amount": 0.12, "currency": "USD"}
+    assert events[1].data["status"] == "done"
+
+
+def test_claude_agent_sdk_result_falls_back_to_output():
+    """Result output is emitted as text when no text blocks were streamed."""
+    engine = ClaudeAgentSDKEngine()
+    result = _SdkFake(is_error=False, output="最终答案", subtype="success", usage=None)
+    msg = _SdkFake(type="result", result=result)
+    events = engine._map_message(msg, state={"emitted_text": False})
+    assert [event.type for event in events] == ["text_delta", "status"]
+    assert events[0].data["delta"] == "最终答案"
+
+
+def test_claude_agent_sdk_result_error():
+    engine = ClaudeAgentSDKEngine()
+    result = _SdkFake(is_error=True, output="", subtype="error_during_execution", usage=None)
+    msg = _SdkFake(type="result", result=result)
+    events = engine._map_message(msg, state={"emitted_text": False})
+    assert [event.type for event in events] == ["error"]
+    assert "error_during_execution" in events[0].data["message"]
+
+
+def test_claude_agent_sdk_maps_compact():
+    engine = ClaudeAgentSDKEngine()
+    msg = _SdkFake(type="system", subtype="compacted", data={"summary": "旧对话已摘要"})
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["compacted"]
+    assert events[0].data == {"summary": "旧对话已摘要"}
+
+
+def test_claude_agent_sdk_maps_compact_without_summary():
+    engine = ClaudeAgentSDKEngine()
+    msg = _SdkFake(type="system", subtype="compact_boundary", data={})
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["compacted"]
+    assert events[0].data == {}
+
+
+def test_claude_agent_sdk_maps_modern_typed_messages():
+    """Current SDK versions drop the ``type`` field; mapping falls back to class names."""
+    from claude_agent_sdk.types import (
+        AssistantMessage,
+        ResultMessage,
+        SystemMessage,
+        TextBlock,
+        ThinkingBlock,
+        ToolResultBlock,
+        ToolUseBlock,
+        UserMessage,
+    )
+
+    engine = ClaudeAgentSDKEngine()
+
+    events = engine._map_message(SystemMessage(subtype="init", data={}))
+    assert [event.type for event in events] == ["status"]
+    assert events[0].data["status"] == "initializing"
+
+    assistant = AssistantMessage(
+        content=[
+            ThinkingBlock(thinking="让我想想", signature="s"),
+            TextBlock(text="你好"),
+            ToolUseBlock(id="tool-1", name="Read", input={"path": "a.py"}),
+        ],
+        model="sonnet",
+    )
+    events = engine._map_message(assistant)
+    assert [event.type for event in events] == [
+        "thinking_delta",
+        "text_delta",
+        "tool_use",
+    ]
+    assert events[2].data == {
+        "id": "tool-1",
+        "name": "Read",
+        "input": {"path": "a.py"},
+    }
+
+    user = UserMessage(
+        content=[
+            ToolResultBlock(
+                tool_use_id="tool-1", content="file content", is_error=False
+            )
+        ],
+        uuid="u",
+        parent_tool_use_id=None,
+        tool_use_result=None,
+    )
+    events = engine._map_message(user)
+    assert [event.type for event in events] == ["tool_result"]
+    assert events[0].data == {
+        "tool_use_id": "tool-1",
+        "content": "file content",
+        "is_error": False,
+    }
+
+    result = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=120,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        total_cost_usd=0.12,
+        usage={
+            "input_tokens": 100,
+            "cache_creation_input_tokens": 40,
+            "cache_read_input_tokens": 20,
+            "output_tokens": 30,
+        },
+        result="最终答案",
+    )
+    events = engine._map_message(result, state={"emitted_text": False})
+    assert [event.type for event in events] == ["text_delta", "usage", "status"]
+    assert events[0].data["delta"] == "最终答案"
+    usage = events[1].data
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 30
+    assert usage["cache_creation_input_tokens"] == 40
+    assert usage["cache_read_input_tokens"] == 20
+    assert usage["cost"] == {"amount": 0.12, "currency": "USD"}
+    assert usage["session_id"] == "s1"
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
+    """The adapter drives the current SDK query() API with ClaudeAgentOptions."""
+    import claude_agent_sdk as sdk_module
+
+    captured = {}
+
+    async def fake_query(*, prompt, options=None, transport=None):
+        captured["prompt"] = prompt
+        captured["options"] = options
+        if False:
+            yield None
+
+    monkeypatch.setattr(sdk_module, "query", fake_query)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_agent_sdk.config_store.get_claude_agent_sdk_config",
+        lambda: {
+            "permission_mode": "acceptEdits",
+            "max_turns": "25",
+            "fallback_model": "claude-haiku-latest",
+            "max_budget_usd": "0.75",
+        },
+    )
+
+    engine = ClaudeAgentSDKEngine()
+    events = [
+        event
+        async for event in engine.spawn(
+            prompt="hi", cwd="/tmp", model="sonnet", add_dirs=["/repo/src"]
+        )
+    ]
+    assert [event.type for event in events] == ["status"]
+    options = captured["options"]
+    assert options.cli_path == "/fake/claude"
+    assert options.cwd == "/tmp"
+    assert options.model == "sonnet"
+    assert options.permission_mode == "acceptEdits"
+    assert options.max_turns == 25
+    assert options.fallback_model == "claude-haiku-latest"
+    assert options.max_budget_usd == 0.75
+    assert options.add_dirs == ["/repo/src"]
+
+
+def test_codex_sdk_engine_id():
+    assert CodexSDKEngine.ENGINE_ID == "codex_sdk"
+
+
+def test_codex_sdk_version_or_none():
+    version = CodexSDKEngine.get_version()
+    assert version is None or isinstance(version, str)
+
+
+def test_codex_sdk_not_installed_without_sdk(monkeypatch):
+    monkeypatch.setattr(
+        CodexSDKEngine, "_sdk_available", staticmethod(lambda: False)
+    )
+    assert CodexSDKEngine.is_installed() is False
+
+
+def test_codex_sdk_is_reported_as_sdk_mode(monkeypatch):
+    """The SDK-backed engine is not a plain CLI mode."""
+    from engines.registry import get_available_engines, refresh_registry
+
+    monkeypatch.setattr(
+        CodexSDKEngine, "is_installed", staticmethod(lambda: True)
+    )
+    refresh_registry()
+    try:
+        engines = {item["id"]: item for item in get_available_engines()}
+    finally:
+        refresh_registry()
+    assert engines["codex_sdk"]["installed"] is True
+    assert engines["codex_sdk"]["mode"] == "sdk"
+
+
+def test_codex_sdk_resume_capability():
+    engine = CodexSDKEngine()
     assert engine.supports_resume is True
     assert engine.supports_interactive is True
+    assert engine.supports_live_stage_message is True
+    assert engine.build_resume_params("thread-1") == {"session_id": "thread-1"}
 
 
-def test_acp_maps_prompt_response_token_usage():
-    response = schema.PromptResponse(
-        stopReason="end_turn",
-        usage=schema.Usage(
-            totalTokens=42,
-            inputTokens=30,
-            outputTokens=12,
-            thoughtTokens=3,
-            cachedReadTokens=8,
-            cachedWriteTokens=4,
+def test_codex_sdk_maps_compacted_notification():
+    engine = CodexSDKEngine()
+    notification = _SdkFake(method="thread/compacted", payload=_SdkFake())
+    events = engine._map_notification(
+        notification, {"emitted_text": False, "tool_emitted": set()}
+    )
+    assert [event.type for event in events] == ["compacted"]
+    assert events[0].data == {}
+
+
+def test_codex_sdk_maps_started_and_text_delta():
+    engine = CodexSDKEngine()
+    notification = _SdkFake(
+        method="item/agentMessage/delta",
+        payload=_SdkFake(delta="你好，Codex！"),
+    )
+    state = {"emitted_text": False, "tool_emitted": set()}
+    events = engine._map_notification(notification, state)
+    assert [event.type for event in events] == ["text_delta"]
+    assert events[0].data["delta"] == "你好，Codex！"
+    assert state["emitted_text"] is True
+
+
+def test_codex_sdk_maps_reasoning_deltas():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/reasoning/textDelta",
+            payload=_SdkFake(delta="正在推理"),
         ),
+        state,
+    )
+    assert [event.type for event in events] == ["thinking_delta"]
+    assert events[0].data["delta"] == "正在推理"
+
+
+def test_codex_sdk_maps_tool_use_and_result():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+    started = engine._map_notification(
+        _SdkFake(
+            method="item/started",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="dynamicToolCall",
+                id="tool-1",
+                tool="Read",
+                arguments={"path": "a.py"},
+            ))),
+        ),
+        state,
+    )
+    assert [event.type for event in started] == ["tool_use"]
+    assert started[0].data["id"] == "tool-1"
+    assert started[0].data["name"] == "Read"
+    assert started[0].data["input"] == {"path": "a.py"}
+    assert "tool-1" in state["tool_emitted"]
+
+    completed = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="dynamicToolCall",
+                id="tool-1",
+                tool="Read",
+                status=_SdkFake(value="completed"),
+                success=True,
+                content_items=[_SdkFake(root=_SdkFake(text="file content"))],
+            ))),
+        ),
+        state,
+    )
+    assert [event.type for event in completed] == ["tool_result"]
+    assert completed[0].data["tool_use_id"] == "tool-1"
+    assert completed[0].data["content"] == "file content"
+    assert completed[0].data["is_error"] is False
+
+
+def test_codex_sdk_completed_text_falls_back_only_when_no_delta():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                text="最终答案",
+            ))),
+        ),
+        state,
+    )
+    assert [event.type for event in events] == ["text_delta"]
+    assert events[0].data["delta"] == "最终答案"
+
+    # Deltas already emitted → completed text must not duplicate.
+    state["emitted_text"] = True
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                text="最终答案",
+            ))),
+        ),
+        state,
+    )
+    assert events == []
+
+
+def test_codex_sdk_maps_usage_with_cache():
+    engine = CodexSDKEngine()
+    notification = _SdkFake(
+        method="thread/tokenUsage/updated",
+        payload=_SdkFake(token_usage=_SdkFake(
+            last=_SdkFake(
+                input_tokens=100,
+                output_tokens=30,
+                cached_input_tokens=20,
+                reasoning_output_tokens=5,
+                total_tokens=150,
+            ),
+            total=None,
+        )),
+    )
+    events = engine._map_notification(
+        notification, {"emitted_text": False, "tool_emitted": set()}
+    )
+    assert [event.type for event in events] == ["usage"]
+    usage = events[0].data
+    assert usage["input_tokens"] == 100
+    assert usage["output_tokens"] == 30
+    assert usage["cache_read_input_tokens"] == 20
+    assert usage["reasoning_output_tokens"] == 5
+    assert usage["total_tokens"] == 150
+
+
+def test_codex_sdk_turn_completed_error():
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="turn/completed",
+            payload=_SdkFake(turn=_SdkFake(
+                status=_SdkFake(value="failed"),
+                error=_SdkFake(message="boom"),
+            )),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+    assert [event.type for event in events] == ["error"]
+    assert events[0].data["message"] == "boom"
+
+
+def test_codex_sdk_turn_completed_done():
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="turn/completed",
+            payload=_SdkFake(turn=_SdkFake(
+                status=_SdkFake(value="completed"),
+                error=None,
+            )),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+    assert [event.type for event in events] == ["status"]
+    assert events[0].data["status"] == "done"
+
+
+def test_codex_sdk_spawn_error_without_sdk(monkeypatch):
+    monkeypatch.setattr(
+        CodexSDKEngine, "_sdk_available", staticmethod(lambda: False)
+    )
+    engine = CodexSDKEngine()
+
+    async def run():
+        return [event async for event in engine.spawn(prompt="hi", cwd=".")]
+
+    events = asyncio.run(run())
+    assert [event.type for event in events] == ["error"]
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
+    """thread_start 不接受 approval_mode=None；未配置时不传该参数（用 SDK 默认）。"""
+    import openai_codex as codex_module
+
+    captured = {}
+
+    class FakeTurn:
+        async def stream(self):
+            if False:
+                yield None
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            captured["prompt"] = prompt
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+
+        async def thread_start(self, **kwargs):
+            captured["start_kwargs"] = kwargs
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    monkeypatch.setattr(
+        "engines.codex_sdk.config_store.get_codex_sdk_config",
+        lambda: {
+            "model_reasoning_effort": "",
+            "approval_mode": "",
+            "sandbox": "workspace-write",
+        },
     )
 
-    event = ClaudeCodeAcpEngine._map_prompt_response_usage(response)
+    engine = CodexSDKEngine()
+    events = [
+        event async for event in engine.spawn(prompt="hi", cwd="/tmp")
+    ]
 
-    assert event is not None
-    assert event.data == {
-        "input_tokens": 30,
-        "output_tokens": 12,
-        "cache_creation_input_tokens": 4,
-        "cache_read_input_tokens": 8,
-        "total_tokens": 42,
-        "thought_tokens": 3,
-    }
+    assert "approval_mode" not in captured["start_kwargs"]
+    assert captured["start_kwargs"]["sandbox"].value == "workspace-write"
+    assert captured["start_kwargs"]["config"] is None
+    assert [event.type for event in events] == [
+        "status",
+        "session_started",
+        "status",
+    ]
 
 
-def test_acp_usage_update_keeps_context_window_semantics():
-    update = schema.UsageUpdate(
-        sessionUpdate="usage_update",
-        used=53_000,
-        size=200_000,
-        cost=schema.Cost(amount=0.045, currency="USD"),
+@pytest.mark.anyio
+async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
+    """配置了 approval_mode 时以 SDK 枚举传入 thread_start。"""
+    import openai_codex as codex_module
+    from openai_codex import ApprovalMode
+
+    captured = {}
+
+    class FakeTurn:
+        async def stream(self):
+            if False:
+                yield None
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def thread_start(self, **kwargs):
+            captured["start_kwargs"] = kwargs
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    monkeypatch.setattr(
+        "engines.codex_sdk.config_store.get_codex_sdk_config",
+        lambda: {
+            "model_reasoning_effort": "high",
+            "approval_mode": "deny_all",
+            "sandbox": "read-only",
+        },
     )
 
-    event = ClaudeCodeAcpEngine()._map_notification(update)
+    engine = CodexSDKEngine()
+    events = [
+        event async for event in engine.spawn(prompt="hi", cwd="/tmp")
+    ]
 
-    assert event is not None
-    assert event.data == {
-        "usage_kind": "context_window",
-        "used": 53_000,
-        "size": 200_000,
-        "cost": {"amount": 0.045, "currency": "USD"},
+    assert captured["start_kwargs"]["approval_mode"] is ApprovalMode.deny_all
+    assert captured["start_kwargs"]["sandbox"].value == "read-only"
+    assert captured["start_kwargs"]["config"] == {
+        "model_reasoning_effort": "high"
     }
+    assert [event.type for event in events] == [
+        "status",
+        "session_started",
+        "status",
+    ]
 
 
-def test_acp_engines_require_the_bridge_binary(monkeypatch):
-    """An unrelated CLI plus npx must not make an unavailable ACP bridge active."""
-    def fake_which(name):
-        return f"/fake/{name}" if name in {"node", "npx", "claude", "codex"} else None
-
-    monkeypatch.setattr("shutil.which", fake_which)
-
-    assert ClaudeCodeAcpEngine.is_installed() is False
-    assert CodexAcpEngine.is_installed() is False
-    assert ClaudeCodeAcpEngine().get_command() == []
-    assert CodexAcpEngine().get_command() == []
+def test_codex_sdk_registered_in_registry():
+    assert "codex_sdk" in _ALL_ENGINES
+    assert CodexSDKEngine in _ALL_ENGINES.values()
 
 
 def test_api_engine_tracks_configuration(monkeypatch):
@@ -487,21 +1112,176 @@ def test_api_engine_tracks_configuration(monkeypatch):
     assert APIEngine.is_configured() is False
 
 
+# --- Engine config schema (backend-driven settings forms) ---
+
+def test_engine_config_schemas_are_declared():
+    api_fields = {field.key: field for field in APIEngine.config_schema()}
+    assert set(api_fields) == {"provider", "base_url", "api_key"}
+    assert api_fields["provider"].type == "select"
+    assert [option.value for option in api_fields["provider"].options] == [
+        "openai",
+        "anthropic",
+    ]
+    assert api_fields["api_key"].sensitive is True
+    assert api_fields["base_url"].required is True
+
+    pydantic_fields = {
+        field.key for field in PydanticAIEngine.config_schema()
+    }
+    assert pydantic_fields == {"provider", "base_url", "api_key"}
+
+    claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}
+    assert set(claude_fields) == {"permission_mode"}
+    assert "bypassPermissions" in claude_fields["permission_mode"].confirm_values
+
+    codex_fields = {field.key: field for field in CodexEngine.config_schema()}
+    assert set(codex_fields) == {
+        "sandbox_mode",
+        "model_reasoning_effort",
+        "approval_policy",
+    }
+    assert codex_fields["sandbox_mode"].type == "select"
+    assert codex_fields["sandbox_mode"].default == "workspace-write"
+
+    claude_sdk_fields = {
+        field.key: field for field in ClaudeAgentSDKEngine.config_schema()
+    }
+    assert set(claude_sdk_fields) == {
+        "permission_mode",
+        "max_turns",
+        "fallback_model",
+        "max_budget_usd",
+    }
+    assert claude_sdk_fields["max_turns"].type == "number"
+    assert claude_sdk_fields["max_budget_usd"].type == "number"
+    assert "bypassPermissions" in claude_sdk_fields["permission_mode"].confirm_values
+
+    codex_sdk_fields = {field.key: field for field in CodexSDKEngine.config_schema()}
+    assert set(codex_sdk_fields) == {
+        "model_reasoning_effort",
+        "approval_mode",
+        "sandbox",
+    }
+    assert codex_sdk_fields["approval_mode"].type == "select"
+
+    from engines.base import BaseLLMEngine
+    assert BaseLLMEngine.config_schema() == []
+
+
+def test_api_engine_config_values_mask_secrets(monkeypatch):
+    store = {
+        "provider": "openai",
+        "base_url": "https://gateway.example.com/v1",
+        "api_key": "stored-secret",
+        "model": "model-x",
+    }
+    monkeypatch.setattr(
+        "engines.api.config_store.get_api_engine_config", lambda: dict(store)
+    )
+    engine = APIEngine()
+    assert engine.get_config_values()["api_key"] == ""
+    assert engine.get_config_secrets() == {"api_key": True}
+    assert engine.reveal_config_value("api_key") == "stored-secret"
+
+
+@pytest.mark.anyio
+async def test_api_engine_save_keeps_and_clears_secret(monkeypatch):
+    saved = {}
+
+    class Store:
+        def get_api_engine_config(self):
+            return {
+                "provider": "openai",
+                "base_url": "https://gateway.example.com/v1",
+                "api_key": "stored-secret",
+                "model": "model-x",
+            }
+
+        def set_api_engine_config(self, **kwargs):
+            saved.update(kwargs)
+
+    monkeypatch.setattr("engines.api.config_store", Store())
+
+    engine = APIEngine()
+    # Not provided → keep existing key
+    await engine.save_config_values({
+        "provider": "openai",
+        "base_url": "https://gateway.example.com/v1",
+    })
+    assert saved["api_key"] is None
+
+    # Provided → replace
+    await engine.save_config_values({
+        "provider": "openai",
+        "base_url": "https://gateway.example.com/v1",
+        "api_key": "new-secret",
+    })
+    assert saved["api_key"] == "new-secret"
+
+    # Clear flag → wipe
+    await engine.save_config_values(
+        {
+            "provider": "openai",
+            "base_url": "https://gateway.example.com/v1",
+        },
+        clear={"api_key": True},
+    )
+    assert saved["api_key"] == ""
+
+
+@pytest.mark.anyio
+async def test_api_engine_save_rejects_remote_plain_http(monkeypatch):
+    monkeypatch.setattr(
+        "engines.api.config_store.get_api_engine_config",
+        lambda: {
+            "provider": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "",
+            "model": "",
+        },
+    )
+    engine = APIEngine()
+    with pytest.raises(ValueError, match="HTTPS"):
+        await engine.save_config_values({
+            "provider": "openai",
+            "base_url": "http://192.168.1.20:11434/v1",
+        })
+
+
+@pytest.mark.anyio
+async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
+    saved = []
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.set_claude_permission_mode",
+        lambda mode: saved.append(mode),
+    )
+    engine = ClaudeCodeEngine()
+
+    with pytest.raises(ValueError, match="明确确认"):
+        await engine.save_config_values({"permission_mode": "bypassPermissions"})
+    assert saved == []
+
+    await engine.save_config_values(
+        {"permission_mode": "bypassPermissions"},
+        confirmed={"permission_mode": True},
+    )
+    assert saved == ["bypassPermissions"]
+
+
 # --- Registry ---
 
 def test_all_engines_registered():
     """All engines are in the full list."""
-    assert len(_ALL_ENGINES) == 10
+    assert len(_ALL_ENGINES) == 9
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
-    assert "claude_acp" in _ALL_ENGINES
-    assert "codex_acp" in _ALL_ENGINES
-    assert "qoder_acp" in _ALL_ENGINES
-    assert "qcode" in _ALL_ENGINES
+    assert "qoder_sdk" in _ALL_ENGINES
     assert "openclaw" in _ALL_ENGINES
     assert "api" in _ALL_ENGINES
     assert "pydantic_ai" in _ALL_ENGINES
+    assert "claude_agent_sdk" in _ALL_ENGINES
+    assert "codex_sdk" in _ALL_ENGINES
 
 
 def test_registry_resolves_installed():
@@ -517,7 +1297,9 @@ def test_get_available_engines_lists_all_backends():
     assert "claude" in ids
     assert "codex" in ids
     assert "hermes" in ids
-    assert "qoder" in ids
+    assert "qoder_sdk" in ids
+    assert "openclaw" in ids
+    assert "claude_agent_sdk" in ids
 
 
 def test_create_engine_returns_instance():
@@ -537,3 +1319,201 @@ def test_refresh_registry():
     # Should still work after refresh
     engines = get_available_engines()
     assert len(engines) >= 4  # at least the 4 backends
+
+
+# --- QoderSDKEngine ---
+
+class _QoderFake:
+    """Minimal stand-in for qoder_agent_sdk dataclasses (name/attr driven)."""
+
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class _QoderSystemMessage(_QoderFake):
+    pass
+
+
+class _QoderStreamEvent(_QoderFake):
+    pass
+
+
+class _QoderAssistantMessage(_QoderFake):
+    pass
+
+
+class _QoderUserMessage(_QoderFake):
+    pass
+
+
+class _QoderResultMessage(_QoderFake):
+    pass
+
+
+def test_qoder_sdk_engine_id():
+    assert QoderSDKEngine.ENGINE_ID == "qoder_sdk"
+
+
+def test_qoder_sdk_version_and_binary():
+    version = QoderSDKEngine.get_version()
+    assert version is None or isinstance(version, str)
+    binary = QoderSDKEngine.resolve_binary()
+    assert binary is None or isinstance(binary, str)
+
+
+def test_qoder_sdk_resolve_bundled_cli(monkeypatch, tmp_path):
+    """The SDK wheel bundles qodercli, so no separate install is needed."""
+    bundled = tmp_path / "_bundled"
+    bundled.mkdir()
+    (bundled / "qodercli").write_bytes(b"")
+    import qoder_agent_sdk as sdk_module
+
+    monkeypatch.setattr(sdk_module, "__file__", str(tmp_path / "qoder_agent_sdk.py"))
+    resolved = QoderSDKEngine.resolve_binary()
+    assert resolved == str(bundled / "qodercli")
+    assert QoderSDKEngine.is_installed() is True
+
+
+def test_qoder_sdk_not_installed_without_sdk(monkeypatch):
+    monkeypatch.setattr(
+        QoderSDKEngine, "_sdk_available", staticmethod(lambda: False)
+    )
+    assert QoderSDKEngine.is_installed() is False
+
+
+def test_qoder_sdk_is_reported_as_sdk_mode(monkeypatch):
+    """The SDK-backed engine is not a plain CLI mode."""
+    from engines.registry import get_available_engines, refresh_registry
+
+    monkeypatch.setattr(
+        QoderSDKEngine, "is_installed", staticmethod(lambda: True)
+    )
+    refresh_registry()
+    try:
+        engines = {item["id"]: item for item in get_available_engines()}
+    finally:
+        refresh_registry()
+    assert engines["qoder_sdk"]["installed"] is True
+    assert engines["qoder_sdk"]["mode"] == "sdk"
+
+
+def test_qoder_sdk_not_resume():
+    engine = QoderSDKEngine()
+    assert engine.supports_resume is False
+    assert engine.supports_interactive is True
+    assert engine.supports_live_stage_message is True
+
+
+def test_qoder_sdk_maps_system_init():
+    engine = QoderSDKEngine()
+    msg = _QoderSystemMessage(subtype="init", data={"model": "auto"})
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["status"]
+    assert events[0].data["status"] == "initializing"
+
+
+def test_qoder_sdk_maps_compact_boundary():
+    engine = QoderSDKEngine()
+    msg = _QoderSystemMessage(
+        subtype="compact_boundary",
+        data={"compact_summary": "前文已压缩为摘要"},
+    )
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["compacted"]
+    assert events[0].data == {"summary": "前文已压缩为摘要"}
+
+
+def test_qoder_sdk_maps_assistant_blocks():
+    engine = QoderSDKEngine()
+    text = _QoderFake(type="text", text="你好，Qoder！")
+    thinking = _QoderFake(type="thinking", thinking="让我想想")
+    tool = _QoderFake(type="tool_use", id="tool-1", name="Read", input={"path": "a.py"})
+    msg = _QoderAssistantMessage(content=[text, thinking, tool], session_id="s1")
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == [
+        "text_delta", "thinking_delta", "tool_use",
+    ]
+    assert events[0].data["delta"] == "你好，Qoder！"
+    assert events[2].data["id"] == "tool-1"
+    assert events[2].data["name"] == "Read"
+
+
+def test_qoder_sdk_assistant_text_skipped_when_streamed():
+    """Streamed text is not duplicated by the final AssistantMessage."""
+    engine = QoderSDKEngine()
+    stream = _QoderStreamEvent(
+        event={"type": "content_block_delta",
+               "delta": {"type": "text_delta", "text": "增量"}},
+    )
+    msg = _QoderAssistantMessage(content=[_QoderFake(type="text", text="增量")])
+    state = {"emitted_text": False, "emitted_thinking": False}
+    stream_events = engine._map_message(stream, state)
+    final_events = engine._map_message(msg, state)
+    assert [e.data["delta"] for e in stream_events] == ["增量"]
+    assert final_events == []
+
+
+def test_qoder_sdk_maps_tool_result():
+    engine = QoderSDKEngine()
+    block = _QoderFake(type="tool_result", tool_use_id="tool-1",
+                       content="file content", is_error=False)
+    msg = _QoderUserMessage(content=[block])
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["tool_result"]
+    assert events[0].data["tool_use_id"] == "tool-1"
+    assert events[0].data["content"] == "file content"
+    assert events[0].data["is_error"] is False
+
+
+def test_qoder_sdk_maps_result_usage_with_cost_and_credits():
+    engine = QoderSDKEngine()
+    msg = _QoderResultMessage(
+        subtype="success",
+        is_error=False,
+        result="",
+        session_id="session-1",
+        total_cost_usd=0.042,
+        total_credits=2.5,
+        usage={
+            "inputTokens": 300,
+            "outputTokens": 100,
+            "cacheReadInputTokens": 120,
+            "cacheCreationInputTokens": 40,
+            "costUSD": 0.042,
+        },
+    )
+    events = engine._map_message(msg)
+    usage_event = next(event for event in events if event.type == "usage")
+    assert usage_event.data == {
+        "input_tokens": 300,
+        "output_tokens": 100,
+        "cache_creation_input_tokens": 40,
+        "cache_read_input_tokens": 120,
+        "total_tokens": 400,
+        "cost": {"amount": 0.042, "currency": "USD"},
+        "credits": 2.5,
+        "session_id": "session-1",
+    }
+    assert events[-1].type == "status"
+    assert events[-1].data["status"] == "done"
+
+
+def test_qoder_sdk_result_falls_back_to_result_text():
+    engine = QoderSDKEngine()
+    msg = _QoderResultMessage(subtype="success", is_error=False, result="完成")
+    events = engine._map_message(msg)
+    assert [event.type for event in events] == ["text_delta", "status"]
+
+
+def test_qoder_sdk_result_error():
+    engine = QoderSDKEngine()
+    msg = _QoderResultMessage(
+        subtype="error_max_turns",
+        is_error=True,
+        errors=["达到最大轮数"],
+        result="",
+    )
+    events = engine._map_message(msg)
+    error_event = next(event for event in events if event.type == "error")
+    assert error_event.data["message"] == "达到最大轮数"

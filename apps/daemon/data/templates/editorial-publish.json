@@ -1,5 +1,6 @@
 {
   "id": "editorial-publish",
+  "default": true,
   "name": "内容发布",
   "description": "选题策划 → 写作 → 审核 → 排版发布",
   "steps": {

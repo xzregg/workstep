@@ -2,19 +2,20 @@
 
 import asyncio
 from dataclasses import asdict
-import ipaddress
 from pathlib import Path
-import socket
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from engines.registry import create_engine, get_available_engines, refresh_registry
-from engines.api import APIEngine
-from engines.pydantic_ai import PydanticAIEngine
-from services.config import CLAUDE_PERMISSION_MODES, config_store
+from engines.base import BaseLLMEngine
+from engines.registry import (
+    create_engine,
+    get_available_engines,
+    list_all_engines,
+    refresh_registry,
+)
+from services.config import config_store
 
 router = APIRouter(prefix="/api/engine")
 
@@ -36,47 +37,21 @@ class CoordinatorDefaultsRequest(BaseModel):
     engine: str = Field(default="", max_length=100)
     model: str = Field(default="", max_length=200)
     fast_model: str = Field(default="", max_length=200)
+    vision_model: str = Field(default="", max_length=200)
 
 
 class BinaryPathRequest(BaseModel):
     path: str = Field(default="", max_length=4096)
 
 
-class ClaudePermissionModeRequest(BaseModel):
-    mode: str = Field(min_length=1, max_length=50)
-    confirmed_dangerous: bool = False
+class EngineConfigSaveRequest(BaseModel):
+    values: dict = Field(default_factory=dict)
+    clear: dict[str, bool] = Field(default_factory=dict)
+    confirmed: dict[str, bool] = Field(default_factory=dict)
 
 
-class ApiEngineConfigRequest(BaseModel):
-    provider: str = Field(default="openai", max_length=50)
-    base_url: str = Field(default="", max_length=2048)
-    api_key: str | None = Field(default=None, max_length=8192)
-    clear_api_key: bool = False
-    model: str = Field(default="", max_length=200)
-
-
-class ApiEngineModelsRequest(BaseModel):
-    provider: str = Field(default="openai", max_length=50)
-    base_url: str = Field(default="", max_length=2048)
-    api_key: str | None = Field(default=None, max_length=8192)
-
-
-def _validate_api_base_url(base_url: str) -> str | None:
-    parsed = urlparse(base_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return "API 地址必须是完整的 http:// 或 https:// URL"
-    if parsed.scheme == "https":
-        return None
-    try:
-        addresses = {
-            ipaddress.ip_address(item[4][0])
-            for item in socket.getaddrinfo(parsed.hostname, parsed.port or 80)
-        }
-    except socket.gaierror:
-        return "HTTP 地址仅允许本机回环地址；远程接口请使用 HTTPS"
-    if not addresses or any(not address.is_loopback for address in addresses):
-        return "HTTP 地址仅允许 localhost/127.0.0.1；远程接口请使用 HTTPS"
-    return None
+class EngineConfigRevealRequest(BaseModel):
+    key: str = Field(min_length=1, max_length=200)
 
 
 @router.get("/list")
@@ -143,6 +118,7 @@ async def get_coordinator_default_config():
         "engine": config_store.get_coordinator_default_engine(),
         "model": config_store.get_coordinator_default_model(),
         "fast_model": config_store.get_coordinator_default_fast_model(),
+        "vision_model": config_store.get_coordinator_default_vision_model(),
         "available_engines": _coordinator_engine_options(),
     }
 
@@ -152,16 +128,20 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
     engine_id = req.engine.strip()
     model = req.model.strip()
     fast_model = req.fast_model.strip()
+    vision_model = req.vision_model.strip()
     if engine_id:
         _validate_engine(engine_id, coordinator=True)
-    elif model or fast_model:
+    elif model or fast_model or vision_model:
         raise HTTPException(status_code=400, detail="默认模型需要先选择协调引擎")
-    config_store.set_coordinator_defaults(engine_id, model, fast_model)
+    config_store.set_coordinator_defaults(
+        engine_id, model, fast_model, vision_model
+    )
     return {
         "saved": True,
         "engine": engine_id,
         "model": model,
         "fast_model": fast_model,
+        "vision_model": vision_model,
     }
 
 
@@ -198,7 +178,7 @@ async def test_engine(req: EngineTestRequest):
 @router.get("/{engine_id}/models")
 async def list_engine_models(engine_id: str):
     """Return selectable models through the engine adapter interface."""
-    refresh_registry()
+    refresh_registry(invalidate_scan=False)
     engine = create_engine(engine_id)
     if engine is None:
         return {
@@ -291,215 +271,77 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
     }
 
 
-@router.get("/api/config")
-async def get_api_engine_config():
-    config = config_store.get_api_engine_config()
-    return {
-        "provider": config["provider"],
-        "base_url": config["base_url"],
-        "model": config["model"],
-        "has_api_key": bool(config["api_key"]),
-        "configured": bool(config["base_url"] and config["model"]),
-    }
+@router.get("/{engine_id}/config")
+async def get_engine_config(engine_id: str):
+    """Return the engine's config schema and current values as JSON.
+
+    The settings UI renders the form controls from ``fields``; secrets are
+    masked in ``values`` and reported via ``secrets``.
+    """
+    engine_id = engine_id.replace("-", "_")
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="未知引擎")
+    engine = cls()
+    return _engine_config_response(engine_id, engine)
 
 
-@router.post("/api/key")
-async def reveal_api_engine_key():
-    """Return the stored key only after an explicit reveal action."""
-    config = config_store.get_api_engine_config()
+@router.put("/{engine_id}/config")
+async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
+    """Persist engine config driven by the engine's config schema."""
+    engine_id = engine_id.replace("-", "_")
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        return {"engine_id": engine_id, "saved": False, "message": "未知引擎"}
+    engine = cls()
+    try:
+        await engine.save_config_values(
+            dict(req.values),
+            clear=dict(req.clear),
+            confirmed=dict(req.confirmed),
+        )
+    except ValueError as exc:
+        return {"engine_id": engine_id, "saved": False, "message": str(exc)}
+    except Exception as exc:
+        return {
+            "engine_id": engine_id,
+            "saved": False,
+            "message": str(exc) or "保存失败",
+        }
+    config_store.set_engine_verified(engine_id, False)
+    refresh_registry()
+    response = _engine_config_response(engine_id, engine)
+    response.update({"saved": True, "message": "配置已保存"})
+    info = next(
+        (item for item in get_available_engines() if item["id"] == engine_id),
+        None,
+    )
+    if info is not None:
+        response["engine"] = info
+    return response
+
+
+@router.post("/{engine_id}/config/reveal")
+async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
+    """Return a stored secret after an explicit reveal action."""
+    engine_id = engine_id.replace("-", "_")
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="未知引擎")
+    engine = cls()
+    value = engine.reveal_config_value(req.key)
     return JSONResponse(
-        {"api_key": config["api_key"]},
+        {"key": req.key, "value": value},
         headers={"Cache-Control": "no-store"},
     )
 
 
-@router.post("/api/models")
-async def list_api_engine_models(req: ApiEngineModelsRequest):
-    provider = req.provider.strip().lower()
-    if provider not in {"openai", "anthropic"}:
-        return {"models": [], "error": "不支持的接口类型"}
-    base_url = req.base_url.strip().rstrip("/")
-    url_error = _validate_api_base_url(base_url)
-    if url_error:
-        return {"models": [], "error": url_error}
-    stored = config_store.get_api_engine_config()
-    api_key = stored["api_key"] if req.api_key is None else req.api_key.strip()
-    try:
-        models = await asyncio.wait_for(
-            APIEngine().list_models_for_config(
-                provider=provider,
-                base_url=base_url,
-                api_key=api_key,
-            ),
-            timeout=15,
-        )
-        error = None
-    except asyncio.TimeoutError:
-        models = []
-        error = "读取模型列表超时"
-    except Exception as exc:
-        models = []
-        error = str(exc) or "读取模型列表失败"
-    return {"models": [asdict(model) for model in models], "error": error}
-
-
-@router.put("/api/config")
-async def set_api_engine_config(req: ApiEngineConfigRequest):
-    provider = req.provider.strip().lower()
-    if provider not in {"openai", "anthropic"}:
-        return {"saved": False, "message": "不支持的接口类型"}
-    base_url = req.base_url.strip().rstrip("/")
-    model = req.model.strip()
-    if not base_url or not model:
-        return {"saved": False, "message": "API 地址和模型不能为空"}
-    url_error = _validate_api_base_url(base_url)
-    if url_error:
-        return {"saved": False, "message": url_error}
-    api_key = "" if req.clear_api_key else (
-        req.api_key.strip()
-        if req.api_key is not None and req.api_key.strip()
-        else None
-    )
-    config_store.set_api_engine_config(
-        provider=provider,
-        base_url=base_url,
-        api_key=api_key,
-        model=model,
-    )
-    config_store.set_engine_verified("api", False)
-    refresh_registry()
-    engine = next(item for item in get_available_engines() if item["id"] == "api")
-    config = config_store.get_api_engine_config()
+def _engine_config_response(engine_id: str, engine: BaseLLMEngine) -> dict:
     return {
-        "saved": True,
-        "config": {
-            "provider": config["provider"],
-            "base_url": config["base_url"],
-            "model": config["model"],
-            "has_api_key": bool(config["api_key"]),
-            "configured": engine["configured"],
-        },
-        "engine": engine,
+        "engine_id": engine_id,
+        "fields": [asdict(field) for field in engine.config_schema()],
+        "values": engine.get_config_values(),
+        "secrets": engine.get_config_secrets(),
+        "configured": engine.is_configured(),
+        "installed": engine.is_installed(),
     }
-
-
-@router.get("/pydantic-ai/config")
-async def get_pydantic_ai_engine_config():
-    config = config_store.get_pydantic_ai_engine_config()
-    return {
-        "provider": config["provider"],
-        "base_url": config["base_url"],
-        "model": config["model"],
-        "has_api_key": bool(config["api_key"]),
-        "configured": bool(config["base_url"] and config["model"]),
-    }
-
-
-@router.post("/pydantic-ai/key")
-async def reveal_pydantic_ai_engine_key():
-    """Return the Pydantic AI provider key after an explicit reveal action."""
-    config = config_store.get_pydantic_ai_engine_config()
-    return JSONResponse(
-        {"api_key": config["api_key"]},
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@router.post("/pydantic-ai/models")
-async def list_pydantic_ai_engine_models(req: ApiEngineModelsRequest):
-    provider = req.provider.strip().lower()
-    if provider not in {"openai", "anthropic"}:
-        return {"models": [], "error": "不支持的 Provider 类型"}
-    base_url = req.base_url.strip().rstrip("/")
-    url_error = _validate_api_base_url(base_url)
-    if url_error:
-        return {"models": [], "error": url_error}
-    stored = config_store.get_pydantic_ai_engine_config()
-    api_key = stored["api_key"] if req.api_key is None else req.api_key.strip()
-    try:
-        models = await asyncio.wait_for(
-            PydanticAIEngine().list_models_for_config(
-                provider=provider,
-                base_url=base_url,
-                api_key=api_key,
-            ),
-            timeout=15,
-        )
-        error = None
-    except asyncio.TimeoutError:
-        models = []
-        error = "读取模型列表超时"
-    except Exception as exc:
-        models = []
-        error = str(exc) or "读取模型列表失败"
-    return {"models": [asdict(model) for model in models], "error": error}
-
-
-@router.put("/pydantic-ai/config")
-async def set_pydantic_ai_engine_config(req: ApiEngineConfigRequest):
-    provider = req.provider.strip().lower()
-    if provider not in {"openai", "anthropic"}:
-        return {"saved": False, "message": "不支持的 Provider 类型"}
-    base_url = req.base_url.strip().rstrip("/")
-    model = req.model.strip()
-    if not base_url or not model:
-        return {"saved": False, "message": "Provider 地址和模型不能为空"}
-    url_error = _validate_api_base_url(base_url)
-    if url_error:
-        return {"saved": False, "message": url_error}
-    api_key = "" if req.clear_api_key else (
-        req.api_key.strip()
-        if req.api_key is not None and req.api_key.strip()
-        else None
-    )
-    config_store.set_pydantic_ai_engine_config(
-        provider=provider,
-        base_url=base_url,
-        api_key=api_key,
-        model=model,
-    )
-    config_store.set_engine_verified("pydantic_ai", False)
-    refresh_registry()
-    engine = next(
-        item for item in get_available_engines() if item["id"] == "pydantic_ai"
-    )
-    config = config_store.get_pydantic_ai_engine_config()
-    return {
-        "saved": True,
-        "config": {
-            "provider": config["provider"],
-            "base_url": config["base_url"],
-            "model": config["model"],
-            "has_api_key": bool(config["api_key"]),
-            "configured": engine["configured"],
-        },
-        "engine": engine,
-    }
-
-
-@router.get("/claude/permission-mode")
-async def get_claude_permission_mode():
-    mode = config_store.get_claude_permission_mode()
-    return {
-        "mode": mode,
-        "confirmed": bool(mode),
-        "options": sorted(CLAUDE_PERMISSION_MODES),
-    }
-
-
-@router.put("/claude/permission-mode")
-async def set_claude_permission_mode(req: ClaudePermissionModeRequest):
-    if req.mode not in CLAUDE_PERMISSION_MODES:
-        return {
-            "saved": False,
-            "mode": config_store.get_claude_permission_mode(),
-            "message": "不支持的 Claude Code 权限模式",
-        }
-    if req.mode == "bypassPermissions" and not req.confirmed_dangerous:
-        return {
-            "saved": False,
-            "mode": config_store.get_claude_permission_mode(),
-            "message": "bypassPermissions 需要明确确认风险",
-        }
-    config_store.set_claude_permission_mode(req.mode)
-    return {"saved": True, "mode": req.mode, "confirmed": True}

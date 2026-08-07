@@ -128,8 +128,8 @@ open ui/card-detail.html
                 │ asyncio.subprocess spawn + stdin/stdout 管道
      ┌──────────┼────────────┬───────────┬───────────┐
      ▼          ▼            ▼           ▼           ▼
-  claude      codex       hermes      qoder      api直调
- (CLI/ACP)  (CLI/ACP)     (ACP)       (ACP)     (HTTP/SSE)
+  claude      codex       hermes   claude_agent_sdk  codex_sdk    api直调
+  (CLI)      (CLI)       (ACP)       (SDK)          (SDK)      (HTTP/SSE)
 ```
 
 ---
@@ -188,7 +188,7 @@ flowchart LR
 | 字段 | 说明 |
 |---|---|
 | `key` / `label` | 阶段标识 / 展示名 |
-| `engine` | 执行引擎（claude / codex / hermes / qoder / api / pydantic_ai） |
+| `engine` | 执行引擎（claude / codex / hermes / claude_agent_sdk / codex_sdk / api / pydantic_ai） |
 | `prompt` | 阶段要求，随任务描述、上游产物引用一起拼入提示词 |
 | `inputs` / `outputs` | 输入输出规范（名称 + 类型），用于约束产物格式 |
 | `dependsOn` | 上游依赖列表，构建 DAG |
@@ -212,18 +212,38 @@ flowchart LR
 - `inject_response(tool_use_id, content)` → 中途注入用户回答 / 权限响应
 - `supports_resume` / `build_resume_params()` → 会话恢复（如 Codex `--resume`）
 
-引擎注册表（`engines/registry.py`）按后端名称解析最佳可用实现，ACP 优先、直连 CLI 兜底：
+引擎注册表（`engines/registry.py`）按后端名称解析实现：
 
-| 后端 | 优先 | 兜底 | 会话恢复 | 交互 |
-|---|---|---|---|---|
-| claude | `claude_acp` | `claude`（JSONL 流） | ✅ | ✅ |
-| codex | `codex_acp` | `codex`（`codex exec --json`） | 视模式 | ✅ |
-| hermes | `hermes`（JSON-RPC） | — | ❌ | ✅ |
-| qoder | `qoder_acp` | — | ❌ | ✅ |
-| qcode / openclaw | 直连 CLI | — | 待定 | 待定 |
-| api / pydantic_ai | HTTP 直调 | — | ❌ | ❌ |
+| 后端 | 实现 | 会话恢复 | 交互 |
+|---|---|---|---|
+| claude | `claude`（JSONL 流） | ❌ | ✅ |
+| codex | `codex`（`codex exec --json`） | ❌ | ✅ |
+| hermes | `hermes`（JSON-RPC，复用 `AcpEngineBase`） | ❌ | ✅ |
+| openclaw | 直连 CLI | 待定 | 待定 |
+| api / pydantic_ai | HTTP 直调 / 进程内 Agent | ❌ | ❌ |
+| claude_agent_sdk | 官方 Agent SDK 内嵌驱动 Claude Code | ❌ | ❌ |
+| codex_sdk | 官方 Codex SDK 内嵌驱动 Codex | ✅ | ❌ |
+| qoder_sdk | 官方 Qoder Agent SDK 内嵌驱动 qodercli | ❌ | ❌ |
 
 引擎的 stdout（无论 JSONL、JSON-RPC 还是 SSE）都被解析器归一化为统一的**内部事件**：`status` / `text_delta` / `thinking_delta` / `tool_use` / `tool_result` / `usage` / `error`。前端只消费这套事件，不感知底层引擎差异。
+
+### 内置 Pydantic 引擎（`pydantic_ai`）
+
+`pydantic_ai` 是进程内引擎：无需子进程，直接用 Pydantic AI 加载已配置的 Provider（Anthropic / OpenAI 兼容），通过 `pydantic_ai_harness` 提供沙箱工具：
+
+- `from pydantic_ai_harness import FileSystem` — 受允许根目录限制的沙箱文件系统：`list_files` / `read_file` / `search_files` / `write_file` / `edit_file`（支持修改代码，路径逃逸会拒绝）
+- `from pydantic_ai_harness.memory import Memory` — 项目记忆，持久化为 `.workstep/MEMORY.md`（`## <key>` 小节，字符串存原文、结构化值存 JSON 代码块），工具 `remember` / `recall`
+- `from pydantic_ai_harness.skills import Skills` — 技能注册表，扫描项目 `.claude/skills`、`.codex/skills` 与 `~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills` 下的 `SKILL.md`（frontmatter name/description + 正文），工具 `list_skills` / `load_skill`；项目级技能优先于个人技能
+
+引擎指令会自动附加项目根目录的 `agents.md` / `AGENTS.md`，让代理遵守仓库约定。工具注册于 `apps/daemon/engines/pydantic_ai.py`，实现位于 `apps/daemon/pydantic_ai_harness/`。
+
+### 执行中阶段消息（实时干预）
+
+运行中的阶段支持接收普通用户消息并实时注入引擎（`POST /api/task/{id}/step/{key}/message`）：
+
+- 引擎接口：`BaseLLMEngine.send_live_stage_message(content)` + `supports_live_stage_message` 能力声明；Claude Code 直连 CLI 通过 `--input-format stream-json` 实时输入模式实现，消息以 JSONL `user` 消息写入 stdin，turn 结束后 `close_stream` + 超时看门狗兜底
+- 运行器：`TaskRunner` 为每个运行中阶段维护消息队列，阶段消息持久化为 `channel=execution` 用户消息并实时注入
+- 聊天目标选择：任务详情聊天输入可切换「协调 Agent」（`channel=coordinator`）或「阶段 Agent」（`channel=execution`）；协调对话不进入阶段执行上下文，阶段注入消息也不进入协调上下文
 
 ### 阶段执行时序
 

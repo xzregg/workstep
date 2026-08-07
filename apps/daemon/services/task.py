@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 
-from models import ActionProposal, Task, TaskStep, Message
+from models import ActionProposal, Task, TaskStep, Message, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
 from engines.registry import create_engine
@@ -80,11 +80,20 @@ class TaskService:
 
         return self._task_to_dict(task)
 
-    def list_tasks(self, workflow_id: str | None = None) -> list[dict]:
-        """List tasks, optionally filtered by workflow."""
+    def list_tasks(
+        self,
+        workflow_id: str | None = None,
+        archived: bool = False,
+    ) -> list[dict]:
+        """List tasks, optionally filtered by workflow and archive state.
+
+        By default archived tasks are hidden from the active board; pass
+        ``archived=True`` to list only archived tasks.
+        """
         q = Task.select().order_by(Task.updated_at.desc())
         if workflow_id:
             q = q.where(Task.workflow_id == workflow_id)
+        q = q.where(Task.archived == (1 if archived else 0))
         return [self._task_to_dict(t) for t in q]
 
     def get_task(self, task_id: str) -> dict | None:
@@ -351,6 +360,32 @@ class TaskService:
         except Task.DoesNotExist:
             return False
 
+    def archive_task(self, task_id: str) -> bool:
+        """Archive a task so it disappears from the active board."""
+        try:
+            task = Task.get_by_id(task_id)
+            if task.status == "running":
+                raise RuntimeError("Running tasks cannot be archived")
+            task.archived = 1
+            task.updated_at = utc_now()
+            task.save()
+            return True
+        except Task.DoesNotExist:
+            return False
+
+    def unarchive_task(self, task_id: str) -> bool:
+        """Restore an archived task back to the active board."""
+        try:
+            task = Task.get_by_id(task_id)
+            if not task.archived:
+                return False
+            task.archived = 0
+            task.updated_at = utc_now()
+            task.save()
+            return True
+        except Task.DoesNotExist:
+            return False
+
     def copy_task(self, task_id: str, new_title: str, project_id: str) -> dict | None:
         """Copy a task with a new title."""
         try:
@@ -392,18 +427,49 @@ class TaskService:
 
     def _task_to_dict(self, task: Task) -> dict:
         steps = list(TaskStep.select().where(TaskStep.task == task))
+        run_round = 1
+        restart_from_step_key = None
+        recovered_at = None
+        recovered_count = 0
+        if task.active_workflow_run_id:
+            run = WorkflowRun.get_or_none(
+                (WorkflowRun.id == task.active_workflow_run_id)
+                & (WorkflowRun.task == task)
+            )
+            if run is not None:
+                restart_from_step_key = run.restart_from_step_key
+                recovered_at = run.recovered_at
+                recovered_count = run.recovered_count or 0
+                depth = 1
+                current = run
+                while current.parent_run_id:
+                    parent = WorkflowRun.get_or_none(
+                        (WorkflowRun.id == current.parent_run_id)
+                        & (WorkflowRun.task == task)
+                    )
+                    if parent is None:
+                        break
+                    current = parent
+                    depth += 1
+                run_round = depth
         return {
             "id": task.id,
             "title": task.title,
             "description": task.description,
             "cwd": task.cwd,
             "status": task.status,
+            "archived": bool(task.archived),
             "engine": task.engine,
             "model": task.model,
             "coordinator_engine": task.coordinator_engine,
             "coordinator_model": task.coordinator_model,
             "coordinator_fast_model": task.coordinator_fast_model,
+            "coordinator_vision_model": task.coordinator_vision_model,
             "active_workflow_run_id": task.active_workflow_run_id,
+            "run_round": run_round,
+            "restart_from_step_key": restart_from_step_key,
+            "recovered_at": recovered_at,
+            "recovered_count": recovered_count,
             "state_version": task.state_version,
             "workflow_id": task.workflow_id,
             "created_at": task.created_at,
@@ -414,6 +480,7 @@ class TaskService:
                     "step_key": step.step_key,
                     "status": step.status,
                     "engine": step.engine,
+                    "session_id": step.session_id,
                     "started_at": step.started_at,
                     "ended_at": step.ended_at,
                     "error": step.error,

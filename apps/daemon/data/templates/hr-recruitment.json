@@ -1,5 +1,6 @@
 {
   "id": "hr-recruitment",
+  "default": true,
   "name": "招聘流程",
   "description": "需求确认 → 寻源 → 面试 → 录用审批",
   "steps": {

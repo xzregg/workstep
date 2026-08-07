@@ -1,5 +1,6 @@
 {
   "id": "hr-performance",
+  "default": true,
   "name": "绩效考核",
   "description": "目标设定 → 过程跟踪 → 评估 → 反馈",
   "steps": {

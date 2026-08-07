@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   durationMilliseconds,
   formatDuration,
@@ -61,8 +61,9 @@ function basename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 }
 
-function toolKind(name: string): 'edit' | 'read' | 'command' | 'search' | 'other' {
+function toolKind(name: string): 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other' {
   const normalized = name.toLowerCase()
+  if (/(subagent|sub-agent|sub_agent|spawn_agent|spawn.*agent|delegate)/.test(normalized)) return 'subagent'
   if (/(edit|write|patch|replace|create)/.test(normalized)) return 'edit'
   if (/(read|open|view)/.test(normalized)) return 'read'
   if (/(bash|shell|command|exec|terminal)/.test(normalized)) return 'command'
@@ -71,6 +72,7 @@ function toolKind(name: string): 'edit' | 'read' | 'command' | 'search' | 'other
 }
 
 function toolIcon(kind: ReturnType<typeof toolKind>): string {
+  if (kind === 'subagent') return '🤖'
   if (kind === 'edit') return '✎'
   if (kind === 'read') return '▤'
   if (kind === 'command') return '›_'
@@ -82,6 +84,7 @@ function toolSummary(activity: ToolActivity): string {
   const kind = toolKind(activity.name)
   const target = toolTarget(activity)
   const targetName = target ? ` ${basename(target)}` : ''
+  if (kind === 'subagent') return '已调用子代理'
   if (kind === 'edit') return `已编辑${targetName || '文件'}`
   if (kind === 'read') return `已读取${targetName || '文件'}`
   if (kind === 'command') return '已运行命令'
@@ -92,6 +95,7 @@ function toolSummary(activity: ToolActivity): string {
 function groupSummary(activities: ToolActivity[]): string {
   const kinds = new Set(activities.map((activity) => toolKind(activity.name)))
   const labels: string[] = []
+  if (kinds.has('subagent')) labels.push('调用了子代理')
   if (kinds.has('edit')) labels.push('编辑了文件')
   if (kinds.has('read')) labels.push('读取了文件')
   if (kinds.has('command')) labels.push('运行了命令')
@@ -146,6 +150,17 @@ export default function ProcessTrace({
   compact = false,
 }: ProcessTraceProps) {
   const [now, setNow] = useState(() => Date.now())
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [roomy, setRoomy] = useState(true)
+  useEffect(() => {
+    const element = containerRef.current
+    if (!element) return
+    const update = () => setRoomy(element.clientWidth >= 480)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
@@ -174,7 +189,10 @@ export default function ProcessTrace({
   if (!duration && !thinking && activities.length === 0) return null
 
   return (
-    <div className={`process-trace${compact ? ' process-trace-compact' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`process-trace${compact ? ' process-trace-compact' : ''}${compact && !roomy ? ' process-trace-narrow' : ''}`}
+    >
       <details className="process-trace-session">
         <summary>
           <span>{running ? '处理中' : '已处理'}{duration ? ` ${duration}` : ''}</span>

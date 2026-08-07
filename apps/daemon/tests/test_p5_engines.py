@@ -1,4 +1,4 @@
-"""Tests for P5 engines (QCode, OpenClaw, API)."""
+"""Tests for P5 engines (OpenClaw, API)."""
 
 import json
 
@@ -6,75 +6,8 @@ import httpx
 import pytest
 
 from engines.api import APIEngine
-from engines.qcode import QCodeEngine
 from engines.openclaw import OpenClawEngine
 from engines.events import InternalEvent
-
-
-class TestQCodeEngine:
-    """Tests for QCodeEngine."""
-
-    def test_is_installed(self):
-        """Test is_installed returns boolean."""
-        assert isinstance(QCodeEngine.is_installed(), bool)
-
-    def test_get_version(self):
-        """Test get_version returns string or None."""
-        version = QCodeEngine.get_version()
-        assert version is None or isinstance(version, str)
-
-    def test_resolve_binary(self):
-        """Test resolve_binary returns path or None."""
-        binary = QCodeEngine.resolve_binary()
-        assert binary is None or isinstance(binary, str)
-
-    def test_supports_resume(self):
-        """Test QCode does not support resume."""
-        engine = QCodeEngine()
-        assert engine.supports_resume is False
-
-    def test_supports_interactive(self):
-        """Test QCode does not support interactive."""
-        engine = QCodeEngine()
-        assert engine.supports_interactive is False
-
-    def test_build_resume_params(self):
-        """Test build_resume_params returns dict."""
-        engine = QCodeEngine()
-        params = engine.build_resume_params("test-session")
-        assert isinstance(params, dict)
-
-    def test_map_usage_to_canonical_fields(self):
-        event = QCodeEngine()._map_event({
-            "type": "usage",
-            "usage": {
-                "prompt_tokens": 30,
-                "completion_tokens": 12,
-                "cached_tokens": 8,
-            },
-        })
-
-        assert event is not None
-        assert event.data == {
-            "input_tokens": 30,
-            "output_tokens": 12,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 8,
-            "total_tokens": 42,
-        }
-
-    def test_maps_thinking_and_tool_result(self):
-        engine = QCodeEngine()
-        thinking = engine._map_event({"type": "thinking", "text": "分析"})
-        result = engine._map_event({
-            "type": "tool_result",
-            "tool_use_id": "tool-1",
-            "content": "完成",
-        })
-
-        assert thinking is not None and thinking.type == "thinking_delta"
-        assert result is not None and result.type == "tool_result"
-        assert result.data["tool_use_id"] == "tool-1"
 
 
 class TestOpenClawEngine:

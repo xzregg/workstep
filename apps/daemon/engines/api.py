@@ -8,7 +8,13 @@ from typing import AsyncIterator
 import httpx
 
 from engines.base import BaseLLMEngine, EngineModel
+from engines.schema import EngineImage
 from engines.events import InternalEvent, normalize_token_usage
+from engines.schema import (
+    EngineConfigField,
+    EngineConfigOption,
+    validate_api_base_url,
+)
 from services.config import config_store
 
 logger = logging.getLogger(__name__)
@@ -20,10 +26,17 @@ class APIEngine(BaseLLMEngine):
     Supports both OpenAI-compatible endpoints and Anthropic's native API.
     """
 
+    _live_message_wait_seconds: float = 1.5
+
     def __init__(self, transport: httpx.AsyncBaseTransport | None = None):
         self._running = False
         self._client: httpx.AsyncClient | None = None
         self._transport = transport
+
+    @property
+    def supports_vision(self) -> bool:
+        """OpenAI-compatible and Anthropic endpoints accept image blocks."""
+        return True
 
     # --- Engine discovery ---
 
@@ -46,6 +59,88 @@ class APIEngine(BaseLLMEngine):
     def resolve_binary() -> str:
         """Return identifier for API engine."""
         return "api-engine"
+
+    # --- Config schema (backend-driven settings form) ---
+
+    @classmethod
+    def config_schema(cls) -> list[EngineConfigField]:
+        return [
+            EngineConfigField(
+                key="provider",
+                label="接口类型",
+                type="select",
+                options=(
+                    EngineConfigOption("openai", "OpenAI-compatible"),
+                    EngineConfigOption("anthropic", "Anthropic Messages"),
+                ),
+                required=True,
+            ),
+            EngineConfigField(
+                key="base_url",
+                label="API 地址",
+                type="text",
+                placeholder="https://api.openai.com/v1",
+                required=True,
+                help="远程地址必须使用 HTTPS；Ollama 等本机接口可使用 localhost HTTP。",
+            ),
+            EngineConfigField(
+                key="api_key",
+                label="API Key",
+                type="password",
+                placeholder="可选，本地无鉴权接口可留空",
+                sensitive=True,
+            ),
+        ]
+
+    def get_config_values(self) -> dict:
+        config = config_store.get_api_engine_config()
+        return {
+            "provider": config["provider"],
+            "base_url": config["base_url"],
+            "api_key": "",
+        }
+
+    def get_config_secrets(self) -> dict[str, bool]:
+        config = config_store.get_api_engine_config()
+        return {"api_key": bool(config["api_key"])}
+
+    async def save_config_values(
+        self,
+        values: dict,
+        clear: dict[str, bool] | None = None,
+        confirmed: dict[str, bool] | None = None,
+    ) -> None:
+        current = config_store.get_api_engine_config()
+        provider = str(values.get("provider") or current["provider"]).strip().lower()
+        if provider not in {"openai", "anthropic"}:
+            raise ValueError("不支持的接口类型")
+        base_url = str(values.get("base_url") or "").strip().rstrip("/")
+        if not base_url:
+            raise ValueError("API 地址不能为空")
+        url_error = validate_api_base_url(base_url)
+        if url_error:
+            raise ValueError(url_error)
+
+        clear = clear or {}
+        api_key: str | None = None
+        if clear.get("api_key"):
+            api_key = ""
+        else:
+            new_key = str(values.get("api_key") or "").strip()
+            if new_key:
+                api_key = new_key
+
+        config_store.set_api_engine_config(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+            model=str(current["model"]),
+        )
+
+    def reveal_config_value(self, key: str) -> str | None:
+        if key == "api_key":
+            return config_store.get_api_engine_config().get("api_key") or None
+        return None
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         config = config_store.get_api_engine_config()
@@ -105,6 +200,8 @@ class APIEngine(BaseLLMEngine):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
+        live_message_queue: asyncio.Queue | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Call API and stream events."""
         self._running = True
@@ -123,7 +220,7 @@ class APIEngine(BaseLLMEngine):
         model = model or config["model"]
 
         # Prepare messages
-        messages = [{"role": "user", "content": prompt}]
+        messages = [{"role": "user", "content": self._user_content(prompt, images, provider)}]
         headers = {"Content-Type": "application/json"}
         if provider == "openai" and api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -138,19 +235,56 @@ class APIEngine(BaseLLMEngine):
 
                 yield InternalEvent(type="status", data={"status": "running"})
 
-                # Call API
-                if provider == "anthropic":
-                    events = await self._call_anthropic(
-                        client, model, messages, api_base, api_key
-                    )
-                else:
-                    # Default to OpenAI-compatible
-                    events = await self._call_openai(
-                        client, model, messages, api_base
-                    )
+                while True:
+                    # Call API
+                    if provider == "anthropic":
+                        events = await self._call_anthropic(
+                            client, model, messages, api_base, api_key
+                        )
+                    else:
+                        # Default to OpenAI-compatible
+                        events = await self._call_openai(
+                            client, model, messages, api_base
+                        )
 
-                for event in events:
-                    yield event
+                    assistant_text: list[str] = []
+                    for event in events:
+                        yield event
+                        if event.type == "text_delta":
+                            assistant_text.append(str(event.data.get("delta", "")))
+
+                    if live_message_queue is None:
+                        break
+                    live_items: list[tuple[str, str]] = []
+                    while not live_message_queue.empty():
+                        live_items.append(live_message_queue.get_nowait())
+                    if not live_items:
+                        # 轮间等待窗口：任务收尾时刚发出的插入消息不应静默丢失
+                        try:
+                            first = await asyncio.wait_for(
+                                live_message_queue.get(),
+                                timeout=self._live_message_wait_seconds,
+                            )
+                        except asyncio.TimeoutError:
+                            break
+                        live_items = [first]
+                        while not live_message_queue.empty():
+                            live_items.append(live_message_queue.get_nowait())
+
+                    messages.append({
+                        "role": "assistant",
+                        "content": "".join(assistant_text),
+                    })
+                    messages.append({
+                        "role": "user",
+                        "content": "\n\n".join(content for _, content in live_items),
+                    })
+                    for message_id, _ in live_items:
+                        yield InternalEvent(type="live_message", data={
+                            "message_id": message_id,
+                            "status": "delivered",
+                            "detail": "",
+                        })
 
         except httpx.TimeoutException:
             yield InternalEvent(type="error", data={"message": "API request timeout"})
@@ -164,6 +298,38 @@ class APIEngine(BaseLLMEngine):
             yield InternalEvent(type="error", data={"message": str(e)})
         finally:
             self._running = False
+
+    @staticmethod
+    def _user_content(
+        prompt: str,
+        images: list[EngineImage] | None,
+        provider: str,
+    ) -> str | list[dict]:
+        """Build the user message content, embedding images for vision calls."""
+        if not images:
+            return prompt
+        if provider == "anthropic":
+            blocks: list[dict] = [{"type": "text", "text": prompt}]
+            for image in images:
+                if image.url and image.url.startswith(("http://", "https://")):
+                    source: dict = {"type": "url", "url": image.url}
+                else:
+                    data_url = image.to_data_url()
+                    media_type, _, payload = data_url[5:].partition(",")
+                    source = {
+                        "type": "base64",
+                        "media_type": media_type.split(";", 1)[0],
+                        "data": payload,
+                    }
+                blocks.append({"type": "image", "source": source})
+            return blocks
+        blocks = [{"type": "text", "text": prompt}]
+        for image in images:
+            blocks.append({
+                "type": "image_url",
+                "image_url": {"url": image.to_data_url()},
+            })
+        return blocks
 
     async def _call_openai(
         self,
@@ -455,6 +621,10 @@ class APIEngine(BaseLLMEngine):
     @property
     def supports_interactive(self) -> bool:
         return False
+
+    @property
+    def supports_live_stage_message(self) -> bool:
+        return True
 
     def build_resume_params(self, session_id: str) -> dict:
         return {}

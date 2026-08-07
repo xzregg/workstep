@@ -7,6 +7,8 @@ interface MarkdownEditorProps {
   onChange: (value: string) => void
   /** Project id — used to upload images and preview `.workstep/uploads/...` paths. */
   projectId?: string
+  /** Short id prefix added to uploaded image filenames for later cleanup. */
+  imagePrefix?: string
   placeholder?: string
   minHeight?: number | string
   maxHeight?: number | string
@@ -24,6 +26,7 @@ export default function MarkdownEditor({
   value,
   onChange,
   projectId,
+  imagePrefix,
   placeholder = '输入内容…（支持 Markdown，可直接粘贴图片）',
   minHeight = 160,
   maxHeight = '45vh',
@@ -63,7 +66,7 @@ export default function MarkdownEditor({
     const placeholderTag = `[img:${Date.now()}]`
     insertImageMarkdown(placeholderTag, alt)
     try {
-      const result = await fsApi.uploadImage(file, projectId)
+      const result = await fsApi.uploadImage(file, projectId, imagePrefix)
       onChange(valueRef.current.replace(placeholderTag, result.url))
     } catch (err) {
       // Fallback to base64 if upload fails

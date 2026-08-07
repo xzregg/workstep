@@ -38,6 +38,9 @@ class MemoryConfigStore:
     def get_coordinator_default_fast_model(self):
         return self.values.get("coordinator_default_fast_model", "")
 
+    def get_coordinator_default_vision_model(self):
+        return self.values.get("coordinator_default_vision_model", "")
+
     def get_engine_default_model(self, engine_id):
         return ""
 
@@ -70,7 +73,7 @@ async def api_context(tmp_path, monkeypatch):
     monkeypatch.setattr(history_api, "project_manager", manager)
     monkeypatch.setattr(search_api, "project_manager", manager)
     monkeypatch.setattr(workflow_api, "project_manager", manager)
-    monkeypatch.setattr(templates_api, "TEMPLATES_DIR", tmp_path / "templates")
+    monkeypatch.setattr(templates_api, "GLOBAL_TEMPLATES_DIR", tmp_path / "templates")
     monkeypatch.setattr(main, "project_manager", manager)
     monkeypatch.setattr(main, "task_service", task_service)
     monkeypatch.setattr(main, "workflow_runtime", runtime)
@@ -150,6 +153,24 @@ class SecondCoordinatorFakeEngine(CoordinatorFakeEngine):
     calls: list[dict] = []
 
 
+class ImageRoutingCoordinatorFakeEngine(CoordinatorFakeEngine):
+    calls: list[dict] = []
+
+    async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+        type(self).calls.append({
+            "prompt": prompt,
+            "images": kwargs.get("images"),
+        })
+        yield InternalEvent(
+            type="text_delta",
+            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+        )
+        yield InternalEvent(
+            type="usage",
+            data={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        )
+
+
 class StreamingCoordinatorFakeEngine(CoordinatorFakeEngine):
     release: asyncio.Event
 
@@ -213,7 +234,11 @@ async def _wait_for_reply(
     project_id,
     task_id,
     assistant_message_id=None,
+    include_stopped=False,
 ):
+    accepted_statuses = {"succeeded", "failed"}
+    if include_stopped:
+        accepted_statuses.add("stopped")
     for _ in range(100):
         response = await client.get(
             f"/api/task/{task_id}/history?project_id={project_id}"
@@ -223,7 +248,7 @@ async def _wait_for_reply(
             item for item in messages
             if item["channel"] == "coordinator"
             and item["role"] == "assistant"
-            and item["run_status"] in {"succeeded", "failed"}
+            and item["run_status"] in accepted_statuses
             and (
                 assistant_message_id is None
                 or item["id"] == assistant_message_id
@@ -410,6 +435,7 @@ async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
             "engine": "claude",
             "model": "reasoning-model",
             "fast_model": "fast-model",
+            "vision_model": "vision-model",
         },
     )
     assert updated.status_code == 200
@@ -417,7 +443,9 @@ async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
         "engine": "claude",
         "model": "reasoning-model",
         "fast_model": "fast-model",
+        "vision_model": "vision-model",
     }
+    assert updated.json()["resolved"]["vision_model"] == "vision-model"
 
     accepted = await client.post(
         f"/api/task/{task_id}/chat?project_id={project_id}",
@@ -436,6 +464,110 @@ async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
         "reasoning-model",
         "fast-model",
     ]
+
+
+@pytest.mark.anyio
+async def test_coordinator_vision_model_global_default_and_task_override(
+    api_context,
+    monkeypatch,
+):
+    from engines.registry import ENGINE_REGISTRY
+    import services.coordinator as coordinator_service
+
+    client, tmp_path = api_context
+    RoutedCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", RoutedCoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    coordinator_service.config_store.set(
+        "coordinator_default_vision_model", "global-vision-model"
+    )
+    loaded = await client.get(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}"
+    )
+    assert loaded.status_code == 200
+    assert loaded.json()["resolved"]["vision_model"] == "global-vision-model"
+    assert loaded.json()["configured"]["vision_model"] is None
+
+    updated = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "claude", "vision_model": "task-vision-model"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["configured"]["vision_model"] == "task-vision-model"
+    assert updated.json()["resolved"]["vision_model"] == "task-vision-model"
+
+
+@pytest.mark.anyio
+async def test_coordinator_routes_message_images_to_engine(api_context, monkeypatch):
+    from engines.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    ImageRoutingCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(
+        ENGINE_REGISTRY, "claude", ImageRoutingCoordinatorFakeEngine
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    project_dir = tmp_path / "coordinator-project"
+    upload_dir = project_dir / ".workstep" / "uploads"
+    upload_dir.mkdir(parents=True)
+    shot = upload_dir / "shot.png"
+    shot.write_bytes(b"\x89PNG\r\n\x1a\nfakepngbytes")
+
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "with-image"},
+        json={
+            "content": (
+                "请看截图 ![运行截图](coordinator-project/.workstep/uploads/shot.png)"
+            )
+        },
+    )
+    assistant = await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        accepted.json()["assistant_message_id"],
+    )
+
+    assert assistant["content"] == "协调回复"
+    call = ImageRoutingCoordinatorFakeEngine.calls[-1]
+    images = call["images"]
+    assert images is not None
+    assert len(images) == 1
+    assert images[0].path == str(shot.resolve())
+    assert images[0].description == "运行截图"
+    assert "coordinator-project/.workstep/uploads/shot.png" in call["prompt"]
+
+
+@pytest.mark.anyio
+async def test_coordinator_ignores_images_outside_uploads(api_context, monkeypatch):
+    from engines.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    ImageRoutingCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(
+        ENGINE_REGISTRY, "claude", ImageRoutingCoordinatorFakeEngine
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    outside = tmp_path / "secret.png"
+    outside.write_bytes(b"\x89PNG\r\n\x1a\nfakepngbytes")
+    accepted = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "outside-image"},
+        json={"content": f"看图 ![x]({outside})"},
+    )
+    await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        accepted.json()["assistant_message_id"],
+    )
+
+    call = ImageRoutingCoordinatorFakeEngine.calls[-1]
+    assert call["images"] in (None, [])
 
 
 @pytest.mark.anyio
@@ -770,3 +902,123 @@ async def test_restart_from_stage_creates_child_run_and_archives_outputs(
         / "ui.md"
     )
     assert archived.read_text(encoding="utf-8") == "archive"
+
+
+class StoppableStreamingEngine(StreamingCoordinatorFakeEngine):
+    calls: list[dict] = []
+    stopped: bool = False
+
+    @classmethod
+    def reset(cls):
+        cls.calls = []
+        cls.stopped = False
+        cls.release = asyncio.Event()
+
+    async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+        type(self).calls.append({
+            "prompt": prompt,
+            "cwd": cwd,
+            "model": model,
+            "session_id": session_id,
+        })
+        yield InternalEvent(
+            type="text_delta",
+            data={"delta": '{"version":1,"reply":"实时'},
+        )
+        await type(self).release.wait()
+        yield InternalEvent(
+            type="text_delta",
+            data={
+                "delta": (
+                    '回复","intent":"answer","target_step_key":null,'
+                    '"artifact_requests":[],"proposal":null}'
+                )
+            },
+        )
+
+    async def stop(self):
+        type(self).stopped = True
+        type(self).release.set()
+
+
+@pytest.mark.anyio
+async def test_coordinator_stop_marks_turn_stopped(
+    api_context,
+    monkeypatch,
+):
+    from engines.registry import ENGINE_REGISTRY
+    from models import CoordinatorTurn
+    import main
+
+    client, tmp_path = api_context
+    StoppableStreamingEngine.reset()
+    monkeypatch.setitem(
+        ENGINE_REGISTRY,
+        "claude",
+        StoppableStreamingEngine,
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+    event_queue = main.coordinator_module._event_bus.subscribe()
+    try:
+        accepted = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-stop"},
+            json={"content": "开始后请停下来"},
+        )
+        assert accepted.status_code == 200
+        assistant_id = accepted.json()["assistant_message_id"]
+        turn_id = accepted.json()["turn_id"]
+
+        while True:
+            event = await asyncio.wait_for(event_queue.get(), timeout=1)
+            if (
+                event.get("message_id") == assistant_id
+                and event.get("type") == "text_delta"
+            ):
+                break
+
+        stopped = await client.post(
+            f"/api/task/{task_id}/coordinator/stop?project_id={project_id}"
+        )
+        assert stopped.status_code == 200
+        assert stopped.json() == {"stopped": True}
+        assert StoppableStreamingEngine.stopped
+
+        assistant = await _wait_for_reply(
+            client,
+            project_id,
+            task_id,
+            assistant_message_id=assistant_id,
+            include_stopped=True,
+        )
+        assert assistant["run_status"] == "stopped"
+
+        with main.project_manager.activate_project_by_id(project_id):
+            turn = CoordinatorTurn.get_by_id(turn_id)
+            assert turn.status == "stopped"
+
+        published = []
+        while not event_queue.empty():
+            published.append(event_queue.get_nowait())
+        completed = next(
+            event for event in published
+            if event.get("message_id") == assistant_id
+            and event.get("type") == "message_completed"
+        )
+        assert completed["data"] == {"status": "stopped"}
+
+        # 已结束的 turn 再次停止返回 False，且不会改变状态
+        again = await client.post(
+            f"/api/task/{task_id}/coordinator/stop?project_id={project_id}"
+        )
+        assert again.json() == {"stopped": False}
+
+        # 停止后仍可发起新一轮对话
+        accepted2 = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-stop-2"},
+            json={"content": "再来一轮"},
+        )
+        assert accepted2.status_code == 200
+    finally:
+        main.coordinator_module._event_bus.unsubscribe(event_queue)

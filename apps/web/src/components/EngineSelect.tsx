@@ -7,7 +7,7 @@ export interface EngineSelectOption {
   configured: boolean
   verified: boolean
   built_in: boolean
-  mode: 'cli' | 'acp' | 'api' | 'agent' | null
+  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
   supports_coordinator?: boolean
 }
 

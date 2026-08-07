@@ -59,6 +59,21 @@ export function formatDurationBetween(
   return durationMs === null ? null : formatDuration(durationMs)
 }
 
+export function formatExecutionOffset(
+  value: DateTimeValue,
+  origin: DateTimeValue,
+): string {
+  const valueMs = toMilliseconds(value)
+  const originMs = toMilliseconds(origin)
+  if (valueMs === null || originMs === null || valueMs < originMs) return ''
+  const totalSeconds = Math.max(0, Math.floor((valueMs - originMs) / 1000))
+  const pad = (part: number) => String(part).padStart(2, '0')
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+}
+
 export function formatConversationDateTime(
   value: DateTimeValue,
   now: DateTimeValue = Date.now(),

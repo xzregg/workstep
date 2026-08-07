@@ -55,13 +55,33 @@
 - 普通聊天与显式运行入口分离；执行消息和协调消息按 `channel`、`message_id`、`event_sequence` 隔离。
 - 提案确认/取消、幂等键、任务版本过期校验、阶段补充、Review 决策和指定阶段重跑。
 - 重跑创建父子运行血缘、复用无关上游步骤、归档受影响产物，并在失败时执行补偿恢复。
+- 断点续跑：Daemon 重启（含异常退出与优雅关闭）后，`WorkflowRuntime`
+  启动时扫描残留 `running` 的 `WorkflowRun`，把中断的 StepRun 标记为
+  interrupted、复用已成功节点并从最后未完成节点继续；优雅关闭停止引擎但
+  保留运行状态，下次启动自动恢复。恢复信息写入
+  `workflow_runs.recovered_at / recovered_count` 并广播 `run_recovered`
+  事件；前端 WebSocket 重连后自动刷新任务列表，运行中的任务显示
+  「断点续跑」徽标与详情页恢复提示条。
 - 前端协调聊天、引擎/模型选择、独立实时消息和提案确认界面。
 
 尚未作为完成能力承诺：
 
-- Phase 5 向运行中阶段 Agent 实时注入普通消息。
+- Phase 5 向运行中阶段 Agent 实时注入普通消息：机制已落地（
+  `BaseLLMEngine.send_live_stage_message()` + `supports_live_stage_message`
+  能力 + `TaskRunner` 阶段消息队列 + `POST /api/task/{id}/step/{key}/message`
+  + 前端「阶段 Agent / 协调 Agent」目标选择），Claude Code 直连 CLI 已实现
+  `--input-format stream-json` 实时输入模式；前端输入区上方支持「插入消息」
+  悬浮面板，可对单条消息「加入引导」（`as_guidance=True`，同时实时注入并持久化
+  为 `StageSupplement`，后续重跑自动带上）或「删除」，也可把多条插入消息合并
+  发送；其余适配器仍为 false，需逐个实现并跑通真实注入集成测试后再开启。
 - 所有 CLI Adapter 的原生工具禁用开关；当前统一入口有只读 Prompt 约束，发布前仍需按引擎补齐并验证原生禁用能力。
-- Daemon 重启中的协调 turn 恢复，以及完整真实三阶段 E2E；当前已覆盖模块级和 API 集成测试。
+- Daemon 重启中的协调 turn 恢复，以及完整真实三阶段 E2E；工作流断点续跑已覆盖模块级恢复测试，并接入 Daemon 启动生命周期。
+
+阶段消息语义：只对运行中的阶段生效，消息持久化为 `channel=execution` 用户
+消息并实时注入引擎；标记 `as_guidance` 的消息额外保存为 `StageSupplement`
+（`source_proposal=NULL`），进入后续阶段 Prompt 的「用户补充输入」段；协调
+对话固定走 `channel=coordinator`，两路消息在上下文组装时完全隔离（协调上下文
+只读 coordinator 消息，阶段 Prompt 不读任何聊天消息）。
 
 ## 2. 目标与角色边界
 
@@ -657,6 +677,17 @@ GET 响应同时返回任务配置、最终生效配置和可切换引擎摘要�
 - 不支持 resume 的引擎使用摘要和近期消息重建。
 - 切换协调 engine/model 后新建 session，旧 transcript 仍可用于上下文。
 - 不支持可靠禁用工具的引擎不能配置为协调引擎。
+- 协调 Agent 支持图片理解（多模态）模型配置：全局默认与任务级均可设置
+  `vision_model`，任务级优先；解析结果进入协调上下文
+  `coordinator_vision_model`，供主模型不支持图片输入时分析图片和截图。
+- 引擎统一 seam（`BaseLLMEngine.spawn` / `spawn_coordinator`）支持
+  `images` 图片入参（本地路径 / http(s) URL），并新增
+  `supports_vision` 能力位：API 直调与 PydanticAI 以原生图片内容块/部件
+  发送，Claude Code / Claude Agent SDK 以 markdown 图片引用读取，其余引擎
+  把图片引用注入 prompt 降级处理（模型不支持时至少可见路径）。
+- 协调用户消息中的图片（`![alt](项目名/.workstep/uploads/...)` 或裸
+  `.workstep/uploads/...` 路径）会被解析并路由到引擎；仅接受项目
+  uploads 目录内的文件，其余路径忽略。
 - JSON 解析失败只修复一次，失败后不创建提案。
 
 ### 13.4 提案与并发

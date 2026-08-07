@@ -292,6 +292,14 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   overflow: auto;
 }
 
+/* Narrow containers (e.g. a small detail panel) must not pop the trace body
+   out to the left — that overflows the conversation column. */
+.process-trace-narrow .process-trace-body {
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+}
+
 .process-trace details > summary {
   list-style: none;
 }
@@ -378,6 +386,8 @@ details[open] > summary > .process-trace-chevron {
   font-size: 12px;
   line-height: 1.65;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .process-trace-tool > summary {
@@ -685,6 +695,93 @@ input, select, textarea {
 }
 textarea { height: auto; padding: 8px 10px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+/* ── Chat composer (ChatInput) ── */
+
+.chat-input-attach,
+.modal-body label.chat-input-attach {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  transition: background var(--motion-fast), color var(--motion-fast),
+    transform var(--motion-fast);
+}
+.chat-input-attach:hover,
+.modal-body label.chat-input-attach:hover {
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+  color: var(--accent);
+}
+.chat-input-attach:active,
+.modal-body label.chat-input-attach:active {
+  transform: scale(0.92);
+}
+.chat-input-attach[data-selected="true"],
+.modal-body label.chat-input-attach[data-selected="true"] {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+
+.chat-input-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color var(--motion-fast), background var(--motion-fast),
+    box-shadow var(--motion-fast);
+}
+.chat-input-pill:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--accent), transparent 50%);
+  background: color-mix(in oklab, var(--accent), transparent 94%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 94%);
+}
+.chat-input-pill[data-open="true"] {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 92%);
+}
+
+.chat-input-send:hover:not(:disabled) {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent), transparent 88%);
+}
+.chat-input-send:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.chat-input-menu-reset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+.chat-input-menu-reset:hover {
+  background: color-mix(in oklab, var(--accent), transparent 93%);
+  color: var(--accent);
+}
 
 /* ── Status badges ── */
 

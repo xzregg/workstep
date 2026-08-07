@@ -1,5 +1,6 @@
 """Contracts for the built-in API / BYOK engine configuration."""
 
+import asyncio
 import stat
 
 import httpx
@@ -38,10 +39,14 @@ class MemoryEngineConfigStore:
         self.coordinator_default_engine = ""
         self.coordinator_default_model = ""
         self.coordinator_default_fast_model = ""
+        self.coordinator_default_vision_model = ""
         self.verified_engines = set()
 
     def get_api_engine_config(self):
-        return dict(self.api_config)
+        config = dict(self.api_config)
+        if not config.get("model"):
+            config["model"] = self.get_engine_default_model("api") or ""
+        return config
 
     def set_api_engine_config(self, *, provider, base_url, api_key, model):
         self.api_config = {
@@ -53,7 +58,10 @@ class MemoryEngineConfigStore:
         self.default_models["api"] = model
 
     def get_pydantic_ai_engine_config(self):
-        return dict(self.pydantic_ai_config)
+        config = dict(self.pydantic_ai_config)
+        if not config.get("model"):
+            config["model"] = self.get_engine_default_model("pydantic_ai") or ""
+        return config
 
     def set_pydantic_ai_engine_config(
         self, *, provider, base_url, api_key, model
@@ -94,10 +102,16 @@ class MemoryEngineConfigStore:
     def get_coordinator_default_fast_model(self):
         return self.coordinator_default_fast_model
 
-    def set_coordinator_defaults(self, engine, model="", fast_model=""):
+    def get_coordinator_default_vision_model(self):
+        return self.coordinator_default_vision_model
+
+    def set_coordinator_defaults(
+        self, engine, model="", fast_model="", vision_model=""
+    ):
         self.coordinator_default_engine = engine
         self.coordinator_default_model = model
         self.coordinator_default_fast_model = fast_model
+        self.coordinator_default_vision_model = vision_model
 
     def is_engine_verified(self, engine_id):
         return engine_id in self.verified_engines
@@ -133,35 +147,111 @@ async def test_api_engine_configuration_and_key_are_preserved(engine_client):
     assert api_engine["built_in"] is False
     assert api_engine["configured"] is False
 
+    schema = await client.get("/api/engine/api/config")
+    assert schema.status_code == 200
+    schema_body = schema.json()
+    assert schema_body["engine_id"] == "api"
+    assert {field["key"] for field in schema_body["fields"]} == {
+        "provider",
+        "base_url",
+        "api_key",
+    }
+    assert schema_body["values"]["api_key"] == ""
+    assert schema_body["secrets"] == {"api_key": False}
+
     saved = await client.put(
         "/api/engine/api/config",
         json={
-            "provider": "openai",
-            "base_url": "https://gateway.example.com/v1",
-            "api_key": "secret-value",
-            "model": "custom-model",
+            "values": {
+                "provider": "openai",
+                "base_url": "https://gateway.example.com/v1",
+                "api_key": "secret-value",
+            },
         },
     )
     assert saved.status_code == 200
     body = saved.json()
     assert body["saved"] is True
-    assert body["config"]["has_api_key"] is True
-    assert body["config"]["configured"] is True
-    assert "api_key" not in body["config"]
+    assert body["secrets"] == {"api_key": True}
+    assert body["values"]["api_key"] == ""
     assert "secret-value" not in saved.text
     assert store.api_config["api_key"] == "secret-value"
 
-    revealed = await client.post("/api/engine/api/key")
-    assert revealed.json() == {"api_key": "secret-value"}
+    model = await client.put(
+        "/api/engine/api/default-model",
+        json={"model": "custom-model"},
+    )
+    assert model.json()["saved"] is True
+
+    revealed = await client.post(
+        "/api/engine/api/config/reveal",
+        json={"key": "api_key"},
+    )
+    assert revealed.json() == {"key": "api_key", "value": "secret-value"}
     assert revealed.headers["cache-control"] == "no-store"
 
     loaded = await client.get("/api/engine/api/config")
     assert loaded.json() == {
-        "provider": "openai",
-        "base_url": "https://gateway.example.com/v1",
-        "model": "custom-model",
-        "has_api_key": True,
+        "engine_id": "api",
+        "fields": loaded.json()["fields"],
+        "values": {
+            "provider": "openai",
+            "base_url": "https://gateway.example.com/v1",
+            "api_key": "",
+        },
+        "secrets": {"api_key": True},
         "configured": True,
+        "installed": True,
+    }
+
+
+@pytest.mark.anyio
+async def test_engine_list_embeds_config_templates(engine_client):
+    """Config schemas ship with the engine list, so settings needs no per-engine fetch."""
+    client, store = engine_client
+    store.set_api_engine_config(
+        provider="openai",
+        base_url="https://gateway.example.com/v1",
+        api_key="stored-secret",
+        model="model-x",
+    )
+
+    response = await client.get("/api/engine/list")
+    engines = {item["id"]: item for item in response.json()["engines"]}
+
+    api = engines["api"]
+    assert api["config"] is not None
+    assert {field["key"] for field in api["config"]["fields"]} == {
+        "provider",
+        "base_url",
+        "api_key",
+    }
+    assert api["config"]["values"]["api_key"] == ""
+    assert api["config"]["secrets"] == {"api_key": True}
+    assert "stored-secret" not in response.text
+
+    assert engines["claude"]["config"] is not None
+    assert {field["key"] for field in engines["claude"]["config"]["fields"]} == {
+        "permission_mode"
+    }
+    assert engines["codex"]["config"] is not None
+    assert {field["key"] for field in engines["codex"]["config"]["fields"]} == {
+        "sandbox_mode",
+        "model_reasoning_effort",
+        "approval_policy",
+    }
+    assert engines["claude_agent_sdk"]["config"] is not None
+    assert {field["key"] for field in engines["claude_agent_sdk"]["config"]["fields"]} == {
+        "permission_mode",
+        "max_turns",
+        "fallback_model",
+        "max_budget_usd",
+    }
+    assert engines["codex_sdk"]["config"] is not None
+    assert {field["key"] for field in engines["codex_sdk"]["config"]["fields"]} == {
+        "model_reasoning_effort",
+        "approval_mode",
+        "sandbox",
     }
 
 
@@ -180,10 +270,11 @@ async def test_pydantic_ai_has_separate_provider_configuration(engine_client):
     saved = await client.put(
         "/api/engine/pydantic-ai/config",
         json={
-            "provider": "anthropic",
-            "base_url": "https://anthropic-gateway.example.com/v1",
-            "api_key": "pydantic-secret",
-            "model": "claude-custom",
+            "values": {
+                "provider": "anthropic",
+                "base_url": "https://anthropic-gateway.example.com/v1",
+                "api_key": "pydantic-secret",
+            },
         },
     )
     body = saved.json()
@@ -194,18 +285,20 @@ async def test_pydantic_ai_has_separate_provider_configuration(engine_client):
     assert store.api_config == initial_api_config
     assert "pydantic-secret" not in saved.text
 
-    revealed = await client.post("/api/engine/pydantic-ai/key")
-    assert revealed.json() == {"api_key": "pydantic-secret"}
+    revealed = await client.post(
+        "/api/engine/pydantic-ai/config/reveal",
+        json={"key": "api_key"},
+    )
+    assert revealed.json() == {"key": "api_key", "value": "pydantic-secret"}
     assert revealed.headers["cache-control"] == "no-store"
 
     loaded = await client.get("/api/engine/pydantic-ai/config")
-    assert loaded.json() == {
-        "provider": "anthropic",
-        "base_url": "https://anthropic-gateway.example.com/v1",
-        "model": "claude-custom",
-        "has_api_key": True,
-        "configured": True,
-    }
+    loaded_body = loaded.json()
+    assert loaded_body["values"]["provider"] == "anthropic"
+    assert loaded_body["values"]["base_url"] == (
+        "https://anthropic-gateway.example.com/v1"
+    )
+    assert loaded_body["secrets"] == {"api_key": True}
 
 
 @pytest.mark.anyio
@@ -217,12 +310,18 @@ async def test_execution_and_coordinator_defaults_are_saved_without_remote_valid
     configured = await client.put(
         "/api/engine/api/config",
         json={
-            "provider": "openai",
-            "base_url": "https://gateway.example.com/v1",
-            "model": "configured-model",
+            "values": {
+                "provider": "openai",
+                "base_url": "https://gateway.example.com/v1",
+            },
         },
     )
     assert configured.json()["saved"] is True
+    model = await client.put(
+        "/api/engine/api/default-model",
+        json={"model": "configured-model"},
+    )
+    assert model.json()["saved"] is True
     store.set_engine_verified("api", True)
 
     async def fail_if_called(*args, **kwargs):
@@ -241,6 +340,7 @@ async def test_execution_and_coordinator_defaults_are_saved_without_remote_valid
             "engine": "api",
             "model": "reasoning-model",
             "fast_model": "fast-model",
+            "vision_model": "vision-model",
         },
     )
 
@@ -254,16 +354,19 @@ async def test_execution_and_coordinator_defaults_are_saved_without_remote_valid
         "engine": "api",
         "model": "reasoning-model",
         "fast_model": "fast-model",
+        "vision_model": "vision-model",
     }
     assert store.execution_default_engine == "api"
     assert store.coordinator_default_engine == "api"
     assert store.coordinator_default_model == "reasoning-model"
     assert store.coordinator_default_fast_model == "fast-model"
+    assert store.coordinator_default_vision_model == "vision-model"
 
     loaded = await client.get("/api/engine/coordinator/config")
     assert loaded.json()["engine"] == "api"
     assert loaded.json()["model"] == "reasoning-model"
     assert loaded.json()["fast_model"] == "fast-model"
+    assert loaded.json()["vision_model"] == "vision-model"
     assert any(
         item["id"] == "api"
         for item in loaded.json()["available_engines"]
@@ -275,12 +378,13 @@ async def test_execution_and_coordinator_defaults_are_saved_without_remote_valid
     )
     cleared_coordinator = await client.put(
         "/api/engine/coordinator/config",
-        json={"engine": "", "model": "", "fast_model": ""},
+        json={"engine": "", "model": "", "fast_model": "", "vision_model": ""},
     )
     assert cleared_execution.json()["resolved_engine"] == "claude"
     assert cleared_coordinator.json()["engine"] == ""
     assert store.execution_default_engine == ""
     assert store.coordinator_default_engine == ""
+    assert store.coordinator_default_vision_model == ""
 
 
 @pytest.mark.anyio
@@ -298,6 +402,12 @@ async def test_coordinator_default_rejects_model_without_engine(engine_client):
     )
     assert fast_response.status_code == 400
 
+    vision_response = await client.put(
+        "/api/engine/coordinator/config",
+        json={"engine": "", "model": "", "fast_model": "", "vision_model": "orphan-vision-model"},
+    )
+    assert vision_response.status_code == 400
+
 
 @pytest.mark.anyio
 async def test_engine_must_pass_connection_test_before_selection(
@@ -310,10 +420,15 @@ async def test_engine_must_pass_connection_test_before_selection(
     await client.put(
         "/api/engine/api/config",
         json={
-            "provider": "openai",
-            "base_url": "https://gateway.example.com/v1",
-            "model": "configured-model",
+            "values": {
+                "provider": "openai",
+                "base_url": "https://gateway.example.com/v1",
+            },
         },
+    )
+    await client.put(
+        "/api/engine/api/default-model",
+        json={"model": "configured-model"},
     )
 
     rejected = await client.put(
@@ -344,9 +459,10 @@ async def test_engine_must_pass_connection_test_before_selection(
     await client.put(
         "/api/engine/api/config",
         json={
-            "provider": "openai",
-            "base_url": "https://gateway.example.com/v1",
-            "model": "changed-model",
+            "values": {
+                "provider": "openai",
+                "base_url": "https://gateway.example.com/v1",
+            },
         },
     )
     assert store.is_engine_verified("api") is False
@@ -358,9 +474,10 @@ async def test_api_engine_rejects_remote_plain_http(engine_client):
     response = await client.put(
         "/api/engine/api/config",
         json={
-            "provider": "openai",
-            "base_url": "http://192.168.1.20:11434/v1",
-            "model": "local-model",
+            "values": {
+                "provider": "openai",
+                "base_url": "http://192.168.1.20:11434/v1",
+            },
         },
     )
     assert response.json()["saved"] is False
@@ -393,32 +510,43 @@ async def test_api_engine_reads_models_from_configured_endpoint():
 
 
 @pytest.mark.anyio
-async def test_api_model_discovery_uses_unsaved_form_values(
+async def test_api_model_discovery_uses_stored_config(
     engine_client,
     monkeypatch,
 ):
-    client, _ = engine_client
+    client, store = engine_client
+    store.set_api_engine_config(
+        provider="anthropic",
+        base_url="https://gateway.example.com/v1",
+        api_key="stored-key",
+        model="claude-test",
+    )
+
+    captured = {}
 
     async def fake_list_models(self, *, provider, base_url, api_key):
-        assert provider == "anthropic"
-        assert base_url == "https://gateway.example.com/v1"
-        assert api_key == "draft-key"
+        captured.update(
+            provider=provider,
+            base_url=base_url,
+            api_key=api_key,
+        )
         return [EngineModel(id="claude-test", label="Claude Test")]
 
     monkeypatch.setattr(APIEngine, "list_models_for_config", fake_list_models)
-    response = await client.post(
-        "/api/engine/api/models",
-        json={
-            "provider": "anthropic",
-            "base_url": "https://gateway.example.com/v1",
-            "api_key": "draft-key",
-        },
-    )
+    response = await client.get("/api/engine/api/models")
+
+    assert captured == {
+        "provider": "anthropic",
+        "base_url": "https://gateway.example.com/v1",
+        "api_key": "stored-key",
+    }
 
     assert response.json() == {
+        "engine_id": "api",
         "models": [
             {"id": "claude-test", "label": "Claude Test", "description": None}
         ],
+        "default_model": "claude-test",
         "error": None,
     }
 
@@ -469,18 +597,20 @@ async def test_pydantic_ai_spawn_uses_its_own_config(monkeypatch):
         cache_write_tokens = 4
         cache_read_tokens = 1
         requests = 1
+        cost = 0.123
 
     class FakeResult:
         output = "agent result"
         usage = FakeUsage()
 
-    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event):
+    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None):
         assert prompt == "do work"
         assert cwd == "/tmp/project"
         assert add_dirs is None
+        assert live_message_queue is None
         await on_event(InternalEvent(type="text_delta", data={"delta": "agent "}))
         await on_event(InternalEvent(type="text_delta", data={"delta": "result"}))
-        return FakeResult()
+        return FakeResult(), FakeUsage()
 
     monkeypatch.setattr(
         PydanticAIEngine,
@@ -520,6 +650,7 @@ async def test_pydantic_ai_spawn_uses_its_own_config(monkeypatch):
         "cache_read_input_tokens": 1,
         "total_tokens": 5,
         "requests": 1,
+        "cost": {"amount": 0.123, "currency": "USD"},
     }
 
 
@@ -578,6 +709,195 @@ def test_pydantic_ai_maps_text_thinking_and_tool_events():
     }
 
 
+@pytest.mark.anyio
+async def test_pydantic_ai_run_agent_injects_queued_live_messages(monkeypatch):
+    """Pydantic AI 引擎在轮次之间注入插入消息并回执 live_message delivered。"""
+    from pydantic_ai.models.test import TestModel
+
+    calls = []
+
+    class FakeUsage:
+        input_tokens = 1
+        output_tokens = 1
+        total_tokens = 2
+        cache_write_tokens = 0
+        cache_read_tokens = 0
+        requests = 1
+        cost = None
+
+        def __add__(self, other):
+            return self
+
+    class FakeResult:
+        def __init__(self):
+            self.usage = FakeUsage()
+
+        def all_messages(self):
+            return ["history-1"]
+
+    async def fake_stream_agent_run(
+        self, agent, *, prompt, on_event, message_history=None
+    ):
+        calls.append((prompt, message_history))
+        return FakeResult()
+
+    monkeypatch.setattr(
+        PydanticAIEngine, "_stream_agent_run", fake_stream_agent_run
+    )
+    monkeypatch.setattr(PydanticAIEngine, "_live_message_wait_seconds", 0.01)
+
+    engine = PydanticAIEngine()
+    queue = asyncio.Queue()
+    queue.put_nowait(("m1", "第一条插入消息"))
+    queue.put_nowait(("m2", "第二条插入消息"))
+    events = []
+
+    async def on_event(event):
+        events.append(event)
+
+    await engine._run_agent(
+        prompt="初始提示",
+        cwd="/tmp",
+        add_dirs=None,
+        model=TestModel(),
+        on_event=on_event,
+        live_message_queue=queue,
+    )
+
+    assert [prompt for prompt, _ in calls] == [
+        "初始提示",
+        "第一条插入消息\n\n第二条插入消息",
+    ]
+    assert calls[1][1] == ["history-1"]
+    delivered = [event for event in events if event.type == "live_message"]
+    assert [event.data["message_id"] for event in delivered] == ["m1", "m2"]
+    assert all(event.data["status"] == "delivered" for event in delivered)
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_run_agent_captures_message_during_wait_window(monkeypatch):
+    """任务收尾时刚发出的插入消息在等待窗口内被捕获并注入。"""
+    from pydantic_ai.models.test import TestModel
+
+    calls = []
+
+    class FakeUsage:
+        input_tokens = 1
+        output_tokens = 1
+        total_tokens = 2
+        cache_write_tokens = 0
+        cache_read_tokens = 0
+        requests = 1
+        cost = None
+
+        def __add__(self, other):
+            return self
+
+    class FakeResult:
+        def __init__(self):
+            self.usage = FakeUsage()
+
+        def all_messages(self):
+            return ["history-1"]
+
+    async def fake_stream_agent_run(
+        self, agent, *, prompt, on_event, message_history=None
+    ):
+        calls.append((prompt, message_history))
+        return FakeResult()
+
+    monkeypatch.setattr(
+        PydanticAIEngine, "_stream_agent_run", fake_stream_agent_run
+    )
+    monkeypatch.setattr(PydanticAIEngine, "_live_message_wait_seconds", 0.3)
+
+    engine = PydanticAIEngine()
+    queue = asyncio.Queue()
+    events = []
+
+    async def on_event(event):
+        events.append(event)
+
+    async def deliver_late():
+        await asyncio.sleep(0.05)
+        queue.put_nowait(("m1", "刚发出的插入消息"))
+
+    asyncio.create_task(deliver_late())
+
+    await engine._run_agent(
+        prompt="初始提示",
+        cwd="/tmp",
+        add_dirs=None,
+        model=TestModel(),
+        on_event=on_event,
+        live_message_queue=queue,
+    )
+
+    assert [prompt for prompt, _ in calls] == [
+        "初始提示",
+        "刚发出的插入消息",
+    ]
+    assert calls[1][1] == ["history-1"]
+    delivered = [event for event in events if event.type == "live_message"]
+    assert [event.data["message_id"] for event in delivered] == ["m1"]
+    assert delivered[0].data["status"] == "delivered"
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
+    """spawn 把插入消息队列原样转发给 _run_agent。"""
+    store = MemoryEngineConfigStore()
+    store.set_pydantic_ai_engine_config(
+        provider="openai",
+        base_url="https://agent-gateway.example.com/v1",
+        api_key="agent-secret",
+        model="agent-model",
+    )
+    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+    captured = {}
+
+    class FakeResult:
+        output = "agent result"
+        usage = None
+
+    async def fake_run_agent(
+        self,
+        *,
+        prompt,
+        cwd,
+        add_dirs,
+        model,
+        on_event,
+        live_message_queue=None,
+        images=None,
+    ):
+        captured["live_message_queue"] = live_message_queue
+        return FakeResult(), None
+
+    monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(lambda **config: object()),
+    )
+
+    engine = PydanticAIEngine()
+    queue = asyncio.Queue()
+    events = [
+        event
+        async for event in engine.spawn(
+            prompt="hi", cwd="/tmp", live_message_queue=queue
+        )
+    ]
+
+    assert captured["live_message_queue"] is queue
+    assert [event.type for event in events] == [
+        "status",
+        "text_delta",
+        "status",
+    ]
+
+
 def test_config_file_is_owner_only_when_api_key_is_saved(tmp_path, monkeypatch):
     config_dir = tmp_path / ".workstep"
     config_file = config_dir / "config.json"
@@ -623,3 +943,68 @@ def test_pydantic_ai_config_uses_a_separate_storage_key(tmp_path, monkeypatch):
     assert "agent-secret" in data
     assert store.get_api_engine_config()["model"] == "api-model"
     assert store.get_pydantic_ai_engine_config()["model"] == "agent-model"
+
+
+def test_claude_agent_sdk_and_codex_configs_roundtrip(tmp_path, monkeypatch):
+    config_dir = tmp_path / ".workstep"
+    config_file = config_dir / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+    store = ConfigStore()
+
+    store.set_claude_agent_sdk_config(
+        max_turns="25",
+        permission_mode="acceptEdits",
+        fallback_model="claude-haiku-latest",
+        max_budget_usd="0.75",
+    )
+    sdk = store.get_claude_agent_sdk_config()
+    assert sdk["max_turns"] == "25"
+    assert sdk["fallback_model"] == "claude-haiku-latest"
+    assert sdk["max_budget_usd"] == "0.75"
+    assert sdk["permission_mode"] == "acceptEdits"
+
+    store.set_codex_config(
+        sandbox_mode="danger-full-access",
+        model_reasoning_effort="high",
+        approval_policy="never",
+    )
+    assert store.get_codex_config() == {
+        "sandbox_mode": "danger-full-access",
+        "model_reasoning_effort": "high",
+        "approval_policy": "never",
+    }
+
+    store.set_codex_sdk_config(
+        model_reasoning_effort="medium",
+        approval_mode="deny_all",
+        sandbox="read-only",
+    )
+    assert store.get_codex_sdk_config() == {
+        "model_reasoning_effort": "medium",
+        "approval_mode": "deny_all",
+        "sandbox": "read-only",
+    }
+
+
+def test_claude_agent_sdk_and_codex_configs_validate_input(tmp_path, monkeypatch):
+    config_dir = tmp_path / ".workstep"
+    config_file = config_dir / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+    store = ConfigStore()
+
+    with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(max_turns="abc")
+    with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(max_turns="0")
+    with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(max_budget_usd="xyz")
+    with pytest.raises(ValueError):
+        store.set_codex_config(sandbox_mode="weird")
+    with pytest.raises(ValueError):
+        store.set_codex_config(model_reasoning_effort="ultra")
+    with pytest.raises(ValueError):
+        store.set_codex_sdk_config(approval_mode="prompt")
+    with pytest.raises(ValueError):
+        store.set_codex_sdk_config(sandbox="nope")

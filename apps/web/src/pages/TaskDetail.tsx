@@ -10,21 +10,25 @@ import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import {
   fsApi,
-  engineApi,
   projectApi,
   taskApi,
   type ActionProposal,
   type CoordinatorConfig,
-  type EngineModel,
   type ReviewRun,
   type TaskArtifact,
   type TaskStepState,
 } from '../api/client'
 import ArtifactPreview from '../components/ArtifactPreview'
+import ChatMessageBubble from '../components/ChatMessageBubble'
+import ChatInput from '../components/ChatInput'
+import MessageMetaBar from '../components/MessageMetaBar'
+import MessageResponseFooter, {
+  copyMessageText,
+  usageFromEvents,
+} from '../components/MessageResponseFooter'
 import MarkdownEditor from '../components/MarkdownEditor'
 import MarkdownMessage from '../components/MarkdownMessage'
 import ProcessTrace from '../components/ProcessTrace'
-import EngineSelect from '../components/EngineSelect'
 import {
   createOptimisticUserMessage,
   isVisibleHistoryMessage,
@@ -39,11 +43,12 @@ import {
   stageAvatarText,
 } from './taskDetailChat'
 import {
+  type DateTimeValue,
   formatConversationDateTime,
+  formatExecutionOffset,
   formatDurationBetween,
   toMilliseconds,
 } from '../utils/datetime'
-import { engineLabel } from '../engineMeta'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
@@ -58,201 +63,33 @@ function hasProcessEvents(events: any[]) {
   return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
 }
 
-type MessageUsage = Record<string, unknown> | null | undefined
-
-function usageFromEvents(events: any[]): MessageUsage {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
-    if (event?.type === 'usage' && event.data && typeof event.data === 'object') {
-      return event.data as Record<string, unknown>
-    }
-  }
-  return null
-}
-
-function usageValue(usage: MessageUsage, ...keys: string[]) {
-  for (const key of keys) {
-    const value = usage?.[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-  }
-  return 0
-}
-
-function formatTokenUsage(usage?: MessageUsage) {
-  if (!usage || Object.keys(usage).length === 0) {
-    return 'Token：暂无数据'
-  }
-  if (usage.usage_kind === 'context_window') {
-    const used = usageValue(usage, 'used')
-    const size = usageValue(usage, 'size')
-    const number = new Intl.NumberFormat('zh-CN')
-    const occupancy = size > 0 ? ` · 占用 ${Math.min(100, (used / size) * 100).toFixed(1)}%` : ''
-    return `Token · 上下文 ${number.format(used)} / ${number.format(size)}${occupancy}`
-  }
-  const input = usageValue(usage, 'input_tokens', 'prompt_tokens')
-  const output = usageValue(usage, 'output_tokens', 'completion_tokens')
-  const cacheRead = usageValue(
-    usage,
-    'cache_read_input_tokens',
-    'cached_tokens',
-  )
-  const cacheWrite = usageValue(usage, 'cache_creation_input_tokens')
-  const reportedTotal = usageValue(usage, 'total_tokens')
-  const total = reportedTotal || input + output
-  const number = new Intl.NumberFormat('zh-CN')
-  const parts = input > 0 || output > 0
-    ? [`输入 ${number.format(input)}`, `输出 ${number.format(output)}`]
-    : []
-  if (cacheRead > 0) parts.push(`缓存读取 ${number.format(cacheRead)}`)
-  if (cacheWrite > 0) parts.push(`缓存写入 ${number.format(cacheWrite)}`)
-  const cacheInput = 'prompt_tokens' in usage
-    ? input
-    : input + cacheRead + cacheWrite
-  if (cacheInput > 0) {
-    const cacheHitRate = Math.min(100, (cacheRead / cacheInput) * 100)
-    parts.push(`缓存命中 ${cacheHitRate.toFixed(1)}%`)
-  }
-  parts.push(`总计 ${number.format(total)}`)
-  return `Token · ${parts.join(' · ')}`
-}
-
-async function copyMessageText(content: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content)
-    return
-  }
-  const textarea = document.createElement('textarea')
-  textarea.value = content
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  textarea.remove()
-  if (!copied) throw new Error('Copy failed')
-}
-
-function MessageResponseFooter({
-  content,
-  usage,
-  engine,
-  running = false,
+function StageStopButton({
+  stepKey,
+  onStop,
 }: {
-  content: string
-  usage?: MessageUsage
-  engine?: string | null
-  running?: boolean
+  stepKey?: string
+  onStop: (stepKey: string) => void
 }) {
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const usageSummary = running ? '' : formatTokenUsage(usage)
-
-  const copy = async () => {
-    try {
-      await copyMessageText(content)
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
-  }
-
+  const targetStepKey = stepKey || ''
   return (
-    <div style={{
-      minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--meta)', fontSize: 10,
-    }}>
-      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-        {usageSummary}
-        {!running && engine ? ` · ${engineLabel(engine)}` : ''}
-      </span>
-      <button
-        type="button"
-        className="btn-ghost"
-        aria-label={copyState === 'copied' ? '消息已复制' : '复制 LLM 消息'}
-        title={running
-          ? '消息生成完成后可复制'
-          : copyState === 'copied'
-            ? '已复制'
-            : copyState === 'failed'
-              ? '复制失败'
-              : '复制消息'}
-        disabled={running || !content}
-        onClick={() => void copy()}
-        style={{
-          width: 24, height: 24, minWidth: 24, padding: 0,
-          justifyContent: 'center',
-          color: copyState === 'failed'
-            ? 'var(--danger)'
-            : copyState === 'copied'
-              ? 'var(--success)'
-              : 'var(--muted)',
-          fontSize: 10,
-        }}
-      >
-        {copyState === 'copied' ? (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
-            <path d="m5 12 4 4L19 6" />
-          </svg>
-        ) : (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="9" y="9" width="11" height="11" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        )}
-      </button>
-    </div>
-  )
-}
-
-function MessageMetaBar({
-  createdAt,
-  startedAt,
-  endedAt,
-  running = false,
-  events,
-  prompt,
-  onViewPrompt,
-}: {
-  createdAt?: string | number | null
-  startedAt?: string | number | null
-  endedAt?: string | number | null
-  running?: boolean
-  events?: any[]
-  prompt?: string | null
-  onViewPrompt: (prompt: string) => void
-}) {
-  const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
-    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
-    if (timestamp === null) return earliest
-    return earliest === null ? timestamp : Math.min(earliest, timestamp)
-  }, null)
-  const displayStartedAt = startedAt || createdAt || eventStartedAt
-
-  return (
-    <div style={{
-      width: '100%', minHeight: 30,
-      display: 'flex', alignItems: 'flex-start', gap: 12,
-      paddingBottom: 6, borderBottom: '1px solid var(--border-soft)',
-      color: 'var(--meta)', fontSize: 11, flexWrap: 'wrap',
-    }}>
-      <span style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>{formatConversationDateTime(displayStartedAt)}</span>
-      <ProcessTrace
-        events={events || []}
-        running={running}
-        startedAt={displayStartedAt}
-        endedAt={endedAt}
-        compact
-      />
-      {prompt && (
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={() => onViewPrompt(prompt)}
-          style={{ marginLeft: 'auto', padding: 0, minHeight: 24, color: 'var(--accent)', fontSize: 11, alignItems: 'center' }}
-        >
-          查看提示词
-        </button>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={() => onStop(targetStepKey)}
+      title="停止当前阶段执行"
+      aria-label="停止当前阶段执行"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '2px 8px', borderRadius: 999, fontSize: 10,
+        border: '1px solid rgba(217,45,32,0.4)',
+        background: 'transparent', color: '#d92d20',
+        cursor: 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <rect x="5" y="5" width="14" height="14" rx="2" />
+      </svg>
+      停止
+    </button>
   )
 }
 
@@ -350,6 +187,8 @@ type StageVisualState =
   | 'reviewing'
   | 'awaiting_review'
   | 'retrying'
+  | 'rework'
+  | 'rework_waiting'
   | 'failed'
   | 'skipped'
   | 'pending'
@@ -358,6 +197,7 @@ interface StageData {
   key: string
   label: string
   color: string
+  model?: string
   prompt: string
   inputs: Array<{
     name: string
@@ -377,6 +217,8 @@ const STAGE_STATE_LABELS: Record<StageVisualState, string> = {
   reviewing: '审核中',
   awaiting_review: '等待审核',
   retrying: '自动重跑',
+  rework: '返工中',
+  rework_waiting: '等待返工',
   failed: '失败',
   skipped: '已跳过',
   pending: '待处理',
@@ -533,6 +375,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const taskStatus = task?.status
   const taskNotStarted = isTaskNotStarted(task?.steps || [])
   const taskCompleted = isTaskCompleted(task?.steps || [])
+  const sessionIdForStep = (stepKey?: string | null): string | null => {
+    if (!stepKey) return null
+    const step = (task?.steps || []).find((item) => item.step_key === stepKey)
+    return step?.session_id || null
+  }
   const reviewEventSignal = useMemo(() => {
     const event = [...events].reverse().find((item) =>
       ['review_status', 'review_result', 'step_retrying'].includes(item.type)
@@ -544,12 +391,20 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
+  const [chatTarget, setChatTarget] = useState<'stage' | 'coordinator'>('coordinator')
+  const [chatError, setChatError] = useState('')
+  const [stageInserts, setStageInserts] = useState<Array<{
+    id: string
+    content: string
+  }>>([])
+  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
+  const [editingInsertContent, setEditingInsertContent] = useState('')
+  const [openInsertMenuId, setOpenInsertMenuId] = useState<string | null>(null)
   const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
   const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [coordinatorConfigNotice, setCoordinatorConfigNotice] = useState('')
-  const [coordinatorModels, setCoordinatorModels] = useState<EngineModel[]>([])
   const [proposalOverrides, setProposalOverrides] = useState<Record<string, ActionProposal>>({})
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
@@ -846,17 +701,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [missingLivePromptIds.join('|'), projectId, taskId])
 
   useEffect(() => {
-    const engineId = coordinatorConfig?.resolved.engine
-    if (!engineId) {
-      setCoordinatorModels([])
-      return
-    }
-    engineApi.models(engineId)
-      .then((result) => setCoordinatorModels(result.models || []))
-      .catch(() => setCoordinatorModels([]))
-  }, [coordinatorConfig?.resolved.engine])
-
-  useEffect(() => {
     if (!taskId || !projectId) {
       setCoordinatorConfig(null)
       return
@@ -927,7 +771,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useEffect(() => {
     if (!activeCoordinatorMessageId) return
     const activeMessage = liveMessages[activeCoordinatorMessageId]
-    if (!activeMessage || !['succeeded', 'failed'].includes(activeMessage.status)) return
+    if (!activeMessage || !['succeeded', 'failed', 'stopped'].includes(activeMessage.status)) return
     setCoordinatorRunning(false)
     setActiveCoordinatorMessageId(null)
     if (taskId && projectId) {
@@ -957,8 +801,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   // Get stages from project steps
   const stages = useMemo<StageData[]>(() => {
     const steps = activeProject?.steps
-    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || '#888', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
-    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || '#888', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
+    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || '#888', model: n.model || '', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
+    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || '#888', model: s.model || '', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
     return [{ key: 'do', label: '执行', color: '#0071e3', prompt: '', inputs: [], outputs: [] }]
   }, [activeProject?.steps])
 
@@ -970,7 +814,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       (stage: any) => stepByKey.get(stage.key)?.status || 'pending',
     )
     let activeIndex = rawStatuses.findIndex((status) =>
-      ['running', 'reviewing', 'awaiting_review', 'retrying'].includes(status)
+      ['running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(status)
     )
     if (activeIndex < 0) {
       activeIndex = rawStatuses.findIndex((status) => status === 'failed')
@@ -987,6 +831,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       else if (status === 'reviewing') visualState = 'reviewing'
       else if (status === 'awaiting_review') visualState = 'awaiting_review'
       else if (status === 'retrying') visualState = 'retrying'
+      else if (status === 'rework') visualState = 'rework'
+      else if (status === 'rework_waiting') visualState = 'rework_waiting'
       else if (status === 'running') visualState = 'current'
       else if (status === 'failed' || status === 'rejected') visualState = 'failed'
       else if (status === 'skipped') visualState = 'skipped'
@@ -995,9 +841,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     })
   }, [stages, task?.steps])
 
+  const visibleStages = useMemo(() => {
+    const hideSkipped = (task?.run_round ?? 1) > 1
+    const entries = stages.map((stage, index) => ({ stage, index }))
+    if (!hideSkipped) return entries
+    return entries.filter(
+      ({ index }) => stageProgress[index]?.visualState !== 'skipped'
+    )
+  }, [stages, stageProgress, task?.run_round])
+
   const activeStageIndex = useMemo(() => {
     const current = stageProgress.findIndex((progress: StageProgress) =>
-      ['current', 'reviewing', 'awaiting_review', 'retrying'].includes(
+      ['current', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(
         progress.visualState
       )
     )
@@ -1010,6 +865,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const currentStage = stages[selectedStage] || stages[0]
   const activeStage = stages[activeStageIndex] || stages[0]
+  const executionStageModel = activeStage?.model || task?.model || ''
+  const executionOrigin = useMemo<DateTimeValue>(() => {
+    const step = (task?.steps || []).find(
+      (item: any) => item.step_key === activeStage?.key,
+    )
+    return step?.started_at || task?.created_at || null
+  }, [task, activeStage])
 
   useEffect(() => {
     if (!task?.id || selectedStageTaskRef.current === task.id) return
@@ -1026,7 +888,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const shouldTickDuration = taskStatus === 'running' || stageProgress.some(
     (progress) => [
-      'reviewing', 'awaiting_review', 'retrying',
+      'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
     ].includes(progress.visualState)
   )
 
@@ -1037,9 +899,34 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return () => window.clearInterval(timer)
   }, [shouldTickDuration])
 
+  const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
+  const activeStageRunning = activeStepStatus === 'running'
+  const chatTargetStage = chatTarget === 'stage'
+
+  // 阶段引擎开始执行时，输入框自动切换到「阶段 Agent」，可直接发消息插入执行；
+  // 阶段结束后切回「协调 Agent」。用户手动切换的选择不会被中途覆盖（仅在运行状态变化时同步）。
+  useEffect(() => {
+    setChatTarget(activeStageRunning ? 'stage' : 'coordinator')
+  }, [activeStageRunning])
+
   const handleRun = async () => {
-    if (!taskId || !prompt.trim() || !projectId || coordinatorRunning) return
+    if (!taskId || !projectId) return
+    if (!chatTargetStage && coordinatorRunning) return
+    // 阶段模式：像 Codex 一样，发送即进入上方的「插入消息」面板，
+    // 由用户决定「发送 / 加入引导 / 删除」后再实时注入执行。
+    if (chatTargetStage) {
+      if (prompt.trim()) {
+        setStageInserts((current) => [
+          ...current,
+          { id: `insert-${crypto.randomUUID()}`, content: prompt.trim() },
+        ])
+        setPrompt('')
+        setChatError('')
+      }
+      return
+    }
     const submittedPrompt = prompt.trim()
+    if (!submittedPrompt) return
     const optimisticId = `pending-${crypto.randomUUID()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
@@ -1049,6 +936,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     )
     shouldFollowMessagesRef.current = true
     setHasUnreadMessages(false)
+    setChatError('')
     setHistoryMessages((current) => [...current, optimisticMessage])
     setPrompt('')
     setCoordinatorRunning(true)
@@ -1070,13 +958,130 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           : message
       )))
       setActiveCoordinatorMessageId(accepted.assistant_message_id)
-    } catch {
+    } catch (reason) {
       setHistoryMessages((current) => current.filter(
         (message) => message.id !== optimisticId
       ))
       setPrompt(submittedPrompt)
       setCoordinatorRunning(false)
+      setChatError(reason instanceof Error ? reason.message : '发送失败')
     }
+  }
+
+  const handleStopCoordinator = async () => {
+    if (!taskId || !projectId) return
+    setChatError('')
+    try {
+      const result = await taskApi.stopCoordinator(taskId, projectId)
+      if (!result.stopped) {
+        // 没有正在运行的 turn（可能刚好结束），事件会自然收尾。
+        setCoordinatorRunning(false)
+        setActiveCoordinatorMessageId(null)
+        taskApi.history(taskId, projectId)
+          .then((res) => setHistoryMessages(res.messages || []))
+          .catch(() => undefined)
+      }
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : '停止失败')
+    }
+  }
+
+  const handleStopStage = async (stepKey: string) => {
+    if (!taskId || !projectId) return
+    setChatError('')
+    try {
+      await taskApi.cancelStep(taskId, stepKey, projectId)
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : '停止失败')
+    }
+  }
+
+  const handleStageInsertRemove = (insertId: string) => {
+    setStageInserts((current) => current.filter((item) => item.id !== insertId))
+  }
+
+  const handleStageInsertEditStart = (insert: { id: string; content: string }) => {
+    setEditingInsertId(insert.id)
+    setEditingInsertContent(insert.content)
+  }
+
+  const handleStageInsertEditSave = (insertId: string) => {
+    const nextContent = editingInsertContent.trim()
+    if (!nextContent) return
+    setStageInserts((current) => current.map((item) => (
+      item.id === insertId ? { ...item, content: nextContent } : item
+    )))
+    setEditingInsertId(null)
+    setEditingInsertContent('')
+  }
+
+  const handleStageInsertEditCancel = () => {
+    setEditingInsertId(null)
+    setEditingInsertContent('')
+  }
+
+  useEffect(() => {
+    if (!openInsertMenuId) return
+    const close = () => setOpenInsertMenuId(null)
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [openInsertMenuId])
+
+  const sendStageInserts = async (
+    items: Array<{ id: string; content: string }>,
+    asGuidance: boolean,
+  ) => {
+    if (!taskId || !projectId || !activeStageRunning) return
+    if (!items.length) return
+    const submitted = items.map((item) => item.content).join('\n\n')
+    setChatError('')
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticMessage = createOptimisticUserMessage(
+      optimisticId,
+      submitted,
+      activeStage.key,
+      new Date().toISOString(),
+    )
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    setStageInserts((current) => current.filter(
+      (item) => !items.some((target) => target.id === item.id)
+    ))
+    try {
+      const accepted = await taskApi.sendStageMessage(
+        taskId,
+        activeStage.key,
+        submitted,
+        projectId,
+        asGuidance,
+      )
+      setHistoryMessages((current) => current.map((message) => (
+        message.id === optimisticId
+          ? {
+              ...message,
+              id: accepted.message_id,
+              channel: 'execution',
+              run_status: 'completed',
+            }
+            : message
+      )))
+    } catch (reason) {
+      setHistoryMessages((current) => current.filter(
+        (message) => message.id !== optimisticId
+      ))
+      setChatError(reason instanceof Error ? reason.message : '发送失败')
+    }
+  }
+
+  const handleStageInsertSend = (insert: { id: string; content: string }) => {
+    void sendStageInserts([insert], false)
+  }
+
+  const handleStageInsertGuidance = (insert: { id: string; content: string }) => {
+    void sendStageInserts([insert], true)
+  }
+
+  const handleSendAllInserts = () => {
+    void sendStageInserts(stageInserts, false)
   }
 
   const handleCoordinatorEngineChange = async (engineId: string) => {
@@ -1089,6 +1094,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         taskId,
         projectId,
         engineId || null,
+        null,
         null,
         null,
       )
@@ -1118,6 +1124,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
         model || null,
         coordinatorConfig.configured.fast_model,
+        coordinatorConfig.configured.vision_model,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1145,6 +1152,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
         coordinatorConfig.configured.model,
         fastModel || null,
+        coordinatorConfig.configured.vision_model,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1154,6 +1162,34 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     } catch (reason) {
       setCoordinatorConfigError(
         reason instanceof Error ? reason.message : '协调快速模型切换失败',
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleCoordinatorVisionModelChange = async (visionModel: string) => {
+    if (!taskId || !projectId || !coordinatorConfig) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
+        coordinatorConfig.configured.model,
+        coordinatorConfig.configured.fast_model,
+        visionModel || null,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : '协调图片理解模型切换失败',
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1184,7 +1220,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStageColor = activeStage.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
   const activeReview = reviews.find((review) => review.step_key === activeStage.key)
-  const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
   const time = new Date(task.created_at).toLocaleString('zh-CN')
 
   const openDescriptionEditor = () => {
@@ -1489,6 +1524,29 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         </div>
       </div>
 
+      {/* Recovered-after-restart hint */}
+      {task.status === 'running' && (task.recovered_count || 0) > 0 && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', fontSize: 12, lineHeight: 1.4,
+            color: 'var(--accent)',
+            background: 'color-mix(in oklab, var(--accent), transparent 92%)',
+            borderBottom: '1px solid var(--border-soft)',
+            flexShrink: 0,
+          }}
+        >
+          <span className="task-status-spinner" aria-hidden="true" />
+          <span>
+            上次进程中断后已自动恢复续跑
+            {task.recovered_count && task.recovered_count > 1
+              ? `（累计 ${task.recovered_count} 次）`
+              : ''}，正在从上次未完成阶段继续执行
+          </span>
+        </div>
+      )}
+
       {/* ── Content split ── */}
       <div
         ref={contentSplitRef}
@@ -1533,6 +1591,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   value={descriptionDraft}
                   onChange={setDescriptionDraft}
                   projectId={projectId}
+                  imagePrefix={taskId.slice(0, 8)}
                   placeholder="输入任务说明…（支持 Markdown，可直接粘贴图片）"
                   minHeight={140}
                   maxHeight="33vh"
@@ -1580,20 +1639,37 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
           {/* Progress timeline */}
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14 }}>进度</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>进度</div>
+              {(task?.run_round ?? 1) > 1 && (
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, color: 'var(--accent)', background: 'color-mix(in oklab, var(--accent), transparent 90%)' }}>
+                  第 {task?.run_round} 轮执行
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
-              {stages.map((stage: any, i: number) => {
+              {visibleStages.map(({ stage, index: i }, pos) => {
                 const progress = stageProgress[i]
                 const visualState = progress?.visualState || 'pending'
                 const isCompleted = visualState === 'completed'
                 const isCurrentActive = [
-                  'current', 'reviewing', 'awaiting_review', 'retrying',
+                  'current', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
                 ].includes(visualState)
                 const isFailed = visualState === 'failed'
                 const isSkipped = visualState === 'skipped'
                 const isSelected = i === selectedStage
                 const stageColor = stage.color || 'var(--accent)'
                 const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
+                const currentRound = task?.run_round ?? 1
+                const restartIndex = stages.findIndex(
+                  (item: any) => item.key === task?.restart_from_step_key
+                )
+                const stageRound = restartIndex >= 0 && i < restartIndex
+                  ? Math.max(1, currentRound - 1)
+                  : currentRound
+                const stageRoundColor = stageRound >= currentRound
+                  ? stageColor
+                  : 'var(--meta)'
                 const finishedDuration = progress?.ended_at
                   ? formatDurationBetween(progress?.started_at, progress.ended_at)
                   : null
@@ -1602,7 +1678,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   ?? Date.now()
                 const updatedAtMs = toMilliseconds(task.updated_at) ?? Date.now()
                 const isDurationLive = task.status === 'running' || [
-                  'reviewing', 'awaiting_review', 'retrying',
+                  'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
                 ].includes(visualState)
                 const activeDuration = isCurrentActive && progress?.started_at
                   ? formatDurationBetween(
@@ -1616,7 +1692,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     ? 'var(--status-stopped)'
                     : visualState === 'reviewing'
                       ? 'var(--accent)'
-                      : visualState === 'retrying'
+                      : ['retrying', 'rework', 'rework_waiting'].includes(visualState)
                         ? 'var(--warn)'
                     : 'var(--status-running)'
                 const stateColor = isCompleted
@@ -1646,7 +1722,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     {/* Connector line */}
                     <div style={{
                       position: 'absolute', top: 10,
-                      left: i === 0 ? '50%' : 0, right: i === stages.length - 1 ? '50%' : 0,
+                      left: pos === 0 ? '50%' : 0, right: pos === visibleStages.length - 1 ? '50%' : 0,
                       height: 2, background: stateColor,
                     }} />
                     {/* Dot */}
@@ -1686,6 +1762,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         fontWeight: 600,
                       }}>
                         {STAGE_STATE_LABELS[visualState]}
+                      </span>
+                    )}
+                    {currentRound > 1 && (
+                      <span style={{
+                        fontSize: 10, marginTop: 4, padding: '2px 6px',
+                        borderRadius: 999,
+                        color: stageRoundColor,
+                        background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
+                        fontWeight: 600,
+                      }}>
+                        第 {stageRound} 轮
                       </span>
                     )}
                     {finishedDuration && (
@@ -2001,57 +2088,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <span style={{ fontSize: 11, fontWeight: 600, color: currentStageColor, background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`, padding: '2px 8px', borderRadius: 4 }}>
               {currentStage.label}
             </span>
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--meta)' }}>协调引擎</span>
-            <EngineSelect
-              engines={coordinatorConfig?.available_engines || []}
-              value={coordinatorConfig?.configured.engine || ''}
-              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning}
-              onChange={(engineId) => void handleCoordinatorEngineChange(engineId)}
-              requireCoordinator
-              defaultOption={{
-                value: '',
-                label: `默认（${engineLabel(coordinatorConfig?.resolved.engine || task.coordinator_engine || task.engine || 'claude')}）`,
-              }}
-              ariaLabel="协调引擎"
-              title="只影响后续协调消息，不修改工作流阶段引擎"
-              style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
-            />
-            <select
-              value={coordinatorConfig?.configured.model || ''}
-              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning || coordinatorModels.length === 0}
-              onChange={(event) => void handleCoordinatorModelChange(event.target.value)}
-              title="推理模型：负责理解、决策与回复；从下一条消息生效"
-              style={{ maxWidth: 150, fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
-            >
-              <option value="">推理模型（默认）</option>
-              {coordinatorModels.map((model) => (
-                <option key={model.id} value={model.id}>{model.label || model.id}</option>
-              ))}
-            </select>
-            <select
-              value={coordinatorConfig?.configured.fast_model || ''}
-              disabled={!coordinatorConfig || coordinatorConfigSaving || coordinatorRunning || coordinatorModels.length === 0}
-              onChange={(event) => void handleCoordinatorFastModelChange(event.target.value)}
-              title="快速模型：负责读取产物和修复结构化输出；从下一条消息生效"
-              style={{ maxWidth: 150, fontSize: 11, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', color: 'var(--fg)', padding: '4px 7px' }}
-            >
-              <option value="">快速模型（跟随推理）</option>
-              {coordinatorModels.map((model) => (
-                <option key={model.id} value={model.id}>{model.label || model.id}</option>
-              ))}
-            </select>
           </div>
-          {coordinatorConfigError && (
-            <div style={{ padding: '6px 20px', color: 'var(--danger)', fontSize: 11, background: 'var(--bg)' }}>
-              {coordinatorConfigError}
-            </div>
-          )}
-          {coordinatorConfigNotice && !coordinatorConfigError && (
-            <div style={{ padding: '6px 20px', color: 'var(--success)', fontSize: 11, background: 'var(--bg)' }}>
-              {coordinatorConfigNotice}
-            </div>
-          )}
-
           {/* Chat messages */}
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
           <div
@@ -2105,6 +2142,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       const isSystem = msg.role === 'system'
                       const isReview = msg.channel === 'review' || msg.role === 'review'
                       const isCoordinator = msg.channel === 'coordinator'
+                      const isLiveInsert = !isCoordinator && msg.role === 'user'
+                        && msg.run_id === msg.id
                       const processEvents = Array.isArray(msg.events) ? msg.events : []
                       const sender = isUser
                         ? '我'
@@ -2129,129 +2168,108 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             : (stageInfo?.color || 'var(--fg)')
 
                       return (
-                        <div
+                        <ChatMessageBubble
                           key={i}
-                          ref={i === msgs.length - 1
-                            ? (element) => {
-                                stageLastMessageRefs.current[stageKey] = element
-                              }
-                            : undefined}
-                          data-stage-last-message={i === msgs.length - 1 ? stageKey : undefined}
-                          style={{
-                            width: isUser ? 'fit-content' : '85%',
-                            maxWidth: '85%', minWidth: 0,
-                            display: 'flex', flexDirection: 'column', gap: 4,
-                            alignSelf: isUser ? 'flex-end' : 'flex-start',
+                          role={isSystem ? 'system' : isReview ? 'review' : (isUser ? 'user' : 'assistant')}
+                          sender={sender}
+                          initials={initials}
+                          color={senderColor}
+                          content={msg.content || ''}
+                          streaming={msg.run_status === 'running'}
+                          badge={isReview ? <span title="Review" aria-label="Review 消息">R</span> : undefined}
+                          rootProps={{
+                            ref: i === msgs.length - 1
+                              ? (element) => {
+                                  stageLastMessageRefs.current[stageKey] = element
+                                }
+                              : undefined,
+                            'data-stage-last-message': i === msgs.length - 1 ? stageKey : undefined,
                           }}
-                        >
-                          {isUser && (
-                            <div style={{ fontSize: 10, color: 'var(--meta)', textAlign: 'right', paddingRight: 44 }}>
-                              {formatConversationDateTime(msg.started_at || msg.created_at)}
-                            </div>
+                          header={isUser ? (
+                            <>
+                              {isCoordinator
+                                ? formatConversationDateTime(msg.started_at || msg.created_at)
+                                : formatExecutionOffset(msg.started_at || msg.created_at, executionOrigin)}
+                              <span
+                                title={isCoordinator
+                                  ? '发给协调 Agent，不进入阶段执行上下文'
+                                  : isLiveInsert
+                                    ? '执行中插入的消息，引擎对此二次处理'
+                                    : '阶段初始输入，进入阶段执行上下文'}
+                                style={{
+                                  padding: '1px 6px', borderRadius: 999, fontSize: 10,
+                                  border: isLiveInsert ? 'none' : '1px solid var(--border-soft)',
+                                  background: isCoordinator
+                                    ? 'rgba(124,58,237,0.08)'
+                                    : isLiveInsert
+                                      ? 'var(--accent)'
+                                      : 'rgba(0,113,227,0.08)',
+                                  color: isCoordinator
+                                    ? '#7c3aed'
+                                    : isLiveInsert ? '#fff' : 'var(--accent)',
+                                }}
+                              >
+                                {isCoordinator ? '协调' : isLiveInsert ? '插入' : '阶段'}
+                              </span>
+                            </>
+                          ) : (
+                            <MessageMetaBar
+                              createdAt={msg.created_at}
+                              startedAt={msg.started_at}
+                              endedAt={msg.ended_at}
+                              running={msg.run_status === 'running'}
+                              events={processEvents}
+                              prompt={msg.prompt}
+                              sessionId={isCoordinator ? null : sessionIdForStep(stageKey)}
+                              onViewPrompt={setViewingPrompt}
+                              origin={isCoordinator ? undefined : executionOrigin}
+                              actions={!isUser && !isCoordinator && msg.run_status === 'running'
+                                ? <StageStopButton stepKey={stageKey} onStop={handleStopStage} />
+                                : undefined}
+                            />
                           )}
-                          {/* Message row */}
-                          <div style={{
-                            width: isUser ? 'fit-content' : '100%',
-                            maxWidth: '100%', minWidth: 0,
-                            display: 'flex', gap: 12,
-                            flexDirection: isUser ? 'row-reverse' : 'row',
-                          }}>
-                            <div style={{
-                              width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                              background: senderColor, color: '#fff',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 12, fontWeight: 600, position: 'relative',
-                            }}>
-                              {initials}
-                              {isReview && (
-                                <span
-                                  title="Review"
-                                  aria-label="Review 消息"
-                                  style={{
-                                    position: 'absolute', right: -4, bottom: -4,
-                                    width: 16, height: 16, borderRadius: '50%',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    background: '#7c3aed', color: '#fff',
-                                    border: '2px solid var(--bg)',
-                                    fontSize: 9, fontWeight: 800, lineHeight: 1,
-                                  }}
-                                >
-                                  R
+                          showLoading={!isUser && !isCoordinator && msg.run_status === 'running' && !msg.content}
+                          loading={!isUser && msg.run_status === 'running'
+                            ? (
+                              <div className="engine-loading-message" role="status" aria-live="polite">
+                                <span>{liveExecutionStatus(processEvents)}</span>
+                                <span className="engine-loading-dots" aria-hidden="true">
+                                  <i />
+                                  <i />
+                                  <i />
                                 </span>
-                              )}
-                            </div>
-                            <div style={{
-                              flex: isUser ? '0 1 auto' : 1,
-                              minWidth: 0, display: 'flex',
-                              flexDirection: 'column', gap: 6,
-                            }}>
-                              {!isUser && (
-                                <MessageMetaBar
-                                  createdAt={msg.created_at}
-                                  startedAt={msg.started_at}
-                                  endedAt={msg.ended_at}
-                                  running={msg.run_status === 'running'}
-                                  events={processEvents}
-                                  prompt={msg.prompt}
-                                  onViewPrompt={setViewingPrompt}
-                                />
-                              )}
-                              {!isUser && !isCoordinator && msg.run_status === 'running' && !msg.content && (
-                                <div className="engine-loading-message" role="status" aria-live="polite">
-                                  <span>{liveExecutionStatus(processEvents)}</span>
-                                  <span className="engine-loading-dots" aria-hidden="true">
-                                    <i />
-                                    <i />
-                                    <i />
-                                  </span>
-                                </div>
-                              )}
-                              {msg.content && (
-                                <div style={{
-                                  fontSize: 13, lineHeight: 1.6,
-                                  color: isUser ? '#fff' : 'var(--fg-2)',
-                                  background: isUser ? 'var(--accent)' : 'var(--surface)',
-                                  padding: '10px 14px', borderRadius: 12,
-                                  borderBottomRightRadius: isUser ? 4 : 12,
-                                  borderBottomLeftRadius: isUser ? 12 : 4,
-                                  width: isUser ? 'fit-content' : undefined,
-                                  minWidth: 0, maxWidth: '100%', overflow: 'hidden',
-                                }}>
-                                  {isUser
-                                    ? (
-                                      <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                                        {msg.content}
-                                      </div>
-                                    )
-                                    : <MarkdownMessage content={String(msg.content)} />}
-                                </div>
-                              )}
-                              {!isUser && !isSystem && msg.content && (
-                                <MessageResponseFooter
-                                  content={String(msg.content)}
-                                  usage={msg.usage || usageFromEvents(processEvents)}
-                                  engine={msg.engine}
-                                  running={msg.run_status === 'running'}
-                                />
-                              )}
-                              {(msg.proposals || []).map((proposal: ActionProposal) => {
-                                const currentProposal = proposalOverrides[proposal.id] || proposal
-                                return (
-                                  <CoordinatorProposalCard
-                                    key={proposal.id}
-                                    proposal={currentProposal}
-                                    taskId={taskId || ''}
-                                    projectId={projectId}
-                                    onChanged={(updated) => setProposalOverrides((current) => ({
-                                      ...current,
-                                      [updated.id]: updated,
-                                    }))}
-                                  />
-                                )
-                              })}
-                            </div>
-                          </div>
-                        </div>
+                              </div>
+                            )
+                            : undefined}
+                          footer={!isUser && !isSystem && msg.content
+                            ? (
+                              <MessageResponseFooter
+                                content={String(msg.content)}
+                                usage={msg.usage || usageFromEvents(processEvents)}
+                                engine={msg.engine}
+                                model={msg.model}
+                                executionModel={executionStageModel}
+                                running={msg.run_status === 'running'}
+                              />
+                            )
+                            : undefined}
+                        >
+                          {(msg.proposals || []).map((proposal: ActionProposal) => {
+                            const currentProposal = proposalOverrides[proposal.id] || proposal
+                            return (
+                              <CoordinatorProposalCard
+                                key={proposal.id}
+                                proposal={currentProposal}
+                                taskId={taskId || ''}
+                                projectId={projectId}
+                                onChanged={(updated) => setProposalOverrides((current) => ({
+                                  ...current,
+                                  [updated.id]: updated,
+                                }))}
+                              />
+                            )
+                          })}
+                        </ChatMessageBubble>
                       )
                     })}
                   </div>
@@ -2260,95 +2278,107 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             })()}
 
             {liveCoordinatorMessages.map((message) => (
-              <div key={message.id} style={{ width: '85%', maxWidth: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, alignSelf: 'flex-start' }}>
-                <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, display: 'flex', gap: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>协</div>
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <MessageMetaBar
-                      createdAt={message.created_at}
-                      running={message.status === 'running'}
-                      events={message.events}
-                      prompt={message.prompt || livePromptOverrides[message.id]}
-                      onViewPrompt={setViewingPrompt}
+              <ChatMessageBubble
+                key={message.id}
+                role="assistant"
+                sender="协调 Agent"
+                initials="协"
+                color="#7c3aed"
+                content={message.content || ''}
+                streaming={message.status === 'running'}
+                variant="bg"
+                header={
+                  <MessageMetaBar
+                    createdAt={message.created_at}
+                    running={message.status === 'running'}
+                    events={message.events}
+                    prompt={message.prompt || livePromptOverrides[message.id]}
+                    sessionId={sessionIdForStep(message.step_key)}
+                    onViewPrompt={setViewingPrompt}
+                  />
+                }
+                showLoading={!message.content && message.status === 'running'}
+                loading={
+                  <div className="engine-loading-message" role="status">协调 Agent 思考中…</div>
+                }
+                footer={message.content ? (
+                  <MessageResponseFooter
+                    content={message.content}
+                    usage={usageFromEvents(message.events)}
+                    engine={message.engine}
+                    model={message.model}
+                    executionModel={executionStageModel}
+                    running={message.status === 'running'}
+                  />
+                ) : undefined}
+              >
+                {message.proposals.map((rawProposal) => {
+                  const proposal = rawProposal as unknown as ActionProposal
+                  const currentProposal = proposalOverrides[proposal.id] || proposal
+                  return (
+                    <CoordinatorProposalCard
+                      key={proposal.id}
+                      proposal={currentProposal}
+                      taskId={taskId || ''}
+                      projectId={projectId}
+                      onChanged={(updated) => setProposalOverrides((current) => ({
+                        ...current,
+                        [updated.id]: updated,
+                      }))}
                     />
-                    {!message.content && message.status === 'running' && (
-                      <div className="engine-loading-message" role="status">协调 Agent 思考中...</div>
-                    )}
-                    {message.content && (
-                      <>
-                        <div style={{ padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: 13, lineHeight: 1.5 }}>
-                          <MarkdownMessage content={message.content} streaming={message.status === 'running'} />
-                        </div>
-                        <MessageResponseFooter
-                          content={message.content}
-                          usage={usageFromEvents(message.events)}
-                          engine={message.engine}
-                          running={message.status === 'running'}
-                        />
-                      </>
-                    )}
-                    {message.proposals.map((rawProposal) => {
-                      const proposal = rawProposal as unknown as ActionProposal
-                      const currentProposal = proposalOverrides[proposal.id] || proposal
-                      return (
-                        <CoordinatorProposalCard
-                          key={proposal.id}
-                          proposal={currentProposal}
-                          taskId={taskId || ''}
-                          projectId={projectId}
-                          onChanged={(updated) => setProposalOverrides((current) => ({
-                            ...current,
-                            [updated.id]: updated,
-                          }))}
-                        />
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
+                  )
+                })}
+              </ChatMessageBubble>
             ))}
 
             {liveExecutionMessages.map((message) => {
               const stage = stages.find((item) => item.key === message.step_key)
               const stageLabel = stage?.label || message.step_key || '执行阶段'
               return (
-                <div key={message.id} style={{ width: '85%', maxWidth: '85%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ width: '100%', minWidth: 0, display: 'flex', gap: 12 }}>
-                    <div title={stageLabel} aria-label={`${stageLabel}阶段`} style={{ width: 32, height: 32, borderRadius: '50%', background: stage?.color || activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{stageAvatarText(stageLabel)}</div>
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <ChatMessageBubble
+                  key={message.id}
+                  role="assistant"
+                  sender={stageLabel}
+                  initials={stageAvatarText(stageLabel)}
+                  color={stage?.color || activeStageColor}
+                  content={message.content || ''}
+                  streaming={message.status === 'running'}
+                  variant="bg"
+                  header={
                     <MessageMetaBar
                       createdAt={message.created_at}
                       running={message.status === 'running'}
                       events={message.events}
                       prompt={message.prompt || livePromptOverrides[message.id]}
                       onViewPrompt={setViewingPrompt}
+                      origin={executionOrigin}
+                      actions={message.status === 'running' && message.step_key
+                        ? <StageStopButton stepKey={message.step_key} onStop={handleStopStage} />
+                        : undefined}
                     />
-                    {!message.content && message.status === 'running' && (
-                      <div className="engine-loading-message" role="status" aria-live="polite">
-                        <span>{liveExecutionStatus(message.events)}</span>
-                        <span className="engine-loading-dots" aria-hidden="true">
-                          <i />
-                          <i />
-                          <i />
-                        </span>
-                      </div>
-                    )}
-                    {message.content && (
-                      <>
-                        <div style={{ padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4, background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: 13, lineHeight: 1.5 }}>
-                          <MarkdownMessage content={message.content} streaming={message.status === 'running'} />
-                        </div>
-                        <MessageResponseFooter
-                          content={message.content}
-                          usage={usageFromEvents(message.events)}
-                          engine={message.engine}
-                          running={message.status === 'running'}
-                        />
-                      </>
-                    )}
+                  }
+                  showLoading={!message.content && message.status === 'running'}
+                  loading={
+                    <div className="engine-loading-message" role="status" aria-live="polite">
+                      <span>{liveExecutionStatus(message.events)}</span>
+                      <span className="engine-loading-dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
                     </div>
-                  </div>
-                </div>
+                  }
+                  footer={message.content ? (
+                    <MessageResponseFooter
+                      content={message.content}
+                      usage={usageFromEvents(message.events)}
+                      engine={message.engine}
+                      model={message.model}
+                      executionModel={executionStageModel}
+                      running={message.status === 'running'}
+                    />
+                  ) : undefined}
+                />
               )
             })}
 
@@ -2359,40 +2389,37 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               content,
               hasStructuredExecutionMessage,
             ) && (
-              <div style={{ width: '85%', minWidth: 0, display: 'flex', gap: 12 }}>
-                <div title={activeStage.label} aria-label={`${activeStage.label}阶段`} style={{ width: 32, height: 32, borderRadius: '50%', background: activeStageColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>{stageAvatarText(activeStage.label)}</div>
-                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <ProcessTrace events={events} running={running} />
-                  {running && !content && !hasProcessEvents(events) && (
-                    <div className="engine-loading-message" role="status" aria-live="polite">
-                      <span>引擎处理中</span>
-                      <span className="engine-loading-dots" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                      </span>
-                    </div>
-                  )}
-                  {content && (
-                    <>
-                      <div style={{
-                        padding: '10px 14px', borderRadius: 12, borderBottomLeftRadius: 4,
-                        background: 'var(--bg)', color: 'var(--fg)', border: '1px solid var(--border-soft)',
-                        minWidth: 0, maxWidth: '100%', overflow: 'hidden',
-                        fontSize: 13, lineHeight: 1.5,
-                      }}>
-                        <MarkdownMessage content={content} streaming={running} />
-                      </div>
-                      <MessageResponseFooter
-                        content={content}
-                        usage={usageFromEvents(events)}
-                        engine={task.engine}
-                        running={running}
-                      />
-                    </>
-                  )}
-                </div>
-              </div>
+              <ChatMessageBubble
+                role="assistant"
+                sender={activeStage.label}
+                initials={stageAvatarText(activeStage.label)}
+                color={activeStageColor}
+                content={content}
+                streaming={running}
+                variant="bg"
+                header={<ProcessTrace events={events} running={running} />}
+                showLoading={running && !content && !hasProcessEvents(events)}
+                loading={
+                  <div className="engine-loading-message" role="status" aria-live="polite">
+                    <span>处理中</span>
+                    <span className="engine-loading-dots" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  </div>
+                }
+                footer={content ? (
+                  <MessageResponseFooter
+                    content={content}
+                    usage={usageFromEvents(events)}
+                    engine={task.engine}
+                    model={task.model}
+                    executionModel={executionStageModel}
+                    running={running}
+                  />
+                ) : undefined}
+              />
             )}
 
             <div ref={chatEndRef} />
@@ -2423,40 +2450,312 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           </div>
 
           {/* Chat input */}
-          <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', gap: 10, alignItems: 'flex-end', flexShrink: 0 }}>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !coordinatorRunning) { e.preventDefault(); handleRun() }
-              }}
-              placeholder={coordinatorRunning ? '协调 Agent 处理中...' : '输入问题、补充说明或操作请求...'}
-              disabled={coordinatorRunning}
-              rows={1}
-              style={{
-                flex: 1, fontSize: 13, padding: '10px 14px',
-                border: '1px solid var(--border)', borderRadius: 8,
-                resize: 'none', minHeight: 40, maxHeight: 120,
-                background: 'var(--bg)', color: 'var(--fg)', outline: 'none',
-                fontFamily: 'var(--font-body)', lineHeight: 1.5,
-              }}
-              onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-              onBlur={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
-            />
-            <button
-              onClick={handleRun}
-              disabled={coordinatorRunning || !prompt.trim()}
-              aria-label="发送给协调 Agent"
-              title="发送给协调 Agent"
-              style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: coordinatorRunning || !prompt.trim() ? 'var(--border)' : 'var(--accent)',
-                color: coordinatorRunning || !prompt.trim() ? 'var(--meta)' : '#fff',
-                border: 'none', cursor: coordinatorRunning || !prompt.trim() ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          <div style={{ position: 'relative', padding: '14px 20px', borderTop: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
+            {chatTargetStage && stageInserts.length > 0 && (
+              <div role="region" aria-label="插入消息" style={{
+                position: 'absolute', bottom: '100%', left: 20, right: 20,
+                marginBottom: 6, zIndex: 30,
+                borderRadius: 8, border: '1px solid var(--border-soft)',
+                background: 'var(--bg)',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+                padding: '6px 10px',
+                display: 'flex', flexDirection: 'column', gap: 4,
               }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
+                <div
+                  title={`发送后实时注入「${activeStage.label}」阶段执行`}
+                  style={{ fontSize: 10, fontWeight: 600, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  插入消息
+                  <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted)' }}>
+                    {stageInserts.length} 条
+                  </span>
+                </div>
+                {stageInserts.map((insert) => (
+                  <div key={insert.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '4px 6px', borderRadius: 6,
+                    position: 'relative',
+                  }}>
+                    {editingInsertId === insert.id ? (
+                      <textarea
+                        autoFocus
+                        value={editingInsertContent}
+                        onChange={(e) => setEditingInsertContent(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            handleStageInsertEditSave(insert.id)
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault()
+                            handleStageInsertEditCancel()
+                          }
+                        }}
+                        rows={2}
+                        style={{
+                          flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.4,
+                          color: 'var(--fg)', background: 'var(--bg)',
+                          border: '1px solid var(--accent)', borderRadius: 6,
+                          padding: '4px 6px', outline: 'none', resize: 'none',
+                          fontFamily: 'var(--font-body)',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="var(--muted)" strokeWidth="1.6" strokeLinecap="round" style={{ flexShrink: 0, opacity: 0.7 }}>
+                          <line x1="2" y1="4" x2="14" y2="4"/>
+                          <line x1="2" y1="8" x2="14" y2="8"/>
+                          <line x1="2" y1="12" x2="10" y2="12"/>
+                        </svg>
+                        <div style={{
+                          flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.4,
+                          color: 'var(--fg)',
+                          whiteSpace: 'nowrap', overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {insert.content}
+                        </div>
+                      </>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                      {editingInsertId === insert.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStageInsertEditSave(insert.id)}
+                            title="保存修改"
+                            style={{
+                              padding: '2px 8px', borderRadius: 6, fontSize: 11,
+                              border: 'none', background: 'var(--accent)', color: '#fff',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            保存
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleStageInsertEditCancel}
+                            title="取消编辑"
+                            style={{
+                              padding: '2px 8px', borderRadius: 6, fontSize: 11,
+                              border: '1px solid var(--border)',
+                              background: 'transparent', color: 'var(--meta)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleStageInsertGuidance(insert)}
+                            title="同时注入执行，并保存为阶段引导（后续重跑也会带上）"
+                            style={{
+                              padding: '2px 6px', fontSize: 11,
+                              border: 'none', background: 'transparent',
+                              color: 'var(--meta)', cursor: 'pointer',
+                            }}
+                          >
+                            引导
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStageInsertRemove(insert.id)}
+                            title="删除这条插入消息"
+                            style={{
+                              padding: '4px', border: 'none', background: 'transparent',
+                              color: 'var(--muted)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', borderRadius: 4,
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                          </button>
+                          <button
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={() => setOpenInsertMenuId(
+                              openInsertMenuId === insert.id ? null : insert.id
+                            )}
+                            title="更多操作"
+                            style={{
+                              padding: '4px', border: 'none', background: 'transparent',
+                              color: 'var(--muted)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', borderRadius: 4,
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                          </button>
+                          {openInsertMenuId === insert.id && (
+                            <div
+                              onPointerDown={(event) => event.stopPropagation()}
+                              style={{
+                                position: 'absolute', right: 4, top: 'calc(100% + 2px)',
+                                zIndex: 40, minWidth: 104, padding: 4, borderRadius: 8,
+                                background: 'var(--bg)',
+                                border: '1px solid var(--border-soft)',
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.14)',
+                                display: 'flex', flexDirection: 'column',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleStageInsertSend(insert)}
+                                title="立即注入当前阶段执行（不保存为引导）"
+                                style={{
+                                  padding: '5px 8px', fontSize: 11, textAlign: 'left',
+                                  border: 'none', background: 'transparent',
+                                  color: 'var(--fg)', cursor: 'pointer', borderRadius: 5,
+                                }}
+                              >
+                                发送
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleStageInsertEditStart(insert)}
+                                title="编辑这条插入消息"
+                                style={{
+                                  padding: '5px 8px', fontSize: 11, textAlign: 'left',
+                                  border: 'none', background: 'transparent',
+                                  color: 'var(--fg)', cursor: 'pointer', borderRadius: 5,
+                                }}
+                              >
+                                编辑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleStageInsertRemove(insert.id)}
+                                title="删除这条插入消息"
+                                style={{
+                                  padding: '5px 8px', fontSize: 11, textAlign: 'left',
+                                  border: 'none', background: 'transparent',
+                                  color: '#d92d20', cursor: 'pointer', borderRadius: 5,
+                                }}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {stageInserts.length > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 2 }}>
+                  <button
+                    type="button"
+                    onClick={handleSendAllInserts}
+                    title="把全部插入消息按顺序合并，一次实时注入阶段执行"
+                    style={{
+                      padding: '2px 6px', fontSize: 11,
+                      border: 'none', background: 'transparent',
+                      color: 'var(--accent)', cursor: 'pointer',
+                    }}
+                  >
+                    全部发送（{stageInserts.length}）
+                  </button>
+                </div>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 8, background: 'var(--bg-soft, rgba(128,128,128,0.08))', border: '1px solid var(--border-soft)' }}>
+                <button
+                  type="button"
+                  onClick={() => setChatTarget('coordinator')}
+                  aria-pressed={!chatTargetStage}
+                  title="发送给协调 Agent，不进入阶段执行上下文"
+                  style={{
+                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                    border: 'none', cursor: 'pointer',
+                    background: chatTargetStage ? 'transparent' : 'var(--accent)',
+                    color: chatTargetStage ? 'var(--meta)' : '#fff',
+                  }}
+                >
+                  协调 Agent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatTarget('stage')}
+                  disabled={!activeStageRunning}
+                  aria-pressed={chatTargetStage}
+                  title={activeStageRunning
+                    ? '发送给当前正在执行的阶段 Agent，实时注入执行'
+                    : '当前阶段未在运行，无法发送阶段消息'}
+                  style={{
+                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                    border: 'none', cursor: activeStageRunning ? 'pointer' : 'not-allowed',
+                    background: chatTargetStage ? 'var(--accent)' : 'transparent',
+                    color: chatTargetStage ? '#fff' : 'var(--meta)',
+                    opacity: activeStageRunning ? 1 : 0.5,
+                  }}
+                >
+                  阶段 Agent
+                </button>
+              </div>
+              {chatTargetStage && activeStageRunning && (
+                <span style={{ fontSize: 11, color: 'var(--meta)' }}>
+                  发送后进入「插入消息」面板，确认后再实时注入「{activeStage.label}」阶段
+                </span>
+              )}
+              {chatTargetStage && !activeStageRunning && (
+                <span style={{ fontSize: 11, color: 'var(--warn)' }}>
+                  当前阶段未在运行，仅可发送给协调 Agent
+                </span>
+              )}
+            </div>
+            {chatError && (
+              <div role="alert" style={{
+                fontSize: 12, color: '#d92d20', padding: '6px 10px',
+                borderRadius: 6, border: '1px solid rgba(217,45,32,0.25)',
+                background: 'rgba(217,45,32,0.06)',
+              }}>
+                {chatError}
+              </div>
+            )}
+            <ChatInput
+              value={prompt}
+              onChange={setPrompt}
+              onSend={handleRun}
+              imageAttach={projectId ? {
+                projectId,
+                prefix: taskId?.slice(0, 8) ?? '',
+                onError: (message) => setChatError(message),
+              } : undefined}
+              config={{
+                engines: coordinatorConfig?.available_engines || [],
+                engine: coordinatorConfig?.configured.engine || '',
+                defaultEngine: coordinatorConfig?.resolved.engine || task.coordinator_engine || task.engine || 'claude',
+                model: coordinatorConfig?.configured.model || '',
+                fastModel: coordinatorConfig?.configured.fast_model || '',
+                visionModel: coordinatorConfig?.configured.vision_model || '',
+                showVision: true,
+                disabled: !coordinatorConfig || coordinatorRunning,
+                saving: coordinatorConfigSaving,
+                error: coordinatorConfigError,
+                notice: coordinatorConfigNotice,
+                hint: coordinatorConfig ? '从下一条消息生效' : '',
+                engineTitle: '只影响后续协调消息，不修改工作流阶段引擎',
+                onEngineChange: (engineId) => void handleCoordinatorEngineChange(engineId),
+                onModelChange: (model) => void handleCoordinatorModelChange(model),
+                onFastModelChange: (fastModel) => void handleCoordinatorFastModelChange(fastModel),
+                onVisionModelChange: (visionModel) => void handleCoordinatorVisionModelChange(visionModel),
+                onReset: () => void handleCoordinatorEngineChange(''),
+              }}
+              disabled={chatTargetStage ? false : coordinatorRunning}
+              running={!chatTargetStage && coordinatorRunning}
+              onStop={chatTargetStage ? undefined : handleStopCoordinator}
+              placeholder={chatTargetStage
+                ? `输入消息，回车后进入「插入消息」面板，确认后注入「${activeStage.label}」阶段...`
+                : coordinatorRunning
+                  ? '协调 Agent 处理中...'
+                  : '输入问题、补充说明或操作请求...'}
+              title={chatTargetStage
+                ? '把输入加入上方「插入消息」面板'
+                : coordinatorRunning ? '停止协调 Agent 处理' : '发送给协调 Agent'}
+            />
           </div>
         </div>
       </div>

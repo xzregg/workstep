@@ -161,6 +161,7 @@ def test_assemble_prompt_basic(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
     assert SYSTEM_PROMPT in prompt
+    assert ".workstep/MEMORY.md" in SYSTEM_PROMPT
     assert "## 任务说明\nCurrent task context" in prompt
     assert "Write a PRD" in prompt
     assert str(artifacts_dir / "req" / task.id) in prompt
@@ -255,6 +256,53 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     db.close()
 
 
+def test_assemble_prompt_multi_output_suggests_subagents(tmp_path):
+    """Multi-output steps get subagent delegation guidance in the prompt."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="b", label="B", prompt="Produce outputs", outputs=[
+        {"name": "b1", "type": "md"},
+        {"name": "b2", "type": "md"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+    assert "## 输出规范" in prompt
+    assert "子代理" in prompt
+    assert "同一个会话" in prompt
+    assert "b1" in prompt and "b2" in prompt
+    db.close()
+
+
+def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
+    """Single-output steps should not include subagent delegation guidance."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="a", label="A", prompt="Produce output", outputs=[
+        {"name": "a1", "type": "md"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+    assert "## 输出规范" in prompt
+    assert "子代理" not in prompt
+    db.close()
+
+
 # --- TaskRunner integration ---
 
 class PipelineFakeEngine(BaseLLMEngine):
@@ -292,6 +340,25 @@ class PipelineUsageEngine(PipelineFakeEngine):
             "cache_creation_input_tokens": 150,
             "cache_read_input_tokens": 120,
         })
+        yield InternalEvent(type="status", data={"status": "done"})
+
+
+class PipelineResumeEngine(PipelineFakeEngine):
+    """Fake resume-capable engine that records the session ids it receives."""
+
+    def __init__(self, text="output", seen=None):
+        super().__init__(text)
+        self.seen = seen if seen is not None else []
+
+    @property
+    def supports_resume(self):
+        return True
+
+    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None):
+        self.seen.append(session_id)
+        active = session_id or f"sess-{len(self.seen)}"
+        yield InternalEvent(type="session_started", data={"session_id": active})
+        yield InternalEvent(type="text_delta", data={"delta": self._text})
         yield InternalEvent(type="status", data={"status": "done"})
 
 
@@ -336,6 +403,57 @@ async def test_task_runner_persists_usage_json(tmp_path):
         assert usage["output_tokens"] == 100
         assert usage["cache_creation_input_tokens"] == 150
         assert usage["cache_read_input_tokens"] == 120
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_stage_session_id_isolated_and_reused(tmp_path):
+    """同任务同阶段重跑复用同一 session id；不同阶段各自隔离。"""
+    from models import init_db, Task, TaskStep
+    from engines.registry import ENGINE_REGISTRY
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Session", cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    seen: list = []
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: PipelineResumeEngine("output", seen)
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        steps_config = {
+            "steps": [
+                {"key": "a", "label": "A", "engine": "claude", "prompt": "Do A"},
+                {"key": "b", "label": "B", "engine": "claude", "prompt": "Do B", "dependsOn": ["a"]},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        await runner.run_pipeline(task, steps_config, artifacts_dir)
+        step_a = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "a"))
+        step_b = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "b"))
+        assert step_a.session_id == "sess-1"
+        assert step_b.session_id == "sess-2"
+        assert step_a.session_id != step_b.session_id  # 阶段间会话隔离
+        assert seen == [None, None]  # 首次运行两个阶段都没有历史会话
+
+        # 重跑阶段 a：应复用上一次的 session id
+        step_a.status = "pending"
+        step_a.save()
+        await runner.run_pipeline(task, steps_config, artifacts_dir)
+
+        step_a = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "a"))
+        assert step_a.session_id == "sess-1"
+        assert seen == [None, None, "sess-1"]
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

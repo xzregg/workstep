@@ -7,6 +7,8 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { useTaskStore } from '../stores/taskStore'
+import { useWorkflowGenStore } from '../stores/workflowGenStore'
+import { useProjectStore } from '../stores/projectStore'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
@@ -14,6 +16,7 @@ const WS_RECONNECT_MAX_MS = 30000
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const handleEvent = useTaskStore((s) => s.handleWsEvent)
+  const handleGenEvent = useWorkflowGenStore((s) => s.handleWsEvent)
 
   const send = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -40,10 +43,16 @@ export function useWebSocket() {
       ws.onopen = () => {
         console.log('[WS] connected')
         reconnectAttempt = 0
+        // A reconnect (e.g. daemon restart) may have changed persisted task
+        // state; re-fetch so the board reflects recovered runs immediately.
+        const projectId = useProjectStore.getState().activeProject?.id
+        if (projectId) void useTaskStore.getState().fetchTasks(projectId)
       }
       ws.onmessage = (event) => {
         try {
-          handleEvent(JSON.parse(event.data))
+          const parsed = JSON.parse(event.data)
+          if (parsed.session_id) handleGenEvent(parsed)
+          handleEvent(parsed)
         } catch (error) {
           console.warn('[WS] invalid message:', error)
         }

@@ -12,6 +12,7 @@ from typing import Awaitable, Callable
 
 from engines.events import InternalEvent
 from engines.registry import create_engine, get_available_engines
+from engines.schema import EngineImage
 from models import (
     ActionProposal,
     CoordinatorSession,
@@ -33,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 COORDINATOR_CHANNEL = "coordinator"
 ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
+_IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+_UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
 
 
 def extract_streaming_reply(raw: str) -> str:
@@ -103,6 +106,8 @@ class CoordinatorModule:
         self._turn_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._operation_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_tasks: set[asyncio.Task] = set()
+        self._running_engines: dict[str, object] = {}
+        self._cancelled_turns: set[str] = set()
 
     async def submit_message(
         self,
@@ -133,7 +138,7 @@ class CoordinatorModule:
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ValueError(f"Task not found: {task_id}")
-            engine, model, _ = self._resolve_engine_models(task)
+            engine, model, _, _ = self._resolve_engine_models(task)
             context_step_key = self._single_active_step(task)
             now = utc_now()
             turn_id = str(uuid.uuid4())
@@ -209,7 +214,12 @@ class CoordinatorModule:
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ValueError(f"Task not found: {task_id}")
-            resolved_engine, resolved_model, resolved_fast_model = (
+            (
+                resolved_engine,
+                resolved_model,
+                resolved_fast_model,
+                resolved_vision_model,
+            ) = (
                 self._resolve_engine_models(task)
             )
             available = [
@@ -226,11 +236,13 @@ class CoordinatorModule:
                     "engine": task.coordinator_engine,
                     "model": task.coordinator_model,
                     "fast_model": task.coordinator_fast_model,
+                    "vision_model": task.coordinator_vision_model,
                 },
                 "resolved": {
                     "engine": resolved_engine,
                     "model": resolved_model,
                     "fast_model": resolved_fast_model,
+                    "vision_model": resolved_vision_model,
                 },
                 "available_engines": available,
             }
@@ -242,6 +254,7 @@ class CoordinatorModule:
         engine_id: str | None,
         model: str | None,
         fast_model: str | None,
+        vision_model: str | None,
     ) -> dict:
         with self._project_manager.activate_project_by_id(project_id):
             task = Task.get_or_none(Task.id == task_id)
@@ -250,6 +263,7 @@ class CoordinatorModule:
             normalized_engine = engine_id.strip() if engine_id else None
             normalized_model = model.strip() if model else None
             normalized_fast_model = fast_model.strip() if fast_model else None
+            normalized_vision_model = vision_model.strip() if vision_model else None
             if normalized_engine is not None:
                 engine = create_engine(normalized_engine)
                 if engine is None or not engine.capabilities.supports_coordinator:
@@ -260,12 +274,17 @@ class CoordinatorModule:
                     raise ValueError(
                         f"Coordinator engine is not verified: {normalized_engine}"
                     )
-            elif normalized_model is not None or normalized_fast_model is not None:
+            elif (
+                normalized_model is not None
+                or normalized_fast_model is not None
+                or normalized_vision_model is not None
+            ):
                 raise ValueError("A coordinator model requires an engine")
 
             task.coordinator_engine = normalized_engine
             task.coordinator_model = normalized_model
             task.coordinator_fast_model = normalized_fast_model
+            task.coordinator_vision_model = normalized_vision_model
             task.updated_at = utc_now()
             task.save()
             session = CoordinatorSession.get_or_none(
@@ -277,7 +296,12 @@ class CoordinatorModule:
                 session.version += 1
                 session.updated_at = utc_now()
                 session.save()
-            resolved_engine, resolved_model, resolved_fast_model = (
+            (
+                resolved_engine,
+                resolved_model,
+                resolved_fast_model,
+                resolved_vision_model,
+            ) = (
                 self._resolve_engine_models(task)
             )
             return {
@@ -285,11 +309,13 @@ class CoordinatorModule:
                     "engine": task.coordinator_engine,
                     "model": task.coordinator_model,
                     "fast_model": task.coordinator_fast_model,
+                    "vision_model": task.coordinator_vision_model,
                 },
                 "resolved": {
                     "engine": resolved_engine,
                     "model": resolved_model,
                     "fast_model": resolved_fast_model,
+                    "vision_model": resolved_vision_model,
                 },
             }
 
@@ -412,10 +438,15 @@ class CoordinatorModule:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        self._cancelled_turns.clear()
+        self._running_engines.clear()
 
     async def _run_turn(self, project_id: str, task_id: str, turn_id: str) -> None:
         lock = self._turn_locks.setdefault((project_id, task_id), asyncio.Lock())
         async with lock:
+            if turn_id in self._cancelled_turns:
+                await self._mark_turn_stopped(project_id, task_id, turn_id)
+                return
             with self._project_manager.activate_project_by_id(project_id) as project:
                 turn = CoordinatorTurn.get_by_id(turn_id)
                 task = Task.get_by_id(task_id)
@@ -427,8 +458,12 @@ class CoordinatorModule:
                 assistant.started_at = turn.started_at
                 assistant.save()
                 session = self._prepare_session(task, turn.engine or "", turn.model)
-                _, _, fast_model = self._resolve_engine_models(task)
+                _, _, fast_model, _ = self._resolve_engine_models(task)
                 prompt, artifacts = self._assemble_context(project, task, turn)
+                user_message = Message.get_by_id(turn.user_message_id)
+                images = self._extract_images(
+                    project, task.cwd, user_message.content or ""
+                )
                 assistant.prompt_json = json.dumps(
                     {"prompt": prompt},
                     ensure_ascii=False,
@@ -493,12 +528,24 @@ class CoordinatorModule:
                     prompt,
                     session.session_id,
                     make_live_callback(),
+                    turn_id,
+                    images=images,
                 )
+                if turn_id in self._cancelled_turns:
+                    await self._mark_turn_stopped(
+                        project_id,
+                        task_id,
+                        turn_id,
+                        content=raw,
+                        events=events,
+                    )
+                    return
                 result, repair_events = await self._parse_or_repair(
                     turn.engine or "",
                     fast_model,
                     task.cwd,
                     raw,
+                    turn_id,
                 )
                 events.extend(repair_events)
                 requested = [
@@ -520,13 +567,24 @@ class CoordinatorModule:
                         followup,
                         None,
                         make_live_callback(),
+                        turn_id,
                     )
                     events.extend(more_events)
+                    if turn_id in self._cancelled_turns:
+                        await self._mark_turn_stopped(
+                            project_id,
+                            task_id,
+                            turn_id,
+                            content=raw,
+                            events=events,
+                        )
+                        return
                     result, repair_events = await self._parse_or_repair(
                         turn.engine or "",
                         fast_model,
                         task.cwd,
                         raw,
+                        turn_id,
                     )
                     events.extend(repair_events)
                     result["artifact_requests"] = []
@@ -534,6 +592,15 @@ class CoordinatorModule:
                 if not reply:
                     raise RuntimeError("Coordinator returned an empty reply")
 
+                if turn_id in self._cancelled_turns:
+                    await self._mark_turn_stopped(
+                        project_id,
+                        task_id,
+                        turn_id,
+                        content=reply,
+                        events=events,
+                    )
+                    return
                 with self._project_manager.activate_project_by_id(project_id):
                     turn = CoordinatorTurn.get_by_id(turn_id)
                     assistant = Message.get_by_id(turn.assistant_message_id)
@@ -602,6 +669,9 @@ class CoordinatorModule:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if turn_id in self._cancelled_turns:
+                    await self._mark_turn_stopped(project_id, task_id, turn_id)
+                    return
                 logger.exception("Coordinator turn %s failed", turn_id)
                 with self._project_manager.activate_project_by_id(project_id):
                     turn = CoordinatorTurn.get_by_id(turn_id)
@@ -632,7 +702,7 @@ class CoordinatorModule:
     def _resolve_engine_models(
         self,
         task: Task,
-    ) -> tuple[str, str | None, str | None]:
+    ) -> tuple[str, str | None, str | None, str | None]:
         engine_id = (
             task.coordinator_engine
             or config_store.get_coordinator_default_engine()
@@ -658,7 +728,17 @@ class CoordinatorModule:
             or get_default_fast_model()
             or model
         )
-        return engine_id, model, fast_model
+        get_default_vision_model = getattr(
+            config_store,
+            "get_coordinator_default_vision_model",
+            lambda: "",
+        )
+        vision_model = (
+            task.coordinator_vision_model
+            or get_default_vision_model()
+            or None
+        )
+        return engine_id, model, fast_model, vision_model
 
     def _prepare_session(
         self,
@@ -707,7 +787,14 @@ class CoordinatorModule:
             step["step_key"]
             for step in steps
             if step["status"]
-            in {"running", "reviewing", "awaiting_review", "retrying"}
+            in {
+                "running",
+                "reviewing",
+                "awaiting_review",
+                "retrying",
+                "rework",
+                "rework_waiting",
+            }
         ]
         reviews = [
             {
@@ -755,6 +842,11 @@ class CoordinatorModule:
                 "state_version": task.state_version,
                 "active_workflow_run_id": task.active_workflow_run_id,
             },
+            "coordinator_vision_model": (
+                task.coordinator_vision_model
+                or config_store.get_coordinator_default_vision_model()
+                or None
+            ),
             "workflow": compiled,
             "steps": steps,
             "active_step_keys": active_step_keys,
@@ -771,7 +863,9 @@ class CoordinatorModule:
             "content; review_decision requires review_run_id and decision; rerun "
             "requires a target step. If active_workflow_run_id is null, rerun starts "
             "a new first workflow run from that stage. Request artifacts only by "
-            "artifact_id. Return "
+            "artifact_id. If the user's message references an image and your model "
+            "cannot accept image input, use coordinator_vision_model to analyze the "
+            "image before replying. Return "
             f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
         )
@@ -815,6 +909,8 @@ class CoordinatorModule:
         prompt: str,
         session_id: str | None,
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
+        turn_id: str | None = None,
+        images: list[EngineImage] | None = None,
     ) -> tuple[str, list[dict], str | None]:
         engine = create_engine(engine_id)
         if engine is None:
@@ -823,26 +919,80 @@ class CoordinatorModule:
         events: list[dict] = []
         resolved_session_id = session_id
         error: str | None = None
-        async for event in engine.spawn_coordinator(
-            prompt=prompt,
-            cwd=cwd,
-            model=model,
-            session_id=session_id if engine.supports_resume else None,
-        ):
-            events.append(event.to_dict())
-            if on_event is not None:
-                await on_event(event)
-            if event.type == "text_delta":
-                content.append(str(event.data.get("delta", "")))
-            elif event.type == "session_started":
-                resolved_session_id = str(event.data.get("session_id") or "") or None
-            elif event.type == "usage" and event.data.get("session_id"):
-                resolved_session_id = str(event.data["session_id"])
-            elif event.type == "error" and error is None:
-                error = str(event.data.get("message") or "Coordinator engine failed")
+        try:
+            if turn_id is not None:
+                self._running_engines[turn_id] = engine
+            async for event in engine.spawn_coordinator(
+                prompt=prompt,
+                cwd=cwd,
+                model=model,
+                session_id=session_id if engine.supports_resume else None,
+                images=images,
+            ):
+                events.append(event.to_dict())
+                if on_event is not None:
+                    await on_event(event)
+                if event.type == "text_delta":
+                    content.append(str(event.data.get("delta", "")))
+                elif event.type == "session_started":
+                    resolved_session_id = str(event.data.get("session_id") or "") or None
+                elif event.type == "usage" and event.data.get("session_id"):
+                    resolved_session_id = str(event.data["session_id"])
+                elif event.type == "error" and error is None:
+                    error = str(event.data.get("message") or "Coordinator engine failed")
+        finally:
+            if turn_id is not None:
+                self._running_engines.pop(turn_id, None)
         if error:
             raise RuntimeError(error)
         return "".join(content).strip(), events, resolved_session_id
+
+    @staticmethod
+    def _extract_images(
+        project,
+        cwd: str,
+        content: str,
+    ) -> list[EngineImage]:
+        """Extract image references that live under the project uploads dir.
+
+        Accepts markdown ``![alt](path)`` and bare ``.workstep/uploads/...``
+        references. Paths outside the project uploads directory are ignored.
+        """
+        uploads = (Path(project.workstep_dir) / "uploads").resolve()
+        root = Path(cwd).resolve()
+        candidates = [
+            (alt, target)
+            for alt, target in _IMAGE_MARKDOWN_RE.findall(content)
+        ]
+        candidates.extend(
+            ("", target) for target in _UPLOADS_PATH_RE.findall(content)
+        )
+        images: list[EngineImage] = []
+        seen: set[str] = set()
+        for alt, target in candidates:
+            resolved: Path | None = None
+            for base in (root, root.parent):
+                candidate = Path(target)
+                if not candidate.is_absolute():
+                    candidate = base / candidate
+                try:
+                    candidate = candidate.resolve()
+                except OSError:
+                    continue
+                try:
+                    candidate.relative_to(uploads)
+                except ValueError:
+                    continue
+                if candidate.is_file():
+                    resolved = candidate
+                    break
+            if resolved is None:
+                continue
+            if str(resolved) in seen or not resolved.is_file():
+                continue
+            seen.add(str(resolved))
+            images.append(EngineImage(path=str(resolved), description=alt))
+        return images
 
     def _parse_result(self, raw: str) -> dict:
         candidates = [raw]
@@ -872,6 +1022,7 @@ class CoordinatorModule:
         model: str | None,
         cwd: str,
         raw: str,
+        turn_id: str | None = None,
     ) -> tuple[dict, list[dict]]:
         try:
             return self._parse_result(raw), []
@@ -887,6 +1038,7 @@ class CoordinatorModule:
                 cwd,
                 repair_prompt,
                 None,
+                turn_id=turn_id,
             )
             return self._parse_result(repaired), events
 
@@ -1066,7 +1218,14 @@ class CoordinatorModule:
                 (TaskStep.task == task)
                 & (
                     TaskStep.status.in_(
-                        ["running", "reviewing", "awaiting_review", "retrying"]
+                        [
+                            "running",
+                            "reviewing",
+                            "awaiting_review",
+                            "retrying",
+                            "rework",
+                            "rework_waiting",
+                        ]
                     )
                 )
             )
@@ -1120,6 +1279,70 @@ class CoordinatorModule:
                 "data": data,
                 "created_at": utc_now().isoformat(),
             }
+        )
+
+    async def stop_current(self, project_id: str, task_id: str) -> bool:
+        """Stop the newest queued/running coordinator turn for a task."""
+        with self._project_manager.activate_project_by_id(project_id):
+            turn = (
+                CoordinatorTurn.select()
+                .where(
+                    (CoordinatorTurn.task == task_id)
+                    & (CoordinatorTurn.status.in_(["queued", "running"]))
+                )
+                .order_by(CoordinatorTurn.created_at.desc())
+                .first()
+            )
+            if turn is None:
+                return False
+            self._cancelled_turns.add(turn.id)
+            engine = self._running_engines.get(turn.id)
+            if engine is not None:
+                await engine.stop()
+            return True
+
+    async def _mark_turn_stopped(
+        self,
+        project_id: str,
+        task_id: str,
+        turn_id: str,
+        content: str = "",
+        events: list[dict] | None = None,
+    ) -> None:
+        """Persist a stopped turn and notify listeners."""
+        with self._project_manager.activate_project_by_id(project_id):
+            turn = CoordinatorTurn.get_by_id(turn_id)
+            assistant = Message.get_by_id(turn.assistant_message_id)
+            now = utc_now()
+            turn.status = "stopped"
+            turn.ended_at = now
+            turn.save()
+            assistant.run_status = "stopped"
+            if content:
+                assistant.content = content
+            if events is not None:
+                assistant.events_json = json.dumps(events, ensure_ascii=False)
+            assistant.ended_at = now
+            assistant.save()
+            session = CoordinatorSession.get_or_none(CoordinatorSession.task == task_id)
+            if session is not None:
+                session.last_error = None
+                session.updated_at = now
+                session.save()
+        self._cancelled_turns.discard(turn_id)
+        await self._publish_message_event(
+            task_id,
+            assistant,
+            "message_snapshot",
+            {"content": assistant.content or ""},
+            1,
+        )
+        await self._publish_message_event(
+            task_id,
+            assistant,
+            "message_completed",
+            {"status": "stopped"},
+            2,
         )
 
     def _consume_background(self, task: asyncio.Task) -> None:

@@ -12,6 +12,7 @@ from schemas.task import (
     CoordinatorConfigRequest,
     ReviewDecisionRequest,
     RunTaskRequest,
+    StageMessageRequest,
     UpdateTaskRequest,
 )
 from services.config import config_store
@@ -93,13 +94,17 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
 
 
 @router.get("/list")
-async def list_tasks(pid: str = Query(..., alias="project_id"), wf: str | None = Query(None, alias="workflow_id")):
-    """List tasks for a project, optionally filtered by workflow."""
+async def list_tasks(
+    pid: str = Query(..., alias="project_id"),
+    wf: str | None = Query(None, alias="workflow_id"),
+    archived: bool = Query(False, description="True lists only archived tasks; default hides them"),
+):
+    """List tasks for a project, optionally filtered by workflow/archive state."""
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
     _bind(pid)
-    return {"tasks": task_service.list_tasks(workflow_id=wf)}
+    return {"tasks": task_service.list_tasks(workflow_id=wf, archived=archived)}
 
 
 @router.get("/{task_id}")
@@ -171,6 +176,22 @@ async def chat_with_coordinator(
     return accepted.to_dict()
 
 
+@router.post("/{task_id}/coordinator/stop")
+async def stop_coordinator(
+    task_id: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Stop the currently running coordinator turn for a task."""
+    from main import coordinator_module
+    if not coordinator_module:
+        raise HTTPException(status_code=503, detail="Coordinator is not initialized")
+    try:
+        stopped = await coordinator_module.stop_current(pid, task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"stopped": stopped}
+
+
 @router.get("/{task_id}/coordinator-config")
 async def get_coordinator_config(
     task_id: str,
@@ -183,6 +204,49 @@ async def get_coordinator_config(
         return await coordinator_module.get_config(pid, task_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/step/{step_key}/message")
+async def send_stage_message(
+    task_id: str,
+    step_key: str,
+    req: StageMessageRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Inject an ordinary user message into a running stage execution."""
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    _bind(pid)
+    try:
+        accepted = await workflow_runtime.send_stage_message(
+            pid,
+            task_id,
+            step_key,
+            req.content,
+            as_guidance=req.as_guidance,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return accepted
+
+
+@router.post("/{task_id}/step/{step_key}/cancel")
+async def cancel_stage(
+    task_id: str,
+    step_key: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Stop a running stage engine."""
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    _bind(pid)
+    try:
+        cancelled = await workflow_runtime.cancel_step(pid, task_id, step_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"cancelled": cancelled}
 
 
 @router.patch("/{task_id}/coordinator-config")
@@ -201,6 +265,7 @@ async def update_coordinator_config(
             req.engine,
             req.model,
             req.fast_model,
+            req.vision_model,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -474,6 +539,42 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"deleted": deleted}
+
+
+class ArchiveTaskRequest(BaseSchema):
+    task_id: str
+
+
+@router.post("/archive")
+async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="project_id")):
+    """Archive a task so it disappears from the active board."""
+    from main import task_service
+    if not task_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind(pid)
+    try:
+        archived = task_service.archive_task(req.task_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not archived:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"archived": archived}
+
+
+@router.post("/unarchive")
+async def unarchive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="project_id")):
+    """Restore an archived task back to the active board."""
+    from main import task_service
+    if not task_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind(pid)
+    try:
+        unarchived = task_service.unarchive_task(req.task_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not unarchived:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"unarchived": unarchived}
 
 
 class CopyTaskRequest(BaseSchema):

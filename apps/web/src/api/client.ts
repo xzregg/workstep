@@ -24,6 +24,7 @@ export interface WorkflowSummary {
   name: string
   is_default: boolean
   deleted?: boolean
+  running?: boolean
   nodeCount: number
 }
 
@@ -92,6 +93,40 @@ export const workflowApi = {
     request<{ deleted: boolean; soft?: boolean }>(`/workflow/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
     }),
+  restore: (id: string, projectId: string) =>
+    request<WorkflowDetail>(`/workflow/${encodeURIComponent(id)}/restore?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+    }),
+}
+
+// --- Workflow generation chat API (AI-assisted flow design) ---
+
+export interface WorkflowGenAccepted {
+  session_id: string
+  turn_id: string
+  status: string
+}
+
+export const workflowGenApi = {
+  chat: (
+    projectId: string,
+    content: string,
+    sessionId: string | null,
+    idempotencyKey: string,
+    options: { engine?: string; model?: string; fastModel?: string } = {},
+  ) =>
+    request<WorkflowGenAccepted>(`/workflow/generate/chat`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({
+        project_id: projectId,
+        content,
+        session_id: sessionId,
+        engine: options.engine || undefined,
+        model: options.model || undefined,
+        fast_model: options.fastModel || undefined,
+      }),
+    }),
 }
 
 // --- Template API ---
@@ -102,12 +137,62 @@ export interface TemplateInfo {
   description: string
   nodeCount: number
   custom?: boolean
+  /** Shipped default template seeded to ~/.workstep/data/templates/ (editable in place). */
+  default?: boolean
   steps?: any
+}
+
+// --- Template list cache ---
+// Template consumers (settings, workflow dialog, canvas) share one cached
+// list; only mutations invalidate it and a forced fetch hits the API again.
+
+let templatesCache: { templates: TemplateInfo[] } | null = null
+let templatesInflight: Promise<{ templates: TemplateInfo[] }> | null = null
+
+export function getCachedTemplates(): { templates: TemplateInfo[] } | null {
+  return templatesCache
+}
+
+export async function fetchTemplates(
+  force = false,
+): Promise<{ templates: TemplateInfo[] }> {
+  if (!force) {
+    if (templatesCache) return templatesCache
+    if (templatesInflight) return templatesInflight
+  }
+  const promise = templateApi.list().then((result) => {
+    templatesCache = result
+    return result
+  })
+  templatesInflight = promise
+  try {
+    return await promise
+  } finally {
+    if (templatesInflight === promise) templatesInflight = null
+  }
+}
+
+export function invalidateTemplates(): void {
+  templatesCache = null
+  templatesInflight = null
 }
 
 export const templateApi = {
   list: () => request<{ templates: TemplateInfo[] }>('/templates/list'),
   get: (id: string) => request<TemplateInfo>(`/templates/${encodeURIComponent(id)}`),
+  save: (template: {
+    id: string
+    name: string
+    description: string
+    steps: any
+  }) => request<{ saved: boolean; id: string }>('/templates/save', {
+    method: 'POST',
+    body: JSON.stringify(template),
+  }),
+  del: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/templates/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 }
 
 // --- Task API ---
@@ -118,11 +203,17 @@ export interface Task {
   description: string | null
   cwd: string
   status: string
+  archived?: boolean
   engine: string
+  model?: string | null
   coordinator_engine?: string | null
   coordinator_model?: string | null
   coordinator_fast_model?: string | null
   active_workflow_run_id?: string | null
+  run_round?: number
+  restart_from_step_key?: string | null
+  recovered_at?: string | null
+  recovered_count?: number
   state_version?: number
   review_overrides?: Record<string, any> | null
   created_at: string
@@ -132,8 +223,9 @@ export interface Task {
 
 export interface TaskStepState {
   step_key: string
-  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'passed' | 'rejected' | 'failed' | 'skipped'
+  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'skipped'
   engine: string | null
+  session_id?: string | null
   started_at: string | null
   ended_at: string | null
   error: string | null
@@ -188,7 +280,7 @@ export interface ActionProposal {
 
 export interface CoordinatorEngineSummary {
   id: string
-  mode: 'cli' | 'acp' | 'api' | 'agent' | null
+  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
   installed: boolean
   configured: boolean
   verified: boolean
@@ -201,11 +293,13 @@ export interface CoordinatorSelection {
     engine: string | null
     model: string | null
     fast_model: string | null
+    vision_model: string | null
   }
   resolved: {
     engine: string
     model: string | null
     fast_model: string | null
+    vision_model: string | null
   }
 }
 
@@ -214,8 +308,10 @@ export interface CoordinatorConfig extends CoordinatorSelection {
 }
 
 export const taskApi = {
-  list: (projectId: string, workflowId?: string | null) =>
-    request<{ tasks: Task[] }>(`/task/list?project_id=${encodeURIComponent(projectId)}${workflowId ? '&workflow_id=' + encodeURIComponent(workflowId) : ''}`),
+  list: (projectId: string, workflowId?: string | null, archived?: boolean) =>
+    request<{ tasks: Task[] }>(
+      `/task/list?project_id=${encodeURIComponent(projectId)}${workflowId ? '&workflow_id=' + encodeURIComponent(workflowId) : ''}${archived ? '&archived=true' : ''}`
+    ),
   create: (
     title: string,
     cwd: string,
@@ -262,6 +358,24 @@ export const taskApi = {
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ content }),
     }),
+  stopCoordinator: (taskId: string, projectId: string) =>
+    request<{ stopped: boolean }>(
+      `/task/${taskId}/coordinator/stop?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
+  sendStageMessage: (taskId: string, stepKey: string, content: string, projectId: string, asGuidance = false) =>
+    request<{ message_id: string; step_key: string; status: 'queued' }>(
+      `/task/${taskId}/step/${encodeURIComponent(stepKey)}/message?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content, as_guidance: asGuidance }),
+      },
+    ),
+  cancelStep: (taskId: string, stepKey: string, projectId: string) =>
+    request<{ cancelled: boolean }>(
+      `/task/${taskId}/step/${encodeURIComponent(stepKey)}/cancel?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
   coordinatorConfig: (taskId: string, projectId: string) =>
     request<CoordinatorConfig>(
       `/task/${taskId}/coordinator-config?project_id=${encodeURIComponent(projectId)}`,
@@ -272,11 +386,12 @@ export const taskApi = {
     engine: string | null,
     model: string | null,
     fastModel: string | null,
+    visionModel: string | null,
   ) => request<CoordinatorSelection>(
     `/task/${taskId}/coordinator-config?project_id=${encodeURIComponent(projectId)}`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ engine, model, fast_model: fastModel }),
+      body: JSON.stringify({ engine, model, fast_model: fastModel, vision_model: visionModel }),
     },
   ),
   confirmAction: (
@@ -336,6 +451,16 @@ export const taskApi = {
       method: 'DELETE',
       body: JSON.stringify({ task_id: taskId }),
     }),
+  archive: (taskId: string, projectId: string) =>
+    request<{ archived: boolean }>(`/task/archive?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    }),
+  unarchive: (taskId: string, projectId: string) =>
+    request<{ unarchived: boolean }>(`/task/unarchive?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    }),
   copy: (taskId: string, projectId: string, newTitle: string) =>
     request<Task>(`/task/copy?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
@@ -352,7 +477,8 @@ export interface EngineInfo {
   verified: boolean
   built_in: boolean
   version: string | null
-  mode: 'cli' | 'acp' | 'api' | 'agent' | null
+  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
+  config: EngineConfigPayload | null
   supports_resume: boolean
   supports_coordinator: boolean
   supports_tool_disable: boolean
@@ -379,6 +505,7 @@ export interface CoordinatorDefaultConfig {
   engine: string
   model: string
   fast_model: string
+  vision_model: string
   available_engines: CoordinatorEngineSummary[]
 }
 
@@ -395,30 +522,73 @@ export interface EngineModelsResult {
   error: string | null
 }
 
-export type ClaudePermissionMode =
-  | 'acceptEdits'
-  | 'auto'
-  | 'bypassPermissions'
-  | 'manual'
-  | 'dontAsk'
-  | 'plan'
-
-export interface ClaudePermissionModeResult {
-  mode: ClaudePermissionMode | ''
-  confirmed: boolean
-  options?: ClaudePermissionMode[]
-  saved?: boolean
-  message?: string
+export interface EngineConfigOption {
+  value: string
+  label: string
 }
 
-export type ApiEngineProvider = 'openai' | 'anthropic'
+export interface EngineConfigField {
+  key: string
+  label: string
+  type: 'text' | 'password' | 'select' | 'textarea' | 'number' | 'checkbox'
+  placeholder: string
+  options: EngineConfigOption[] | null
+  required: boolean
+  help: string
+  default: string | number | boolean
+  sensitive: boolean
+  confirm_values: string[]
+}
 
-export interface ApiEngineConfig {
-  provider: ApiEngineProvider
-  base_url: string
-  model: string
-  has_api_key: boolean
+export interface EngineConfigSchema {
+  engine_id: string
+  fields: EngineConfigField[]
+  values: Record<string, string>
+  secrets: Record<string, boolean>
   configured: boolean
+  installed: boolean
+  saved?: boolean
+  message?: string
+  engine?: EngineInfo
+}
+
+export interface EngineConfigPayload {
+  fields: EngineConfigField[]
+  values: Record<string, string>
+  secrets: Record<string, boolean>
+}
+
+export interface EngineConfigSaveInput {
+  values: Record<string, string>
+  clear?: Record<string, boolean>
+  confirmed?: Record<string, boolean>
+}
+
+// --- Engine model list cache ---
+// Model dropdowns fetch each engine's model list once and reuse the result
+// across pages. Only a manual refresh (force = true) hits the remote API
+// again; invalidateEngineModels() clears the cache when the engine's config
+// or binary path changes.
+
+const engineModelsCache = new Map<string, EngineModelsResult>()
+
+export function getCachedEngineModels(engineId: string): EngineModelsResult | null {
+  return engineModelsCache.get(engineId) ?? null
+}
+
+export async function fetchEngineModels(
+  engineId: string,
+  force = false,
+): Promise<EngineModelsResult> {
+  const cached = engineModelsCache.get(engineId)
+  if (cached && !force) return cached
+  const result = await engineApi.models(engineId)
+  engineModelsCache.set(engineId, result)
+  return result
+}
+
+export function invalidateEngineModels(engineId: string): void {
+  engineModelsCache.delete(engineId)
 }
 
 export const engineApi = {
@@ -434,12 +604,12 @@ export const engineApi = {
     }),
   coordinatorDefaults: () =>
     request<CoordinatorDefaultConfig>('/engine/coordinator/config'),
-  setCoordinatorDefaults: (engine: string, model: string, fastModel: string) =>
-    request<{ saved: boolean; engine: string; model: string; fast_model: string }>(
+  setCoordinatorDefaults: (engine: string, model: string, fastModel: string, visionModel: string) =>
+    request<{ saved: boolean; engine: string; model: string; fast_model: string; vision_model: string }>(
       '/engine/coordinator/config',
       {
         method: 'PUT',
-        body: JSON.stringify({ engine, model, fast_model: fastModel }),
+        body: JSON.stringify({ engine, model, fast_model: fastModel, vision_model: visionModel }),
       },
     ),
   test: (engineId: string) =>
@@ -467,73 +637,21 @@ export const engineApi = {
       method: 'PUT',
       body: JSON.stringify({ path }),
     }),
-  claudePermissionMode: () =>
-    request<ClaudePermissionModeResult>('/engine/claude/permission-mode'),
-  setClaudePermissionMode: (
-    mode: ClaudePermissionMode,
-    confirmedDangerous = false,
-  ) => request<ClaudePermissionModeResult>('/engine/claude/permission-mode', {
-    method: 'PUT',
-    body: JSON.stringify({
-      mode,
-      confirmed_dangerous: confirmedDangerous,
+  config: (engineId: string) =>
+    request<EngineConfigSchema>(`/engine/${encodeURIComponent(engineId)}/config`),
+  saveConfig: (engineId: string, input: EngineConfigSaveInput) =>
+    request<EngineConfigSchema>(`/engine/${encodeURIComponent(engineId)}/config`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
     }),
-  }),
-  apiConfig: () => request<ApiEngineConfig>('/engine/api/config'),
-  apiKey: () => request<{ api_key: string }>('/engine/api/key', { method: 'POST' }),
-  apiModels: (config: {
-    provider: ApiEngineProvider
-    base_url: string
-    api_key?: string
-  }) => request<{ models: EngineModel[]; error: string | null }>('/engine/api/models', {
-    method: 'POST',
-    body: JSON.stringify(config),
-  }),
-  setApiConfig: (config: {
-    provider: ApiEngineProvider
-    base_url: string
-    model: string
-    api_key?: string
-    clear_api_key?: boolean
-  }) => request<{
-    saved: boolean
-    message?: string
-    config?: ApiEngineConfig
-    engine?: EngineInfo
-  }>('/engine/api/config', {
-    method: 'PUT',
-    body: JSON.stringify(config),
-  }),
-  pydanticAIConfig: () =>
-    request<ApiEngineConfig>('/engine/pydantic-ai/config'),
-  pydanticAIKey: () =>
-    request<{ api_key: string }>('/engine/pydantic-ai/key', { method: 'POST' }),
-  pydanticAIModels: (config: {
-    provider: ApiEngineProvider
-    base_url: string
-    api_key?: string
-  }) => request<{ models: EngineModel[]; error: string | null }>(
-    '/engine/pydantic-ai/models',
-    {
-      method: 'POST',
-      body: JSON.stringify(config),
-    },
-  ),
-  setPydanticAIConfig: (config: {
-    provider: ApiEngineProvider
-    base_url: string
-    model: string
-    api_key?: string
-    clear_api_key?: boolean
-  }) => request<{
-    saved: boolean
-    message?: string
-    config?: ApiEngineConfig
-    engine?: EngineInfo
-  }>('/engine/pydantic-ai/config', {
-    method: 'PUT',
-    body: JSON.stringify(config),
-  }),
+  revealConfig: (engineId: string, key: string) =>
+    request<{ key: string; value: string | null }>(
+      `/engine/${encodeURIComponent(engineId)}/config/reveal`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ key }),
+      },
+    ),
 }
 
 // --- File System API ---
@@ -553,7 +671,19 @@ export interface DirectoryOpener {
 }
 
 export const fsApi = {
-  uploadImage: async (file: File, projectId: string) => {
+  readMemory: (projectId: string) =>
+    request<{ path: string; content: string }>(
+      `/fs/memory?project_id=${encodeURIComponent(projectId)}`
+    ),
+  saveMemory: (projectId: string, content: string) =>
+    request<{ path: string; saved: boolean }>(
+      `/fs/memory?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      }
+    ),
+  uploadImage: async (file: File, projectId: string, prefix?: string) => {
     // Convert file to base64 data URL, then upload as JSON
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
@@ -566,7 +696,7 @@ export const fsApi = {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, data_url: dataUrl }),
+        body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
       }
     )
     if (!res.ok) throw new Error('Upload failed')

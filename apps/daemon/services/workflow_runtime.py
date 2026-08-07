@@ -3,11 +3,12 @@
 import asyncio
 import functools
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from models.base import db_proxy
 from services.task_runner import TaskRunner
@@ -15,6 +16,8 @@ from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message
 from services.pipeline import DAGScheduler, Step
 from streaming.bus import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_message_step_key(
@@ -27,7 +30,7 @@ def resolve_message_step_key(
         if step.get("key")
     ]
     for statuses in (
-        {"running", "reviewing", "awaiting_review", "retrying"},
+        {"running", "reviewing", "awaiting_review", "retrying", "rework", "rework_waiting"},
         {"failed", "rejected"},
         {"pending"},
     ):
@@ -61,6 +64,7 @@ class WorkflowRuntime:
         self._runners: dict[str, TaskRunner] = {}
         self._active_tasks: set[asyncio.Task[str]] = set()
         self._operation_locks: dict[str, asyncio.Lock] = {}
+        self._graceful_shutdown = False
 
     async def run(
         self,
@@ -184,6 +188,39 @@ class WorkflowRuntime:
         """Wait for a handle returned by start and return its run id."""
         return await handle._completion
 
+    async def send_stage_message(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        content: str,
+        as_guidance: bool = False,
+    ) -> dict:
+        """Inject an ordinary user message into a running stage."""
+        with self._project_manager.activate_project_by_id(project_id):
+            runner = self._runners.get(task_id)
+            if runner is None:
+                raise ValueError("任务没有正在执行的阶段")
+            return await runner.send_live_message(
+                task_id,
+                step_key,
+                content,
+                as_guidance=as_guidance,
+            )
+
+    async def cancel_step(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+    ) -> bool:
+        """Stop a running stage engine."""
+        with self._project_manager.activate_project_by_id(project_id):
+            runner = self._runners.get(task_id)
+            if runner is None:
+                raise ValueError("任务没有正在执行的阶段")
+            return await runner.cancel_step(task_id, step_key)
+
     async def decide_review(
         self,
         project_id: str,
@@ -291,6 +328,97 @@ class WorkflowRuntime:
         )
         return WorkflowRunHandle(workflow_run.id, completion)
 
+    async def recover_running_workflows(self) -> int:
+        """Re-launch workflows interrupted by a daemon restart.
+
+        Runs whose ``WorkflowRun`` is still marked ``running`` are treated as
+        interrupted: stale in-flight steps are failed and re-scheduled, and the
+        DAG continues from the last completed node using the persisted
+        workflow snapshot. Returns the number of recovered runs.
+        """
+        recovered = 0
+        for project in self._project_manager.iter_projects():
+            with self._project_manager.activate_project_by_id(project.id):
+                try:
+                    recovered += await self._recover_project_runs(project)
+                except Exception:
+                    logger.exception(
+                        "Failed to recover interrupted workflows for project %s",
+                        project.id,
+                    )
+        return recovered
+
+    async def _recover_project_runs(self, project) -> int:
+        recovered = 0
+        interrupted = list(
+            WorkflowRun.select().where(WorkflowRun.status == "running")
+        )
+        for workflow_run in interrupted:
+            task = Task.get_by_id(workflow_run.task_id)
+            if task.id in self._runners:
+                continue
+            now = utc_now()
+            stale_keys = set()
+            for step_run in StepRun.select().where(
+                (StepRun.run == workflow_run)
+                & (StepRun.status == "running")
+            ):
+                step_run.status = "failed"
+                step_run.error = "进程重启中断，等待自动恢复"
+                step_run.ended_at = now
+                step_run.save()
+                stale_keys.add(step_run.step_key)
+            for ts in TaskStep.select().where(
+                (TaskStep.task == task) & (TaskStep.status == "running")
+            ):
+                ts.status = "pending"
+                ts.ended_at = None
+                ts.error = None
+                ts.save()
+                stale_keys.add(ts.step_key)
+            if stale_keys:
+                # Close in-flight execution messages so the UI does not keep
+                # an eternally-running spinner for the interrupted attempt.
+                Message.update(
+                    run_status="failed",
+                    ended_at=now,
+                ).where(
+                    (Message.task == task)
+                    & (Message.channel == "execution")
+                    & (Message.run_status == "running")
+                    & (Message.step_key.in_(stale_keys))
+                ).execute()
+            task.status = "running"
+            task.updated_at = now
+            task.save()
+            workflow_run.recovered_at = now
+            workflow_run.recovered_count = (
+                workflow_run.recovered_count or 0
+            ) + 1
+            workflow_run.save()
+            try:
+                self._resume_in_project(project, task, workflow_run)
+            except RuntimeError:
+                logger.warning(
+                    "Skipping recovery of run %s (task %s already active)",
+                    workflow_run.id,
+                    task.id,
+                )
+                continue
+            await self._event_bus.publish({
+                "task_id": task.id,
+                "step_key": next(iter(stale_keys), None),
+                "type": "run_recovered",
+                "data": {
+                    "task_id": task.id,
+                    "workflow_run_id": workflow_run.id,
+                    "recovered_at": now,
+                    "recovered_count": workflow_run.recovered_count,
+                },
+            })
+            recovered += 1
+        return recovered
+
     async def restart_from_stage(
         self,
         project_id: str,
@@ -335,7 +463,7 @@ class WorkflowRuntime:
                         (TaskStep.task == task)
                         & (
                             TaskStep.status.in_(
-                                ["running", "reviewing", "retrying"]
+                                ["running", "reviewing", "retrying", "rework"]
                             )
                         )
                     )
@@ -588,12 +716,18 @@ class WorkflowRuntime:
                 destination.rename(source)
 
     async def shutdown(self) -> None:
-        """Cancel and await every workflow owned by this runtime."""
+        """Stop every workflow owned by this runtime.
+
+        A graceful shutdown stops engine subprocesses but leaves ``running``
+        runs marked ``running`` so the next daemon start resumes them from the
+        last completed node (see :meth:`recover_running_workflows`).
+        """
+        self._graceful_shutdown = True
         runners = tuple(self._runners.items())
         if runners:
             await asyncio.gather(
                 *(
-                    runner.cancel_task(task_id)
+                    runner.stop_for_shutdown()
                     for task_id, runner in runners
                 ),
                 return_exceptions=True,
@@ -615,7 +749,10 @@ class WorkflowRuntime:
         """Retire a task and retrieve its outcome for fire-and-forget callers."""
         self._active_tasks.discard(completion)
         if completion.cancelled():
-            if workflow_run.status == "running":
+            if (
+                workflow_run.status == "running"
+                and not self._graceful_shutdown
+            ):
                 workflow_run.status = "failed"
                 workflow_run.ended_at = utc_now()
                 workflow_run.save()
@@ -634,6 +771,7 @@ class WorkflowRuntime:
         artifacts_dir: Path,
         user_input: str,
     ) -> str:
+        interrupted = False
         try:
             await runner.run_pipeline(
                 task=task,
@@ -643,7 +781,9 @@ class WorkflowRuntime:
                 workflow_run=workflow_run,
             )
         except asyncio.CancelledError:
-            workflow_run.status = "failed"
+            interrupted = True
+            if not self._graceful_shutdown:
+                workflow_run.status = "failed"
             raise
         except Exception:
             workflow_run.status = "failed"
@@ -660,7 +800,8 @@ class WorkflowRuntime:
             else:
                 workflow_run.status = "failed"
         finally:
-            workflow_run.ended_at = utc_now()
+            if not (interrupted and self._graceful_shutdown):
+                workflow_run.ended_at = utc_now()
             workflow_run.save()
             if self._runners.get(task.id) is runner:
                 self._runners.pop(task.id, None)

@@ -1,32 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   engineApi,
-  type ApiEngineConfig,
-  type ApiEngineProvider,
-  type ClaudePermissionMode,
+  fetchEngineModels,
+  getCachedEngineModels,
+  invalidateEngineModels,
   type EngineInfo,
   type EngineModel,
   type EngineTestResult,
 } from '../api/client'
-import ConfirmDialog from '../components/ConfirmDialog'
+import EngineConfigForm from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
+import TemplateSettings from './TemplateSettings'
 import {
   ENGINE_COLORS,
   ENGINE_DESCRIPTIONS,
   engineLabel,
 } from '../engineMeta'
 
-const CLAUDE_PERMISSION_OPTIONS: Array<{
-  value: ClaudePermissionMode
-  label: string
-}> = [
-  { value: 'dontAsk', label: '不询问（需要确认时拒绝）' },
-  { value: 'acceptEdits', label: '自动接受文件编辑' },
-  { value: 'auto', label: '自动判断' },
-  { value: 'manual', label: '手动确认' },
-  { value: 'plan', label: '计划模式（只读）' },
-  { value: 'bypassPermissions', label: '绕过全部权限检查（危险）' },
-]
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
   const color = ENGINE_COLORS[engine.id] || 'var(--muted)'
@@ -37,11 +27,11 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
       : engine.id.slice(0, 2).toUpperCase()
   return (
     <span style={{
-      width: 42, height: 42, borderRadius: 11, flexShrink: 0,
+      width: 34, height: 34, borderRadius: 9, flexShrink: 0,
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       background: `color-mix(in oklab, ${color}, transparent 86%)`,
       border: `1px solid color-mix(in oklab, ${color}, transparent 72%)`,
-      color, fontSize: 15, fontWeight: 700,
+      color, fontSize: 13, fontWeight: 700,
     }}>
       {initials}
     </span>
@@ -59,14 +49,22 @@ function ExecutionDefaultSettings({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [loadingConfig, setLoadingConfig] = useState(false)
 
-  useEffect(() => {
-    engineApi.executionConfig()
-      .then((config) => setEngine(config.engine))
-      .catch((reason) => setError(
-        reason instanceof Error ? reason.message : '读取默认执行引擎失败'
-      ))
-  }, [])
+  const loadExecutionConfig = async () => {
+    setLoadingConfig(true)
+    setError('')
+    setNotice('')
+    try {
+      const config = await engineApi.executionConfig()
+      setEngine(config.engine)
+      setNotice('已读取当前默认执行引擎')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '读取默认执行引擎失败')
+    } finally {
+      setLoadingConfig(false)
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -84,12 +82,12 @@ function ExecutionDefaultSettings({
   }
 
   return (
-    <div style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 24 }}>
-      <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>默认执行引擎</div>
-      <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 14 }}>
+    <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>默认执行引擎</div>
+      <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
         用于新建任务和新建阶段；已有任务与阶段配置不会被修改。
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <EngineSelect
           engines={engines}
           value={engine}
@@ -97,14 +95,22 @@ function ExecutionDefaultSettings({
           disabled={loading || saving}
           defaultOption={{ value: '', label: '系统默认（Claude Code）' }}
           ariaLabel="默认执行引擎"
-          style={{ width: 300, height: 34 }}
+          style={{ width: 300, height: 30 }}
         />
-        <button className="btn-primary" disabled={saving || loading} onClick={() => void save()}>
+        <button
+          className="btn-ghost"
+          style={{ height: 30 }}
+          disabled={loadingConfig || saving}
+          onClick={() => void loadExecutionConfig()}
+        >
+          {loadingConfig ? '读取中…' : '读取默认'}
+        </button>
+        <button className="btn-primary" style={{ height: 30 }} disabled={saving || loading} onClick={() => void save()}>
           {saving ? '保存中…' : '保存默认值'}
         </button>
       </div>
       {(error || notice) && (
-        <div style={{ marginTop: 9, fontSize: 11, color: error ? 'var(--danger)' : 'var(--success)' }}>
+        <div style={{ marginTop: 6, fontSize: 11, color: error ? 'var(--danger)' : 'var(--success)' }}>
           {error || notice}
         </div>
       )}
@@ -117,21 +123,27 @@ function CoordinatorAgentSettings() {
   const [engine, setEngine] = useState('')
   const [model, setModel] = useState('')
   const [fastModel, setFastModel] = useState('')
+  const [visionModel, setVisionModel] = useState('')
   const [models, setModels] = useState<EngineModel[]>([])
   const [loading, setLoading] = useState(true)
   const [modelsLoading, setModelsLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const initialized = useRef(false)
+  const engineRef = useRef('')
   const [error, setError] = useState('')
   const [modelError, setModelError] = useState('')
   const [notice, setNotice] = useState('')
 
   useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     engineApi.coordinatorDefaults()
       .then((config) => {
         setEngines(config.available_engines as EngineInfo[])
         setEngine(config.engine)
         setModel(config.model)
         setFastModel(config.fast_model)
+        setVisionModel(config.vision_model)
         setError('')
       })
       .catch((reason) => setError(
@@ -140,36 +152,50 @@ function CoordinatorAgentSettings() {
       .finally(() => setLoading(false))
   }, [])
 
+  engineRef.current = engine
+
+  const loadCoordinatorModels = async (engineId: string, force: boolean) => {
+    if (!force) {
+      const cached = getCachedEngineModels(engineId)
+      if (cached) {
+        if (engineRef.current !== engineId) return
+        setModels(cached.models || [])
+        setModelError(cached.error || '')
+        setModelsLoading(false)
+        return
+      }
+    }
+    setModelsLoading(true)
+    setModelError('')
+    try {
+      const result = await fetchEngineModels(engineId, force)
+      if (engineRef.current !== engineId) return
+      setModels(result.models || [])
+      setModelError(result.error || '')
+    } catch (reason) {
+      if (engineRef.current !== engineId) return
+      setModels([])
+      setModelError(reason instanceof Error ? reason.message : '读取模型失败')
+    } finally {
+      if (engineRef.current === engineId) setModelsLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!engine) {
       setModels([])
       setModelError('')
       return
     }
-    let active = true
-    setModelsLoading(true)
-    setModelError('')
-    engineApi.models(engine)
-      .then((result) => {
-        if (!active) return
-        setModels(result.models || [])
-        setModelError(result.error || '')
-      })
-      .catch((reason) => {
-        if (!active) return
-        setModels([])
-        setModelError(reason instanceof Error ? reason.message : '读取模型失败')
-      })
-      .finally(() => {
-        if (active) setModelsLoading(false)
-      })
-    return () => { active = false }
+    void loadCoordinatorModels(engine, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine])
 
   const changeEngine = (engineId: string) => {
     setEngine(engineId)
     setModel('')
     setFastModel('')
+    setVisionModel('')
     setNotice('')
   }
 
@@ -178,10 +204,11 @@ function CoordinatorAgentSettings() {
     setError('')
     setNotice('')
     try {
-      const result = await engineApi.setCoordinatorDefaults(engine, model, fastModel)
+      const result = await engineApi.setCoordinatorDefaults(engine, model, fastModel, visionModel)
       setEngine(result.engine)
       setModel(result.model)
       setFastModel(result.fast_model)
+      setVisionModel(result.vision_model)
       setNotice('已保存；未单独配置的任务将从下一条协调消息开始使用')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '保存失败')
@@ -195,72 +222,122 @@ function CoordinatorAgentSettings() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>协调 Agent</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-          配置任务协调对话的全局默认引擎、推理模型和快速模型。任务详情中的单独配置优先级更高。
+          配置任务协调对话的全局默认引擎、推理模型、快速模型和图片理解模型。任务详情中的单独配置优先级更高。
         </p>
       </div>
       <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)' }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-          默认协调引擎
-        </label>
-        <EngineSelect
-          engines={engines}
-          value={engine}
-          onChange={changeEngine}
-          disabled={loading || saving}
-          requireCoordinator
-          defaultOption={{ value: '', label: '跟随任务执行引擎' }}
-          ariaLabel="默认协调引擎"
-          style={{ width: '100%', height: 36, marginBottom: 16 }}
-        />
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-          默认推理模型
-        </label>
-        <select
-          value={model}
-          disabled={!engine || modelsLoading || saving}
-          onChange={(event) => setModel(event.target.value)}
-          aria-label="默认推理模型"
-          style={{ width: '100%', height: 36, marginBottom: 16 }}
-        >
-          <option value="">
-            {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '使用引擎默认模型'}
-          </option>
-          {model && !models.some((item) => item.id === model) && (
-            <option value={model}>{model}（当前配置）</option>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+            协调引擎
+          </label>
+          <EngineSelect
+            engines={engines}
+            value={engine}
+            onChange={changeEngine}
+            disabled={loading || saving}
+            requireCoordinator
+            defaultOption={{ value: '', label: '跟随任务执行引擎' }}
+            ariaLabel="默认协调引擎"
+            style={{ flex: 1, minWidth: 0, height: 30 }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+            推理模型
+          </label>
+          <select
+            value={model}
+            disabled={!engine || modelsLoading || saving}
+            onChange={(event) => setModel(event.target.value)}
+            aria-label="默认推理模型"
+            style={{
+              flex: 1, minWidth: 0, height: 30,
+              border: '1px solid var(--border)', borderRadius: 7,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+            }}
+          >
+            <option value="">
+              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '使用引擎默认模型'}
+            </option>
+            {model && !models.some((item) => item.id === model) && (
+              <option value={model}>{model}（当前配置）</option>
+            )}
+            {models.map((item) => (
+              <option key={item.id} value={item.id}>{item.label || item.id}</option>
+            ))}
+          </select>
+          {engine && (
+            <button
+              className="btn-ghost"
+              style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
+              disabled={modelsLoading || saving}
+              onClick={() => void loadCoordinatorModels(engine, true)}
+            >
+              ↻ 刷新
+            </button>
           )}
-          {models.map((item) => (
-            <option key={item.id} value={item.id}>{item.label || item.id}</option>
-          ))}
-        </select>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-          默认快速模型
-        </label>
-        <select
-          value={fastModel}
-          disabled={!engine || modelsLoading || saving}
-          onChange={(event) => setFastModel(event.target.value)}
-          aria-label="默认快速模型"
-          style={{ width: '100%', height: 36 }}
-        >
-          <option value="">
-            {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '跟随推理模型'}
-          </option>
-          {fastModel && !models.some((item) => item.id === fastModel) && (
-            <option value={fastModel}>{fastModel}（当前配置）</option>
-          )}
-          {models.map((item) => (
-            <option key={item.id} value={item.id}>{item.label || item.id}</option>
-          ))}
-        </select>
-        <div style={{ marginTop: 7, fontSize: 11, color: 'var(--meta)' }}>
-          推理模型负责理解、决策与回复；快速模型负责读取产物和修复结构化输出。
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+            快速模型
+          </label>
+          <select
+            value={fastModel}
+            disabled={!engine || modelsLoading || saving}
+            onChange={(event) => setFastModel(event.target.value)}
+            aria-label="默认快速模型"
+            style={{
+              flex: 1, minWidth: 0, height: 30,
+              border: '1px solid var(--border)', borderRadius: 7,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+            }}
+          >
+            <option value="">
+              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '跟随推理模型'}
+            </option>
+            {fastModel && !models.some((item) => item.id === fastModel) && (
+              <option value={fastModel}>{fastModel}（当前配置）</option>
+            )}
+            {models.map((item) => (
+              <option key={item.id} value={item.id}>{item.label || item.id}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, width: 84 }}>
+            图片理解模型
+          </label>
+          <select
+            value={visionModel}
+            disabled={!engine || modelsLoading || saving}
+            onChange={(event) => setVisionModel(event.target.value)}
+            aria-label="默认图片理解模型"
+            style={{
+              flex: 1, minWidth: 0, height: 30,
+              border: '1px solid var(--border)', borderRadius: 7,
+              background: 'var(--bg)', color: 'var(--fg)', padding: '0 8px', fontSize: 12,
+            }}
+          >
+            <option value="">
+              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '跟随推理模型'}
+            </option>
+            {visionModel && !models.some((item) => item.id === visionModel) && (
+              <option value={visionModel}>{visionModel}（当前配置）</option>
+            )}
+            {models.map((item) => (
+              <option key={item.id} value={item.id}>{item.label || item.id}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ marginBottom: 12, fontSize: 10, color: 'var(--meta)' }}>
+          推理模型负责理解、决策与回复；快速模型负责读取产物和修复结构化输出；图片理解模型在主模型不支持图片输入时，用于分析图片和截图内容。
         </div>
         {modelError && (
           <div style={{ marginTop: 7, fontSize: 11, color: 'var(--warn)' }}>
             模型列表读取失败：{modelError}。仍可保存引擎默认模型。
           </div>
         )}
-        <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
             {error || notice || '当前进行中的协调回复不会中途切换引擎。'}
           </div>
@@ -275,443 +352,6 @@ function CoordinatorAgentSettings() {
 
 interface SettingsPageProps {
   onClose: () => void
-}
-
-const DEFAULT_API_BASE_URLS: Record<ApiEngineProvider, string> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com/v1',
-}
-
-function ProviderEngineCard({
-  engine,
-  kind,
-  onEngineChange,
-}: {
-  engine: EngineInfo
-  kind: 'api' | 'pydantic_ai'
-  onEngineChange: (engine: EngineInfo) => void
-}) {
-  const fieldPrefix = kind === 'pydantic_ai' ? 'pydantic-ai' : 'api'
-  const isPydanticAI = kind === 'pydantic_ai'
-  const [config, setConfig] = useState<ApiEngineConfig | null>(null)
-  const [provider, setProvider] = useState<ApiEngineProvider>('openai')
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_API_BASE_URLS.openai)
-  const [model, setModel] = useState('')
-  const [availableApiModels, setAvailableApiModels] = useState<EngineModel[]>([])
-  const [apiModelsLoading, setApiModelsLoading] = useState(false)
-  const [apiModelsError, setApiModelsError] = useState('')
-  const [customApiModel, setCustomApiModel] = useState(false)
-  const [apiKey, setApiKey] = useState('')
-  const [apiKeyVisible, setApiKeyVisible] = useState(false)
-  const [apiKeyLoading, setApiKeyLoading] = useState(false)
-  const [clearApiKey, setClearApiKey] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [message, setMessage] = useState('')
-  const [messageKind, setMessageKind] = useState<'error' | 'success' | ''>('')
-
-  const loadApiModels = useCallback(async (
-    selectedProvider: ApiEngineProvider,
-    selectedBaseUrl: string,
-    selectedApiKey: string | undefined,
-    selectedModel: string,
-  ) => {
-    if (!selectedBaseUrl.trim()) return
-    setApiModelsLoading(true)
-    setApiModelsError('')
-    try {
-      const result = await (isPydanticAI
-        ? engineApi.pydanticAIModels
-        : engineApi.apiModels)({
-        provider: selectedProvider,
-        base_url: selectedBaseUrl.trim(),
-        api_key: selectedApiKey,
-      })
-      setAvailableApiModels(result.models)
-      setApiModelsError(result.error || '')
-      setCustomApiModel(Boolean(
-        selectedModel
-        && !result.models.some((item) => item.id === selectedModel)
-      ))
-    } catch (modelsLoadError) {
-      setAvailableApiModels([])
-      setApiModelsError(
-        modelsLoadError instanceof Error ? modelsLoadError.message : '读取模型失败'
-      )
-      setCustomApiModel(Boolean(selectedModel))
-    } finally {
-      setApiModelsLoading(false)
-    }
-  }, [isPydanticAI])
-
-  const applyConfig = useCallback((value: ApiEngineConfig) => {
-    setConfig(value)
-    setProvider(value.provider)
-    setBaseUrl(value.base_url || DEFAULT_API_BASE_URLS[value.provider])
-    setModel(value.model)
-    setCustomApiModel(Boolean(value.model))
-    setApiKey('')
-    setApiKeyVisible(false)
-    setClearApiKey(false)
-  }, [])
-
-  useEffect(() => {
-    let active = true
-    const loadConfig = isPydanticAI
-      ? engineApi.pydanticAIConfig
-      : engineApi.apiConfig
-    loadConfig()
-      .then((value) => {
-        if (!active) return
-        applyConfig(value)
-        if (value.configured || value.has_api_key) {
-          void loadApiModels(value.provider, value.base_url, undefined, value.model)
-        }
-      })
-      .catch((loadError) => {
-        if (!active) return
-        setMessage(loadError instanceof Error ? loadError.message : '读取配置失败')
-        setMessageKind('error')
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => { active = false }
-  }, [applyConfig, isPydanticAI, loadApiModels])
-
-  const changeProvider = (nextProvider: ApiEngineProvider) => {
-    const currentDefault = DEFAULT_API_BASE_URLS[provider]
-    setProvider(nextProvider)
-    setAvailableApiModels([])
-    setApiModelsError('')
-    setCustomApiModel(Boolean(model))
-    if (!baseUrl || baseUrl === currentDefault) {
-      setBaseUrl(DEFAULT_API_BASE_URLS[nextProvider])
-    }
-  }
-
-  const save = async () => {
-    setSaving(true)
-    setMessage('')
-    setMessageKind('')
-    try {
-      const saveConfig = isPydanticAI
-        ? engineApi.setPydanticAIConfig
-        : engineApi.setApiConfig
-      const result = await saveConfig({
-        provider,
-        base_url: baseUrl.trim(),
-        model: model.trim(),
-        api_key: apiKey.trim() || undefined,
-        clear_api_key: clearApiKey,
-      })
-      if (!result.saved || !result.config || !result.engine) {
-        setMessage(result.message || '保存失败')
-        setMessageKind('error')
-        return
-      }
-      applyConfig(result.config)
-      void loadApiModels(
-        result.config.provider,
-        result.config.base_url,
-        undefined,
-        result.config.model,
-      )
-      onEngineChange(result.engine)
-      setMessage('配置已保存')
-      setMessageKind('success')
-    } catch (saveError) {
-      setMessage(saveError instanceof Error ? saveError.message : '保存失败')
-      setMessageKind('error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const test = async () => {
-    setTesting(true)
-    setMessage('')
-    setMessageKind('')
-    try {
-      const result = await engineApi.test(engine.id)
-      if (result.engine) onEngineChange(result.engine)
-      setMessage(
-        `${result.success ? '连接和对话测试通过' : result.message}`
-        + (result.duration_ms > 0 ? ` · ${result.duration_ms}ms` : '')
-      )
-      setMessageKind(result.success ? 'success' : 'error')
-    } catch (testError) {
-      setMessage(testError instanceof Error ? testError.message : '测试失败')
-      setMessageKind('error')
-    } finally {
-      setTesting(false)
-    }
-  }
-
-  const toggleApiKey = async () => {
-    if (apiKeyVisible) {
-      setApiKeyVisible(false)
-      return
-    }
-    if (apiKey || !config?.has_api_key) {
-      setApiKeyVisible(true)
-      return
-    }
-    setApiKeyLoading(true)
-    setMessage('')
-    setMessageKind('')
-    try {
-      const result = await (
-        isPydanticAI ? engineApi.pydanticAIKey() : engineApi.apiKey()
-      )
-      setApiKey(result.api_key)
-      setApiKeyVisible(true)
-    } catch (loadError) {
-      setMessage(loadError instanceof Error ? loadError.message : '读取 Key 失败')
-      setMessageKind('error')
-    } finally {
-      setApiKeyLoading(false)
-    }
-  }
-
-  const statusConfigured = config?.configured ?? engine.configured
-  const statusVerified = statusConfigured && engine.verified
-
-  return (
-    <div style={{
-      border: '1px solid var(--border)', borderRadius: 12,
-      background: 'var(--bg)', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 14,
-        borderBottom: '1px solid var(--border-soft)',
-      }}>
-        <EngineIcon engine={engine} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>{engineLabel(engine.id)}</span>
-            <span style={{
-              padding: '1px 6px', borderRadius: 999,
-              background: 'color-mix(in oklab, var(--accent), transparent 88%)',
-              color: 'var(--accent)', fontSize: 10,
-            }}>
-              {isPydanticAI ? '内置' : 'API'}
-            </span>
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-            {isPydanticAI
-              ? 'WorkStep 内置 Agent，由 Pydantic AI 按配置加载 Provider。'
-              : '直接调用你配置的 OpenAI-compatible 或 Anthropic API。'}
-          </div>
-        </div>
-        <span style={{
-          padding: '4px 9px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-          color: statusVerified
-            ? 'var(--success)'
-            : statusConfigured ? 'var(--warn)' : 'var(--accent)',
-          background: statusVerified
-            ? 'color-mix(in oklab, var(--success), transparent 88%)'
-            : statusConfigured
-              ? 'color-mix(in oklab, var(--warn), transparent 88%)'
-              : 'color-mix(in oklab, var(--accent), transparent 88%)',
-        }}>
-          {statusVerified ? '已验证' : statusConfigured ? '待测试' : '待配置'}
-        </span>
-      </div>
-
-      <div style={{ padding: '16px 18px 18px', background: 'var(--surface)' }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr)', gap: 12,
-        }}>
-          <div>
-            <label htmlFor={`${fieldPrefix}-provider`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-              {isPydanticAI ? 'Provider 类型' : '接口类型'}
-            </label>
-            <select
-              id={`${fieldPrefix}-provider`}
-              value={provider}
-              disabled={loading || saving}
-              onChange={(event) => changeProvider(event.target.value as ApiEngineProvider)}
-              style={{ width: '100%', height: 38 }}
-            >
-              <option value="openai">OpenAI-compatible</option>
-              <option value="anthropic">Anthropic Messages</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor={`${fieldPrefix}-base-url`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-              {isPydanticAI ? 'Provider 地址' : 'API 地址'}
-            </label>
-            <input
-              id={`${fieldPrefix}-base-url`}
-              value={baseUrl}
-              disabled={loading || saving}
-              onChange={(event) => setBaseUrl(event.target.value)}
-              placeholder={DEFAULT_API_BASE_URLS[provider]}
-              style={{ width: '100%', height: 38 }}
-            />
-          </div>
-          <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label htmlFor={`${fieldPrefix}-key`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-                API Key
-              </label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  id={`${fieldPrefix}-key`}
-                  type={apiKeyVisible ? 'text' : 'password'}
-                  autoComplete="off"
-                  value={apiKey}
-                  disabled={loading || saving || clearApiKey || apiKeyLoading}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  placeholder={config?.has_api_key ? '已保存，点击显示可查看' : '可选，本地无鉴权接口可留空'}
-                  style={{ flex: 1, minWidth: 0, height: 38 }}
-                />
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={loading || saving || clearApiKey || apiKeyLoading || (!apiKey && !config?.has_api_key)}
-                  onClick={() => void toggleApiKey()}
-                  style={{ minWidth: 58, justifyContent: 'center' }}
-                >
-                  {apiKeyLoading ? '读取中…' : apiKeyVisible ? '隐藏' : '显示'}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label htmlFor={`${fieldPrefix}-model`} style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-                默认模型
-              </label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <select
-                  id={`${fieldPrefix}-model`}
-                  value={customApiModel ? '__custom__' : model}
-                  disabled={loading || saving || apiModelsLoading}
-                  onChange={(event) => {
-                    if (event.target.value === '__custom__') {
-                      setCustomApiModel(true)
-                      if (availableApiModels.some((item) => item.id === model)) {
-                        setModel('')
-                      }
-                      return
-                    }
-                    setCustomApiModel(false)
-                    setModel(event.target.value)
-                  }}
-                  style={{ flex: 1, minWidth: 0, height: 38 }}
-                >
-                  <option value="">
-                    {apiModelsLoading ? '正在读取模型…' : '请选择模型'}
-                  </option>
-                  {availableApiModels.map((item) => (
-                    <option key={item.id} value={item.id}>{item.label || item.id}</option>
-                  ))}
-                  <option value="__custom__">自定义模型 ID…</option>
-                </select>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  disabled={loading || saving || apiModelsLoading || !baseUrl.trim()}
-                  onClick={() => void loadApiModels(
-                    provider,
-                    baseUrl,
-                    clearApiKey ? '' : apiKey.trim() || undefined,
-                    model,
-                  )}
-                  style={{ minWidth: 58, justifyContent: 'center' }}
-                >
-                  {apiModelsLoading ? '读取中…' : '刷新'}
-                </button>
-              </div>
-              {customApiModel && (
-                <input
-                  id={`${fieldPrefix}-custom-model`}
-                  aria-label={`${engineLabel(engine.id)} 自定义模型 ID`}
-                  value={model}
-                  disabled={loading || saving}
-                  onChange={(event) => setModel(event.target.value)}
-                  placeholder="例如 gpt-5.4、deepseek-chat"
-                  style={{ width: '100%', height: 36, marginTop: 7 }}
-                />
-              )}
-              {apiModelsError && (
-                <div style={{ marginTop: 5, color: 'var(--danger)', fontSize: 10 }}>
-                  {apiModelsError}，仍可使用自定义模型。
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div style={{
-          marginTop: 10, display: 'flex', alignItems: 'center', gap: 10,
-          color: 'var(--muted)', fontSize: 11,
-        }}>
-          {config?.has_api_key && (
-            <label style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              cursor: saving ? 'default' : 'pointer', whiteSpace: 'nowrap',
-            }}>
-              <input
-                type="checkbox"
-                checked={clearApiKey}
-                disabled={saving}
-                style={{
-                  width: 16, height: 16, padding: 0, margin: 0,
-                  flexShrink: 0, accentColor: 'var(--accent)',
-                }}
-                onChange={(event) => {
-                  setClearApiKey(event.target.checked)
-                  if (event.target.checked) {
-                    setApiKey('')
-                    setApiKeyVisible(false)
-                  }
-                }}
-              />
-              清除已保存的 Key
-            </label>
-          )}
-          <span style={{ marginLeft: config?.has_api_key ? 'auto' : 0 }}>
-            远程地址必须使用 HTTPS；Ollama 等本机接口可使用 localhost HTTP。
-          </span>
-        </div>
-
-        <div style={{
-          marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-soft)',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <div
-            role="status"
-            style={{
-              flex: 1, minHeight: 18, fontSize: 11,
-              color: messageKind === 'error'
-                ? 'var(--danger)'
-                : messageKind === 'success'
-                  ? 'var(--success)'
-                  : 'var(--muted)',
-            }}
-          >
-            {message || 'Key 仅保存在本机 ~/.workstep/config.json，不会返回到浏览器。'}
-          </div>
-          <button
-            className="btn-ghost"
-            disabled={!statusConfigured || saving || testing}
-            onClick={() => void test()}
-          >
-            {testing ? '测试中…' : '测试连接'}
-          </button>
-          <button
-            className="btn-primary"
-            disabled={loading || saving || !baseUrl.trim() || !model.trim()}
-            onClick={() => void save()}
-          >
-            {saving ? '保存中…' : '保存配置'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export default function SettingsPage({ onClose }: SettingsPageProps) {
@@ -732,83 +372,86 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [pathDraft, setPathDraft] = useState('')
   const [pathSaving, setPathSaving] = useState(false)
   const [pathError, setPathError] = useState('')
-  const [claudePermissionMode, setClaudePermissionMode] = useState<ClaudePermissionMode | ''>('')
-  const [permissionLoading, setPermissionLoading] = useState(true)
-  const [permissionSaving, setPermissionSaving] = useState(false)
-  const [permissionError, setPermissionError] = useState('')
-  const [confirmBypassPermissions, setConfirmBypassPermissions] = useState(false)
-  const [activeSection, setActiveSection] = useState<'engines' | 'coordinator'>('engines')
+  const [activeSection, setActiveSection] = useState<'engines' | 'coordinator' | 'templates'>('engines')
 
-  const loadClaudePermissionMode = async () => {
-    setPermissionLoading(true)
+  const loadEngineModels = async (engineId: string, force = false) => {
+    if ((models[engineId] || modelsLoading[engineId]) && !force) return
+    setModelsLoading((current) => ({ ...current, [engineId]: true }))
+    let result
     try {
-      const result = await engineApi.claudePermissionMode()
-      setClaudePermissionMode(result.mode)
-      setPermissionError('')
-    } catch (permissionLoadError) {
-      setPermissionError(
-        permissionLoadError instanceof Error
-          ? permissionLoadError.message
-          : '读取权限模式失败'
-      )
-    } finally {
-      setPermissionLoading(false)
+      result = await fetchEngineModels(engineId, force)
+    } catch (modelError) {
+      result = {
+        engine_id: engineId,
+        models: [],
+        default_model: '',
+        error: modelError instanceof Error ? modelError.message : '读取模型失败',
+      }
     }
+    setModels((current) => ({ ...current, [result.engine_id]: result.models }))
+    setDefaultModels((current) => ({
+      ...current,
+      [result.engine_id]: result.default_model,
+    }))
+    setCustomModelMode((current) => ({
+      ...current,
+      [result.engine_id]: Boolean(
+        result.default_model
+        && !result.models.some((model) => model.id === result.default_model)
+      ),
+    }))
+    setCustomModelDrafts((current) => ({
+      ...current,
+      [result.engine_id]: result.default_model,
+    }))
+    setModelErrors((current) => {
+      const next = { ...current }
+      if (result.error) next[result.engine_id] = result.error
+      else delete next[result.engine_id]
+      return next
+    })
+    setModelsLoading((current) => ({ ...current, [result.engine_id]: false }))
   }
 
-  const loadModels = (installedEngines: EngineInfo[]) => {
-    const installed = installedEngines.filter(
-      (engine) => engine.installed && !engine.built_in && engine.id !== 'api'
-    )
-    setModelsLoading(Object.fromEntries(installed.map((engine) => [engine.id, true])))
-    installed.forEach(async (engine) => {
-      let result
-      try {
-        result = await engineApi.models(engine.id)
-      } catch (modelError) {
-        result = {
-          engine_id: engine.id,
-          models: [],
-          default_model: '',
-          error: modelError instanceof Error ? modelError.message : '读取模型失败',
-        }
-      }
-      setModels((current) => ({ ...current, [result.engine_id]: result.models }))
-      setDefaultModels((current) => ({
-        ...current,
-        [result.engine_id]: result.default_model,
-      }))
-      setCustomModelMode((current) => ({
-        ...current,
-        [result.engine_id]: Boolean(
-          result.default_model
-          && !result.models.some((model) => model.id === result.default_model)
-        ),
-      }))
-      setCustomModelDrafts((current) => ({
-        ...current,
-        [result.engine_id]: result.default_model,
-      }))
-      setModelErrors((current) => {
-        const next = { ...current }
-        if (result.error) next[result.engine_id] = result.error
-        else delete next[result.engine_id]
-        return next
-      })
-      setModelsLoading((current) => ({ ...current, [result.engine_id]: false }))
+  const clearEngineModelCache = (engineId: string) => {
+    invalidateEngineModels(engineId)
+    setModels((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    setDefaultModels((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    setCustomModelMode((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    setCustomModelDrafts((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    setModelErrors((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
     })
   }
 
-  const scan = async () => {
+  const loadEngines = async (rescan: boolean) => {
     setLoading(true)
     setError('')
     try {
-      const result = await engineApi.refresh()
+      const result = rescan
+        ? await engineApi.refresh()
+        : await engineApi.list()
       setEngines(result.engines)
-      setLoading(false)
-      loadModels(result.engines)
-    } catch (scanError) {
-      setError(scanError instanceof Error ? scanError.message : '扫描失败')
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : '读取引擎失败')
     } finally {
       setLoading(false)
     }
@@ -817,42 +460,17 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    void scan()
-    void loadClaudePermissionMode()
+    void loadEngines(false)
   }, [])
 
-  const saveClaudePermissionMode = async (
-    mode: ClaudePermissionMode,
-    confirmedDangerous = false,
-  ) => {
-    const previous = claudePermissionMode
-    setPermissionSaving(true)
-    setPermissionError('')
-    try {
-      const result = await engineApi.setClaudePermissionMode(
-        mode,
-        confirmedDangerous,
-      )
-      if (!result.saved) {
-        setPermissionError(result.message || '保存权限模式失败')
-        return
-      }
-      setClaudePermissionMode(result.mode)
-    } catch (saveError) {
-      setClaudePermissionMode(previous)
-      setPermissionError(saveError instanceof Error ? saveError.message : '保存失败')
-    } finally {
-      setPermissionSaving(false)
+  // 模型列表自动加载一次并缓存：命中缓存不请求，只有「刷新」才强制调远程接口。
+  useEffect(() => {
+    if (loading || engines.length === 0) return
+    for (const engine of engines) {
+      if (engine.installed) void loadEngineModels(engine.id)
     }
-  }
-
-  const selectClaudePermissionMode = (mode: ClaudePermissionMode) => {
-    if (mode === 'bypassPermissions') {
-      setConfirmBypassPermissions(true)
-      return
-    }
-    void saveClaudePermissionMode(mode)
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, engines])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -955,10 +573,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         engine.id === engineId ? result.engine as EngineInfo : engine
       ))
       setEditingEngine(null)
-      loadModels([
-        ...engines.filter((engine) => engine.id !== engineId),
-        result.engine,
-      ])
+      clearEngineModelCache(engineId)
     } catch (saveError) {
       setPathError(saveError instanceof Error ? saveError.message : '保存失败')
     } finally {
@@ -966,16 +581,16 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     }
   }
 
+  const enginePriority = (id: string) => (
+    id === 'pydantic_ai' ? 0 : id === 'api' ? 1 : 2
+  )
   const sortedEngines = useMemo(
-    () => engines.filter(
-      (engine) => !engine.built_in && engine.id !== 'api'
-    ).sort((a, b) =>
-      Number(b.installed) - Number(a.installed)
+    () => [...engines].sort((a, b) =>
+      enginePriority(a.id) - enginePriority(b.id)
+      || Number(b.installed) - Number(a.installed)
     ),
     [engines],
   )
-  const builtInEngine = engines.find((engine) => engine.id === 'pydantic_ai')
-  const apiEngine = engines.find((engine) => engine.id === 'api')
   const installedCount = sortedEngines.filter((engine) => engine.installed).length
   const versionSummary = (version: string | null) =>
     version?.split(/\r?\n/, 1)[0]?.trim() || ''
@@ -1051,92 +666,56 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           <span aria-hidden="true" style={{ fontSize: 16 }}>✦</span>
           协调 Agent
         </button>
+        <button
+          aria-current={activeSection === 'templates' ? 'page' : undefined}
+          onClick={() => setActiveSection('templates')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'templates' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          流程模板
+        </button>
       </aside>
 
       <section className="settings-content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '24px 28px 40px' }}>
         {activeSection === 'engines' ? (
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
               <h1 style={{ fontSize: 22, fontWeight: 650, marginBottom: 6 }}>执行引擎</h1>
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>
                 配置 WorkStep 内置引擎，并扫描本机可用的 CLI 与 ACP 执行引擎。
               </p>
             </div>
-            <button className="btn-ghost" onClick={() => void scan()} disabled={loading}>
+            <button
+              className="btn-ghost"
+              onClick={() => void loadEngines(true)}
+              disabled={loading}
+            >
               <span aria-hidden="true">↻</span>
               {loading ? '扫描中…' : '重新扫描'}
             </button>
           </div>
 
-          <ExecutionDefaultSettings engines={engines} loading={loading} />
-
-          <div style={{
+          <ExecutionDefaultSettings engines={engines} loading={loading} />          <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 10,
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>内置引擎</span>
-            <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-              随 WorkStep Daemon 提供，无需本机安装 CLI
-            </span>
-          </div>
-          {builtInEngine ? (
-            <ProviderEngineCard
-              engine={builtInEngine}
-              kind="pydantic_ai"
-              onEngineChange={(updatedEngine) => setEngines((current) =>
-                current.map((engine) => engine.id === updatedEngine.id ? updatedEngine : engine)
-              )}
-            />
-          ) : (
-            <div style={{
-              padding: 20, border: '1px solid var(--border)', borderRadius: 12,
-              color: 'var(--muted)', fontSize: 12,
-            }}>
-              正在读取内置引擎…
-            </div>
-          )}
-
-          <div style={{ height: 28 }} />
-
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 10,
-          }}>
-            <span style={{ fontSize: 14, fontWeight: 600 }}>API / BYOK</span>
-            <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-              保留原有直连 API / BYOK 配置
-            </span>
-          </div>
-          {apiEngine ? (
-            <ProviderEngineCard
-              engine={apiEngine}
-              kind="api"
-              onEngineChange={(updatedEngine) => setEngines((current) =>
-                current.map((engine) => engine.id === updatedEngine.id ? updatedEngine : engine)
-              )}
-            />
-          ) : (
-            <div style={{
-              padding: 20, border: '1px solid var(--border)', borderRadius: 12,
-              color: 'var(--muted)', fontSize: 12,
-            }}>
-              正在读取 API / BYOK…
-            </div>
-          )}
-
-          <div style={{ height: 28 }} />
-
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginBottom: 10,
+            marginBottom: 8,
           }}>
             <span style={{ fontSize: 14, fontWeight: 600 }}>
-              本机执行引擎
+              执行引擎配置
               {!loading && <span style={{ marginLeft: 6, color: 'var(--meta)', fontWeight: 400 }}>({installedCount}/{sortedEngines.length})</span>}
             </span>
             <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-              扫描结果来自 WorkStep Daemon
+              配置表单由各引擎的后端模板驱动
             </span>
           </div>
 
@@ -1156,10 +735,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               background: 'var(--bg)', border: '1px solid var(--border)',
               borderRadius: 12,
             }}>
-              正在扫描本机执行引擎…
+              正在读取执行引擎…
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {sortedEngines.map((engine) => {
                 const testResult = testResults[engine.id]
                 const isTesting = testingEngine === engine.id
@@ -1185,13 +764,13 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   }}
                 >
                   <div style={{
-                    padding: '16px 18px', display: 'flex',
-                    alignItems: 'center', gap: 14,
+                    padding: '12px 14px', display: 'flex',
+                    alignItems: 'center', gap: 12,
                   }}>
                   <EngineIcon engine={engine} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600 }}>{engineLabel(engine.id)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id)}</span>
                       {engine.mode && (
                         <span style={{
                           padding: '1px 6px', borderRadius: 999,
@@ -1202,7 +781,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         </span>
                       )}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 12, overflowWrap: 'anywhere' }}>
+                    <div style={{ color: 'var(--muted)', fontSize: 11, overflowWrap: 'anywhere' }}>
                       {ENGINE_DESCRIPTIONS[engine.id] || 'WorkStep 执行引擎'}
                       {engine.version && <span> · {versionSummary(engine.version)}</span>}
                     </div>
@@ -1222,25 +801,25 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   {engine.installed && (
                     <button
                       className="btn-ghost"
-                      style={{ minWidth: 68, justifyContent: 'center' }}
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
                       disabled={testingEngine !== null}
                       onClick={() => void testEngine(engine.id)}
                     >
                       {isTesting ? '测试中…' : '测试'}
                     </button>
                   )}
-                  {engine.id !== 'api' && (
+                  {engine.id !== 'api' && engine.id !== 'pydantic_ai' && (
                     <button
                       className="btn-ghost"
-                      style={{ minWidth: 58, justifyContent: 'center' }}
+                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
                       onClick={() => openPathEditor(engine)}
                     >
                       编辑
                     </button>
                   )}
                   <span style={{
-                    minWidth: 64, textAlign: 'center', padding: '4px 9px',
-                    borderRadius: 999, fontSize: 11, fontWeight: 600,
+                    minWidth: 60, textAlign: 'center', padding: '3px 8px',
+                    borderRadius: 999, fontSize: 10, fontWeight: 600,
                     color: engine.verified
                       ? 'var(--success)'
                       : engine.installed ? 'var(--warn)' : 'var(--meta)',
@@ -1253,65 +832,92 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                     {engine.verified ? '已验证' : engine.installed ? '待测试' : '未安装'}
                   </span>
                   </div>
+                  {engine.config && (
+                    <EngineConfigForm
+                      engineId={engine.id}
+                      config={engine.config}
+                      onSaved={(result) => {
+                        if (result.engine) {
+                          setEngines((current) => current.map((item) =>
+                            item.id === engine.id ? result.engine as EngineInfo : item
+                          ))
+                        }
+                        clearEngineModelCache(engine.id)
+                        void loadEngineModels(engine.id)
+                      }}
+                    />
+                  )}
                   {engine.installed && (
                     <div style={{
-                      padding: '14px 18px 16px',
+                      padding: '9px 14px',
                       borderTop: '1px solid var(--border-soft)',
                       background: 'var(--surface)',
                     }}>
-                      <div style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        marginBottom: 8, color: 'var(--muted)', fontSize: 12,
-                      }}>
-                        <span style={{ fontWeight: 600 }}>模型</span>
-                        <span>·</span>
-                        <span>内置列表</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{
+                            flexShrink: 0, fontSize: 11, fontWeight: 600,
+                            color: 'var(--muted)',
+                          }}
+                        >
+                          模型
+                        </span>
+                        <select
+                          id={`default-model-${engine.id}`}
+                          aria-label={`${engineLabel(engine.id)} 默认模型`}
+                          title="选择阶段未单独指定模型时使用的默认模型"
+                          value={usesCustomModel ? '__custom__' : savedDefaultModel}
+                          disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
+                          onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
+                          style={{
+                            flex: 1, minWidth: 0, height: 28,
+                            border: '1px solid var(--border)', borderRadius: 7,
+                            background: 'var(--bg)', color: 'var(--fg)',
+                            padding: '0 8px', fontSize: 12,
+                          }}
+                        >
+                          <option value="">
+                            {modelsLoading[engine.id] ? '正在读取模型…' : '跟随引擎默认'}
+                          </option>
+                          {engineModels.map((model) => (
+                            <option key={model.id} value={model.id}>{model.label}</option>
+                          ))}
+                          <option value="__custom__">自定义…</option>
+                        </select>
                         {savingModel === engine.id && (
-                          <span style={{ marginLeft: 'auto', color: 'var(--meta)', fontSize: 10 }}>
+                          <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 10 }}>
                             保存中…
                           </span>
                         )}
+                        {models[engine.id] && !modelsLoading[engine.id] && (
+                          <button
+                            className="btn-ghost"
+                            style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                            onClick={() => void loadEngineModels(engine.id, true)}
+                          >
+                            ↻ 刷新
+                          </button>
+                        )}
                       </div>
-                      <select
-                        id={`default-model-${engine.id}`}
-                        aria-label={`${engineLabel(engine.id)} 默认模型`}
-                        value={usesCustomModel ? '__custom__' : savedDefaultModel}
-                        disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
-                        onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
-                        style={{
-                          width: '100%', height: 38,
-                          border: '1px solid var(--border)', borderRadius: 8,
-                          background: 'var(--bg)', color: 'var(--fg)',
-                          padding: '0 11px', fontSize: 13,
-                        }}
-                      >
-                        <option value="">
-                          {modelsLoading[engine.id] ? '正在读取模型…' : '跟随引擎默认'}
-                        </option>
-                        {engineModels.map((model) => (
-                          <option key={model.id} value={model.id}>{model.label}</option>
-                        ))}
-                        <option value="__custom__">自定义（在下方填写）…</option>
-                      </select>
-                      <div style={{
-                        marginTop: 7, color: modelErrors[engine.id] ? 'var(--meta)' : 'var(--muted)',
-                        fontSize: 11,
-                      }}>
-                        {modelErrors[engine.id]
-                          ? `${modelErrors[engine.id]}，可填写自定义模型 ID。`
-                          : '选择阶段未单独指定模型时使用的默认模型。'}
-                      </div>
+                      {modelErrors[engine.id] && (
+                        <div style={{
+                          marginTop: 4, color: 'var(--meta)', fontSize: 10,
+                        }}>
+                          {modelErrors[engine.id]}，可填写自定义模型 ID。
+                        </div>
+                      )}
                       {usesCustomModel && (
-                        <div style={{ marginTop: 12 }}>
-                          <label
-                            htmlFor={`custom-model-${engine.id}`}
+                        <div style={{
+                          marginTop: 6, display: 'flex', alignItems: 'center', gap: 8,
+                        }}>
+                          <span
                             style={{
-                              display: 'block', marginBottom: 7,
-                              color: 'var(--muted)', fontSize: 12, fontWeight: 600,
+                              flexShrink: 0, fontSize: 11,
+                              color: 'var(--muted)',
                             }}
                           >
-                            自定义模型 ID
-                          </label>
+                            自定义模型
+                          </span>
                           <input
                             id={`custom-model-${engine.id}`}
                             value={customModelDrafts[engine.id] ?? savedDefaultModel}
@@ -1328,72 +934,19 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                               }
                             }}
                             style={{
-                              width: '100%', height: 38,
-                              border: '1px solid var(--border)', borderRadius: 8,
+                              flex: 1, minWidth: 0, height: 28,
+                              border: '1px solid var(--border)', borderRadius: 7,
                               background: 'var(--bg)', color: 'var(--fg)',
-                              padding: '0 11px', fontSize: 13,
+                              padding: '0 8px', fontSize: 12,
                             }}
                           />
-                        </div>
-                      )}
-                      {engine.id === 'claude' && (
-                        <div style={{
-                          marginTop: 16, paddingTop: 14,
-                          borderTop: '1px solid var(--border-soft)',
-                        }}>
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 8,
-                            marginBottom: 8, color: 'var(--muted)', fontSize: 12,
-                          }}>
-                            <span style={{ fontWeight: 600 }}>权限模式</span>
-                            <span style={{
-                              color: claudePermissionMode ? 'var(--success)' : 'var(--danger)',
-                              fontSize: 10,
-                            }}>
-                              {claudePermissionMode ? '已确认' : '未确认，无法运行'}
-                            </span>
-                            {permissionSaving && (
-                              <span style={{ marginLeft: 'auto', color: 'var(--meta)', fontSize: 10 }}>
-                                保存中…
-                              </span>
-                            )}
-                          </div>
-                          <select
-                            aria-label="Claude Code 权限模式"
-                            value={claudePermissionMode}
-                            disabled={permissionLoading || permissionSaving}
-                            onChange={(event) => selectClaudePermissionMode(
-                              event.target.value as ClaudePermissionMode
-                            )}
-                            style={{
-                              width: '100%', height: 38,
-                              border: `1px solid ${permissionError ? 'var(--danger)' : 'var(--border)'}`,
-                              borderRadius: 8, background: 'var(--bg)', color: 'var(--fg)',
-                              padding: '0 11px', fontSize: 13,
-                            }}
-                          >
-                            <option value="" disabled>
-                              {permissionLoading ? '正在读取权限模式…' : '请选择并确认权限模式'}
-                            </option>
-                            {CLAUDE_PERMISSION_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <div style={{
-                            marginTop: 7, fontSize: 11,
-                            color: permissionError ? 'var(--danger)' : 'var(--muted)',
-                          }}>
-                            {permissionError || 'WorkStep 每次启动 Claude Code 都会显式传入此权限模式。'}
-                          </div>
                         </div>
                       )}
                     </div>
                   )}
                   {editingEngine === engine.id && (
                     <div style={{
-                      padding: '14px 18px 16px', borderTop: '1px solid var(--border-soft)',
+                      padding: '10px 14px 12px', borderTop: '1px solid var(--border-soft)',
                       background: 'var(--surface)', borderRadius: '0 0 12px 12px',
                     }}>
                       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 7 }}>
@@ -1406,10 +959,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           placeholder="输入 CLI 可执行文件的绝对路径"
                           autoFocus
                           style={{
-                            flex: 1, minWidth: 0, height: 34,
+                            flex: 1, minWidth: 0, height: 30,
                             border: `1px solid ${pathError ? 'var(--danger)' : 'var(--border)'}`,
                             borderRadius: 7, background: 'var(--bg)', color: 'var(--fg)',
-                            padding: '0 10px', fontSize: 12,
+                            padding: '0 9px', fontSize: 12,
                           }}
                         />
                         <button
@@ -1441,24 +994,14 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             </div>
           )}
         </div>
+        ) : activeSection === 'templates' ? (
+          <TemplateSettings />
         ) : (
           <CoordinatorAgentSettings />
         )}
       </section>
       </div>
       </div>
-      <ConfirmDialog
-        open={confirmBypassPermissions}
-        title="确认绕过全部权限检查？"
-        message="该模式允许 Claude Code 无需询问即可执行命令和修改文件。仅应在可信项目和受控环境中使用。"
-        confirmText="确认并保存"
-        danger
-        onCancel={() => setConfirmBypassPermissions(false)}
-        onConfirm={() => {
-          setConfirmBypassPermissions(false)
-          void saveClaudePermissionMode('bypassPermissions', true)
-        }}
-      />
       </div>
   )
 }

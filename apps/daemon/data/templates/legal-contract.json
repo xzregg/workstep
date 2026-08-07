@@ -1,5 +1,6 @@
 {
   "id": "legal-contract",
+  "default": true,
   "name": "合同管理",
   "description": "合同起草 → 法务审核 → 签署 → 归档",
   "steps": {

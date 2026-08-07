@@ -18,14 +18,17 @@ from api.history import router as history_router
 from api.fs import router as fs_router
 from api.fs import uploads_router
 from api.search import router as search_router
+from api.templates import ensure_global_templates
 from api.templates import router as templates_router
 from api.engine import router as engine_router
 from api.workflow import router as workflow_router
+from api.workflow_gen import router as workflow_gen_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
 from services.coordinator import CoordinatorModule
+from services.workflow_gen import WorkflowGenModule
 
 logger = logging.getLogger(__name__)
 
@@ -36,25 +39,36 @@ event_bus = EventBus()
 task_service: TaskService | None = None
 workflow_runtime: WorkflowRuntime | None = None
 coordinator_module: CoordinatorModule | None = None
+workflow_gen_module: WorkflowGenModule | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service, workflow_runtime, coordinator_module
+    global task_service, workflow_runtime, coordinator_module, workflow_gen_module
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
+    ensure_global_templates()
     project_manager._load_saved_projects()
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
+    recovered = await workflow_runtime.recover_running_workflows()
+    if recovered:
+        logger.info(
+            "Recovered %d interrupted workflow run(s) from the last completed stage",
+            recovered,
+        )
     coordinator_module = CoordinatorModule(
         event_bus,
         project_manager,
         workflow_runtime,
     )
+    workflow_gen_module = WorkflowGenModule(event_bus, project_manager)
     try:
         yield
     finally:
         logger.info("WorkStep Daemon shutting down")
+        if workflow_gen_module is not None:
+            await workflow_gen_module.shutdown()
         await coordinator_module.shutdown()
         await workflow_runtime.shutdown()
         await event_bus.close()
@@ -73,6 +87,7 @@ app.include_router(search_router)
 app.include_router(templates_router)
 app.include_router(engine_router)
 app.include_router(workflow_router)
+app.include_router(workflow_gen_router)
 
 
 # --- REST API ---

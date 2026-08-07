@@ -8,6 +8,7 @@ import shutil
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine
+from engines.schema import EngineImage
 from engines.events import InternalEvent, normalize_token_usage
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class OpenClawEngine(BaseLLMEngine):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list[EngineImage] | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Spawn openclaw CLI and stream events."""
         binary = self.resolve_binary()

@@ -87,6 +87,7 @@ class InternalEvent:
         "tool_use",         # tool call (complete)
         "tool_input_delta", # tool input increment (real-time only, not persisted)
         "tool_result",      # tool execution result
+        "compacted",        # engine auto-compacted its context window
         "usage",            # token usage summary
         "session_started",  # reusable engine session identity
         "error",            # error
@@ -96,3 +97,11 @@ class InternalEvent:
 
     def to_dict(self) -> dict:
         return {"type": self.type, "data": self.data, "timestamp": self.timestamp}
+
+
+def compacted_event(summary: str | None = None) -> InternalEvent:
+    """Build a ``compacted`` event (engine auto-compressed its context)."""
+    data: dict[str, Any] = {}
+    if summary:
+        data["summary"] = str(summary)
+    return InternalEvent(type="compacted", data=data)

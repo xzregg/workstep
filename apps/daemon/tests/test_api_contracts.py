@@ -88,7 +88,7 @@ async def api_context(tmp_path, monkeypatch):
     monkeypatch.setattr(history_api, "project_manager", manager)
     monkeypatch.setattr(search_api, "project_manager", manager)
     monkeypatch.setattr(workflow_api, "project_manager", manager)
-    monkeypatch.setattr(templates_api, "TEMPLATES_DIR", tmp_path / "templates")
+    monkeypatch.setattr(templates_api, "GLOBAL_TEMPLATES_DIR", tmp_path / "templates")
     monkeypatch.setattr(main, "project_manager", manager)
     monkeypatch.setattr(main, "task_service", task_service)
     monkeypatch.setattr(main, "workflow_runtime", runtime)
@@ -248,6 +248,67 @@ async def test_task_creation_auto_starts_the_selected_stage(api_context, monkeyp
 
 
 @pytest.mark.anyio
+async def test_send_stage_message_routes_to_running_stage(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "live-message-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.send_stage_message = AsyncMock(
+        return_value={"message_id": "m-1", "step_key": "do", "status": "queued"}
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    sent = await client.post(
+        f"/api/task/task-1/step/do/message?project_id={project_id}",
+        json={"content": "停下！"},
+    )
+    assert sent.status_code == 200
+    assert sent.json()["status"] == "queued"
+    runtime.send_stage_message.assert_awaited_once_with(
+        project_id,
+        "task-1",
+        "do",
+        "停下！",
+        as_guidance=False,
+    )
+
+
+@pytest.mark.anyio
+async def test_send_stage_message_conflict_when_stage_not_running(api_context, monkeypatch):
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "live-message-conflict-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.send_stage_message = AsyncMock(
+        side_effect=ValueError("阶段未在运行: do")
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    sent = await client.post(
+        f"/api/task/task-1/step/do/message?project_id={project_id}",
+        json={"content": "停下！"},
+    )
+    assert sent.status_code == 409
+    assert "阶段未在运行" in sent.json()["detail"]
+
+
+@pytest.mark.anyio
 async def test_project_http_lifecycle_returns_a_stable_identity(api_context):
     """A project keeps the same public id across init, list, rename and register."""
     client, tmp_path = api_context
@@ -320,6 +381,61 @@ async def test_upload_image_returns_project_relative_path(api_context):
     )
     assert via_name.status_code == 200
     assert via_name.content == b"\x89PNG\r\n\x1a\nfake-image-bytes"
+
+
+@pytest.mark.anyio
+async def test_upload_image_prefixes_filename(api_context):
+    """Uploaded image filename starts with the given flow prefix."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "prefix_project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nfake-image-bytes").decode()
+    uploaded = await client.post(
+        f"/api/fs/upload/image?project_id={project_id}",
+        json={
+            "filename": "shot.png",
+            "prefix": "f0e8bc06",
+            "data_url": f"data:image/png;base64,{png}",
+        },
+    )
+    assert uploaded.status_code == 200
+    filename = uploaded.json()["filename"]
+    assert filename.startswith("f0e8bc06-")
+    assert filename.endswith(".png")
+    assert (project_dir / ".workstep" / "uploads" / filename).is_file()
+
+
+@pytest.mark.anyio
+async def test_upload_image_rejects_unsafe_prefix(api_context):
+    """Prefix must be a safe short id; path traversal is rejected."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "prefix_project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nfake-image-bytes").decode()
+    for prefix in ("../evil", "a" * 40, "a/b"):
+        uploaded = await client.post(
+            f"/api/fs/upload/image?project_id={project_id}",
+            json={
+                "filename": "shot.png",
+                "prefix": prefix,
+                "data_url": f"data:image/png;base64,{png}",
+            },
+        )
+        assert uploaded.status_code == 400, prefix
 
 
 @pytest.mark.anyio
@@ -448,6 +564,55 @@ async def test_task_http_crud_lifecycle(api_context):
         f"/api/task/{copied_id}?project_id={project_id}"
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_task_archive_contract(api_context):
+    """Archive hides a task from the board list and restores it on demand."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Archivable", "cwd": str(project_dir), "engine": "claude"},
+    )
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+    assert created.json()["archived"] is False
+
+    archived = await client.post(
+        f"/api/task/archive?project_id={project_id}",
+        json={"task_id": task_id},
+    )
+    assert archived.status_code == 200
+    assert archived.json() == {"archived": True}
+
+    listed = await client.get(f"/api/task/list?project_id={project_id}")
+    assert listed.status_code == 200
+    assert listed.json()["tasks"] == []
+
+    archived_list = await client.get(
+        f"/api/task/list?project_id={project_id}&archived=true"
+    )
+    assert archived_list.status_code == 200
+    assert [task["id"] for task in archived_list.json()["tasks"]] == [task_id]
+    assert archived_list.json()["tasks"][0]["archived"] is True
+
+    restored = await client.post(
+        f"/api/task/unarchive?project_id={project_id}",
+        json={"task_id": task_id},
+    )
+    assert restored.status_code == 200
+    assert restored.json() == {"unarchived": True}
+
+    listed_again = await client.get(f"/api/task/list?project_id={project_id}")
+    assert [task["id"] for task in listed_again.json()["tasks"]] == [task_id]
 
 
 @pytest.mark.anyio
@@ -592,12 +757,13 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
         "claude",
         "codex",
         "hermes",
-        "qoder",
-        "qcode",
-            "openclaw",
-            "api",
-            "pydantic_ai",
-        }
+        "qoder_sdk",
+        "openclaw",
+        "api",
+        "pydantic_ai",
+        "claude_agent_sdk",
+        "codex_sdk",
+    }
     assert all("installed" in engine for engine in engines)
 
 
@@ -638,7 +804,7 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
             return EngineTestResult(True, "连接和对话测试通过", 12)
 
     fake = FakeEngine()
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda: None)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
     monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
 
     response = await client.post(
@@ -659,7 +825,7 @@ async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     client, _ = api_context
     import api.engine as engine_api
 
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda: None)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
     monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: None)
 
     response = await client.post(
@@ -689,7 +855,7 @@ async def test_engine_models_delegate_to_the_adapter(api_context, monkeypatch):
                 EngineModel("smart", "Smart", "Best quality"),
             ]
 
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda: None)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
     monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: FakeEngine())
     monkeypatch.setattr(
         engine_api.config_store,
@@ -715,7 +881,7 @@ async def test_engine_default_model_can_be_saved(api_context, monkeypatch):
     import api.engine as engine_api
 
     saved = {}
-    monkeypatch.setattr(engine_api, "refresh_registry", lambda: None)
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
     monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: object())
     monkeypatch.setattr(
         engine_api.config_store,
@@ -739,56 +905,65 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
     monkeypatch,
 ):
     client, _ = api_context
-    import api.engine as engine_api
+    import engines.claude_code as claude_code_module
 
     saved = []
+    current = {"mode": "dontAsk"}
     monkeypatch.setattr(
-        engine_api.config_store,
+        claude_code_module.config_store,
         "get_claude_permission_mode",
-        lambda: "dontAsk",
+        lambda: current["mode"],
     )
     monkeypatch.setattr(
-        engine_api.config_store,
+        claude_code_module.config_store,
         "set_claude_permission_mode",
-        lambda mode: saved.append(mode),
+        lambda mode: (current.update(mode=mode), saved.append(mode)),
     )
 
     rejected = await client.put(
-        "/api/engine/claude/permission-mode",
-        json={"mode": "bypassPermissions", "confirmed_dangerous": False},
+        "/api/engine/claude/config",
+        json={
+            "values": {"permission_mode": "bypassPermissions"},
+            "confirmed": {},
+        },
     )
     accepted = await client.put(
-        "/api/engine/claude/permission-mode",
-        json={"mode": "bypassPermissions", "confirmed_dangerous": True},
+        "/api/engine/claude/config",
+        json={
+            "values": {"permission_mode": "bypassPermissions"},
+            "confirmed": {"permission_mode": True},
+        },
     )
 
     assert rejected.status_code == 200
     assert rejected.json()["saved"] is False
     assert saved == ["bypassPermissions"]
-    assert accepted.json() == {
-        "saved": True,
-        "mode": "bypassPermissions",
-        "confirmed": True,
-    }
+    assert accepted.json()["saved"] is True
+    assert accepted.json()["values"] == {"permission_mode": "bypassPermissions"}
 
 
 @pytest.mark.anyio
 async def test_claude_permission_mode_can_be_read(api_context, monkeypatch):
     client, _ = api_context
-    import api.engine as engine_api
+    import engines.claude_code as claude_code_module
 
     monkeypatch.setattr(
-        engine_api.config_store,
+        claude_code_module.config_store,
         "get_claude_permission_mode",
         lambda: "acceptEdits",
     )
 
-    response = await client.get("/api/engine/claude/permission-mode")
+    response = await client.get("/api/engine/claude/config")
 
     assert response.status_code == 200
-    assert response.json()["mode"] == "acceptEdits"
-    assert response.json()["confirmed"] is True
-    assert "bypassPermissions" in response.json()["options"]
+    body = response.json()
+    assert body["values"]["permission_mode"] == "acceptEdits"
+    permission_field = next(
+        field for field in body["fields"] if field["key"] == "permission_mode"
+    )
+    assert "bypassPermissions" in [
+        option["value"] for option in permission_field["options"]
+    ]
 
 
 @pytest.mark.anyio
@@ -867,10 +1042,47 @@ async def test_engine_binary_path_rejects_missing_files(
     assert response.json()["message"] == "指定的可执行文件不存在"
 
 
+def test_ensure_global_templates_seeds_without_overwrite(tmp_path, monkeypatch):
+    """Startup seeding copies shipped templates but never overwrites files."""
+    import api.templates as templates_api
+
+    src = tmp_path / "shipped"
+    dst = tmp_path / "global"
+    src.mkdir()
+    (src / "default-flow.json").write_text(json.dumps({
+        "id": "default-flow",
+        "name": "Default",
+        "default": True,
+        "steps": {"nodes": [], "connections": []},
+    }))
+    (src / "user-flow.json").write_text(json.dumps({
+        "id": "user-flow",
+        "name": "User",
+        "steps": {"nodes": [], "connections": []},
+    }))
+    # Existing global file with user edits must survive
+    dst.mkdir(parents=True)
+    (dst / "default-flow.json").write_text(json.dumps({
+        "id": "default-flow",
+        "name": "Default (edited)",
+        "default": True,
+        "steps": {"nodes": [], "connections": []},
+    }))
+
+    monkeypatch.setattr(templates_api, "TEMPLATES_DIR", src)
+    monkeypatch.setattr(templates_api, "GLOBAL_TEMPLATES_DIR", dst)
+    templates_api.ensure_global_templates()
+
+    kept = json.loads((dst / "default-flow.json").read_text())
+    assert kept["name"] == "Default (edited)"  # 同名不覆盖
+    copied = json.loads((dst / "user-flow.json").read_text())
+    assert copied["id"] == "user-flow"
+
+
 @pytest.mark.anyio
 async def test_custom_template_http_lifecycle_validates_id_and_workflow(api_context):
     """Custom templates round-trip without allowing unsafe names or bad graphs."""
-    client, _ = api_context
+    client, tmp_path = api_context
     steps = await client.get("/api/project/default-steps")
 
     saved = await client.post(
@@ -890,8 +1102,24 @@ async def test_custom_template_http_lifecycle_validates_id_and_workflow(api_cont
 
     listed = await client.get("/api/templates/list")
     assert any(
-        item["id"] == "my-template" and item["custom"] is True
+        item["id"] == "my-template" and item["custom"] is True and item["default"] is False
         for item in listed.json()["templates"]
+    )
+
+    # Templates shipping with a default flag are exposed as default templates
+    shipped_dir = tmp_path / "templates"
+    shipped_dir.mkdir(parents=True, exist_ok=True)
+    (shipped_dir / "shipped.json").write_text(json.dumps({
+        "id": "shipped",
+        "name": "Shipped default",
+        "description": "",
+        "default": True,
+        "steps": steps.json(),
+    }))
+    listed_with_default = await client.get("/api/templates/list")
+    assert any(
+        item["id"] == "shipped" and item["default"] is True and item["custom"] is True
+        for item in listed_with_default.json()["templates"]
     )
 
     unsafe = await client.post(
@@ -928,6 +1156,27 @@ async def test_custom_template_http_lifecycle_validates_id_and_workflow(api_cont
         },
     )
     assert invalid.status_code == 422
+
+    # Default (shipped) templates cannot be deleted
+    (tmp_path / "templates" / "shipped-default.json").write_text(json.dumps({
+        "id": "shipped-default",
+        "name": "Shipped default",
+        "description": "",
+        "default": True,
+        "steps": steps.json(),
+    }))
+    locked_delete = await client.delete("/api/templates/shipped-default")
+    assert locked_delete.status_code == 400
+
+    missing_delete = await client.delete("/api/templates/dev-workflow")
+    assert missing_delete.status_code == 404
+
+    deleted = await client.delete("/api/templates/my-template")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "id": "my-template"}
+
+    gone = await client.get("/api/templates/my-template")
+    assert gone.status_code == 404
 
 
 @pytest.mark.anyio
@@ -1175,3 +1424,71 @@ async def test_intervention_http_round_trip(api_context):
         json={"intervention_id": "question-1", "data": {"answer": "again"}},
     )
     assert duplicate.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_project_memory_read_write_roundtrip(api_context):
+    """MEMORY.md can be read and overwritten through the fs API."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "memory-project"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    assert initialized.status_code == 200
+    project_id = initialized.json()["id"]
+
+    empty = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert empty.status_code == 200
+    assert empty.json()["content"] == ""
+
+    content = "# 项目记忆\n\n## goal\n完成教育局数据上报\n"
+    saved = await client.put(
+        f"/api/fs/memory?project_id={project_id}",
+        json={"content": content},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["saved"] is True
+
+    read = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert read.status_code == 200
+    assert read.json()["content"] == content
+    assert (project_dir / ".workstep" / "MEMORY.md").is_file()
+
+
+@pytest.mark.anyio
+async def test_workflow_soft_delete_and_restore_via_api(api_context):
+    """DELETE moves a workflow to the recycle bin; POST restore brings it back."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "restore-api-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    assert initialized.status_code == 200, initialized.text
+    project_id = initialized.json()["id"]
+    workflow = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "Restorable"},
+    )
+    assert workflow.status_code == 200, workflow.text
+    workflow_id = workflow.json()["id"]
+
+    deleted = await client.delete(
+        f"/api/workflow/{workflow_id}?project_id={project_id}",
+    )
+    assert deleted.status_code == 200
+    assert deleted.json()["soft"] is True
+
+    listed = await client.get("/api/workflow/list", params={"project_id": project_id})
+    bin_workflow = next(w for w in listed.json()["workflows"] if w["id"] == workflow_id)
+    assert bin_workflow["deleted"] is True
+
+    restored = await client.post(
+        f"/api/workflow/{workflow_id}/restore?project_id={project_id}",
+    )
+    assert restored.status_code == 200
+    assert restored.json()["deleted"] is False
+
+    listed = await client.get("/api/workflow/list", params={"project_id": project_id})
+    active_workflow = next(w for w in listed.json()["workflows"] if w["id"] == workflow_id)
+    assert active_workflow["deleted"] is False
