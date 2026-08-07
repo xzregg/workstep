@@ -1,3 +1,4 @@
+import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   engineApi,
@@ -617,10 +618,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       >
         <div className="modal-header" style={{ padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/>
-              <path d="M1 14h6M9 8h6M17 16h6"/>
-            </svg>
+            <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
             <span className="modal-title">设置</span>
           </div>
           <button className="btn-icon" aria-label="关闭设置" onClick={onClose}>✕</button>
@@ -647,10 +645,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/>
-            <path d="M1 14h6M9 8h6M17 16h6"/>
-          </svg>
+          <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
           执行引擎
         </button>
         <button
@@ -676,12 +671,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7" rx="1"/>
-            <rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/>
-            <rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
+          <Icon name="layout-grid" size={16} strokeWidth={2} />
           流程模板
         </button>
       </aside>

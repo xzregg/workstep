@@ -1,3 +1,4 @@
+import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
@@ -539,12 +540,12 @@ export default function TaskList() {
           }}
           style={{ fontSize: 13, gap: 5 }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          <Icon name="table" size={14} strokeWidth={2} />
           阶段编辑
         </button>
         {!showArchived && (
           <button className="btn-primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <Icon name="plus" size={14} strokeWidth={2.5} />
             新建
           </button>
         )}
@@ -557,9 +558,7 @@ export default function TaskList() {
               maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-              <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
-            </svg>
+            <Icon name="external-link" size={13} strokeWidth={2} style={{ flexShrink: 0 }} />
             {activeWorkflowName}
           </span>
         )}
@@ -600,10 +599,7 @@ export default function TaskList() {
           title="编辑 .workstep/MEMORY.md 项目记忆"
           style={{ fontSize: 13, gap: 5 }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-          </svg>
+          <Icon name="book" size={13} strokeWidth={2} />
           记忆
         </button>
         <button
@@ -614,11 +610,7 @@ export default function TaskList() {
           title={showArchived ? '返回任务看板' : '查看已归档任务'}
           style={{ fontSize: 13, gap: 5 }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="3" width="20" height="5" rx="1"/>
-            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-            <path d="M10 12h4"/>
-          </svg>
+          <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? '返回看板' : '查看归档'}
         </button>
         <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
@@ -646,9 +638,7 @@ export default function TaskList() {
               borderLeft: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0,
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="m6 9 6 6 6-6"/>
-            </svg>
+            <Icon name="chevron-down" size={13} strokeWidth={2.2} />
           </button>
           {showOpenerMenu && (
             <div
@@ -693,11 +683,7 @@ export default function TaskList() {
           background: 'color-mix(in oklab, var(--accent), transparent 94%)',
           borderBottom: '1px solid var(--border-soft)',
         }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="3" width="20" height="5" rx="1"/>
-            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/>
-            <path d="M10 12h4"/>
-          </svg>
+          <Icon name="archive" size={13} strokeWidth={2} />
           正在查看归档任务
           <span style={{ marginLeft: 'auto', fontSize: 13 }}>
             {visibleTasks.length} 个任务
@@ -716,9 +702,7 @@ export default function TaskList() {
         {!loading && !activeProject && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)', minWidth: '100%' }}>
             <div style={{ textAlign: 'center' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: 12, opacity: 0.5 }}>
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
+              <Icon name="folder" size={48} strokeWidth={1.5} style={{ marginBottom: 12, opacity: 0.5 }} />
               <div style={{ fontSize: 13 }}>请在左侧选择一个项目</div>
             </div>
           </div>
@@ -848,7 +832,7 @@ export default function TaskList() {
                             </button>
                           )}
                           <button className="btn-icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            <Icon name="pencil" size={12} strokeWidth={2} />
                           </button>
                           {!showArchived && taskCompleted && isLastLane && status !== 'running' && (
                             <button
@@ -858,7 +842,7 @@ export default function TaskList() {
                               onClick={(e) => requestArchiveCard(e, t.id)}
                               style={{ width: 22, height: 22, color: 'var(--meta)' }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>
+                              <Icon name="archive" size={12} strokeWidth={2} />
                             </button>
                           )}
                           {showArchived && (
@@ -869,12 +853,12 @@ export default function TaskList() {
                               onClick={(e) => handleUnarchive(e, t.id)}
                               style={{ width: 22, height: 22, color: 'var(--success)' }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                              <Icon name="rotate-ccw" size={12} strokeWidth={2} />
                             </button>
                           )}
                           {status !== 'running' && (
                             <button className="btn-icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              <Icon name="x" size={12} strokeWidth={2} />
                             </button>
                           )}
                         </div>

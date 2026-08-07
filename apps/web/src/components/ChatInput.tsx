@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import { fsApi, type CoordinatorEngineSummary } from '../api/client'
@@ -212,7 +213,7 @@ export default function ChatInput({
               />
               {uploadingImage
                 ? <span className="task-status-spinner" aria-hidden="true" />
-                : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>}
+                : <Icon name="image" size={18} strokeWidth={1.8} />}
               {hasImage && !uploadingImage && (
                 <span
                   aria-hidden="true"
@@ -222,9 +223,7 @@ export default function ChatInput({
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="4">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
+                  <Icon name="check" size={7} strokeWidth={4} color="#fff" />
                 </span>
               )}
             </label>
@@ -242,16 +241,11 @@ export default function ChatInput({
               style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
             >
               {config.saving && <span className="task-status-spinner" aria-hidden="true" />}
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" aria-hidden="true">
-                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" />
-                <path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" />
-              </svg>
+              <Icon name="sparkles" size={11} strokeWidth={1.8} color="var(--accent)" />
               <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
               <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
               <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || '默认'}</span>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true" style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }}>
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
+              <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
             </button>
           )}
           <button
@@ -285,10 +279,7 @@ export default function ChatInput({
             ) : running ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : (
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false" style={{ padding: 0 }}>
-                <path d="M22 2 11 13" />
-                <path d="m22 2-7 20-4-9-9-4z" />
-              </svg>
+              <Icon name="send" size={13} strokeWidth={1.6} style={{ padding: 0 }} />
             )}
           </button>
         </div>
@@ -317,12 +308,7 @@ export default function ChatInput({
                 className="chat-input-menu-reset"
                 onClick={() => { config.onReset?.(); setConfigOpen(false) }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M23 4v6h-6" />
-                  <path d="M1 20v-6h6" />
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
-                  <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
-                </svg>
+                <Icon name="refresh" size={14} strokeWidth={2} />
                 重置为默认设置
               </button>
             )}

@@ -1,3 +1,4 @@
+import Icon from './Icon'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
@@ -319,9 +320,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       <aside style={sidebarStyle}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-            </svg>
+            <Icon name="layers" size={18} strokeWidth={2} color="var(--accent)" />
             WorkStep
           </div>
         </div>
@@ -336,20 +335,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onDoubleClick={(e) => { e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('') }}
                 style={{ ...projectItemStyle(activeProject?.path === p.path), position: 'relative' }}
               >
-                <svg
-                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                <Icon
+                  name="chevron-right" size={12}
                   style={{
                     flexShrink: 0,
                     transition: 'transform var(--motion-fast)',
                     transform: activeProject?.path === p.path ? 'rotate(90deg)' : 'none',
                     opacity: activeProject?.path === p.path ? 1 : 0.55,
                   }}
-                >
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
+                />
+                <Icon name="folder" size={16} strokeWidth={2} />
                 {renameId === p.path ? (
                   <input
                     ref={renameInputRef}
@@ -428,9 +423,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
                       }}
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
-                      </svg>
+                      <Icon name="external-link" size={12} strokeWidth={2} />
                       {renameWfId === wf.id ? (
                         <input
                           ref={renameWfInputRef}
@@ -511,10 +504,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             background: showSettings ? 'var(--surface)' : 'transparent',
           }}
         >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.14.37.36.7.66.96.3.26.68.4 1.08.4H21a2 2 0 1 1 0 4h-.09c-.4 0-.78.14-1.08.4-.3.26-.52.59-.66.96z"/>
-          </svg>
+          <Icon name="settings" size={17} strokeWidth={2} />
           设置
         </button>
       </aside>
@@ -706,9 +696,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 padding: 3, color: 'var(--meta)', userSelect: 'none', zIndex: 5,
               }}
             >
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M10.5 0.5v10h-10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
+              <Icon name="resize-corner" size={11} />
             </div>
           </div>
         </div>

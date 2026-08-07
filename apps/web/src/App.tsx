@@ -1,3 +1,4 @@
+import Icon from './components/Icon'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
@@ -37,9 +38,7 @@ function WelcomeView() {
       alignItems: 'center', justifyContent: 'center',
       color: 'var(--meta)', gap: 12,
     }}>
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-      </svg>
+      <Icon name="layers" size={48} strokeWidth={1.5} />
       <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--fg-2)' }}>WorkStep</div>
       <div style={{ fontSize: 13 }}>选择或创建一个项目开始</div>
     </div>
