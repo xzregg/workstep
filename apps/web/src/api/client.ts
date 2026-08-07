@@ -209,6 +209,7 @@ export interface Task {
   coordinator_engine?: string | null
   coordinator_model?: string | null
   coordinator_fast_model?: string | null
+  coordinator_session_id?: string | null
   active_workflow_run_id?: string | null
   run_round?: number
   restart_from_step_key?: string | null
@@ -364,7 +365,7 @@ export const taskApi = {
       { method: 'POST' },
     ),
   sendStageMessage: (taskId: string, stepKey: string, content: string, projectId: string, asGuidance = false) =>
-    request<{ message_id: string; step_key: string; status: 'queued' }>(
+    request<{ message_id: string; step_key: string; status: 'queued'; sequence?: number; created_at?: string }>(
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/message?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',

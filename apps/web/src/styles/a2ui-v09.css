@@ -1,0 +1,181 @@
+/* Vendored from @a2ui/react v0_9 dist (Apache-2.0, Google LLC).
+   Scoped under .a2ui-message to avoid global class collisions with the
+   host app (component classes like .button/.label/.input are generic). */
+.a2ui-message .a2uiText{
+  display: inline-block;
+  color: var(--_a2ui-text-color, var(--a2ui-text-color-text, var(--a2ui-color-on-background)));
+  margin: var(--_a2ui-text-margin, 0);
+  box-sizing: border-box;
+}
+.a2ui-message .a2uiCaption{
+  display: inline-block;
+  color: var(--a2ui-text-caption-color, light-dark(#666, #aaa));
+  text-align: left;
+  margin: var(--_a2ui-text-margin, 0);
+  box-sizing: border-box;
+}
+.a2ui-message .a2uiText p, .a2ui-message .a2uiText h1, .a2ui-message .a2uiText h2, .a2ui-message .a2uiText h3, .a2ui-message .a2uiText h4, .a2ui-message .a2uiText h5, .a2ui-message .a2uiText h6, .a2ui-message .a2uiText ol, .a2ui-message .a2uiText ul, .a2ui-message .a2uiText li, .a2ui-message .a2uiText blockquote, .a2ui-message .a2uiText pre{
+  margin: var(--_a2ui-text-margin, 0);
+}
+.a2ui-message .a2uiText h1, .a2ui-message .a2uiText h2, .a2ui-message .a2uiText h3, .a2ui-message .a2uiText h4, .a2ui-message .a2uiText h5{
+  font-family: var(--a2ui-font-family-title, inherit);
+  line-height: var(--a2ui-line-height-headings, 1.2);
+}
+.a2ui-message .a2uiText h1{
+  font-size: var(--a2ui-font-size-2xl);
+}
+.a2ui-message .a2uiText h2{
+  font-size: var(--a2ui-font-size-xl);
+}
+.a2ui-message .a2uiText h3{
+  font-size: var(--a2ui-font-size-l);
+}
+.a2ui-message .a2uiText p, .a2ui-message .a2uiText h4{
+  font-size: var(--a2ui-font-size-m);
+}
+.a2ui-message .a2uiText h5{
+  font-size: var(--a2ui-font-size-s);
+}
+.a2ui-message .a2uiText p, .a2ui-message .a2uiText ol, .a2ui-message .a2uiText ul, .a2ui-message .a2uiText li, .a2ui-message .a2uiText blockquote{
+  line-height: var(--a2ui-line-height-body, 1.5);
+}
+.a2ui-message .a2uiText a{
+  color: var(--a2ui-text-a-color, inherit);
+  font-weight: var(--a2ui-text-a-font-weight, inherit);
+}
+.a2ui-message .button{
+  --_a2ui-text-margin: 0;
+  --_a2ui-text-color: var(--a2ui-color-on-secondary, #333);
+  padding: var(--a2ui-button-padding, var(--a2ui-spacing-m, 0.5rem) var(--a2ui-spacing-l, 1rem));
+  margin: var(--a2ui-button-margin, var(--a2ui-spacing-m));
+  background: var(--a2ui-button-background, var(--a2ui-color-surface, #fff));
+  box-shadow: var(--a2ui-button-box-shadow, none);
+  font-weight: var(--a2ui-button-font-weight, normal);
+  color: var(--a2ui-color-on-secondary, #333);
+  border: var( --a2ui-button-border, var(--a2ui-border-width, 1px) solid var(--a2ui-color-border, #ccc) );
+  border-radius: var(--a2ui-button-border-radius, var(--a2ui-border-radius, 8px));
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+.a2ui-message .button:hover{
+  background-color: var(--a2ui-color-secondary-hover, #ddd);
+}
+.a2ui-message .primary{
+  --_a2ui-text-color: var(--a2ui-color-on-primary, #fff);
+  background-color: var(--a2ui-color-primary, #17e);
+  border: none;
+  color: var(--_a2ui-text-color);
+}
+.a2ui-message .primary:hover{
+  background-color: var(--a2ui-color-primary-hover, #fbd);
+}
+.a2ui-message .borderless{
+  background: none;
+  padding: 0;
+  color: var(--a2ui-color-primary, #17e);
+  border: none;
+}
+.a2ui-message .button:disabled{
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.a2ui-message .host{
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2ui-spacing-xs, 0.25rem);
+  width: 100%;
+}
+.a2ui-message .label{
+  font-size: var( --a2ui-textfield-label-font-size, var(--a2ui-label-font-size, var(--a2ui-font-size-s)) );
+  font-weight: var(--a2ui-textfield-label-font-weight, var(--a2ui-label-font-weight, bold));
+}
+.a2ui-message .input{
+  background-color: var(--a2ui-color-input, #fff);
+  color: var(--a2ui-color-on-input, #333);
+  border: var( --a2ui-textfield-border, var(--a2ui-border-width, 1px) solid var(--a2ui-color-border, #ccc) );
+  border-radius: var(--a2ui-textfield-border-radius, var(--a2ui-spacing-m, 8px));
+  padding: var(--a2ui-textfield-padding, var(--a2ui-spacing-m, 0.5rem));
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 100%;
+  transition: border-color 0.2s;
+}
+.a2ui-message .input:hover{
+  border-color: var(--a2ui-textfield-color-border-hover, var(--a2ui-color-border-hover, #999));
+}
+.a2ui-message .input:focus{
+  outline: none;
+  border-color: var(--a2ui-textfield-color-border-focus, var(--a2ui-color-primary, #17e));
+}
+.a2ui-message .invalid{
+  border-color: var(--a2ui-textfield-color-error, red) !important;
+}
+.a2ui-message .error{
+  color: var(--a2ui-textfield-color-error, red);
+  font-size: var(--a2ui-font-size-xs, 0.75rem);
+}
+.a2ui-message .host{
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2ui-spacing-s, 0.5rem);
+  width: 100%;
+}
+.a2ui-message .label{
+  font-size: var( --a2ui-choicepicker-label-font-size, var(--a2ui-label-font-size, var(--a2ui-font-size-s)) );
+  font-weight: var(--a2ui-choicepicker-label-font-weight, var(--a2ui-label-font-weight, bold));
+  color: var(--a2ui-choicepicker-label-color, inherit);
+}
+.a2ui-message .filterInput{
+  background-color: var(--a2ui-color-input, #fff);
+  color: var(--a2ui-color-on-input, #333);
+  border: var( --a2ui-textfield-border, var(--a2ui-border-width, 1px) solid var(--a2ui-color-border, #ccc) );
+  border-radius: var(--a2ui-textfield-border-radius, var(--a2ui-spacing-m, 8px));
+  padding: var( --a2ui-choicepicker-filter-padding, var(--a2ui-spacing-xs, 4px) var(--a2ui-spacing-s, 8px) );
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+.a2ui-message .filterInput:hover{
+  border-color: var(--a2ui-textfield-color-border-hover, var(--a2ui-color-border-hover, #999));
+}
+.a2ui-message .filterInput:focus{
+  outline: none;
+  border-color: var(--a2ui-textfield-color-border-focus, var(--a2ui-color-primary, #17e));
+}
+.a2ui-message .options{
+  display: flex;
+  flex-direction: column;
+  gap: var(--a2ui-choicepicker-gap, var(--a2ui-spacing-xs, 0.25rem));
+}
+.a2ui-message .chips{
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.a2ui-message .chip{
+  padding: var( --a2ui-choicepicker-chip-padding, var(--a2ui-spacing-s, 4px) var(--a2ui-spacing-m, 8px) );
+  border-radius: var(--a2ui-choicepicker-chip-border-radius, 999px);
+  border: 1px solid var(--a2ui-color-border, #ccc);
+  background-color: var(--a2ui-color-surface, #fff);
+  color: var(--a2ui-color-on-surface, inherit);
+  cursor: pointer;
+  font-size: var(--a2ui-font-size-xs, 0.75rem);
+  font-family: inherit;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.a2ui-message .chip.selected{
+  background-color: var(--a2ui-color-primary, #007bff);
+  color: var(--a2ui-color-on-primary, #fff);
+  border-color: var(--a2ui-color-primary, #007bff);
+}
+.a2ui-message .optionLabel{
+  display: flex;
+  align-items: center;
+  gap: var(--a2ui-choicepicker-gap, var(--a2ui-spacing-xs, 0.25rem));
+  cursor: pointer;
+}
+.a2ui-message .optionText{
+  font-size: var(--a2ui-font-size-m, 1rem);
+}
+/*# sourceMappingURL=index.css.map */

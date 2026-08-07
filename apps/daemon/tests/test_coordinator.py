@@ -260,6 +260,127 @@ async def _wait_for_reply(
     raise AssertionError("Coordinator reply did not complete")
 
 
+def test_assemble_context_includes_review_mode(tmp_path):
+    """协调上下文必须带每阶段 review_mode（auto/manual/无）与审核记录 mode，避免协调 agent 猜测。"""
+    from models import (
+        CoordinatorSession,
+        CoordinatorTurn,
+        ReviewRun,
+        StepRun,
+        Task,
+        TaskStep,
+        WorkflowRun,
+        init_db,
+    )
+    from services.coordinator import CoordinatorModule
+    from streaming.bus import EventBus
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="ctx-review-task",
+        title="t",
+        cwd=str(tmp_path),
+        engine="claude",
+        review_overrides_json=json.dumps({"build": {"auto": False}}),
+        created_at=1,
+        updated_at=1,
+    )
+    TaskStep.create(
+        task=task, step_key="build", status="awaiting_review", engine="claude"
+    )
+    TaskStep.create(task=task, step_key="plan", status="pending", engine="claude")
+    workflow_run = WorkflowRun.create(
+        id="ctx-review-wf",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    step_run = StepRun.create(
+        id="ctx-step-run",
+        run=workflow_run,
+        step_key="build",
+        attempt=1,
+        status="succeeded",
+        engine="claude",
+    )
+    ReviewRun.create(
+        id="ctx-review-run",
+        workflow_run=workflow_run,
+        step_run=step_run,
+        task=task,
+        step_key="build",
+        attempt=1,
+        mode="manual",
+        status="pending",
+        started_at=1,
+    )
+    from models import Message
+
+    user_message = Message.create(
+        id="ctx-user-msg",
+        task=task,
+        channel="coordinator",
+        step_key="build",
+        role="user",
+        content="进行到哪里了",
+        run_id="ctx-user-msg",
+        run_status="completed",
+        position=1,
+        created_at=1,
+    )
+    assistant_message = Message.create(
+        id="ctx-assistant-msg",
+        task=task,
+        channel="coordinator",
+        step_key="build",
+        role="assistant",
+        content="",
+        run_id="ctx-assistant-msg",
+        run_status="running",
+        position=2,
+        created_at=1,
+    )
+    turn = CoordinatorTurn.create(
+        id="ctx-turn",
+        task=task,
+        user_message_id=user_message.id,
+        assistant_message_id=assistant_message.id,
+        idempotency_key="ctx-ik",
+        status="running",
+        created_at=1,
+    )
+
+    class StubProject:
+        steps = {
+            "steps": [{
+                "key": "build",
+                "label": "构建",
+                "engine": "claude",
+                "review": {"auto": True, "maxRetries": 1},
+            }]
+        }
+        workstep_dir = tmp_path
+
+        def workflow_by_id(self, workflow_id):
+            return None
+
+    module = CoordinatorModule(EventBus(), None, None)
+    prompt, _ = module._assemble_context(StubProject(), task, turn)
+    try:
+        context_json = prompt.split("Context:\n", 1)[1]
+        context = json.loads(context_json)
+        by_key = {step["step_key"]: step for step in context["steps"]}
+        # 工作流 auto:true 被任务级覆盖为 manual
+        assert by_key["build"]["review_mode"] == "manual"
+        # 无审核配置的阶段不声明模式
+        assert by_key["plan"]["review_mode"] is None
+        assert context["reviews"][0]["mode"] == "manual"
+    finally:
+        db.close()
+
+
 @pytest.mark.anyio
 async def test_chat_calls_selected_engine_without_starting_workflow(
     api_context,

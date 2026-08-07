@@ -172,10 +172,19 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .btn-icon:hover { background: var(--surface); color: var(--fg); }
 
-/* 用户消息的复制按钮：鼠标悬停到消息上才显示 */
-.chat-message-row .chat-message-copy { display: none; }
-.chat-message-row:hover .chat-message-copy,
-.chat-message-row:focus-within .chat-message-copy { display: inline-flex; }
+/* 用户消息的复制/编辑按钮：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
+.chat-message-row .chat-message-action { opacity: 0; }
+.chat-message-row:hover .chat-message-action,
+.chat-message-row:focus-within .chat-message-action { opacity: 1; }
+
+/* 底部统计信息（Token/引擎/模型）：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
+.chat-message-row .footer-usage-summary { opacity: 0; }
+.chat-message-row:hover .footer-usage-summary,
+.chat-message-row:focus-within .footer-usage-summary { opacity: 1; }
+
+/* 文本链接按钮（查看提示词等），不套灰色边框盒 */
+.meta-link-btn { background: none; border: none; padding: 0; cursor: pointer; }
+.meta-link-btn:hover { background: none; color: var(--accent-hover); text-decoration: underline; }
 
 /* ── Resizable task detail dialog ── */
 
@@ -313,6 +322,8 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 
 .process-trace-compact {
+  flex: 1 1 auto;
+  min-width: 0;
   width: auto;
   max-width: min(620px, 100%);
 }
@@ -329,20 +340,24 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   margin-left: 2px;
 }
 
-.process-trace-compact .process-trace-body {
-  width: min(684px, calc(70vw + 124px));
-  max-height: min(480px, 60vh);
-  margin-left: -124px;
-  padding: 8px 0 4px;
-  overflow: auto;
+.process-trace-compact .process-trace-session {
+  position: relative;
 }
 
-/* Narrow containers (e.g. a small detail panel) must not pop the trace body
-   out to the left — that overflows the conversation column. */
-.process-trace-narrow .process-trace-body {
-  width: 100%;
-  max-width: 100%;
+.process-trace-compact .process-trace-body {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  width: min(684px, calc(100vw - 160px));
+  max-height: min(470px, calc(60vh - 10px));
   margin-left: 0;
+  padding: 10px 12px 8px;
+  overflow: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
 }
 
 .process-trace details > summary {
@@ -415,6 +430,15 @@ details[open] > summary > .process-trace-chevron {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
+}
+
+.process-trace-tools-group > summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.process-trace-tools-group > summary:hover {
+  color: var(--fg-2);
 }
 
 .process-trace-thinking,
@@ -1004,4 +1028,45 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* ── A2UI message rendering（映射官方 --a2ui-* 令牌到 WorkStep 设计变量）── */
+
+.a2ui-message {
+  --a2ui-color-background: var(--bg);
+  --a2ui-color-on-background: var(--fg-2);
+  --a2ui-color-surface: var(--surface);
+  --a2ui-color-on-surface: var(--fg);
+  --a2ui-color-primary: var(--accent);
+  --a2ui-color-primary-hover: var(--accent-hover);
+  --a2ui-color-on-primary: var(--accent-fg);
+  --a2ui-color-secondary: var(--surface);
+  --a2ui-color-secondary-hover: var(--border-soft);
+  --a2ui-color-on-secondary: var(--fg);
+  --a2ui-color-border: var(--border);
+  --a2ui-border-width: 1px;
+  --a2ui-border-radius: var(--radius-sm);
+  --a2ui-color-input: var(--bg);
+  --a2ui-color-on-input: var(--fg);
+  --a2ui-text-caption-color: var(--meta);
+  --a2ui-text-a-color: var(--accent);
+  --a2ui-font-size: var(--text-body);
+  --a2ui-line-height-body: 1.6;
+  --a2ui-line-height-headings: 1.3;
+  --a2ui-spacing-m: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+/* 防御：modal 等全局 label/input 规则不污染 A2UI 表单控件 */
+.modal-body .a2ui-message label,
+.modal-body .a2ui-message input,
+.modal-body .a2ui-message select,
+.modal-body .a2ui-message textarea {
+  display: revert;
+  margin: revert;
+  width: revert;
 }

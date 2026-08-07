@@ -387,6 +387,57 @@ class TaskRunner:
                             live_message.save()
                         except Message.DoesNotExist:
                             pass
+                    if live_data.get("status") == "delivered":
+                        # 引擎确认收到插入消息：封口当前执行段并开启新的响应段，
+                        # 历史消息呈现「阶段输出 → 用户插入 → 阶段响应」的分段结构。
+                        seal_time = utc_now()
+                        try:
+                            sealed = Message.get_by_id(msg_id)
+                            sealed.content = "".join(content_parts)
+                            sealed.events_json = json.dumps(list(events_collected))
+                            sealed.usage_json = extract_usage_json(events_collected)
+                            sealed.run_status = "succeeded"
+                            sealed.ended_at = seal_time
+                            sealed.save()
+                            await self._publish(task.id, step_key, {
+                                "channel": "execution",
+                                "message_id": msg_id,
+                                "engine": sealed.engine,
+                                "model": sealed.model,
+                                "event_sequence": len(events_collected) + 1,
+                                "type": "message_completed",
+                                "data": {"status": "succeeded"},
+                            })
+                        except Message.DoesNotExist:
+                            pass
+                        new_msg_id = str(uuid.uuid4())
+                        create_task_message(
+                            id=new_msg_id,
+                            task=task,
+                            channel="execution",
+                            step_key=step_key,
+                            role="assistant",
+                            engine=step.engine,
+                            model=resolved_model,
+                            run_id=new_msg_id,
+                            run_status="running",
+                            position=1,
+                            started_at=seal_time,
+                            created_at=seal_time,
+                        )
+                        msg_id = new_msg_id
+                        content_parts.clear()
+                        events_collected.clear()
+                        await self._publish(task.id, step_key, {
+                            "channel": "execution",
+                            "message_id": new_msg_id,
+                            "engine": step.engine,
+                            "model": resolved_model,
+                            "event_sequence": 0,
+                            "type": "message_started",
+                            "data": {"content": ""},
+                            "created_at": seal_time.isoformat(),
+                        })
                 await self._publish(task.id, step_key, {
                     "channel": "execution",
                     "message_id": live_message_id or msg_id,
@@ -396,6 +447,10 @@ class TaskRunner:
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
+
+            if captured_session_id is None and not engine.supports_resume:
+                # 无状态引擎没有原生会话，仍生成本次运行的会话标识供前端展示。
+                captured_session_id = str(uuid.uuid4())
 
             if captured_session_id:
                 # 同任务同阶段重跑时复用该会话（session/resume）。
@@ -470,6 +525,7 @@ class TaskRunner:
                         step_run=step_run,
                         artifacts_dir=artifacts_dir,
                         execution_output="".join(content_parts),
+                        review_config=review_config,
                     )
                     if outcome.status == "passed":
                         ts.status = "passed"
@@ -538,11 +594,16 @@ class TaskRunner:
                         + "\n"
                         for i in (rissues or [])
                     )
-                    rcontent = (
-                        "**审核结果："
-                        f"{'通过' if outcome.status == 'passed' else '未通过'}**\n"
-                        f"{rsummary}\n{ritems}"
-                    )
+                    if outcome.status == "awaiting_review":
+                        # 人工审核：不展示「审核结果」格式，直接提示等待用户确认。
+                        rcontent = "等待你审核"
+                    else:
+                        verdict = "通过" if outcome.status == "passed" else "未通过"
+                        rcontent = (
+                            "**审核结果："
+                            f"{verdict}**\n"
+                            f"{rsummary}\n{ritems}"
+                        )
                     create_task_message(
                         id=rmsg_id,
                         task=task,
@@ -769,7 +830,7 @@ class TaskRunner:
             raise ValueError(f"任务不存在: {task_id}")
         now = utc_now()
         message_id = str(uuid.uuid4())
-        create_task_message(
+        message = create_task_message(
             id=message_id,
             task=task,
             channel="execution",
@@ -805,6 +866,7 @@ class TaskRunner:
             "data": {
                 "content": normalized,
                 "status": "queued",
+                "role": "user",
                 "as_guidance": as_guidance,
             },
         })
@@ -813,6 +875,8 @@ class TaskRunner:
             "message_id": message_id,
             "step_key": step_key,
             "status": "queued",
+            "sequence": message.sequence,
+            "created_at": now.isoformat(),
         }
 
     async def cancel_task(self, task_id: str) -> bool:

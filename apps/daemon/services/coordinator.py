@@ -775,13 +775,40 @@ class CoordinatorModule:
             workflow = project.workflow_by_id(task.workflow_id)
             if workflow is not None:
                 workflow_data = workflow["steps"]
-        compiled = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
+        compiled = WorkflowDefinition.load(workflow_data).compile()
+        review_configs: dict[str, dict | None] = {}
+        if task.review_overrides_json:
+            try:
+                overrides = json.loads(task.review_overrides_json)
+                overrides = overrides if isinstance(overrides, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                overrides = {}
+        else:
+            overrides = {}
+        for compiled_step in compiled.steps:
+            key = str(compiled_step.get("key", ""))
+            base = compiled_step.get("review") or {}
+            step_ov = overrides.get(key, {})
+            if not base and not step_ov:
+                review_configs[key] = None
+                continue
+            cfg = dict(base)
+            if isinstance(step_ov, dict):
+                cfg.update(step_ov)
+            review_configs[key] = cfg
         steps = [
             {
                 "step_key": step.step_key,
                 "status": step.status,
                 "engine": step.engine,
                 "error": step.error,
+                "review_mode": (
+                    "auto"
+                    if (review_configs.get(step.step_key) or {}).get("auto", False)
+                    else "manual"
+                )
+                if review_configs.get(step.step_key) is not None
+                else None,
             }
             for step in TaskStep.select().where(TaskStep.task == task)
         ]
@@ -802,6 +829,7 @@ class CoordinatorModule:
             {
                 "id": review.id,
                 "step_key": review.step_key,
+                "mode": review.mode,
                 "status": review.status,
                 "decision": review.decision,
                 "step_run_id": review.step_run_id,
@@ -945,6 +973,8 @@ class CoordinatorModule:
         finally:
             if turn_id is not None:
                 self._running_engines.pop(turn_id, None)
+        if resolved_session_id is None and not engine.supports_resume:
+            resolved_session_id = str(uuid.uuid4())
         if error:
             raise RuntimeError(error)
         return "".join(content).strip(), events, resolved_session_id

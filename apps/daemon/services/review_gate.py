@@ -56,8 +56,9 @@ class ReviewGate:
         step_run: StepRun,
         artifacts_dir: Path,
         execution_output: str,
+        review_config: dict | None = None,
     ) -> ReviewOutcome:
-        config = step.review or {}
+        config = dict(review_config) if review_config is not None else dict(step.review or {})
         mode = "auto" if config.get("auto", False) else "manual"
         engine_id = str(config.get("engine") or step.engine)
         model = str(
@@ -93,6 +94,8 @@ class ReviewGate:
                 "issues": [],
             }
             review_run.report_json = json.dumps(report, ensure_ascii=False)
+            # 人工审核没有运行任何引擎：不保留提示词，前端不显示「查看提示词」。
+            review_run.prompt_json = None
             review_run.status = "pending"
             review_run.save()
             await self._emit(task, step, step_run, review_run, "awaiting_review", report)

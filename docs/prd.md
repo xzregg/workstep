@@ -65,7 +65,7 @@ Daemon 把三种引擎的 stdout 事件统一映射为内部事件：
 ### 2.3 会话持久化与上下文传递
 
 - **Claude**：会话 ID 存 SQLite `agent_sessions` 表；首轮发完整 transcript，后续轮 `--resume` 仅发最新请求，靠 Claude 自身会话文件续上下文
-- **Codex / Hermes**：无会话恢复，每轮全量 transcript 通过 stdin 发送
+- **Codex**：`codex exec --json` 的 `thread.started.thread_id` 作为会话 ID，重跑经 `codex exec resume <id> <prompt>` 续上下文；**Hermes（ACP）** 通过 `load_session` 恢复
 - 稳定指令块（系统 prompt + 工具契约）通过 hash 指纹判断是否变化，未变化时跳过重发
 
 ### 2.4 沙箱隔离

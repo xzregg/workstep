@@ -225,14 +225,14 @@ flowchart LR
 | codex_sdk | 官方 Codex SDK 内嵌驱动 Codex | ✅ | ❌ |
 | qoder_sdk | 官方 Qoder Agent SDK 内嵌驱动 qodercli | ❌ | ❌ |
 
-引擎的 stdout（无论 JSONL、JSON-RPC 还是 SSE）都被解析器归一化为统一的**内部事件**：`status` / `text_delta` / `thinking_delta` / `tool_use` / `tool_result` / `usage` / `error`。前端只消费这套事件，不感知底层引擎差异。
+引擎的 stdout（无论 JSONL、JSON-RPC 还是 SSE）都被解析器归一化为统一的**内部事件**：`status` / `text_delta` / `thinking_delta` / `tool_use` / `tool_result` / `usage` / `compacted`（上下文已自动压缩）/ `error`。前端只消费这套事件，不感知底层引擎差异。
 
 ### 内置 Pydantic 引擎（`pydantic_ai`）
 
 `pydantic_ai` 是进程内引擎：无需子进程，直接用 Pydantic AI 加载已配置的 Provider（Anthropic / OpenAI 兼容），通过 `pydantic_ai_harness` 提供沙箱工具：
 
 - `from pydantic_ai_harness import FileSystem` — 受允许根目录限制的沙箱文件系统：`list_files` / `read_file` / `search_files` / `write_file` / `edit_file`（支持修改代码，路径逃逸会拒绝）
-- `from pydantic_ai_harness.memory import Memory` — 项目记忆，持久化为 `.workstep/MEMORY.md`（`## <key>` 小节，字符串存原文、结构化值存 JSON 代码块），工具 `remember` / `recall`
+- `pydantic_ai_harness.memory.Memory` — 项目记忆，持久化为 `.workstep/MEMORY.md`（`## <key>` 小节，字符串存原文、结构化值存 JSON 代码块）。阶段执行时由流程引擎读取该文件，把内容注入阶段提示词的「项目记忆」区块（所有引擎一致，agent 只读参考，不再引导 agent 自行读写）；前端「编辑记忆」走 `/api/fs/memory`
 - `from pydantic_ai_harness.skills import Skills` — 技能注册表，扫描项目 `.claude/skills`、`.codex/skills` 与 `~/.claude/skills`、`~/.codex/skills`、`~/.agents/skills` 下的 `SKILL.md`（frontmatter name/description + 正文），工具 `list_skills` / `load_skill`；项目级技能优先于个人技能
 
 引擎指令会自动附加项目根目录的 `agents.md` / `AGENTS.md`，让代理遵守仓库约定。工具注册于 `apps/daemon/engines/pydantic_ai.py`，实现位于 `apps/daemon/pydantic_ai_harness/`。
@@ -341,3 +341,4 @@ sequenceDiagram
 | `plans/04-pipeline.md` | 工作流编排、DAG 调度、产物衔接 |
 | `plans/08-stage-review-and-auto-retry.md` | 阶段审核与自动重试 |
 | `plans/07-current-state-and-development-plan.md` | 当前状态与开发计划 |
+| `apps/desktop/README.md` | 桌面应用（pywebview + PyInstaller 打包） |

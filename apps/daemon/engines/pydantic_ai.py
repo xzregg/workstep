@@ -5,6 +5,7 @@ from importlib import metadata, util
 import json
 import logging
 from pathlib import Path
+import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 from engines.api import APIEngine
@@ -240,7 +241,7 @@ class PydanticAIEngine(BaseLLMEngine):
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
-        from pydantic_ai_harness import FileSystem, Memory, Skills
+        from pydantic_ai_harness import FileSystem, Skills
 
         root = Path(cwd).resolve()
         allowed_roots = [root]
@@ -251,7 +252,6 @@ class PydanticAIEngine(BaseLLMEngine):
 
         file_system = FileSystem(allowed_roots)
         skills = Skills(project_root=root)
-        memory = Memory(root / ".workstep" / "MEMORY.md")
 
         agent = Agent(
             model,
@@ -296,20 +296,6 @@ class PydanticAIEngine(BaseLLMEngine):
                 new_string,
                 replace_all=replace_all,
             )
-
-        @agent.tool_plain
-        def remember(key: str, value: str) -> str:
-            """Store a fact in durable project memory (survives restarts)."""
-            memory.set(key, value)
-            return f"已保存: {key}"
-
-        @agent.tool_plain
-        def recall(key: str) -> str:
-            """Read a fact from durable project memory."""
-            stored = memory.get(key)
-            if stored is None:
-                return f"未找到: {key}"
-            return json.dumps(stored, ensure_ascii=False)
 
         @agent.tool_plain
         def list_skills() -> list[str]:
@@ -397,8 +383,8 @@ class PydanticAIEngine(BaseLLMEngine):
             f"The active project directory is {root}.",
             "You can read, search, and MODIFY code inside the project with "
             "list_files / read_file / search_files / write_file / edit_file.",
-            "Project memory lives in .workstep/MEMORY.md — read it before "
-            "starting, and keep it updated with remember / recall.",
+            "Project memory from .workstep/MEMORY.md has been injected into "
+            "the prompt — treat it as read-only and do not modify the file.",
             "Use list_skills / load_skill for local skills (Claude Code "
             ".claude/skills, Codex .codex/skills — project dirs first, then "
             "~/.claude/skills, ~/.codex/skills, ~/.agents/skills).",
@@ -500,6 +486,10 @@ class PydanticAIEngine(BaseLLMEngine):
             return
 
         self._running = True
+        # 进程内 Agent 没有 CLI 会话概念；生成一个本次运行的会话标识，
+        # 供任务记录与前端对话展示（与其它引擎的 session_id 一致）。
+        session_uuid = session_id or str(uuid.uuid4())
+        yield InternalEvent(type="session_started", data={"session_id": session_uuid})
         yield InternalEvent(type="status", data={"status": "running"})
         agent_task: asyncio.Task | None = None
         try:
@@ -561,6 +551,7 @@ class PydanticAIEngine(BaseLLMEngine):
                             "amount": round(amount, 6),
                             "currency": "USD",
                         }
+                usage_data["session_id"] = session_uuid
                 yield InternalEvent(type="usage", data=usage_data)
             yield InternalEvent(type="status", data={"status": "done"})
         except asyncio.CancelledError:

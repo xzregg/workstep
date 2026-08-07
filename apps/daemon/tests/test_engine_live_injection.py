@@ -79,17 +79,27 @@ class _LiveFakeStdin:
 
 
 class _LiveFakeCodexProcess:
-    def __init__(self):
+    def __init__(self, stdout: bytes | None = None, eof: bool = True):
         self.stdin = _LiveFakeStdin()
         self.stdout = asyncio.StreamReader()
-        self.stdout.feed_data(b'{"type":"turn.started"}\n')
-        self.stdout.feed_eof()
+        if stdout is not None:
+            self.stdout.feed_data(stdout)
+        if eof:
+            self.stdout.feed_eof()
         self.stderr = asyncio.StreamReader()
         self.stderr.feed_eof()
         self.returncode = 0
+        self.terminated = False
+        self.args: list[str] = []
 
     async def wait(self) -> int:
         return self.returncode
+
+    def terminate(self):
+        self.terminated = True
+
+    def kill(self):
+        self.terminated = True
 
 
 def _codex_config():
@@ -101,10 +111,24 @@ def _codex_config():
 
 
 @pytest.mark.anyio
-async def test_codex_spawn_live_mode_writes_jsonl_events(monkeypatch):
-    process = _LiveFakeCodexProcess()
+async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
+    """codex exec 无注入协议：插入消息时终止当前进程，用新消息 resume 重启会话。"""
+    first = _LiveFakeCodexProcess(
+        stdout=b'{"type":"thread.started","thread_id":"thread-1"}\n',
+        eof=False,
+    )
+    second = _LiveFakeCodexProcess(
+        stdout=(
+            b'{"type":"thread.started","thread_id":"thread-1"}\n'
+            b'{"type":"item.completed",'
+            b'"item":{"type":"agent_message","text":"resumed answer"}}\n'
+        )
+    )
+    spawned = [first, second]
 
     async def fake_create_subprocess_exec(*args, **kwargs):
+        process = spawned.pop(0)
+        process.args = list(args)
         return process
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
@@ -119,54 +143,62 @@ async def test_codex_spawn_live_mode_writes_jsonl_events(monkeypatch):
     )
 
     queue: asyncio.Queue = asyncio.Queue()
-    queue.put_nowait(("mid-1", "注入内容"))
-    events = [
-        event
+    events: list[InternalEvent] = []
+
+    async def consume():
         async for event in CodexEngine().spawn(
             prompt="hello",
             cwd="/tmp",
             live_message_queue=queue,
-        )
-    ]
+        ):
+            events.append(event)
 
-    lines = [
-        json.loads(line)
-        for line in process.stdin.written.decode().strip().splitlines()
-        if line.strip()
-    ]
-    assert lines[0] == {"type": "user_message", "payload": {"content": "hello"}}
-    assert lines[1] == {
-        "type": "user_message",
-        "payload": {"content": "注入内容"},
-    }
-    assert lines[-1] == {"type": "close_session"}
+    consumer = asyncio.create_task(consume())
+    # 等待首个会话建立（thread.started 已被读取、_thread_id 已就绪）后再插入
+    for _ in range(200):
+        if any(event.type == "session_started" for event in events):
+            break
+        await asyncio.sleep(0.01)
+    assert any(event.type == "session_started" for event in events)
+    queue.put_nowait(("mid-1", "注入内容"))
+    await asyncio.wait_for(consumer, timeout=10)
+
+    # 插入消息以 delivered 上报，当前进程被终止
     delivered = [event for event in events if event.type == "live_message"]
-    assert [event.data["message_id"] for event in delivered] == ["mid-1"]
+    assert len(delivered) == 1
+    assert delivered[0].data["message_id"] == "mid-1"
+    assert delivered[0].data["content"] == "注入内容"
     assert delivered[0].data["status"] == "delivered"
+    assert first.terminated is True
+
+    # 第二次启动使用 `codex exec resume <thread_id> <插入消息>` 延续会话
+    assert second.args[:4] == [
+        "/fake/codex", "exec", "--json", "--skip-git-repo-check",
+    ]
+    assert second.args[4:7] == ["resume", "thread-1", "注入内容"]
+    deltas = "".join(
+        event.data.get("delta", "")
+        for event in events
+        if event.type == "text_delta"
+    )
+    assert deltas == "resumed answer"
 
 
 @pytest.mark.anyio
-async def test_codex_send_live_stage_message_writes_user_message(monkeypatch):
+async def test_codex_send_live_stage_message_not_supported(monkeypatch):
     engine = CodexEngine()
-    stdin = _LiveFakeStdin()
-    engine._process = SimpleNamespace(stdin=stdin)
     engine._running = True
 
     delivered = await engine.send_live_stage_message("补充说明")
-    assert delivered is True
-    payload = json.loads(stdin.written.decode())
-    assert payload == {
-        "type": "user_message",
-        "payload": {"content": "补充说明"},
-    }
+    assert delivered is False
 
 
 def test_all_registered_engines_advertise_live_support_except_placeholder():
-    """Every registered engine except the openclaw placeholder supports live injection."""
+    """除 openclaw（占位引擎）外均支持 live 注入（codex 以 resume 重启方式支持）。"""
     for engine_id, engine_cls in _ALL_ENGINES.items():
         engine = engine_cls()
         if engine_id == "openclaw":
-            assert engine.supports_live_stage_message is False
+            assert engine.supports_live_stage_message is False, engine_id
         else:
             assert engine.supports_live_stage_message is True, engine_id
         assert isinstance(engine, BaseLLMEngine)

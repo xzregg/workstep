@@ -145,6 +145,9 @@ export interface MessageResponseFooterProps {
   executionModel?: string | null
   endedAt?: string | number | null
   running?: boolean
+  /** 该阶段被手动停止：悬停消息时显示「重启」。 */
+  stopped?: boolean
+  onContinueStage?: () => void
 }
 
 export default function MessageResponseFooter({
@@ -155,6 +158,8 @@ export default function MessageResponseFooter({
   executionModel,
   endedAt,
   running = false,
+  stopped = false,
+  onContinueStage,
 }: MessageResponseFooterProps) {
   const usageSummary = running ? '' : formatTokenUsage(usage)
 
@@ -163,8 +168,7 @@ export default function MessageResponseFooter({
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
       color: 'var(--meta)', fontSize: 11,
     }}>
-      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-        {!running && endedAt ? `完成 ${formatExecutionClock(endedAt)} · ` : ''}
+      <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         {usageSummary}
         {!running && engine ? ` · ${engineLabel(engine)}` : ''}
         {!running && model ? ` * ${model}` : ''}
@@ -172,11 +176,34 @@ export default function MessageResponseFooter({
           ? ` · 执行 ${executionModel}`
           : ''}
       </span>
+      {stopped && onContinueStage && (
+        <button
+          type="button"
+          className="chat-message-action"
+          title="从该阶段重启执行任务"
+          onClick={onContinueStage}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 11, color: 'var(--accent)',
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            whiteSpace: 'nowrap', minHeight: 24, flexShrink: 0,
+          }}
+        >
+          <Icon name="rotate-ccw" size={11} strokeWidth={2.2} />
+          重启
+        </button>
+      )}
       <MessageCopyButton
         content={content}
         title={running ? '消息生成完成后可复制' : '复制消息'}
         disabled={running}
+        className="chat-message-action"
       />
+      {!running && endedAt && (
+        <span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+          {formatExecutionClock(endedAt)}
+        </span>
+      )}
     </div>
   )
 }

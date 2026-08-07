@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import AsyncIterator
 
 import httpx
@@ -233,6 +234,11 @@ class APIEngine(BaseLLMEngine):
             ) as client:
                 self._client = client
 
+                # API 直调是无状态调用，仍生成本次运行的会话标识供前端展示与任务记录。
+                yield InternalEvent(
+                    type="session_started",
+                    data={"session_id": str(uuid.uuid4())},
+                )
                 yield InternalEvent(type="status", data={"status": "running"})
 
                 while True:

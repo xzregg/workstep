@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 
-from models import ActionProposal, Task, TaskStep, Message, WorkflowRun
+from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
 from engines.registry import create_engine
@@ -436,6 +436,12 @@ class TaskService:
 
     def _task_to_dict(self, task: Task) -> dict:
         steps = list(TaskStep.select().where(TaskStep.task == task))
+        coordinator_session = CoordinatorSession.get_or_none(
+            CoordinatorSession.task == task
+        )
+        coordinator_session_id = (
+            coordinator_session.session_id if coordinator_session else None
+        )
         run_round = 1
         restart_from_step_key = None
         recovered_at = None
@@ -474,6 +480,7 @@ class TaskService:
             "coordinator_model": task.coordinator_model,
             "coordinator_fast_model": task.coordinator_fast_model,
             "coordinator_vision_model": task.coordinator_vision_model,
+            "coordinator_session_id": coordinator_session_id,
             "active_workflow_run_id": task.active_workflow_run_id,
             "run_round": run_round,
             "restart_from_step_key": restart_from_step_key,

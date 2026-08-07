@@ -6,6 +6,8 @@ import logging
 import os
 import platform
 import shutil
+import uuid
+from contextlib import suppress
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine
@@ -31,6 +33,7 @@ class CodexEngine(BaseLLMEngine):
         self._process: asyncio.subprocess.Process | None = None
         self._running = False
         self._stderr: list[bytes] = []
+        self._thread_id: str | None = None
 
     @staticmethod
     def is_installed() -> bool:
@@ -130,129 +133,139 @@ class CodexEngine(BaseLLMEngine):
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
     ) -> AsyncIterator[InternalEvent]:
+        """Run ``codex exec``, restarting with ``resume`` on live messages.
+
+        codex exec 没有执行中注入协议。当 ``live_message_queue`` 中出现插入
+        消息时，终止当前进程，并用该消息作为提示词经 ``codex exec resume
+        <session_id> <消息>`` 重启同一会话，从而延续完整上下文继续作答。
+        """
         binary = self.resolve_binary()
         if not binary:
             yield InternalEvent(type="error", data={"message": "codex binary not found"})
             return
 
         codex_config = config_store.get_codex_config()
-        cmd = [
-            binary, "exec",
-            "--json",
-            "--skip-git-repo-check",
-            "--sandbox", codex_config["sandbox_mode"] or self._default_sandbox(),
-            "-C", cwd,
-        ]
-        if live_message_queue is not None:
-            # Interactive JSONL stdin: keep stdin open and inject user_message
-            # events so mid-execution stage messages can be delivered.
-            cmd.extend(["--input-format", "jsonl"])
+        run_prompt = prompt
+        resume_session = session_id or None
 
-        if model:
-            cmd.extend(["--model", model])
+        while True:
+            cmd = [binary, "exec", "--json", "--skip-git-repo-check"]
+            if resume_session:
+                # `codex exec resume <session_id> <prompt>` 恢复上次会话，复用完整
+                # 上下文；会话已记录 cwd，恢复时沿用原工作目录。
+                cmd.extend(["resume", resume_session, run_prompt])
+            else:
+                cmd.extend([
+                    "--sandbox",
+                    codex_config["sandbox_mode"] or self._default_sandbox(),
+                    "-C", cwd,
+                ])
 
-        if codex_config["model_reasoning_effort"]:
-            cmd.extend(
-                ["-c", f"model_reasoning_effort={codex_config['model_reasoning_effort']}"]
+            if model:
+                cmd.extend(["--model", model])
+
+            if codex_config["model_reasoning_effort"]:
+                cmd.extend(
+                    ["-c", f"model_reasoning_effort={codex_config['model_reasoning_effort']}"]
+                )
+            if codex_config["approval_policy"]:
+                cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
+
+            logger.info("Spawning: %s", " ".join(cmd))
+
+            self._process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
             )
-        if codex_config["approval_policy"]:
-            cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
+            self._running = True
+            self._stderr = []
+            stderr_task = asyncio.create_task(self._drain_stderr())
 
-        logger.info("Spawning: %s", " ".join(cmd))
-
-        self._process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
-        self._running = True
-        self._stderr = []
-        stderr_task = asyncio.create_task(self._drain_stderr())
-
-        # Codex: write prompt to stdin; keep it open in live mode.
-        if live_message_queue is None:
-            self._process.stdin.write(prompt.encode())
-            await self._process.stdin.drain()
+            if resume_session is None:
+                # 新会话：codex exec 无位置参数时把 stdin 当作提示词读取。
+                self._process.stdin.write(run_prompt.encode())
+                await self._process.stdin.drain()
             self._process.stdin.close()
-        else:
-            await self._write_jsonl({
-                "type": "user_message",
-                "payload": {"content": prompt},
-            })
 
-        yield InternalEvent(type="status", data={"status": "running"})
+            yield InternalEvent(type="status", data={"status": "running"})
 
-        produced_output = False
-        async for event in self._parse_stdout():
-            if event.type != "status":
-                produced_output = True
-            yield event
-            if live_message_queue is not None:
-                while not live_message_queue.empty():
+            restart_content: str | None = None
+            produced_output = False
+            async for event in self._parse_stdout(live_message_queue):
+                yield event
+                if event.type == "live_message":
+                    # 收到插入消息：终止当前进程，稍后用新消息 resume 重启。
+                    restart_content = str(event.data.get("content") or "")
+                elif event.type != "status":
+                    produced_output = True
+
+            if restart_content is None and live_message_queue is not None:
+                # 进程已结束但队列中仍有插入消息（执行刚完成即插入）：
+                # 同样以该消息作为提示词恢复会话。
+                try:
                     message_id, content = live_message_queue.get_nowait()
-                    delivered = await self.send_live_stage_message(content)
+                except asyncio.QueueEmpty:
+                    pass
+                else:
                     yield InternalEvent(type="live_message", data={
                         "message_id": message_id,
-                        "status": "delivered" if delivered else "error",
-                        "detail": "" if delivered else "引擎执行已结束，无法接收新消息",
+                        "content": content,
+                        "status": "delivered",
+                        "session_id": self._thread_id,
                     })
+                    restart_content = content
 
-        if live_message_queue is not None:
-            # Ask the CLI to finalize and close the session.
-            try:
-                await self._write_jsonl({"type": "close_session"})
-                self._process.stdin.close()
-            except (BrokenPipeError, ConnectionResetError, RuntimeError):
-                pass
+            if restart_content is not None:
+                stderr_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await stderr_task
+                await self.stop()
+                if self._thread_id:
+                    resume_session = self._thread_id
+                    run_prompt = restart_content
+                elif resume_session:
+                    run_prompt = restart_content
+                else:
+                    # 会话尚未建立（thread.started 未到达）：无法 resume，
+                    # 用「原提示词 + 插入消息」重启新会话，避免丢失上下文。
+                    run_prompt = (
+                        f"{run_prompt}\n\n[用户插入消息]\n{restart_content}"
+                    )
+                continue
 
-        exit_code = await self._process.wait()
-        self._running = False
-        await stderr_task
-        stderr_text = b"".join(self._stderr).decode(errors="replace").strip()
+            exit_code = await self._process.wait()
+            self._running = False
+            await stderr_task
+            stderr_text = b"".join(self._stderr).decode(errors="replace").strip()
 
-        if stderr_text:
-            logger.debug("codex stderr: %s", stderr_text[-2000:])
+            if stderr_text:
+                logger.debug("codex stderr: %s", stderr_text[-2000:])
 
-        if exit_code != 0:
-            yield InternalEvent(type="error", data={
-                "message": f"Process exited with code {exit_code}",
-                "stderr": stderr_text,
-            })
-        elif not produced_output and stderr_text:
-            yield InternalEvent(type="error", data={
-                "message": "codex 未产生任何输出",
-                "stderr": stderr_text[-2000:],
-            })
-        else:
-            yield InternalEvent(type="status", data={"status": "done"})
-
-    async def _write_jsonl(self, payload: dict) -> None:
-        """Write one JSONL event to the running codex stdin."""
-        if (
-            self._process is None
-            or self._process.stdin is None
-            or self._process.stdin.is_closing()
-        ):
-            raise BrokenPipeError("codex stdin is closed")
-        self._process.stdin.write(
-            (json.dumps(payload, ensure_ascii=False) + "\n").encode()
-        )
-        await self._process.stdin.drain()
+            if exit_code != 0:
+                yield InternalEvent(type="error", data={
+                    "message": f"Process exited with code {exit_code}",
+                    "stderr": stderr_text,
+                })
+            elif not produced_output and stderr_text:
+                yield InternalEvent(type="error", data={
+                    "message": "codex 未产生任何输出",
+                    "stderr": stderr_text[-2000:],
+                })
+            else:
+                yield InternalEvent(type="status", data={"status": "done"})
+            return
 
     async def send_live_stage_message(self, content: str) -> bool:
-        """Inject an ordinary user message into the running codex process."""
-        if not self._running or self._process is None:
-            return False
-        try:
-            await self._write_jsonl({
-                "type": "user_message",
-                "payload": {"content": content},
-            })
-            return True
-        except (BrokenPipeError, ConnectionResetError, RuntimeError):
-            return False
+        """Direct mid-run injection is not possible for ``codex exec``.
+
+        Live stage messages are instead handled inside ``spawn``: the running
+        process is stopped and restarted via ``codex exec resume`` with the
+        inserted message as the new prompt, preserving the session context.
+        """
+        return False
 
     async def _drain_stderr(self) -> None:
         """Keep reading stderr so a chatty process cannot fill its pipe."""
@@ -266,9 +279,37 @@ class CodexEngine(BaseLLMEngine):
         except Exception:
             logger.exception("Failed to drain codex stderr")
 
-    async def _parse_stdout(self) -> AsyncIterator[InternalEvent]:
-        """Parse Codex JSONL stdout."""
-        async for line in self._process.stdout:
+    async def _parse_stdout(
+        self,
+        live_message_queue: asyncio.Queue | None = None,
+    ) -> AsyncIterator[InternalEvent]:
+        """Parse Codex JSONL stdout, polling the live message queue.
+
+        codex exec 无执行中注入协议，插入消息无法实时写入进程；队列中的消息
+        以 ``live_message`` 事件上报，由 ``spawn`` 负责终止进程并用该消息
+        resume 重启会话。
+        """
+        assert self._process is not None
+        while True:
+            if live_message_queue is not None and not live_message_queue.empty():
+                message_id, content = live_message_queue.get_nowait()
+                yield InternalEvent(type="live_message", data={
+                    "message_id": message_id,
+                    "content": content,
+                    "status": "delivered",
+                    "session_id": self._thread_id,
+                })
+                return
+            try:
+                line = await asyncio.wait_for(
+                    self._process.stdout.readline(), timeout=0.25
+                )
+            except asyncio.TimeoutError:
+                continue
+            except (RuntimeError, OSError):
+                break
+            if not line:
+                break
             line = line.decode(errors="replace").strip()
             if not line:
                 continue
@@ -276,6 +317,17 @@ class CodexEngine(BaseLLMEngine):
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+
+            if obj.get("type") == "thread.started":
+                # codex exec JSONL 在 thread.started 携带真实 thread_id，
+                # 作为本次运行的会话标识（重跑可经 `codex exec resume` 复用）。
+                self._thread_id = (
+                    str(obj.get("thread_id") or "") or str(uuid.uuid4())
+                )
+                yield InternalEvent(
+                    type="session_started",
+                    data={"session_id": self._thread_id},
+                )
 
             event = self._map_event(obj)
             if event:
@@ -375,15 +427,16 @@ class CodexEngine(BaseLLMEngine):
 
     @property
     def supports_resume(self) -> bool:
-        return False
+        return True
 
     @property
     def supports_interactive(self) -> bool:
-        return True  # Live mode accepts ordinary user messages mid-execution
+        return False  # codex exec 非交互模式无执行中注入协议
 
     @property
     def supports_live_stage_message(self) -> bool:
+        """插入消息以「终止当前进程 + 新消息 resume 重启」的方式支持。"""
         return True
 
     def build_resume_params(self, session_id: str) -> dict:
-        return {}
+        return {"session_id": session_id}

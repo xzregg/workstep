@@ -191,6 +191,7 @@ export const useTaskStore = create<TaskState>((set) => ({
           id: event.message_id,
           channel: event.channel || 'execution',
           step_key: event.step_key,
+          role: event.type === 'message_started' ? event.data.role : undefined,
           content: '',
           events: [],
           status: 'running',

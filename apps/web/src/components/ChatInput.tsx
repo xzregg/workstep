@@ -1,5 +1,11 @@
 import Icon from './Icon'
-import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react'
+import {
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import { fsApi, type CoordinatorEngineSummary } from '../api/client'
 import { engineLabel } from '../engineMeta'
@@ -74,6 +80,8 @@ export interface ChatInputProps {
   onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void
   /** Button hover title when in send mode. */
   title?: string
+  /** External ref for focusing the composer (e.g. edit-message flows). */
+  inputRef?: Ref<HTMLTextAreaElement>
   rows?: number
   minHeight?: number
   maxHeight?: number
@@ -94,6 +102,7 @@ export default function ChatInput({
   left,
   onPaste,
   title,
+  inputRef,
   rows = 1,
   minHeight = 40,
   maxHeight = 120,
@@ -169,7 +178,11 @@ export default function ChatInput({
         }}
       >
         <textarea
-          ref={textareaRef}
+          ref={(element) => {
+            textareaRef.current = element
+            if (typeof inputRef === 'function') inputRef(element)
+            else if (inputRef) inputRef.current = element
+          }}
           value={value}
           onChange={(e) => {
             onChange(e.target.value)

@@ -633,17 +633,19 @@ async def test_pydantic_ai_spawn_uses_its_own_config(monkeypatch):
         "model_name": "agent-model",
     }
     assert [event.type for event in events] == [
+        "session_started",
         "status",
         "text_delta",
         "text_delta",
         "usage",
         "status",
     ]
-    assert [events[1].data["delta"], events[2].data["delta"]] == [
+    assert events[0].data == {"session_id": events[0].data["session_id"]}
+    assert [events[2].data["delta"], events[3].data["delta"]] == [
         "agent ",
         "result",
     ]
-    assert events[3].data == {
+    assert events[4].data == {
         "input_tokens": 3,
         "output_tokens": 2,
         "cache_creation_input_tokens": 4,
@@ -651,6 +653,7 @@ async def test_pydantic_ai_spawn_uses_its_own_config(monkeypatch):
         "total_tokens": 5,
         "requests": 1,
         "cost": {"amount": 0.123, "currency": "USD"},
+        "session_id": events[0].data["session_id"],
     }
 
 
@@ -892,10 +895,37 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
 
     assert captured["live_message_queue"] is queue
     assert [event.type for event in events] == [
+        "session_started",
         "status",
         "text_delta",
         "status",
     ]
+
+
+@pytest.mark.anyio
+async def test_api_spawn_emits_session_started(monkeypatch):
+    """API 直调无状态，但每次运行仍须产出会话标识供前端展示。"""
+    store = MemoryEngineConfigStore()
+    store.set_api_engine_config(
+        provider="openai",
+        base_url="https://gateway.example.com/v1",
+        api_key="agent-secret",
+        model="agent-model",
+    )
+    monkeypatch.setattr(api_engine_module, "config_store", store)
+    async def fake_call_openai(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(APIEngine, "_call_openai", fake_call_openai)
+
+    events = [
+        event
+        async for event in APIEngine().spawn(prompt="hi", cwd="/tmp")
+    ]
+
+    sessions = [event for event in events if event.type == "session_started"]
+    assert len(sessions) == 1
+    assert sessions[0].data["session_id"]
 
 
 def test_config_file_is_owner_only_when_api_key_is_saved(tmp_path, monkeypatch):

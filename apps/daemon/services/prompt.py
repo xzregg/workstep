@@ -16,10 +16,27 @@ SYSTEM_PROMPT = """你是 WorkStep 工作流中的一个执行阶段。
 请根据阶段要求完成任务，产出指定的产物文件。
 工作目录是当前项目根目录。
 产物请写入 .workstep/artifacts/<工作流>/<任务>/<阶段>/<产物名>/ 目录下。
-开始前请先查看项目根目录的 .workstep/MEMORY.md（如果存在），
-遵循其中记录的项目记忆、约定与阶段性结论；如产生新的关键结论，请更新该文件。
 
 严格按「输出规范」中声明的文件类型和名称产出产物，不要输出未声明的文件格式。"""
+
+
+def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None:
+    """Read the project's .workstep/MEMORY.md for prompt injection.
+
+    The pipeline engine reads the file so every engine sees the memory
+    content directly in the prompt; engines are not instructed to read or
+    update the file themselves. Returns None when the file is missing/empty.
+    """
+    memory_file = artifacts_dir.parent / "MEMORY.md"
+    try:
+        if not memory_file.is_file():
+            return None
+        content = memory_file.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not content:
+        return None
+    return content[:limit]
 
 
 def _load_output_type_constraints() -> dict[str, str]:
@@ -57,6 +74,10 @@ def assemble_prompt(
     4. User supplementary input
     """
     parts = [SYSTEM_PROMPT]
+
+    memory = _load_project_memory(artifacts_dir)
+    if memory:
+        parts.append(f"## 项目记忆\n{memory}")
 
     if task.description:
         parts.append(f"## 任务说明\n{task.description}")

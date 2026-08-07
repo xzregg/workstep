@@ -1,7 +1,5 @@
 import Icon from './Icon'
 import { useState } from 'react'
-import type { ReactNode } from 'react'
-import Button from './Button'
 import ProcessTrace from './ProcessTrace'
 import {
   type DateTimeValue,
@@ -33,10 +31,6 @@ export interface MessageMetaBarProps {
   origin?: DateTimeValue
   /** Terminal message status shown as a pill (cancelled/stopped/failed). */
   status?: 'cancelled' | 'stopped' | 'failed'
-  /** Extra controls rendered at the end of the meta row (e.g. stop button). */
-  actions?: ReactNode
-  /** Ticking "now" (ms) used while the stage is running to advance the clock. */
-  runningNow?: number
 }
 
 export default function MessageMetaBar({
@@ -50,8 +44,6 @@ export default function MessageMetaBar({
   onViewPrompt,
   origin,
   status,
-  actions,
-  runningNow,
 }: MessageMetaBarProps) {
   const [sessionCopied, setSessionCopied] = useState(false)
   const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
@@ -65,11 +57,6 @@ export default function MessageMetaBar({
     const sid = event?.data?.session_id
     return typeof sid === 'string' && sid.trim() ? sid : null
   }, null)
-  const displayedExecutionTime = (() => {
-    if (!origin) return null
-    if (running && runningNow) return runningNow
-    return endedAt || displayStartedAt
-  })()
   const displaySessionId = sessionId || eventSessionId
   const copySessionId = async () => {
     if (!displaySessionId) return
@@ -86,42 +73,19 @@ export default function MessageMetaBar({
     <div style={{
       width: '100%', minHeight: 30,
       display: 'flex', alignItems: 'flex-start', gap: 12,
-      paddingBottom: 6, borderBottom: '1px solid var(--border-soft)',
-      color: 'var(--meta)', fontSize: 11, flexWrap: 'wrap',
+      paddingBottom: 6,
+      color: 'var(--meta)', fontSize: 11,
+      borderBottom: '1px solid var(--border-soft)',
     }}>
-      <span
-        title={origin
-          ? formatConversationDateTime(displayedExecutionTime ?? displayStartedAt)
-          : undefined}
-        style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}
-      >
-        {origin
-          ? formatExecutionClock(displayedExecutionTime ?? displayStartedAt)
-          : formatConversationDateTime(displayStartedAt)}
-      </span>
       <ProcessTrace
         events={events || []}
         running={running}
+        stopped={status === 'cancelled' || status === 'stopped'}
         startedAt={displayStartedAt}
         endedAt={endedAt}
         compact
       />
-      {status === 'cancelled' || status === 'stopped' ? (
-        <span
-          title="该条 LLM 消息已被手动停止"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            height: 18, padding: '0 7px', borderRadius: 9,
-            border: '1px solid rgba(217,119,6,0.45)',
-            background: 'rgba(217,119,6,0.08)',
-            color: 'var(--status-cancelled)', fontSize: 11, flexShrink: 0,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <Icon name="stop" size={8} fill />
-          已停止
-        </span>
-      ) : status === 'failed' ? (
+      {status === 'failed' ? (
         <span
           title="该条 LLM 消息执行失败"
           style={{
@@ -152,41 +116,52 @@ export default function MessageMetaBar({
           上下文已压缩
         </span>
       )}
-      {(displaySessionId || prompt || actions) && (
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          {displaySessionId && (
-            <button
-              type="button"
-              title={sessionCopied
-                ? '已复制'
-                : `点击复制该阶段 LLM 引擎会话 ID：${displaySessionId}`}
-              aria-label="复制会话 ID"
-              onClick={() => void copySessionId()}
-              style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11,
-                color: sessionCopied ? 'var(--success)' : 'var(--meta)',
-                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              }}
-            >
-              {sessionCopied ? '已复制' : displaySessionId}
-            </button>
-          )}
-          {prompt && (
-            <Button
-              variant="ghost"
-              onClick={() => onViewPrompt(prompt)}
-              style={{ padding: 0, minHeight: 24, color: 'var(--accent)', fontSize: 11, alignItems: 'center', flexShrink: 0 }}
-            >
-              查看提示词
-            </Button>
-          )}
-          {actions && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              {actions}
-            </div>
-          )}
-        </div>
-      )}
+      <div style={{
+        marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8,
+        minWidth: 0, flexShrink: 0,
+      }}>
+        {displaySessionId && (
+          <button
+            type="button"
+            className="chat-message-action"
+            title={sessionCopied
+              ? '已复制'
+              : `点击复制该阶段 LLM 引擎会话 ID：${displaySessionId}`}
+            aria-label="复制会话 ID"
+            onClick={() => void copySessionId()}
+            style={{
+              fontFamily: 'var(--font-mono)', fontSize: 11,
+              color: sessionCopied ? 'var(--success)' : 'var(--meta)',
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+            }}
+          >
+            {sessionCopied ? '已复制' : displaySessionId}
+          </button>
+        )}
+        {prompt && (
+          <button
+            type="button"
+            className="meta-link-btn chat-message-action"
+            title="查看发送给 LLM 的完整提示词"
+            onClick={() => onViewPrompt(prompt)}
+            style={{
+              fontSize: 11, color: 'var(--accent)',
+              display: 'inline-flex', alignItems: 'center',
+              minHeight: 24, flexShrink: 0,
+            }}
+          >
+            查看提示词
+          </button>
+        )}
+        <span
+          title={origin ? formatConversationDateTime(displayStartedAt) : undefined}
+          style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {origin
+            ? formatExecutionClock(displayStartedAt)
+            : formatConversationDateTime(displayStartedAt)}
+        </span>
+      </div>
     </div>
   )
 }

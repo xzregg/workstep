@@ -40,11 +40,13 @@ def test_codex_broken_launcher_is_not_reported_as_installed(monkeypatch):
     assert CodexEngine.is_installed() is False
 
 
-def test_codex_not_resume():
+def test_codex_resume_and_capabilities():
     engine = CodexEngine()
-    assert engine.supports_resume is False
-    assert engine.supports_interactive is True
+    assert engine.supports_resume is True
+    assert engine.supports_interactive is False
+    # codex exec 无注入协议，但插入消息以「终止进程 + 新消息 resume」方式支持
     assert engine.supports_live_stage_message is True
+    assert engine.build_resume_params("019f-abc") == {"session_id": "019f-abc"}
 
 
 def test_codex_map_thread_started():
@@ -187,6 +189,61 @@ class _FakeCodexProcess:
 
     async def wait(self) -> int:
         return self.returncode
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_emits_session_started_with_thread_id(monkeypatch):
+    """codex JSONL 的 thread.started 携带 thread_id，须产出 session_started。"""
+    stdout = (
+        b'{"type":"thread.started","thread_id":"019f-codex-test-1"}\n'
+        b'{"type":"turn.started"}\n'
+        b'{"type":"item.completed","item":{"type":"agent_message",'
+        b'"message":"WORKSTEP_ENGINE_OK"}}\n'
+    )
+    process = _FakeCodexProcess(stdout=stdout, stderr=b"")
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+
+    events = [
+        event
+        async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
+    ]
+
+    sessions = [event for event in events if event.type == "session_started"]
+    assert len(sessions) == 1
+    assert sessions[0].data["session_id"] == "019f-codex-test-1"
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_resume_builds_resume_command(monkeypatch):
+    """带 session_id 时走 `codex exec resume <id> <prompt>`，不再带沙箱/工作目录参数。"""
+    captured = {}
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured["cmd"] = [program, *args]
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+
+    events = [
+        event
+        async for event in CodexEngine().spawn(
+            prompt="继续上次的任务", cwd="/tmp", session_id="019f-resume-1"
+        )
+    ]
+
+    cmd = captured["cmd"]
+    assert cmd[:4] == ["/fake/codex", "exec", "--json", "--skip-git-repo-check"]
+    i = cmd.index("resume")
+    assert cmd[i + 1] == "019f-resume-1"
+    assert cmd[i + 2] == "继续上次的任务"
+    assert "--sandbox" not in cmd
+    assert "-C" not in cmd
 
 
 @pytest.mark.anyio
@@ -1517,3 +1574,55 @@ def test_qoder_sdk_result_error():
     events = engine._map_message(msg)
     error_event = next(event for event in events if event.type == "error")
     assert error_event.data["message"] == "达到最大轮数"
+
+
+# --- PydanticAIEngine session id ---
+
+@pytest.mark.anyio
+async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
+    """The built-in agent emits a per-run session id like other engines."""
+    import engines.pydantic_ai as pydantic_ai_module
+    from engines.pydantic_ai import PydanticAIEngine
+
+    class FakeStore:
+        def get_pydantic_ai_engine_config(self):
+            return {
+                "provider": "openai",
+                "base_url": "https://agent-gateway.example.com/v1",
+                "api_key": "k",
+                "model": "agent-model",
+            }
+
+    class FakeUsage:
+        input_tokens = 1
+        output_tokens = 1
+        total_tokens = 2
+        cache_write_tokens = 0
+        cache_read_tokens = 0
+        requests = 1
+        cost = None
+
+    class FakeResult:
+        output = "done"
+        usage = FakeUsage()
+
+    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model,
+                             on_event, live_message_queue=None, images=None):
+        return FakeResult(), FakeUsage()
+
+    monkeypatch.setattr(pydantic_ai_module, "config_store", FakeStore())
+    monkeypatch.setattr(
+        PydanticAIEngine, "build_model", staticmethod(lambda **config: object())
+    )
+    monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
+
+    events = [
+        event async for event in PydanticAIEngine().spawn("hi", cwd="/tmp/project")
+    ]
+    assert events[0].type == "session_started"
+    session_id = events[0].data["session_id"]
+    assert isinstance(session_id, str) and session_id
+    usage_event = next(event for event in events if event.type == "usage")
+    assert usage_event.data["session_id"] == session_id
+    assert events[-1].type == "status"
+    assert events[-1].data["status"] == "done"

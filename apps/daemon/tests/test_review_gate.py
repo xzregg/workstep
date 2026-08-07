@@ -181,6 +181,76 @@ async def test_manual_review_waits_for_user(tmp_path):
         )
         assert task_step.started_at is not None
         assert task_step.ended_at is None
+        review_messages = list(
+            Message.select()
+            .where((Message.task == task) & (Message.channel == "review"))
+            .order_by(Message.sequence)
+        )
+        assert len(review_messages) == 1
+        # 人工审核不展示「审核结果：未通过」，直接提示等待用户审核
+        assert review_messages[0].content == "等待你审核"
+        # 人工审核没有运行引擎：无提示词、无 token、无引擎/模型
+        assert review_messages[0].prompt_json is None
+        assert review_messages[0].usage_json is None
+        assert review_messages[0].engine is None
+        assert review_messages[0].model is None
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_review_override_disables_auto_review(tmp_path):
+    """Task-level review_overrides with auto=false must not spawn the review agent."""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="override-task",
+        title="Override review",
+        cwd=str(tmp_path),
+        engine="claude",
+        review_overrides_json=json.dumps({
+            "build": {"auto": False, "maxRetries": 1},
+        }),
+        created_at=1,
+        updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-override",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {
+                "steps": [{
+                    "key": "build",
+                    "label": "构建",
+                    "engine": "review-test",
+                    "dependsOn": [],
+                    "review": {"auto": True, "maxRetries": 1},
+                }]
+            },
+            tmp_path / "artifacts",
+            workflow_run=workflow_run,
+        )
+        # Only the stage execution spawns; the review agent must not run.
+        assert len(calls) == 1
+        assert Task.get_by_id(task.id).status == "paused"
+        review = ReviewRun.get(ReviewRun.workflow_run == workflow_run)
+        assert review.mode == "manual"
+        assert review.status == "pending"
+        task_step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "build")
+        )
+        assert task_step.status == "awaiting_review"
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

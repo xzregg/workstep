@@ -1,6 +1,9 @@
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import MarkdownMessage from './MarkdownMessage'
+import A2uiMessage from './A2uiMessage'
 import { MessageCopyButton } from './MessageResponseFooter'
+import { hasA2uiBlocks, stripA2uiBlocks } from '../utils/a2ui'
+import Icon from './Icon'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -40,6 +43,8 @@ export interface ChatMessageBubbleProps {
   showLoading?: boolean
   /** Custom loading indicator. */
   loading?: ReactNode
+  /** User messages: edit action (loads the content back into the composer). */
+  onEdit?: (content: string) => void
   /** Bubble background: 'surface' (default) or 'bg' (+ border). */
   variant?: 'surface' | 'bg'
   /** Extra props for the root element (ref / data attributes). */
@@ -61,22 +66,26 @@ export default function ChatMessageBubble({
   children,
   showLoading = false,
   loading,
+  onEdit,
   variant = 'surface',
   rootProps,
 }: ChatMessageBubbleProps) {
   const isUser = role === 'user'
   const rootStyle: CSSProperties = {
-    width: isUser ? 'fit-content' : '85%',
-    maxWidth: '85%', minWidth: 0,
+    width: isUser ? 'fit-content' : '100%',
+    maxWidth: '100%', minWidth: 0,
     display: 'flex', flexDirection: 'column', gap: 4,
-    alignSelf: isUser ? 'flex-end' : 'flex-start',
     ...(rootProps?.style || {}),
+    // 用户消息强制右对齐：alignSelf 依赖父容器为 flex，marginLeft auto 在
+    // 任意容器下都能贴右，两者叠加保证任何调用场景都不偏左。
+    alignSelf: isUser ? 'flex-end' : 'flex-start',
+    ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
     <div {...rootProps} style={rootStyle} className="chat-message-row">
       {isUser && header && (
         <div style={{
-          fontSize: 11, color: 'var(--meta)', textAlign: 'right', paddingRight: 44,
+          fontSize: 11, color: 'var(--meta)', textAlign: 'right',
           display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6,
         }}>
           {header}
@@ -87,6 +96,7 @@ export default function ChatMessageBubble({
         maxWidth: '100%', minWidth: 0,
         display: 'flex', gap: 12,
         flexDirection: isUser ? 'row-reverse' : 'row',
+        alignSelf: isUser ? 'flex-end' : undefined,
       }}>
         <div
           title={sender}
@@ -116,13 +126,19 @@ export default function ChatMessageBubble({
           flex: isUser ? '0 1 auto' : 1,
           minWidth: 0, display: 'flex',
           flexDirection: 'column', gap: 6,
+          alignItems: isUser ? 'flex-end' : 'stretch',
         }}>
-          {!isUser && header}
+          {!isUser && header && (
+            // 元信息栏放在头像右侧、消息上方。
+            <div style={{ width: '100%' }}>
+              {header}
+            </div>
+          )}
           {content ? (
             <div style={{
               fontSize: 13, lineHeight: 1.6,
-              color: isUser ? 'var(--accent-fg)' : 'var(--fg-2)',
-              background: isUser ? 'var(--accent)' : 'var(--bg)',
+              color: isUser ? 'var(--fg)' : 'var(--fg-2)',
+              background: isUser ? 'var(--surface)' : 'var(--bg)',
               border: !isUser && variant === 'bg' ? '1px solid var(--border-soft)' : 'none',
               padding: '10px 14px', borderRadius: 12,
               borderBottomRightRadius: isUser ? 4 : 12,
@@ -133,7 +149,16 @@ export default function ChatMessageBubble({
               {isUser ? (
                 <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{content}</div>
               ) : (
-                <MarkdownMessage content={content} streaming={streaming} projectId={projectId} />
+                <>
+                  <MarkdownMessage
+                    content={stripA2uiBlocks(content)}
+                    streaming={streaming}
+                    projectId={projectId}
+                  />
+                  {hasA2uiBlocks(content) && (
+                    <A2uiMessage content={content} projectId={projectId} />
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -149,8 +174,29 @@ export default function ChatMessageBubble({
             )
           )}
           {isUser && content && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <MessageCopyButton content={content} className="chat-message-copy" />
+            // 预留固定高度的操作行，hover 时显示复制/编辑，不撑开下方布局。
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end',
+              alignItems: 'center', gap: 2, minHeight: 24,
+            }}>
+              {onEdit && (
+                <button
+                  type="button"
+                  className="chat-message-action"
+                  title="编辑消息"
+                  aria-label="编辑消息"
+                  onClick={() => onEdit(content)}
+                  style={{
+                    width: 24, height: 24, minWidth: 24, padding: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'transparent', border: 'none', borderRadius: 6,
+                    color: 'var(--muted)', cursor: 'pointer',
+                  }}
+                >
+                  <Icon name="pencil" size={12} strokeWidth={2} />
+                </button>
+              )}
+              <MessageCopyButton content={content} className="chat-message-action" />
             </div>
           )}
           {!isUser && error && (

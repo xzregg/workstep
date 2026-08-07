@@ -274,7 +274,7 @@ URL 中的引擎 ID 会把 `-` 归一为 `_`（如 `pydantic-ai` → `pydantic_a
 
 | 引擎 | 模板字段 | 透传方式 |
 |---|---|---|
-| Codex CLI（`engines/codex.py`） | `sandbox_mode`（沙箱模式）、`model_reasoning_effort`（推理强度）、`approval_policy`（审批策略） | `--sandbox <mode>`、`-c model_reasoning_effort=<effort>`、`-c approval_policy=<policy>` |
+| Codex CLI（`engines/codex.py`） | `sandbox_mode`（沙箱模式）、`model_reasoning_effort`（推理强度）、`approval_policy`（审批策略） | 新会话：`--sandbox <mode>`、`-C <cwd>`、`-c model_reasoning_effort=<effort>`、`-c approval_policy=<policy>`；带 `session_id` 时改用 `codex exec resume <id> <prompt>`（沿用会话记录的 cwd）。插入消息无法实时注入进程，改为「终止当前进程 + `codex exec resume <id> <新消息>` 重启同一会话」延续上下文（`supports_live_stage_message=True`） |
 | Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`（与 Claude Code CLI 共用 `claude_permission_mode`）、`max_turns`（最大轮数）、`fallback_model`（备用模型）、`max_budget_usd`（美元预算） | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model` / `max_budget_usd`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
@@ -295,7 +295,7 @@ URL 中的引擎 ID 会把 `-` 归一为 `_`（如 `pydantic-ai` → `pydantic_a
 | `tool_result` | `tool_use_id`、`content`、`is_error` | 工具执行结果。 |
 | `usage` | Token 字段 | 消息完成后的 Token 统计。 |
 | `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`）；`summary` 为压缩摘要。 |
-| `session_started` | `session_id` | 保存可复用的引擎 Session。 |
+| `session_started` | `session_id` | 本次运行的会话标识。所有引擎必须产出（真实会话 ID，或本次运行生成的 UUID），无状态引擎（API 直调、Codex exec、Pydantic AI 等）也须生成 UUID 供前端展示与任务记录；支持恢复的引擎用它做 Session 复用。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |
 
 这是所有 LLM 引擎适配器的强制协议，不是可选增强：
@@ -420,6 +420,14 @@ Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...)
 
 ### 7.1 会话恢复
 
+所有引擎（含无状态引擎）首次产出 `session_started`，携带本次运行的会话标识：
+
+- 有原生会话的引擎上报真实会话 ID（如 Codex `thread.started.thread_id`、ACP `session_id`、Claude JSONL `session_id`）。
+- 无状态引擎（API 直调、Pydantic AI、OpenClaw）生成本次运行 UUID。
+- Codex CLI 上报 `thread.started.thread_id`（真实会话 ID），支持经 `codex exec resume <id> <prompt>` 恢复，因此 `supports_resume = True`。
+
+Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，而是由引擎在 `spawn` 内终止当前 `codex exec` 进程，再用插入消息作为提示词 `codex exec resume <thread_id> <消息>` 重启同一会话：`thread.started` 之后插入的每条消息都会开启新的响应段，并沿用原会话上下文，因此 `supports_live_stage_message = True`（`send_live_stage_message` 仍返回 `False`，直接注入不可用）。
+
 支持恢复时：
 
 1. 首次建立会话后产出 `session_started`。
@@ -427,6 +435,7 @@ Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...)
 3. `build_resume_params(session_id)` 返回调用 `spawn()` 所需参数。
 4. 收到 `session_id` 时使用原生恢复协议，不能悄悄新建无上下文会话。
 5. 恢复失败时产出明确错误，不应无提示降级为新会话。
+6. `usage` 事件可携带 `session_id` 复述会话标识（Claude Agent SDK、Qoder SDK），供错过 `session_started` 的场景兜底。
 
 ### 7.2 执行中交互
 

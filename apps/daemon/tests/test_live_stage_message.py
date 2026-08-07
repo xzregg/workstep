@@ -238,6 +238,28 @@ class PlainFakeEngine(LiveFakeEngine):
         return False
 
 
+class SplitLiveFakeEngine(LiveFakeEngine):
+    """Emits output before AND after an injected live message, so the runner
+    must seal the pre-insert segment and open a new response segment."""
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        queue = kwargs.get("live_message_queue")
+        yield InternalEvent(type="status", data={"status": "running"})
+        yield InternalEvent(type="text_delta", data={"delta": "第一段输出"})
+        await asyncio.sleep(0.05)
+        if queue is not None:
+            while not queue.empty():
+                message_id, content = queue.get_nowait()
+                delivered = await self.send_live_stage_message(content)
+                yield InternalEvent(type="live_message", data={
+                    "message_id": message_id,
+                    "status": "delivered" if delivered else "error",
+                })
+        await asyncio.sleep(0.05)
+        yield InternalEvent(type="text_delta", data={"delta": "第二段输出"})
+        yield InternalEvent(type="status", data={"status": "done"})
+
+
 def _make_runner_task(tmp_path, engine_cls):
     from engines.registry import ENGINE_REGISTRY
     from services.task_runner import TaskRunner
@@ -275,6 +297,8 @@ async def test_runner_delivers_live_message_to_running_stage(tmp_path):
         await asyncio.sleep(0.1)
         accepted = await runner.send_live_message(task.id, "do", "停下！")
         assert accepted["status"] == "queued"
+        assert isinstance(accepted["sequence"], int)
+        assert accepted["created_at"]
         await pipeline
 
         assert LiveFakeEngine.received == ["停下！"]
@@ -282,6 +306,50 @@ async def test_runner_delivers_live_message_to_running_stage(tmp_path):
         assert message.channel == "execution"
         assert message.role == "user"
         assert message.run_status == "succeeded"
+        # 响应携带服务端单调序号与时间，前端据此把乐观消息精确落位在
+        # 段 A（插入前输出）与段 B（插入后响应）之间，不受客户端时钟影响。
+        assert message.sequence == accepted["sequence"]
+        assert message.created_at.isoformat() == accepted["created_at"]
+    finally:
+        await bus.close()
+        from engines.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_runner_splits_stage_message_on_live_insert(tmp_path):
+    """An injected message lands between the pre-insert stage output and the
+    stage's follow-up response, like Codex conversation segments."""
+    db, task, steps_config, bus, runner, original = _make_runner_task(tmp_path, SplitLiveFakeEngine)
+    LiveFakeEngine.received = []
+    try:
+        pipeline = asyncio.create_task(
+            runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+        )
+        await asyncio.sleep(0.05)
+        accepted = await runner.send_live_message(task.id, "do", "插入内容")
+        assert accepted["status"] == "queued"
+        await pipeline
+
+        messages = list(
+            Message.select()
+            .where(Message.task == task)
+            .order_by(Message.sequence)
+        )
+        # 段 A（插入前输出）→ 用户插入 → 段 B（插入后响应）
+        assert [message.role for message in messages] == ["assistant", "user", "assistant"]
+        pre_insert, inserted, post_insert = messages
+        assert pre_insert.content == "第一段输出"
+        assert inserted.content == "插入内容"
+        assert inserted.run_status == "succeeded"
+        assert post_insert.content == "第二段输出"
+        assert pre_insert.run_status == "succeeded"
+        assert post_insert.run_status == "succeeded"
+        assert pre_insert.sequence < inserted.sequence < post_insert.sequence
+        # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
+        assert "第二段" not in pre_insert.events_json
     finally:
         await bus.close()
         from engines.registry import ENGINE_REGISTRY

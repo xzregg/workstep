@@ -4,6 +4,7 @@ import ChatMessageBubble from './ChatMessageBubble'
 import ChatInput from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter from './MessageResponseFooter'
+import { stripA2uiBlocks } from '../utils/a2ui'
 import MarkdownMessage from './MarkdownMessage'
 import {
   workflowGenApi,
@@ -190,7 +191,6 @@ export default function AiFlowChat({
               : undefined}
             header={m.role === 'user' ? (
               <>
-                {formatConversationDateTime(m.created_at)}
                 <span
                   title="发给 AI 流程助手（协调引擎生成模式）"
                   style={{
@@ -202,6 +202,7 @@ export default function AiFlowChat({
                 >
                   AI 助手
                 </span>
+                {formatConversationDateTime(m.created_at)}
               </>
             ) : (
               <MessageMetaBar
@@ -213,7 +214,7 @@ export default function AiFlowChat({
             )}
             footer={m.role === 'assistant' && m.status !== 'running' ? (
               <MessageResponseFooter
-                content={m.content}
+                content={stripA2uiBlocks(m.content)}
                 engine={m.engine}
                 model={m.model}
               />

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import uuid
 from typing import AsyncIterator
 
 from engines.base import BaseLLMEngine
@@ -90,6 +91,10 @@ class OpenClawEngine(BaseLLMEngine):
         )
         self._running = True
 
+        yield InternalEvent(
+            type="session_started",
+            data={"session_id": session_id or str(uuid.uuid4())},
+        )
         yield InternalEvent(type="status", data={"status": "running"})
 
         # Parse stdout - adjust based on actual openclaw output format

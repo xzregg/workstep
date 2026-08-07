@@ -161,10 +161,34 @@ def test_assemble_prompt_basic(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
     assert SYSTEM_PROMPT in prompt
-    assert ".workstep/MEMORY.md" in SYSTEM_PROMPT
+    assert "MEMORY" not in SYSTEM_PROMPT
     assert "## 任务说明\nCurrent task context" in prompt
     assert "Write a PRD" in prompt
     assert str(artifacts_dir / "req" / task.id) in prompt
+    db.close()
+
+
+def test_assemble_prompt_injects_project_memory(tmp_path):
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", description="",
+        cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="req", label="需求", prompt="Write a PRD")
+    artifacts_dir = tmp_path / ".workstep" / "artifacts"
+    artifacts_dir.mkdir(parents=True)
+    (tmp_path / ".workstep" / "MEMORY.md").write_text(
+        "# 项目记忆\n\n## 约定\n使用中文注释", encoding="utf-8"
+    )
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+    assert "## 项目记忆\n# 项目记忆" in prompt
+    assert "使用中文注释" in prompt
+    assert "请查看" not in prompt
     db.close()
 
 

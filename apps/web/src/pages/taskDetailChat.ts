@@ -1,3 +1,5 @@
+import { toMilliseconds } from '../utils/datetime'
+
 export interface OptimisticUserMessage {
   id: string
   role: 'user'
@@ -43,6 +45,9 @@ export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
 }
 
 export function isVisibleLiveExecutionMessage(message: ConversationMessage): boolean {
+  // 实时插入的用户消息由乐观/历史渲染呈现（右侧 + @阶段名），
+  // 不应再以左侧执行消息的身份出现。
+  if (message.role === 'user') return false
   return message.channel === 'execution'
     && (message.status === 'running'
       || TERMINAL_EXECUTION_STATUSES.includes(message.status || '')
@@ -69,12 +74,56 @@ export function mergeHistoryMessageWithLive(
     events: Array.isArray(liveMessage.events) && liveMessage.events.length > 0
       ? liveMessage.events
       : historyMessage.events,
-    run_status: liveMessage.status || historyMessage.run_status,
+    // 实时插入的用户消息不带完成事件（引擎只发 live_message 确认），
+    // 保持乐观消息的 completed，避免右侧用户消息被误标为 streaming。
+    run_status: liveMessage.role === 'user'
+      ? historyMessage.run_status
+      : liveMessage.status || historyMessage.run_status,
     engine: liveMessage.engine || historyMessage.engine,
     model: liveMessage.model || historyMessage.model,
     created_at: liveMessage.created_at || historyMessage.created_at,
     prompt: resolveMessagePrompt(historyMessage.prompt, liveMessage.prompt),
   }
+}
+
+/**
+ * Order conversation messages by their effective completion time:
+ * - finished stage messages sort by `ended_at` (完成/中断时间);
+ * - still-running stage messages sort by `now` (创建时间 + 已进行时长), so any
+ *   stage output that is still going (or finished) after the user's message
+ *   lands below the inserted user message instead of above it;
+ * - user messages anchor by their send time (`created_at`).
+ * `sequence` is kept as a tiebreaker for same-instant messages.
+ */
+export function orderConversationMessages(
+  messages: Array<Record<string, any>>,
+  now: number = Date.now(),
+): Array<Record<string, any>> {
+  const effectiveTime = (message: Record<string, any>): number => {
+    if (message.role !== 'user' && (
+      message.run_status === 'running' || message.status === 'running'
+    )) {
+      return now
+    }
+    if (message.role === 'user') {
+      return toMilliseconds(message.created_at) ?? 0
+    }
+    return toMilliseconds(message.ended_at)
+      ?? toMilliseconds(message.created_at)
+      ?? 0
+  }
+  return [...messages].sort((left, right) => {
+    const leftTime = effectiveTime(left)
+    const rightTime = effectiveTime(right)
+    if (leftTime !== rightTime) return leftTime - rightTime
+    const leftSeq = left.sequence
+    const rightSeq = right.sequence
+    if (typeof leftSeq === 'number' && typeof rightSeq === 'number') {
+      return leftSeq - rightSeq
+    }
+    return (toMilliseconds(left.created_at) ?? 0)
+      - (toMilliseconds(right.created_at) ?? 0)
+  })
 }
 
 export function liveExecutionStatus(

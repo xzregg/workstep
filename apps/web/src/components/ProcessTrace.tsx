@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { MessageCopyButton } from './MessageResponseFooter'
 import {
   durationMilliseconds,
   formatDuration,
@@ -23,6 +24,8 @@ type ToolActivity = {
 interface ProcessTraceProps {
   events: ProcessEvent[]
   running?: boolean
+  /** 该条 LLM 消息被手动停止（summary 显示“在 X 后停止了”）。 */
+  stopped?: boolean
   startedAt?: DateTimeValue
   endedAt?: DateTimeValue
   compact?: boolean
@@ -145,28 +148,59 @@ function collectTools(events: ProcessEvent[]): ToolActivity[] {
 export default function ProcessTrace({
   events,
   running = false,
+  stopped = false,
   startedAt,
   endedAt,
   compact = false,
 }: ProcessTraceProps) {
   const [now, setNow] = useState(() => Date.now())
+  const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [roomy, setRoomy] = useState(true)
-  useEffect(() => {
-    const element = containerRef.current
-    if (!element) return
-    const update = () => setRoomy(element.clientWidth >= 480)
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
+  const bodyRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [running])
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+  useEffect(() => {
+    if (!open || !compact || !containerRef.current) return
+    const panel = bodyRef.current
+    if (!panel) return
+    // 找到最近的可滚动祖先（消息列表），浮层展开或内部折叠展开后不能被外层遮住。
+    const revealPanel = () => {
+      let scroller: HTMLElement | null = containerRef.current?.parentElement ?? null
+      while (scroller) {
+        const overflowY = getComputedStyle(scroller).overflowY
+        if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') break
+        scroller = scroller.parentElement
+      }
+      if (!scroller) return
+      const panelRect = panel.getBoundingClientRect()
+      const scrollerRect = scroller.getBoundingClientRect()
+      const bottomOverflow = panelRect.bottom - (scrollerRect.bottom - 12)
+      const topOverflow = (scrollerRect.top + 12) - panelRect.top
+      if (bottomOverflow > 0) {
+        scroller.scrollTop += bottomOverflow
+      } else if (topOverflow > 0) {
+        scroller.scrollTop -= topOverflow
+      }
+    }
+    revealPanel()
+    const observer = new ResizeObserver(() => revealPanel())
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [open, compact])
 
   const thinking = events
     .filter((event) => event.type === 'thinking_delta')
@@ -191,31 +225,44 @@ export default function ProcessTrace({
   return (
     <div
       ref={containerRef}
-      className={`process-trace${compact ? ' process-trace-compact' : ''}${compact && !roomy ? ' process-trace-narrow' : ''}`}
+      className={`process-trace${compact ? ' process-trace-compact' : ''}`}
     >
-      <details className="process-trace-session">
+      <details
+        className="process-trace-session"
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
         <summary>
-          <span>{running ? '处理中' : '已处理'}{duration ? ` ${duration}` : ''}</span>
+          <span>
+            {running ? '处理中' : '已处理'}
+            {!running && stopped
+              ? (duration ? ` · 在 ${duration} 后停止了` : ' · 已停止')
+              : (duration ? ` ${duration}` : '')}
+          </span>
           <span className="process-trace-chevron" aria-hidden="true">⌄</span>
         </summary>
-        <div className="process-trace-body">
+        <div ref={bodyRef} className="process-trace-body">
           {thinking && (
             <div className="process-trace-thinking-block">
               <div className="process-trace-section-title">
                 <span className="process-trace-summary-icon" aria-hidden="true">◌</span>
                 <span>思考过程</span>
+                <span style={{ marginLeft: 'auto' }}>
+                  <MessageCopyButton content={thinking} title="复制思考过程" />
+                </span>
               </div>
               <div className="process-trace-thinking">{thinking}</div>
             </div>
           )}
 
           {activities.length > 0 && (
-            <div className="process-trace-tools-block">
-              <div className="process-trace-section-title">
+            <details className="process-trace-tools-group">
+              <summary className="process-trace-section-title">
                 <span className="process-trace-summary-icon" aria-hidden="true">◇</span>
                 <span>{groupSummary(activities)}</span>
                 <span className="process-trace-count">{activities.length} 项</span>
-              </div>
+                <span className="process-trace-chevron" aria-hidden="true">⌄</span>
+              </summary>
               <div className="process-trace-tools">
                 {activities.map((activity) => {
                   const input = textValue(activity.input)
@@ -252,7 +299,7 @@ export default function ProcessTrace({
                   )
                 })}
               </div>
-            </div>
+            </details>
           )}
         </div>
       </details>
