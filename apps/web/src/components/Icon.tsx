@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Archive, Book, Check, ChevronDown, ChevronRight, Copy, Ellipsis,
+  Archive, Book, Bookmark, Check, ChevronDown, ChevronRight, Copy, Ellipsis,
   ExternalLink, Folder, Image as ImageIcon, Layers, LayoutGrid, List,
   Pencil, Plus, RefreshCw, RotateCcw, Settings, SlidersHorizontal,
   Sparkles, Table, Trash2, Undo2, X,
@@ -10,6 +10,7 @@ import {
 const glyphs = {
   archive: Archive,
   book: Book,
+  bookmark: Bookmark,
   check: Check,
   'chevron-down': ChevronDown,
   'chevron-right': ChevronRight,

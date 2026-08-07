@@ -545,12 +545,12 @@ async def test_cancel_task_finalizes_running_records(subscriber):
             events.append(await q.get())
 
         assert updated["status"] == "paused"
-        assert step.status == "failed"
-        assert step.error == "Cancelled"
-        assert message.run_status == "failed"
+        assert step.status == "cancelled"
+        assert step.error == "手动停止"
+        assert message.run_status == "cancelled"
         assert task["id"] not in service._running_engines
         assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "failed"
+        assert events[-1]["data"]["status"] == "cancelled"
 
     finally:
         registry.ENGINE_REGISTRY.clear()

@@ -60,6 +60,10 @@ export interface ChatInputProps {
   running?: boolean
   /** Provide to turn the button into a red stop control while running. */
   onStop?: () => void
+  /** True while a stop request is in flight → stop button disabled (idempotent). */
+  stopping?: boolean
+  /** Hover title for the red stop control (defaults to 停止生成). */
+  stopTitle?: string
   /** Engine/model picker (Codex-style, bottom right). */
   config?: ChatInputEngineConfig
   /** Enable image attach: paste-to-upload + the image button. */
@@ -83,6 +87,8 @@ export default function ChatInput({
   disabled = false,
   running = false,
   onStop,
+  stopping = false,
+  stopTitle = '停止生成',
   config,
   imageAttach,
   left,
@@ -96,7 +102,7 @@ export default function ChatInput({
   const [configOpen, setConfigOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [focused, setFocused] = useState(false)
-  const canSend = !disabled && !running && value.trim().length > 0
+  const canSend = !disabled && !running && !stopping && value.trim().length > 0
   const stopped = Boolean(running && onStop)
   const hasImage = value.includes('![图片](')
 
@@ -119,7 +125,7 @@ export default function ChatInput({
     else if (canSend) onSend()
   }
 
-  const buttonDisabled = stopped ? false : !canSend
+  const buttonDisabled = stopped ? stopping : !canSend
   const engineId = config?.engine || config?.defaultEngine || 'claude'
 
   // ── Image attach (single implementation shared by every chat) ──────────
@@ -254,19 +260,20 @@ export default function ChatInput({
             onClick={handleClick}
             disabled={buttonDisabled}
             aria-label={stopped
-              ? '停止'
+              ? stopping ? '停止中…' : '停止'
               : running
                 ? '生成中…'
                 : canSend
                   ? title || '发送'
                   : '发送'}
             title={stopped
-              ? '停止生成'
+              ? stopping ? '停止中…' : stopTitle
               : running
                 ? '生成中…'
                 : title || '发送'}
             style={{
               width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+              padding: 0,
               background: stopped ? '#d92d20' : canSend ? 'var(--accent)' : 'var(--border)',
               color: stopped || canSend ? '#fff' : 'var(--fg-2)',
               border: 'none', cursor: buttonDisabled ? 'not-allowed' : 'pointer',

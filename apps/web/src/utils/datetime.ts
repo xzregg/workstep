@@ -59,6 +59,14 @@ export function formatDurationBetween(
   return durationMs === null ? null : formatDuration(durationMs)
 }
 
+export function formatExecutionClock(value: DateTimeValue): string {
+  const milliseconds = toMilliseconds(value)
+  if (milliseconds === null) return ''
+  const date = new Date(milliseconds)
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
 export function formatExecutionOffset(
   value: DateTimeValue,
   origin: DateTimeValue,

@@ -29,16 +29,24 @@ function hasMessageContent(content: unknown): boolean {
   return typeof content === 'string' && content.trim().length > 0
 }
 
+const TERMINAL_EXECUTION_STATUSES = ['cancelled', 'stopped', 'failed']
+
 export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
   if (message.channel === 'review') return hasMessageContent(message.content)
   if (message.channel === 'coordinator') return true
   if (message.role === 'user' || message.role === 'system') return true
-  return message.run_status === 'running' || hasMessageContent(message.content)
+  // 已停止/失败但无内容的执行消息也要保留展示（附带「已停止/失败」状态徽标），
+  // 不能因为没产出内容就从对话里消失。
+  return message.run_status === 'running'
+    || TERMINAL_EXECUTION_STATUSES.includes(message.run_status || '')
+    || hasMessageContent(message.content)
 }
 
 export function isVisibleLiveExecutionMessage(message: ConversationMessage): boolean {
   return message.channel === 'execution'
-    && (message.status === 'running' || hasMessageContent(message.content))
+    && (message.status === 'running'
+      || TERMINAL_EXECUTION_STATUSES.includes(message.status || '')
+      || hasMessageContent(message.content))
 }
 
 export function isUnpersistedLiveMessage(

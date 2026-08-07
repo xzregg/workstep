@@ -26,6 +26,7 @@ from models import (
 from models.base import db_proxy
 from models.fields import utc_now
 from services.config import config_store
+from services.messages import allocate_message_sequences
 from services.task_runner import extract_usage_json
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
@@ -147,10 +148,11 @@ class CoordinatorModule:
 
             with db_proxy.atomic():
                 current = Task.get_by_id(task.id)
-                user_sequence = current.next_message_sequence
+                # 原子预留两个连续序号（用户消息 + 助手消息），
+                # 并发提交时也不会撞 (task_id, sequence) 唯一索引。
+                user_sequence = allocate_message_sequences(current.id, count=2)
                 assistant_sequence = user_sequence + 1
                 current.next_message_sequence = assistant_sequence + 1
-                current.save(only=[Task.next_message_sequence])
                 Message.create(
                     id=user_message_id,
                     task=current,
@@ -1295,10 +1297,20 @@ class CoordinatorModule:
             )
             if turn is None:
                 return False
+            if turn.id in self._cancelled_turns:
+                # 已在停止流程中：重复点击直接视为成功。
+                return True
             self._cancelled_turns.add(turn.id)
             engine = self._running_engines.get(turn.id)
             if engine is not None:
-                await engine.stop()
+                try:
+                    await engine.stop()
+                except Exception:
+                    # 引擎可能已停止/已退出：标记已取消即可，不让错误冒泡。
+                    logger.exception(
+                        "Engine stop raised while stopping coordinator turn %s",
+                        turn.id,
+                    )
             return True
 
     async def _mark_turn_stopped(

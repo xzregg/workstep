@@ -47,6 +47,7 @@ const STATUS_LABELS: Record<string, string> = {
   done: '已完成',
   reviewing: '审核中', awaiting_review: '等待审核',
   retrying: '自动重跑', rejected: '审核未通过',
+  cancelled: '手动停止',
   rework: '返工中', rework_waiting: '等待返工',
 }
 
@@ -61,6 +62,7 @@ const STATUS_COLORS: Record<string, string> = {
   awaiting_review: 'var(--status-paused)',
   retrying: 'var(--warn)',
   rejected: 'var(--status-failed)',
+  cancelled: '#d97706',
   rework: 'var(--warn)',
   rework_waiting: 'var(--warn)',
 }
@@ -140,6 +142,7 @@ function deriveTaskLane(
     || findLane('running')
     || findLane('rejected')
     || findLane('failed')
+    || findLane('cancelled')
     || findLane('pending')
     || [...steps].reverse().find(
       (step) => laneKeys.has(step.step_key)

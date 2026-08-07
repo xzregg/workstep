@@ -223,7 +223,7 @@ export interface Task {
 
 export interface TaskStepState {
   step_key: string
-  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'skipped'
+  status: 'pending' | 'running' | 'reviewing' | 'awaiting_review' | 'retrying' | 'rework' | 'rework_waiting' | 'passed' | 'rejected' | 'failed' | 'cancelled' | 'skipped'
   engine: string | null
   session_id?: string | null
   started_at: string | null

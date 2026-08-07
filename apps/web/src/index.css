@@ -172,6 +172,11 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 }
 .btn-icon:hover { background: var(--surface); color: var(--fg); }
 
+/* 用户消息的复制按钮：鼠标悬停到消息上才显示 */
+.chat-message-row .chat-message-copy { display: none; }
+.chat-message-row:hover .chat-message-copy,
+.chat-message-row:focus-within .chat-message-copy { display: inline-flex; }
+
 /* ── Resizable task detail dialog ── */
 
 .task-detail-resize-handle {

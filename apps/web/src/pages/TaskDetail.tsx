@@ -49,7 +49,7 @@ import {
 import {
   type DateTimeValue,
   formatConversationDateTime,
-  formatExecutionOffset,
+  formatExecutionClock,
   formatDurationBetween,
   toMilliseconds,
 } from '../utils/datetime'
@@ -67,30 +67,63 @@ function hasProcessEvents(events: any[]) {
   return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
 }
 
+function terminalMessageStatus(status?: string) {
+  return status === 'cancelled' || status === 'stopped' || status === 'failed'
+    ? status
+    : undefined
+}
+
+function lastEventTimestamp(events: any[]): number | null {
+  let latest: number | null = null
+  for (const event of events || []) {
+    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
+    if (timestamp !== null && (latest === null || timestamp > latest)) {
+      latest = timestamp
+    }
+  }
+  return latest
+}
+
 function StageStopButton({
   stepKey,
   onStop,
+  disabled = false,
 }: {
   stepKey?: string
   onStop: (stepKey: string) => void
+  disabled?: boolean
 }) {
   const targetStepKey = stepKey || ''
   return (
     <button
       type="button"
       onClick={() => onStop(targetStepKey)}
-      title="停止当前阶段执行"
-      aria-label="停止当前阶段执行"
+      disabled={disabled}
+      title={disabled ? '停止请求处理中…' : '停止当前阶段执行'}
+      aria-label={disabled ? '停止请求处理中' : '停止当前阶段执行'}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         padding: '2px 8px', borderRadius: 999, fontSize: 11,
-        border: '1px solid rgba(217,45,32,0.4)',
-        background: 'transparent', color: '#d92d20',
-        cursor: 'pointer', whiteSpace: 'nowrap',
+        border: `1px solid ${disabled ? 'rgba(217,45,32,0.2)' : 'rgba(217,45,32,0.4)'}`,
+        background: 'transparent',
+        color: disabled ? 'rgba(217,45,32,0.45)' : 'var(--danger)',
+        cursor: disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
       }}
     >
-      <Icon name="stop" size={8} fill />
-      停止
+      {disabled ? (
+        <span
+          aria-hidden="true"
+          style={{
+            width: 8, height: 8, borderRadius: '50%',
+            border: '1.5px solid currentColor',
+            borderTopColor: 'transparent',
+            animation: 'engine-spin 0.8s linear infinite',
+          }}
+        />
+      ) : (
+        <Icon name="stop" size={8} fill />
+      )}
+      {disabled ? '停止中' : '停止'}
     </button>
   )
 }
@@ -192,6 +225,7 @@ type StageVisualState =
   | 'rework'
   | 'rework_waiting'
   | 'failed'
+  | 'cancelled'
   | 'skipped'
   | 'pending'
 
@@ -222,6 +256,7 @@ const STAGE_STATE_LABELS: Record<StageVisualState, string> = {
   rework: '返工中',
   rework_waiting: '等待返工',
   failed: '失败',
+  cancelled: '手动停止',
   skipped: '已跳过',
   pending: '待处理',
 }
@@ -395,6 +430,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
   const [chatTarget, setChatTarget] = useState<'stage' | 'coordinator'>('coordinator')
   const [chatError, setChatError] = useState('')
+  const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
+  const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stageInserts, setStageInserts] = useState<Array<{
     id: string
     content: string
@@ -837,6 +874,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       else if (status === 'rework_waiting') visualState = 'rework_waiting'
       else if (status === 'running') visualState = 'current'
       else if (status === 'failed' || status === 'rejected') visualState = 'failed'
+      else if (status === 'cancelled') visualState = 'cancelled'
       else if (status === 'skipped') visualState = 'skipped'
       else if (index === activeIndex) visualState = 'current'
       return { ...step, visualState }
@@ -914,17 +952,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const handleRun = async () => {
     if (!taskId || !projectId) return
     if (!chatTargetStage && coordinatorRunning) return
-    // 阶段模式：像 Codex 一样，发送即进入上方的「插入消息」面板，
-    // 由用户决定「发送 / 加入引导 / 删除」后再实时注入执行。
+    // 阶段模式：像 Codex 一样，发送即实时注入正在执行的阶段。
+    // 「加入引导」按钮可先把内容放入面板，再通过「发送 / 引导」注入。
     if (chatTargetStage) {
-      if (prompt.trim()) {
-        setStageInserts((current) => [
-          ...current,
-          { id: `insert-${crypto.randomUUID()}`, content: prompt.trim() },
-        ])
-        setPrompt('')
-        setChatError('')
-      }
+      const submittedPrompt = prompt.trim()
+      if (!submittedPrompt || !activeStageRunning) return
+      setPrompt('')
+      setChatError('')
+      // 直接实时注入，消息按当前执行时刻插入。
+      void sendStageInserts(
+        [{ id: `insert-${crypto.randomUUID()}`, content: submittedPrompt }],
+        false,
+      )
       return
     }
     const submittedPrompt = prompt.trim()
@@ -971,7 +1010,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const handleStopCoordinator = async () => {
-    if (!taskId || !projectId) return
+    if (!taskId || !projectId || coordinatorStopping) return
+    setCoordinatorStopping(true)
     setChatError('')
     try {
       const result = await taskApi.stopCoordinator(taskId, projectId)
@@ -985,16 +1025,22 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       }
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : '停止失败')
+    } finally {
+      setCoordinatorStopping(false)
     }
   }
 
   const handleStopStage = async (stepKey: string) => {
     if (!taskId || !projectId) return
+    if (stoppingStepKeys.includes(stepKey)) return
     setChatError('')
+    setStoppingStepKeys((current) => [...current, stepKey])
     try {
       await taskApi.cancelStep(taskId, stepKey, projectId)
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : '停止失败')
+    } finally {
+      setStoppingStepKeys((current) => current.filter((key) => key !== stepKey))
     }
   }
 
@@ -1084,6 +1130,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const handleSendAllInserts = () => {
     void sendStageInserts(stageInserts, false)
+  }
+
+  const handleStageAddGuidance = () => {
+    const content = prompt.trim()
+    if (!content) return
+    setStageInserts((current) => [
+      ...current,
+      { id: `insert-${crypto.randomUUID()}`, content },
+    ])
+    setPrompt('')
+    setChatError('')
   }
 
   const handleCoordinatorEngineChange = async (engineId: string) => {
@@ -1657,6 +1714,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   'current', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
                 ].includes(visualState)
                 const isFailed = visualState === 'failed'
+                const isCancelled = visualState === 'cancelled'
                 const isSkipped = visualState === 'skipped'
                 const isSelected = i === selectedStage
                 const stageColor = stage.color || 'var(--accent)'
@@ -1700,6 +1758,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   ? 'var(--status-done)'
                     : isFailed
                       ? 'var(--status-failed)'
+                      : isCancelled
+                        ? '#d97706'
                       : isCurrentActive
                       ? activeStateColor
                       : isSkipped
@@ -1729,18 +1789,18 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     {/* Dot */}
                     <div style={{
                       width: 20, height: 20, borderRadius: '50%',
-                      background: isCompleted || isCurrentActive || isFailed || isSkipped
+                      background: isCompleted || isCurrentActive || isFailed || isCancelled || isSkipped
                         ? stateColor
                         : 'var(--bg)',
                       border: `2px solid ${stateColor}`,
                       position: 'relative', zIndex: 1,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontSize: 13, fontWeight: 700,
+                      color: 'var(--accent-fg)', fontSize: 13, fontWeight: 700,
                       boxShadow: isSelected
                         ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
                         : 'none',
                     }}>
-                      {isCompleted ? '✓' : isFailed ? '×' : isSkipped ? '–' : ''}
+                      {isCompleted ? '✓' : isFailed ? '×' : isCancelled ? '▮' : isSkipped ? '–' : ''}
                     </div>
                     <span style={{
                       fontSize: 13, marginTop: 9, textAlign: 'center', whiteSpace: 'nowrap',
@@ -2084,7 +2144,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         </div>
 
         {/* ── Right panel: Chat ── */}
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
           {/* Chat header */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
@@ -2192,7 +2252,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             <>
                               {isCoordinator
                                 ? formatConversationDateTime(msg.started_at || msg.created_at)
-                                : formatExecutionOffset(msg.started_at || msg.created_at, executionOrigin)}
+                                : formatExecutionClock(msg.started_at || msg.created_at)}
                               <span
                                 title={isCoordinator
                                   ? '发给协调 Agent，不进入阶段执行上下文'
@@ -2226,8 +2286,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               sessionId={isCoordinator ? null : sessionIdForStep(stageKey)}
                               onViewPrompt={setViewingPrompt}
                               origin={isCoordinator ? undefined : executionOrigin}
+                              status={terminalMessageStatus(msg.run_status)}
+                              runningNow={msg.run_status === 'running' ? durationNowMs : undefined}
                               actions={!isUser && !isCoordinator && msg.run_status === 'running'
-                                ? <StageStopButton stepKey={stageKey} onStop={handleStopStage} />
+                                ? <StageStopButton
+                                    stepKey={stageKey}
+                                    onStop={handleStopStage}
+                                    disabled={stoppingStepKeys.includes(stageKey)}
+                                  />
                                 : undefined}
                             />
                           )}
@@ -2251,7 +2317,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                 usage={msg.usage || usageFromEvents(processEvents)}
                                 engine={msg.engine}
                                 model={msg.model}
-                                executionModel={executionStageModel}
+                                executionModel={isCoordinator ? undefined : executionStageModel}
+                                endedAt={msg.ended_at}
                                 running={msg.run_status === 'running'}
                               />
                             )
@@ -2298,6 +2365,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     prompt={message.prompt || livePromptOverrides[message.id]}
                     sessionId={sessionIdForStep(message.step_key)}
                     onViewPrompt={setViewingPrompt}
+                    status={terminalMessageStatus(message.status)}
                   />
                 }
                 showLoading={!message.content && message.status === 'running'}
@@ -2310,7 +2378,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     usage={usageFromEvents(message.events)}
                     engine={message.engine}
                     model={message.model}
-                    executionModel={executionStageModel}
+                    endedAt={message.status === 'running'
+                      ? undefined
+                      : lastEventTimestamp(message.events)}
                     running={message.status === 'running'}
                   />
                 ) : undefined}
@@ -2355,8 +2425,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       prompt={message.prompt || livePromptOverrides[message.id]}
                       onViewPrompt={setViewingPrompt}
                       origin={executionOrigin}
+                      status={terminalMessageStatus(message.status)}
+                      endedAt={message.status === 'running'
+                        ? undefined
+                        : lastEventTimestamp(message.events)}
+                      runningNow={message.status === 'running' ? durationNowMs : undefined}
                       actions={message.status === 'running' && message.step_key
-                        ? <StageStopButton stepKey={message.step_key} onStop={handleStopStage} />
+                        ? <StageStopButton
+                            stepKey={message.step_key}
+                            onStop={handleStopStage}
+                            disabled={stoppingStepKeys.includes(message.step_key)}
+                          />
                         : undefined}
                     />
                   }
@@ -2378,6 +2457,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       engine={message.engine}
                       model={message.model}
                       executionModel={executionStageModel}
+                      endedAt={message.status === 'running'
+                        ? undefined
+                        : lastEventTimestamp(message.events)}
                       running={message.status === 'running'}
                     />
                   ) : undefined}
@@ -2419,6 +2501,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     engine={task.engine}
                     model={task.model}
                     executionModel={executionStageModel}
+                    endedAt={running ? undefined : lastEventTimestamp(events)}
                     running={running}
                   />
                 ) : undefined}
@@ -2695,9 +2778,26 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 </button>
               </div>
               {chatTargetStage && activeStageRunning && (
-                <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-                  发送后进入「插入消息」面板，确认后再实时注入「{activeStage.label}」阶段
-                </span>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleStageAddGuidance}
+                    title="把当前输入加入「插入消息」面板，确认后注入并保存为阶段引导（供后续重跑参考）"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      border: '1px solid var(--border-soft)', cursor: 'pointer',
+                      background: 'transparent', color: 'var(--meta)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <Icon name="bookmark" size={11} strokeWidth={2} />
+                    加入引导
+                  </button>
+                  <span style={{ fontSize: 11, color: 'var(--meta)' }}>
+                    发送后实时注入「{activeStage.label}」阶段执行
+                  </span>
+                </>
               )}
               {chatTargetStage && !activeStageRunning && (
                 <span style={{ fontSize: 11, color: 'var(--warn)' }}>
@@ -2723,6 +2823,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 prefix: taskId?.slice(0, 8) ?? '',
                 onError: (message) => setChatError(message),
               } : undefined}
+              stopTitle={chatTargetStage ? '停止当前阶段执行' : '停止生成'}
               config={{
                 engines: coordinatorConfig?.available_engines || [],
                 engine: coordinatorConfig?.configured.engine || '',
@@ -2744,15 +2845,20 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 onReset: () => void handleCoordinatorEngineChange(''),
               }}
               disabled={chatTargetStage ? false : coordinatorRunning}
-              running={!chatTargetStage && coordinatorRunning}
-              onStop={chatTargetStage ? undefined : handleStopCoordinator}
+              running={(chatTargetStage && activeStageRunning && prompt.trim().length === 0)
+                || (!chatTargetStage && coordinatorRunning)}
+              stopping={(chatTargetStage && stoppingStepKeys.includes(activeStage.key))
+                || (!chatTargetStage && coordinatorStopping)}
+              onStop={chatTargetStage
+                ? () => void handleStopStage(activeStage.key)
+                : handleStopCoordinator}
               placeholder={chatTargetStage
-                ? `输入消息，回车后进入「插入消息」面板，确认后注入「${activeStage.label}」阶段...`
+                ? `输入消息，回车后实时注入「${activeStage.label}」阶段执行...`
                 : coordinatorRunning
                   ? '协调 Agent 处理中...'
                   : '输入问题、补充说明或操作请求...'}
               title={chatTargetStage
-                ? '把输入加入上方「插入消息」面板'
+                ? '发送给当前阶段 Agent，实时注入执行'
                 : coordinatorRunning ? '停止协调 Agent 处理' : '发送给协调 Agent'}
             />
           </div>

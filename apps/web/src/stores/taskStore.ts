@@ -265,7 +265,7 @@ export const useTaskStore = create<TaskState>((set) => ({
         const stepKey = event.step_key || event.data.step_key as string | undefined
         const isStepStatus = [
           'pending', 'running', 'reviewing', 'awaiting_review', 'retrying',
-          'passed', 'rejected', 'failed', 'skipped',
+          'passed', 'rejected', 'failed', 'cancelled', 'skipped',
         ].includes(status)
         const stepStatus = status as TaskStepState['status']
         const updateTaskStep = (task: Task) => ({
@@ -288,7 +288,7 @@ export const useTaskStore = create<TaskState>((set) => ({
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'paused' } : t,
           )
-        } else if (status === 'failed') {
+        } else if (status === 'failed' || status === 'cancelled') {
           newTasks = s.tasks.map((t) =>
             t.id === taskId ? { ...updateTaskStep(t), status: 'stopped' } : t,
           )

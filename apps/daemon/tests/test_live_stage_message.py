@@ -224,6 +224,14 @@ class LiveFakeEngine(BaseLLMEngine):
         return {}
 
 
+class StopRaisesEngine(LiveFakeEngine):
+    stop_calls = 0
+
+    async def stop(self):
+        type(self).stop_calls += 1
+        raise RuntimeError("engine already stopped")
+
+
 class PlainFakeEngine(LiveFakeEngine):
     @property
     def supports_live_stage_message(self):
@@ -376,10 +384,39 @@ async def test_runner_cancel_stops_running_stage(tmp_path):
         await pipeline
 
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
-        assert step.status == "failed"
+        assert step.status == "cancelled"
+        assert step.error == "手动停止"
         message = Message.get((Message.task == task) & (Message.step_key == "do"))
-        assert message.run_status == "failed"
+        assert message.run_status == "cancelled"
         assert message.ended_at is not None
+    finally:
+        await bus.close()
+        from engines.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_runner_cancel_step_is_idempotent_and_swallows_stop_errors(tmp_path):
+    db, task, steps_config, bus, runner, original = _make_runner_task(
+        tmp_path, StopRaisesEngine
+    )
+    StopRaisesEngine.stop_calls = 0
+    try:
+        pipeline = asyncio.create_task(
+            runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+        )
+        await asyncio.sleep(0.1)
+        # 第一次停止成功（即使引擎 stop() 抛错也不冒泡）。
+        assert await runner.cancel_step(task.id, "do") is True
+        # 重复停止幂等：不再重复调用 stop()，也返回成功。
+        assert await runner.cancel_step(task.id, "do") is True
+        await pipeline
+        assert StopRaisesEngine.stop_calls == 1
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert step.status == "cancelled"
+        assert step.error == "手动停止"
     finally:
         await bus.close()
         from engines.registry import ENGINE_REGISTRY
@@ -484,3 +521,46 @@ def test_coordinator_context_only_uses_coordinator_messages(tmp_path):
         assert "协调问题" in prompt
     finally:
         db.close()
+
+
+def test_message_sequence_allocation_is_atomic_across_threads(tmp_path):
+    """Concurrent allocations must never collide on (task_id, sequence)."""
+    import threading
+
+    from models.base import db_proxy
+    from services.messages import allocate_message_sequences
+
+    db = init_db(str(tmp_path / "seq.db"))
+    task = Task.create(
+        id="task-seq",
+        title="Seq",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    results: list[int] = []
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(8)
+
+    def worker():
+        try:
+            token = db_proxy.activate(db)
+            try:
+                barrier.wait(timeout=10)
+                results.append(allocate_message_sequences(task.id))
+            finally:
+                db_proxy.reset(token)
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the test
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    db.close()
+
+    assert not errors, errors
+    assert sorted(results) == list(range(1, 9))
+    assert len(set(results)) == 8

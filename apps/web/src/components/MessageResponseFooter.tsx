@@ -2,6 +2,7 @@ import Icon from './Icon'
 import { useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import Button from './Button'
+import { formatExecutionClock } from '../utils/datetime'
 
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
@@ -64,14 +65,6 @@ export function formatTokenUsage(usage?: MessageUsage) {
     const cacheHitRate = Math.min(100, (cacheRead / cacheInput) * 100)
     parts.push(`缓存命中 ${cacheHitRate.toFixed(1)}%`)
   }
-  const cost = usage.cost as { amount?: number; currency?: string } | number | undefined
-  if (cost !== undefined && cost !== null) {
-    const amount = typeof cost === 'object' ? cost.amount : cost
-    const currency = typeof cost === 'object' && cost.currency ? cost.currency : 'USD'
-    if (typeof amount === 'number' && Number.isFinite(amount)) {
-      parts.push(`金额 ${amount.toFixed(2)} ${currency}`)
-    }
-  }
   parts.push(`总计 ${number.format(total)}`)
   return `Token · ${parts.join(' · ')}`
 }
@@ -92,26 +85,18 @@ export async function copyMessageText(content: string) {
   if (!copied) throw new Error('Copy failed')
 }
 
-export interface MessageResponseFooterProps {
-  content: string
-  usage?: MessageUsage
-  engine?: string | null
-  model?: string | null
-  executionModel?: string | null
-  running?: boolean
-}
-
-export default function MessageResponseFooter({
+export function MessageCopyButton({
   content,
-  usage,
-  engine,
-  model,
-  executionModel,
-  running = false,
-}: MessageResponseFooterProps) {
+  className = '',
+  title = '复制消息',
+  disabled = false,
+}: {
+  content: string
+  className?: string
+  title?: string
+  disabled?: boolean
+}) {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const usageSummary = running ? '' : formatTokenUsage(usage)
-
   const copy = async () => {
     try {
       await copyMessageText(content)
@@ -120,32 +105,18 @@ export default function MessageResponseFooter({
       setCopyState('failed')
     }
   }
-
   return (
-    <div style={{
-      minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--meta)', fontSize: 11,
-    }}>
-      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-        {usageSummary}
-        {!running && engine ? ` · ${engineLabel(engine)}` : ''}
-        {!running && model ? ` * ${model}` : ''}
-        {!running && executionModel && executionModel !== model
-          ? ` · 执行 ${executionModel}`
-          : ''}
-      </span>
-      <Button
-        variant="ghost"
-        aria-label={copyState === 'copied' ? '消息已复制' : '复制 LLM 消息'}
-        title={running
-          ? '消息生成完成后可复制'
-          : copyState === 'copied'
-            ? '已复制'
-            : copyState === 'failed'
-              ? '复制失败'
-              : '复制消息'}
-        disabled={running || !content}
-        onClick={() => void copy()}
+    <Button
+      variant="ghost"
+      aria-label={copyState === 'copied' ? '消息已复制' : '复制消息'}
+      title={copyState === 'copied'
+        ? '已复制'
+        : copyState === 'failed'
+          ? '复制失败'
+          : title}
+      disabled={disabled || !content}
+      onClick={() => void copy()}
+      className={className}
       style={{
         width: 24, height: 24, minWidth: 24, padding: 0,
         justifyContent: 'center',
@@ -156,13 +127,56 @@ export default function MessageResponseFooter({
             : 'var(--muted)',
         fontSize: 11,
       }}
-      >
-        {copyState === 'copied' ? (
-          <Icon name="check" size={13} strokeWidth={2.4} />
-        ) : (
-          <Icon name="copy" size={12} strokeWidth={2} />
-        )}
-      </Button>
+    >
+      {copyState === 'copied' ? (
+        <Icon name="check" size={13} strokeWidth={2.4} />
+      ) : (
+        <Icon name="copy" size={12} strokeWidth={2} />
+      )}
+    </Button>
+  )
+}
+
+export interface MessageResponseFooterProps {
+  content: string
+  usage?: MessageUsage
+  engine?: string | null
+  model?: string | null
+  executionModel?: string | null
+  endedAt?: string | number | null
+  running?: boolean
+}
+
+export default function MessageResponseFooter({
+  content,
+  usage,
+  engine,
+  model,
+  executionModel,
+  endedAt,
+  running = false,
+}: MessageResponseFooterProps) {
+  const usageSummary = running ? '' : formatTokenUsage(usage)
+
+  return (
+    <div style={{
+      minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
+      color: 'var(--meta)', fontSize: 11,
+    }}>
+      <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+        {!running && endedAt ? `完成 ${formatExecutionClock(endedAt)} · ` : ''}
+        {usageSummary}
+        {!running && engine ? ` · ${engineLabel(engine)}` : ''}
+        {!running && model ? ` * ${model}` : ''}
+        {!running && executionModel && executionModel !== model
+          ? ` · 执行 ${executionModel}`
+          : ''}
+      </span>
+      <MessageCopyButton
+        content={content}
+        title={running ? '消息生成完成后可复制' : '复制消息'}
+        disabled={running}
+      />
     </div>
   )
 }

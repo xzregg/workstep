@@ -771,12 +771,12 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
             events.append(await q.get())
 
         assert task.status == "paused"
-        assert step.status == "failed"
-        assert step.error == "Cancelled"
-        assert message.run_status == "failed"
+        assert step.status == "cancelled"
+        assert step.error == "手动停止"
+        assert message.run_status == "cancelled"
         assert f"{task.id}:a" not in runner._running_engines
         assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "failed"
+        assert events[-1]["data"]["status"] == "cancelled"
 
     finally:
         ENGINE_REGISTRY.clear()

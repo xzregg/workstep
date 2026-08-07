@@ -406,7 +406,19 @@ class TaskRunner:
                 ts.save()
 
             if run_key in self._cancelled_steps:
-                await self._fail_step(ts, task, step_key, "Cancelled")
+                # 手动停止：阶段状态与普通失败区分，前端显示「手动停止」。
+                ts.status = "cancelled"
+                ts.error = "手动停止"
+                ts.ended_at = utc_now()
+                ts.save()
+                await self._publish(task.id, step_key, {
+                    "type": "status",
+                    "data": {
+                        "status": "cancelled",
+                        "task_id": task.id,
+                        "step_key": step_key,
+                    },
+                })
                 failed.add(step_key)
             elif reported_error is not None:
                 await self._fail_step(ts, task, step_key, reported_error)
@@ -586,7 +598,11 @@ class TaskRunner:
                     msg.events_json = json.dumps(events_collected)
                     msg.usage_json = extract_usage_json(events_collected)
                     msg.content = "".join(content_parts)
-                    msg.run_status = "succeeded" if execution_succeeded else "failed"
+                    if run_key in self._cancelled_steps:
+                        # 手动停止：与普通失败区分，前端显示「已停止」。
+                        msg.run_status = "cancelled"
+                    else:
+                        msg.run_status = "succeeded" if execution_succeeded else "failed"
                     msg.ended_at = utc_now()
                     msg.save()
                     await self._publish(task.id, step_key, {
@@ -703,13 +719,20 @@ class TaskRunner:
         })
 
     async def cancel_step(self, task_id: str, step_key: str) -> bool:
-        """Cancel a running step."""
+        """Cancel a running step (idempotent)."""
         run_key = f"{task_id}:{step_key}"
+        if run_key in self._cancelled_steps:
+            # 已在停止流程中：重复点击直接视为成功，不再重复 stop。
+            return True
         engine = self._running_engines.get(run_key)
         if not engine:
             return False
         self._cancelled_steps.add(run_key)
-        await engine.stop()
+        try:
+            await engine.stop()
+        except Exception:
+            # 引擎可能已停止/已退出：标记已取消即可，不让错误冒泡。
+            logger.exception("Engine stop raised during cancel for %s", run_key)
         return True
 
     async def send_live_message(
@@ -805,7 +828,8 @@ class TaskRunner:
         for run_key in run_keys:
             self._cancelled_steps.add(run_key)
         await asyncio.gather(
-            *(self._running_engines[run_key].stop() for run_key in run_keys)
+            *(self._running_engines[run_key].stop() for run_key in run_keys),
+            return_exceptions=True,
         )
         return True
 

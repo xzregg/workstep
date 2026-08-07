@@ -1,5 +1,6 @@
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import MarkdownMessage from './MarkdownMessage'
+import { MessageCopyButton } from './MessageResponseFooter'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -72,7 +73,7 @@ export default function ChatMessageBubble({
     ...(rootProps?.style || {}),
   }
   return (
-    <div {...rootProps} style={rootStyle}>
+    <div {...rootProps} style={rootStyle} className="chat-message-row">
       {isUser && header && (
         <div style={{
           fontSize: 11, color: 'var(--meta)', textAlign: 'right', paddingRight: 44,
@@ -121,7 +122,7 @@ export default function ChatMessageBubble({
             <div style={{
               fontSize: 13, lineHeight: 1.6,
               color: isUser ? 'var(--accent-fg)' : 'var(--fg-2)',
-              background: isUser ? 'var(--accent)' : (variant === 'bg' ? 'var(--bg)' : 'var(--surface)'),
+              background: isUser ? 'var(--accent)' : 'var(--bg)',
               border: !isUser && variant === 'bg' ? '1px solid var(--border-soft)' : 'none',
               padding: '10px 14px', borderRadius: 12,
               borderBottomRightRadius: isUser ? 4 : 12,
@@ -146,6 +147,11 @@ export default function ChatMessageBubble({
                 </div>
               )
             )
+          )}
+          {isUser && content && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <MessageCopyButton content={content} className="chat-message-copy" />
+            </div>
           )}
           {!isUser && error && (
             <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 4 }}>{error}</div>

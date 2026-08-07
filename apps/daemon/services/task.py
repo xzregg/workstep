@@ -290,8 +290,9 @@ class TaskService:
             task.status = "stopped"
         else:
             if task_id in self._cancelled_tasks:
-                step.status = "failed"
-                step.error = "Cancelled"
+                # 手动停止：与普通失败区分，前端显示「手动停止」。
+                step.status = "cancelled"
+                step.error = "手动停止"
                 task.status = "paused"
             elif reported_error is not None:
                 step.status = "failed"
@@ -312,7 +313,10 @@ class TaskService:
                 msg.events_json = json.dumps(events_collected)
                 msg.usage_json = extract_usage_json(events_collected)
                 msg.content = "".join(content_parts)
-                msg.run_status = "succeeded" if step.status == "passed" else "failed"
+                if step.status == "cancelled":
+                    msg.run_status = "cancelled"
+                else:
+                    msg.run_status = "succeeded" if step.status == "passed" else "failed"
                 msg.ended_at = utc_now()
                 msg.save()
             except Exception:
@@ -328,12 +332,17 @@ class TaskService:
             })
 
     async def cancel_task(self, task_id: str) -> bool:
-        """Cancel a running task."""
+        """Cancel a running task (idempotent)."""
+        if task_id in self._cancelled_tasks:
+            return True
         engine = self._running_engines.get(task_id)
         if not engine:
             return False
         self._cancelled_tasks.add(task_id)
-        await engine.stop()
+        try:
+            await engine.stop()
+        except Exception:
+            logger.exception("Engine stop raised during cancel for task %s", task_id)
         return True
 
     async def pause_task(self, task_id: str) -> bool:
