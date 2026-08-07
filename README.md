@@ -33,7 +33,7 @@ WorkStep 是面向独立开发者 / 小团队的本地工作流编排工具。�
 apps/daemon/   # Python + FastAPI 后台服务（API / 引擎层 / DAG 调度 / 审核门）
 apps/web/      # React + TypeScript + Vite 前端（任务列表 / 详情 / 画布编辑器）
 ui/            # 静态 HTML 原型（浏览器直接打开）
-docs/          # 产品文档（PRD、引擎协议设计、LLM 引擎开发指南）
+docs/          # 产品文档（PRD、引擎协议设计、前端设计规范、LLM 引擎开发指南）
 plans/         # 技术架构文档（按功能拆分）
 ```
 
@@ -333,6 +333,7 @@ sequenceDiagram
 |---|---|
 | `docs/prd.md` | 产品需求文档 |
 | `docs/run_llm.md` | LLM 引擎调用协议设计 |
+| `docs/frontend-design.md` | 前端设计规范（Design System：视觉契约、tokens、排版、组件库、Icon、CSS 组织、响应式） |
 | `docs/llm-engine-development-guide.md` | 接入新引擎的开发指南 |
 | `plans/00-architecture-overview.md` | 技术架构总览 |
 | `plans/02-engine-abstraction.md` | 引擎抽象层与统一事件 |
