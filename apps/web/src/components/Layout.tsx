@@ -4,8 +4,12 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useTaskStore } from '../stores/taskStore'
 import { useWebSocket } from '../hooks/useWebSocket'
+import Button from './Button'
 import DirectoryBrowser from './DirectoryBrowser'
+import Field from './Field'
+import Input from './Input'
 import SettingsPage from '../pages/SettingsPage'
+import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import AiFlowChat from './AiFlowChat'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
@@ -346,7 +350,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 />
                 <Icon name="folder" size={16} strokeWidth={2} />
                 {renameId === p.path ? (
-                  <input
+                  <Input
                     ref={renameInputRef}
                     value={renameName}
                     onChange={(e) => setRenameName(e.target.value)}
@@ -425,7 +429,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     >
                       <Icon name="external-link" size={12} strokeWidth={2} />
                       {renameWfId === wf.id ? (
-                        <input
+                        <Input
                           ref={renameWfInputRef}
                           value={renameWfName}
                           onChange={(e) => setRenameWfName(e.target.value)}
@@ -522,21 +526,23 @@ export default function Layout({ onSelectProject, children }: Props) {
           <div className="modal" style={{ width: showBrowser ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">初始化项目</span>
-              <button className="btn-icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</button>
+              <Button variant="icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</Button>
             </div>
             <div className="modal-body">
-              <label>项目路径</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  style={{ flex: 1 }}
-                  placeholder="/Users/me/my-app"
-                  value={newPath}
-                  onChange={(e) => setNewPath(e.target.value)}
-                />
-                <button className="btn-ghost" onClick={() => setShowBrowser(!showBrowser)}>
-                  {showBrowser ? '收起' : '浏览'}
-                </button>
-              </div>
+              <Field label="项目路径" htmlFor="init-path">
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Input
+                    id="init-path"
+                    style={{ flex: 1 }}
+                    placeholder="/Users/me/my-app"
+                    value={newPath}
+                    onChange={(e) => setNewPath(e.target.value)}
+                  />
+                  <Button variant="ghost" onClick={() => setShowBrowser(!showBrowser)}>
+                    {showBrowser ? '收起' : '浏览'}
+                  </Button>
+                </div>
+              </Field>
 
               {showBrowser && (
                 <div style={{ marginTop: 8 }}>
@@ -544,18 +550,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                 </div>
               )}
 
-              <label>项目名称（可选）</label>
-              <input
-                placeholder="默认使用目录名"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleInit()}
-              />
-              {error && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{error}</p>}
+              <Field label="项目名称（可选）" htmlFor="init-name" error={error}>
+                <Input
+                  id="init-name"
+                  placeholder="默认使用目录名"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleInit()}
+                />
+              </Field>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>取消</button>
-              <button className="btn-primary" onClick={handleInit}>初始化</button>
+              <Button variant="ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>取消</Button>
+              <Button variant="primary" onClick={handleInit}>初始化</Button>
             </div>
           </div>
         </div>
@@ -577,7 +584,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           >
             <div className="modal-header">
               <span className="modal-title">添加流程（AI 生成 / 模板）</span>
-              <button className="btn-icon" aria-label="关闭" onClick={requestCloseAddWorkflow}>✕</button>
+              <Button variant="icon" aria-label="关闭" onClick={requestCloseAddWorkflow}>✕</Button>
             </div>
             {/* Top form: workflow name + template */}
             <div style={{
@@ -586,39 +593,42 @@ export default function Layout({ onSelectProject, children }: Props) {
               display: 'flex', gap: 14, alignItems: 'flex-start',
             }}>
               <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
-                  流程名称 <span style={{ color: 'var(--danger)' }}>*</span>
-                </label>
-                <input
-                  ref={wfInputRef}
-                  value={newWfName}
-                  onChange={(e) => setNewWfName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddWorkflow()}
-                  placeholder="流程名称（必填，不能包含空格）"
-                  autoFocus
-                  style={{ border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}` }}
-                />
-                {/* Fixed-height hint area: keeps the form layout stable, no layout shift. */}
-                <div style={{ minHeight: 18, fontSize: 13, lineHeight: 1.5, color: 'var(--danger)', marginTop: 4 }}>
-                  {hasWhitespace(newWfName)
+                <Field
+                  label="流程名称"
+                  required
+                  htmlFor="wf-name"
+                  error={hasWhitespace(newWfName)
                     ? '名称不能包含空白字符（空格、Tab 等）'
                     : addWfNameAttempted && !newWfName.trim()
                       ? '流程名称为必填项，请输入流程名称'
-                      : ''}
-                </div>
+                      : undefined}
+                >
+                  <Input
+                    id="wf-name"
+                    ref={wfInputRef}
+                    value={newWfName}
+                    onChange={(e) => setNewWfName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddWorkflow()}
+                    placeholder="流程名称（必填，不能包含空格）"
+                    autoFocus
+                    style={{ border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}` }}
+                  />
+                </Field>
               </div>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>流程模板</label>
-                <select
-                  value={addWfTemplateId}
-                  onChange={(e) => void handleTemplateChange(e.target.value)}
-                  style={{ width: '100%' }}
-                >
+                <Field label="流程模板" htmlFor="wf-template">
+                  <Select
+                    id="wf-template"
+                    value={addWfTemplateId}
+                    onChange={(e) => void handleTemplateChange(e.target.value)}
+                    style={{ width: '100%' }}
+                  >
                   <option value="">空白流程</option>
                   {templates.map((t) => (
                     <option key={t.id} value={t.id}>{t.name}（{t.nodeCount}步）</option>
                   ))}
-                </select>
+                  </Select>
+                </Field>
                 {(() => {
                   const selected = templates.find((t) => t.id === addWfTemplateId)
                   return selected?.description ? (
@@ -679,12 +689,13 @@ export default function Layout({ onSelectProject, children }: Props) {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={requestCloseAddWorkflow}>取消</button>
-              <button
-                className="btn-primary"
+              <Button variant="ghost" onClick={requestCloseAddWorkflow}>取消</Button>
+              <Button
+                variant="primary"
                 disabled={addWfGenBusy || addWfCreating}
+                loading={addWfCreating}
                 onClick={handleAddWorkflow}
-              >{addWfCreating ? '创建中…' : '创建流程'}</button>
+              >创建流程</Button>
             </div>
             {/* Bottom-right corner resize handle */}
             <div

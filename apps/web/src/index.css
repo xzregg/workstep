@@ -897,3 +897,69 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .modal-footer { padding: 12px 18px; border-top: 1px solid var(--border-soft); display: flex; justify-content: flex-end; gap: 8px; }
 .modal-body label { display: block; font-size: 13px; font-weight: 600; color: var(--fg-2); margin-bottom: 4px; margin-top: 10px; }
 .modal-body label:first-child { margin-top: 0; }
+
+/* ── Base components（阶段 3：Button / Spinner / Field / StatusBadge / EmptyState）── */
+
+.spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: task-status-spin 0.8s linear infinite;
+}
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: color-mix(in oklab, var(--danger), white 10%); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; border-radius: var(--radius-xs); }
+.btn-loading { opacity: 0.85; cursor: progress; }
+.btn[disabled], button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.ws-input, .ws-select, .ws-textarea { font-family: var(--font-body); }
+.ws-input::placeholder, .ws-textarea::placeholder, .ws-select::placeholder { color: var(--text-tertiary); }
+.ws-input:disabled, .ws-select:disabled, .ws-textarea:disabled { background: var(--surface); color: var(--meta); cursor: not-allowed; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field-label {
+  display: block;
+  margin: 0 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.modal-body label.field-label,
+.modal-body .field-label {
+  display: block;
+  margin: 0 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.field-required { color: var(--danger); margin-left: 2px; }
+.field-hint { min-height: 18px; font-size: 11px; line-height: 18px; }
+.field-help { color: var(--muted); }
+.field-error { color: var(--danger); }
+
+.status-badge[data-s="reviewing"]       { background: color-mix(in oklab, var(--accent), transparent 85%); color: var(--accent); }
+.status-badge[data-s="awaiting_review"] { background: color-mix(in oklab, var(--status-paused), transparent 85%); color: var(--status-paused); }
+.status-badge[data-s="retrying"]        { background: color-mix(in oklab, var(--warn), transparent 85%); color: var(--warn); }
+.status-badge[data-s="rejected"]        { background: color-mix(in oklab, var(--status-failed), transparent 85%); color: var(--status-failed); }
+.status-badge[data-s="rework"],
+.status-badge[data-s="rework_waiting"]  { background: color-mix(in oklab, var(--warn), transparent 85%); color: var(--warn); }
+.status-badge[data-s="cancelled"]       { background: color-mix(in oklab, #d97706, transparent 85%); color: #d97706; }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.empty-state-icon { display: flex; color: var(--meta); opacity: 0.5; }
+.empty-state-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+.empty-state-desc { font-size: 13px; color: var(--muted); line-height: 1.55; }
+.empty-state-action { margin-top: 8px; }
+.empty-state-canvas { flex: 1; min-width: 100%; }

@@ -6,7 +6,11 @@ import { useProjectStore } from '../stores/projectStore'
 import { fsApi, type DirectoryOpener } from '../api/client'
 import TaskDetail from './TaskDetail'
 import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
+import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
+import EmptyState from '../components/EmptyState'
+import Field from '../components/Field'
+import Input from '../components/Input'
 import MarkdownEditor from '../components/MarkdownEditor'
 
 /* ── Styles ── */
@@ -529,8 +533,8 @@ export default function TaskList() {
     <>
       {/* Topbar */}
       <div style={topbarStyle}>
-        <button
-          className="btn-ghost"
+        <Button
+          variant="ghost"
           onClick={() => {
             const params = new URLSearchParams({
               project: activeProject?.name || '',
@@ -542,12 +546,12 @@ export default function TaskList() {
         >
           <Icon name="table" size={14} strokeWidth={2} />
           阶段编辑
-        </button>
+        </Button>
         {!showArchived && (
-          <button className="btn-primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
+          <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
             <Icon name="plus" size={14} strokeWidth={2.5} />
             新建
-          </button>
+          </Button>
         )}
         {activeWorkflowName && (
           <span
@@ -591,9 +595,8 @@ export default function TaskList() {
             {directoryNotice}
           </span>
         )}
-        <button
-          type="button"
-          className="btn-ghost"
+        <Button
+          variant="ghost"
           onClick={() => void openMemoryPanel()}
           disabled={!activeProject}
           title="编辑 .workstep/MEMORY.md 项目记忆"
@@ -601,10 +604,9 @@ export default function TaskList() {
         >
           <Icon name="book" size={13} strokeWidth={2} />
           记忆
-        </button>
-        <button
-          type="button"
-          className="btn-ghost"
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setShowArchived((value) => !value)}
           disabled={!activeProject}
           title={showArchived ? '返回任务看板' : '查看已归档任务'}
@@ -612,10 +614,10 @@ export default function TaskList() {
         >
           <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? '返回看板' : '查看归档'}
-        </button>
+        </Button>
         <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
-          <button
-            className="btn-ghost"
+          <Button
+            variant="ghost"
             onClick={() => void openProjectDirectory()}
             disabled={!activeProject}
             title={activeProject ? `使用${directoryOpeners.find((item) => item.id === selectedOpener)?.label || '文件管理器'}打开：${activeProject.path}` : '请先选择项目'}
@@ -626,9 +628,9 @@ export default function TaskList() {
           >
             <OpenerIcon id={selectedOpener} />
             打开位置
-          </button>
-          <button
-            className="btn-ghost"
+          </Button>
+          <Button
+            variant="ghost"
             aria-label="选择打开方式"
             aria-expanded={showOpenerMenu}
             onClick={() => setShowOpenerMenu((value) => !value)}
@@ -639,7 +641,7 @@ export default function TaskList() {
             }}
           >
             <Icon name="chevron-down" size={13} strokeWidth={2.2} />
-          </button>
+          </Button>
           {showOpenerMenu && (
             <div
               role="menu"
@@ -700,12 +702,11 @@ export default function TaskList() {
         )}
 
         {!loading && !activeProject && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)', minWidth: '100%' }}>
-            <div style={{ textAlign: 'center' }}>
-              <Icon name="folder" size={48} strokeWidth={1.5} style={{ marginBottom: 12, opacity: 0.5 }} />
-              <div style={{ fontSize: 13 }}>请在左侧选择一个项目</div>
-            </div>
-          </div>
+          <EmptyState
+            className="empty-state-canvas"
+            icon={<Icon name="folder" size={48} strokeWidth={1.5} />}
+            title="请在左侧选择一个项目"
+          />
         )}
 
         {!loading && activeProject && lanes.map((lane) => {
@@ -719,16 +720,15 @@ export default function TaskList() {
                   <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
                 {!showArchived && (
-                  <button
-                    type="button"
-                    className="btn-ghost"
+                  <Button
+                    variant="ghost"
                     aria-label={`添加${lane.label}任务`}
                     title={`添加${lane.label}任务`}
                     onClick={() => openNewPanel(lane.key)}
                     style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
                   >
                     + 添加
-                  </button>
+                  </Button>
                 )}
               </div>
               <div
@@ -819,48 +819,49 @@ export default function TaskList() {
                           {lane.label}
                         </span>
                         <div className="card-actions" style={{ display: 'flex', gap: 2, width: '100%', opacity: 0, transition: 'opacity var(--motion-fast)' }}>
-                          {taskNotStarted && status !== 'running' && (
-                            <button
-                              className="btn-icon"
-                              title="开始任务"
-                              aria-label="开始任务"
-                              disabled={startingTaskId === t.id}
-                              onClick={(e) => requestStartCard(e, t.id)}
-                              style={{ width: 22, height: 22, color: 'var(--success)' }}
-                            >
-                              ▶️
-                            </button>
-                          )}
-                          <button className="btn-icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
-                            <Icon name="pencil" size={12} strokeWidth={2} />
-                          </button>
-                          {!showArchived && taskCompleted && isLastLane && status !== 'running' && (
-                            <button
-                              className="btn-icon"
-                              title="归档任务"
-                              aria-label="归档任务"
-                              onClick={(e) => requestArchiveCard(e, t.id)}
-                              style={{ width: 22, height: 22, color: 'var(--meta)' }}
-                            >
-                              <Icon name="archive" size={12} strokeWidth={2} />
-                            </button>
-                          )}
-                          {showArchived && (
-                            <button
-                              className="btn-icon"
-                              title="恢复到看板"
-                              aria-label="恢复到看板"
-                              onClick={(e) => handleUnarchive(e, t.id)}
-                              style={{ width: 22, height: 22, color: 'var(--success)' }}
-                            >
-                              <Icon name="rotate-ccw" size={12} strokeWidth={2} />
-                            </button>
-                          )}
-                          {status !== 'running' && (
-                            <button className="btn-icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
-                              <Icon name="x" size={12} strokeWidth={2} />
-                            </button>
-                          )}
+          {taskNotStarted && status !== 'running' && (
+            <Button
+              variant="icon"
+              title="开始任务"
+              aria-label="开始任务"
+              disabled={startingTaskId === t.id}
+              loading={startingTaskId === t.id}
+              onClick={(e) => requestStartCard(e, t.id)}
+              style={{ width: 22, height: 22, color: 'var(--success)' }}
+            >
+              ▶️
+            </Button>
+          )}
+          <Button variant="icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
+            <Icon name="pencil" size={12} strokeWidth={2} />
+          </Button>
+          {!showArchived && taskCompleted && isLastLane && status !== 'running' && (
+            <Button
+              variant="icon"
+              title="归档任务"
+              aria-label="归档任务"
+              onClick={(e) => requestArchiveCard(e, t.id)}
+              style={{ width: 22, height: 22, color: 'var(--meta)' }}
+            >
+              <Icon name="archive" size={12} strokeWidth={2} />
+            </Button>
+          )}
+          {showArchived && (
+            <Button
+              variant="icon"
+              title="恢复到看板"
+              aria-label="恢复到看板"
+              onClick={(e) => handleUnarchive(e, t.id)}
+              style={{ width: 22, height: 22, color: 'var(--success)' }}
+            >
+              <Icon name="rotate-ccw" size={12} strokeWidth={2} />
+            </Button>
+          )}
+          {status !== 'running' && (
+            <Button variant="icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
+              <Icon name="x" size={12} strokeWidth={2} />
+            </Button>
+          )}
                         </div>
                       </div>
                     </div>
@@ -893,7 +894,7 @@ export default function TaskList() {
       }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>新建{createLane?.label || '需求'}任务</span>
-          <button className="btn-icon" onClick={closeNewPanel} aria-label="关闭">✕</button>
+          <Button variant="icon" onClick={closeNewPanel} aria-label="关闭">✕</Button>
         </div>
         {/* ── Tab bar ── */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
@@ -934,28 +935,30 @@ export default function TaskList() {
               阶段会标记为已跳过，不读取这些阶段的输出物。
             </div>
           )}
-          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)' }}>任务标题</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="输入标题..."
-              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              style={{ flex: 1 }}
-            />
-            <label
-              title={`当前任务在“${createLane?.label || '当前阶段'}”创建后自动开始`}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >
-              <input
-                type="checkbox"
-                checked={newAutoStart}
-                onChange={(event) => setNewAutoStart(event.target.checked)}
-                style={{ width: 16, height: 16 }}
+          <Field label="任务标题" htmlFor="new-task-title">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Input
+                id="new-task-title"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="输入标题..."
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                style={{ flex: 1 }}
               />
-              自动开始
-            </label>
-          </div>
+              <label
+                title={`当前任务在“${createLane?.label || '当前阶段'}”创建后自动开始`}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newAutoStart}
+                  onChange={(event) => setNewAutoStart(event.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                自动开始
+              </label>
+            </div>
+          </Field>
           <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
           <MarkdownEditor
             value={newDesc}
@@ -1048,8 +1051,8 @@ export default function TaskList() {
           <div style={{ padding: '8px 16px 0', fontSize: 13, color: 'var(--danger)' }}>{createError}</div>
         )}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn-ghost" onClick={closeNewPanel}>取消</button>
-          <button className="btn-primary" onClick={handleCreate}>创建</button>
+          <Button variant="ghost" onClick={closeNewPanel}>取消</Button>
+          <Button variant="primary" onClick={handleCreate}>创建</Button>
         </div>
       </div>
 
@@ -1147,7 +1150,7 @@ export default function TaskList() {
             编辑记忆
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
           </span>
-          <button className="btn-icon" onClick={closeMemoryPanel} aria-label="关闭">✕</button>
+          <Button variant="icon" onClick={closeMemoryPanel} aria-label="关闭">✕</Button>
         </div>
         {memoryError && (
           <div style={{
@@ -1175,15 +1178,15 @@ export default function TaskList() {
               {memoryNotice}
             </span>
           )}
-          <button className="btn-ghost" onClick={closeMemoryPanel} style={{ fontSize: 13 }}>取消</button>
-          <button
-            className="btn-primary"
+          <Button variant="ghost" onClick={closeMemoryPanel}>取消</Button>
+          <Button
+            variant="primary"
             onClick={() => void handleSaveMemory()}
             disabled={memoryLoading || memorySaving}
-            style={{ fontSize: 13 }}
+            loading={memorySaving}
           >
-            {memorySaving ? '保存中…' : '保存记忆'}
-          </button>
+            保存记忆
+          </Button>
         </div>
       </div>
     </>
