@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Button from './Button'
+import { useI18n } from '../i18n'
 
 interface DirEntry {
   name: string
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
+  const { t } = useI18n()
   const [current, setCurrent] = useState<BrowseResult | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -80,7 +82,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
           ↑
         </Button>
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
-          {current?.path || '加载中...'}
+          {current?.path || t('common.loading')}
         </span>
         <Button
           variant="primary"
@@ -88,7 +90,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
           style={{ fontSize: 11, padding: '4px 10px' }}
           disabled={!current}
         >
-          选择此目录
+          {t('browser.selectDir')}
         </Button>
       </div>
 
@@ -99,12 +101,12 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
       }}>
         {loading && (
           <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
-            加载中...
+            {t('common.loading')}
           </div>
         )}
         {!loading && current?.entries.length === 0 && (
           <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
-            空目录
+            {t('browser.emptyDir')}
           </div>
         )}
         {!loading && current?.entries.map((entry) => (

@@ -6,6 +6,7 @@ import AiFlowChat from '../components/AiFlowChat'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Select from '../components/Select'
 import { useProjectStore } from '../stores/projectStore'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    Workflow editor page — project/workflow shell
@@ -13,6 +14,7 @@ import { useProjectStore } from '../stores/projectStore'
    ══════════════════════════════════════════ */
 
 function CanvasEditorInner() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -72,8 +74,8 @@ function CanvasEditorInner() {
         toolbarLeft={
           <Button
             variant="ghost"
-            aria-label="返回任务看板"
-            title="返回当前项目的任务看板"
+            aria-label={t('canvas.backBoardAria')}
+            title={t('canvas.backBoardTitle')}
             onClick={() => {
               if (dirty) { setConfirmLeave(true); return }
               setCanvasDirty(false)
@@ -81,7 +83,7 @@ function CanvasEditorInner() {
             }}
             style={{ height: 30, padding: '0 9px' }}
           >
-            ← 看板
+            {t('canvas.board')}
           </Button>
         }
         toolbarMid={
@@ -97,17 +99,17 @@ function CanvasEditorInner() {
                 style={{ height: 28, maxWidth: 160 }}
               >
                 {(activeProject?.workflows || []).map(wf => (
-                  <option key={wf.id} value={wf.id}>{wf.name}{wf.is_default ? ' (默认)' : ''}</option>
+                  <option key={wf.id} value={wf.id}>{wf.name}{wf.is_default ? t('canvas.defaultSuffix') : ''}</option>
                 ))}
               </Select>
             )}
             <Button
               variant="ghost"
-              title="让 AI 根据目标生成或调整当前流程"
+              title={t('canvas.aiEditTitle')}
               onClick={() => { setAiPanelOpen(true); setAiConfirmClose(false) }}
               style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
             >
-              AI 编辑
+              {t('canvas.aiEdit')}
             </Button>
           </div>
         }
@@ -132,7 +134,7 @@ function CanvasEditorInner() {
             }}
             onBusyChange={setAiGenBusy}
             onClose={() => { if (aiGenBusy) { setAiConfirmClose(true); return } setAiPanelOpen(false) }}
-            title="AI 编辑流程"
+            title={t('canvas.aiEditFlowTitle')}
           />
         </div>
       )}
@@ -140,9 +142,9 @@ function CanvasEditorInner() {
       {/* AI panel: close while generating */}
       <ConfirmDialog
         open={aiConfirmClose}
-        title="AI 正在生成"
-        message="AI 仍在生成中，关闭面板后生成结果仍会应用到画布。确定关闭？"
-        confirmText="关闭"
+        title={t('canvas.aiGeneratingTitle')}
+        message={t('canvas.aiGeneratingMessage')}
+        confirmText={t('common.close')}
         onConfirm={() => { setAiConfirmClose(false); setAiPanelOpen(false) }}
         onCancel={() => setAiConfirmClose(false)}
       />
@@ -150,9 +152,9 @@ function CanvasEditorInner() {
       {/* AI proposal overwrites manual canvas edits */}
       <ConfirmDialog
         open={pendingAiSteps !== null}
-        title="AI 提案将覆盖画布"
-        message="应用 AI 提案将替换当前画布上的手动改动（未保存的更改会丢失）。确定应用？"
-        confirmText="应用提案"
+        title={t('canvas.proposalOverwriteTitle')}
+        message={t('canvas.proposalOverwriteMessage')}
+        confirmText={t('canvas.applyProposal')}
         danger
         onConfirm={() => {
           if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
@@ -164,17 +166,17 @@ function CanvasEditorInner() {
       {/* Unsaved changes confirm dialogs */}
       <ConfirmDialog
         open={confirmLeave}
-        title="未保存的更改"
-        message="有未保存的更改，确定离开？"
-        confirmText="离开"
+        title={t('canvas.unsavedTitle')}
+        message={t('canvas.unsavedLeaveMessage')}
+        confirmText={t('canvas.leave')}
         onConfirm={() => { setConfirmLeave(false); setCanvasDirty(false); navigate('/tasks') }}
         onCancel={() => setConfirmLeave(false)}
       />
       <ConfirmDialog
         open={pendingWfId !== null}
-        title="未保存的更改"
-        message="有未保存的更改，确定切换工作流？"
-        confirmText="切换"
+        title={t('canvas.unsavedTitle')}
+        message={t('canvas.unsavedSwitchMessage')}
+        confirmText={t('canvas.switch')}
         onConfirm={() => { if (pendingWfId !== null) switchWorkflow(pendingWfId); setPendingWfId(null) }}
         onCancel={() => setPendingWfId(null)}
       />

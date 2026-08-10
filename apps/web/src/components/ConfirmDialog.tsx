@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import Button from './Button'
+import { useI18n } from '../i18n'
 
 interface Props {
   open: boolean
@@ -12,7 +13,8 @@ interface Props {
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText = '确认', cancelText = '取消', danger, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, onConfirm, onCancel }: Props) {
+  const { t } = useI18n()
   // Close on Escape
   useEffect(() => {
     if (!open) return
@@ -54,13 +56,13 @@ export default function ConfirmDialog({ open, title, message, confirmText = '确
 
         {/* Footer */}
         <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-          <Button variant="ghost" onClick={onCancel}>{cancelText}</Button>
+          <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
             onClick={onConfirm}
             style={{ fontSize: 13, fontWeight: 500, padding: '6px 16px' }}
           >
-            {confirmText}
+            {confirmText ?? t('common.confirm')}
           </Button>
         </div>
       </div>

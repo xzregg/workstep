@@ -2,6 +2,7 @@ import Icon from './Icon'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
+import { useI18n } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import Button from './Button'
@@ -70,6 +71,7 @@ interface Props {
 }
 
 export default function Layout({ onSelectProject, children }: Props) {
+  const { t } = useI18n()
   useWebSocket()
   const navigate = useNavigate()
   const location = useLocation()
@@ -259,7 +261,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       const full = await templateApi.get(templateId)
       setAddWfSteps(full.steps || { nodes: [], connections: [] })
     } catch (reason) {
-      setAddWfError(reason instanceof Error ? reason.message : '加载模板失败')
+      setAddWfError(reason instanceof Error ? reason.message : t('layout.loadTemplateFailed'))
     }
   }
 
@@ -287,7 +289,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       await createWorkflow(addWfProjectId, newWfName.trim(), addWfTemplateId || undefined, steps)
       closeAddWorkflow()
     } catch (reason) {
-      setAddWfError(reason instanceof Error ? reason.message : '创建流程失败')
+      setAddWfError(reason instanceof Error ? reason.message : t('layout.createWorkflowFailed'))
     } finally {
       setAddWfCreating(false)
     }
@@ -296,7 +298,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const handleInit = async () => {
     if (!newPath.trim()) return
     if (hasWhitespace(newName)) {
-      setError('项目名称不能包含空白字符（空格、Tab 等）')
+      setError(t('layout.nameWhitespace'))
       return
     }
     try {
@@ -329,7 +331,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           </div>
         </div>
 
-        <div style={sectionLabel}>项目</div>
+        <div style={sectionLabel}>{t('layout.projects')}</div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
           {projects.map((p) => (
@@ -357,7 +359,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onKeyDown={async (e) => {
                       if (e.key === 'Enter' && renameName.trim()) {
                         if (hasWhitespace(renameName)) {
-                          setRenameError('名称不能包含空白字符（空格、Tab 等）')
+                          setRenameError(t('layout.nameWhitespace'))
                           return
                         }
                         await renameProject(p.path, renameName.trim())
@@ -368,7 +370,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onBlur={async () => {
                       if (renameName.trim() && renameName !== p.name) {
                         if (hasWhitespace(renameName)) {
-                          setRenameError('名称不能包含空白字符（空格、Tab 等）')
+                          setRenameError(t('layout.nameWhitespace'))
                           setRenameId(null)
                           return
                         }
@@ -387,7 +389,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <Button
                   variant="icon"
                   onClick={(e) => { e.stopPropagation(); openAddWorkflow(p.id) }}
-                  title="添加工作流"
+                  title={t('layout.addWorkflowTitle')}
                   style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, opacity: 0.7 }}
                 >+</Button>
               </div>
@@ -457,11 +459,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                         >{wf.name}</span>
                       )}
                       {wf.running && !deleted && (
-                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0 }} title="流程执行中" aria-hidden="true" />
+                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0 }} title={t('layout.flowRunning')} aria-hidden="true" />
                       )}
-                      {deleted && <span style={{ fontSize: 11, color: 'var(--danger)', opacity: 0.8 }}>回收站</span>}
-                      {wf.is_default ? <span style={{ fontSize: 11, opacity: 0.6 }}>默认</span> : null}
-                      <span style={{ fontSize: 11, opacity: 0.5 }}>{wf.nodeCount}步</span>
+                      {deleted && <span style={{ fontSize: 11, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
+                      {wf.is_default ? <span style={{ fontSize: 11, opacity: 0.6 }}>{t('layout.default')}</span> : null}
+                      <span style={{ fontSize: 11, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       {deleted && (
                         <Button
                           variant="icon"
@@ -469,7 +471,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             e.stopPropagation()
                             restoreWorkflow(wf.id, p.id)
                           }}
-                          title="恢复流程"
+                          title={t('layout.restoreFlow')}
                           style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--status-done)', fontSize: 13, lineHeight: '14px', padding: 0 }}
                         >↩</Button>
                       )}
@@ -480,7 +482,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             e.stopPropagation()
                             setDeleteWf({ id: wf.id, projectId: p.id, name: wf.name, soft: deleted })
                           }}
-                          title={deleted ? '永久删除' : '删除（移入回收站）'}
+                          title={deleted ? t('nav.deletePermanent') : t('nav.deleteToTrash')}
                           style={{ width: 14, height: 14, border: 'none', background: 'transparent', color: 'var(--danger)', fontSize: 11, lineHeight: '14px', padding: 0 }}
                         >×</Button>
                       )}
@@ -492,13 +494,13 @@ export default function Layout({ onSelectProject, children }: Props) {
           ))}
           {projects.length === 0 && (
             <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--meta)', fontStyle: 'italic' }}>
-              还没有项目
+              {t('nav.noProjects')}
             </div>
           )}
         </div>
 
         <Button variant="ghost" style={addButtonStyle} onClick={() => setShowInitModal(true)}>
-          + 添加项目
+          + {t('nav.addProject')}
         </Button>
         <Button
           variant="ghost"
@@ -513,7 +515,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           }}
         >
           <Icon name="settings" size={17} strokeWidth={2} />
-          设置
+          {t('nav.settings')}
         </Button>
       </aside>
 
@@ -529,11 +531,11 @@ export default function Layout({ onSelectProject, children }: Props) {
         <div className="modal-overlay" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>
           <div className="modal" style={{ width: showBrowser ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">初始化项目</span>
+              <span className="modal-title">{t('layout.initTitle')}</span>
               <Button variant="icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</Button>
             </div>
             <div className="modal-body">
-              <Field label="项目路径" htmlFor="init-path">
+              <Field label={t('layout.projectPath')} htmlFor="init-path">
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Input
                     id="init-path"
@@ -543,7 +545,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onChange={(e) => setNewPath(e.target.value)}
                   />
                   <Button variant="ghost" onClick={() => setShowBrowser(!showBrowser)}>
-                    {showBrowser ? '收起' : '浏览'}
+                    {showBrowser ? t('layout.collapse') : t('layout.browse')}
                   </Button>
                 </div>
               </Field>
@@ -554,10 +556,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                 </div>
               )}
 
-              <Field label="项目名称（可选）" htmlFor="init-name" error={error}>
+              <Field label={t('layout.projectNameOptional')} htmlFor="init-name" error={error}>
                 <Input
                   id="init-name"
-                  placeholder="默认使用目录名"
+                  placeholder={t('layout.defaultDirName')}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleInit()}
@@ -565,8 +567,8 @@ export default function Layout({ onSelectProject, children }: Props) {
               </Field>
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>取消</Button>
-              <Button variant="primary" onClick={handleInit}>初始化</Button>
+              <Button variant="ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>{t('common.cancel')}</Button>
+              <Button variant="primary" onClick={handleInit}>{t('layout.init')}</Button>
             </div>
           </div>
         </div>
@@ -587,8 +589,8 @@ export default function Layout({ onSelectProject, children }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
-              <span className="modal-title">添加流程（AI 生成 / 模板）</span>
-              <Button variant="icon" aria-label="关闭" onClick={requestCloseAddWorkflow}>✕</Button>
+              <span className="modal-title">{t('layout.addFlowTitle')}</span>
+              <Button variant="icon" aria-label={t('common.close')} onClick={requestCloseAddWorkflow}>✕</Button>
             </div>
             {/* Top form: workflow name + template */}
             <div style={{
@@ -598,13 +600,13 @@ export default function Layout({ onSelectProject, children }: Props) {
             }}>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <Field
-                  label="流程名称"
+                  label={t('layout.flowName')}
                   required
                   htmlFor="wf-name"
                   error={hasWhitespace(newWfName)
-                    ? '名称不能包含空白字符（空格、Tab 等）'
+                    ? t('layout.nameWhitespace')
                     : addWfNameAttempted && !newWfName.trim()
-                      ? '流程名称为必填项，请输入流程名称'
+                      ? t('layout.flowNameRequired')
                       : undefined}
                 >
                   <Input
@@ -613,23 +615,23 @@ export default function Layout({ onSelectProject, children }: Props) {
                     value={newWfName}
                     onChange={(e) => setNewWfName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddWorkflow()}
-                    placeholder="流程名称（必填，不能包含空格）"
+                    placeholder={t('layout.flowNamePlaceholder')}
                     autoFocus
                     style={{ border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}` }}
                   />
                 </Field>
               </div>
               <div style={{ flex: 1, minWidth: 220 }}>
-                <Field label="流程模板" htmlFor="wf-template">
+                <Field label={t('layout.flowTemplate')} htmlFor="wf-template">
                   <Select
                     id="wf-template"
                     value={addWfTemplateId}
                     onChange={(e) => void handleTemplateChange(e.target.value)}
                     style={{ width: '100%' }}
                   >
-                  <option value="">空白流程</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}（{t.nodeCount}步）</option>
+                  <option value="">{t('layout.blankFlow')}</option>
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}（{t('flow.nodeCount', { count: template.nodeCount })}）</option>
                   ))}
                   </Select>
                 </Field>
@@ -638,7 +640,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   return selected?.description ? (
                     <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
                   ) : (
-                    <p style={{ fontSize: 13, color: 'var(--meta)', marginTop: 4 }}>也可在右侧让 AI 根据目标生成流程</p>
+                    <p style={{ fontSize: 13, color: 'var(--meta)', marginTop: 4 }}>{t('layout.aiGenerateHint')}</p>
                   )
                 })()}
               </div>
@@ -660,15 +662,15 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onDirtyChange={setAddWfPreviewDirty}
                   onSave={async (steps) => { setAddWfSteps(steps); setAddWfPreviewDirty(false) }}
                   showTemplatePicker={false}
-                  title="流程预览"
-                  saveLabel="更新预览"
+                  title={t('layout.previewTitle')}
+                  saveLabel={t('layout.updatePreview')}
                   hint={null}
                 />
               </div>
               {/* Draggable divider to resize the chat column */}
               <div
                 onMouseDown={startDividerDrag}
-                title="拖动调整聊天区宽度"
+                title={t('layout.dragResizeChat')}
                 style={{
                   width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
                   background: 'transparent', userSelect: 'none',
@@ -688,23 +690,23 @@ export default function Layout({ onSelectProject, children }: Props) {
                   projectId={addWfProjectId}
                   onProposal={handleAiProposal}
                   onBusyChange={setAddWfGenBusy}
-                  title="AI 流程助手"
+                  title={t('aiFlow.title')}
                 />
               </div>
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={requestCloseAddWorkflow}>取消</Button>
+              <Button variant="ghost" onClick={requestCloseAddWorkflow}>{t('common.cancel')}</Button>
               <Button
                 variant="primary"
                 disabled={addWfGenBusy || addWfCreating}
                 loading={addWfCreating}
                 onClick={handleAddWorkflow}
-              >创建流程</Button>
+              >{t('layout.createFlow')}</Button>
             </div>
             {/* Bottom-right corner resize handle */}
             <div
               onMouseDown={startModalResize}
-              title="拖动调整弹框大小"
+              title={t('layout.dragResizeModal')}
               style={{
                 position: 'absolute', right: 0, bottom: 0, width: 20, height: 20,
                 cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
@@ -720,11 +722,11 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Add workflow: confirm close with unsaved preview / running generation */}
       <ConfirmDialog
         open={addWfConfirmClose}
-        title="未保存的更改"
+        title={t('canvas.unsavedTitle')}
         message={addWfGenBusy
-          ? 'AI 正在生成流程，确定放弃并关闭？'
-          : '流程预览有未保存的改动，确定放弃并关闭？'}
-        confirmText="放弃更改"
+          ? t('layout.abandonGenerating')
+          : t('layout.abandonPreview')}
+        confirmText={t('layout.discardChanges')}
         danger
         onConfirm={closeAddWorkflow}
         onCancel={() => setAddWfConfirmClose(false)}
@@ -733,9 +735,9 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Add workflow: AI proposal overwrites manual preview edits */}
       <ConfirmDialog
         open={pendingAiSteps !== null}
-        title="AI 提案将覆盖预览"
-        message="新生成的流程提案将替换当前预览中的手动改动。确定应用？"
-        confirmText="应用提案"
+        title={t('layout.aiOverwritePreviewTitle')}
+        message={t('layout.aiOverwritePreviewMessage')}
+        confirmText={t('canvas.applyProposal')}
         danger
         onConfirm={() => {
           if (pendingAiSteps !== null) setAddWfSteps(pendingAiSteps)
@@ -747,13 +749,13 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Delete workflow confirm */}
       <ConfirmDialog
         open={!!deleteWf}
-        title={deleteWf?.soft ? '永久删除流程' : '删除流程'}
+        title={deleteWf?.soft ? t('layout.deleteFlowPermanentTitle') : t('layout.deleteFlowTitle')}
         message={deleteWf
           ? (deleteWf.soft
-            ? `确定永久删除流程「${deleteWf.name}」？将同时清除该项目数据库中该流程的全部数据（任务、消息、执行记录、审核记录等所有相关表），此操作不可恢复。`
-            : `确定删除流程「${deleteWf.name}」？流程将移入回收站（以删除线显示），可随时恢复；再次点击删除将永久清除该流程的全部数据。`)
+            ? t('layout.deleteFlowPermanentMessage', { name: deleteWf.name })
+            : t('layout.deleteFlowSoftMessage', { name: deleteWf.name }))
           : undefined}
-        confirmText={deleteWf?.soft ? '永久删除' : '删除'}
+        confirmText={deleteWf?.soft ? t('nav.deletePermanent') : t('common.delete')}
         danger
         onConfirm={() => {
           if (deleteWf) deleteWorkflow(deleteWf.id, deleteWf.projectId)
@@ -765,9 +767,9 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Unsaved canvas changes → switch workflow */}
       <ConfirmDialog
         open={!!pendingWfSwitch}
-        title="未保存的更改"
-        message="有未保存的更改，确定切换工作流？"
-        confirmText="切换"
+        title={t('canvas.unsavedTitle')}
+        message={t('canvas.unsavedSwitchMessage')}
+        confirmText={t('canvas.switch')}
         onConfirm={() => {
           if (pendingWfSwitch) {
             const { project, workflowId } = pendingWfSwitch

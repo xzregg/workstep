@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
 import CanvasEditor from './pages/CanvasEditor'
 import type { Project } from './api/client'
+import { useI18n } from './i18n'
 
 function AppRoutes() {
   const navigate = useNavigate()
@@ -32,6 +33,7 @@ function AppRoutes() {
 }
 
 function WelcomeView() {
+  const { t } = useI18n()
   return (
     <div style={{
       flex: 1, display: 'flex', flexDirection: 'column',
@@ -39,8 +41,8 @@ function WelcomeView() {
       color: 'var(--meta)', gap: 12,
     }}>
       <Icon name="layers" size={48} strokeWidth={1.5} />
-      <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--fg-2)' }}>WorkStep</div>
-      <div style={{ fontSize: 13 }}>选择或创建一个项目开始</div>
+      <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--fg-2)' }}>{t('welcome.title')}</div>
+      <div style={{ fontSize: 13 }}>{t('welcome.subtitle')}</div>
     </div>
   )
 }

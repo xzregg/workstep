@@ -4,6 +4,7 @@ import A2uiMessage from './A2uiMessage'
 import { MessageCopyButton } from './MessageResponseFooter'
 import { hasA2uiBlocks, stripA2uiBlocks } from '../utils/a2ui'
 import Icon from './Icon'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -70,6 +71,7 @@ export default function ChatMessageBubble({
   variant = 'surface',
   rootProps,
 }: ChatMessageBubbleProps) {
+  const { t } = useI18n()
   const isUser = role === 'user'
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
@@ -165,7 +167,7 @@ export default function ChatMessageBubble({
             !isUser && showLoading && streaming && (
               loading ?? (
                 <div className="engine-loading-message" role="status" aria-live="polite">
-                  <span>思考中…</span>
+                  <span>{t('bubble.thinking')}</span>
                   <span className="engine-loading-dots" aria-hidden="true">
                     <i /><i /><i />
                   </span>
@@ -183,8 +185,8 @@ export default function ChatMessageBubble({
                 <button
                   type="button"
                   className="chat-message-action"
-                  title="编辑消息"
-                  aria-label="编辑消息"
+                  title={t('bubble.editMessage')}
+                  aria-label={t('bubble.editMessage')}
                   onClick={() => onEdit(content)}
                   style={{
                     width: 24, height: 24, minWidth: 24, padding: 0,

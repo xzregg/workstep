@@ -27,6 +27,7 @@ import {
   type TemplateInfo,
 } from '../api/client'
 import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -379,6 +380,7 @@ const sectionTitle: React.CSSProperties = {
    Input editor with sub-outputs
    ══════════════════════════════════════════ */
 function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v: InputField[]) => void }) {
+  const { t } = useI18n()
   const updateInput = (i: number, field: 'name' | 'type', val: string) => {
     const next = [...inputs]; next[i] = { ...next[i], [field]: val }; onChange(next)
   }
@@ -404,32 +406,32 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
   return (
     <div>
       <div style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ color: 'var(--accent)' }}>●</span> 输入产物
+        <span style={{ color: 'var(--accent)' }}>●</span> {t('flow.inputArtifacts')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder="名称" style={{ flex: 1, height: 28, fontSize: 13 }} />
-              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder="类型" style={{ width: 80, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }} />
+              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 13 }} />
+              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }} />
               <Button variant="icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 13 }}>×</Button>
             </div>
             {/* Sub-outputs */}
             {inp.outputs.map((sub, j) => (
               <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
                 <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder="输出名称" style={{ flex: 1, height: 24, fontSize: 11 }} />
-                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder="类型" style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
+                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder={t('flow.outputName')} style={{ flex: 1, height: 24, fontSize: 11 }} />
+                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
                 <Button variant="icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 13 }}>×</Button>
               </div>
             ))}
             <button onClick={() => addSubOutput(i)} style={{ fontSize: 11, color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
-              + 对应输出
+              {t('flow.addSubOutput')}
             </button>
           </div>
         ))}
         <button onClick={addInput} style={{ fontSize: 13, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
-          + 添加输入
+          {t('flow.addInput')}
         </button>
       </div>
     </div>
@@ -464,6 +466,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   onDirtyChange: (dirty: boolean) => void
   projectId?: string
 }) {
+  const { t } = useI18n()
   const [draft, setDraft] = useState<StepNodeData>({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
   const [stageModels, setStageModels] = useState<EngineModel[]>([])
   const [reviewModels, setReviewModels] = useState<EngineModel[]>([])
@@ -489,11 +492,11 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
 
   const normalizedKey = draft.key.trim()
   const keyError = !normalizedKey
-    ? '阶段标识不能为空'
+    ? t('flow.keyRequired')
     : !STEP_TYPE_PATTERN.test(normalizedKey)
-      ? '需以英文字母开头，只能包含字母、数字、下划线或连字符'
+      ? t('flow.keyPattern')
       : unavailableKeys.includes(normalizedKey)
-        ? `阶段标识 “${normalizedKey}” 已存在`
+        ? t('flow.keyDuplicate', { key: normalizedKey })
         : ''
 
   useEffect(() => {
@@ -576,7 +579,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           <span style={{ fontSize: 13, fontWeight: 600 }}>{draft.label}</span>
           <button onClick={onRequestDelete}
             style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
-            删除
+            {t('common.delete')}
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -586,45 +589,45 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             disabled={Boolean(keyError)}
             onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
-            暂存
+            {t('flow.stash')}
           </Button>
           <Button variant="icon" onClick={onClose}>✕</Button>
         </div>
       </div>
 
       <div>
-        <div style={sectionTitle}>基本信息</div>
+        <div style={sectionTitle}>{t('flow.basicInfo')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>名称</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.name')}</label>
               <Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
             </div>
             <div style={{ width: 116 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>颜色</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.color')}</label>
               <div style={{ display: 'flex', gap: 5 }}>
                 <input
                   type="color"
-                  aria-label="阶段颜色"
+                  aria-label={t('flow.stageColor')}
                   value={draft.color}
                   onChange={(e) => updateDraft('color', e.target.value)}
                   style={{ height: 32, width: 42, cursor: 'pointer', padding: 2 }}
                 />
                 <Button
                   variant="ghost"
-                  aria-label="随机颜色"
-                  title="随机颜色"
+                  aria-label={t('flow.randomColor')}
+                  title={t('flow.randomColor')}
                   onClick={() => updateDraft('color', randomStageColor(draft.color))}
                   style={{ height: 32, flex: 1, padding: '0 7px', fontSize: 11 }}
                 >
-                  随机
+                  {t('flow.random')}
                 </Button>
               </div>
             </div>
           </div>
           <div>
             <label htmlFor="step-type" style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
-              阶段标识（type）<span style={{ color: 'var(--danger)' }}> *</span>
+              {t('flow.stageKey')}<span style={{ color: 'var(--danger)' }}> *</span>
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Input
@@ -635,7 +638,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 aria-invalid={Boolean(keyError)}
                 aria-describedby={keyError ? 'step-type-error' : 'step-type-help'}
                 style={{ flex: 1, ...(keyError ? { borderColor: 'var(--danger)' } : {}) }}
-                placeholder="如 frontend"
+                placeholder="frontend"
               />
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
@@ -648,30 +651,30 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 }}
                 style={{ width: 16, height: 16 }}
                 />
-                创建后自动开始
+                {t('flow.autoStart')}
               </label>
             </div>
             <div
               id={keyError ? 'step-type-error' : 'step-type-help'}
               style={{ marginTop: 4, fontSize: 11, color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
             >
-              {keyError || '用于阶段状态和依赖引用，当前流程内必须唯一'}
+              {keyError || t('flow.keyHelp')}
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>提示词</label>
+            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.prompt')}</label>
             <MarkdownEditor
               value={draft.prompt}
               onChange={(v) => updateDraft('prompt', v)}
               projectId={projectId}
               minHeight={120}
-              placeholder="描述这个阶段要做什么..."
-              ariaLabel="阶段提示词"
+              placeholder={t('flow.promptPlaceholder')}
+              ariaLabel={t('flow.stagePromptAria')}
             />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>引擎</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
               <EngineSelect
                 engines={engines}
                 value={draft.engine}
@@ -680,7 +683,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   setDraft((current) => ({ ...current, engine: engineId, model: '' }))
                 }}
                 disabled={enginesLoading}
-                ariaLabel="阶段引擎"
+                ariaLabel={t('flow.stageEngineAria')}
                 style={{ height: 32 }}
               />
               <div style={{
@@ -692,16 +695,16 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     : 'var(--warn)',
               }}>
                 {enginesLoading
-                  ? '正在扫描本机执行引擎…'
+                  ? t('flow.scanningEngines')
                   : enginesError
-                    ? `引擎扫描失败：${enginesError}`
+                    ? t('flow.engineScanFailed', { error: enginesError })
                     : currentEngineSelectable
-                      ? `已配置 ${selectableEngines.length} 个执行引擎`
-                      : '当前引擎不可用，请安装或在设置中完成配置'}
+                      ? t('flow.enginesConfigured', { count: selectableEngines.length })
+                      : t('flow.engineUnavailable')}
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>模型（可选）</label>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
               <Select
                 value={draft.model}
                 disabled={stageModelsLoading}
@@ -709,10 +712,10 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 style={{ height: 32 }}
               >
                 <option value="">
-                  {stageModelsLoading ? '模型加载中…' : '使用引擎默认模型'}
+                  {stageModelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
                 </option>
                 {draft.model && !stageModels.some((model) => model.id === draft.model) && (
-                  <option value={draft.model}>{draft.model}（当前配置）</option>
+                  <option value={draft.model}>{draft.model}{t('flow.currentConfigSuffix')}</option>
                 )}
                 {stageModels.map((model) => (
                   <option key={model.id} value={model.id}>
@@ -726,7 +729,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       </div>
 
       <div>
-        <div style={sectionTitle}>阶段审核</div>
+        <div style={sectionTitle}>{t('flow.stageReview')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
@@ -736,11 +739,11 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 onChange={(e) => updateReview('auto', e.target.checked)}
                 style={{ width: 16, height: 16 }}
               />
-              自动审核
+              {t('flow.autoReview')}
             </label>
             {review.auto && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
-                <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
+                <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
                 <Input
                   type="number"
                   min={0}
@@ -757,14 +760,14 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </div>
           {!review.auto && (
             <div style={{ fontSize: 11, color: 'var(--meta)' }}>
-              阶段完成后将暂停，等待用户确认进入下一阶段。
+              {t('flow.reviewPauseHint')}
             </div>
           )}
           {review.auto && (
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核引擎</label>
+                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewEngine')}</label>
                   <EngineSelect
                     engines={engines}
                     value={review.engine}
@@ -776,12 +779,12 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                       })
                     }}
                     disabled={enginesLoading}
-                    defaultOption={{ value: '', label: '继承阶段引擎' }}
-                    ariaLabel="审核引擎"
+                    defaultOption={{ value: '', label: t('flow.inheritStageEngine') }}
+                    ariaLabel={t('flow.reviewEngine')}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核模型</label>
+                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewModel')}</label>
                   <Select
                     value={review.model}
                     disabled={reviewModelsLoading}
@@ -789,13 +792,13 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   >
                     <option value="">
                       {reviewModelsLoading
-                        ? '模型加载中…'
+                        ? t('flow.modelsLoading')
                         : review.engine
-                          ? '使用审核引擎默认模型'
-                          : '继承阶段模型'}
+                          ? t('flow.reviewEngineDefaultModel')
+                          : t('flow.inheritStageModel')}
                     </option>
                     {review.model && !reviewModels.some((model) => model.id === review.model) && (
-                      <option value={review.model}>{review.model}（当前配置）</option>
+                      <option value={review.model}>{review.model}{t('flow.currentConfigSuffix')}</option>
                     )}
                     {reviewModels.map((model) => (
                       <option key={model.id} value={model.id}>
@@ -806,15 +809,15 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>审核要求</label>
+                <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
                 <MarkdownEditor
                   value={review.prompt}
                   onChange={(v) => updateReview('prompt', v)}
                   projectId={projectId}
                   minHeight={96}
                   maxHeight={200}
-                  placeholder="描述审核标准、必需产物和验收条件…"
-                  ariaLabel="审核要求"
+                  placeholder={t('flow.reviewPromptPlaceholder')}
+                  ariaLabel={t('flow.reviewPromptAria')}
                 />
               </div>
             </>
@@ -870,12 +873,13 @@ function FlowCanvasInner({
   projectId,
   toolbarLeft,
   toolbarMid,
-  title = '流程编辑器',
-  saveLabel = '保存',
-  hint = '实线=数据流 · 虚线=返工反馈（连回上游自动变虚线）',
+  title,
+  saveLabel,
+  hint,
   showTemplatePicker = true,
   ref,
 }: FlowCanvasProps) {
+  const { t } = useI18n()
   const { fitView } = useReactFlow()
   const initial = loadCanvasData(initialSteps)
   const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(initial.nodes))
@@ -901,6 +905,7 @@ function FlowCanvasInner({
   const [enginesLoading, setEnginesLoading] = useState(true)
   const [enginesError, setEnginesError] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
+  const [saveMsgKind, setSaveMsgKind] = useState<'success' | 'error'>('success')
   const [dirty, setDirtyState] = useState(false)
 
   const setDirty = useCallback((value: boolean) => {
@@ -917,7 +922,7 @@ function FlowCanvasInner({
       })
       .catch((error) => {
         setAvailableEngines([])
-        setEnginesError(error instanceof Error ? error.message : '未知错误')
+        setEnginesError(error instanceof Error ? error.message : t('common.unknownError'))
       })
       .finally(() => setEnginesLoading(false))
   }, [])
@@ -1002,7 +1007,7 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: '新阶段', autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -1072,28 +1077,28 @@ function FlowCanvasInner({
   const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 
   const computeStepError = (): string | null => {
-    if (nodeConfigError) return `阶段配置不完整：${nodeConfigError}`
+    if (nodeConfigError) return t('flow.stageConfigIncomplete', { error: nodeConfigError })
     const stepTypes = nodes.map((node, index) => {
       const data = node.data as StepNodeData
       return {
         index,
-        label: data.label || `阶段 ${index + 1}`,
+        label: data.label || t('flow.stageN', { index: index + 1 }),
         value: data.key.trim(),
       }
     })
     const missingType = stepTypes.find((step) => !step.value)
     if (missingType) {
-      return `阶段“${missingType.label}”的 type 不能为空`
+      return t('flow.stageTypeRequired', { label: missingType.label })
     }
     const invalidType = stepTypes.find((step) => !STEP_TYPE_PATTERN.test(step.value))
     if (invalidType) {
-      return `阶段“${invalidType.label}”的 type 格式不正确`
+      return t('flow.stageTypeInvalid', { label: invalidType.label })
     }
     const seenTypes = new Map<string, string>()
     for (const step of stepTypes) {
       const previousLabel = seenTypes.get(step.value)
       if (previousLabel) {
-        return `type “${step.value}” 在“${previousLabel}”和“${step.label}”中重复`
+        return t('flow.stageTypeDuplicate', { type: step.value, prev: previousLabel, label: step.label })
       }
       seenTypes.set(step.value, step.label)
     }
@@ -1114,9 +1119,9 @@ function FlowCanvasInner({
     },
   }), [nodes, edges, nodeConfigError, ref]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const applyTemplate = async (t: TemplateInfo) => {
+  const applyTemplate = async (template: TemplateInfo) => {
     try {
-      const full = await templateApi.get(t.id)
+      const full = await templateApi.get(template.id)
       const { nodes: tNodes, connections: tConns } = loadCanvasData(full.steps ?? full)
       setNodes(canvasToFlowNodes(tNodes))
       setEdges(canvasToFlowEdges(tConns, tNodes))
@@ -1125,7 +1130,8 @@ function FlowCanvasInner({
       setDirty(true)
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     } catch (e) {
-      setSaveMsg(`模板加载失败：${e instanceof Error ? e.message : '网络错误'}`)
+      setSaveMsg(t('flow.templateLoadFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
+      setSaveMsgKind('error')
       setTimeout(() => setSaveMsg(''), 5000)
     }
   }
@@ -1133,7 +1139,8 @@ function FlowCanvasInner({
   const saveCurrentAsTemplate = async () => {
     const name = templateName.trim()
     if (!name) {
-      setSaveMsg('保存失败：请填写模板名称')
+      setSaveMsg(t('flow.saveTemplateNameRequired'))
+      setSaveMsgKind('error')
       setTimeout(() => setSaveMsg(''), 5000)
       return
     }
@@ -1153,10 +1160,12 @@ function FlowCanvasInner({
       setTemplateName('')
       setTemplateDesc('')
       setShowTemplateModal(false)
-      setSaveMsg(`模板「${name}」保存成功`)
+      setSaveMsg(t('flow.templateSaved', { name }))
+      setSaveMsgKind('success')
       setTimeout(() => setSaveMsg(''), 5000)
     } catch (e) {
-      setSaveMsg(`保存失败：${e instanceof Error ? e.message : '网络错误'}`)
+      setSaveMsg(t('flow.saveFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
+      setSaveMsgKind('error')
       setTimeout(() => setSaveMsg(''), 5000)
     }
   }
@@ -1200,7 +1209,8 @@ function FlowCanvasInner({
   const handleSave = async () => {
     const stepError = computeStepError()
     if (stepError) {
-      setSaveMsg(`保存失败：${stepError}`)
+      setSaveMsg(t('flow.saveFailed', { error: stepError }))
+      setSaveMsgKind('error')
       setTimeout(() => setSaveMsg(''), 5000)
       return
     }
@@ -1209,11 +1219,13 @@ function FlowCanvasInner({
       const steps = buildCanvasJson()
       await onSave(steps)
       setDirty(false)
-      setSaveMsg('保存成功')
+      setSaveMsg(t('flow.saveSuccess'))
+      setSaveMsgKind('success')
       setTimeout(() => setSaveMsg(''), 2000)
     } catch (e) {
       console.error('Save failed:', e)
-      setSaveMsg(`保存失败：${e instanceof Error ? e.message : '网络错误'}`)
+      setSaveMsg(t('flow.saveFailed', { error: e instanceof Error ? e.message : t('flow.networkError') }))
+      setSaveMsgKind('error')
       setTimeout(() => setSaveMsg(''), 5000)
     }
   }
@@ -1222,15 +1234,15 @@ function FlowCanvasInner({
     const text = JSON.stringify(buildCanvasJson(), null, 2)
     setShowJson(true)
     navigator.clipboard.writeText(text)
-      .then(() => setSaveMsg('复制成功，JSON 已复制到剪贴板'))
-      .catch(() => setSaveMsg('复制失败，请点击弹窗内的「复制」按钮'))
+      .then(() => { setSaveMsg(t('flow.copyJsonSuccess')); setSaveMsgKind('success') })
+      .catch(() => { setSaveMsg(t('flow.copyJsonFailedHint')); setSaveMsgKind('error') })
     setTimeout(() => setSaveMsg(''), 3000)
   }
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(JSON.stringify(buildCanvasJson(), null, 2))
-      .then(() => setSaveMsg('复制成功，JSON 已复制到剪贴板'))
-      .catch(() => setSaveMsg('复制失败，请重试'))
+      .then(() => { setSaveMsg(t('flow.copyJsonSuccess')); setSaveMsgKind('success') })
+      .catch(() => { setSaveMsg(t('flow.copyFailed')); setSaveMsgKind('error') })
     setTimeout(() => setSaveMsg(''), 3000)
   }
 
@@ -1238,7 +1250,7 @@ function FlowCanvasInner({
     try {
       const parsed = JSON.parse(importText)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('JSON 必须是对象，包含 nodes 或 steps 字段')
+        throw new Error(t('flow.jsonShapeError'))
       }
       const { nodes: impNodes, connections: impConns } = loadCanvasData(parsed)
       setNodes(canvasToFlowNodes(impNodes))
@@ -1251,7 +1263,7 @@ function FlowCanvasInner({
       setImportError('')
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : 'JSON 解析失败，请检查格式')
+      setImportError(e instanceof Error ? e.message : t('flow.jsonParseError'))
     }
   }
 
@@ -1269,7 +1281,7 @@ function FlowCanvasInner({
         <div style={{
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 600,
           padding: '8px 20px', borderRadius: 'var(--radius-sm)',
-          background: saveMsg.includes('成功') ? 'var(--success)' : 'var(--danger)',
+          background: saveMsgKind === 'success' ? 'var(--success)' : 'var(--danger)',
           color: 'var(--accent-fg)', fontSize: 13, fontWeight: 500,
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}>
@@ -1280,23 +1292,23 @@ function FlowCanvasInner({
       {/* Toolbar */}
       <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
         {toolbarLeft}
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{title}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{title ?? t('flow.editorTitle')}</span>
         {toolbarMid}
         <div style={{ flex: 1 }} />
-        {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, marginLeft: 12 }}>⚠ 有未保存的更改，请点击「保存」持久化</span>}
-         {hint && <span style={{ fontSize: 13, color: 'var(--meta)', marginRight: 10 }}>{hint}</span>}
-        {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>流程模板</Button>}
+        {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
+         {hint !== undefined && <span style={{ fontSize: 13, color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
+        {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>{t('flow.templates')}</Button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
             <>
-              <MenuItem onClick={() => { close(); handleExportJson() }}>⬇ 导出 JSON</MenuItem>
-              <MenuItem onClick={() => { close(); setImportText(''); setImportError(''); setShowImport(true) }}>⬆ 导入 JSON</MenuItem>
+              <MenuItem onClick={() => { close(); handleExportJson() }}>{t('flow.exportJson')}</MenuItem>
+              <MenuItem onClick={() => { close(); setImportText(''); setImportError(''); setShowImport(true) }}>{t('flow.importJson')}</MenuItem>
             </>
           )}
         </DropdownMenu>
-        <Button variant="ghost" onClick={handleAutoLayout}>⊞ 布局</Button>
-        <Button variant="ghost" onClick={handleAddNode}>+ 阶段</Button>
-        <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel}</Button>
+        <Button variant="ghost" onClick={handleAutoLayout}>{t('flow.layout')}</Button>
+        <Button variant="ghost" onClick={handleAddNode}>{t('flow.addStage')}</Button>
+        <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel ?? t('common.save')}</Button>
       </div>
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -1350,13 +1362,13 @@ function FlowCanvasInner({
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-            ✏️ 编辑阶段
+            {t('flow.editStage')}
           </div>
           <div onClick={() => { setConfirmDeleteId(contextMenu.nodeId); setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
-            🗑 删除
+            🗑 {t('common.delete')}
           </div>
         </div>
       )}
@@ -1366,41 +1378,41 @@ function FlowCanvasInner({
         <div className="modal-overlay" onClick={() => setShowTemplateModal(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">流程模板</span>
+              <span className="modal-title">{t('flow.templates')}</span>
               <Button variant="icon" onClick={() => setShowTemplateModal(false)}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: '8px 16px 16px', overflowY: 'auto' }}>
               <Input
                 value={templateSearch}
                 onChange={(e) => setTemplateSearch(e.target.value)}
-                placeholder="搜索模板名称、描述或 id…"
+                placeholder={t('flow.searchTemplates')}
                 spellCheck={false}
                 style={{ marginBottom: 10 }}
               />
               {showTemplateSave && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 10, background: 'var(--surface)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>保存当前画布为流程模板</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('flow.saveCanvasAsTemplate')}</div>
                   <Input
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="模板名称（必填）"
+                    placeholder={t('flow.templateNameRequired')}
                     spellCheck={false}
                   />
                   <Input
                     value={templateDesc}
                     onChange={(e) => setTemplateDesc(e.target.value)}
-                    placeholder="模板描述（可选）"
+                    placeholder={t('flow.templateDescOptional')}
                     spellCheck={false}
                     style={{ marginTop: 8 }}
                   />
                   <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                    <Button variant="primary" onClick={() => void saveCurrentAsTemplate()} disabled={!templateName.trim()}>保存模板</Button>
-                    <Button variant="ghost" onClick={() => setShowTemplateSave(false)}>取消</Button>
+                    <Button variant="primary" onClick={() => void saveCurrentAsTemplate()} disabled={!templateName.trim()}>{t('flow.saveTemplate')}</Button>
+                    <Button variant="ghost" onClick={() => setShowTemplateSave(false)}>{t('common.cancel')}</Button>
                   </div>
                 </div>
               )}
               {templates.length === 0 && (
-                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>暂无模板</div>
+                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.noTemplates')}</div>
               )}
               {(() => {
                 const query = templateSearch.trim().toLowerCase()
@@ -1411,28 +1423,28 @@ function FlowCanvasInner({
                   t.id.toLowerCase().includes(query),
                 )
                 if (templates.length > 0 && filtered.length === 0) {
-                  return <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>无匹配模板</div>
+                  return <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.noMatchingTemplates')}</div>
                 }
-                return filtered.map((t) => (
+                return filtered.map((template) => (
                 <button
-                  key={t.id}
-                  onClick={() => { setShowTemplateModal(false); setPendingTemplate(t) }}
+                  key={template.id}
+                  onClick={() => { setShowTemplateModal(false); setPendingTemplate(template) }}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 500 }}>{t.name}</span>
-                    {t.description && (
-                      <span style={{ display: 'block', fontSize: 13, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description}</span>
+                    <span style={{ fontWeight: 500 }}>{template.name}</span>
+                    {template.description && (
+                      <span style={{ display: 'block', fontSize: 13, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{template.description}</span>
                     )}
                   </span>
-                  <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount}步</span>
+                  <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: template.nodeCount })}</span>
                 </button>
                 ))
               })()}
             </div>
             <div className="modal-footer">
-              <Button variant="primary" onClick={() => setShowTemplateSave(true)}>保存当前为流程模板</Button>
-              <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>取消</Button>
+              <Button variant="primary" onClick={() => setShowTemplateSave(true)}>{t('flow.saveAsTemplate')}</Button>
+              <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>{t('common.cancel')}</Button>
             </div>
           </div>
         </div>
@@ -1443,7 +1455,7 @@ function FlowCanvasInner({
         <div className="modal-overlay" onClick={() => setShowJson(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 600, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">工作流 JSON 配置</span>
+              <span className="modal-title">{t('flow.jsonConfigTitle')}</span>
               <Button variant="icon" onClick={() => setShowJson(false)}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: 0 }}>
@@ -1452,8 +1464,8 @@ function FlowCanvasInner({
               </pre>
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={handleCopyJson}>复制</Button>
-              <Button variant="primary" onClick={() => setShowJson(false)}>关闭</Button>
+              <Button variant="ghost" onClick={handleCopyJson}>{t('common.copy')}</Button>
+              <Button variant="primary" onClick={() => setShowJson(false)}>{t('common.close')}</Button>
             </div>
           </div>
         </div>
@@ -1464,22 +1476,22 @@ function FlowCanvasInner({
         <div className="modal-overlay" onClick={() => setShowImport(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">导入工作流 JSON</span>
+              <span className="modal-title">{t('flow.importJsonTitle')}</span>
               <Button variant="icon" onClick={() => setShowImport(false)}>✕</Button>
             </div>
             <div className="modal-body">
               <Textarea
                 value={importText}
                 onChange={(e) => { setImportText(e.target.value); setImportError('') }}
-                placeholder={'粘贴工作流 JSON，例如：\n{"nodes": [{ "id": 1, "type": "req", "title": "需求", ... }], "connections": []}'}
+                placeholder={t('flow.importPlaceholder')}
                 spellCheck={false}
                 style={{ height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', resize: 'vertical' }}
               />
               {importError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</p>}
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={() => setShowImport(false)}>取消</Button>
-              <Button variant="primary" onClick={handleImport} disabled={!importText.trim()}>确认导入</Button>
+              <Button variant="ghost" onClick={() => setShowImport(false)}>{t('common.cancel')}</Button>
+              <Button variant="primary" onClick={handleImport} disabled={!importText.trim()}>{t('flow.confirmImport')}</Button>
             </div>
           </div>
         </div>
@@ -1488,9 +1500,9 @@ function FlowCanvasInner({
       {/* Delete confirm dialog */}
       <ConfirmDialog
         open={confirmDeleteId !== null}
-        title="删除阶段"
-        message="确定删除此阶段？相关连线也会被移除。"
-        confirmText="删除"
+        title={t('flow.deleteStageTitle')}
+        message={t('flow.deleteStageMessage')}
+        confirmText={t('common.delete')}
         danger
         onConfirm={() => { if (confirmDeleteId) { deleteNode(confirmDeleteId); setConfirmDeleteId(null) } }}
         onCancel={() => setConfirmDeleteId(null)}
@@ -1500,9 +1512,9 @@ function FlowCanvasInner({
       {showTemplatePicker && (
         <ConfirmDialog
           open={pendingTemplate !== null}
-          title="应用流程模板"
-          message={pendingTemplate ? `应用模板「${pendingTemplate.name}」将替换当前画布上的所有阶段和连线，未保存的更改会丢失。确定继续？` : undefined}
-          confirmText="应用模板"
+          title={t('flow.applyTemplateTitle')}
+          message={pendingTemplate ? t('flow.applyTemplateMessage', { name: pendingTemplate.name }) : undefined}
+          confirmText={t('flow.applyTemplate')}
           danger
           onConfirm={() => { const t = pendingTemplate; setPendingTemplate(null); if (t) void applyTemplate(t) }}
           onCancel={() => setPendingTemplate(null)}

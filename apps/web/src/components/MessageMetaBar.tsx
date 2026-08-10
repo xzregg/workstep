@@ -7,6 +7,7 @@ import {
   formatExecutionClock,
   toMilliseconds,
 } from '../utils/datetime'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    MessageMetaBar — shared LLM message meta row
@@ -45,6 +46,7 @@ export default function MessageMetaBar({
   origin,
   status,
 }: MessageMetaBarProps) {
+  const { t, locale } = useI18n()
   const [sessionCopied, setSessionCopied] = useState(false)
   const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
     const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
@@ -87,7 +89,7 @@ export default function MessageMetaBar({
       />
       {status === 'failed' ? (
         <span
-          title="该条 LLM 消息执行失败"
+          title={t('meta.failedTitle')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
             height: 18, padding: '0 7px', borderRadius: 9,
@@ -98,12 +100,12 @@ export default function MessageMetaBar({
           }}
         >
           <Icon name="x" size={8} strokeWidth={2.6} />
-          失败
+          {t('trace.failed')}
         </span>
       ) : null}
       {hasCompactedEvent(events) && (
         <span
-          title="上下文接近上限时引擎已自动压缩，保留摘要继续对话"
+          title={t('meta.compactedTitle')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
             height: 18, padding: '0 7px', borderRadius: 9,
@@ -113,7 +115,7 @@ export default function MessageMetaBar({
           }}
         >
           <Icon name="undo-2" size={11} strokeWidth={2.2} />
-          上下文已压缩
+          {t('meta.compacted')}
         </span>
       )}
       <div style={{
@@ -125,9 +127,9 @@ export default function MessageMetaBar({
             type="button"
             className="chat-message-action"
             title={sessionCopied
-              ? '已复制'
-              : `点击复制该阶段 LLM 引擎会话 ID：${displaySessionId}`}
-            aria-label="复制会话 ID"
+              ? t('common.copied')
+              : t('meta.copySessionTitle', { sessionId: displaySessionId })}
+            aria-label={t('meta.copySessionAria')}
             onClick={() => void copySessionId()}
             style={{
               fontFamily: 'var(--font-mono)', fontSize: 11,
@@ -135,14 +137,14 @@ export default function MessageMetaBar({
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             }}
           >
-            {sessionCopied ? '已复制' : displaySessionId}
+            {sessionCopied ? t('common.copied') : displaySessionId}
           </button>
         )}
         {prompt && (
           <button
             type="button"
             className="meta-link-btn chat-message-action"
-            title="查看发送给 LLM 的完整提示词"
+            title={t('meta.viewPromptTitle')}
             onClick={() => onViewPrompt(prompt)}
             style={{
               fontSize: 11, color: 'var(--accent)',
@@ -150,16 +152,16 @@ export default function MessageMetaBar({
               minHeight: 24, flexShrink: 0,
             }}
           >
-            查看提示词
+            {t('meta.viewPrompt')}
           </button>
         )}
         <span
-          title={origin ? formatConversationDateTime(displayStartedAt) : undefined}
+          title={origin ? formatConversationDateTime(displayStartedAt, Date.now(), locale) : undefined}
           style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}
         >
           {origin
             ? formatExecutionClock(displayStartedAt)
-            : formatConversationDateTime(displayStartedAt)}
+            : formatConversationDateTime(displayStartedAt, Date.now(), locale)}
         </span>
       </div>
     </div>

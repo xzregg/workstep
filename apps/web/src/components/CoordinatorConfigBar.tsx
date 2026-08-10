@@ -8,6 +8,7 @@ import {
   type EngineModel,
 } from '../api/client'
 import { engineLabel } from '../engineMeta'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    CoordinatorConfigBar — shared coordinator
@@ -68,9 +69,10 @@ export default function CoordinatorConfigBar({
   notice = '',
   hint = '',
   showVision = false,
-  engineTitle = '协调引擎',
+  engineTitle,
   variant = 'bar',
 }: CoordinatorConfigBarProps) {
+  const { t } = useI18n()
   const [models, setModels] = useState<EngineModel[]>([])
 
   const engineId = engine || defaultEngine
@@ -121,12 +123,12 @@ export default function CoordinatorConfigBar({
       }}
     >
       {!isMenu && (
-        <span style={{ fontSize: 11, color: 'var(--meta)' }}>引擎/模型</span>
+        <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('coord.engineModel')}</span>
       )}
       {isMenu ? (
         <>
           <div style={menuRow}>
-            <span style={menuLabel}>引擎</span>
+            <span style={menuLabel}>{t('coord.engine')}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <EngineSelect
                 engines={engines}
@@ -136,39 +138,39 @@ export default function CoordinatorConfigBar({
                 requireCoordinator
                 defaultOption={{
                   value: '',
-                  label: `默认（${engineLabel(defaultEngine || 'claude')}）`,
+                  label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
                 }}
-                ariaLabel="协调引擎"
-                title={engineTitle}
+                ariaLabel={t('coord.engineAria')}
+                title={engineTitle ?? t('coord.engineTitle')}
                 style={engineStyle}
               />
             </div>
           </div>
           <div style={menuRow}>
-            <span style={menuLabel}>推理</span>
+            <span style={menuLabel}>{t('coord.reasoning')}</span>
             <Select
               value={model}
               disabled={modelDisabled}
               onChange={(event) => onModelChange(event.target.value)}
-              title="推理模型：负责理解、决策与回复；从下一条消息生效"
+              title={t('coord.reasoningTitle')}
               style={fieldStyle}
             >
-              <option value="">推理模型（默认）</option>
+              <option value="">{t('coord.reasoningDefault')}</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}
             </Select>
           </div>
           <div style={menuRow}>
-            <span style={menuLabel}>快速</span>
+            <span style={menuLabel}>{t('coord.fast')}</span>
             <Select
               value={fastModel}
               disabled={modelDisabled}
               onChange={(event) => onFastModelChange(event.target.value)}
-              title="快速模型：负责读取产物和修复结构化输出；从下一条消息生效"
+              title={t('coord.fastTitle')}
               style={fieldStyle}
             >
-              <option value="">快速模型（跟随推理）</option>
+              <option value="">{t('coord.fastFollow')}</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}
@@ -176,15 +178,15 @@ export default function CoordinatorConfigBar({
           </div>
           {showVision && onVisionModelChange && (
             <div style={menuRow}>
-              <span style={menuLabel}>图片理解</span>
+              <span style={menuLabel}>{t('coord.vision')}</span>
               <Select
                 value={visionModel || ''}
                 disabled={modelDisabled}
                 onChange={(event) => onVisionModelChange(event.target.value)}
-                title="图片理解模型：主模型不支持图片输入时，用于分析图片和截图内容；从下一条消息生效"
+                title={t('coord.visionTitle')}
                 style={fieldStyle}
               >
-                <option value="">图片理解（跟随推理）</option>
+                <option value="">{t('coord.visionFollow')}</option>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>{m.label || m.id}</option>
                 ))}
@@ -202,20 +204,20 @@ export default function CoordinatorConfigBar({
             requireCoordinator
             defaultOption={{
               value: '',
-              label: `默认（${engineLabel(defaultEngine || 'claude')}）`,
+              label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
             }}
-            ariaLabel="协调引擎"
-            title={engineTitle}
+            ariaLabel={t('coord.engineAria')}
+            title={engineTitle ?? t('coord.engineTitle')}
             style={engineStyle}
           />
           <Select
             value={model}
             disabled={modelDisabled}
             onChange={(event) => onModelChange(event.target.value)}
-            title="推理模型：负责理解、决策与回复；从下一条消息生效"
+            title={t('coord.reasoningTitle')}
             style={fieldStyle}
           >
-            <option value="">推理模型（默认）</option>
+            <option value="">{t('coord.reasoningDefault')}</option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label || m.id}</option>
             ))}
@@ -224,10 +226,10 @@ export default function CoordinatorConfigBar({
             value={fastModel}
             disabled={modelDisabled}
             onChange={(event) => onFastModelChange(event.target.value)}
-            title="快速模型：负责读取产物和修复结构化输出；从下一条消息生效"
+            title={t('coord.fastTitle')}
             style={fieldStyle}
           >
-            <option value="">快速模型（跟随推理）</option>
+            <option value="">{t('coord.fastFollow')}</option>
             {models.map((m) => (
               <option key={m.id} value={m.id}>{m.label || m.id}</option>
             ))}
@@ -237,10 +239,10 @@ export default function CoordinatorConfigBar({
               value={visionModel || ''}
               disabled={modelDisabled}
               onChange={(event) => onVisionModelChange(event.target.value)}
-              title="图片理解模型：主模型不支持图片输入时，用于分析图片和截图内容；从下一条消息生效"
+              title={t('coord.visionTitle')}
               style={fieldStyle}
             >
-              <option value="">图片理解（跟随推理）</option>
+              <option value="">{t('coord.visionFollow')}</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
               ))}

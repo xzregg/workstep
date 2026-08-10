@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { projectApi, workflowApi, type Project, type WorkflowDetail } from '../api/client'
+import { zhCNT } from '../i18n'
 
 const hasWhitespace = (s: string) => /\s/.test(s)
 
@@ -72,7 +73,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   renameWorkflow: async (id: string, projectId: string, name: string) => {
-    if (hasWhitespace(name)) throw new Error('工作流名称不能包含空白字符（空格、Tab 等）')
+    if (hasWhitespace(name)) throw new Error(zhCNT('taskList.workflowNameWhitespace'))
     const wf = await workflowApi.update(id, projectId, name)
     const { activeProject } = get()
     if (activeProject?.id === projectId) {
@@ -108,14 +109,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   initProject: async (path, name) => {
-    if (name && hasWhitespace(name)) throw new Error('项目名称不能包含空白字符（空格、Tab 等）')
+    if (name && hasWhitespace(name)) throw new Error(zhCNT('taskList.projectNameWhitespace'))
     const proj = await projectApi.init(path, name)
     set((s) => ({ projects: [...s.projects, proj] }))
     return proj
   },
 
   renameProject: async (path, name) => {
-    if (hasWhitespace(name)) throw new Error('项目名称不能包含空白字符（空格、Tab 等）')
+    if (hasWhitespace(name)) throw new Error(zhCNT('taskList.projectNameWhitespace'))
     await projectApi.rename(path, name)
     set((s) => ({
       projects: s.projects.map((p) =>
@@ -125,7 +126,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   createWorkflow: async (projectId, name, templateId, steps) => {
-    if (hasWhitespace(name)) throw new Error('工作流名称不能包含空白字符（空格、Tab 等）')
+    if (hasWhitespace(name)) throw new Error(zhCNT('taskList.workflowNameWhitespace'))
     const wf = await workflowApi.create(projectId, name, steps, templateId)
     const { activeProject } = get()
     if (activeProject && activeProject.id === projectId) {

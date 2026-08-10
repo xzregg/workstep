@@ -1,3 +1,5 @@
+import { zhCNT, type TFunction } from '../i18n'
+
 export type DateTimeValue = string | number | Date | null | undefined
 
 export function toMilliseconds(value: DateTimeValue): number | null {
@@ -27,24 +29,24 @@ export function durationMilliseconds(
   return endedAtMs - startedAtMs
 }
 
-export function formatDuration(durationMs: number): string {
+export function formatDuration(durationMs: number, t: TFunction = zhCNT): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return ''
-  if (durationMs > 0 && durationMs < 1000) return '<1秒'
+  if (durationMs > 0 && durationMs < 1000) return t('datetime.lessThanSecond')
 
   const totalSeconds = Math.floor(durationMs / 1000)
   const units = [
-    { label: '天', seconds: 86_400 },
-    { label: '小时', seconds: 3_600 },
-    { label: '分', seconds: 60 },
-    { label: '秒', seconds: 1 },
-  ]
+    { label: 'datetime.day', seconds: 86_400 },
+    { label: 'datetime.hour', seconds: 3_600 },
+    { label: 'datetime.minute', seconds: 60 },
+    { label: 'datetime.second', seconds: 1 },
+  ] as const
   let remainder = totalSeconds
   const parts: string[] = []
   for (const unit of units) {
     const value = Math.floor(remainder / unit.seconds)
     remainder %= unit.seconds
     if (value > 0 || (unit.seconds === 1 && parts.length === 0)) {
-      parts.push(`${value}${unit.label}`)
+      parts.push(`${value}${t(unit.label)}`)
     }
     if (parts.length === 2) break
   }
@@ -54,9 +56,10 @@ export function formatDuration(durationMs: number): string {
 export function formatDurationBetween(
   startedAt: DateTimeValue,
   endedAt: DateTimeValue,
+  t: TFunction = zhCNT,
 ): string | null {
   const durationMs = durationMilliseconds(startedAt, endedAt)
-  return durationMs === null ? null : formatDuration(durationMs)
+  return durationMs === null ? null : formatDuration(durationMs, t)
 }
 
 export function formatExecutionClock(value: DateTimeValue): string {
@@ -85,6 +88,7 @@ export function formatExecutionOffset(
 export function formatConversationDateTime(
   value: DateTimeValue,
   now: DateTimeValue = Date.now(),
+  locale: string = 'zh-CN',
 ): string {
   const milliseconds = toMilliseconds(value)
   const nowMilliseconds = toMilliseconds(now)
@@ -95,7 +99,8 @@ export function formatConversationDateTime(
   const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   const age = nowMilliseconds === null ? null : nowMilliseconds - milliseconds
   if (age !== null && age >= 0 && age < 7 * 24 * 60 * 60 * 1000) {
-    return `周${'日一二三四五六'[date.getDay()]} ${time}`
+    const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+    return `${weekday} ${time}`
   }
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`
 }

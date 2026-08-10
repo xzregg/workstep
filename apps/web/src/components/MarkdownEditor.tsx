@@ -3,6 +3,7 @@ import { fsApi } from '../api/client'
 import Button from './Button'
 import MarkdownMessage from './MarkdownMessage'
 import Textarea from './Textarea'
+import { useI18n } from '../i18n'
 
 interface MarkdownEditorProps {
   value: string
@@ -29,13 +30,14 @@ export default function MarkdownEditor({
   onChange,
   projectId,
   imagePrefix,
-  placeholder = '输入内容…（支持 Markdown，可直接粘贴图片）',
+  placeholder,
   minHeight = 160,
   maxHeight = '45vh',
   disabled = false,
   autoFocus = false,
-  ariaLabel = '任务说明',
+  ariaLabel,
 }: MarkdownEditorProps) {
+  const { t } = useI18n()
   const [mode, setMode] = useState<'edit' | 'preview'>('edit')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const imgInputRef = useRef<HTMLInputElement>(null)
@@ -44,7 +46,7 @@ export default function MarkdownEditor({
     valueRef.current = value
   }, [value])
 
-  const insertImageMarkdown = (dataUrl: string, alt = '图片') => {
+  const insertImageMarkdown = (dataUrl: string, alt = t('md.image')) => {
     const snippet = '![' + alt + '](' + dataUrl + ')'
     const current = valueRef.current
     const ta = textareaRef.current
@@ -64,7 +66,7 @@ export default function MarkdownEditor({
 
   const handleImageFile = async (file: File) => {
     if (!projectId) return
-    const alt = file.name || '图片'
+    const alt = file.name || t('md.image')
     const placeholderTag = `[img:${Date.now()}]`
     insertImageMarkdown(placeholderTag, alt)
     try {
@@ -95,22 +97,22 @@ export default function MarkdownEditor({
           <button
             onClick={() => setMode('edit')}
             style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'edit' ? 'var(--accent)' : 'transparent', color: mode === 'edit' ? 'var(--accent-fg)' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
-          >编辑</button>
+          >{t('common.edit')}</button>
           <button
             onClick={() => setMode('preview')}
             style={{ padding: '3px 10px', fontSize: 13, border: 'none', cursor: 'pointer', background: mode === 'preview' ? 'var(--accent)' : 'transparent', color: mode === 'preview' ? 'var(--accent-fg)' : 'var(--fg-2)', fontFamily: 'var(--font-body)' }}
-          >预览</button>
+          >{t('md.preview')}</button>
         </div>
         <Button
           variant="ghost"
           onClick={() => imgInputRef.current?.click()}
           disabled={!projectId}
-          title={projectId ? undefined : '需先选择项目'}
+          title={projectId ? undefined : t('md.needProject')}
           style={{ fontSize: 13, padding: '3px 8px', gap: 4, opacity: projectId ? 1 : 0.45, cursor: projectId ? 'pointer' : 'not-allowed' }}
         >
-          🖼 图片
+          {t('md.imageButton')}
         </Button>
-        <span style={{ fontSize: 11, color: 'var(--meta)' }}>支持 Markdown，可粘贴/插入图片</span>
+        <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('md.hint')}</span>
         <input
           ref={imgInputRef}
           type="file"
@@ -122,12 +124,12 @@ export default function MarkdownEditor({
       {mode === 'edit' ? (
         <Textarea
           ref={textareaRef}
-          aria-label={ariaLabel}
+          aria-label={ariaLabel ?? t('md.ariaLabel')}
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
           onPaste={handlePaste}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('md.placeholder')}
           autoFocus={autoFocus}
           style={{ minHeight, maxHeight, resize: 'vertical', fontFamily: 'var(--font-body)', fontSize: 13, boxSizing: 'border-box' }}
         />
@@ -138,7 +140,7 @@ export default function MarkdownEditor({
           fontSize: 13, lineHeight: 1.6,
           boxSizing: 'border-box',
         }}>
-          {value.trim() ? <MarkdownMessage content={value} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>暂无内容</span>}
+          {value.trim() ? <MarkdownMessage content={value} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>{t('md.empty')}</span>}
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import Button from './Button'
 import { formatExecutionClock } from '../utils/datetime'
+import { useI18n, zhCNT, type TFunction } from '../i18n'
 
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
@@ -31,16 +32,25 @@ function usageValue(usage: MessageUsage, ...keys: string[]) {
   return 0
 }
 
-export function formatTokenUsage(usage?: MessageUsage) {
+export function formatTokenUsage(
+  usage?: MessageUsage,
+  t: TFunction = zhCNT,
+  locale = 'zh-CN',
+): string {
   if (!usage || Object.keys(usage).length === 0) {
-    return 'Token：暂无数据'
+    return t('footer.noTokenData')
   }
   if (usage.usage_kind === 'context_window') {
     const used = usageValue(usage, 'used')
     const size = usageValue(usage, 'size')
-    const number = new Intl.NumberFormat('zh-CN')
-    const occupancy = size > 0 ? ` · 占用 ${Math.min(100, (used / size) * 100).toFixed(1)}%` : ''
-    return `Token · 上下文 ${number.format(used)} / ${number.format(size)}${occupancy}`
+    const number = new Intl.NumberFormat(locale)
+    const occupancy = size > 0
+      ? t('footer.occupancy', { pct: Math.min(100, (used / size) * 100).toFixed(1) })
+      : ''
+    return `${t('footer.context', {
+      used: number.format(used),
+      size: number.format(size),
+    })}${occupancy}`
   }
   const input = usageValue(usage, 'input_tokens', 'prompt_tokens')
   const output = usageValue(usage, 'output_tokens', 'completion_tokens')
@@ -52,21 +62,24 @@ export function formatTokenUsage(usage?: MessageUsage) {
   const cacheWrite = usageValue(usage, 'cache_creation_input_tokens')
   const reportedTotal = usageValue(usage, 'total_tokens')
   const total = reportedTotal || input + output
-  const number = new Intl.NumberFormat('zh-CN')
+  const number = new Intl.NumberFormat(locale)
   const parts = input > 0 || output > 0
-    ? [`输入 ${number.format(input)}`, `输出 ${number.format(output)}`]
+    ? [
+        t('footer.input', { count: number.format(input) }),
+        t('footer.output', { count: number.format(output) }),
+      ]
     : []
-  if (cacheRead > 0) parts.push(`缓存读取 ${number.format(cacheRead)}`)
-  if (cacheWrite > 0) parts.push(`缓存写入 ${number.format(cacheWrite)}`)
+  if (cacheRead > 0) parts.push(t('footer.cacheRead', { count: number.format(cacheRead) }))
+  if (cacheWrite > 0) parts.push(t('footer.cacheWrite', { count: number.format(cacheWrite) }))
   const cacheInput = 'prompt_tokens' in usage
     ? input
     : input + cacheRead + cacheWrite
   if (cacheInput > 0) {
     const cacheHitRate = Math.min(100, (cacheRead / cacheInput) * 100)
-    parts.push(`缓存命中 ${cacheHitRate.toFixed(1)}%`)
+    parts.push(t('footer.cacheHit', { pct: cacheHitRate.toFixed(1) }))
   }
-  parts.push(`总计 ${number.format(total)}`)
-  return `Token · ${parts.join(' · ')}`
+  parts.push(t('footer.total', { count: number.format(total) }))
+  return `${t('footer.tokenPrefix')}${parts.join(' · ')}`
 }
 
 export async function copyMessageText(content: string) {
@@ -88,7 +101,7 @@ export async function copyMessageText(content: string) {
 export function MessageCopyButton({
   content,
   className = '',
-  title = '复制消息',
+  title,
   disabled = false,
 }: {
   content: string
@@ -96,6 +109,7 @@ export function MessageCopyButton({
   title?: string
   disabled?: boolean
 }) {
+  const { t } = useI18n()
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copy = async () => {
     try {
@@ -108,12 +122,12 @@ export function MessageCopyButton({
   return (
     <Button
       variant="ghost"
-      aria-label={copyState === 'copied' ? '消息已复制' : '复制消息'}
+      aria-label={copyState === 'copied' ? t('meta.copyMessageDone') : t('meta.copyMessage')}
       title={copyState === 'copied'
-        ? '已复制'
+        ? t('common.copied')
         : copyState === 'failed'
-          ? '复制失败'
-          : title}
+          ? t('meta.copyFailed')
+          : (title ?? t('meta.copyMessage'))}
       disabled={disabled || !content}
       onClick={() => void copy()}
       className={className}
@@ -161,7 +175,8 @@ export default function MessageResponseFooter({
   stopped = false,
   onContinueStage,
 }: MessageResponseFooterProps) {
-  const usageSummary = running ? '' : formatTokenUsage(usage)
+  const { t, locale } = useI18n()
+  const usageSummary = running ? '' : formatTokenUsage(usage, t, locale)
 
   return (
     <div style={{
@@ -170,17 +185,17 @@ export default function MessageResponseFooter({
     }}>
       <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         {usageSummary}
-        {!running && engine ? ` · ${engineLabel(engine)}` : ''}
+        {!running && engine ? ` · ${engineLabel(engine, t)}` : ''}
         {!running && model ? ` * ${model}` : ''}
         {!running && executionModel && executionModel !== model
-          ? ` · 执行 ${executionModel}`
+          ? t('footer.executionModel', { model: executionModel })
           : ''}
       </span>
       {stopped && onContinueStage && (
         <button
           type="button"
           className="chat-message-action"
-          title="从该阶段重启执行任务"
+          title={t('footer.restartTitle')}
           onClick={onContinueStage}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -190,12 +205,12 @@ export default function MessageResponseFooter({
           }}
         >
           <Icon name="rotate-ccw" size={11} strokeWidth={2.2} />
-          重启
+          {t('footer.restart')}
         </button>
       )}
       <MessageCopyButton
         content={content}
-        title={running ? '消息生成完成后可复制' : '复制消息'}
+        title={running ? t('meta.copyDisabledTitle') : t('meta.copyMessage')}
         disabled={running}
         className="chat-message-action"
       />

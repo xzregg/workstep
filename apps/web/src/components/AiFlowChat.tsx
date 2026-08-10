@@ -13,6 +13,7 @@ import {
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
 import { formatConversationDateTime } from '../utils/datetime'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    AiFlowChat — reusable AI flow-design chat.
@@ -45,9 +46,10 @@ export default function AiFlowChat({
   projectId,
   onProposal,
   onBusyChange,
-  title = 'AI 流程助手',
+  title,
   onClose,
 }: AiFlowChatProps) {
+  const { t, locale } = useI18n()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [sendError, setSendError] = useState('')
@@ -103,7 +105,7 @@ export default function AiFlowChat({
       })
       .catch((reason) => {
         if (!active) return
-        setCoordinatorConfigError(reason instanceof Error ? reason.message : '协调引擎配置加载失败')
+        setCoordinatorConfigError(reason instanceof Error ? reason.message : t('aiFlow.configLoadFailed'))
       })
     return () => { active = false }
   }, [])
@@ -143,7 +145,7 @@ export default function AiFlowChat({
         setSessionId(accepted.session_id)
       }
     } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : '发送失败，请重试')
+      setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
     }
   }, [input, running, sessionId, projectId, selectedEngine, selectedModel, selectedFastModel])
 
@@ -153,15 +155,15 @@ export default function AiFlowChat({
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13 }}>{title}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13 }}>{title ?? t('aiFlow.title')}</span>
         {running && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--meta)' }}>
-            <span className="task-status-spinner" aria-hidden="true" /> 协调 Agent 思考中…
+            <span className="task-status-spinner" aria-hidden="true" /> {t('aiFlow.thinking')}
           </span>
         )}
         <div style={{ flex: 1 }} />
         {onClose && (
-          <Button variant="icon" aria-label="关闭" onClick={onClose}>✕</Button>
+          <Button variant="icon" aria-label={t('common.close')} onClick={onClose}>✕</Button>
         )}
       </div>
 
@@ -171,15 +173,15 @@ export default function AiFlowChat({
       }}>
         {messages.length === 0 && (
           <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
-            描述你的目标（例如“做一个内容发布流程”），我会先追问几个关键问题，然后为你生成可直接编辑的流程编排。
+            {t('aiFlow.emptyIntro')}
           </div>
         )}
         {messages.map((m) => (
           <ChatMessageBubble
             key={m.id}
             role={m.role}
-            sender={m.role === 'user' ? '我' : '协调 Agent'}
-            initials={m.role === 'user' ? '我' : '协'}
+            sender={m.role === 'user' ? t('aiFlow.me') : t('aiFlow.agent')}
+            initials={m.role === 'user' ? t('aiFlow.meInitials') : t('aiFlow.agentInitials')}
             color={m.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
             content={m.content}
             streaming={m.status === 'running'}
@@ -187,12 +189,12 @@ export default function AiFlowChat({
             error={m.role === 'assistant' ? m.error : undefined}
             showLoading={m.role === 'assistant' && m.status === 'running'}
             loading={m.role === 'assistant'
-              ? <div className="engine-loading-message" role="status">协调 Agent 思考中…</div>
+              ? <div className="engine-loading-message" role="status">{t('aiFlow.thinking')}</div>
               : undefined}
             header={m.role === 'user' ? (
               <>
                 <span
-                  title="发给 AI 流程助手（协调引擎生成模式）"
+                  title={t('aiFlow.userTagTitle')}
                   style={{
                     padding: '1px 6px', borderRadius: 999, fontSize: 11,
                     border: '1px solid var(--border-soft)',
@@ -200,9 +202,9 @@ export default function AiFlowChat({
                     color: 'var(--ai-assistant)',
                   }}
                 >
-                  AI 助手
+                  {t('aiFlow.tag')}
                 </span>
-                {formatConversationDateTime(m.created_at)}
+                {formatConversationDateTime(m.created_at, Date.now(), locale)}
               </>
             ) : (
               <MessageMetaBar
@@ -224,7 +226,7 @@ export default function AiFlowChat({
         {latestProposals.length > 0 && (
           <div style={{ marginTop: 2 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
-              选择流程方案
+              {t('aiFlow.chooseProposal')}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {latestProposals.map((card) => {
@@ -234,7 +236,7 @@ export default function AiFlowChat({
                     key={card.id}
                     onClick={() => applyCard(card)}
                     disabled={applied}
-                    title="应用到画布预览"
+                    title={t('aiFlow.applyToCanvas')}
                     style={{
                       display: 'block', width: '100%', textAlign: 'left', cursor: applied ? 'default' : 'pointer',
                       border: `1px solid ${applied ? 'var(--success)' : 'var(--border)'}`,
@@ -247,10 +249,10 @@ export default function AiFlowChat({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontWeight: 600 }}>{card.title}</span>
-                      <span style={{ fontSize: 11, color: 'var(--meta)' }}>{card.nodeCount} 步</span>
+                      <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('aiFlow.stepsCount', { count: card.nodeCount })}</span>
                       <span style={{ flex: 1 }} />
                       <span style={{ fontSize: 11, color: applied ? 'var(--success)' : 'var(--accent)' }}>
-                        {applied ? '✓ 已应用' : '应用'}
+                        {applied ? t('aiFlow.applied') : t('aiFlow.apply')}
                       </span>
                     </div>
                     {card.summary && (
@@ -292,7 +294,7 @@ export default function AiFlowChat({
           onSend={() => void send()}
           disabled={running}
           running={running}
-          placeholder="描述目标，或继续调整流程（支持粘贴图片，Enter 发送，Shift+Enter 换行）"
+          placeholder={t('aiFlow.placeholder')}
           imageAttach={{
             projectId,
             prefix: 'flow-gen',
@@ -306,8 +308,8 @@ export default function AiFlowChat({
             fastModel: selectedFastModel,
             disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
             error: coordinatorConfigError,
-            hint: coordinatorConfig ? '仅本次生成会话生效' : '',
-            engineTitle: '本次流程生成会话使用的协调引擎；不修改全局任务协调配置',
+            hint: coordinatorConfig ? t('aiFlow.sessionHint') : '',
+            engineTitle: t('aiFlow.engineTitle'),
             onEngineChange: (engineId) => {
               setSelectedEngine(engineId)
               setSelectedModel('')
@@ -328,7 +330,7 @@ export default function AiFlowChat({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="完整提示词"
+          aria-label={t('aiFlow.fullPrompt')}
           style={{
             position: 'fixed', inset: 0, zIndex: 1450,
             background: 'rgba(0,0,0,0.35)',
@@ -347,8 +349,8 @@ export default function AiFlowChat({
             onClick={(event) => event.stopPropagation()}
           >
             <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
-              <Button variant="icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</Button>
+              <strong style={{ flex: 1, fontSize: 13 }}>{t('aiFlow.fullPrompt')}</strong>
+              <Button variant="icon" aria-label={t('aiFlow.closePrompt')} onClick={() => setViewingPrompt(null)}>✕</Button>
             </div>
             <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />

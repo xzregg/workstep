@@ -11,11 +11,12 @@ import {
   templateApi,
   type TemplateInfo,
 } from '../api/client'
+import { useI18n } from '../i18n'
 
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 
 /* ══════════════════════════════════════════
-   Settings → 流程模板
+   Settings → Workflow Templates
    List / create / edit / delete workflow
    templates. Editing uses the reusable FlowCanvas
    (same canvas as the workflow editor) and saves
@@ -23,6 +24,7 @@ const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
    ══════════════════════════════════════════ */
 
 export default function TemplateSettings() {
+  const { t } = useI18n()
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -38,7 +40,7 @@ export default function TemplateSettings() {
   const [deleting, setDeleting] = useState<TemplateInfo | null>(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
 
-  // 画布改动（FlowCanvas）与元信息改动（名称/描述/标识）任一存在即为未保存
+  // Dirty when either the canvas (FlowCanvas) or metadata (name/desc/id) changed
   const editorDirty = canvasDirty || metaDirty
 
   const refresh = useCallback(async (force = false) => {
@@ -47,7 +49,7 @@ export default function TemplateSettings() {
       setTemplates(list)
       setError('')
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '读取流程模板失败')
+      setError(reason instanceof Error ? reason.message : t('templateSettings.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -55,11 +57,11 @@ export default function TemplateSettings() {
 
   useEffect(() => { void refresh() }, [refresh])
 
-  const openEditor = async (t: TemplateInfo) => {
+  const openEditor = async (template: TemplateInfo) => {
     setError('')
     try {
-      const full = await templateApi.get(t.id)
-      setEditing({ ...full, custom: Boolean(t.custom) })
+      const full = await templateApi.get(template.id)
+      setEditing({ ...full, custom: Boolean(template.custom) })
       setMeta({
         id: full.id || '',
         name: full.name || '',
@@ -68,7 +70,7 @@ export default function TemplateSettings() {
       setCanvasDirty(false)
       setMetaDirty(false)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '加载模板失败')
+      setError(reason instanceof Error ? reason.message : t('templateSettings.loadTemplateFailed'))
     }
   }
 
@@ -83,10 +85,10 @@ export default function TemplateSettings() {
     const id = meta.id.trim()
     if (!id) return ''
     if (!TEMPLATE_ID_PATTERN.test(id)) {
-      return '模板标识需以字母或数字开头，只能包含字母、数字、下划线或连字符（最长 64 位）'
+      return t('templateSettings.idPattern')
     }
-    if (templates.some((t) => t.id === id && t.id !== editing.id)) {
-      return `模板标识 “${id}” 已存在`
+    if (templates.some((template) => template.id === id && template.id !== editing.id)) {
+      return t('templateSettings.idDuplicate', { id })
     }
     return ''
   })()
@@ -94,13 +96,13 @@ export default function TemplateSettings() {
   const saveTemplate = async (steps: any) => {
     const id = meta.id.trim()
     const name = meta.name.trim()
-    if (!id) throw new Error('模板标识不能为空')
+    if (!id) throw new Error(t('templateSettings.idRequired'))
     if (!TEMPLATE_ID_PATTERN.test(id)) {
-      throw new Error('模板标识需以字母或数字开头，只能包含字母、数字、下划线或连字符（最长 64 位）')
+      throw new Error(t('templateSettings.idPattern'))
     }
-    if (!name) throw new Error('模板名称不能为空')
-    if (id !== editing?.id && templates.some((t) => t.id === id)) {
-      throw new Error(`模板标识 “${id}” 已存在`)
+    if (!name) throw new Error(t('templateSettings.nameRequired'))
+    if (id !== editing?.id && templates.some((template) => template.id === id)) {
+      throw new Error(t('templateSettings.idDuplicate', { id }))
     }
     const description = meta.description.trim()
     await templateApi.save({ id, name, description, steps })
@@ -115,16 +117,16 @@ export default function TemplateSettings() {
     const id = newDraft.id.trim()
     const name = newDraft.name.trim()
     const description = newDraft.description.trim()
-    if (!id) { setCreateError('请输入模板标识'); return }
+    if (!id) { setCreateError(t('templateSettings.enterId')); return }
     if (!TEMPLATE_ID_PATTERN.test(id)) {
-      setCreateError('标识需以字母或数字开头，只能包含字母、数字、下划线或连字符（最长 64 位）')
+      setCreateError(t('templateSettings.idPatternShort'))
       return
     }
-    if (templates.some((t) => t.id === id)) {
-      setCreateError(`模板标识 “${id}” 已存在`)
+    if (templates.some((template) => template.id === id)) {
+      setCreateError(t('templateSettings.idDuplicate', { id }))
       return
     }
-    if (!name) { setCreateError('请输入模板名称'); return }
+    if (!name) { setCreateError(t('templateSettings.enterName')); return }
     setCreating(true)
     try {
       await templateApi.save({ id, name, description, steps: { nodes: [], connections: [] } })
@@ -135,7 +137,7 @@ export default function TemplateSettings() {
       await refresh(true)
       await openEditor({ id, name, description, nodeCount: 0, custom: true })
     } catch (reason) {
-      setCreateError(reason instanceof Error ? reason.message : '创建失败')
+      setCreateError(reason instanceof Error ? reason.message : t('templateSettings.createFailed'))
     } finally {
       setCreating(false)
     }
@@ -150,7 +152,7 @@ export default function TemplateSettings() {
       invalidateTemplates()
       await refresh(true)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '删除模板失败')
+      setError(reason instanceof Error ? reason.message : t('templateSettings.deleteFailed'))
       setDeleting(null)
     } finally {
       setDeletingBusy(false)
@@ -161,14 +163,14 @@ export default function TemplateSettings() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>流程模板</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('templateSettings.title')}</h1>
           <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-            流程模板统一存放在 <code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>~/.workstep/data/templates/</code> 
-            默认模板（<code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>default: true</code>）不可删除，自建模板可删除。
+            {t('templateSettings.introPart1')} <code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>~/.workstep/data/templates/</code>{' '}
+            {t('templateSettings.introPart2')}<code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>default: true</code>{t('templateSettings.introPart3')}
           </p>
         </div>
         <Button variant="primary" onClick={() => { setCreateOpen(true); setCreateError('') }}>
-          + 新建模板
+          {t('templateSettings.newTemplate')}
         </Button>
       </div>
 
@@ -177,45 +179,45 @@ export default function TemplateSettings() {
       )}
 
       {loading ? (
-        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>正在读取模板…</div>
+        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('templateSettings.loading')}</div>
       ) : templates.length === 0 ? (
-        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>暂无模板</div>
+        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('templateSettings.noTemplates')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {templates.map((t) => (
+          {templates.map((template) => (
             <div
-              key={t.id}
+              key={template.id}
               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg)' }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{t.name}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{template.name}</span>
                   <span style={{
                     fontSize: 11, padding: '1px 7px', borderRadius: 99, flexShrink: 0,
-                    background: t.custom
-                      ? (t.default
+                    background: template.custom
+                      ? (template.default
                         ? 'color-mix(in oklab, var(--success), transparent 90%)'
                         : 'color-mix(in oklab, var(--accent), transparent 88%)')
                       : 'var(--surface)',
-                    color: t.custom ? (t.default ? 'var(--success)' : 'var(--accent)') : 'var(--muted)',
+                    color: template.custom ? (template.default ? 'var(--success)' : 'var(--accent)') : 'var(--muted)',
                     border: '1px solid var(--border-soft)',
                   }}>
-                    {t.custom ? (t.default ? '默认' : '自定义') : '内置'}
+                    {template.custom ? (template.default ? t('layout.default') : t('templateSettings.custom')) : t('templateSettings.builtin')}
                   </span>
                 </div>
-                {t.description && (
+                {template.description && (
                   <div style={{ fontSize: 13, color: 'var(--meta)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {t.description}
+                    {template.description}
                   </div>
                 )}
               </div>
-              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t.nodeCount} 步</span>
-              <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(t)}>
-                编辑
+              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('templateSettings.nodeCount', { count: template.nodeCount })}</span>
+              <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(template)}>
+                {t('common.edit')}
               </Button>
-              {t.custom && !t.default && (
-                <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
-                  删除
+              {template.custom && !template.default && (
+                <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(template)}>
+                  {t('common.delete')}
                 </Button>
               )}
             </div>
@@ -228,40 +230,40 @@ export default function TemplateSettings() {
         <div className="modal-overlay" style={{ zIndex: 300 }} onClick={() => setCreateOpen(false)}>
           <div className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">新建流程模板</span>
-              <Button variant="icon" aria-label="关闭" onClick={() => setCreateOpen(false)}>✕</Button>
+              <span className="modal-title">{t('templateSettings.createTitle')}</span>
+              <Button variant="icon" aria-label={t('common.close')} onClick={() => setCreateOpen(false)}>✕</Button>
             </div>
             <div className="modal-body">
-              <Field label="标识（id）" htmlFor="tpl-id" error={createError}>
+              <Field label={t('templateSettings.idField')} htmlFor="tpl-id" error={createError}>
               <Input
                 id="tpl-id"
                 value={newDraft.id}
                 onChange={(e) => { setNewDraft({ ...newDraft, id: e.target.value }); setCreateError('') }}
-                placeholder="例如：my-flow"
+                placeholder={t('templateSettings.idPlaceholder')}
                 autoFocus
               />
               </Field>
-              <Field label="名称" htmlFor="tpl-name">
+              <Field label={t('templateSettings.nameField')} htmlFor="tpl-name">
               <Input
                 id="tpl-name"
                 value={newDraft.name}
                 onChange={(e) => { setNewDraft({ ...newDraft, name: e.target.value }); setCreateError('') }}
-                placeholder="例如：我的研发流程"
+                placeholder={t('templateSettings.namePlaceholder')}
               />
               </Field>
-              <Field label="描述" htmlFor="tpl-desc">
+              <Field label={t('templateSettings.descField')} htmlFor="tpl-desc">
               <Input
                 id="tpl-desc"
                 value={newDraft.description}
                 onChange={(e) => { setNewDraft({ ...newDraft, description: e.target.value }); setCreateError('') }}
-                placeholder="简短描述该模板的用途"
+                placeholder={t('templateSettings.descPlaceholder')}
               />
               </Field>
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
               <Button variant="primary" disabled={creating} loading={creating} onClick={() => void createTemplate()}>
-                创建并编辑
+                {t('templateSettings.createAndEdit')}
               </Button>
             </div>
           </div>
@@ -278,45 +280,45 @@ export default function TemplateSettings() {
           }}>
             <Button
               variant="ghost"
-              aria-label="返回模板列表"
-              title="返回模板列表"
+              aria-label={t('templateSettings.backAria')}
+              title={t('templateSettings.backTitle')}
               onClick={() => { if (editorDirty) { setConfirmClose(true); return } closeEditor() }}
               style={{ height: 30, padding: '0 9px' }}
             >
-              ← 返回
+              {t('templateSettings.back')}
             </Button>
             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
-              模板元信息
+              {t('templateSettings.metaTitle')}
             </span>
             {editing.default ? (
-              <span style={{ fontSize: 11, color: 'var(--meta)' }}>默认模板：保存将写回 ~/.workstep/data/templates/ 对应文件</span>
+              <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('templateSettings.defaultMetaHint')}</span>
             ) : (
-              <span style={{ fontSize: 11, color: 'var(--meta)' }}>自定义模板：保存将写回 ~/.workstep/data/templates/ 对应文件</span>
+              <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('templateSettings.customMetaHint')}</span>
             )}
             <div style={{ flex: 1 }} />
             <Input
               value={meta.id}
               onChange={(e) => { setMeta({ ...meta, id: e.target.value }); setMetaDirty(true) }}
-              placeholder="标识（英数_-，≤64）"
-              title="模板标识"
+              placeholder={t('templateSettings.idPlaceholderShort')}
+              title={t('templateSettings.idTitle')}
               spellCheck={false}
               style={{ width: 150, height: 28 }}
             />
             <Input
               value={meta.name}
               onChange={(e) => { setMeta({ ...meta, name: e.target.value }); setMetaDirty(true) }}
-              placeholder="模板名称"
-              title="模板名称"
+              placeholder={t('templateSettings.namePlaceholderShort')}
+              title={t('templateSettings.nameTitle')}
               style={{ width: 170, height: 28 }}
             />
             <Input
               value={meta.description}
               onChange={(e) => { setMeta({ ...meta, description: e.target.value }); setMetaDirty(true) }}
-              placeholder="模板描述（可选）"
-              title="模板描述"
+              placeholder={t('templateSettings.descPlaceholderShort')}
+              title={t('templateSettings.descTitle')}
               style={{ width: 220, height: 28 }}
             />
-            {metaDirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, whiteSpace: 'nowrap' }}>⚠ 元信息未保存</span>}
+            {metaDirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, whiteSpace: 'nowrap' }}>{t('templateSettings.metaUnsaved')}</span>}
           </div>
           {metaError && (
             <div style={{
@@ -332,8 +334,8 @@ export default function TemplateSettings() {
             onSave={saveTemplate}
             onDirtyChange={setCanvasDirty}
             showTemplatePicker={false}
-            title="流程模板编辑器"
-            saveLabel="保存模板"
+            title={t('templateSettings.editorTitle')}
+            saveLabel={t('flow.saveTemplate')}
             hint={null}
           />
         </div>,
@@ -343,9 +345,9 @@ export default function TemplateSettings() {
       {/* Unsaved changes confirm */}
       <ConfirmDialog
         open={confirmClose}
-        title="未保存的更改"
-        message="有未保存的更改，确定放弃并返回模板列表？"
-        confirmText="放弃更改"
+        title={t('canvas.unsavedTitle')}
+        message={t('templateSettings.unsavedMessage')}
+        confirmText={t('layout.discardChanges')}
         danger
         onConfirm={() => { setConfirmClose(false); closeEditor() }}
         onCancel={() => setConfirmClose(false)}
@@ -354,9 +356,9 @@ export default function TemplateSettings() {
       {/* Delete template confirm */}
       <ConfirmDialog
         open={deleting !== null}
-        title="删除模板"
-        message={deleting ? `确定删除模板「${deleting.name}」？此操作不可恢复。` : undefined}
-        confirmText="删除"
+        title={t('templateSettings.deleteTitle')}
+        message={deleting ? t('templateSettings.deleteMessage', { name: deleting.name }) : undefined}
+        confirmText={t('common.delete')}
         danger
         onConfirm={() => void deleteTemplate()}
         onCancel={() => { if (!deletingBusy) setDeleting(null) }}

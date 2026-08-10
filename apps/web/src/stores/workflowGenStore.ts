@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { zhCNT } from '../i18n'
 
 /** A session-scoped WS event (no task_id — keyed by session_id). */
 export interface GenChatEvent {
@@ -152,7 +153,7 @@ export const useWorkflowGenStore = create<GenState>((set) => ({
             .filter((item) => item && typeof item === 'object' && item.steps)
             .map((item) => ({
               id: String(item.id || ''),
-              title: String(item.title || '流程方案'),
+              title: String(item.title || zhCNT('aiFlow.defaultProposalTitle')),
               summary: String(item.summary || ''),
               steps: item.steps,
               nodeCount: Number(item.nodeCount || 0),
@@ -161,7 +162,7 @@ export const useWorkflowGenStore = create<GenState>((set) => ({
         rejectionMessage = ''
       } else if (event.type === 'flow_proposals_rejected') {
         latestProposals = []
-        rejectionMessage = String(event.data.message || '流程方案未通过画布校验')
+        rejectionMessage = String(event.data.message || zhCNT('aiFlow.proposalRejected'))
       } else if (event.type === 'error') {
         running = false
         if (event.message_id) {
@@ -170,7 +171,7 @@ export const useWorkflowGenStore = create<GenState>((set) => ({
             messages[index] = {
               ...messages[index],
               status: 'error',
-              error: String(event.data.message || '生成失败'),
+              error: String(event.data.message || zhCNT('aiFlow.generateFailed')),
             }
           }
         }

@@ -1,25 +1,27 @@
-export const ENGINE_LABELS: Record<string, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex CLI',
-  hermes: 'Hermes',
-  qoder_sdk: 'Qoder Agent SDK',
-  openclaw: 'OpenClaw',
-  api: 'API / BYOK',
-  pydantic_ai: 'Pydantic AI',
-  claude_agent_sdk: 'Claude Agent SDK',
-  codex_sdk: 'Codex Agent SDK',
+import { zhCNT, type TFunction, type TKey } from './i18n'
+
+export const ENGINE_LABELS: Record<string, TKey> = {
+  claude: 'engine.label.claude',
+  codex: 'engine.label.codex',
+  hermes: 'engine.label.hermes',
+  qoder_sdk: 'engine.label.qoder_sdk',
+  openclaw: 'engine.label.openclaw',
+  api: 'engine.label.api',
+  pydantic_ai: 'engine.label.pydantic_ai',
+  claude_agent_sdk: 'engine.label.claude_agent_sdk',
+  codex_sdk: 'engine.label.codex_sdk',
 }
 
-export const ENGINE_DESCRIPTIONS: Record<string, string> = {
-  claude: 'Anthropic 官方编码 CLI',
-  codex: 'OpenAI 官方编码 CLI',
-  hermes: 'Hermes ACP 执行引擎',
-  qoder_sdk: 'Qoder 官方 Agent SDK，内嵌驱动 qodercli',
-  openclaw: 'OpenClaw 本机执行引擎',
-  api: '直连 OpenAI-compatible 或 Anthropic API',
-  pydantic_ai: '内置 Python Agent，由 Pydantic AI 加载 Provider',
-  claude_agent_sdk: 'Anthropic 官方 Agent SDK，内嵌驱动 Claude Code',
-  codex_sdk: 'OpenAI 官方 Codex SDK，内嵌驱动 Codex',
+export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
+  claude: 'engine.description.claude',
+  codex: 'engine.description.codex',
+  hermes: 'engine.description.hermes',
+  qoder_sdk: 'engine.description.qoder_sdk',
+  openclaw: 'engine.description.openclaw',
+  api: 'engine.description.api',
+  pydantic_ai: 'engine.description.pydantic_ai',
+  claude_agent_sdk: 'engine.description.claude_agent_sdk',
+  codex_sdk: 'engine.description.codex_sdk',
 }
 
 export const ENGINE_COLORS: Record<string, string> = {
@@ -34,6 +36,10 @@ export const ENGINE_COLORS: Record<string, string> = {
   codex_sdk: '#2563eb',
 }
 
-export function engineLabel(id: string) {
-  return ENGINE_LABELS[id] || id
+export function engineLabel(id: string, t: TFunction = zhCNT) {
+  return ENGINE_LABELS[id] ? t(ENGINE_LABELS[id]) : id
+}
+
+export function engineDescription(id: string, t: TFunction = zhCNT) {
+  return ENGINE_DESCRIPTIONS[id] ? t(ENGINE_DESCRIPTIONS[id]) : t('engine.defaultDescription')
 }

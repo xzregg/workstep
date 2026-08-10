@@ -12,6 +12,7 @@ import EmptyState from '../components/EmptyState'
 import Field from '../components/Field'
 import Input from '../components/Input'
 import MarkdownEditor from '../components/MarkdownEditor'
+import { useI18n, type TFunction, type TKey } from '../i18n'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -42,13 +43,13 @@ const laneBodyStyle: React.CSSProperties = {
 }
 
 /* ── Status machine ── */
-const STATUS_LABELS: Record<string, string> = {
-  ready: '预备中', running: '进行中', paused: '暂停', stopped: '停止',
-  done: '已完成',
-  reviewing: '审核中', awaiting_review: '等待审核',
-  retrying: '自动重跑', rejected: '审核未通过',
-  cancelled: '手动停止',
-  rework: '返工中', rework_waiting: '等待返工',
+const STATUS_LABEL_KEYS: Record<string, TKey> = {
+  ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
+  done: 'status.done',
+  reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
+  retrying: 'status.retrying', rejected: 'status.rejected',
+  cancelled: 'status.cancelled',
+  rework: 'status.rework', rework_waiting: 'status.rework_waiting',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -77,7 +78,7 @@ const STAGE_COLORS: Record<string, string> = {
 }
 
 const FALLBACK_OPENERS: DirectoryOpener[] = [
-  { id: 'file_manager', label: '打开位置', available: true },
+  { id: 'file_manager', label: 'file_manager', available: true },
 ]
 
 function OpenerIcon({ id }: { id: string }) {
@@ -103,7 +104,7 @@ function OpenerIcon({ id }: { id: string }) {
   )
 }
 
-function getLanesFromSteps(steps: any): Lane[] {
+function getLanesFromSteps(steps: any, t: TFunction): Lane[] {
   if (steps?.nodes?.length) {
     return steps.nodes.map((n: any) => {
       const key = n.type || n.key || String(n.id)
@@ -121,7 +122,7 @@ function getLanesFromSteps(steps: any): Lane[] {
       color: s.color || 'var(--meta)',
     }))
   }
-  return [{ key: 'do', label: '执行', color: 'var(--accent)' }]
+  return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)' }]
 }
 
 function deriveTaskLane(
@@ -153,7 +154,10 @@ function deriveTaskLane(
 }
 
 export default function TaskList() {
+  const { t } = useI18n()
   const navigate = useNavigate()
+  const openerDisplayLabel = (opener: DirectoryOpener) =>
+    opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
   const {
     tasks, loading, fetchTasks, createTask, runTask, deleteTask,
     archiveTask, unarchiveTask, setActiveTask,
@@ -253,7 +257,7 @@ export default function TaskList() {
     }
   }, [showOpenerMenu])
 
-  const lanes = useMemo(() => getLanesFromSteps(activeProject?.steps), [activeProject?.steps])
+  const lanes = useMemo(() => getLanesFromSteps(activeProject?.steps, t), [activeProject?.steps, t])
   const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
   const createLaneIndex = Math.max(0, lanes.findIndex((lane) => lane.key === createLane?.key))
 
@@ -341,7 +345,7 @@ export default function TaskList() {
       setShowNewPanel(false)
       setCreateError('')
     } catch (e: any) {
-      setCreateError(e?.message || '创建任务失败，请检查后台服务是否正常')
+      setCreateError(e?.message || t('taskList.createFailed'))
     }
   }
 
@@ -354,10 +358,10 @@ export default function TaskList() {
     if (!activeProject) return
     try {
       const result = await fsApi.openDirectory(activeProject.path, openerId)
-      setDirectoryNotice(`已打开：${result.path}`)
+      setDirectoryNotice(t('taskList.opened', { path: result.path }))
     } catch (error) {
       setDirectoryNotice(
-        `打开失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskList.openFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
     }
     setTimeout(() => setDirectoryNotice(''), 3000)
@@ -384,7 +388,7 @@ export default function TaskList() {
       setMemoryContent(result.content)
       memorySavedRef.current = result.content
     } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : '读取记忆失败')
+      setMemoryError(error instanceof Error ? error.message : t('taskList.readMemoryFailed'))
     } finally {
       setMemoryLoading(false)
     }
@@ -400,7 +404,7 @@ export default function TaskList() {
       memorySavedRef.current = memoryContent
       setShowMemoryPanel(false)
     } catch (error) {
-      setMemoryError(error instanceof Error ? error.message : '保存记忆失败')
+      setMemoryError(error instanceof Error ? error.message : t('taskList.saveMemoryFailed'))
     } finally {
       setMemorySaving(false)
     }
@@ -454,7 +458,7 @@ export default function TaskList() {
       await fetchTasks(activeProject.id, activeWorkflowId)
     } catch (error) {
       setDirectoryNotice(
-        `启动失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskList.startFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
       setTimeout(() => setDirectoryNotice(''), 3000)
     } finally {
@@ -484,7 +488,7 @@ export default function TaskList() {
       setCardLanes((prev) => { const next = { ...prev }; delete next[taskId]; return next })
     } catch (error) {
       setDirectoryNotice(
-        `归档失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskList.archiveFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
       setTimeout(() => setDirectoryNotice(''), 3000)
     }
@@ -497,7 +501,7 @@ export default function TaskList() {
       await unarchiveTask(taskId, activeProject.id)
     } catch (error) {
       setDirectoryNotice(
-        `恢复失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskList.restoreFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
       setTimeout(() => setDirectoryNotice(''), 3000)
     }
@@ -548,12 +552,12 @@ export default function TaskList() {
           style={{ fontSize: 13, gap: 5 }}
         >
           <Icon name="table" size={14} strokeWidth={2} />
-          阶段编辑
+          {t('taskList.stageEdit')}
         </Button>
         {!showArchived && (
           <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
             <Icon name="plus" size={14} strokeWidth={2.5} />
-            新建
+            {t('taskList.new')}
           </Button>
         )}
         {activeWorkflowName && (
@@ -572,8 +576,8 @@ export default function TaskList() {
         {activeProject && (
           <button
             type="button"
-            title={copiedWorkflowId ? '已复制' : '点击复制流程 ID'}
-            aria-label="复制流程 ID"
+            title={copiedWorkflowId ? t('common.copied') : t('taskList.copyWorkflowIdTitle')}
+            aria-label={t('taskList.copyWorkflowIdAria')}
             onClick={() => void copyWorkflowId()}
             style={{
               color: 'var(--meta)', fontSize: 11, fontFamily: 'var(--font-mono)',
@@ -582,7 +586,7 @@ export default function TaskList() {
               cursor: 'pointer',
             }}
           >
-            {copiedWorkflowId ? '已复制' : `ID: ${activeWorkflowId || 'default'}`}
+            {copiedWorkflowId ? t('common.copied') : `ID: ${activeWorkflowId || 'default'}`}
           </button>
         )}
         <div style={{ flex: 1 }} />
@@ -602,39 +606,47 @@ export default function TaskList() {
           variant="ghost"
           onClick={() => void openMemoryPanel()}
           disabled={!activeProject}
-          title="编辑 .workstep/MEMORY.md 项目记忆"
+          title={t('taskList.memoryButtonTitle')}
           style={{ fontSize: 13, gap: 5 }}
         >
           <Icon name="book" size={13} strokeWidth={2} />
-          记忆
+          {t('taskList.memory')}
         </Button>
         <Button
           variant="ghost"
           onClick={() => setShowArchived((value) => !value)}
           disabled={!activeProject}
-          title={showArchived ? '返回任务看板' : '查看已归档任务'}
+          title={showArchived ? t('canvas.backBoardTitle') : t('taskList.viewArchivedTitle')}
           style={{ fontSize: 13, gap: 5 }}
         >
           <Icon name="archive" size={13} strokeWidth={2} />
-          {showArchived ? '返回看板' : '查看归档'}
+          {showArchived ? t('taskList.backBoard') : t('taskList.viewArchived')}
         </Button>
         <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
           <Button
             variant="ghost"
             onClick={() => void openProjectDirectory()}
             disabled={!activeProject}
-            title={activeProject ? `使用${directoryOpeners.find((item) => item.id === selectedOpener)?.label || '文件管理器'}打开：${activeProject.path}` : '请先选择项目'}
+            title={activeProject
+              ? t('taskList.openWithTitle', {
+                  opener: openerDisplayLabel(
+                    directoryOpeners.find((item) => item.id === selectedOpener)
+                      ?? { id: 'file_manager', label: '', available: true },
+                  ),
+                  path: activeProject.path,
+                })
+              : t('taskList.selectProjectFirst')}
             style={{
               fontSize: 13, gap: 6, borderTopRightRadius: 0,
               borderBottomRightRadius: 0, paddingRight: 10,
             }}
           >
             <OpenerIcon id={selectedOpener} />
-            打开位置
+            {t('taskList.openLocation')}
           </Button>
           <Button
             variant="ghost"
-            aria-label="选择打开方式"
+            aria-label={t('taskList.chooseOpener')}
             aria-expanded={showOpenerMenu}
             onClick={() => setShowOpenerMenu((value) => !value)}
             disabled={!activeProject}
@@ -648,7 +660,7 @@ export default function TaskList() {
           {showOpenerMenu && (
             <div
               role="menu"
-              aria-label="打开项目目录方式"
+              aria-label={t('taskList.openerMenuAria')}
               style={{
                 position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1200,
                 width: 230, padding: 8, background: 'var(--bg)',
@@ -669,7 +681,7 @@ export default function TaskList() {
                   }}
                 >
                   <OpenerIcon id={opener.id} />
-                  {opener.label}
+                  {openerDisplayLabel(opener)}
                   {opener.id === selectedOpener && (
                     <span style={{ marginLeft: 'auto', color: 'var(--accent)' }}>✓</span>
                   )}
@@ -689,9 +701,9 @@ export default function TaskList() {
           borderBottom: '1px solid var(--border-soft)',
         }}>
           <Icon name="archive" size={13} strokeWidth={2} />
-          正在查看归档任务
+          {t('taskList.viewingArchived')}
           <span style={{ marginLeft: 'auto', fontSize: 13 }}>
-            {visibleTasks.length} 个任务
+            {t('taskList.taskCount', { count: visibleTasks.length })}
           </span>
         </div>
       )}
@@ -700,7 +712,7 @@ export default function TaskList() {
       <div style={kanbanStyle}>
         {loading && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
-            加载中...
+            {t('common.loading')}
           </div>
         )}
 
@@ -708,7 +720,7 @@ export default function TaskList() {
           <EmptyState
             className="empty-state-canvas"
             icon={<Icon name="folder" size={48} strokeWidth={1.5} />}
-            title="请在左侧选择一个项目"
+            title={t('taskList.selectProjectEmpty')}
           />
         )}
 
@@ -725,12 +737,12 @@ export default function TaskList() {
                 {!showArchived && (
                   <Button
                     variant="ghost"
-                    aria-label={`添加${lane.label}任务`}
-                    title={`添加${lane.label}任务`}
+                    aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
+                    title={t('taskList.addTaskToLane', { lane: lane.label })}
                     onClick={() => openNewPanel(lane.key)}
                     style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
                   >
-                    + 添加
+                    {t('taskList.add')}
                   </Button>
                 )}
               </div>
@@ -743,25 +755,25 @@ export default function TaskList() {
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDrop(e, lane.key)}
               >
-                {laneTasks.map((t: any) => {
-                  const status = t.status || 'ready'
-                  const taskNotStarted = isTaskNotStarted(t.steps || [])
-                  const taskCompleted = isTaskCompleted(t.steps || [])
+                {laneTasks.map((task: any) => {
+                  const status = task.status || 'ready'
+                  const taskNotStarted = isTaskNotStarted(task.steps || [])
+                  const taskCompleted = isTaskCompleted(task.steps || [])
                   const isLastLane = lane.key === lanes[lanes.length - 1]?.key
                   const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
                     .find((candidate) =>
-                      (t.steps || []).some((step: any) => step.status === candidate)
+                      (task.steps || []).some((step: any) => step.status === candidate)
                     )
                   const displayStatus = taskCompleted ? 'done' : stageStatus || status
                   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
                   return (
                     <div
-                      key={t.id}
+                      key={task.id}
                       data-task-status={status}
                       draggable={!showArchived}
-                      onDragStart={(e) => onDragStart(e, t.id)}
+                      onDragStart={(e) => onDragStart(e, task.id)}
                       onDragEnd={onDragEnd}
-                      onClick={() => handleSelectTask(t.id)}
+                      onClick={() => handleSelectTask(task.id)}
                       style={{
                         background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
                         padding: '10px 12px', cursor: 'grab',
@@ -780,7 +792,7 @@ export default function TaskList() {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1 }}>{t.title}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1 }}>{task.title}</span>
                         <span
                           className="status-badge"
                           data-s={displayStatus}
@@ -792,11 +804,11 @@ export default function TaskList() {
                           {(displayStatus === 'running' || displayStatus === 'reviewing') && (
                             <span className="task-status-spinner" aria-hidden="true" />
                           )}
-                          {STATUS_LABELS[displayStatus] || displayStatus}
+                          {t(STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
                         </span>
-                        {status === 'running' && (t.recovered_count || 0) > 0 && (
+                        {status === 'running' && (task.recovered_count || 0) > 0 && (
                           <span
-                            title={`上次进程中断后已自动恢复续跑（累计 ${t.recovered_count} 次）`}
+                            title={t('taskList.recoveredTitle', { count: task.recovered_count })}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 4,
                               fontSize: 11, fontWeight: 600, padding: '2px 7px',
@@ -806,12 +818,12 @@ export default function TaskList() {
                               border: '1px solid color-mix(in oklab, var(--accent), transparent 60%)',
                             }}
                           >
-                            断点续跑
+                            {t('taskList.recovered')}
                           </span>
                         )}
                       </div>
-                      {t.description && (
-                        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{t.description}</div>
+                      {task.description && (
+                        <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4, marginBottom: 8 }}>{task.description}</div>
                       )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <span style={{
@@ -825,25 +837,25 @@ export default function TaskList() {
           {taskNotStarted && status !== 'running' && (
             <Button
               variant="icon"
-              title="开始任务"
-              aria-label="开始任务"
-              disabled={startingTaskId === t.id}
-              loading={startingTaskId === t.id}
-              onClick={(e) => requestStartCard(e, t.id)}
+              title={t('taskList.startTask')}
+              aria-label={t('taskList.startTask')}
+              disabled={startingTaskId === task.id}
+              loading={startingTaskId === task.id}
+              onClick={(e) => requestStartCard(e, task.id)}
               style={{ width: 22, height: 22, color: 'var(--success)' }}
             >
               ▶️
             </Button>
           )}
-          <Button variant="icon" title="编辑" onClick={(e) => { e.stopPropagation(); handleSelectTask(t.id) }} style={{ width: 22, height: 22 }}>
+          <Button variant="icon" title={t('common.edit')} onClick={(e) => { e.stopPropagation(); handleSelectTask(task.id) }} style={{ width: 22, height: 22 }}>
             <Icon name="pencil" size={12} strokeWidth={2} />
           </Button>
           {!showArchived && taskCompleted && isLastLane && status !== 'running' && (
             <Button
               variant="icon"
-              title="归档任务"
-              aria-label="归档任务"
-              onClick={(e) => requestArchiveCard(e, t.id)}
+              title={t('taskList.archiveTask')}
+              aria-label={t('taskList.archiveTask')}
+              onClick={(e) => requestArchiveCard(e, task.id)}
               style={{ width: 22, height: 22, color: 'var(--meta)' }}
             >
               <Icon name="archive" size={12} strokeWidth={2} />
@@ -852,16 +864,16 @@ export default function TaskList() {
           {showArchived && (
             <Button
               variant="icon"
-              title="恢复到看板"
-              aria-label="恢复到看板"
-              onClick={(e) => handleUnarchive(e, t.id)}
+              title={t('taskList.restoreToBoard')}
+              aria-label={t('taskList.restoreToBoard')}
+              onClick={(e) => handleUnarchive(e, task.id)}
               style={{ width: 22, height: 22, color: 'var(--success)' }}
             >
               <Icon name="rotate-ccw" size={12} strokeWidth={2} />
             </Button>
           )}
           {status !== 'running' && (
-            <Button variant="icon" title="删除" onClick={(e) => deleteCard(e, t.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
+            <Button variant="icon" title={t('common.delete')} onClick={(e) => deleteCard(e, task.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
               <Icon name="x" size={12} strokeWidth={2} />
             </Button>
           )}
@@ -896,8 +908,8 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div className="panel-header">
-          <span style={{ fontWeight: 600, fontSize: 13 }}>新建{createLane?.label || '需求'}任务</span>
-          <Button variant="icon" onClick={closeNewPanel} aria-label="关闭">✕</Button>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>{t('taskList.newTaskTitle', { lane: createLane?.label || t('taskList.requirement') })}</span>
+          <Button variant="icon" onClick={closeNewPanel} aria-label={t('common.close')}>✕</Button>
         </div>
         {/* ── Tab bar ── */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
@@ -910,7 +922,7 @@ export default function TaskList() {
               color: activeTab === 'content' ? 'var(--fg)' : 'var(--meta)',
               fontFamily: 'var(--font-body)',
             }}
-          >任务内容</button>
+          >{t('taskList.contentTab')}</button>
           <button
             onClick={() => setActiveTab('review')}
             style={{
@@ -920,7 +932,7 @@ export default function TaskList() {
               color: activeTab === 'review' ? 'var(--fg)' : 'var(--meta)',
               fontFamily: 'var(--font-body)',
             }}
-          >审核配置</button>
+          >{t('taskList.reviewTab')}</button>
         </div>
 
         {/* ── Tab: content ── */}
@@ -933,23 +945,27 @@ export default function TaskList() {
               borderLeft: `3px solid ${createLane?.color || 'var(--accent)'}`,
               color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.55,
             }}>
-              此任务将直接从“{createLane?.label}”阶段开始。
-              之前的 {lanes.slice(0, createLaneIndex).map((lane) => `“${lane.label}”`).join('、')}
-              阶段会标记为已跳过，不读取这些阶段的输出物。
+              {t('taskList.startAtStage', { label: createLane?.label })}
+              <br />
+              {t('taskList.skipPrevious', {
+                stages: lanes.slice(0, createLaneIndex)
+                  .map((lane) => t('taskList.stageQuote', { label: lane.label }))
+                  .join(t('taskList.joinList')),
+              })}
             </div>
           )}
-          <Field label="任务标题" htmlFor="new-task-title">
+          <Field label={t('taskList.taskTitle')} htmlFor="new-task-title">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Input
                 id="new-task-title"
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="输入标题..."
+                placeholder={t('taskList.titlePlaceholder')}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                 style={{ flex: 1 }}
               />
               <label
-                title={`当前任务在“${createLane?.label || '当前阶段'}”创建后自动开始`}
+                title={t('taskList.autoStartTitle', { lane: createLane?.label || t('taskList.currentStage') })}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
               >
                 <input
@@ -958,16 +974,16 @@ export default function TaskList() {
                   onChange={(event) => setNewAutoStart(event.target.checked)}
                   style={{ width: 16, height: 16 }}
                 />
-                自动开始
+                {t('taskList.autoStart')}
               </label>
             </div>
           </Field>
-          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>任务说明</label>
+          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>{t('taskList.taskDescription')}</label>
           <MarkdownEditor
             value={newDesc}
             onChange={setNewDesc}
             projectId={activeProject?.id}
-            placeholder={`输入${createLane?.label || '当前阶段'}任务说明...（支持 Markdown，可直接粘贴图片）`}
+            placeholder={t('taskList.descPlaceholder', { lane: createLane?.label || t('taskList.currentStage') })}
           />
         </div>
         )}
@@ -977,7 +993,7 @@ export default function TaskList() {
         <div style={{ flex: 1, padding: '12px 16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {Object.keys(reviewOverrides).length === 0 ? (
             <div style={{ color: 'var(--meta)', fontSize: 13, textAlign: 'center', paddingTop: 40 }}>
-              当前流程暂无阶段审核配置
+              {t('taskList.noReviewConfig')}
             </div>
           ) : (
             Object.entries(reviewOverrides).map(([key, cfg]) => {
@@ -1000,7 +1016,7 @@ export default function TaskList() {
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
                       <span style={{ fontSize: 13, fontWeight: 600, color: isUpstream ? 'var(--meta)' : 'var(--fg)' }}>{label}</span>
                       {isUpstream && (
-                        <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', padding: '0 5px', borderRadius: 3, lineHeight: '18px' }}>已跳过</span>
+                        <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', padding: '0 5px', borderRadius: 3, lineHeight: '18px' }}>{t('status.skipped')}</span>
                       )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1012,10 +1028,10 @@ export default function TaskList() {
                           onChange={() => !isUpstream && setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], auto: !prev[key].auto } }))}
                           style={{ accentColor: 'var(--accent)', width: 13, height: 13, margin: 0, flexShrink: 0 }}
                         />
-                        自动审核
+                        {t('flow.autoReview')}
                       </label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                        <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>重试</span>
+                        <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
                         <Input
                           type="number"
                           min={1} max={5}
@@ -1037,10 +1053,10 @@ export default function TaskList() {
                     onChange={(v) => { if (!isUpstream) setReviewOverrides(prev => ({ ...prev, [key]: { ...prev[key], prompt: v } })) }}
                     disabled={isUpstream}
                     projectId={activeProject?.id}
-                    placeholder="审核提示词（留空使用默认）"
+                    placeholder={t('taskList.reviewPromptPlaceholder')}
                     minHeight={28}
                     maxHeight={120}
-                    ariaLabel={`${label}审核提示词`}
+                    ariaLabel={t('taskList.reviewPromptAria', { label })}
                   />
                 </div>
               )
@@ -1054,8 +1070,8 @@ export default function TaskList() {
           <div style={{ padding: '8px 16px 0', fontSize: 13, color: 'var(--danger)' }}>{createError}</div>
         )}
         <div className="panel-footer">
-          <Button variant="ghost" onClick={closeNewPanel}>取消</Button>
-          <Button variant="primary" onClick={handleCreate}>创建</Button>
+          <Button variant="ghost" onClick={closeNewPanel}>{t('common.cancel')}</Button>
+          <Button variant="primary" onClick={handleCreate}>{t('common.create')}</Button>
         </div>
       </div>
 
@@ -1077,18 +1093,20 @@ export default function TaskList() {
       {/* ── Delete confirm dialog ── */}
       <ConfirmDialog
         open={confirmStartTaskId !== null}
-        title="开始任务"
-        message={`确定开始“${tasks.find((task) => task.id === confirmStartTaskId)?.title || '该任务'}”吗？流程将从当前阶段开始执行。`}
-        confirmText="开始"
+        title={t('taskList.startTask')}
+        message={t('taskList.startTaskMessage', {
+          title: tasks.find((task) => task.id === confirmStartTaskId)?.title || t('taskList.thatTask'),
+        })}
+        confirmText={t('taskList.start')}
         onConfirm={handleStartConfirm}
         onCancel={() => setConfirmStartTaskId(null)}
       />
 
       <ConfirmDialog
         open={confirmDeleteTaskId !== null}
-        title="删除任务"
-        message="确定删除此任务？此操作不可撤销。"
-        confirmText="删除"
+        title={t('taskList.deleteTask')}
+        message={t('taskList.deleteTaskMessage')}
+        confirmText={t('common.delete')}
         danger
         onConfirm={handleDeleteConfirm}
         onCancel={() => setConfirmDeleteTaskId(null)}
@@ -1096,18 +1114,20 @@ export default function TaskList() {
 
       <ConfirmDialog
         open={confirmArchiveTaskId !== null}
-        title="归档任务"
-        message={`确定归档“${tasks.find((task) => task.id === confirmArchiveTaskId)?.title || '该任务'}”吗？归档后任务将不再显示在看板中，可在“查看归档”中恢复。`}
-        confirmText="归档"
+        title={t('taskList.archiveTask')}
+        message={t('taskList.archiveTaskMessage', {
+          title: tasks.find((task) => task.id === confirmArchiveTaskId)?.title || t('taskList.thatTask'),
+        })}
+        confirmText={t('taskList.archive')}
         onConfirm={handleArchiveConfirm}
         onCancel={() => setConfirmArchiveTaskId(null)}
       />
 
       <ConfirmDialog
         open={confirmCloseNewTask}
-        title="放弃新建任务"
-        message="新建任务内容尚未保存，确定放弃并关闭？"
-        confirmText="放弃"
+        title={t('taskList.discardNewTitle')}
+        message={t('taskList.discardNewMessage')}
+        confirmText={t('taskList.discard')}
         danger
         onConfirm={() => {
           setConfirmCloseNewTask(false)
@@ -1118,9 +1138,9 @@ export default function TaskList() {
 
       <ConfirmDialog
         open={confirmCloseMemory}
-        title="放弃记忆更改"
-        message="记忆内容有未保存的更改，确定放弃并关闭？"
-        confirmText="放弃更改"
+        title={t('taskList.discardMemoryTitle')}
+        message={t('taskList.discardMemoryMessage')}
+        confirmText={t('layout.discardChanges')}
         danger
         onConfirm={() => {
           setConfirmCloseMemory(false)
@@ -1150,10 +1170,10 @@ export default function TaskList() {
       }}>
         <div className="panel-header">
           <span style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-            编辑记忆
+            {t('taskList.editMemory')}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
           </span>
-          <Button variant="icon" onClick={closeMemoryPanel} aria-label="关闭">✕</Button>
+          <Button variant="icon" onClick={closeMemoryPanel} aria-label={t('common.close')}>✕</Button>
         </div>
         {memoryError && (
           <div style={{
@@ -1165,13 +1185,13 @@ export default function TaskList() {
         )}
         <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {memoryLoading ? (
-            <div style={{ color: 'var(--meta)', fontSize: 13 }}>加载中…</div>
+            <div style={{ color: 'var(--meta)', fontSize: 13 }}>{t('common.loading')}</div>
           ) : (
             <MarkdownEditor
               value={memoryContent}
               onChange={setMemoryContent}
               projectId={activeProject?.id}
-              ariaLabel="项目记忆"
+              ariaLabel={t('taskList.projectMemory')}
             />
           )}
         </div>
@@ -1181,14 +1201,14 @@ export default function TaskList() {
               {memoryNotice}
             </span>
           )}
-          <Button variant="ghost" onClick={closeMemoryPanel}>取消</Button>
+          <Button variant="ghost" onClick={closeMemoryPanel}>{t('common.cancel')}</Button>
           <Button
             variant="primary"
             onClick={() => void handleSaveMemory()}
             disabled={memoryLoading || memorySaving}
             loading={memorySaving}
           >
-            保存记忆
+            {t('taskList.saveMemory')}
           </Button>
         </div>
       </div>

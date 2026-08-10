@@ -4,6 +4,7 @@ import Icon from './Icon'
 import { useState, useEffect } from 'react'
 import { fsApi, type FilePreview } from '../api/client'
 import Button from './Button'
+import { useI18n } from '../i18n'
 
 interface ArtifactPreviewProps {
   path: string
@@ -27,6 +28,7 @@ async function copyText(content: string) {
 }
 
 function CopyTextButton({ content }: { content: string }) {
+  const { t } = useI18n()
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   const copy = async () => {
@@ -41,8 +43,8 @@ function CopyTextButton({ content }: { content: string }) {
   return (
     <Button
       variant="ghost"
-      aria-label={state === 'copied' ? '文本已复制' : '复制文本'}
-      title={state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : '复制文本'}
+      aria-label={state === 'copied' ? t('artifact.textCopied') : t('artifact.copyText')}
+      title={state === 'copied' ? t('common.copied') : state === 'failed' ? t('meta.copyFailed') : t('artifact.copyText')}
       onClick={() => void copy()}
       style={{
         width: 28, height: 28, minWidth: 28, padding: 0,
@@ -64,6 +66,7 @@ function CopyTextButton({ content }: { content: string }) {
 }
 
 export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps) {
+  const { t } = useI18n()
   const [preview, setPreview] = useState<FilePreview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,7 +81,7 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
       })
       .catch((e) => {
         if (active) {
-          setError(e instanceof Error ? e.message : 'Failed to load artifact')
+          setError(e instanceof Error ? e.message : t('artifact.loadFallbackError'))
         }
       })
       .finally(() => {
@@ -92,7 +95,7 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
-        加载中...
+        {t('common.loading')}
       </div>
     )
   }
@@ -100,10 +103,10 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
   if (error) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
-        加载失败: {error}
+        {t('artifact.loadFailed', { error })}
         {onClose && (
           <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>
-            关闭
+            {t('common.close')}
           </Button>
         )}
       </div>
@@ -125,14 +128,14 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
         {onClose && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <Button variant="ghost" onClick={onClose}>
-              关闭
+              {t('common.close')}
             </Button>
           </div>
         )}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
           <img
             src={content}
-            alt="Artifact"
+            alt={t('artifact.imageAlt')}
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         </div>
@@ -148,13 +151,13 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
-            {extension} 文件
+            {t('artifact.codeFile', { extension })}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <CopyTextButton content={content} />
             {onClose && (
               <Button variant="ghost" onClick={onClose}>
-                关闭
+                {t('common.close')}
               </Button>
             )}
           </div>
@@ -176,13 +179,13 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
-          {extension || '文件'} 预览
+          {t('artifact.textPreview', { name: extension || t('artifact.file') })}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <CopyTextButton content={content} />
           {onClose && (
             <Button variant="ghost" onClick={onClose}>
-              关闭
+              {t('common.close')}
             </Button>
           )}
         </div>

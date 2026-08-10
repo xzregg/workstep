@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { engineLabel } from '../engineMeta'
+import { useI18n, type TFunction } from '../i18n'
 import Select from './Select'
 
 export interface EngineSelectOption {
@@ -37,21 +38,25 @@ function isEngineSelectable(
 function availabilityLabel(
   engine: EngineSelectOption,
   requireCoordinator: boolean,
+  t: TFunction,
 ) {
-  if (!engine.installed) return '未安装'
-  if (!engine.configured) return '待配置'
-  if (!engine.verified) return '待测试'
-  if (requireCoordinator && !engine.supports_coordinator) return '不支持协调模式'
+  if (!engine.installed) return t('engine.notInstalled')
+  if (!engine.configured) return t('engine.needsConfig')
+  if (!engine.verified) return t('engine.needsTest')
+  if (requireCoordinator && !engine.supports_coordinator) return t('engine.noCoordinator')
   return ''
 }
 
 function optionLabel(
   engine: EngineSelectOption,
   requireCoordinator: boolean,
+  t: TFunction,
 ) {
-  const availability = availabilityLabel(engine, requireCoordinator)
+  const availability = availabilityLabel(engine, requireCoordinator, t)
   const mode = engine.mode ? ` · ${engine.mode.toUpperCase()}` : ''
-  return `${engine.built_in ? '内置 · ' : ''}${engineLabel(engine.id)}${mode}${availability ? `（${availability}）` : ''}`
+  const builtin = engine.built_in ? t('engine.builtinPrefix') : ''
+  const availabilitySuffix = availability ? t('engine.availabilitySuffix', { availability }) : ''
+  return `${builtin}${engineLabel(engine.id, t)}${mode}${availabilitySuffix}`
 }
 
 export default function EngineSelect({
@@ -65,6 +70,7 @@ export default function EngineSelect({
   ariaLabel,
   style,
 }: EngineSelectProps) {
+  const { t } = useI18n()
   const visibleEngines = engines.filter((engine) => (
     engine.installed || engine.built_in || engine.mode === 'api'
   ))
@@ -82,7 +88,7 @@ export default function EngineSelect({
       value={engine.id}
       disabled={!isEngineSelectable(engine, requireCoordinator)}
     >
-      {optionLabel(engine, requireCoordinator)}
+      {optionLabel(engine, requireCoordinator, t)}
     </option>
   )
 
@@ -100,21 +106,21 @@ export default function EngineSelect({
       )}
       {value && !currentIsListed && (
         <option value={value} disabled>
-          {engineLabel(value)}（当前配置不可用）
+          {engineLabel(value, t)}{t('engine.unavailableSuffix')}
         </option>
       )}
       {managedEngines.length > 0 && (
-        <optgroup label="内置与 API">
+        <optgroup label={t('engine.builtinAndApi')}>
           {managedEngines.map(renderOption)}
         </optgroup>
       )}
       {localEngines.length > 0 && (
-        <optgroup label="本地引擎">
+        <optgroup label={t('engine.local')}>
           {localEngines.map(renderOption)}
         </optgroup>
       )}
       {visibleEngines.length === 0 && !defaultOption && (
-        <option value="" disabled>暂无引擎</option>
+        <option value="" disabled>{t('engine.noEngines')}</option>
       )}
     </Select>
   )

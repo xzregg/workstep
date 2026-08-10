@@ -1,4 +1,5 @@
 import { toMilliseconds } from '../utils/datetime'
+import { zhCNT, type TFunction } from '../i18n'
 
 export interface OptimisticUserMessage {
   id: string
@@ -128,20 +129,21 @@ export function orderConversationMessages(
 
 export function liveExecutionStatus(
   events: Array<{ type?: string; data?: Record<string, unknown> }>,
+  t: TFunction = zhCNT,
 ): string {
   const latest = [...events].reverse().find((event) => [
     'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started',
   ].includes(event.type || ''))
   if (latest?.type === 'tool_use') {
-    const name = String(latest.data?.name || '工具')
-    return `正在执行工具：${name}`
+    const name = String(latest.data?.name || t('chat.tool'))
+    return t('chat.toolRunning', { name })
   }
-  if (latest?.type === 'tool_result') return '工具执行完成，继续处理'
-  if (latest?.type === 'thinking_delta') return '正在分析并生成结果'
+  if (latest?.type === 'tool_result') return t('chat.toolDone')
+  if (latest?.type === 'thinking_delta') return t('chat.thinking')
   if (latest?.type === 'status' && latest.data?.status === 'initializing') {
-    return '引擎初始化中'
+    return t('chat.engineInitializing')
   }
-  return '处理中'
+  return t('chat.processing')
 }
 
 export function isNearConversationBottom(
@@ -171,9 +173,9 @@ export function resolveMessagePrompt(
   return normalizedLivePrompt || persistedPrompt || null
 }
 
-export function stageAvatarText(label: string): string {
+export function stageAvatarText(label: string, t: TFunction = zhCNT): string {
   const normalized = label.trim()
-  return normalized.slice(0, 2) || '阶段'
+  return normalized.slice(0, 2) || t('chat.stageFallback')
 }
 
 export function isTaskNotStarted(steps: TaskStepStartState[]): boolean {

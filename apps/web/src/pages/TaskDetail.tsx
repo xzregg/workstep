@@ -55,6 +55,7 @@ import {
   formatDurationBetween,
   toMilliseconds,
 } from '../utils/datetime'
+import { useI18n, type TKey } from '../i18n'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
@@ -97,6 +98,7 @@ function CoordinatorProposalCard({
   projectId: string
   onChanged: (proposal: ActionProposal) => void
 }) {
+  const { t } = useI18n()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const current = proposal
@@ -114,7 +116,7 @@ function CoordinatorProposalCard({
         crypto.randomUUID(),
       ))
     } catch (reason) {
-      const fallbackError = reason instanceof Error ? reason.message : '确认失败'
+      const fallbackError = reason instanceof Error ? reason.message : t('taskDetail.proposalConfirmFailed')
       try {
         const history = await taskApi.history(taskId, projectId)
         const latest = [...history.messages]
@@ -141,7 +143,7 @@ function CoordinatorProposalCard({
     try {
       onChanged(await taskApi.cancelAction(taskId, current.id, projectId))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '取消失败')
+      setError(reason instanceof Error ? reason.message : t('taskDetail.proposalCancelFailed'))
     } finally {
       setPending(false)
     }
@@ -149,19 +151,19 @@ function CoordinatorProposalCard({
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 700 }}>协调动作 · {current.type}</div>
+      <div style={{ fontSize: 13, fontWeight: 700 }}>{t('taskDetail.proposalTitle', { type: current.type })}</div>
       <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-        {current.impact?.summary || `目标阶段：${current.target_step_key || '无'}`}
+        {current.impact?.summary || t('taskDetail.proposalTargetStage', { step: current.target_step_key || t('common.none') })}
       </div>
       <div style={{ fontSize: 11, color: current.status === 'failed' ? 'var(--danger)' : 'var(--meta)' }}>
-        状态：{current.status}{current.error ? ` · ${current.error}` : ''}
+        {t('taskDetail.proposalStatus', { status: current.status })}{current.error ? ` · ${current.error}` : ''}
       </div>
       {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
       {(current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="primary" disabled={!canAct} loading={pending} onClick={() => void confirm()}>{retryable ? '重试' : '确认'}</Button>
+          <Button variant="primary" disabled={!canAct} loading={pending} onClick={() => void confirm()}>{retryable ? t('common.retry') : t('common.confirm')}</Button>
           {current.status === 'pending' && (
-            <Button variant="ghost" disabled={!canAct} onClick={() => void cancel()}>取消</Button>
+            <Button variant="ghost" disabled={!canAct} onClick={() => void cancel()}>{t('common.cancel')}</Button>
           )}
         </div>
       )}
@@ -169,9 +171,9 @@ function CoordinatorProposalCard({
   )
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  ready: '预备中', running: '开始', paused: '暂停', stopped: '停止',
-  done: '已完成',
+const STATUS_LABEL_KEYS: Record<string, TKey> = {
+  ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
+  done: 'status.done',
 }
 
 type StageVisualState =
@@ -205,18 +207,18 @@ interface StageProgress extends Partial<TaskStepState> {
   visualState: StageVisualState
 }
 
-const STAGE_STATE_LABELS: Record<StageVisualState, string> = {
-  completed: '已完成',
-  current: '当前',
-  reviewing: '审核中',
-  awaiting_review: '等待审核',
-  retrying: '自动重跑',
-  rework: '返工中',
-  rework_waiting: '等待返工',
-  failed: '失败',
-  cancelled: '手动停止',
-  skipped: '已跳过',
-  pending: '待处理',
+const STAGE_STATE_LABEL_KEYS: Record<StageVisualState, TKey> = {
+  completed: 'status.done',
+  current: 'status.current',
+  reviewing: 'status.reviewing',
+  awaiting_review: 'status.awaiting_review',
+  retrying: 'status.retrying',
+  rework: 'status.rework',
+  rework_waiting: 'status.rework_waiting',
+  failed: 'status.failed',
+  cancelled: 'status.cancelled',
+  skipped: 'status.skipped',
+  pending: 'status.pending',
 }
 
 interface TaskDetailProps {
@@ -238,15 +240,15 @@ const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
 const DEFAULT_SPLIT_RATIO = 1 / 3
 const SPLIT_HANDLE_WIDTH = 8
 const RESIZE_EDGES: ResizeEdge[] = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']
-const RESIZE_LABELS: Record<ResizeEdge, string> = {
-  n: '调整任务详情上边界',
-  e: '调整任务详情右边界',
-  s: '调整任务详情下边界',
-  w: '调整任务详情左边界',
-  ne: '调整任务详情右上角',
-  nw: '调整任务详情左上角',
-  se: '调整任务详情右下角',
-  sw: '调整任务详情左下角',
+const RESIZE_LABEL_KEYS: Record<ResizeEdge, TKey> = {
+  n: 'taskDetail.resize.n',
+  e: 'taskDetail.resize.e',
+  s: 'taskDetail.resize.s',
+  w: 'taskDetail.resize.w',
+  ne: 'taskDetail.resize.ne',
+  nw: 'taskDetail.resize.nw',
+  se: 'taskDetail.resize.se',
+  sw: 'taskDetail.resize.sw',
 }
 
 function panelMinimums() {
@@ -353,6 +355,7 @@ function resizePanelBounds(
 }
 
 export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
+  const { t, locale } = useI18n()
   const activeProject = useProjectStore((s) => s.activeProject)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
   const tasks = useTaskStore((s) => s.tasks)
@@ -709,9 +712,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setCoordinatorConfigError('')
       })
       .catch((reason) => setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : '协调引擎加载失败',
+        reason instanceof Error ? reason.message : t('taskDetail.coordinatorEngineLoadFailed'),
       ))
-  }, [taskId, projectId])
+  }, [taskId, projectId, t])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -801,8 +804,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const steps = activeProject?.steps
     if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', model: n.model || '', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
     if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', model: s.model || '', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
-    return [{ key: 'do', label: '执行', color: 'var(--accent)', prompt: '', inputs: [], outputs: [] }]
-  }, [activeProject?.steps])
+    return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', prompt: '', inputs: [], outputs: [] }]
+  }, [activeProject?.steps, t])
 
   const stageProgress = useMemo<StageProgress[]>(() => {
     const stepByKey = new Map(
@@ -915,8 +918,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStageRunning = targetStage !== null
   const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
 
-  // 阶段引擎开始执行时，输入框自动切换到对应「阶段」tab，可直接发消息插入执行；
-  // 全部阶段结束后切回「协调 Agent」。用户手动切换的选择不会被中途覆盖（仅在运行状态变化时同步）。
+  // When a stage engine starts, the input switches to the matching stage tab
+  // for direct insert-into-execution messages; when all stages finish it
+  // returns to the coordinator Agent. Manual user selection is preserved
+  // (only synced on running-state changes).
   useEffect(() => {
     setChatTarget((current) => {
       if (runningStages.length === 0) return 'coordinator'
@@ -930,8 +935,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const handleRun = async () => {
     if (!taskId || !projectId) return
     if (!chatTargetStage && coordinatorRunning) return
-    // 阶段模式：像 Codex 一样，发送先进入上方的「插入消息」面板，
-    // 由用户确认「发送 / 删除」后再实时注入正在执行的阶段。
+    // Stage mode (Codex-like): sends land in the "Insert message" panel above,
+    // then are injected into the running stage after the user confirms.
     if (chatTargetStage) {
       const submittedPrompt = prompt.trim()
       if (!submittedPrompt || !activeStageRunning) return
@@ -982,7 +987,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       ))
       setPrompt(submittedPrompt)
       setCoordinatorRunning(false)
-      setChatError(reason instanceof Error ? reason.message : '发送失败')
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
     }
   }
 
@@ -993,7 +998,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     try {
       const result = await taskApi.stopCoordinator(taskId, projectId)
       if (!result.stopped) {
-        // 没有正在运行的 turn（可能刚好结束），事件会自然收尾。
+        // No running turn (may have just ended); events will wrap up naturally.
         setCoordinatorRunning(false)
         setActiveCoordinatorMessageId(null)
         taskApi.history(taskId, projectId)
@@ -1001,7 +1006,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           .catch(() => undefined)
       }
     } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : '停止失败')
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
       setCoordinatorStopping(false)
     }
@@ -1015,7 +1020,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     try {
       await taskApi.cancelStep(taskId, stepKey, projectId)
     } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : '停止失败')
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
       setStoppingStepKeys((current) => current.filter((key) => key !== stepKey))
     }
@@ -1062,7 +1067,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setHistoryMessages((current) => current.filter(
         (message) => message.id !== optimisticId
       ))
-      setChatError(reason instanceof Error ? reason.message : '发送失败')
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
     }
   }
 
@@ -1128,10 +1133,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         ? { ...current, ...selection }
         : current
       )
-      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
     } catch (reason) {
       setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : '协调引擎切换失败',
+        reason instanceof Error ? reason.message : t('taskDetail.engineSwitchFailed'),
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1156,10 +1161,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         ? { ...current, ...selection }
         : current
       )
-      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
     } catch (reason) {
       setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : '协调模型切换失败',
+        reason instanceof Error ? reason.message : t('taskDetail.modelSwitchFailed'),
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1184,10 +1189,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         ? { ...current, ...selection }
         : current
       )
-      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
     } catch (reason) {
       setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : '协调快速模型切换失败',
+        reason instanceof Error ? reason.message : t('taskDetail.fastModelSwitchFailed'),
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1212,10 +1217,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         ? { ...current, ...selection }
         : current
       )
-      setCoordinatorConfigNotice('已保存，将从下一条协调消息生效')
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
     } catch (reason) {
       setCoordinatorConfigError(
-        reason instanceof Error ? reason.message : '协调图片理解模型切换失败',
+        reason instanceof Error ? reason.message : t('taskDetail.visionModelSwitchFailed'),
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1235,9 +1240,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   if (!task) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
-        任务未找到
+        {t('taskDetail.taskNotFound')}
         <br />
-        <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>← 返回</Button>
+        <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>← {t('common.back')}</Button>
       </div>
     )
   }
@@ -1246,7 +1251,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStageColor = activeStage.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
   const activeReview = reviews.find((review) => review.step_key === activeStage.key)
-  const time = new Date(task.created_at).toLocaleString('zh-CN')
+  const time = new Date(task.created_at).toLocaleString(locale)
 
   const openDescriptionEditor = () => {
     setDescriptionDraft(task.description || '')
@@ -1263,7 +1268,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setEditingDescription(false)
     } catch (error) {
       setDescriptionError(
-        error instanceof Error ? error.message : '任务说明保存失败'
+        error instanceof Error ? error.message : t('taskDetail.descriptionSaveFailed')
       )
     } finally {
       setDescriptionSaving(false)
@@ -1308,7 +1313,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       setShowPromptEditor(false)
     } catch (error) {
       setPromptSaveError(
-        `保存失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskDetail.saveFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
     } finally {
       setPromptSaving(false)
@@ -1375,7 +1380,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const globalAdvanceState = (() => {
     if (taskNotStarted) {
       return {
-        label: running ? '启动中…' : '开始',
+        label: running ? t('taskDetail.starting') : t('taskList.start'),
         disabled: running,
       }
     }
@@ -1385,30 +1390,30 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         (step) => step.status === 'passed' || step.status === 'skipped'
       )
     ) {
-      return { label: '工作流已完成', disabled: true }
+      return { label: t('taskDetail.workflowCompleted'), disabled: true }
     }
     if (activeStepStatus === 'awaiting_review') {
       return {
-        label: '审核通过并进入下一阶段',
+        label: t('taskDetail.approveAndAdvance'),
         disabled: reviewActionPending || !activeReview,
       }
     }
     if (activeStepStatus === 'rejected') {
       return {
-        label: '跳过审核并进入下一阶段',
+        label: t('taskDetail.forceApproveAndAdvance'),
         disabled: reviewActionPending || !activeReview,
       }
     }
     if (activeStepStatus === 'reviewing') {
-      return { label: '审核中…', disabled: true }
+      return { label: t('taskDetail.reviewing'), disabled: true }
     }
     if (activeStepStatus === 'retrying') {
-      return { label: '自动重跑中…', disabled: true }
+      return { label: t('taskDetail.autoRerunning'), disabled: true }
     }
     if (activeStepStatus === 'running') {
-      return { label: '当前阶段执行中…', disabled: true }
+      return { label: t('taskDetail.stageRunning'), disabled: true }
     }
-    return { label: '等待当前阶段完成', disabled: true }
+    return { label: t('taskDetail.waitForStage'), disabled: true }
   })()
 
   const findArtifact = (name: string, preferredStepKey?: string) => {
@@ -1428,7 +1433,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const openArtifact = (name: string, preferredStepKey?: string) => {
     if (artifactsLoading) {
-      setArtifactNotice('产物正在加载，请稍后再试')
+      setArtifactNotice(t('taskDetail.artifactLoading'))
     } else {
       const artifact = findArtifact(name, preferredStepKey)
       if (artifact) {
@@ -1436,7 +1441,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setArtifactNotice('')
         return
       }
-      setArtifactNotice(`未找到“${name}”对应的产物文件`)
+      setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
     }
     setTimeout(() => setArtifactNotice(''), 3000)
   }
@@ -1445,10 +1450,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (!previewArtifact) return
     try {
       const result = await fsApi.openDirectory(previewArtifact.path)
-      setArtifactNotice(`已打开目录：${result.path}`)
+      setArtifactNotice(t('taskDetail.directoryOpened', { path: result.path }))
     } catch (error) {
       setArtifactNotice(
-        `打开目录失败：${error instanceof Error ? error.message : '未知错误'}`
+        t('taskDetail.directoryOpenFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
       )
     }
     setTimeout(() => setArtifactNotice(''), 3000)
@@ -1458,7 +1463,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`任务详情 ${task.title}`}
+      aria-label={t('taskDetail.dialogAria', { title: task.title })}
       style={{
       position: 'fixed',
       left: panelBounds.x,
@@ -1476,7 +1481,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           key={edge}
           role="separator"
           tabIndex={0}
-          aria-label={RESIZE_LABELS[edge]}
+          aria-label={t(RESIZE_LABEL_KEYS[edge])}
           className={`task-detail-resize-handle task-detail-resize-${edge}`}
           onPointerDown={(event) => beginPanelResize(edge, event)}
           onKeyDown={(event) => resizeWithKeyboard(edge, event)}
@@ -1487,12 +1492,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       <div
         role="group"
         tabIndex={0}
-        aria-label="拖动任务详情窗口"
+        aria-label={t('taskDetail.dragWindowAria')}
         className="task-detail-drag-header"
         onPointerDown={beginPanelMove}
         onKeyDown={moveWithKeyboard}
         onDoubleClick={() => setPanelBounds(initialPanelBounds())}
-        title="拖动移动任务详情，双击恢复默认大小"
+        title={t('taskDetail.dragWindowTitle')}
         style={{
           padding: '10px',
           borderBottom: '1px solid var(--border-soft)',
@@ -1511,8 +1516,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
             <Button
               variant="ghost"
-              title="点击复制任务 ID"
-              aria-label="复制任务 ID"
+              title={t('taskDetail.copyTaskIdTitle')}
+              aria-label={t('taskDetail.copyTaskIdAria')}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={async () => {
                 await copyMessageText(task.id)
@@ -1525,7 +1530,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 minHeight: 22, padding: '0 5px', marginLeft: 'auto', order: 99,
               }}
             >
-              {taskIdCopied ? '已复制' : `ID: ${task.id}`}
+              {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
             </Button>
             <span style={{
               display: 'inline-flex', alignItems: 'center', minHeight: 22,
@@ -1533,7 +1538,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               background: `color-mix(in oklab, ${activeStageColor}, transparent 85%)`,
               color: activeStageColor,
             }}>
-              当前:{activeStage.label} 
+              {t('taskDetail.currentStage', { stage: activeStage.label })}
             </span>
             <span style={{
               display: 'inline-flex', alignItems: 'center', minHeight: 22,
@@ -1541,7 +1546,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               background: `color-mix(in oklab, var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status}), transparent 85%)`,
               color: `var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status})`,
             }}>
-              {STATUS_LABELS[taskCompleted ? 'done' : task.status] || task.status}
+              {t(STATUS_LABEL_KEYS[taskCompleted ? 'done' : task.status] ?? (task.status as TKey))}
             </span>
 
             <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 22, fontSize: 13, lineHeight: 1, color: 'var(--meta)' }}>{time}</span>
@@ -1564,10 +1569,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         >
           <span className="task-status-spinner" aria-hidden="true" />
           <span>
-            上次进程中断后已自动恢复续跑
-            {task.recovered_count && task.recovered_count > 1
-              ? `（累计 ${task.recovered_count} 次）`
-              : ''}，正在从上次未完成阶段继续执行
+            {t('taskDetail.recoveredRunning', {
+              count: task.recovered_count && task.recovered_count > 1
+                ? t('taskDetail.recoveredCount', { count: task.recovered_count })
+                : '',
+            })}
           </span>
         </div>
       )}
@@ -1595,17 +1601,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
                 textTransform: 'uppercase', letterSpacing: '0.08em',
               }}>
-                任务说明
+                {t('taskDetail.description')}
               </div>
               {!editingDescription && (
                 <Button
                   variant="ghost"
-                  aria-label="编辑任务说明"
+                  aria-label={t('taskDetail.editDescriptionAria')}
                   onClick={openDescriptionEditor}
                   style={{ height: 28, padding: '0 9px', fontSize: 11, gap: 4 }}
                 >
                   <span aria-hidden="true">✎</span>
-                  编辑
+                  {t('common.edit')}
                 </Button>
               )}
             </div>
@@ -1616,7 +1622,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   onChange={setDescriptionDraft}
                   projectId={projectId}
                   imagePrefix={taskId.slice(0, 8)}
-                  placeholder="输入任务说明…（支持 Markdown，可直接粘贴图片）"
+                  placeholder={t('taskDetail.descriptionPlaceholder')}
                   minHeight={140}
                   maxHeight="33vh"
                   disabled={descriptionSaving}
@@ -1638,7 +1644,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     disabled={descriptionSaving}
                     onClick={() => setEditingDescription(false)}
                   >
-                    取消
+                    {t('common.cancel')}
                   </Button>
                   <Button
                     variant="primary"
@@ -1646,7 +1652,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     loading={descriptionSaving}
                     onClick={() => void saveDescription()}
                   >
-                    保存
+                    {t('common.save')}
                   </Button>
                 </div>
               </div>
@@ -1657,7 +1663,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 fontSize: 13, lineHeight: 1.6,
                 overflowWrap: 'anywhere', maxHeight: '33vh', overflowY: 'auto',
               }}>
-                {task.description ? <MarkdownMessage content={task.description} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>暂无任务说明</span>}
+                {task.description ? <MarkdownMessage content={task.description} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>{t('taskDetail.noDescription')}</span>}
               </div>
             )}
           </div>
@@ -1665,10 +1671,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           {/* Progress timeline */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>进度</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('taskDetail.progress')}</div>
               {(task?.run_round ?? 1) > 1 && (
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, color: 'var(--accent)', background: 'color-mix(in oklab, var(--accent), transparent 90%)' }}>
-                  第 {task?.run_round} 轮执行
+                  {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
                 </span>
               )}
             </div>
@@ -1697,7 +1703,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   ? stageColor
                   : 'var(--meta)'
                 const finishedDuration = progress?.ended_at
-                  ? formatDurationBetween(progress?.started_at, progress.ended_at)
+                  ? formatDurationBetween(progress?.started_at, progress.ended_at, t)
                   : null
                 const startedAtMs = toMilliseconds(progress?.started_at)
                   ?? toMilliseconds(task.created_at)
@@ -1710,6 +1716,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   ? formatDurationBetween(
                       progress.started_at,
                       isDurationLive ? durationNowMs : updatedAtMs,
+                      t,
                     )
                   : null
                 const activeStateColor = task.status === 'paused'
@@ -1737,7 +1744,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     key={stage.key}
                     role="button"
                     tabIndex={0}
-                    aria-label={`查看${stage.label}阶段的最后一条聊天记录`}
+                    aria-label={t('taskDetail.viewStageMessagesAria', { stage: stage.label })}
                     onClick={() => handleStageClick(i)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
@@ -1789,7 +1796,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
                         fontWeight: 600,
                       }}>
-                        {STAGE_STATE_LABELS[visualState]}
+                        {t(STAGE_STATE_LABEL_KEYS[visualState])}
                       </span>
                     )}
                     {currentRound > 1 && (
@@ -1800,7 +1807,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
                         fontWeight: 600,
                       }}>
-                        第 {stageRound} 轮
+                        {t('taskDetail.runRoundShort', { round: stageRound })}
                       </span>
                     )}
                     {finishedDuration && (
@@ -1808,16 +1815,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         fontSize: 11, color: 'var(--meta)', marginTop: 5,
                         textAlign: 'center', lineHeight: 1.5, whiteSpace: 'nowrap',
                       }}>
-                        耗时 {finishedDuration}
+                        {t('taskDetail.duration', { duration: finishedDuration })}
                       </div>
                     )}
                     {/* Time info for active stage */}
                     {isCurrentActive && (
                       <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 5, textAlign: 'center', lineHeight: 1.5 }}>
-                        <div>开始: {new Date(startedAtMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div>{t('taskDetail.startedAt', { time: new Date(startedAtMs).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })}</div>
                         {activeDuration && (
                           <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>
-                            耗时 {activeDuration}
+                            {t('taskDetail.duration', { duration: activeDuration })}
                           </span>
                         )}
                       </div>
@@ -1832,32 +1839,32 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           <div>
              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 ,color: `${currentStageColor}`}}> {currentStage.label} </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>阶段提示词</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('taskDetail.stagePrompt')}</div>
               <Button
                 variant="ghost"
                 onClick={openPromptEditor}
                 style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
               >
                 <span aria-hidden="true">✎</span>
-                快速编辑
+                {t('taskDetail.quickEdit')}
               </Button>
             </div>
             <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px', borderLeft: `3px solid ${currentStageColor}` }}>
               {currentStage.prompt
                 ? <MarkdownMessage content={currentStage.prompt} projectId={projectId} />
-                : <div style={{ fontSize: 13, color: 'var(--meta)' }}>尚未配置阶段提示词</div>}
+                : <div style={{ fontSize: 13, color: 'var(--meta)' }}>{t('taskDetail.noStagePrompt')}</div>}
             </div>
           </div>
 
           {/* I/O section — matching card-detail.html layout */}
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-              阶段输入输出
+              {t('taskDetail.stageIo')}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: 'var(--meta)' }}>→</span> 输入
+                  <span style={{ color: 'var(--meta)' }}>→</span> {t('taskDetail.ioInput')}
                 </div>
                 {(() => {
                   const isStageDone = stageProgress[selectedStage]?.visualState === 'completed'
@@ -1875,7 +1882,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         <div
                           role="button"
                           tabIndex={0}
-                          aria-label={`打开输入文件 ${inp.name}`}
+                          aria-label={t('taskDetail.openInputAria', { name: inp.name })}
                           onClick={() => openArtifact(inp.name)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -1883,12 +1890,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               openArtifact(inp.name)
                             }
                           }}
-                          title={`打开“${inp.name}”对应的文件`}
+                          title={t('taskDetail.openFileTitle', { name: inp.name })}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', cursor: 'pointer' }}
                         >
                           <div style={{ width: 6, height: 6, borderRadius: '50%', background: currentStageColor, flexShrink: 0 }} />
                           <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
-                          <span style={{ fontSize: 11, color: currentStageColor }}>查看</span>
+                          <span style={{ fontSize: 11, color: currentStageColor }}>{t('taskDetail.view')}</span>
                           <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
                         </div>
                         {/* Sub-outputs (only on first input) */}
@@ -1900,7 +1907,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               key={outIdx}
                               role="button"
                               tabIndex={0}
-                              aria-label={`打开输出文件 ${out.name}`}
+                              aria-label={t('taskDetail.openOutputAria', { name: out.name })}
                               onClick={() => openArtifact(out.name, currentStage.key)}
                               onKeyDown={(event) => {
                                 if (event.key === 'Enter' || event.key === ' ') {
@@ -1908,13 +1915,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                   openArtifact(out.name, currentStage.key)
                                 }
                               }}
-                              title={`打开“${out.name}”对应的文件`}
+                              title={t('taskDetail.openFileTitle', { name: out.name })}
                               style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px', cursor: 'pointer', borderRadius: 4 }}
                             >
                               <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
                               <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusDone ? 'var(--success)' : currentStageColor, flexShrink: 0 }} />
                               <span style={{ fontSize: 13, flex: 1 }}>{out.name}</span>
-                              <span style={{ fontSize: 11, color: currentStageColor }}>打开</span>
+                              <span style={{ fontSize: 11, color: currentStageColor }}>{t('common.open')}</span>
                               <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
                               <span style={{
                                 fontSize: 11, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
@@ -1922,7 +1929,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                 color: statusDone ? 'var(--success)' : 'var(--meta)',
                                 border: statusDone ? 'none' : '1px solid var(--border-soft)',
                               }}>
-                                {statusDone ? '完成' : '待生成'}
+                                {statusDone ? t('taskDetail.outputDone') : t('taskDetail.outputPending')}
                               </span>
                               {nextInput && (
                                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1943,7 +1950,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           {selectedReview && (
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-                审核结果
+                {t('taskDetail.reviewResult')}
               </div>
               <div style={{
                 border: '1px solid var(--border-soft)', borderRadius: 8,
@@ -1952,7 +1959,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <strong style={{ fontSize: 13 }}>
-                    {selectedReview.mode === 'auto' ? '自动审核' : '人工审核'}
+                    {selectedReview.mode === 'auto' ? t('taskDetail.autoReview') : t('taskDetail.manualReview')}
                   </strong>
                   <span className="status-badge" data-s={
                     selectedReview.status === 'passed'
@@ -1962,19 +1969,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         : 'paused'
                   }>
                     {selectedReview.status === 'passed'
-                      ? '已通过'
+                      ? t('taskDetail.reviewPassed')
                       : selectedReview.status === 'rejected'
-                        ? '未通过'
+                        ? t('taskDetail.reviewRejected')
                         : selectedReview.status === 'running'
-                          ? '审核中'
-                          : '等待确认'}
+                          ? t('taskDetail.reviewRunning')
+                          : t('taskDetail.reviewWaiting')}
                   </span>
                 </div>
                 {selectedReview.report && (
                   <>
                     <div style={{ fontSize: 13, lineHeight: 1.6 }}>
                       {selectedReview.report.score !== null && (
-                        <strong>{selectedReview.report.score} 分 · </strong>
+                        <strong>{t('taskDetail.scorePoints', { score: selectedReview.report.score })}</strong>
                       )}
                       {selectedReview.report.summary}
                     </div>
@@ -1998,7 +2005,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       rows={2}
                       value={reviewComment}
                       onChange={(event) => setReviewComment(event.target.value)}
-                      placeholder="审核意见（可选）"
+                      placeholder={t('taskDetail.reviewCommentPlaceholder')}
                     />
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                       {selectedReview.status === 'pending' ? (
@@ -2008,7 +2015,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             disabled={reviewActionPending}
                             onClick={() => void decideReview('reject')}
                           >
-                            驳回
+                            {t('taskDetail.reject')}
                           </Button>
                           <Button
                             variant="primary"
@@ -2016,7 +2023,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             loading={reviewActionPending}
                             onClick={() => void decideReview('approve')}
                           >
-                            通过并进入下一阶段
+                            {t('taskDetail.approve')}
                           </Button>
                         </>
                       ) : (
@@ -2026,7 +2033,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           loading={reviewActionPending}
                           onClick={() => void decideReview('force-approve')}
                         >
-                          强制通过
+                          {t('taskDetail.forceApprove')}
                         </Button>
                       )}
                     </div>
@@ -2052,7 +2059,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 transform: showReviewDrawer ? 'rotate(90deg)' : 'none',
                 transition: 'transform 150ms', display: 'inline-block', fontSize: 11,
               }}>&#9654;</span>
-              阶段审核配置
+              {t('taskDetail.stageReviewConfig')}
             </button>
             {showReviewDrawer && (
               <div style={{
@@ -2063,9 +2070,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
                     <input type="checkbox" checked={editReviewAuto} onChange={(e) => setEditReviewAuto(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 14, height: 14, margin: 0 }} />
-                    自动审核
+                    {t('taskDetail.autoReview')}
                   </label>
-                  <span style={{ fontSize: 13, color: 'var(--meta)' }}>重试</span>
+                  <span style={{ fontSize: 13, color: 'var(--meta)' }}>{t('common.retry')}</span>
                   <Input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
                     style={{ width: 40, height: 22, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
                 </div>
@@ -2073,10 +2080,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   value={editReviewPrompt}
                   onChange={setEditReviewPrompt}
                   projectId={projectId}
-                  placeholder="审核提示词（留空使用阶段默认）"
+                  placeholder={t('taskDetail.reviewPromptPlaceholder')}
                   minHeight={64}
                   maxHeight={160}
-                  ariaLabel="审核提示词"
+                  ariaLabel={t('taskDetail.reviewPromptAria')}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button variant="ghost"
@@ -2085,7 +2092,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       await updateTaskDescription(task.id, undefined, projectId!, updated)
                     }}
                     style={{ fontSize: 11, padding: '3px 10px' }}
-                  >保存</Button>
+                  >{t('common.save')}</Button>
                 </div>
               </div>
             )}
@@ -2096,7 +2103,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div
           role="separator"
           tabIndex={0}
-          aria-label="调整任务详情左右分栏"
+          aria-label={t('taskDetail.adjustSplitAria')}
           aria-orientation="vertical"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -2105,7 +2112,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           onPointerDown={beginSplitResize}
           onKeyDown={resizeSplitWithKeyboard}
           onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT_RATIO)}
-          title="拖动调整左右分栏，双击恢复 1:2"
+          title={t('taskDetail.adjustSplitTitle')}
         >
           <span aria-hidden="true" />
         </div>
@@ -2114,7 +2121,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
           {/* Chat header */}
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>对话记录</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{t('taskDetail.conversation')}</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: currentStageColor, background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`, padding: '2px 8px', borderRadius: 4 }}>
               {currentStage.label}
             </span>
@@ -2136,12 +2143,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             style={{ height: '100%', minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}
           >
             {historyLoading && (
-              <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>加载中...</div>
+              <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>{t('common.loading')}</div>
             )}
 
             {!historyLoading && historyMessages.length === 0 && events.length === 0 && !content && liveCoordinatorMessages.length === 0 && !running && (
               <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 40, fontSize: 13 }}>
-                输入补充说明或追问开始对话
+                {t('taskDetail.conversationEmpty')}
               </div>
             )}
 
@@ -2157,8 +2164,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   message,
                   liveMessages[String(message.id)],
                 )),
-                // 未持久化的实时执行消息（阶段段 A / 响应段 B）与历史消息统一排序，
-                // 保证「插入消息」位于其前后的阶段输出之间。
+                // Unpersisted live execution messages (segment A / response B)
+                // are sorted with history so inserts land between stage outputs.
                 ...liveExecutionMessages.map((message: any) => ({
                   ...message,
                   run_status: message.status,
@@ -2173,7 +2180,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 const msgs = [message]
                 const stageInfo = stages.find((s: any) => s.key === stageKey)
                 const stageLabel = message.channel === 'coordinator'
-                  ? '协调 Agent'
+                  ? t('aiFlow.agent')
                   : stageInfo?.label || stageKey
                 return (
                   <div key={message.id} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -2187,17 +2194,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         && msg.run_id === msg.id
                       const processEvents = Array.isArray(msg.events) ? msg.events : []
                       const sender = isUser
-                        ? '我'
+                        ? t('aiFlow.me')
                         : isSystem
-                          ? '系统'
+                          ? t('taskDetail.system')
                           : isCoordinator
-                            ? '协调 Agent'
+                            ? t('aiFlow.agent')
                             : stageLabel
                       const initials = isUser || isSystem
                           ? sender.slice(0, 2)
                           : isCoordinator
-                            ? '协'
-                          : stageAvatarText(stageLabel)
+                            ? t('aiFlow.agentInitials')
+                          : stageAvatarText(stageLabel, t)
                       const senderColor = isUser
                         ? 'var(--accent)'
                         : isSystem
@@ -2217,7 +2224,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           color={senderColor}
                           content={msg.content || ''}
                           streaming={msg.run_status === 'running'}
-                          badge={isReview ? <span title="Review" aria-label="Review 消息">R</span> : undefined}
+                          badge={isReview ? <span title="Review" aria-label={t('taskDetail.reviewBadgeAria')}>R</span> : undefined}
                           onEdit={isUser ? handleEditUserMessage : undefined}
                           rootProps={{
                             ref: i === msgs.length - 1
@@ -2231,10 +2238,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             <>
                               <span
                                 title={isCoordinator
-                                  ? '发给协调 Agent，不进入阶段执行上下文'
+                                  ? t('taskDetail.sendToCoordinatorTitle')
                                   : isLiveInsert
-                                    ? '执行中插入的消息，引擎对此二次处理'
-                                    : '阶段初始输入，进入阶段执行上下文'}
+                                    ? t('taskDetail.liveInsertTitle')
+                                    : t('taskDetail.stageInitialInputTitle')}
                                 style={{
                                   padding: '1px 6px', borderRadius: 999, fontSize: 11,
                                   border: isLiveInsert ? 'none' : '1px solid var(--border-soft)',
@@ -2248,10 +2255,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                                     : isLiveInsert ? 'var(--accent-fg)' : 'var(--accent)',
                                 }}
                               >
-                                {isCoordinator ? '@协调' : `@${stageLabel}`}
+                                {isCoordinator ? t('taskDetail.coordinatorTag') : `@${stageLabel}`}
                               </span>
                               {isCoordinator
-                                ? formatConversationDateTime(msg.started_at || msg.created_at)
+                                ? formatConversationDateTime(msg.started_at || msg.created_at, Date.now(), locale)
                                 : formatExecutionClock(msg.started_at || msg.created_at)}
                             </>
                           ) : (
@@ -2276,7 +2283,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           loading={!isUser && msg.run_status === 'running'
                             ? (
                               <div className="engine-loading-message" role="status" aria-live="polite">
-                                <span>{liveExecutionStatus(processEvents)}</span>
+                                <span>{liveExecutionStatus(processEvents, t)}</span>
                                 <span className="engine-loading-dots" aria-hidden="true">
                                   <i />
                                   <i />
@@ -2331,8 +2338,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <ChatMessageBubble
                 key={message.id}
                 role="assistant"
-                sender="协调 Agent"
-                initials="协"
+                sender={t('aiFlow.agent')}
+                initials={t('aiFlow.agentInitials')}
                 color="var(--ai-assistant)"
                 content={message.content || ''}
                 streaming={message.status === 'running'}
@@ -2350,7 +2357,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 }
                 showLoading={!message.content && message.status === 'running'}
                 loading={
-                  <div className="engine-loading-message" role="status">协调 Agent 思考中…</div>
+                  <div className="engine-loading-message" role="status">{t('aiFlow.thinking')}</div>
                 }
                 footer={message.content ? (
                   <MessageResponseFooter
@@ -2394,7 +2401,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <ChatMessageBubble
                 role="assistant"
                 sender={activeStage.label}
-                initials={stageAvatarText(activeStage.label)}
+                initials={stageAvatarText(activeStage.label, t)}
                 color={activeStageColor}
                 content={content}
                 streaming={running}
@@ -2403,7 +2410,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 showLoading={running && !content && !hasProcessEvents(events)}
                 loading={
                   <div className="engine-loading-message" role="status" aria-live="polite">
-                    <span>处理中</span>
+                    <span>{t('chat.processing')}</span>
                     <span className="engine-loading-dots" aria-hidden="true">
                       <i />
                       <i />
@@ -2436,7 +2443,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 const container = chatScrollRef.current
                 if (container) container.scrollTop = container.scrollHeight
               }}
-              aria-label="查看新消息"
+              aria-label={t('taskDetail.viewNewMessagesAria')}
               style={{
                 position: 'absolute', right: 12, bottom: 12, zIndex: 2,
                 display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -2447,7 +2454,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 fontSize: 11, fontWeight: 600, cursor: 'pointer',
               }}
             >
-              有新消息 <span aria-hidden="true">↓</span>
+              {t('taskDetail.newMessages')} <span aria-hidden="true">↓</span>
             </button>
           )}
           </div>
@@ -2455,7 +2462,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           {/* Chat input */}
           <div style={{ position: 'relative', padding: '14px 20px', borderTop: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
             {chatTargetStage && activeStageRunning && targetStage && stageInserts.length > 0 && (
-              <div role="region" aria-label="插入消息" style={{
+              <div role="region" aria-label={t('taskDetail.insertMessages')} style={{
                 position: 'absolute', bottom: '100%', left: 20, right: 20,
                 marginBottom: 6, zIndex: 30,
                 borderRadius: 8, border: '1px solid var(--border-soft)',
@@ -2465,12 +2472,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 display: 'flex', flexDirection: 'column', gap: 4,
               }}>
                 <div
-                  title={`确认后实时注入「${targetStage.label}」阶段执行，由阶段 Agent 二次处理`}
+                  title={t('taskDetail.insertMessagesTitle', { stage: targetStage.label })}
                   style={{ fontSize: 11, fontWeight: 600, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
-                  插入消息
+                  {t('taskDetail.insertMessages')}
                   <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>
-                    {stageInserts.length} 条
+                    {t('taskDetail.itemCount', { count: stageInserts.length })}
                   </span>
                   <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>
                     @{targetStage.label}
@@ -2525,19 +2532,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           <button
                             type="button"
                             onClick={() => handleStageInsertEditSave(insert.id)}
-                            title="保存修改"
+                            title={t('taskDetail.saveEditTitle')}
                             style={{
                               padding: '2px 8px', borderRadius: 6, fontSize: 11,
                               border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)',
                               cursor: 'pointer',
                             }}
                           >
-                            保存
+                            {t('common.save')}
                           </button>
                           <button
                             type="button"
                             onClick={handleStageInsertEditCancel}
-                            title="取消编辑"
+                            title={t('taskDetail.cancelEditTitle')}
                             style={{
                               padding: '2px 8px', borderRadius: 6, fontSize: 11,
                               border: '1px solid var(--border)',
@@ -2545,7 +2552,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                               cursor: 'pointer',
                             }}
                           >
-                            取消
+                            {t('common.cancel')}
                           </button>
                         </>
                       ) : (
@@ -2553,19 +2560,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           <button
                             type="button"
                             onClick={() => handleStageInsertSend(insert)}
-                            title="立即注入当前阶段执行（不保存为引导）"
+                            title={t('taskDetail.sendInsertTitle')}
                             style={{
                               padding: '2px 6px', fontSize: 11,
                               border: 'none', background: 'transparent',
                               color: 'var(--accent)', cursor: 'pointer',
                             }}
                           >
-                            发送
+                            {t('chatInput.send')}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleStageInsertEditStart(insert)}
-                            title="编辑这条插入消息"
+                            title={t('taskDetail.editInsertTitle')}
                             style={{
                               padding: '4px', border: 'none', background: 'transparent',
                               color: 'var(--muted)', cursor: 'pointer',
@@ -2577,7 +2584,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           <button
                             type="button"
                             onClick={() => handleStageInsertRemove(insert.id)}
-                            title="删除这条插入消息"
+                            title={t('taskDetail.deleteInsertTitle')}
                             style={{
                               padding: '4px', border: 'none', background: 'transparent',
                               color: 'var(--muted)', cursor: 'pointer',
@@ -2599,19 +2606,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     <button
                       type="button"
                       onClick={handleSendAllInserts}
-                      title="按顺序合并后一次注入当前阶段执行"
+                      title={t('taskDetail.sendAllTitle')}
                       style={{
                         padding: '2px 8px', fontSize: 11, borderRadius: 6,
                         border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)',
                         cursor: 'pointer',
                       }}
                     >
-                      全部发送（{stageInserts.length}）
+                      {t('taskDetail.sendAll', { count: stageInserts.length })}
                     </button>
                     <button
                       type="button"
                       onClick={() => setStageInserts([])}
-                      title="清空所有插入消息"
+                      title={t('taskDetail.clearAllTitle')}
                       style={{
                         padding: '2px 8px', fontSize: 11, borderRadius: 6,
                         border: '1px solid var(--border)',
@@ -2619,7 +2626,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         cursor: 'pointer',
                       }}
                     >
-                      清空
+                      {t('taskDetail.clearAll')}
                     </button>
                   </div>
                 )}
@@ -2631,7 +2638,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   type="button"
                   onClick={() => setChatTarget('coordinator')}
                   aria-pressed={chatTarget === 'coordinator'}
-                  title="发送给协调 Agent，不进入阶段执行上下文"
+                  title={t('taskDetail.coordinatorTabTitle')}
                   style={{
                     padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                     border: 'none', cursor: 'pointer',
@@ -2639,7 +2646,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     color: chatTargetStage ? 'var(--meta)' : 'var(--accent-fg)',
                   }}
                 >
-                  协调 Agent
+                  {t('aiFlow.agent')}
                 </button>
                 {runningStages.map((stage) => (
                   <button
@@ -2647,7 +2654,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     type="button"
                     onClick={() => setChatTarget(stage.key)}
                     aria-pressed={chatTarget === stage.key}
-                    title={`发送给正在执行的「${stage.label}」阶段 Agent，实时注入执行`}
+                    title={t('taskDetail.stageTabTitle', { stage: stage.label })}
                     style={{
                       padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                       border: 'none', cursor: 'pointer',
@@ -2663,12 +2670,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               </div>
               {chatTargetStage && activeStageRunning && targetStage && (
                 <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-                  回车加入「插入消息」，确认后注入「{targetStage.label}」阶段执行
+                  {t('taskDetail.enterHint', { stage: targetStage.label })}
                 </span>
               )}
               {chatTargetStage && !activeStageRunning && (
                 <span style={{ fontSize: 11, color: 'var(--warn)' }}>
-                  当前阶段未在运行，仅可发送给协调 Agent
+                  {t('taskDetail.stageNotRunningHint')}
                 </span>
               )}
             </div>
@@ -2691,7 +2698,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 prefix: taskId?.slice(0, 8) ?? '',
                 onError: (message) => setChatError(message),
               } : undefined}
-              stopTitle={chatTargetStage ? '停止当前阶段执行' : '停止生成'}
+              stopTitle={chatTargetStage ? t('taskDetail.stopStageTitle') : t('chatInput.stopGenerating')}
               config={{
                 engines: coordinatorConfig?.available_engines || [],
                 engine: coordinatorConfig?.configured.engine || '',
@@ -2704,8 +2711,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 saving: coordinatorConfigSaving,
                 error: coordinatorConfigError,
                 notice: coordinatorConfigNotice,
-                hint: coordinatorConfig ? '从下一条消息生效' : '',
-                engineTitle: '只影响后续协调消息，不修改工作流阶段引擎',
+                hint: coordinatorConfig ? t('taskDetail.hintFromNextMessage') : '',
+                engineTitle: t('taskDetail.engineTitle'),
                 onEngineChange: (engineId) => void handleCoordinatorEngineChange(engineId),
                 onModelChange: (model) => void handleCoordinatorModelChange(model),
                 onFastModelChange: (fastModel) => void handleCoordinatorFastModelChange(fastModel),
@@ -2723,13 +2730,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 ? () => void handleStopStage(targetStage.key)
                 : handleStopCoordinator}
               placeholder={chatTargetStage && targetStage
-                ? `输入消息，回车后加入上方「插入消息」面板，确认后注入「${targetStage.label}」阶段执行...`
+                ? t('taskDetail.stagePlaceholder', { stage: targetStage.label })
                 : coordinatorRunning
-                  ? '协调 Agent 处理中...'
-                  : '输入问题、补充说明或操作请求...'}
+                  ? t('taskDetail.coordinatorProcessing')
+                  : t('taskDetail.coordinatorPlaceholder')}
               title={chatTargetStage
-                ? '发送给当前阶段 Agent，先加入「插入消息」面板，确认后注入执行'
-                : coordinatorRunning ? '停止协调 Agent 处理' : '发送给协调 Agent'}
+                ? t('taskDetail.stageInputTitle')
+                : coordinatorRunning ? t('taskDetail.stopCoordinatorTitle') : t('taskDetail.sendToCoordinator')}
             />
           </div>
         </div>
@@ -2737,7 +2744,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
       {/* ── Footer ── */}
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-        <Button variant="ghost" onClick={onClose}>关闭</Button>
+        <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
         <Button
           variant="primary"
           disabled={globalAdvanceState.disabled}
@@ -2770,7 +2777,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="完整提示词"
+          aria-label={t('aiFlow.fullPrompt')}
           style={{
             position: 'fixed', inset: 0, zIndex: 1350,
             background: 'rgba(0,0,0,0.35)',
@@ -2789,8 +2796,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="dialog-header">
-              <strong style={{ flex: 1, fontSize: 13 }}>完整提示词</strong>
-              <Button variant="icon" aria-label="关闭提示词" onClick={() => setViewingPrompt(null)}>✕</Button>
+              <strong style={{ flex: 1, fontSize: 13 }}>{t('aiFlow.fullPrompt')}</strong>
+              <Button variant="icon" aria-label={t('aiFlow.closePrompt')} onClick={() => setViewingPrompt(null)}>✕</Button>
             </div>
             <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
               <MarkdownMessage content={viewingPrompt} />
@@ -2803,7 +2810,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`快速编辑${currentStage.label}阶段提示词`}
+          aria-label={t('taskDetail.quickEditPromptAria', { stage: currentStage.label })}
           style={{
             position: 'fixed', inset: 0, zIndex: 1275,
             background: 'rgba(0,0,0,0.35)',
@@ -2823,7 +2830,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <div className="dialog-header">
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>快速编辑阶段提示词</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
                 <div style={{ marginTop: 2, fontSize: 11, color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
               </div>
               <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
@@ -2833,11 +2840,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 value={promptDraft}
                 onChange={setPromptDraft}
                 projectId={projectId}
-                placeholder="描述该阶段的目标、输入、执行要求和输出规范……"
+                placeholder={t('taskDetail.promptEditorPlaceholder')}
                 minHeight={260}
                 maxHeight="55vh"
                 autoFocus
-                ariaLabel={`${currentStage.label}阶段提示词`}
+                ariaLabel={t('taskDetail.stagePromptAria', { stage: currentStage.label })}
               />
               {promptSaveError && (
                 <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 13 }}>
@@ -2846,9 +2853,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               )}
             </div>
             <div className="dialog-footer">
-              <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>取消</Button>
+              <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>{t('common.cancel')}</Button>
               <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStagePrompt}>
-                保存提示词
+                {t('taskDetail.savePrompt')}
               </Button>
             </div>
           </div>
@@ -2858,7 +2865,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       {previewArtifact && (
         <div
           role="dialog"
-          aria-label={`产物预览 ${previewArtifact.logical_name || previewArtifact.name}`}
+          aria-label={t('taskDetail.artifactPreviewAria', { name: previewArtifact.logical_name || previewArtifact.name })}
           style={{
             position: 'fixed', inset: 0, zIndex: 1250,
             background: 'rgba(0,0,0,0.35)', padding: '5vh 6vw',
@@ -2885,7 +2892,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 </div>
               </div>
               <Button variant="ghost" onClick={openArtifactDirectory}>
-                打开所在目录
+                {t('taskDetail.openDirectory')}
               </Button>
               <Button variant="icon" onClick={() => setPreviewArtifact(null)}>✕</Button>
             </div>

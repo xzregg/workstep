@@ -10,6 +10,7 @@ import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
 import Select from './Select'
 import Textarea from './Textarea'
+import { useI18n } from '../i18n'
 
 interface Props {
   engineId: string
@@ -28,6 +29,7 @@ interface Props {
  * embedded payload.
  */
 export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
+  const { t } = useI18n()
   const fields = config?.fields ?? []
   const [values, setValues] = useState<Record<string, string>>({})
   const [secrets, setSecrets] = useState<Record<string, boolean>>({})
@@ -68,7 +70,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
         confirmed: confirmed ? { [confirmed.key]: true } : {},
       })
       if (!result.saved || !result.engine) {
-        setMessage(result.message || '保存失败')
+        setMessage(result.message || t('engineForm.saveFailed'))
         setMessageKind('error')
         return
       }
@@ -76,11 +78,11 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
       setSecrets(result.secrets)
       setRevealed({})
       setClearKeys({})
-      setMessage('配置已保存')
+      setMessage(t('engineForm.saved'))
       setMessageKind('success')
       onSaved?.(result)
     } catch (saveError) {
-      setMessage(saveError instanceof Error ? saveError.message : '保存失败')
+      setMessage(saveError instanceof Error ? saveError.message : t('engineForm.saveFailed'))
       setMessageKind('error')
     } finally {
       setSaving(false)
@@ -117,7 +119,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
       setValues((current) => ({ ...current, [field.key]: result.value || '' }))
       setRevealed((current) => ({ ...current, [field.key]: true }))
     } catch (revealError) {
-      setMessage(revealError instanceof Error ? revealError.message : '读取 Key 失败')
+      setMessage(revealError instanceof Error ? revealError.message : t('engineForm.revealFailed'))
       setMessageKind('error')
     } finally {
       setRevealing(null)
@@ -163,7 +165,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
             onChange={(event) => setFieldValue(field.key, event.target.value)}
           >
             <option value="">
-              {field.placeholder || (field.required ? '请选择…' : '')}
+              {field.placeholder || (field.required ? t('engineForm.selectPlaceholder') : '')}
             </option>
             {(field.options || []).map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -180,7 +182,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
               onChange={(event) => setFieldValue(field.key, event.target.value)}
               placeholder={
                 field.placeholder
-                || (secrets[field.key] ? '已保存，点击显示可查看' : '')
+                || (secrets[field.key] ? t('engineForm.savedHint') : '')
               }
               style={{ flex: 1, minWidth: 0 }}
             />
@@ -191,11 +193,11 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
               onClick={() => void toggleReveal(field)}
               style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
             >
-              {revealed[field.key] ? '隐藏' : '显示'}
+              {revealed[field.key] ? t('engineForm.hide') : t('engineForm.show')}
             </Button>
             {field.sensitive && secrets[field.key] && (
               <label
-                title={`清除已保存的${field.label}`}
+                title={t('engineForm.clearSavedWithLabel', { label: field.label })}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   flexShrink: 0, cursor: 'pointer', fontSize: 11,
@@ -218,7 +220,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
                     flexShrink: 0, accentColor: 'var(--accent)',
                   }}
                 />
-                清除已保存
+                {t('engineForm.clearSaved')}
               </label>
             )}
           </div>
@@ -286,7 +288,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
                 flexShrink: 0, accentColor: 'var(--accent)',
               }}
             />
-            清除已保存的{field.label}
+            {t('engineForm.clearSavedWithLabel', { label: field.label })}
           </label>
         )}
         {field.help && (
@@ -296,7 +298,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
         )}
         {field.required && !value.trim() && (
           <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)' }}>
-            该项为必填
+            {t('engineForm.requiredField')}
           </div>
         )}
       </div>
@@ -329,7 +331,7 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
                 : 'var(--muted)',
           }}
         >
-          {message || 'Key 仅保存在本机 ~/.workstep/config.json，不会返回到浏览器。'}
+          {message || t('engineForm.keyHint')}
         </div>
         <Button
           variant="primary"
@@ -338,15 +340,15 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
           onClick={() => save()}
           style={{ minWidth: 84, height: 30, justifyContent: 'center' }}
         >
-          保存配置
+          {t('engineForm.saveConfig')}
         </Button>
       </div>
 
       <ConfirmDialog
         open={confirmField !== null}
-        title={`确认「${confirmField?.label ?? ''}」`}
-        message={`当前选择的「${confirmField?.label ?? ''}」会绕过危险操作的安全确认，请明确知晓风险后再保存。`}
-        confirmText="确认保存"
+        title={t('engineForm.confirmTitle', { label: confirmField?.label ?? '' })}
+        message={t('engineForm.confirmMessage', { label: confirmField?.label ?? '' })}
+        confirmText={t('engineForm.confirmSave')}
         danger
         onConfirm={() => void doSave(confirmField)}
         onCancel={() => setConfirmField(null)}

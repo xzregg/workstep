@@ -17,9 +17,10 @@ import EngineSelect from '../components/EngineSelect'
 import TemplateSettings from './TemplateSettings'
 import {
   ENGINE_COLORS,
-  ENGINE_DESCRIPTIONS,
   engineLabel,
+  engineDescription,
 } from '../engineMeta'
+import { useI18n } from '../i18n'
 
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
@@ -49,6 +50,7 @@ function ExecutionDefaultSettings({
   engines: EngineInfo[]
   loading: boolean
 }) {
+  const { t } = useI18n()
   const [engine, setEngine] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -62,9 +64,9 @@ function ExecutionDefaultSettings({
     try {
       const config = await engineApi.executionConfig()
       setEngine(config.engine)
-      setNotice('已读取当前默认执行引擎')
+      setNotice(t('settings.readDefaultSuccess'))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '读取默认执行引擎失败')
+      setError(reason instanceof Error ? reason.message : t('settings.readDefaultFailed'))
     } finally {
       setLoadingConfig(false)
     }
@@ -77,9 +79,9 @@ function ExecutionDefaultSettings({
     try {
       const result = await engineApi.setExecutionConfig(engine)
       setEngine(result.engine)
-      setNotice('已保存；新任务和新阶段将使用该默认引擎')
+      setNotice(t('settings.saveDefaultSuccess'))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '保存失败')
+      setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -87,9 +89,9 @@ function ExecutionDefaultSettings({
 
   return (
     <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>默认执行引擎</div>
+      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>{t('settings.defaultExecutionEngine')}</div>
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
-        用于新建任务和新建阶段；已有任务与阶段配置不会被修改。
+        {t('settings.defaultEngineHint')}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <EngineSelect
@@ -97,8 +99,8 @@ function ExecutionDefaultSettings({
           value={engine}
           onChange={setEngine}
           disabled={loading || saving}
-          defaultOption={{ value: '', label: '系统默认（Claude Code）' }}
-          ariaLabel="默认执行引擎"
+          defaultOption={{ value: '', label: t('settings.systemDefault') }}
+          ariaLabel={t('settings.defaultEngineAria')}
           style={{ width: 300, height: 30 }}
         />
         <Button
@@ -108,10 +110,10 @@ function ExecutionDefaultSettings({
           loading={loadingConfig}
           onClick={() => void loadExecutionConfig()}
         >
-          读取默认
+          {t('settings.readDefault')}
         </Button>
         <Button variant="primary" style={{ height: 30 }} disabled={saving || loading} loading={saving} onClick={() => void save()}>
-          保存默认值
+          {t('settings.saveDefault')}
         </Button>
       </div>
       {(error || notice) && (
@@ -124,6 +126,7 @@ function ExecutionDefaultSettings({
 }
 
 function CoordinatorAgentSettings() {
+  const { t } = useI18n()
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [engine, setEngine] = useState('')
   const [model, setModel] = useState('')
@@ -152,7 +155,7 @@ function CoordinatorAgentSettings() {
         setError('')
       })
       .catch((reason) => setError(
-        reason instanceof Error ? reason.message : '读取协调 Agent 设置失败'
+        reason instanceof Error ? reason.message : t('settings.readCoordinatorFailed')
       ))
       .finally(() => setLoading(false))
   }, [])
@@ -180,7 +183,7 @@ function CoordinatorAgentSettings() {
     } catch (reason) {
       if (engineRef.current !== engineId) return
       setModels([])
-      setModelError(reason instanceof Error ? reason.message : '读取模型失败')
+      setModelError(reason instanceof Error ? reason.message : t('settings.readModelsFailed'))
     } finally {
       if (engineRef.current === engineId) setModelsLoading(false)
     }
@@ -214,9 +217,9 @@ function CoordinatorAgentSettings() {
       setModel(result.model)
       setFastModel(result.fast_model)
       setVisionModel(result.vision_model)
-      setNotice('已保存；未单独配置的任务将从下一条协调消息开始使用')
+      setNotice(t('settings.saveCoordinatorSuccess'))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '保存失败')
+      setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -225,15 +228,15 @@ function CoordinatorAgentSettings() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>协调 Agent</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.coordinatorTitle')}</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-          配置任务协调对话的全局默认引擎、推理模型、快速模型和图片理解模型。任务详情中的单独配置优先级更高。
+          {t('settings.coordinatorIntro')}
         </p>
       </div>
       <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            协调引擎
+            {t('settings.coordinatorEngine')}
           </label>
           <EngineSelect
             engines={engines}
@@ -241,29 +244,29 @@ function CoordinatorAgentSettings() {
             onChange={changeEngine}
             disabled={loading || saving}
             requireCoordinator
-            defaultOption={{ value: '', label: '跟随任务执行引擎' }}
-            ariaLabel="默认协调引擎"
+            defaultOption={{ value: '', label: t('settings.followTaskEngine') }}
+            ariaLabel={t('settings.defaultCoordinatorAria')}
             style={{ flex: 1, minWidth: 0, height: 30 }}
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            推理模型
+            {t('settings.reasoningModel')}
           </label>
           <Select
             value={model}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setModel(event.target.value)}
-            aria-label="默认推理模型"
+            aria-label={t('settings.defaultReasoningAria')}
             style={{
               flex: 1, minWidth: 0, height: 30,
             }}
           >
             <option value="">
-              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '使用引擎默认模型'}
+              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
             </option>
             {model && !models.some((item) => item.id === model) && (
-              <option value={model}>{model}（当前配置）</option>
+              <option value={model}>{model}{t('flow.currentConfigSuffix')}</option>
             )}
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
@@ -276,28 +279,28 @@ function CoordinatorAgentSettings() {
               disabled={modelsLoading || saving}
               onClick={() => void loadCoordinatorModels(engine, true)}
             >
-              ↻ 刷新
+              {t('settings.refresh')}
             </Button>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            快速模型
+            {t('settings.fastModel')}
           </label>
           <Select
             value={fastModel}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setFastModel(event.target.value)}
-            aria-label="默认快速模型"
+            aria-label={t('settings.defaultFastAria')}
             style={{
               flex: 1, minWidth: 0, height: 30,
             }}
           >
             <option value="">
-              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '跟随推理模型'}
+              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
             </option>
             {fastModel && !models.some((item) => item.id === fastModel) && (
-              <option value={fastModel}>{fastModel}（当前配置）</option>
+              <option value={fastModel}>{fastModel}{t('flow.currentConfigSuffix')}</option>
             )}
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
@@ -306,22 +309,22 @@ function CoordinatorAgentSettings() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            图片理解模型
+            {t('settings.visionModel')}
           </label>
           <Select
             value={visionModel}
             disabled={!engine || modelsLoading || saving}
             onChange={(event) => setVisionModel(event.target.value)}
-            aria-label="默认图片理解模型"
+            aria-label={t('settings.defaultVisionAria')}
             style={{
               flex: 1, minWidth: 0, height: 30,
             }}
           >
             <option value="">
-              {!engine ? '请先选择协调引擎' : modelsLoading ? '模型加载中…' : '跟随推理模型'}
+              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
             </option>
             {visionModel && !models.some((item) => item.id === visionModel) && (
-              <option value={visionModel}>{visionModel}（当前配置）</option>
+              <option value={visionModel}>{visionModel}{t('flow.currentConfigSuffix')}</option>
             )}
             {models.map((item) => (
               <option key={item.id} value={item.id}>{item.label || item.id}</option>
@@ -329,19 +332,19 @@ function CoordinatorAgentSettings() {
           </Select>
         </div>
         <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--meta)' }}>
-          推理模型负责理解、决策与回复；快速模型负责读取产物和修复结构化输出；图片理解模型在主模型不支持图片输入时，用于分析图片和截图内容。
+          {t('settings.modelRolesHint')}
         </div>
         {modelError && (
           <div style={{ marginTop: 7, fontSize: 11, color: 'var(--warn)' }}>
-            模型列表读取失败：{modelError}。仍可保存引擎默认模型。
+            {t('settings.modelErrorHint', { error: modelError })}
           </div>
         )}
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
-            {error || notice || '当前进行中的协调回复不会中途切换引擎。'}
+            {error || notice || t('settings.inProgressHint')}
           </div>
           <Button variant="primary" disabled={loading || saving} loading={saving} onClick={() => void save()}>
-            保存协调设置
+            {t('settings.saveCoordinator')}
           </Button>
         </div>
       </div>
@@ -354,6 +357,7 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ onClose }: SettingsPageProps) {
+  const { t, locale, setLocale } = useI18n()
   const initialized = useRef(false)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -371,7 +375,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [pathDraft, setPathDraft] = useState('')
   const [pathSaving, setPathSaving] = useState(false)
   const [pathError, setPathError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'coordinator' | 'templates'>('engines')
+  const [activeSection, setActiveSection] = useState<'engines' | 'coordinator' | 'templates' | 'language'>('engines')
 
   const loadEngineModels = async (engineId: string, force = false) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
@@ -384,7 +388,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         engine_id: engineId,
         models: [],
         default_model: '',
-        error: modelError instanceof Error ? modelError.message : '读取模型失败',
+        error: modelError instanceof Error ? modelError.message : t('settings.readModelsFailed'),
       }
     }
     setModels((current) => ({ ...current, [result.engine_id]: result.models }))
@@ -450,7 +454,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         : await engineApi.list()
       setEngines(result.engines)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '读取引擎失败')
+      setError(loadError instanceof Error ? loadError.message : t('settings.readEnginesFailed'))
     } finally {
       setLoading(false)
     }
@@ -500,7 +504,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         [engineId]: {
           engine_id: engineId,
           success: false,
-          message: testError instanceof Error ? testError.message : '测试失败',
+          message: testError instanceof Error ? testError.message : t('settings.testFailed'),
           duration_ms: 0,
         },
       }))
@@ -565,7 +569,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     try {
       const result = await engineApi.setBinaryPath(engineId, pathDraft)
       if (!result.saved || !result.engine) {
-        setPathError(result.message || '保存失败')
+        setPathError(result.message || t('settings.saveFailed'))
         return
       }
       setEngines((current) => current.map((engine) =>
@@ -574,7 +578,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       setEditingEngine(null)
       clearEngineModelCache(engineId)
     } catch (saveError) {
-      setPathError(saveError instanceof Error ? saveError.message : '保存失败')
+      setPathError(saveError instanceof Error ? saveError.message : t('settings.saveFailed'))
     } finally {
       setPathSaving(false)
     }
@@ -599,7 +603,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       className="modal-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label="设置"
+      aria-label={t('nav.settings')}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
@@ -617,9 +621,9 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         <div className="modal-header" style={{ padding: '16px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <Icon name="sliders-horizontal" size={18} strokeWidth={2} />
-            <span className="modal-title">设置</span>
+            <span className="modal-title">{t('nav.settings')}</span>
           </div>
-          <Button variant="icon" aria-label="关闭设置" onClick={onClose}>✕</Button>
+          <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={onClose}>✕</Button>
         </div>
 
       <div className="settings-layout" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -631,7 +635,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           padding: '0 10px 8px', color: 'var(--meta)',
           fontSize: 11, fontWeight: 600, letterSpacing: '0.4px',
         }}>
-          设置
+          {t('nav.settings')}
         </div>
         <button
           aria-current={activeSection === 'engines' ? 'page' : undefined}
@@ -644,7 +648,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           }}
         >
           <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
-          执行引擎
+          {t('settings.enginesNav')}
         </button>
         <button
           aria-current={activeSection === 'coordinator' ? 'page' : undefined}
@@ -657,7 +661,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           }}
         >
           <span aria-hidden="true" style={{ fontSize: 16 }}>✦</span>
-          协调 Agent
+          {t('settings.coordinatorNav')}
         </button>
         <button
           aria-current={activeSection === 'templates' ? 'page' : undefined}
@@ -670,7 +674,20 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           }}
         >
           <Icon name="layout-grid" size={16} strokeWidth={2} />
-          流程模板
+          {t('settings.templatesNav')}
+        </button>
+        <button
+          aria-current={activeSection === 'language' ? 'page' : undefined}
+          onClick={() => setActiveSection('language')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'language' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'language' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 15 }}>文</span>
+          {t('nav.language')}
         </button>
       </aside>
 
@@ -679,9 +696,9 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
-              <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>执行引擎</h1>
+              <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.enginesTitle')}</h1>
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-                配置 WorkStep 内置引擎，并扫描本机可用的 CLI 与 ACP 执行引擎。
+                {t('settings.enginesIntro')}
               </p>
             </div>
             <Button
@@ -691,7 +708,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               loading={loading}
             >
               <span aria-hidden="true">↻</span>
-              重新扫描
+              {t('settings.rescan')}
             </Button>
           </div>
 
@@ -700,11 +717,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             marginBottom: 8,
           }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>
-              执行引擎配置
+              {t('settings.enginesConfig')}
               {!loading && <span style={{ marginLeft: 6, color: 'var(--meta)', fontWeight: 400 }}>({installedCount}/{sortedEngines.length})</span>}
             </span>
             <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-              配置表单由各引擎的后端模板驱动
+              {t('settings.configFormHint')}
             </span>
           </div>
 
@@ -714,7 +731,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               background: 'color-mix(in oklab, var(--danger), transparent 90%)',
               color: 'var(--danger)', fontSize: 13,
             }}>
-              扫描失败：{error}
+              {t('settings.scanFailed', { error })}
             </div>
           )}
 
@@ -724,7 +741,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               background: 'var(--bg)', border: '1px solid var(--border)',
               borderRadius: 12,
             }}>
-              正在读取执行引擎…
+              {t('settings.readingEngines')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -759,7 +776,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   <EngineIcon engine={engine} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id)}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
                       {engine.mode && (
                         <span style={{
                           padding: '1px 6px', borderRadius: 999,
@@ -771,7 +788,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       )}
                     </div>
                     <div style={{ color: 'var(--muted)', fontSize: 11, overflowWrap: 'anywhere' }}>
-                      {ENGINE_DESCRIPTIONS[engine.id] || 'WorkStep 执行引擎'}
+                      {engineDescription(engine.id, t)}
                       {engine.version && <span> · {versionSummary(engine.version)}</span>}
                     </div>
                     {testResult && (
@@ -795,7 +812,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       loading={isTesting}
                       onClick={() => void testEngine(engine.id)}
                     >
-                      测试
+                      {t('settings.test')}
                     </Button>
                   )}
                   {engine.id !== 'api' && engine.id !== 'pydantic_ai' && (
@@ -804,7 +821,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
                       onClick={() => openPathEditor(engine)}
                     >
-                      编辑
+                      {t('common.edit')}
                     </Button>
                   )}
                   <span style={{
@@ -819,7 +836,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         ? 'color-mix(in oklab, var(--warn), transparent 88%)'
                       : 'var(--surface)',
                   }}>
-                    {engine.verified ? '已验证' : engine.installed ? '待测试' : '未安装'}
+                    {engine.verified ? t('settings.verified') : engine.installed ? t('engine.needsTest') : t('engine.notInstalled')}
                   </span>
                   </div>
                   {engine.config && (
@@ -850,12 +867,12 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             color: 'var(--muted)',
                           }}
                         >
-                          模型
+                          {t('chatInput.model')}
                         </span>
                         <Select
                           id={`default-model-${engine.id}`}
-                          aria-label={`${engineLabel(engine.id)} 默认模型`}
-                          title="选择阶段未单独指定模型时使用的默认模型"
+                          aria-label={t('settings.defaultModelAria', { name: engineLabel(engine.id, t) })}
+                          title={t('settings.defaultModelTitle')}
                           value={usesCustomModel ? '__custom__' : savedDefaultModel}
                           disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
                           onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
@@ -864,16 +881,16 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           }}
                         >
                           <option value="">
-                            {modelsLoading[engine.id] ? '正在读取模型…' : '跟随引擎默认'}
+                            {modelsLoading[engine.id] ? t('settings.readingModels') : t('settings.followEngineDefault')}
                           </option>
                           {engineModels.map((model) => (
                             <option key={model.id} value={model.id}>{model.label}</option>
                           ))}
-                          <option value="__custom__">自定义…</option>
+                          <option value="__custom__">{t('settings.customModelOption')}</option>
                         </Select>
                         {savingModel === engine.id && (
                           <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
-                            保存中…
+                            {t('settings.saving')}
                           </span>
                         )}
                         {models[engine.id] && !modelsLoading[engine.id] && (
@@ -882,7 +899,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                             style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
                             onClick={() => void loadEngineModels(engine.id, true)}
                           >
-                            ↻ 刷新
+                            {t('settings.refresh')}
                           </Button>
                         )}
                       </div>
@@ -890,7 +907,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         <div style={{
                           marginTop: 4, color: 'var(--meta)', fontSize: 11,
                         }}>
-                          {modelErrors[engine.id]}，可填写自定义模型 ID。
+                          {t('settings.modelErrorHint2', { error: modelErrors[engine.id] })}
                         </div>
                       )}
                       {usesCustomModel && (
@@ -903,12 +920,12 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                               color: 'var(--muted)',
                             }}
                           >
-                            自定义模型
+                            {t('settings.customModel')}
                           </span>
                           <Input
                             id={`custom-model-${engine.id}`}
                             value={customModelDrafts[engine.id] ?? savedDefaultModel}
-                            placeholder="例如 model-id"
+                            placeholder={t('settings.customModelPlaceholder')}
                             disabled={savingModel === engine.id}
                             onChange={(event) => setCustomModelDrafts((current) => ({
                               ...current,
@@ -934,13 +951,13 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       background: 'var(--surface)', borderRadius: '0 0 12px 12px',
                     }}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
-                        可执行文件路径
+                        {t('settings.binaryPath')}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <Input
                           value={pathDraft}
                           onChange={(event) => setPathDraft(event.target.value)}
-                          placeholder="输入 CLI 可执行文件的绝对路径"
+                          placeholder={t('settings.binaryPathPlaceholder')}
                           autoFocus
                           style={{
                             flex: 1, minWidth: 0, height: 30,
@@ -952,7 +969,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           disabled={pathSaving}
                           onClick={() => setEditingEngine(null)}
                         >
-                          取消
+                          {t('common.cancel')}
                         </Button>
                         <Button
                           variant="primary"
@@ -960,14 +977,14 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           loading={pathSaving}
                           onClick={() => void saveBinaryPath(engine.id)}
                         >
-                          保存并扫描
+                          {t('settings.saveAndScan')}
                         </Button>
                       </div>
                       <div style={{
                         marginTop: 6, fontSize: 11,
                         color: pathError ? 'var(--danger)' : 'var(--meta)',
                       }}>
-                        {pathError || '清空路径并保存，可恢复为系统 PATH 自动发现。'}
+                        {pathError || t('settings.pathHint')}
                       </div>
                     </div>
                   )}
@@ -979,6 +996,41 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         </div>
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
+        ) : activeSection === 'language' ? (
+          <div style={{ maxWidth: 640, margin: '0 auto' }}>
+            <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('nav.language')}</h1>
+            <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>
+              {t('settings.languageIntro')}
+            </p>
+            <div
+              role="group"
+              aria-label={t('nav.language')}
+              style={{
+                display: 'flex', maxWidth: 320,
+                border: '1px solid var(--border-soft)', borderRadius: 10,
+                overflow: 'hidden', background: 'var(--bg)',
+              }}
+            >
+              {(['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const).map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  onClick={() => setLocale(lang)}
+                  style={{
+                    flex: 1, height: 38, border: 'none', cursor: 'pointer',
+                    background: locale === lang ? 'var(--accent)' : 'transparent',
+                    color: locale === lang ? 'var(--accent-fg)' : 'var(--fg-2)',
+                    fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)',
+                  }}
+                >
+                  {lang === 'zh-CN' ? '简体中文'
+                    : lang === 'zh-TW' ? '繁體中文'
+                      : lang === 'ja-JP' ? '日本語'
+                        : 'English'}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           <CoordinatorAgentSettings />
         )}

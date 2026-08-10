@@ -6,6 +6,7 @@ import {
   toMilliseconds,
   type DateTimeValue,
 } from '../utils/datetime'
+import { useI18n, type TFunction } from '../i18n'
 
 type ProcessEvent = {
   type: string
@@ -83,31 +84,31 @@ function toolIcon(kind: ReturnType<typeof toolKind>): string {
   return '◇'
 }
 
-function toolSummary(activity: ToolActivity): string {
+function toolSummary(activity: ToolActivity, t: TFunction): string {
   const kind = toolKind(activity.name)
   const target = toolTarget(activity)
   const targetName = target ? ` ${basename(target)}` : ''
-  if (kind === 'subagent') return '已调用子代理'
-  if (kind === 'edit') return `已编辑${targetName || '文件'}`
-  if (kind === 'read') return `已读取${targetName || '文件'}`
-  if (kind === 'command') return '已运行命令'
-  if (kind === 'search') return `已搜索${targetName}`
-  return `已调用 ${activity.name || '工具'}`
+  if (kind === 'subagent') return t('trace.calledSubagent')
+  if (kind === 'edit') return t('trace.edited', { target: targetName || t('trace.file') })
+  if (kind === 'read') return t('trace.read', { target: targetName || t('trace.file') })
+  if (kind === 'command') return t('trace.ranCommand')
+  if (kind === 'search') return t('trace.searched', { target: targetName })
+  return t('trace.calledTool', { name: activity.name || t('chat.tool') })
 }
 
-function groupSummary(activities: ToolActivity[]): string {
+function groupSummary(activities: ToolActivity[], t: TFunction): string {
   const kinds = new Set(activities.map((activity) => toolKind(activity.name)))
   const labels: string[] = []
-  if (kinds.has('subagent')) labels.push('调用了子代理')
-  if (kinds.has('edit')) labels.push('编辑了文件')
-  if (kinds.has('read')) labels.push('读取了文件')
-  if (kinds.has('command')) labels.push('运行了命令')
-  if (kinds.has('search')) labels.push('进行了搜索')
-  if (kinds.has('other')) labels.push('调用了工具')
-  return labels.join('、') || `工具调用 ${activities.length} 项`
+  if (kinds.has('subagent')) labels.push(t('trace.groupSubagent'))
+  if (kinds.has('edit')) labels.push(t('trace.groupEdit'))
+  if (kinds.has('read')) labels.push(t('trace.groupRead'))
+  if (kinds.has('command')) labels.push(t('trace.groupCommand'))
+  if (kinds.has('search')) labels.push(t('trace.groupSearch'))
+  if (kinds.has('other')) labels.push(t('trace.groupTool'))
+  return labels.join(t('trace.groupSeparator')) || t('trace.toolCalls', { count: activities.length })
 }
 
-function collectTools(events: ProcessEvent[]): ToolActivity[] {
+function collectTools(events: ProcessEvent[], t: TFunction): ToolActivity[] {
   const activities: ToolActivity[] = []
   const byId = new Map<string, ToolActivity>()
 
@@ -117,7 +118,7 @@ function collectTools(events: ProcessEvent[]): ToolActivity[] {
       const id = String(data.id || `tool-${index}`)
       const activity: ToolActivity = {
         id,
-        name: String(data.name || '工具'),
+        name: String(data.name || t('chat.tool')),
         input: data.input,
       }
       activities.push(activity)
@@ -134,7 +135,7 @@ function collectTools(events: ProcessEvent[]): ToolActivity[] {
       } else {
         activities.push({
           id: id || `result-${index}`,
-          name: String(data.name || '工具结果'),
+          name: String(data.name || t('trace.toolResult')),
           result: data.content ?? data.result,
           isError: Boolean(data.is_error),
         })
@@ -153,6 +154,7 @@ export default function ProcessTrace({
   endedAt,
   compact = false,
 }: ProcessTraceProps) {
+  const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -207,7 +209,7 @@ export default function ProcessTrace({
     .map((event) => textValue(event.data?.delta ?? event.data?.text))
     .join('')
     .trim()
-  const activities = collectTools(events)
+  const activities = collectTools(events, t)
   const eventTimes = events
     .map((event) => toMilliseconds(event.timestamp))
     .filter((timestamp): timestamp is number => timestamp !== null)
@@ -218,7 +220,7 @@ export default function ProcessTrace({
     : toMilliseconds(endedAt)
       ?? (eventTimes.length ? Math.max(...eventTimes) : null)
   const elapsedMs = durationMilliseconds(startTime, endTime)
-  const duration = elapsedMs === null ? '' : formatDuration(elapsedMs)
+  const duration = elapsedMs === null ? '' : formatDuration(elapsedMs, t)
 
   if (!duration && !thinking && activities.length === 0) return null
 
@@ -234,9 +236,9 @@ export default function ProcessTrace({
       >
         <summary>
           <span>
-            {running ? '处理中' : '已处理'}
+            {running ? t('trace.processing') : t('trace.processed')}
             {!running && stopped
-              ? (duration ? ` · 在 ${duration} 后停止了` : ' · 已停止')
+              ? (duration ? t('trace.stoppedAfter', { duration }) : t('trace.stopped'))
               : (duration ? ` ${duration}` : '')}
           </span>
           <span className="process-trace-chevron" aria-hidden="true">⌄</span>
@@ -246,9 +248,9 @@ export default function ProcessTrace({
             <div className="process-trace-thinking-block">
               <div className="process-trace-section-title">
                 <span className="process-trace-summary-icon" aria-hidden="true">◌</span>
-                <span>思考过程</span>
+                <span>{t('trace.thinking')}</span>
                 <span style={{ marginLeft: 'auto' }}>
-                  <MessageCopyButton content={thinking} title="复制思考过程" />
+                  <MessageCopyButton content={thinking} title={t('trace.copyThinking')} />
                 </span>
               </div>
               <div className="process-trace-thinking">{thinking}</div>
@@ -259,8 +261,8 @@ export default function ProcessTrace({
             <details className="process-trace-tools-group">
               <summary className="process-trace-section-title">
                 <span className="process-trace-summary-icon" aria-hidden="true">◇</span>
-                <span>{groupSummary(activities)}</span>
-                <span className="process-trace-count">{activities.length} 项</span>
+                <span>{groupSummary(activities, t)}</span>
+                <span className="process-trace-count">{t('trace.items', { count: activities.length })}</span>
                 <span className="process-trace-chevron" aria-hidden="true">⌄</span>
               </summary>
               <div className="process-trace-tools">
@@ -274,25 +276,25 @@ export default function ProcessTrace({
                         <span className="process-trace-tool-icon" aria-hidden="true">
                           {toolIcon(kind)}
                         </span>
-                        <span>{toolSummary(activity)}</span>
-                        {activity.isError && <span className="process-trace-error">失败</span>}
+                        <span>{toolSummary(activity, t)}</span>
+                        {activity.isError && <span className="process-trace-error">{t('trace.failed')}</span>}
                         <span className="process-trace-chevron" aria-hidden="true">⌄</span>
                       </summary>
                       <div className="process-trace-tool-detail">
                         {input && (
                           <div>
-                            <span>输入</span>
+                            <span>{t('trace.input')}</span>
                             <pre>{input}</pre>
                           </div>
                         )}
                         {result && (
                           <div>
-                            <span>结果</span>
+                            <span>{t('trace.result')}</span>
                             <pre>{result}</pre>
                           </div>
                         )}
                         {!input && !result && (
-                          <div className="process-trace-empty">暂无详情</div>
+                          <div className="process-trace-empty">{t('trace.noDetails')}</div>
                         )}
                       </div>
                     </details>

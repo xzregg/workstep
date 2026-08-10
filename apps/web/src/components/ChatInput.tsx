@@ -9,6 +9,7 @@ import {
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import { fsApi, type CoordinatorEngineSummary } from '../api/client'
 import { engineLabel } from '../engineMeta'
+import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
    ChatInput — shared chat composer (Codex style).
@@ -96,7 +97,7 @@ export default function ChatInput({
   running = false,
   onStop,
   stopping = false,
-  stopTitle = '停止生成',
+  stopTitle,
   config,
   imageAttach,
   left,
@@ -107,13 +108,15 @@ export default function ChatInput({
   minHeight = 40,
   maxHeight = 120,
 }: ChatInputProps) {
+  const { t } = useI18n()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [focused, setFocused] = useState(false)
   const canSend = !disabled && !running && !stopping && value.trim().length > 0
   const stopped = Boolean(running && onStop)
-  const hasImage = value.includes('![图片](')
+  const imageAlt = t('md.image')
+  const hasImage = value.includes(`![${imageAlt}](`)
 
   const resize = () => {
     const element = textareaRef.current
@@ -144,10 +147,10 @@ export default function ChatInput({
     setUploadingImage(true)
     try {
       const uploaded = await fsApi.uploadImage(file, imageAttach.projectId, imageAttach.prefix)
-      const markdown = `![图片](${uploaded.url})`
+      const markdown = `![${imageAlt}](${uploaded.url})`
       onChange(value ? `${value}\n\n${markdown}` : markdown)
     } catch (reason) {
-      imageAttach.onError?.(reason instanceof Error ? reason.message : '图片上传失败')
+      imageAttach.onError?.(reason instanceof Error ? reason.message : t('chatInput.imageUploadFailed'))
     } finally {
       setUploadingImage(false)
     }
@@ -209,10 +212,10 @@ export default function ChatInput({
               className="chat-input-attach"
               data-selected={hasImage}
               title={uploadingImage
-                ? '上传中…'
+                ? t('chatInput.uploading')
                 : hasImage
-                  ? '已附带图片，可继续添加或粘贴'
-                  : '上传图片，发送给协调 Agent 分析'}
+                  ? t('chatInput.imageAttached')
+                  : t('chatInput.imageAttachTitle')}
               style={{
                 position: 'relative',
                 cursor: uploadingImage ? 'wait' : 'pointer',
@@ -256,14 +259,14 @@ export default function ChatInput({
               disabled={config.disabled}
               onClick={() => setConfigOpen((open) => !open)}
               aria-expanded={configOpen}
-              title="选择本次对话的协调引擎与模型"
+              title={t('chatInput.engineModelTitle')}
               style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
             >
               {config.saving && <span className="task-status-spinner" aria-hidden="true" />}
               <Icon name="sparkles" size={11} strokeWidth={1.8} color="var(--accent)" />
               <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
               <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
-              <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || '默认'}</span>
+              <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || t('chatInput.defaultModel')}</span>
               <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
             </button>
           )}
@@ -273,17 +276,17 @@ export default function ChatInput({
             onClick={handleClick}
             disabled={buttonDisabled}
             aria-label={stopped
-              ? stopping ? '停止中…' : '停止'
+              ? stopping ? t('chatInput.stopping') : t('common.stop')
               : running
-                ? '生成中…'
+                ? t('chatInput.generating')
                 : canSend
-                  ? title || '发送'
-                  : '发送'}
+                  ? title || t('chatInput.send')
+                  : t('chatInput.send')}
             title={stopped
-              ? stopping ? '停止中…' : stopTitle
+              ? stopping ? t('chatInput.stopping') : (stopTitle ?? t('chatInput.stopGenerating'))
               : running
-                ? '生成中…'
-                : title || '发送'}
+                ? t('chatInput.generating')
+                : title || t('chatInput.send')}
             style={{
               width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
               padding: 0,
@@ -313,7 +316,7 @@ export default function ChatInput({
           />
           <div
             role="dialog"
-            aria-label="引擎与模型设置"
+            aria-label={t('chatInput.engineModelDialog')}
             style={{
               position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301,
               width: 300, maxHeight: '70vh', overflowY: 'auto',
@@ -329,7 +332,7 @@ export default function ChatInput({
                 onClick={() => { config.onReset?.(); setConfigOpen(false) }}
               >
                 <Icon name="refresh" size={14} strokeWidth={2} />
-                重置为默认设置
+                {t('chatInput.resetDefault')}
               </button>
             )}
             <div style={{
@@ -337,7 +340,7 @@ export default function ChatInput({
               margin: '8px 6px 8px', paddingTop: 8,
               borderTop: '1px solid var(--border-soft)',
             }}>
-              模型
+              {t('chatInput.model')}
             </div>
             <CoordinatorConfigBar
               variant="menu"
