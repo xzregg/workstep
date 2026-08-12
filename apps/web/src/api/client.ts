@@ -53,6 +53,10 @@ export const projectApi = {
       method: 'POST',
       body: JSON.stringify({ path, name }),
     }),
+  delete: (projectId: string) =>
+    request<{ deleted: boolean }>(`/project/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    }),
   saveSteps: (projectId: string, steps: any, workflowId?: string) =>
     request<{ saved: boolean }>(
       `/project/save-steps?project_id=${encodeURIComponent(projectId)}${workflowId ? `&workflow_id=${encodeURIComponent(workflowId)}` : ''}`,
@@ -61,6 +65,164 @@ export const projectApi = {
         body: JSON.stringify({ steps }),
       },
     ),
+}
+
+// --- Statistics API ---
+
+export interface StatisticsSummary {
+  project_count: number
+  workflow_count: number
+  task_count: number
+  run_count: number
+  succeeded_runs: number
+  failed_runs: number
+  running_runs: number
+  paused_runs: number
+  superseded_runs: number
+  success_rate: number | null
+  restart_count: number
+  average_duration_ms: number | null
+  p50_duration_ms: number | null
+  p95_duration_ms: number | null
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  cache_rate: number | null
+  total_tokens: number
+  token_coverage: number | null
+}
+
+export interface StatisticsScope {
+  level: 'global' | 'project' | 'workflow'
+  project_id: string | null
+  project_name: string | null
+  workflow_id: string | null
+  workflow_name: string | null
+}
+
+export interface StatisticsTrendPoint {
+  bucket: string
+  run_count: number
+  succeeded_runs: number
+  failed_runs: number
+  total_tokens: number
+  average_duration_ms: number | null
+}
+
+export interface StatisticsProjectRow extends StatisticsSummary {
+  id: string
+  name: string
+  workflow_count: number
+}
+
+export interface StatisticsWorkflowRow extends StatisticsSummary {
+  id: string
+  name: string
+  deleted: boolean
+  drilldown_available: boolean
+  node_count: number
+}
+
+export interface StatisticsStageRow {
+  step_key: string
+  name: string
+  attempt_count: number
+  succeeded_attempts: number
+  failed_attempts: number
+  cancelled_attempts: number
+  retry_count: number
+  failure_rate: number | null
+  review_passed: number
+  review_rejected: number
+  review_pass_rate: number | null
+  average_duration_ms: number | null
+  p95_duration_ms: number | null
+  total_tokens: number
+}
+
+export interface StatisticsEngineRow {
+  engine: string
+  model: string
+  call_count: number
+  attempt_count: number
+  failure_rate: number | null
+  average_duration_ms: number | null
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_tokens: number
+}
+
+export interface StatisticsReport {
+  scope: StatisticsScope
+  period: {
+    range: string
+    start: string
+    end: string
+    timezone: string
+    granularity: 'day' | 'week' | 'month'
+  }
+  summary: StatisticsSummary
+  trend: StatisticsTrendPoint[]
+  projects: StatisticsProjectRow[]
+  workflows: StatisticsWorkflowRow[]
+  stages: StatisticsStageRow[]
+  engines: StatisticsEngineRow[]
+  quality: {
+    step_attempt_count: number
+    step_failed: number
+    step_cancelled: number
+    step_failure_rate: number | null
+    retry_count: number
+    review_passed: number
+    review_rejected: number
+    review_pending: number
+    review_pass_rate: number | null
+    average_review_duration_ms: number | null
+  }
+  comparison: {
+    period: StatisticsReport['period']
+    summary: StatisticsSummary
+    changes: {
+      task_count: number | null
+      run_count: number | null
+      succeeded_runs: number | null
+      failed_runs: number | null
+      success_rate: number | null
+      total_tokens: number | null
+      cache_rate: number | null
+      average_duration_ms: number | null
+    }
+  } | null
+  data_quality: {
+    eligible_token_calls: number
+    reported_token_calls: number
+    token_coverage: number | null
+  }
+}
+
+export interface StatisticsParams {
+  projectId?: string
+  workflowId?: string
+  range?: '7d' | '30d' | '90d' | 'all' | 'custom'
+  start?: string
+  end?: string
+  timezone?: string
+}
+
+export const statisticsApi = {
+  overview: (params: StatisticsParams = {}) => {
+    const query = new URLSearchParams()
+    if (params.projectId) query.set('project_id', params.projectId)
+    if (params.workflowId) query.set('workflow_id', params.workflowId)
+    if (params.range) query.set('range', params.range)
+    if (params.start) query.set('start', params.start)
+    if (params.end) query.set('end', params.end)
+    if (params.timezone) query.set('timezone', params.timezone)
+    return request<StatisticsReport>(`/statistics/overview?${query.toString()}`)
+  },
 }
 
 // --- Workflow API ---
@@ -97,6 +259,11 @@ export const workflowApi = {
     request<WorkflowDetail>(`/workflow/${encodeURIComponent(id)}/restore?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
     }),
+  reorder: (projectId: string, orderedIds: string[]) =>
+    request<{ ok: boolean }>(`/workflow/reorder?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    }),
 }
 
 // --- Workflow generation chat API (AI-assisted flow design) ---
@@ -107,13 +274,42 @@ export interface WorkflowGenAccepted {
   status: string
 }
 
+export interface WorkflowGenHistoryEvent {
+  type?: string
+  data?: Record<string, unknown>
+  timestamp?: number
+  created_at?: string
+}
+
+export interface WorkflowGenHistoryMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  status: 'succeeded' | 'stopped' | 'error'
+  engine?: string
+  model?: string
+  created_at?: string
+  ended_at?: string
+  prompt?: string
+  events?: WorkflowGenHistoryEvent[]
+}
+
+export interface WorkflowGenHistory {
+  session_id: string
+  engine: string
+  model?: string | null
+  fast_model?: string | null
+  engine_session_id?: string | null
+  messages: WorkflowGenHistoryMessage[]
+}
+
 export const workflowGenApi = {
   chat: (
     projectId: string,
     content: string,
     sessionId: string | null,
     idempotencyKey: string,
-    options: { engine?: string; model?: string; fastModel?: string } = {},
+    options: { engine?: string; model?: string; fastModel?: string; thinkingEffort?: string; steps?: any; workflowName?: string; contextMode?: 'initial' | 'canvas_updated' | 'none'; workflowId?: string } = {},
   ) =>
     request<WorkflowGenAccepted>(`/workflow/generate/chat`, {
       method: 'POST',
@@ -125,9 +321,215 @@ export const workflowGenApi = {
         engine: options.engine || undefined,
         model: options.model || undefined,
         fast_model: options.fastModel || undefined,
+        thinking_effort: options.thinkingEffort || undefined,
+        steps: options.steps || undefined,
+        workflow_name: options.workflowName || undefined,
+        context_mode: options.contextMode || 'none',
+        workflow_id: options.workflowId || undefined,
       }),
     }),
+  history: (projectId: string, workflowId: string) =>
+    request<WorkflowGenHistory>(
+      `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
+    ),
+  reset: (projectId: string, workflowId: string) =>
+    request<{ reset: boolean; session_id: string }>(
+      `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
+      { method: 'DELETE' },
+    ),
+  stop: (sessionId: string) =>
+    request<{ stopped: boolean }>(
+      `/workflow/generate/${encodeURIComponent(sessionId)}/stop`,
+      { method: 'POST' },
+    ),
 }
+
+// --- Task creation assistant API ---
+
+export interface TaskDraftAccepted {
+  session_id: string
+  turn_id: string
+  status: string
+}
+
+export interface TaskDraftChatOptions {
+  title: string
+  description?: string
+  workflowId?: string
+  startStepKey?: string
+  engine?: string
+  model?: string
+  fastModel?: string
+  thinkingEffort?: string
+}
+
+export const taskDraftApi = {
+  chat: (
+    projectId: string,
+    content: string,
+    sessionId: string | null,
+    idempotencyKey: string,
+    options: TaskDraftChatOptions,
+  ) => request<TaskDraftAccepted>('/task-draft/chat', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({
+      project_id: projectId,
+      content,
+      session_id: sessionId,
+      title: options.title,
+      description: options.description || undefined,
+      workflow_id: options.workflowId || undefined,
+      start_step_key: options.startStepKey || undefined,
+      engine: options.engine || undefined,
+      model: options.model || undefined,
+      fast_model: options.fastModel || undefined,
+      thinking_effort: options.thinkingEffort || undefined,
+    }),
+  }),
+  stop: (sessionId: string) =>
+    request<{ stopped: boolean }>(
+      `/task-draft/${encodeURIComponent(sessionId)}/stop`,
+      { method: 'POST' },
+    ),
+}
+
+
+// --- Codex-style session chat API ---
+
+export interface ChatSessionSummary {
+  id: string
+  project_id: string
+  workflow_id: string
+  title: string
+  engine: string
+  model?: string | null
+  permission_mode?: string
+  message_count: number
+  preview?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ChatSessionDetail extends ChatSessionSummary {
+  messages: WorkflowGenHistoryMessage[]
+}
+
+export interface ChatQuickButton {
+  id: string
+  label: string
+  prompt: string
+}
+
+export interface ChatAccepted {
+  session_id: string
+  turn_id: string
+  status: string
+}
+
+export interface ChatSessionCreateInput {
+  project_id: string
+  workflow_id?: string
+  title?: string
+  engine?: string
+  model?: string
+  fast_model?: string
+  permission_mode?: string
+}
+
+export interface ChatMessageOptions {
+  engine?: string
+  model?: string
+  fast_model?: string
+  thinking_effort?: string
+  permission_mode?: string
+}
+
+export const chatSessionApi = {
+  list: (projectId: string) =>
+    request<{ sessions: ChatSessionSummary[] }>(
+      `/chat-sessions?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  create: (input: ChatSessionCreateInput) =>
+    request<ChatSessionDetail>('/chat-sessions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  get: (sessionId: string, projectId: string) =>
+    request<ChatSessionDetail>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  rename: (sessionId: string, projectId: string, title: string) =>
+    request<ChatSessionSummary>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id: projectId, title }),
+      },
+    ),
+  remove: (sessionId: string, projectId: string) =>
+    request<{ deleted: boolean }>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'DELETE' },
+    ),
+  chat: (
+    sessionId: string,
+    projectId: string,
+    content: string,
+    idempotencyKey: string,
+    options: ChatMessageOptions = {},
+  ) =>
+    request<ChatAccepted>(`/chat-sessions/${encodeURIComponent(sessionId)}/chat`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({
+        project_id: projectId,
+        content,
+        engine: options.engine || undefined,
+        model: options.model || undefined,
+        fast_model: options.fast_model || undefined,
+        thinking_effort: options.thinking_effort || undefined,
+        permission_mode: options.permission_mode || undefined,
+      }),
+    }),
+  stop: (sessionId: string) =>
+    request<{ stopped: boolean }>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}/stop`,
+      { method: 'POST' },
+    ),
+  reorder: (projectId: string, orderedIds: string[]) =>
+    request<{ ok: boolean }>(
+      `/chat-sessions/reorder?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      },
+    ),
+  quickButtons: (projectId: string) =>
+    request<{ buttons: ChatQuickButton[] }>(
+      `/chat-sessions/quick-buttons?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  saveQuickButtons: (projectId: string, buttons: ChatQuickButton[]) =>
+    request<{ buttons: ChatQuickButton[] }>('/chat-sessions/quick-buttons', {
+      method: 'PUT',
+      body: JSON.stringify({ project_id: projectId, buttons }),
+    }),
+  getSystemPrompt: (projectId: string) =>
+    request<{ prompt: string }>(
+      `/chat-sessions/system-prompt?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  saveSystemPrompt: (projectId: string, prompt: string) =>
+    request<{ prompt: string }>('/chat-sessions/system-prompt', {
+      method: 'PUT',
+      body: JSON.stringify({ project_id: projectId, prompt }),
+    }),
+  enhancePrompt: (projectId: string, prompt: string) =>
+    request<{ prompt: string }>('/chat-sessions/enhance-prompt', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, prompt }),
+    }),
+}
+
 
 // --- Template API ---
 
@@ -265,7 +667,8 @@ export interface TaskArtifact {
   artifact_type: string | null
   path: string
   relative_path: string
-  size: number
+  size: number | null
+  is_dir?: boolean
 }
 
 export interface ActionProposal {
@@ -281,7 +684,7 @@ export interface ActionProposal {
 
 export interface CoordinatorEngineSummary {
   id: string
-  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
+  mode: 'cli' | 'acp' | 'agent' | 'sdk' | null
   installed: boolean
   configured: boolean
   verified: boolean
@@ -295,12 +698,14 @@ export interface CoordinatorSelection {
     model: string | null
     fast_model: string | null
     vision_model: string | null
+    thinking_effort: string | null
   }
   resolved: {
     engine: string
     model: string | null
     fast_model: string | null
     vision_model: string | null
+    thinking_effort: string | null
   }
 }
 
@@ -348,6 +753,11 @@ export const taskApi = {
     request<{ messages: any[]; limit: number; offset: number }>(
       `/task/${taskId}/history?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`
     ),
+  respondInteraction: (interactionId: string, data: Record<string, unknown>) =>
+    request<{ delivered: boolean }>('/intervention/respond', {
+      method: 'POST',
+      body: JSON.stringify({ intervention_id: interactionId, data }),
+    }),
   chat: (taskId: string, content: string, projectId: string, idempotencyKey: string) =>
     request<{
       turn_id: string
@@ -377,6 +787,14 @@ export const taskApi = {
       `/task/${taskId}/step/${encodeURIComponent(stepKey)}/cancel?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
+  resumeStageWithMessage: (taskId: string, stepKey: string, content: string, projectId: string) =>
+    request<{ message_id: string; step_key: string; run_id: string; status: 'queued'; sequence?: number; created_at?: string }>(
+      `/task/${taskId}/step/${encodeURIComponent(stepKey)}/resume?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      },
+    ),
   coordinatorConfig: (taskId: string, projectId: string) =>
     request<CoordinatorConfig>(
       `/task/${taskId}/coordinator-config?project_id=${encodeURIComponent(projectId)}`,
@@ -388,11 +806,18 @@ export const taskApi = {
     model: string | null,
     fastModel: string | null,
     visionModel: string | null,
+    thinkingEffort: string | null,
   ) => request<CoordinatorSelection>(
     `/task/${taskId}/coordinator-config?project_id=${encodeURIComponent(projectId)}`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ engine, model, fast_model: fastModel, vision_model: visionModel }),
+      body: JSON.stringify({
+        engine,
+        model,
+        fast_model: fastModel,
+        vision_model: visionModel,
+        thinking_effort: thinkingEffort,
+      }),
     },
   ),
   confirmAction: (
@@ -467,6 +892,200 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId, newTitle }),
     }),
+  share: {
+    get: (taskId: string, projectId: string) =>
+      request<ShareInfo>(
+        `/task-share/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(projectId)}`,
+      ),
+    create: (taskId: string, projectId: string, password?: string | null, title?: string | null) =>
+      request<ShareInfo>(
+        `/task-share/${encodeURIComponent(taskId)}/create?project_id=${encodeURIComponent(projectId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ password: password || null, title: title ?? null }),
+        },
+      ),
+    revoke: (taskId: string, projectId: string) =>
+      request<{ revoked: boolean }>(
+        `/task-share/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(projectId)}`,
+        { method: 'DELETE' },
+      ),
+  },
+}
+
+// --- Public share API (no project context, session-token gated) ---
+
+export interface ShareInfo {
+  id: string
+  task_id: string
+  token: string
+  title: string | null
+  revoked: boolean
+  has_password: boolean
+  created_at: string
+  revoked_at: string | null
+}
+
+export interface ShareMeta {
+  token: string
+  title: string | null
+  task_id: string
+  has_password: boolean
+  created_at: string
+}
+
+export interface SharedTask {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  engine: string
+  model: string | null
+  workflow_id: string | null
+  workflow: { id: string; name: string; steps: any } | null
+  created_at: string
+  updated_at: string
+  steps: TaskStepState[]
+}
+
+async function shareRequest<T>(
+  path: string,
+  sessionToken: string,
+  options?: RequestInit,
+): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Share-Session': sessionToken,
+      ...(options?.headers || {}),
+    },
+  })
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(detail.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export const shareApi = {
+  meta: (token: string) =>
+    request<ShareMeta>(`/task-share/public/${encodeURIComponent(token)}/meta`),
+  unlock: (token: string, password: string) =>
+    request<{ session_token: string }>(
+      `/task-share/public/${encodeURIComponent(token)}/unlock`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      },
+    ),
+  task: (token: string, sessionToken: string) =>
+    shareRequest<SharedTask>(
+      `/task-share/public/${encodeURIComponent(token)}/task`,
+      sessionToken,
+    ),
+  history: (token: string, sessionToken: string, limit = 200, offset = 0) =>
+    shareRequest<{ messages: any[]; limit: number; offset: number }>(
+      `/task-share/public/${encodeURIComponent(token)}/history?limit=${limit}&offset=${offset}`,
+      sessionToken,
+    ),
+  artifacts: (token: string, sessionToken: string) =>
+    shareRequest<{ artifacts: TaskArtifact[] }>(
+      `/task-share/public/${encodeURIComponent(token)}/artifacts`,
+      sessionToken,
+    ),
+  buildWsUrl: (sessionToken: string): string => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws/share?session=${encodeURIComponent(sessionToken)}`
+  },
+}
+
+// --- Project schedule API ---
+
+export type ScheduleRule = (
+  | { kind: 'once'; run_at: string; timezone: string }
+  | { kind: 'daily'; time: string; timezone: string }
+  | { kind: 'weekly'; weekdays: number[]; time: string; timezone: string }
+  | { kind: 'monthly'; monthdays: number[]; time: string; timezone: string }
+  | { kind: 'interval'; every: number; unit: 'hours'; weekdays: number[]; timezone: string }
+  | { kind: 'cron'; expression: string; timezone: string }
+) & { start_date?: string; end_date?: string }
+
+export interface ProjectSchedule {
+  id: string
+  name: string
+  workflow_id: string
+  task_template: {
+    title: string
+    description?: string
+    start_step_key?: string
+    review_overrides?: Record<string, unknown>
+  }
+  rule: ScheduleRule
+  summary: string
+  cron_expression: string | null
+  timezone: string
+  execution_mode: 'workflow' | 'immediate' | 'manual'
+  overlap_policy: 'skip' | 'parallel' | 'queue'
+  status: 'active' | 'paused' | 'invalid' | 'completed'
+  invalid_reason?: string | null
+  next_run_at?: string | null
+  last_run_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ScheduleRun {
+  id: string
+  schedule_id: string
+  scheduled_for: string
+  status: 'queued' | 'running' | 'created' | 'succeeded' | 'failed' | 'skipped'
+  reason?: string | null
+  task_id?: string | null
+  workflow_run_id?: string | null
+  started_at?: string | null
+  ended_at?: string | null
+}
+
+export interface SchedulePayload {
+  name: string
+  workflow_id: string
+  task_template: ProjectSchedule['task_template']
+  rule: ScheduleRule
+  execution_mode: ProjectSchedule['execution_mode']
+  overlap_policy: ProjectSchedule['overlap_policy']
+}
+
+export const scheduleApi = {
+  list: (projectId: string) => request<{ schedules: ProjectSchedule[] }>(
+    `/schedule/list?project_id=${encodeURIComponent(projectId)}`,
+  ),
+  create: (projectId: string, payload: SchedulePayload) => request<ProjectSchedule>(
+    `/schedule/create?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  ),
+  update: (projectId: string, id: string, payload: Partial<SchedulePayload>) => request<ProjectSchedule>(
+    `/schedule/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  ),
+  pause: (projectId: string, id: string) => request<ProjectSchedule>(
+    `/schedule/${encodeURIComponent(id)}/pause?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
+  ),
+  resume: (projectId: string, id: string) => request<ProjectSchedule>(
+    `/schedule/${encodeURIComponent(id)}/resume?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
+  ),
+  delete: (projectId: string, id: string) => request<{ deleted: boolean }>(
+    `/schedule/${encodeURIComponent(id)}?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'DELETE' },
+  ),
+  runs: (projectId: string, id: string, limit = 100, offset = 0) => request<{ runs: ScheduleRun[] }>(
+    `/schedule/${encodeURIComponent(id)}/runs?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`,
+  ),
+  preview: (rule: ScheduleRule) => request<{ cron_expression: string | null; timezone: string; summary: string; next_runs: string[] }>(
+    '/schedule/preview', { method: 'POST', body: JSON.stringify(rule) },
+  ),
 }
 
 // --- Engine API ---
@@ -478,8 +1097,10 @@ export interface EngineInfo {
   verified: boolean
   built_in: boolean
   version: string | null
-  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
+  mode: 'cli' | 'acp' | 'agent' | 'sdk' | null
   config: EngineConfigPayload | null
+  installable: boolean
+  install_command: string | null
   supports_resume: boolean
   supports_coordinator: boolean
   supports_tool_disable: boolean
@@ -487,6 +1108,14 @@ export interface EngineInfo {
   supports_live_stage_message: boolean
   binary_path: string | null
   configured_path: string | null
+}
+
+export interface EngineInstallResult {
+  engine_id: string
+  success: boolean
+  already_installed: boolean
+  message: string
+  engine?: EngineInfo
 }
 
 export interface EngineTestResult {
@@ -507,6 +1136,7 @@ export interface CoordinatorDefaultConfig {
   model: string
   fast_model: string
   vision_model: string
+  thinking_effort: string
   available_engines: CoordinatorEngineSummary[]
 }
 
@@ -521,6 +1151,23 @@ export interface EngineModelsResult {
   models: EngineModel[]
   default_model: string
   error: string | null
+}
+
+export interface EngineInspectResult {
+  engine_id: string
+  project_root: string | null
+  skills: Array<{
+    name: string
+    description: string
+    source_dir: string
+  }>
+  mcp_servers: Array<{
+    name: string
+    command: string
+    args: string[]
+  }>
+  mcp_supported: boolean
+  mcp_error: string | null
 }
 
 export interface EngineConfigOption {
@@ -555,6 +1202,7 @@ export interface EngineConfigSchema {
 
 export interface EngineConfigPayload {
   fields: EngineConfigField[]
+  stage_fields: EngineConfigField[]
   values: Record<string, string>
   secrets: Record<string, boolean>
 }
@@ -565,6 +1213,134 @@ export interface EngineConfigSaveInput {
   confirmed?: Record<string, boolean>
 }
 
+// --- Provider (供应商) API ---
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  type: string
+  base_url: string
+  api_key: string
+  has_key: boolean
+  enabled: boolean
+  verified: boolean
+  created_at: string
+}
+
+export interface ProviderTypeMeta {
+  id: string
+  label: string
+  default_base_url: string
+  auth: string
+  supports_balance: boolean
+  help: string
+}
+
+export interface ProviderListResult {
+  providers: ProviderInfo[]
+  types: ProviderTypeMeta[]
+}
+
+export interface ProviderSaveInput {
+  id?: string
+  name: string
+  type: string
+  base_url: string
+  api_key?: string
+  enabled?: boolean
+  clear?: Record<string, boolean>
+  confirmed?: Record<string, boolean>
+}
+
+export interface ProviderSaveResult {
+  saved: boolean
+  message?: string
+  provider: ProviderInfo | null
+}
+
+export interface ProviderTestResult {
+  provider_id: string
+  success: boolean
+  message: string
+  duration_ms: number
+}
+
+export interface ProviderModelsResult {
+  provider_id: string
+  models: EngineModel[]
+  error: string | null
+}
+
+export interface ProviderBalanceResult {
+  provider_id: string
+  supported: boolean
+  balance: unknown
+  message: string
+}
+
+export interface ProviderImportCandidate {
+  id: string
+  source_type: string
+  name: string
+  type: string
+  base_url: string
+  has_key: boolean
+  wire_api: string
+  model_ids: string[]
+  category: string
+  error: string | null
+  already_exists: boolean
+}
+
+export interface ProviderImportSource {
+  id: string
+  name: string
+  provider_count: number
+  description: string
+  providers: ProviderImportCandidate[]
+}
+
+export interface ProviderImportResult {
+  source: string
+  imported: ProviderInfo[]
+  skipped: { id: string; name: string; message: string }[]
+  errors: { id: string; name: string; message: string }[]
+}
+
+export const providerApi = {
+  list: () => request<ProviderListResult>('/provider/list'),
+  save: (input: ProviderSaveInput) =>
+    request<ProviderSaveResult>('/provider', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  remove: (providerId: string) =>
+    request<{ deleted: boolean }>(`/provider/${encodeURIComponent(providerId)}`, {
+      method: 'DELETE',
+    }),
+  test: (providerId: string) =>
+    request<ProviderTestResult>(`/provider/${encodeURIComponent(providerId)}/test`, {
+      method: 'POST',
+      body: JSON.stringify({ timeout_seconds: 15 }),
+    }),
+  models: (providerId: string) =>
+    request<ProviderModelsResult>(`/provider/${encodeURIComponent(providerId)}/models`),
+  balance: (providerId: string) =>
+    request<ProviderBalanceResult>(`/provider/${encodeURIComponent(providerId)}/balance`),
+  reveal: (providerId: string) =>
+    request<{ key: string; value: string | null }>(
+      `/provider/${encodeURIComponent(providerId)}/reveal`,
+      { method: 'POST' },
+    ),
+  importSources: () =>
+    request<{ sources: ProviderImportSource[] }>('/provider/import/sources'),
+  importFromCcSwitch: (providerIds: string[]) =>
+    request<ProviderImportResult>('/provider/import/cc-switch', {
+      method: 'POST',
+      body: JSON.stringify({ provider_ids: providerIds }),
+    }),
+}
+
 // --- Engine model list cache ---
 // Model dropdowns fetch each engine's model list once and reuse the result
 // across pages. Only a manual refresh (force = true) hits the remote API
@@ -573,7 +1349,13 @@ export interface EngineConfigSaveInput {
 
 const engineModelsCache = new Map<string, EngineModelsResult>()
 
+// pydantic_ai 的模型列表直接绑定供应商（base_url/key）。供应商在设置页随时可改，
+// 缓存必然过期，因此该引擎一律绕过缓存，每次都走 /api/engine/{id}/models，
+// 由后端实时调用对应供应商的 /models 接口。
+const UNCACHED_ENGINE_IDS = new Set(['pydantic_ai'])
+
 export function getCachedEngineModels(engineId: string): EngineModelsResult | null {
+  if (UNCACHED_ENGINE_IDS.has(engineId)) return null
   return engineModelsCache.get(engineId) ?? null
 }
 
@@ -581,7 +1363,9 @@ export async function fetchEngineModels(
   engineId: string,
   force = false,
 ): Promise<EngineModelsResult> {
-  const cached = engineModelsCache.get(engineId)
+  const cached = UNCACHED_ENGINE_IDS.has(engineId)
+    ? null
+    : engineModelsCache.get(engineId)
   if (cached && !force) return cached
   const result = await engineApi.models(engineId)
   engineModelsCache.set(engineId, result)
@@ -605,18 +1389,28 @@ export const engineApi = {
     }),
   coordinatorDefaults: () =>
     request<CoordinatorDefaultConfig>('/engine/coordinator/config'),
-  setCoordinatorDefaults: (engine: string, model: string, fastModel: string, visionModel: string) =>
-    request<{ saved: boolean; engine: string; model: string; fast_model: string; vision_model: string }>(
+  setCoordinatorDefaults: (engine: string, model: string, fastModel: string, visionModel: string, thinkingEffort: string) =>
+    request<{ saved: boolean; engine: string; model: string; fast_model: string; vision_model: string; thinking_effort: string }>(
       '/engine/coordinator/config',
       {
         method: 'PUT',
-        body: JSON.stringify({ engine, model, fast_model: fastModel, vision_model: visionModel }),
+        body: JSON.stringify({
+          engine,
+          model,
+          fast_model: fastModel,
+          vision_model: visionModel,
+          thinking_effort: thinkingEffort,
+        }),
       },
     ),
   test: (engineId: string) =>
     request<EngineTestResult>('/engine/test', {
       method: 'POST',
       body: JSON.stringify({ engine_id: engineId }),
+    }),
+  install: (engineId: string) =>
+    request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {
+      method: 'POST',
     }),
   models: (engineId: string) =>
     request<EngineModelsResult>(`/engine/${encodeURIComponent(engineId)}/models`),
@@ -653,6 +1447,15 @@ export const engineApi = {
         body: JSON.stringify({ key }),
       },
     ),
+  inspect: (engineId: string, projectId?: string, projectRoot?: string) => {
+    const params = new URLSearchParams()
+    if (projectId) params.set('project_id', projectId)
+    if (projectRoot) params.set('project_root', projectRoot)
+    const query = params.toString()
+    return request<EngineInspectResult>(
+      `/engine/${encodeURIComponent(engineId)}/inspect${query ? `?${query}` : ''}`,
+    )
+  },
 }
 
 // --- File System API ---
@@ -669,6 +1472,19 @@ export interface DirectoryOpener {
   id: string
   label: string
   available: boolean
+}
+
+export interface DirectoryEntry {
+  name: string
+  type: 'directory' | 'file'
+  path: string
+}
+
+export interface DirectoryBrowseResult {
+  path: string
+  name: string
+  parent: string | null
+  entries: DirectoryEntry[]
 }
 
 export const fsApi = {
@@ -706,6 +1522,13 @@ export const fsApi = {
   },
 
   preview: (path: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}`),
+  browse: (path?: string) =>
+    request<DirectoryBrowseResult>(
+      path
+        ? `/fs/browse?path=${encodeURIComponent(path)}`
+        : '/fs/browse'
+    ),
+  fileUrl: (path: string) => `${BASE}/fs/file?path=${encodeURIComponent(path)}`,
   directoryOpeners: () =>
     request<{ platform: string; openers: DirectoryOpener[] }>('/fs/directory-openers'),
   openDirectory: (path: string, opener = 'file_manager') =>

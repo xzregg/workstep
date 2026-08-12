@@ -7,6 +7,7 @@ import {
   type Ref,
 } from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
+import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import { fsApi, type CoordinatorEngineSummary } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
@@ -29,6 +30,8 @@ export interface ChatInputEngineConfig {
   model: string
   fastModel: string
   visionModel?: string
+  /** '' = follow the engine default. */
+  thinkingEffort?: string
   /** Show the vision-model select (task chat only). */
   showVision?: boolean
   /** Disable the picker (config not loaded / a turn is running). */
@@ -37,13 +40,13 @@ export interface ChatInputEngineConfig {
   saving?: boolean
   error?: string
   notice?: string
-  /** Static right-side hint (e.g. 仅本次生成会话生效). */
   hint?: string
   engineTitle?: string
   onEngineChange: (engineId: string) => void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
+  onThinkingEffortChange?: (value: string) => void
   /** Reset all selections back to the defaults. */
   onReset?: () => void
 }
@@ -54,6 +57,28 @@ export interface ChatInputImageAttach {
   prefix?: string
   /** Called with '' when an upload starts and a message on failure. */
   onError?: (message: string) => void
+}
+
+/** Permission-mode selector (Codex-style shield pill, bottom right). */
+export interface ChatInputPermission {
+  value: string
+  onChange: (mode: string) => void
+  disabled?: boolean
+}
+
+/** Prompt enhancement (aicss AI Agent Input style pill, bottom right). */
+export interface ChatInputEnhance {
+  enhancing: boolean
+  enhanced: boolean
+  onEnhance: () => void
+  onRevert: () => void
+}
+
+/** Context-window usage shown next to the permission pill. */
+export interface ChatContextUsage {
+  used: number
+  total: number
+  percent: number
 }
 
 export interface ChatInputProps {
@@ -73,6 +98,12 @@ export interface ChatInputProps {
   stopTitle?: string
   /** Engine/model picker (Codex-style, bottom right). */
   config?: ChatInputEngineConfig
+  /** Permission-mode selector (Codex-style shield pill). */
+  permission?: ChatInputPermission
+  /** Prompt enhancement pill (aicss AI Agent Input style). */
+  enhance?: ChatInputEnhance
+  /** Context-window usage indicator (Codex-style percent + tooltip). */
+  context?: ChatContextUsage | null
   /** Enable image attach: paste-to-upload + the image button. */
   imageAttach?: ChatInputImageAttach
   /** Optional extra slot rendered at the bottom-left (before the image button). */
@@ -99,6 +130,9 @@ export default function ChatInput({
   stopping = false,
   stopTitle,
   config,
+  permission,
+  enhance,
+  context,
   imageAttach,
   left,
   onPaste,
@@ -108,15 +142,40 @@ export default function ChatInput({
   minHeight = 40,
   maxHeight = 120,
 }: ChatInputProps) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
+  const permissionMenu = useFloatingMenu()
+  const permissionButtonRef = useRef<HTMLButtonElement>(null)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [focused, setFocused] = useState(false)
+  const attachInputRef = useRef<HTMLInputElement>(null)
   const canSend = !disabled && !running && !stopping && value.trim().length > 0
   const stopped = Boolean(running && onStop)
   const imageAlt = t('md.image')
   const hasImage = value.includes(`![${imageAlt}](`)
+  const thinkingEffortLabel: Record<string, string> = {
+    minimal: t('coord.thinkingLevels.minimal'),
+    low: t('coord.thinkingLevels.low'),
+    medium: t('coord.thinkingLevels.medium'),
+    high: t('coord.thinkingLevels.high'),
+  }
+
+  const permissionOptions = [
+    { value: '', label: t('chatSession.permissionDefault') },
+    { value: 'read-only', label: t('chatSession.permissionReadOnly') },
+    { value: 'workspace-write', label: t('chatSession.permissionWorkspaceWrite') },
+    { value: 'danger-full-access', label: t('chatSession.permissionFullAccess') },
+    { value: 'auto', label: t('chatSession.permissionAuto') },
+    { value: 'ask', label: t('chatSession.permissionAsk') },
+  ]
+  const permissionLabel =
+    permissionOptions.find((option) => option.value === permission?.value)?.label
+    ?? t('chatSession.permissionDefault')
+
+  const formatTokens = (count: number) =>
+    new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
   const resize = () => {
     const element = textareaRef.current
@@ -171,13 +230,13 @@ export default function ChatInput({
       <div
         data-focused={focused}
         style={{
-          border: `1px solid ${focused ? 'var(--accent)' : 'var(--border)'}`,
-          borderRadius: 14,
+          border: '0.5px solid transparent',
+          borderRadius: 12,
           background: 'var(--bg)',
-          transition: 'border-color 0.15s, box-shadow 0.15s',
+          transition: 'box-shadow 0.15s',
           boxShadow: focused
-            ? '0 0 0 3px color-mix(in oklab, var(--accent), transparent 90%)'
-            : undefined,
+            ? '0 0 0 0.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
+            : '0 0 0 0.5px var(--border-soft), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)',
         }}
       >
         <textarea
@@ -201,28 +260,16 @@ export default function ChatInput({
           style={{
             width: '100%', border: 'none', outline: 'none', resize: 'none',
             background: 'transparent', color: 'var(--fg)',
-            fontFamily: 'var(--font-body)', fontSize: 13, lineHeight: 1.5,
-            padding: '10px 14px 2px', minHeight, maxHeight,
+            fontFamily: 'var(--font-body)', fontSize: 12, lineHeight: 1.5,
+            padding: '8px 10px 2px', minHeight, maxHeight,
           }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 6px' }}>
           {left}
           {imageAttach && (
-            <label
-              className="chat-input-attach"
-              data-selected={hasImage}
-              title={uploadingImage
-                ? t('chatInput.uploading')
-                : hasImage
-                  ? t('chatInput.imageAttached')
-                  : t('chatInput.imageAttachTitle')}
-              style={{
-                position: 'relative',
-                cursor: uploadingImage ? 'wait' : 'pointer',
-                opacity: uploadingImage ? 0.7 : 1,
-              }}
-            >
+            <>
               <input
+                ref={attachInputRef}
                 type="file"
                 accept="image/*"
                 hidden
@@ -233,42 +280,241 @@ export default function ChatInput({
                   e.target.value = ''
                 }}
               />
-              {uploadingImage
-                ? <span className="task-status-spinner" aria-hidden="true" />
-                : <Icon name="image" size={18} strokeWidth={1.8} />}
-              {hasImage && !uploadingImage && (
-                <span
-                  aria-hidden="true"
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className="chat-input-attach"
+                  data-selected={hasImage}
+                  data-open={attachMenuOpen}
+                  disabled={uploadingImage}
+                  title={uploadingImage
+                    ? t('chatInput.uploading')
+                    : t('chatInput.attachMenuTitle')}
+                  aria-label={t('chatInput.attachMenuTitle')}
+                  aria-expanded={attachMenuOpen}
+                  onClick={() => setAttachMenuOpen((open) => !open)}
                   style={{
-                    position: 'absolute', right: 1, bottom: 1, width: 10, height: 10,
-                    borderRadius: '50%', background: 'var(--accent)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    position: 'relative',
+                    cursor: uploadingImage ? 'wait' : 'pointer',
+                    opacity: uploadingImage ? 0.7 : 1,
                   }}
                 >
-                  <Icon name="check" size={7} strokeWidth={4} color="var(--accent-fg)" />
-                </span>
-              )}
-            </label>
+                  {uploadingImage
+                    ? <span className="task-status-spinner" aria-hidden="true" />
+                    : (
+                      <Icon
+                        name="plus"
+                        size={15}
+                        strokeWidth={1.8}
+                        style={{
+                          transform: attachMenuOpen ? 'rotate(45deg)' : undefined,
+                          transition: 'transform 200ms cubic-bezier(0.35, 1.55, 0.65, 1)',
+                        }}
+                      />
+                    )}
+                  {hasImage && !uploadingImage && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute', right: 0, bottom: 0, width: 9, height: 9,
+                        borderRadius: '50%', background: 'var(--accent)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <Icon name="check" size={6} strokeWidth={4} color="var(--accent-fg)" />
+                    </span>
+                  )}
+                </button>
+                {attachMenuOpen && (
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
+                      onClick={() => setAttachMenuOpen(false)}
+                    />
+                    <div
+                      role="dialog"
+                      aria-label={t('chatInput.attachMenuTitle')}
+                      className="chat-input-menu"
+                      style={{ left: 0, bottom: 'calc(100% + 6px)', zIndex: 1301, width: 190 }}
+                    >
+                      <button
+                        type="button"
+                        className="chat-input-menu-item"
+                        onClick={() => {
+                          setAttachMenuOpen(false)
+                          attachInputRef.current?.click()
+                        }}
+                      >
+                        <span className="chat-input-menu-icon">
+                          <Icon name="image" size={14} strokeWidth={1.8} />
+                        </span>
+                        <span className="chat-input-menu-name">{t('chatInput.attachImage')}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
           )}
           <div style={{ flex: 1 }} />
-          {config && (
-            <button
-              type="button"
-              className="chat-input-pill"
-              data-open={configOpen}
-              disabled={config.disabled}
-              onClick={() => setConfigOpen((open) => !open)}
-              aria-expanded={configOpen}
-              title={t('chatInput.engineModelTitle')}
-              style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
+          {context && (
+            <span
+              className="chat-input-context"
+              role="img"
+              aria-label={t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
+              style={{
+                color: context.percent > 90
+                  ? 'var(--danger)'
+                  : context.percent > 70
+                    ? '#d97706'
+                    : 'var(--meta)',
+              }}
             >
-              {config.saving && <span className="task-status-spinner" aria-hidden="true" />}
-              <Icon name="sparkles" size={11} strokeWidth={1.8} color="var(--accent)" />
-              <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
-              <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
-              <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || t('chatInput.defaultModel')}</span>
-              <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
-            </button>
+              {Math.round(context.percent)}%
+              <span className="chat-input-context-tip">
+                {t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
+              </span>
+            </span>
+          )}
+          {permission && (
+            <>
+              <button
+                ref={permissionButtonRef}
+                type="button"
+                className="chat-input-pill"
+                data-open={permissionMenu.anchor != null}
+                disabled={permission.disabled}
+                onClick={() => (permissionMenu.anchor ? permissionMenu.close() : permissionMenu.openFrom(permissionButtonRef.current))}
+                aria-expanded={permissionMenu.anchor != null}
+                title={t('chatSession.permissionLabel')}
+                style={{ opacity: permission.disabled ? 0.55 : 1, cursor: permission.disabled ? 'not-allowed' : 'pointer' }}
+              >
+                <Icon name="shield" size={12} strokeWidth={1.8} color={permission.value ? 'var(--accent)' : 'var(--meta)'} />
+                <span style={{ color: permission.value ? 'var(--accent)' : 'var(--fg)', fontWeight: permission.value ? 600 : 500 }}>
+                  {permissionLabel}
+                </span>
+                <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: permissionMenu.anchor ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
+              </button>
+              {permissionMenu.anchor && (
+                <FloatingMenu
+                  anchor={permissionMenu.anchor}
+                  triggerRef={permissionButtonRef}
+                  options={permissionOptions.map((option) => ({ value: option.value, label: option.label }))}
+                  value={permission.value}
+                  icon="shield"
+                  side="top"
+                  width={216}
+                  title={t('chatSession.permissionTitle')}
+                  onSelect={(mode) => { permission.onChange(mode) }}
+                  onClose={permissionMenu.close}
+                />
+              )}
+            </>
+          )}
+          {config && (
+            <div style={{ position: 'relative', display: 'flex' }}>
+              <button
+                type="button"
+                className="chat-input-pill"
+                data-open={configOpen}
+                disabled={config.disabled}
+                onClick={() => setConfigOpen((open) => !open)}
+                aria-expanded={configOpen}
+                title={t('chatInput.engineModelTitle')}
+                style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
+              >
+                {config.saving && <span className="task-status-spinner" aria-hidden="true" />}
+                <Icon name="sparkles" size={11} strokeWidth={1.8} color="var(--accent)" />
+                <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
+                <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
+                <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || t('chatInput.defaultModel')}</span>
+                {config.thinkingEffort && (
+                  <>
+                    <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
+                    <span style={{ color: 'var(--fg)', opacity: 0.75 }}>
+                      {thinkingEffortLabel[config.thinkingEffort] ?? config.thinkingEffort}
+                    </span>
+                  </>
+                )}
+                <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
+              </button>
+              {configOpen && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
+                    onClick={() => setConfigOpen(false)}
+                  />
+                  <div
+                    role="dialog"
+                    aria-label={t('chatInput.engineModelDialog')}
+                    style={{
+                      position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301,
+                      width: 224, maxHeight: '70vh', overflowY: 'auto',
+                      background: 'var(--bg)', border: '1px solid var(--border-soft)', borderRadius: 12,
+                      boxShadow: '0 18px 44px rgba(0,0,0,0.20), 0 0 0 1px var(--border-soft)',
+                      padding: '6px',
+                    }}
+                  >
+                    {config.onReset && (
+                      <button
+                        type="button"
+                        className="chat-input-menu-reset"
+                        style={{ marginBottom: 2 }}
+                        onClick={() => { config.onReset?.(); setConfigOpen(false) }}
+                      >
+                        <Icon name="refresh" size={14} strokeWidth={2} />
+                        {t('chatInput.resetDefault')}
+                      </button>
+                    )}
+                    <CoordinatorConfigBar
+                      variant="menu"
+                      engines={config.engines}
+                      engine={config.engine}
+                      defaultEngine={config.defaultEngine}
+                      model={config.model}
+                      fastModel={config.fastModel}
+                      visionModel={config.visionModel}
+                      thinkingEffort={config.thinkingEffort}
+                      showVision={config.showVision}
+                      disabled={config.disabled}
+                      error={config.error}
+                      notice={config.notice}
+                      hint={config.hint}
+                      engineTitle={config.engineTitle}
+                      onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
+                      onModelChange={config.onModelChange}
+                      onFastModelChange={config.onFastModelChange}
+                      onVisionModelChange={config.onVisionModelChange}
+                      onThinkingEffortChange={config.onThinkingEffortChange}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {enhance && value.trim() && (
+            enhance.enhancing ? (
+              <span
+                className="task-status-spinner"
+                title={t('chatInput.enhancing')}
+                aria-label={t('chatInput.enhancing')}
+                style={{ color: 'var(--accent)', width: 14, height: 14, flexShrink: 0 }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="chat-input-pill"
+                disabled={running}
+                onClick={enhance.enhanced ? enhance.onRevert : enhance.onEnhance}
+                title={enhance.enhanced ? t('chatInput.enhanceRevert') : t('chatInput.enhancePrompt')}
+                style={{ flexShrink: 0 }}
+              >
+                <Icon name={enhance.enhanced ? 'rotate-ccw' : 'sparkles'} size={12} strokeWidth={1.8} color={enhance.enhanced ? 'var(--meta)' : 'var(--accent)'} />
+                <span style={{ color: enhance.enhanced ? 'var(--fg)' : 'var(--accent)', fontWeight: 600 }}>
+                  {enhance.enhanced ? t('chatInput.enhanceRevert') : t('chatInput.enhancePrompt')}
+                </span>
+              </button>
+            )
           )}
           <button
             type="button"
@@ -288,13 +534,13 @@ export default function ChatInput({
                 ? t('chatInput.generating')
                 : title || t('chatInput.send')}
             style={{
-              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+              width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
               padding: 0,
-              background: stopped ? '#d92d20' : canSend ? 'var(--accent)' : 'var(--border)',
+              background: stopped ? '#d92d20' : canSend ? 'var(--fg)' : 'transparent',
               color: stopped || canSend ? '#fff' : 'var(--fg-2)',
               border: 'none', cursor: buttonDisabled ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.15s',
+              transition: 'background 0.15s, color 0.15s, transform 0.15s',
             }}
           >
             {stopped ? (
@@ -307,63 +553,6 @@ export default function ChatInput({
           </button>
         </div>
       </div>
-
-      {config && configOpen && (
-        <>
-          <div
-            style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
-            onClick={() => setConfigOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-label={t('chatInput.engineModelDialog')}
-            style={{
-              position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301,
-              width: 300, maxHeight: '70vh', overflowY: 'auto',
-              background: 'var(--bg)', border: '1px solid var(--border-soft)', borderRadius: 14,
-              boxShadow: '0 18px 44px rgba(0,0,0,0.20), 0 0 0 1px var(--border-soft)',
-              padding: '8px',
-            }}
-          >
-            {config.onReset && (
-              <button
-                type="button"
-                className="chat-input-menu-reset"
-                onClick={() => { config.onReset?.(); setConfigOpen(false) }}
-              >
-                <Icon name="refresh" size={14} strokeWidth={2} />
-                {t('chatInput.resetDefault')}
-              </button>
-            )}
-            <div style={{
-              fontSize: 11, fontWeight: 600, color: 'var(--meta)',
-              margin: '8px 6px 8px', paddingTop: 8,
-              borderTop: '1px solid var(--border-soft)',
-            }}>
-              {t('chatInput.model')}
-            </div>
-            <CoordinatorConfigBar
-              variant="menu"
-              engines={config.engines}
-              engine={config.engine}
-              defaultEngine={config.defaultEngine}
-              model={config.model}
-              fastModel={config.fastModel}
-              visionModel={config.visionModel}
-              showVision={config.showVision}
-              disabled={config.disabled}
-              error={config.error}
-              notice={config.notice}
-              hint={config.hint}
-              engineTitle={config.engineTitle}
-              onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
-              onModelChange={config.onModelChange}
-              onFastModelChange={config.onFastModelChange}
-              onVisionModelChange={config.onVisionModelChange}
-            />
-          </div>
-        </>
-      )}
     </div>
   )
 }

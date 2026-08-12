@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import Button from './Button'
 import { useI18n } from '../i18n'
 
@@ -9,11 +9,15 @@ interface Props {
   confirmText?: string
   cancelText?: string
   danger?: boolean
+  /** Optional body content rendered below the message (e.g. forms). */
+  children?: ReactNode
+  /** Disable the confirm button while an async action is in flight. */
+  loading?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, children, loading, onConfirm, onCancel }: Props) {
   const { t } = useI18n()
   // Close on Escape
   useEffect(() => {
@@ -52,6 +56,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
               {message}
             </div>
           )}
+          {children}
         </div>
 
         {/* Footer */}
@@ -59,6 +64,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
           <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
+            loading={loading}
             onClick={onConfirm}
             style={{ fontSize: 13, fontWeight: 500, padding: '6px 16px' }}
           >

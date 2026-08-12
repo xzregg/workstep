@@ -21,6 +21,7 @@ from models import (
     CoordinatorTurn,
     ActionProposal,
     StageSupplement,
+    Schedule,
     ALL_MODELS,
 )
 from models.fields import utc_now
@@ -237,6 +238,30 @@ class ProjectManager:
                 return proj
         return None
 
+    def find_project_for_task(self, task_id: str) -> "Project | None":
+        """Locate the project whose database contains the given task.
+
+        Iterates registered projects, briefly activating each project's
+        database to probe for the task row. Returns ``None`` if no
+        registered project owns the task.
+        """
+        from models import db_proxy, Task
+        for proj in self._projects.values():
+            if proj.db.is_closed():
+                try:
+                    proj.db.connect(reuse_if_open=True)
+                except Exception:
+                    continue
+            token = db_proxy.activate(proj.db)
+            try:
+                Task.get_by_id(task_id)
+                return proj
+            except Task.DoesNotExist:
+                continue
+            finally:
+                db_proxy.reset(token)
+        return None
+
     def activate_project_by_id(self, project_id: str) -> ProjectContext:
         """Return a scoped database activation for a project ID."""
         proj = self.get_project_by_id(project_id)
@@ -248,7 +273,7 @@ class ProjectManager:
 
     def _load_workflows_from_db(self) -> list[dict]:
         """Load all workflow rows from the project DB into dicts."""
-        rows = list(Workflow.select().order_by(Workflow.created_at))
+        rows = list(Workflow.select().order_by(Workflow.sort_order, Workflow.created_at))
         result = []
         for r in rows:
             try:
@@ -299,14 +324,36 @@ class ProjectManager:
         now = utc_now()
         wf_id = str(uuid.uuid4())[:8]
         wf_steps = steps if steps is not None else {"nodes": [], "connections": []}
+        next_order = (Workflow.select(pw.fn.MAX(Workflow.sort_order)).scalar() or 0) + 1
         Workflow.create(
             id=wf_id, name=name,
             steps_json=json.dumps(wf_steps, ensure_ascii=False),
             is_default=1 if is_default else 0,
+            sort_order=next_order,
             created_at=now, updated_at=now,
         )
         self._sync_project_workflows(proj)
         return next(w for w in proj.workflows if w["id"] == wf_id)
+
+    def reorder_workflows(self, proj: Project, ordered_ids: list[str]) -> None:
+        """Reassign sort_order from an explicit id list; unknown ids keep their relative order at the end."""
+        rows = list(Workflow.select().order_by(Workflow.sort_order, Workflow.created_at))
+        by_id = {row.id: row for row in rows}
+        seen: set[str] = set()
+        ordered: list[Workflow] = []
+        for wf_id in ordered_ids:
+            row = by_id.get(wf_id)
+            if row is not None and wf_id not in seen:
+                ordered.append(row)
+                seen.add(wf_id)
+        for row in rows:
+            if row.id not in seen:
+                ordered.append(row)
+        for index, row in enumerate(ordered):
+            if row.sort_order != index:
+                row.sort_order = index
+                row.save()
+        self._sync_project_workflows(proj)
 
     def update_workflow(self, proj: Project, workflow_id: str,
                         name: str | None = None, steps: dict | None = None) -> dict | None:
@@ -320,8 +367,34 @@ class ProjectManager:
             row.steps_json = json.dumps(steps, ensure_ascii=False)
         row.updated_at = utc_now()
         row.save()
+        if steps is not None:
+            self._invalidate_schedules_with_missing_start(workflow_id, steps)
         self._sync_project_workflows(proj)
         return next((w for w in proj.workflows if w["id"] == workflow_id), None)
+
+    def _invalidate_schedules_with_missing_start(
+        self, workflow_id: str, steps: dict
+    ) -> None:
+        from services.workflow_definition import WorkflowDefinition
+
+        step_keys = {
+            item["key"]
+            for item in WorkflowDefinition.load(steps).compile().to_steps_config()["steps"]
+        }
+        for schedule in Schedule.select().where(
+            (Schedule.workflow_id == workflow_id)
+            & (Schedule.status.in_(("active", "paused")))
+        ):
+            try:
+                start_key = json.loads(schedule.task_template_json).get("start_step_key")
+            except (json.JSONDecodeError, TypeError):
+                start_key = None
+            if start_key and start_key not in step_keys:
+                schedule.status = "invalid"
+                schedule.invalid_reason = f"Start step was removed: {start_key}"
+                schedule.next_run_at = None
+                schedule.updated_at = utc_now()
+                schedule.save()
 
     def delete_workflow(self, proj: Project, workflow_id: str) -> dict | None:
         """Delete a workflow — two-stage (recycle bin).
@@ -339,6 +412,7 @@ class ProjectManager:
             # record owned by this workflow (tasks, messages, runs, reviews,
             # coordinator data) before removing the workflow row itself.
             self._delete_workflow_data(workflow_id)
+            self._invalidate_workflow_schedules(workflow_id)
             row.delete_instance()
             self._sync_project_workflows(proj)
             return {"deleted": True, "soft": False}
@@ -352,8 +426,18 @@ class ProjectManager:
         row.deleted = 1
         row.updated_at = utc_now()
         row.save()
+        self._invalidate_workflow_schedules(workflow_id)
         self._sync_project_workflows(proj)
         return {"deleted": True, "soft": True}
+
+    def _invalidate_workflow_schedules(self, workflow_id: str) -> None:
+        """Permanently stop schedules whose target workflow is unavailable."""
+        Schedule.update(
+            status="invalid",
+            invalid_reason="Workflow was deleted",
+            next_run_at=None,
+            updated_at=utc_now(),
+        ).where(Schedule.workflow_id == workflow_id).execute()
 
     def restore_workflow(self, proj: Project, workflow_id: str) -> dict | None:
         """Restore a soft-deleted (recycle bin) workflow. Returns the dict or None."""
@@ -531,6 +615,31 @@ class ProjectManager:
             return None
         proj.name = name
         self._save_config()
+        return proj
+
+    def unregister(self, project_id: str) -> Project | None:
+        """Forget a project without deleting anything from its workspace."""
+        proj = self.get_project_by_id(project_id)
+        if proj is None:
+            return None
+
+        path_str = str(proj.path)
+        self._projects.pop(path_str, None)
+        if not proj.db.is_closed():
+            proj.db.close()
+
+        projects = config_store.get("projects") or []
+        config_store.set(
+            "projects",
+            [
+                entry
+                for entry in projects
+                if not (
+                    isinstance(entry, dict)
+                    and (entry.get("id") == project_id or entry.get("path") == path_str)
+                )
+            ],
+        )
         return proj
 
     def list_projects(self) -> list[dict]:

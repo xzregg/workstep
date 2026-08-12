@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path.home() / ".workstep"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+DEFAULT_EXECUTION_ENGINE = "pydantic_ai"
 
 CLAUDE_PERMISSION_MODES = {
     "acceptEdits",
@@ -42,7 +43,7 @@ class ConfigStore:
     {
         "projects": {"/path/to/proj": "显示名称"},
         "daemon": {"port": 8765, ...},
-        "engines": {"default": "claude", ...}
+        "engines": {"default": "pydantic_ai", ...}
     }
     """
 
@@ -144,17 +145,39 @@ class ConfigStore:
         value = self.get("coordinator_default_vision_model", "")
         return value if isinstance(value, str) else ""
 
+    def get_coordinator_default_thinking_effort(self) -> str:
+        value = self.get("coordinator_default_thinking_effort", "")
+        return value if value in CODEX_REASONING_EFFORTS else ""
+
     def set_coordinator_defaults(
         self,
         engine: str,
         model: str = "",
         fast_model: str = "",
         vision_model: str = "",
+        thinking_effort: str = "",
     ) -> None:
+        if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
+            raise ValueError(f"Unsupported thinking effort: {thinking_effort}")
         self.set("coordinator_default_engine", engine)
         self.set("coordinator_default_model", model)
         self.set("coordinator_default_fast_model", fast_model)
         self.set("coordinator_default_vision_model", vision_model)
+        self.set("coordinator_default_thinking_effort", thinking_effort)
+
+    def get_engine_idle_timeout_seconds(self) -> int:
+        """Stage-level engine idle timeout in seconds; 0 disables the watchdog.
+
+        When the engine produces no events for this long (e.g. a stalled API
+        connection), the runner terminates it and fails the stage, preserving
+        the session so a re-run can resume it.
+        """
+        value = self.get("engine_idle_timeout_seconds", 600)
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return 600
+        return max(0, value)
 
     def get_engine_binary_path(self, engine_id: str) -> str:
         paths = self.get("engine_binary_paths", {})
@@ -174,91 +197,32 @@ class ConfigStore:
             paths.pop(engine_id, None)
         self.set("engine_binary_paths", paths)
 
-    def get_api_engine_config(self) -> dict[str, Any]:
-        raw = self.get("api_engine", {})
-        if not isinstance(raw, dict):
-            raw = {}
-        provider = raw.get("provider") or os.environ.get("API_PROVIDER", "openai")
-        if provider not in {"openai", "anthropic"}:
-            provider = "openai"
-        default_base_url = (
-            "https://api.anthropic.com/v1"
-            if provider == "anthropic"
-            else "https://api.openai.com/v1"
-        )
-        return {
-            "provider": provider,
-            "base_url": raw.get("base_url")
-            or os.environ.get("API_BASE", default_base_url),
-            "api_key": raw.get("api_key")
-            or os.environ.get("API_KEY")
-            or os.environ.get("OPENAI_API_KEY", ""),
-            "model": raw.get("model")
-            or self.get_engine_default_model("api")
-            or os.environ.get("API_MODEL", ""),
-        }
-
-    def set_api_engine_config(
-        self,
-        *,
-        provider: str,
-        base_url: str,
-        api_key: str | None,
-        model: str,
-    ) -> None:
-        current = self.get_api_engine_config()
-        self.set(
-            "api_engine",
-            {
-                "provider": provider,
-                "base_url": base_url,
-                "api_key": current["api_key"] if api_key is None else api_key,
-                "model": model,
-            },
-        )
-        self.set_engine_default_model("api", model)
-
     def get_pydantic_ai_engine_config(self) -> dict[str, Any]:
         raw = self.get("pydantic_ai_engine", {})
         if not isinstance(raw, dict):
             raw = {}
-        provider = raw.get("provider") or os.environ.get(
-            "PYDANTIC_AI_PROVIDER", "openai"
-        )
-        if provider not in {"openai", "anthropic"}:
-            provider = "openai"
-        default_base_url = (
-            "https://api.anthropic.com/v1"
-            if provider == "anthropic"
-            else "https://api.openai.com/v1"
-        )
         return {
-            "provider": provider,
-            "base_url": raw.get("base_url")
-            or os.environ.get("PYDANTIC_AI_BASE_URL", default_base_url),
-            "api_key": raw.get("api_key")
-            or os.environ.get("PYDANTIC_AI_API_KEY", ""),
+            "provider_id": raw.get("provider_id")
+            or os.environ.get("PYDANTIC_AI_PROVIDER_ID", ""),
             "model": raw.get("model")
             or self.get_engine_default_model("pydantic_ai")
             or os.environ.get("PYDANTIC_AI_MODEL", ""),
+            "mcp_servers": raw.get("mcp_servers") or [],
         }
 
     def set_pydantic_ai_engine_config(
         self,
         *,
-        provider: str,
-        base_url: str,
-        api_key: str | None,
+        provider_id: str,
         model: str,
+        mcp_servers: list | None = None,
     ) -> None:
-        current = self.get_pydantic_ai_engine_config()
         self.set(
             "pydantic_ai_engine",
             {
-                "provider": provider,
-                "base_url": base_url,
-                "api_key": current["api_key"] if api_key is None else api_key,
+                "provider_id": provider_id,
                 "model": model,
+                "mcp_servers": list(mcp_servers or []),
             },
         )
         self.set_engine_default_model("pydantic_ai", model)
@@ -283,7 +247,6 @@ class ConfigStore:
             "permission_mode": self.get_claude_permission_mode(),
             "max_turns": str(max_turns) if max_turns not in (None, "") else "",
             "fallback_model": str(raw.get("fallback_model", "") or ""),
-            "max_budget_usd": str(raw.get("max_budget_usd", "") or ""),
         }
 
     def set_claude_agent_sdk_config(
@@ -291,7 +254,6 @@ class ConfigStore:
         max_turns: str = "",
         permission_mode: str | None = None,
         fallback_model: str = "",
-        max_budget_usd: str = "",
     ) -> None:
         if permission_mode is not None:
             self.set_claude_permission_mode(permission_mode)
@@ -315,17 +277,6 @@ class ConfigStore:
             raw["fallback_model"] = fallback_model
         else:
             raw.pop("fallback_model", None)
-        budget = str(max_budget_usd or "").strip()
-        if budget:
-            try:
-                budget_value = float(budget)
-            except ValueError:
-                raise ValueError("美元预算必须是数字")
-            if budget_value <= 0:
-                raise ValueError("美元预算必须大于 0")
-            raw["max_budget_usd"] = budget_value
-        else:
-            raw.pop("max_budget_usd", None)
         self.set("claude_agent_sdk_engine", raw)
 
     # --- Codex CLI config ---
@@ -459,6 +410,74 @@ class ConfigStore:
             "approval_mode": mode,
             "sandbox": sandbox,
         })
+
+
+    # --- Providers (global LLM API suppliers) ---
+
+    def get_providers(self) -> list[dict[str, Any]]:
+        raw = self.get("providers", [])
+        if not isinstance(raw, list):
+            return []
+        return [dict(item) for item in raw if isinstance(item, dict)]
+
+    def get_provider(self, provider_id: str) -> dict[str, Any] | None:
+        for item in self.get_providers():
+            if item.get("id") == provider_id:
+                return item
+        return None
+
+    def save_provider(self, provider: dict[str, Any]) -> dict[str, Any]:
+        providers = self.get_providers()
+        provider_id = str(provider.get("id") or "")
+        replaced = False
+        for index, item in enumerate(providers):
+            if item.get("id") == provider_id:
+                providers[index] = provider
+                replaced = True
+                break
+        if not replaced:
+            providers.append(provider)
+        self.set("providers", providers)
+        return dict(provider)
+
+    def delete_provider(self, provider_id: str) -> bool:
+        providers = self.get_providers()
+        remaining = [item for item in providers if item.get("id") != provider_id]
+        if len(remaining) == len(providers):
+            return False
+        self.set("providers", remaining)
+        return True
+
+    def is_provider_in_use(self, provider_id: str) -> bool:
+        """Whether an API-driven engine (Pydantic AI) currently uses this provider."""
+        raw = self.get("pydantic_ai_engine", {})
+        return (
+            isinstance(raw, dict)
+            and bool(raw.get("provider_id"))
+            and raw.get("provider_id") == provider_id
+        )
+
+    def migrate_legacy_config(self) -> None:
+        """One-time migration after removing the ``api`` (API/BYOK) engine."""
+        data = self._load()
+        changed = False
+        for key in ("execution_default_engine", "coordinator_default_engine"):
+            if data.get(key) == "api":
+                data[key] = ""
+                changed = True
+        if "api_engine" in data:
+            del data["api_engine"]
+            changed = True
+        defaults = data.get("engine_default_models")
+        if isinstance(defaults, dict) and "api" in defaults:
+            defaults.pop("api", None)
+            changed = True
+        verified = data.get("verified_engines")
+        if isinstance(verified, dict) and "api" in verified:
+            verified.pop("api", None)
+            changed = True
+        if changed:
+            self._save()
 
 
 # Global singleton

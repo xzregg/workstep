@@ -7,18 +7,20 @@ import os
 import shutil
 from typing import AsyncIterator
 
-from engines.acp_base import AcpEngineBase
-from engines.events import InternalEvent, normalize_cost
-from engines.schema import EngineImage
+from engines.core.acp_base import AcpEngineBase
+from engines.core.events import InternalEvent, normalize_cost
+from engines.core.schema import EngineImage
 
 logger = logging.getLogger(__name__)
 
 
 class HermesEngine(AcpEngineBase):
+    ENGINE_ID = "hermes"
+
     """Hermes ACP engine using JSON-RPC over stdin/stdout.
 
     Lifecycle: initialize → session/new → session/prompt → stream updates.
-    Auto-approves permission requests.
+    Surfaces ACP permission requests through WorkStep's interaction UI.
     """
 
     def __init__(self):
@@ -56,6 +58,10 @@ class HermesEngine(AcpEngineBase):
         binary = self.resolve_binary()
         return [binary, "acp", "--accept-hooks"] if binary else []
 
+    def get_permission_mode(self) -> str:
+        """ACP permissions must be decided by the user, never auto-approved."""
+        return "ask"
+
     def _next_id(self) -> int:
         self._request_id += 1
         return self._request_id
@@ -90,6 +96,7 @@ class HermesEngine(AcpEngineBase):
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in super().spawn(
             prompt=prompt,
@@ -98,6 +105,7 @@ class HermesEngine(AcpEngineBase):
             add_dirs=add_dirs,
             session_id=session_id,
             images=images,
+            config_overrides=config_overrides,
         ):
             yield event
 
@@ -203,11 +211,11 @@ class HermesEngine(AcpEngineBase):
 
     @property
     def supports_resume(self) -> bool:
-        return False
+        return True
 
     @property
     def supports_interactive(self) -> bool:
         return True
 
     def build_resume_params(self, session_id: str) -> dict:
-        return {}
+        return {"session_id": session_id}

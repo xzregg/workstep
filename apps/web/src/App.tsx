@@ -4,6 +4,10 @@ import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
 import TaskList from './pages/TaskList'
 import CanvasEditor from './pages/CanvasEditor'
+import StatisticsPage from './pages/StatisticsPage'
+import SchedulePage from './pages/SchedulePage'
+import ChatPage from './pages/ChatPage'
+import SharedTaskView from './pages/SharedTaskView'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 
@@ -17,7 +21,21 @@ function AppRoutes() {
       navigate(`/canvas?project=${encodeURIComponent(project.name)}`)
       return
     }
+    if (location.pathname === '/schedules') {
+      navigate('/schedules')
+      return
+    }
     navigate('/tasks')
+  }
+
+  // The share viewer is a standalone read-only page with its own chrome;
+  // render it without the regular Layout sidebar/header.
+  if (location.pathname.startsWith('/share/')) {
+    return (
+      <Routes>
+        <Route path="/share/:token" element={<SharedTaskView />} />
+      </Routes>
+    )
   }
 
   return (
@@ -26,6 +44,9 @@ function AppRoutes() {
         <Route path="/" element={<WelcomeView />} />
         <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
         <Route path="/canvas" element={<CanvasEditor />} />
+        <Route path="/statistics" element={<StatisticsPage />} />
+        <Route path="/schedules" element={activeProject ? <SchedulePage /> : <WelcomeView />} />
+        <Route path="/chat" element={activeProject ? <ChatPage /> : <WelcomeView />} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>
     </Layout>

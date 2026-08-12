@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import Button from './Button'
-import ChatMessageBubble from './ChatMessageBubble'
-import ChatInput from './ChatInput'
-import MessageMetaBar from './MessageMetaBar'
-import MessageResponseFooter from './MessageResponseFooter'
-import { stripA2uiBlocks } from '../utils/a2ui'
-import MarkdownMessage from './MarkdownMessage'
+import ConfirmDialog from './ConfirmDialog'
+import AssistantChatPanel from './AssistantChatPanel'
+import {
+  a2uiActionMessageParams,
+  pendingAutoApplyProposal,
+  resolveA2uiFlowSteps,
+  shouldShowA2uiProposalCards,
+} from '../utils/a2ui'
 import {
   workflowGenApi,
   engineApi,
   type CoordinatorDefaultConfig,
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
-import { formatConversationDateTime } from '../utils/datetime'
 import { useI18n } from '../i18n'
+import { selectWorkflowTurnContext } from '../utils/workflowContext'
+import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 
 /* ══════════════════════════════════════════
    AiFlowChat — reusable AI flow-design chat.
@@ -33,6 +37,22 @@ export interface AiFlowChatProps {
   onBusyChange?: (busy: boolean) => void
   title?: string
   onClose?: () => void
+  /** Returns the current canvas JSON so the agent adjusts the live editor content. */
+  getCanvasSteps?: () => any
+  /**
+   * When set, the conversation is pinned to this workflow: the same session
+   * (and history) is reused every time the workflow is edited. When unset,
+   * each open starts a brand-new session (create mode).
+   */
+  workflowId?: string
+  workflowName?: string
+  /** Prefill the chat composer without sending. */
+  initialMessage?: string
+}
+
+/** Stable conversation id for a workflow edit session (mirrors backend key). */
+function workflowSessionId(projectId: string, workflowId: string): string {
+  return `wf:${projectId}:${workflowId}`
 }
 
 function randomId(): string {
@@ -42,34 +62,44 @@ function randomId(): string {
   return `gen-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+const EMPTY_PROPOSALS: GenProposalCard[] = []
+
 export default function AiFlowChat({
   projectId,
   onProposal,
   onBusyChange,
   title,
   onClose,
+  getCanvasSteps,
+  workflowId,
+  workflowName = '',
+  initialMessage,
 }: AiFlowChatProps) {
   const { t, locale } = useI18n()
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [sendError, setSendError] = useState('')
+  const [stopping, setStopping] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [appliedCardId, setAppliedCardId] = useState<string | null>(null)
-  const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   // Coordinator engine / model overrides (session-scoped: this chat turn only).
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
+  const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const session = useWorkflowGenStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const running = session?.running ?? false
   const messages = session?.messages ?? []
-  const latestProposals = session?.latestProposals ?? []
+  const latestProposals = session?.latestProposals ?? EMPTY_PROPOSALS
   const rejectionMessage = session?.rejectionMessage
-  const endRef = useRef<HTMLDivElement>(null)
+  const lastCanvasSnapshotRef = useRef<string | null>(null)
 
   useEffect(() => {
     onBusyChange?.(running)
+    if (!running) setStopping(false)
   }, [running, onBusyChange])
 
   // A fresh proposals batch resets the "applied" highlight.
@@ -77,23 +107,17 @@ export default function AiFlowChat({
     setAppliedCardId(null)
   }, [latestProposals])
 
-  // Ensure freshly arrived proposal cards are visible.
   useEffect(() => {
-    if (latestProposals.length > 0) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-    }
-  }, [latestProposals])
+    const proposal = pendingAutoApplyProposal(latestProposals, appliedCardId)
+    if (!proposal) return
+    setAppliedCardId(proposal.id)
+    onProposal?.(proposal.steps)
+  }, [appliedCardId, latestProposals, onProposal])
 
   const applyCard = (card: GenProposalCard) => {
     setAppliedCardId(card.id)
     onProposal?.(card.steps)
   }
-
-  // Auto-scroll to the latest message.
-  const lastContent = messages.length > 0 ? messages[messages.length - 1].content : ''
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, lastContent])
 
   useEffect(() => {
     let active = true
@@ -108,26 +132,85 @@ export default function AiFlowChat({
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('aiFlow.configLoadFailed'))
       })
     return () => { active = false }
-  }, [])
+  }, [t])
 
-  const send = useCallback(async () => {
-    const content = input.trim()
+  // Workflow edit sessions reuse a stable conversation: load prior history.
+  useEffect(() => {
+    lastCanvasSnapshotRef.current = null
+    if (!workflowId || !projectId) return
+    const canonicalId = workflowSessionId(projectId, workflowId)
+    setSessionId(canonicalId)
+    useWorkflowGenStore.getState().newSession(canonicalId)
+    let active = true
+    workflowGenApi.history(projectId, workflowId)
+      .then((history) => {
+        if (!active) return
+        const store = useWorkflowGenStore.getState()
+        store.newSession(history.session_id)
+        store.hydrateSession(
+          history.session_id,
+          (history.messages || []).map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            status: m.status,
+            engine: m.engine,
+            model: m.model,
+            created_at: m.created_at,
+            ended_at: m.ended_at,
+            prompt: m.prompt,
+            events: (m.events || []).map((e) => ({
+              type: e.type || '',
+              data: e.data || {},
+              timestamp: e.timestamp,
+              created_at: e.created_at,
+            })),
+          })),
+        )
+        if (history.session_id !== canonicalId) setSessionId(history.session_id)
+      })
+      .catch(() => { /* keep the empty session; next turn still works */ })
+    return () => { active = false }
+  }, [workflowId, projectId])
+
+  const send = useCallback(async (contentOverride?: string) => {
+    const content = (contentOverride ?? input).trim()
     if (!content || running) return
     setSendError('')
     let sid = sessionId
     if (!sid) {
-      sid = randomId()
+      sid = workflowId && projectId
+        ? workflowSessionId(projectId, workflowId)
+        : randomId()
       useWorkflowGenStore.getState().newSession(sid)
       setSessionId(sid)
     }
     useWorkflowGenStore.getState().addUserMessage(sid, content)
     setInput('')
+    const currentSteps = getCanvasSteps?.() ?? { nodes: [], connections: [] }
+    const turnContext = workflowId
+      ? selectWorkflowTurnContext(
+          workflowName,
+          currentSteps,
+          lastCanvasSnapshotRef.current,
+        )
+      : {
+          mode: 'canvas_updated' as const,
+          steps: currentSteps,
+          snapshot: JSON.stringify(currentSteps),
+        }
     try {
       const accepted = await workflowGenApi.chat(projectId, content, sid, randomId(), {
         engine: selectedEngine || undefined,
         model: selectedModel || undefined,
         fastModel: selectedFastModel || undefined,
+        thinkingEffort: selectedThinkingEffort || undefined,
+        steps: turnContext.steps,
+        workflowName: 'workflowName' in turnContext ? turnContext.workflowName : undefined,
+        contextMode: turnContext.mode,
+        workflowId: workflowId || undefined,
       })
+      lastCanvasSnapshotRef.current = turnContext.snapshot
       if (accepted.session_id && accepted.session_id !== sid) {
         // Backend re-created the session; move the local state over.
         const store = useWorkflowGenStore.getState()
@@ -147,83 +230,123 @@ export default function AiFlowChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
     }
-  }, [input, running, sessionId, projectId, selectedEngine, selectedModel, selectedFastModel])
+  }, [input, running, sessionId, projectId, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t])
+
+  const handleA2uiAction = useCallback((action: A2uiClientAction) => {
+    const flow = resolveA2uiFlowSteps(action, latestProposals)
+    if (flow) {
+      setAppliedCardId(flow.proposalId)
+      onProposal?.(flow.steps)
+      return
+    }
+    void send(t('taskDetail.a2uiActionMessage', a2uiActionMessageParams(action)))
+  }, [latestProposals, onProposal, send, t])
+
+  const resetConversation = useCallback(async () => {
+    if (!workflowId || !projectId || running || resetting) return
+    setResetConfirmOpen(false)
+    setResetting(true)
+    setSendError('')
+    try {
+      const result = await workflowGenApi.reset(projectId, workflowId)
+      const canonicalId = result.session_id || workflowSessionId(projectId, workflowId)
+      const store = useWorkflowGenStore.getState()
+      if (sessionId) store.resetSession(sessionId)
+      if (canonicalId !== sessionId) store.resetSession(canonicalId)
+      store.newSession(canonicalId)
+      setSessionId(canonicalId)
+      lastCanvasSnapshotRef.current = null
+      setInput('')
+      setAppliedCardId(null)
+    } catch (reason) {
+      setSendError(reason instanceof Error ? reason.message : t('aiFlow.resetFailed'))
+    } finally {
+      setResetting(false)
+    }
+  }, [projectId, resetting, running, sessionId, t, workflowId])
+
+  // The add-workflow entry point only prepares a draft; the user sends it.
+  useEffect(() => {
+    if (!initialMessage) return
+    setInput(initialMessage)
+  }, [initialMessage])
+
+  const stop = useCallback(async () => {
+    if (!sessionId || stopping) return
+    setStopping(true)
+    setSendError('')
+    try {
+      const result = await workflowGenApi.stop(sessionId)
+      if (!result.stopped) {
+        setStopping(false)
+        setSendError(t('aiFlow.stopFailed'))
+      } else {
+        useWorkflowGenStore.getState().markStopped(sessionId)
+        setStopping(false)
+      }
+    } catch (reason) {
+      setStopping(false)
+      setSendError(reason instanceof Error ? reason.message : t('aiFlow.stopFailed'))
+    }
+  }, [sessionId, stopping, t])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{
-        height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
-        padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
-      }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13 }}>{title ?? t('aiFlow.title')}</span>
-        {running && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--meta)' }}>
-            <span className="task-status-spinner" aria-hidden="true" /> {t('aiFlow.thinking')}
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        {onClose && (
-          <Button variant="icon" aria-label={t('common.close')} onClick={onClose}>✕</Button>
-        )}
-      </div>
-
-      <div style={{
-        flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 12px',
-        display: 'flex', flexDirection: 'column', gap: 8,
-      }}>
-        {messages.length === 0 && (
-          <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
-            {t('aiFlow.emptyIntro')}
-          </div>
-        )}
-        {messages.map((m) => (
-          <ChatMessageBubble
-            key={m.id}
-            role={m.role}
-            sender={m.role === 'user' ? t('aiFlow.me') : t('aiFlow.agent')}
-            initials={m.role === 'user' ? t('aiFlow.meInitials') : t('aiFlow.agentInitials')}
-            color={m.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
-            content={m.content}
-            streaming={m.status === 'running'}
-            projectId={projectId}
-            error={m.role === 'assistant' ? m.error : undefined}
-            showLoading={m.role === 'assistant' && m.status === 'running'}
-            loading={m.role === 'assistant'
-              ? <div className="engine-loading-message" role="status">{t('aiFlow.thinking')}</div>
-              : undefined}
-            header={m.role === 'user' ? (
-              <>
-                <span
-                  title={t('aiFlow.userTagTitle')}
-                  style={{
-                    padding: '1px 6px', borderRadius: 999, fontSize: 11,
-                    border: '1px solid var(--border-soft)',
-                    background: 'rgba(124,58,237,0.08)',
-                    color: 'var(--ai-assistant)',
-                  }}
-                >
-                  {t('aiFlow.tag')}
-                </span>
-                {formatConversationDateTime(m.created_at, Date.now(), locale)}
-              </>
-            ) : (
-              <MessageMetaBar
-                createdAt={m.created_at}
-                running={m.status === 'running'}
-                prompt={m.prompt}
-                onViewPrompt={setViewingPrompt}
-              />
-            )}
-            footer={m.role === 'assistant' && m.status !== 'running' ? (
-              <MessageResponseFooter
-                content={stripA2uiBlocks(m.content)}
-                engine={m.engine}
-                model={m.model}
-              />
-            ) : undefined}
-          />
-        ))}
-        {latestProposals.length > 0 && (
+    <>
+      <AssistantChatPanel
+        projectId={projectId}
+        title={title ?? t('aiFlow.title')}
+        messages={messages}
+        running={running}
+        stopping={stopping}
+        input={input}
+        sendError={sendError}
+        locale={locale}
+        attachmentPrefix="flow-gen"
+        scrollKey={latestProposals.length}
+        onInputChange={(value) => { setInput(value); setSendError('') }}
+        onSend={() => void send()}
+        onStop={() => void stop()}
+        onAttachmentError={setSendError}
+        onClose={onClose}
+        onA2uiAction={handleA2uiAction}
+        quickPromptsLabel={t('aiFlow.quickPromptsLabel')}
+        quickPrompts={[
+          { label: t('aiFlow.quickGenerate'), prompt: t('aiFlow.quickGeneratePrompt') },
+          { label: t('aiFlow.quickOptimize'), prompt: t('aiFlow.quickOptimizePrompt') },
+          { label: t('aiFlow.quickReview'), prompt: t('aiFlow.quickReviewPrompt') },
+          { label: t('aiFlow.quickSimplify'), prompt: t('aiFlow.quickSimplifyPrompt') },
+        ]}
+        onQuickPromptSelect={(prompt) => {
+          setInput((current) => applyAssistantQuickPrompt(current, prompt))
+          setSendError('')
+        }}
+        copy={{
+          emptyIntro: t('aiFlow.emptyIntro'),
+          thinking: t('aiFlow.thinking'),
+          me: t('aiFlow.me'),
+          meInitials: t('aiFlow.meInitials'),
+          agent: t('aiFlow.agent'),
+          agentInitials: t('aiFlow.agentInitials'),
+          tag: t('aiFlow.tag'),
+          userTagTitle: t('aiFlow.userTagTitle'),
+          placeholder: t('aiFlow.placeholder'),
+          fullPrompt: t('aiFlow.fullPrompt'),
+          closePrompt: t('aiFlow.closePrompt'),
+        }}
+        headerActions={workflowId ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={resetting}
+            disabled={running}
+            title={t('aiFlow.resetSessionHint')}
+            onClick={() => setResetConfirmOpen(true)}
+          >
+            {t('aiFlow.resetSession')}
+          </Button>
+        ) : undefined}
+        afterMessages={<>
+        {shouldShowA2uiProposalCards(latestProposals.length, appliedCardId) && (
           <div style={{ marginTop: 2 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
               {t('aiFlow.chooseProposal')}
@@ -277,87 +400,51 @@ export default function AiFlowChat({
             {rejectionMessage}
           </div>
         )}
-        <div ref={endRef} />
-      </div>
+        </>}
+        config={{
+          engines: coordinatorConfig?.available_engines || [],
+          engine: selectedEngine,
+          defaultEngine: coordinatorConfig?.engine || 'claude',
+          model: selectedModel,
+          fastModel: selectedFastModel,
+          thinkingEffort: selectedThinkingEffort,
+          disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
+          error: coordinatorConfigError,
+          hint: coordinatorConfig ? t('aiFlow.sessionHint') : '',
+          engineTitle: t('aiFlow.engineTitle'),
+          onEngineChange: (engineId) => {
+            lastCanvasSnapshotRef.current = null
+            setSelectedEngine(engineId)
+            setSelectedModel('')
+            setSelectedFastModel('')
+            setSelectedThinkingEffort('')
+          },
+          onModelChange: (model) => {
+            lastCanvasSnapshotRef.current = null
+            setSelectedModel(model)
+          },
+          onFastModelChange: setSelectedFastModel,
+          onThinkingEffortChange: setSelectedThinkingEffort,
+          onReset: () => {
+            lastCanvasSnapshotRef.current = null
+            setSelectedEngine('')
+            setSelectedModel('')
+            setSelectedFastModel('')
+            setSelectedThinkingEffort('')
+          },
+        }}
+      />
 
-      {sendError && (
-        <div style={{ padding: '6px 12px', fontSize: 13, color: 'var(--danger)' }}>{sendError}</div>
-      )}
+      <ConfirmDialog
+        open={resetConfirmOpen}
+        title={t('aiFlow.resetSessionTitle')}
+        message={t('aiFlow.resetSessionMessage')}
+        confirmText={t('aiFlow.resetSessionConfirm')}
+        danger
+        onConfirm={() => void resetConversation()}
+        onCancel={() => setResetConfirmOpen(false)}
+      />
 
-      <div style={{
-        flexShrink: 0, padding: '10px 12px',
-        borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
-      }}>
-        <ChatInput
-          value={input}
-          onChange={(value) => { setInput(value); setSendError('') }}
-          onSend={() => void send()}
-          disabled={running}
-          running={running}
-          placeholder={t('aiFlow.placeholder')}
-          imageAttach={{
-            projectId,
-            prefix: 'flow-gen',
-            onError: (message) => setSendError(message),
-          }}
-          config={{
-            engines: coordinatorConfig?.available_engines || [],
-            engine: selectedEngine,
-            defaultEngine: coordinatorConfig?.engine || 'claude',
-            model: selectedModel,
-            fastModel: selectedFastModel,
-            disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
-            error: coordinatorConfigError,
-            hint: coordinatorConfig ? t('aiFlow.sessionHint') : '',
-            engineTitle: t('aiFlow.engineTitle'),
-            onEngineChange: (engineId) => {
-              setSelectedEngine(engineId)
-              setSelectedModel('')
-              setSelectedFastModel('')
-            },
-            onModelChange: setSelectedModel,
-            onFastModelChange: setSelectedFastModel,
-            onReset: () => {
-              setSelectedEngine('')
-              setSelectedModel('')
-              setSelectedFastModel('')
-            },
-          }}
-        />
-      </div>
-
-      {viewingPrompt && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('aiFlow.fullPrompt')}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1450,
-            background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24,
-          }}
-          onClick={() => setViewingPrompt(null)}
-        >
-          <div
-            style={{
-              width: 'min(860px, 92vw)', maxHeight: '84vh',
-              background: 'var(--bg)', borderRadius: 12,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <strong style={{ flex: 1, fontSize: 13 }}>{t('aiFlow.fullPrompt')}</strong>
-              <Button variant="icon" aria-label={t('aiFlow.closePrompt')} onClick={() => setViewingPrompt(null)}>✕</Button>
-            </div>
-            <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
-              <MarkdownMessage content={viewingPrompt} />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </>
   )
 }

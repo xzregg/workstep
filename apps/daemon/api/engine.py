@@ -4,18 +4,23 @@ import asyncio
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from engines.base import BaseLLMEngine
-from engines.registry import (
+from engines.core.base import BaseLLMEngine
+from engines.core.registry import (
     create_engine,
     get_available_engines,
     list_all_engines,
     refresh_registry,
 )
-from services.config import config_store
+from services.config import (
+    CODEX_REASONING_EFFORTS,
+    DEFAULT_EXECUTION_ENGINE,
+    config_store,
+)
+from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
 
@@ -38,6 +43,7 @@ class CoordinatorDefaultsRequest(BaseModel):
     model: str = Field(default="", max_length=200)
     fast_model: str = Field(default="", max_length=200)
     vision_model: str = Field(default="", max_length=200)
+    thinking_effort: str = Field(default="", max_length=20)
 
 
 class BinaryPathRequest(BaseModel):
@@ -74,7 +80,7 @@ def _coordinator_engine_options() -> list[dict]:
         if item.get("installed")
         and (
             item.get("supports_coordinator")
-            or item.get("id") in {"api", "pydantic_ai"}
+            or item.get("id") == "pydantic_ai"
         )
     ]
 
@@ -95,7 +101,7 @@ async def get_execution_default_config():
     configured = config_store.get_execution_default_engine()
     return {
         "engine": configured,
-        "resolved_engine": configured or "claude",
+        "resolved_engine": configured or DEFAULT_EXECUTION_ENGINE,
     }
 
 
@@ -108,7 +114,7 @@ async def set_execution_default_config(req: DefaultEngineRequest):
     return {
         "saved": True,
         "engine": engine_id,
-        "resolved_engine": engine_id or "claude",
+        "resolved_engine": engine_id or DEFAULT_EXECUTION_ENGINE,
     }
 
 
@@ -119,6 +125,7 @@ async def get_coordinator_default_config():
         "model": config_store.get_coordinator_default_model(),
         "fast_model": config_store.get_coordinator_default_fast_model(),
         "vision_model": config_store.get_coordinator_default_vision_model(),
+        "thinking_effort": config_store.get_coordinator_default_thinking_effort(),
         "available_engines": _coordinator_engine_options(),
     }
 
@@ -129,12 +136,15 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
     model = req.model.strip()
     fast_model = req.fast_model.strip()
     vision_model = req.vision_model.strip()
+    thinking_effort = req.thinking_effort.strip()
+    if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
+        raise HTTPException(status_code=400, detail="不支持的思考强度")
     if engine_id:
         _validate_engine(engine_id, coordinator=True)
     elif model or fast_model or vision_model:
         raise HTTPException(status_code=400, detail="默认模型需要先选择协调引擎")
     config_store.set_coordinator_defaults(
-        engine_id, model, fast_model, vision_model
+        engine_id, model, fast_model, vision_model, thinking_effort
     )
     return {
         "saved": True,
@@ -142,6 +152,7 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
         "model": model,
         "fast_model": fast_model,
         "vision_model": vision_model,
+        "thinking_effort": thinking_effort,
     }
 
 
@@ -173,6 +184,66 @@ async def test_engine(req: EngineTestRequest):
         **asdict(result),
         "engine": engine_info,
     }
+
+
+@router.post("/{engine_id}/install")
+async def install_engine(engine_id: str):
+    """Install an engine's runtime (CLI binary / Python SDK) on this host."""
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="未知引擎")
+    engine = cls()
+    if engine.is_installed():
+        return {
+            "engine_id": engine_id,
+            "success": True,
+            "already_installed": True,
+            "message": "引擎已安装",
+            "engine": next(
+                (item for item in get_available_engines() if item["id"] == engine_id),
+                None,
+            ),
+        }
+    if engine.install_command() is None:
+        raise HTTPException(
+            status_code=400,
+            detail="该引擎不支持自动安装，请手动安装后重新扫描",
+        )
+    result = await engine.install()
+    engine_info = None
+    if result.success:
+        refresh_registry()
+        engine_info = next(
+            (item for item in get_available_engines() if item["id"] == engine_id),
+            None,
+        )
+    return {
+        "engine_id": engine_id,
+        "success": result.success,
+        "already_installed": result.already_installed,
+        "message": result.message,
+        "engine": engine_info,
+    }
+
+
+@router.get("/{engine_id}/inspect")
+async def inspect_engine(
+    engine_id: str,
+    project_id: str = Query("", alias="project_id"),
+    project_root: str = Query("", alias="project_root"),
+):
+    """Return what the engine loads for a project (skills / MCP servers)."""
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="未知引擎")
+    root = project_root.strip() or None
+    if not root and project_id.strip():
+        project = project_manager.get_project_by_id(project_id.strip())
+        root = str(project.path) if project else None
+    result = await cls().inspect_capabilities(project_root=root)
+    if result is None:
+        raise HTTPException(status_code=400, detail="该引擎不支持查看加载能力")
+    return result
 
 
 @router.get("/{engine_id}/models")
@@ -232,7 +303,7 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
 async def set_binary_path(engine_id: str, req: BinaryPathRequest):
     """Persist or clear a backend's executable path override."""
     supported = {engine["id"] for engine in get_available_engines()}
-    if engine_id not in supported or engine_id in {"api", "pydantic_ai"}:
+    if engine_id not in supported or engine_id == "pydantic_ai":
         return {
             "engine_id": engine_id,
             "saved": False,

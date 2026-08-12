@@ -1,10 +1,13 @@
 """Tests for engine layer: events, registry, ClaudeCodeEngine mapping."""
 
+import asyncio
+from typing import get_args, get_type_hints
+
 import pytest
 
-from engines.base import BaseLLMEngine
-from engines.events import InternalEvent, normalize_cost, normalize_token_usage
-from engines.registry import ENGINE_REGISTRY, get_available_engines, create_engine
+from engines.core.base import BaseLLMEngine
+from engines.core.events import InternalEvent, normalize_cost, normalize_token_usage
+from engines.core.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
 
 
@@ -61,6 +64,13 @@ def test_internal_event_to_dict():
     event = InternalEvent(type="status", data={"status": "running"}, timestamp=1000)
     d = event.to_dict()
     assert d == {"type": "status", "data": {"status": "running"}, "timestamp": 1000}
+
+
+@pytest.mark.parametrize("event_type", ["live_message", "engine_state"])
+def test_internal_event_declares_runtime_event_types(event_type):
+    event = InternalEvent(type=event_type, data={})
+    assert event.type == event_type
+    assert event_type in get_args(get_type_hints(InternalEvent)["type"])
 
 
 def test_normalize_cost_accepts_acp_style_dict():
@@ -155,7 +165,7 @@ def test_registry_has_claude():
 
 def test_create_engine():
     """create_engine returns a BaseLLMEngine instance."""
-    from engines.base import BaseLLMEngine
+    from engines.core.base import BaseLLMEngine
     engine = create_engine("claude")
     assert isinstance(engine, BaseLLMEngine)
 
@@ -165,6 +175,22 @@ def test_create_engine_unknown():
     assert create_engine("unknown") is None
 
 
+def test_engine_install_base_defaults():
+    """Base install reports nothing to install; no install command by default."""
+    engine = StubEngine([])
+    assert engine.install_command() is None
+    result = asyncio.run(engine.install())
+    assert result.success is True
+    assert result.already_installed is True
+
+
+def test_claude_code_install_command():
+    assert (
+        ClaudeCodeEngine.install_command()
+        == "npm install -g @anthropic-ai/claude-code"
+    )
+
+
 def test_get_available_engines():
     """get_available_engines returns list with install status."""
     engines = get_available_engines()
@@ -172,6 +198,8 @@ def test_get_available_engines():
     claude_entry = next(e for e in engines if e["id"] == "claude")
     assert "installed" in claude_entry
     assert isinstance(claude_entry["installed"], bool)
+    assert "installable" in claude_entry
+    assert "install_command" in claude_entry
 
 
 def test_claude_resolve_binary():
@@ -208,12 +236,64 @@ def test_claude_command_includes_confirmed_permission_mode():
         "/usr/local/bin/claude",
         "-p",
         "--output-format", "stream-json",
+        "--include-partial-messages",
         "--verbose",
         "--permission-mode", "acceptEdits",
         "--model", "sonnet",
         "--resume", "session-1",
         "--add-dir", "/tmp/shared",
     ]
+
+
+def test_claude_maps_partial_stream_and_all_completed_blocks_without_duplicates():
+    engine = ClaudeCodeEngine()
+    state = {"streamed_text": False, "streamed_thinking": False}
+
+    partial = engine._map_events({
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "增量"},
+        },
+    }, state)
+    completed = engine._map_events({
+        "type": "assistant",
+        "message": {"content": [
+            {"type": "text", "text": "增量"},
+            {"type": "thinking", "thinking": "完整思考"},
+            {"type": "tool_use", "id": "tool-1", "name": "Read", "input": {}},
+        ]},
+    }, state)
+
+    assert [(event.type, event.data.get("delta")) for event in partial] == [
+        ("text_delta", "增量")
+    ]
+    assert [event.type for event in completed] == ["thinking_delta", "tool_use"]
+
+
+def test_claude_maps_all_completed_blocks_when_partial_stream_is_absent():
+    events = ClaudeCodeEngine()._map_events({
+        "type": "assistant",
+        "message": {"content": [
+            {"type": "text", "text": "A"},
+            {"type": "text", "text": "B"},
+        ]},
+    })
+
+    assert [event.data["delta"] for event in events] == ["A", "B"]
+
+
+def test_claude_result_error_is_not_reported_as_successful_usage_only():
+    events = ClaudeCodeEngine()._map_events({
+        "type": "result",
+        "subtype": "error_during_execution",
+        "is_error": True,
+        "result": "权限失败",
+        "usage": {"input_tokens": 1, "output_tokens": 0},
+    })
+
+    assert events[0].type == "error"
+    assert "权限失败" in events[0].data["message"]
 
 
 @pytest.mark.anyio
@@ -274,6 +354,31 @@ def test_claude_map_event_tool_use():
     assert event.type == "tool_use"
     assert event.data["name"] == "Read"
     assert event.data["id"] == "tool_123"
+
+
+def test_claude_maps_ask_user_question_to_form_elicitation():
+    engine = ClaudeCodeEngine()
+    event = engine._map_event({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use",
+            "id": "ask-1",
+            "name": "AskUserQuestion",
+            "input": {
+                "questions": [{
+                    "header": "方案",
+                    "question": "选择方案",
+                    "multiSelect": False,
+                    "options": [{"label": "A", "description": "方案 A"}],
+                }],
+            },
+        }]},
+    })
+
+    assert event is not None
+    assert event.type == "interaction_request"
+    assert event.data["method"] == "elicitation/create"
+    assert event.data["tool_call_id"] == "ask-1"
 
 
 def test_codex_map_reasoning_item():

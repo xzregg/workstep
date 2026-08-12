@@ -6,12 +6,20 @@ import os
 from pathlib import Path
 import re
 import shutil
+import uuid
 from typing import Any, AsyncIterator, Mapping
 
-from engines.base import BaseLLMEngine, EngineModel
-from engines.events import InternalEvent, compacted_event, normalize_token_usage
-from engines.schema import EngineImage
-from engines.schema import EngineConfigField, EngineConfigOption
+from engines.core.base import (
+    BaseLLMEngine,
+    EngineInstallResult,
+    EngineModel,
+    install_python_package,
+    sdk_turn_watchdog,
+)
+from engines.core.plans import subagent_event_from_message
+from engines.core.events import InternalEvent, compacted_event, normalize_token_usage
+from engines.core.schema import EngineImage
+from engines.core.schema import EngineConfigField, EngineConfigOption
 from services.config import CLAUDE_PERMISSION_MODES, config_store
 
 logger = logging.getLogger(__name__)
@@ -28,11 +36,10 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
 
     ENGINE_ID = "claude_agent_sdk"
 
-    _live_message_wait_seconds: float = 1.5
-
     def __init__(self):
         self._running = False
-        self._query_task: asyncio.Task | None = None
+        self._receive_task: asyncio.Task | None = None
+        self._client = None
 
     # --- Engine discovery ---
 
@@ -92,6 +99,14 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
             pass
         return shutil.which("claude")
 
+    @staticmethod
+    def install_command() -> str:
+        return "pip install claude-agent-sdk"
+
+    async def install(self) -> EngineInstallResult:
+        """Install the official ``claude-agent-sdk`` Python package."""
+        return await install_python_package("claude-agent-sdk")
+
     # --- Config schema (backend-driven settings form) ---
 
     @classmethod
@@ -123,13 +138,6 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                 placeholder="如 claude-3-5-haiku-latest",
                 help="主模型不可用时自动切换的备用模型。",
             ),
-            EngineConfigField(
-                key="max_budget_usd",
-                label="美元预算",
-                type="number",
-                placeholder="如 0.5，留空为不限制",
-                help="本轮对话的最大美元花费上限。",
-            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -152,7 +160,6 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
             max_turns=str(values.get("max_turns") or ""),
             permission_mode=mode,
             fallback_model=str(values.get("fallback_model") or ""),
-            max_budget_usd=str(values.get("max_budget_usd") or ""),
         )
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
@@ -253,9 +260,24 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
         ``result`` message only falls back to ``result.output`` when the model
         streamed no text blocks.
         """
-        state = state if state is not None else {"emitted_text": False}
+        state = state if state is not None else {}
+        state.setdefault("emitted_text", False)
+        state.setdefault("streamed_text", False)
+        state.setdefault("streamed_thinking", False)
+        state.setdefault("session_started", False)
         events: list[InternalEvent] = []
         mtype = self._msg_type(msg)
+        subtype = getattr(msg, "subtype", "") or ""
+        if subtype in (
+            "task_started",
+            "task_progress",
+            "task_updated",
+            "task_notification",
+        ):
+            subagent = subagent_event_from_message(msg)
+            if subagent is not None:
+                events.append(subagent)
+            return events
 
         if mtype == "system":
             subtype = getattr(msg, "subtype", "") or ""
@@ -263,6 +285,14 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                 events.append(
                     InternalEvent(type="status", data={"status": "initializing"})
                 )
+                data = getattr(msg, "data", None) or {}
+                session_id = data.get("session_id") if isinstance(data, Mapping) else None
+                if session_id and not state["session_started"]:
+                    state["session_started"] = True
+                    events.append(InternalEvent(
+                        type="session_started",
+                        data={"session_id": str(session_id)},
+                    ))
             elif subtype == "error":
                 error = getattr(msg, "message", None) or "Claude Agent SDK 启动失败"
                 events.append(InternalEvent(type="error", data={"message": str(error)}))
@@ -279,17 +309,49 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                     events.append(compacted_event())
             return events
 
+        if mtype == "stream_event":
+            session_id = getattr(msg, "session_id", None)
+            if session_id and not state["session_started"]:
+                state["session_started"] = True
+                events.append(InternalEvent(
+                    type="session_started", data={"session_id": str(session_id)}
+                ))
+            stream_event = getattr(msg, "event", None) or {}
+            if stream_event.get("type") != "content_block_delta":
+                return events
+            delta = stream_event.get("delta") or {}
+            delta_type = delta.get("type", "")
+            if delta_type == "text_delta" and delta.get("text"):
+                state["emitted_text"] = True
+                state["streamed_text"] = True
+                events.append(InternalEvent(
+                    type="text_delta", data={"delta": str(delta["text"])}
+                ))
+            elif delta_type == "thinking_delta":
+                thinking = delta.get("thinking") or delta.get("text")
+                if thinking:
+                    state["streamed_thinking"] = True
+                    events.append(InternalEvent(
+                        type="thinking_delta", data={"delta": str(thinking)}
+                    ))
+            elif delta_type == "input_json_delta" and delta.get("partial_json"):
+                events.append(InternalEvent(
+                    type="tool_input_delta",
+                    data={"delta": str(delta["partial_json"])},
+                ))
+            return events
+
         if mtype == "assistant":
             for block in self._content_blocks(msg):
                 block_type = self._block_type(block)
-                if block_type == "text":
+                if block_type == "text" and not state["streamed_text"]:
                     delta = getattr(block, "text", "") or ""
                     if delta:
                         state["emitted_text"] = True
                         events.append(
                             InternalEvent(type="text_delta", data={"delta": delta})
                         )
-                elif block_type == "thinking":
+                elif block_type == "thinking" and not state["streamed_thinking"]:
                     thinking = getattr(block, "thinking", "") or ""
                     if thinking:
                         events.append(
@@ -382,6 +444,8 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
+        thinking_effort: str | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         prompt = self.render_image_prompt(prompt, images)
         binary = self.resolve_binary()
@@ -391,7 +455,12 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
             )
             return
         try:
-            from claude_agent_sdk import ClaudeAgentOptions, query as sdk_query
+            from claude_agent_sdk import (
+                ClaudeAgentOptions,
+                ClaudeSDKClient,
+                PermissionResultAllow,
+                PermissionResultDeny,
+            )
         except Exception as exc:
             yield InternalEvent(
                 type="error",
@@ -399,23 +468,44 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
             )
             return
 
-        sdk_config = config_store.get_claude_agent_sdk_config()
+        event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
+
+        async def can_use_tool(tool_name, input_data, context):
+            allowed, updated_input = await self.handle_tool_permission(
+                event_queue.put,
+                tool_name=str(tool_name),
+                tool_input=input_data if isinstance(input_data, dict) else {},
+                tool_use_id=str(getattr(context, "tool_use_id", "") or uuid.uuid4()),
+                title=str(getattr(context, "title", "") or ""),
+                session_id=session_id or "claude-agent-sdk",
+            )
+            if allowed:
+                return PermissionResultAllow(updated_input=updated_input)
+            return PermissionResultDeny(message="用户拒绝了该操作")
+
+        sdk_config = self.merge_config_overrides(
+            config_store.get_claude_agent_sdk_config(), config_overrides
+        )
         options = ClaudeAgentOptions(
             cwd=cwd,
             model=model or None,
             permission_mode=sdk_config["permission_mode"] or "acceptEdits",
             cli_path=binary,
+            resume=session_id or None,
+            include_partial_messages=True,
+            can_use_tool=can_use_tool,
         )
-        if live_message_queue is not None:
-            options.continue_conversation = True
         if add_dirs:
             options.add_dirs = list(add_dirs)
         if sdk_config["max_turns"]:
             options.max_turns = int(sdk_config["max_turns"])
         if sdk_config["fallback_model"]:
             options.fallback_model = sdk_config["fallback_model"]
-        if sdk_config["max_budget_usd"]:
-            options.max_budget_usd = float(sdk_config["max_budget_usd"])
+        if thinking_effort and hasattr(options, "effort"):
+            # Claude 的 effort 取值 low/medium/high/xhigh/max，极简映射到最低档。
+            options.effort = (
+                "low" if thinking_effort == "minimal" else thinking_effort
+            )
 
         logger.info(
             "ClaudeAgentSDKEngine spawn: binary=%s cwd=%s model=%s options=%s",
@@ -425,22 +515,69 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
         self._running = True
         yield InternalEvent(type="status", data={"status": "running"})
 
-        event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
-        state: dict[str, Any] = {"emitted_text": False}
+        state: dict[str, Any] = {
+            "emitted_text": False,
+            "streamed_text": False,
+            "streamed_thinking": False,
+            "session_started": False,
+        }
 
-        async def prompt_source() -> AsyncIterator[str]:
-            """Yield the initial prompt, then queued live messages."""
-            yield prompt
+        client = ClaudeSDKClient(options=options)
+        self._client = client
+        await client.connect()
+
+        turn_ended = asyncio.Event()
+        end_prompt = asyncio.Event()
+        input_closed = asyncio.Event()
+
+        def _user_message(content: str) -> dict:
+            return {
+                "type": "user",
+                "message": {"role": "user", "content": content},
+                "parent_tool_use_id": None,
+                "session_id": "default",
+            }
+
+        async def prompt_source() -> AsyncIterator[dict]:
+            """Stream the initial prompt and live injections to the SDK.
+
+            The SDK keeps stdin open for the whole session; ending this source
+            closes stdin so the CLI finishes the turn, exits gracefully, and
+            the SDK emits its stream-end frame (deterministic end, not a
+            timeout).
+            """
+            yield _user_message(prompt)
             if live_message_queue is None:
                 return
             while True:
+                get_task = asyncio.create_task(live_message_queue.get())
+                end_task = asyncio.create_task(end_prompt.wait())
+                closed_task = asyncio.create_task(input_closed.wait())
                 try:
-                    message_id, content = await asyncio.wait_for(
-                        live_message_queue.get(),
-                        timeout=self._live_message_wait_seconds,
+                    done, _ = await asyncio.wait(
+                        {get_task, end_task, closed_task},
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
-                except asyncio.TimeoutError:
+                except asyncio.CancelledError:
+                    for task in (get_task, end_task, closed_task):
+                        task.cancel()
+                    raise
+                if end_task in done or closed_task in done:
+                    if get_task in done:
+                        # 消息已被取出但引擎收流：补报 error，避免静默丢失。
+                        message_id, _ = get_task.result()
+                        await event_queue.put(InternalEvent(
+                            type="live_message",
+                            data={
+                                "message_id": message_id,
+                                "status": "error",
+                                "detail": "引擎执行已结束，无法接收新消息",
+                            },
+                        ))
+                    else:
+                        get_task.cancel()
                     return
+                message_id, content = get_task.result()
                 extras: list[tuple[str, str]] = []
                 while not live_message_queue.empty():
                     extras.append(live_message_queue.get_nowait())
@@ -456,14 +593,15 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                             "detail": "",
                         },
                     ))
-                yield combined
+                yield _user_message(combined)
 
-        async def pump() -> None:
+        query_task = asyncio.create_task(client.query(prompt_source()))
+
+        async def receive() -> None:
             try:
-                async for message in sdk_query(
-                    prompt=prompt_source(),
-                    options=options,
-                ):
+                async for message in client.receive_messages():
+                    if self._msg_type(message) == "result":
+                        turn_ended.set()
                     for event in self._map_message(message, state):
                         await event_queue.put(event)
             except asyncio.CancelledError:
@@ -474,34 +612,83 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                     InternalEvent(type="error", data={"message": str(exc)})
                 )
             finally:
+                input_closed.set()
+                if query_task is not None:
+                    try:
+                        # 等输入源收尾：prompt_source 可能在收流瞬间已取出
+                        # 插入消息，需先补报 error 事件，避免被 None 抢先吞掉。
+                        await asyncio.wait_for(
+                            asyncio.shield(query_task), timeout=5
+                        )
+                    except asyncio.TimeoutError:
+                        query_task.cancel()
+                    except asyncio.CancelledError:
+                        pass
                 await event_queue.put(None)
 
-        query_task = asyncio.create_task(pump())
-        self._query_task = query_task
+        receive_task = asyncio.create_task(receive())
+        watchdog_task = asyncio.create_task(sdk_turn_watchdog(
+            turn_ended,
+            end_prompt.set,
+            disconnect=client.disconnect,
+            stream_closed=input_closed,
+            pending_injection=(
+                (lambda: not live_message_queue.empty())
+                if live_message_queue is not None else None
+            ),
+        ))
+        self._receive_task = receive_task
         try:
             while True:
                 event = await event_queue.get()
                 if event is None:
                     break
                 yield event
-            await query_task
+            await receive_task
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
         except Exception as exc:
             logger.exception("ClaudeAgentSDKEngine spawn error")
             yield InternalEvent(type="error", data={"message": str(exc)})
         finally:
-            if self._query_task is not None and not self._query_task.done():
-                self._query_task.cancel()
-                await asyncio.gather(self._query_task, return_exceptions=True)
-            self._query_task = None
+            # 收流结束：尚未投递的插入消息标记失败，避免静默丢失。
+            if live_message_queue is not None:
+                remaining: list[tuple[str, str]] = []
+                while not live_message_queue.empty():
+                    remaining.append(live_message_queue.get_nowait())
+                for message_id, _ in remaining:
+                    yield InternalEvent(type="live_message", data={
+                        "message_id": message_id,
+                        "status": "error",
+                        "detail": "引擎执行已结束，无法接收新消息",
+                    })
+            for task in (receive_task, query_task, watchdog_task):
+                if task is not None and not task.done():
+                    task.cancel()
+            for task in (query_task, watchdog_task):
+                if task is not None:
+                    await asyncio.gather(task, return_exceptions=True)
+            self._receive_task = None
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            self._client = None
             self._running = False
 
     async def stop(self) -> None:
-        if self._query_task is not None and not self._query_task.done():
-            self._query_task.cancel()
-            await asyncio.gather(self._query_task, return_exceptions=True)
-            self._query_task = None
+        receive_task = self._receive_task
+        self._receive_task = None
+        if receive_task is not None and not receive_task.done():
+            receive_task.cancel()
+            await asyncio.gather(receive_task, return_exceptions=True)
+        client = self._client
+        self._client = None
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
         self._running = False
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
@@ -509,7 +696,7 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
 
     @property
     def supports_resume(self) -> bool:
-        return False
+        return True
 
     @property
     def supports_vision(self) -> bool:
@@ -518,11 +705,16 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
 
     @property
     def supports_interactive(self) -> bool:
-        return True  # continue_conversation accepts ordinary user messages mid-run
+        return True  # ClaudeSDKClient 双向流式：运行中 query() 注入 + can_use_tool
 
     @property
     def supports_live_stage_message(self) -> bool:
         return True
 
+    @property
+    def supports_thinking_effort(self) -> bool:
+        """ClaudeAgentOptions.effort maps to a per-turn thinking effort."""
+        return True
+
     def build_resume_params(self, session_id: str) -> dict:
-        return {}
+        return {"session_id": session_id}

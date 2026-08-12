@@ -7,8 +7,8 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from engines.base import BaseLLMEngine
-from engines.events import InternalEvent
+from engines.core.base import BaseLLMEngine
+from engines.core.events import InternalEvent
 from models import StepRun, Task, TaskStep, WorkflowRun, init_db
 from models.fields import utc_now
 from streaming.bus import EventBus
@@ -83,7 +83,7 @@ def test_user_message_uses_current_task_stage(statuses, expected):
 @pytest.mark.anyio
 async def test_runtime_executes_saved_canvas_workflow(tmp_path):
     """A saved canvas workflow runs through the public runtime interface."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -175,7 +175,7 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
 @pytest.mark.anyio
 async def test_restart_without_parent_reuses_passed_upstream_steps(tmp_path):
     """A legacy task retry starts at the requested stage, not its prerequisites."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -450,7 +450,7 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
 @pytest.mark.anyio
 async def test_runtime_cancels_an_active_pipeline(tmp_path):
     """Cancellation uses the same runtime that owns the active TaskRunner."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
 
@@ -568,7 +568,7 @@ async def test_pause_endpoint_stops_an_active_pipeline(monkeypatch):
 @pytest.mark.anyio
 async def test_start_returns_a_handle_that_can_be_waited(tmp_path):
     """start returns immediately while wait observes background completion."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
 
@@ -640,7 +640,7 @@ async def test_start_returns_a_handle_that_can_be_waited(tmp_path):
 @pytest.mark.anyio
 async def test_shutdown_cancels_and_waits_for_active_runs(tmp_path):
     """A graceful shutdown stops engines but leaves runs recoverable."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
 
@@ -724,7 +724,7 @@ async def test_shutdown_finalizes_runs_cancelled_before_they_are_scheduled(
     tmp_path,
 ):
     """Never-scheduled runs stay recoverable after a graceful shutdown."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import WorkflowRun
     from services.workflow_runtime import WorkflowRuntime
 
@@ -793,6 +793,224 @@ async def test_shutdown_finalizes_runs_cancelled_before_they_are_scheduled(
             with pytest.raises(asyncio.CancelledError):
                 await runtime.wait(handle)
     finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+# ── 人工停止后带消息重新执行阶段 ──────────────────────────────────
+
+
+class ResumeFakeEngine(RuntimeFakeEngine):
+    """Blocks until stopped; otherwise finishes after a short delay."""
+
+    def __init__(self):
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.started.set()
+        try:
+            await asyncio.wait_for(self.release.wait(), timeout=0.2)
+        except asyncio.TimeoutError:
+            pass
+        yield InternalEvent(type="text_delta", data={"delta": "done"})
+        yield InternalEvent(type="status", data={"status": "done"})
+
+    async def stop(self):
+        self.release.set()
+
+
+async def _wait_run_finished(run_id: str, timeout: float = 5.0) -> WorkflowRun:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        run = WorkflowRun.get_by_id(run_id)
+        if run.status != "running":
+            return run
+        if loop.time() > deadline:
+            raise AssertionError(
+                f"workflow run {run_id} still running after {timeout}s"
+            )
+        await asyncio.sleep(0.02)
+
+
+@pytest.mark.anyio
+async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
+    """人工停止阶段后，发送的消息写入该阶段 LLM 会话并重新执行该阶段。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message, StageSupplement
+    from services.pipeline import Step
+    from services.prompt import assemble_prompt
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="task-resume",
+        title="Resume after cancel",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-resume",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {
+                    "id": 1,
+                    "type": "do",
+                    "title": "执行",
+                    "engine": "claude",
+                    "prompt": "work",
+                }
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    instances: list[ResumeFakeEngine] = []
+
+    def factory():
+        engine = ResumeFakeEngine()
+        instances.append(engine)
+        return engine
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = factory
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        # 1) 运行阶段并人工停止
+        first = asyncio.create_task(runtime.run(project.id, task.id, ""))
+        for _ in range(100):
+            if instances:
+                break
+            await asyncio.sleep(0.01)
+        assert instances, "engine was never spawned"
+        await asyncio.wait_for(instances[0].started.wait(), timeout=1)
+        assert await runtime.cancel_step(project.id, task.id, "do") is True
+        await asyncio.wait_for(first, timeout=2)
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert step.status == "cancelled"
+
+        # 2) 向已停止的阶段发送消息：持久化并重新执行
+        accepted = await runtime.resume_stage_with_message(
+            project.id,
+            task.id,
+            "do",
+            "请改用中文输出",
+        )
+        assert accepted["step_key"] == "do"
+        assert accepted["status"] == "queued"
+        assert accepted["message_id"]
+        assert accepted["run_id"]
+        assert accepted["sequence"] >= 0
+        assert accepted["created_at"]
+
+        # 3) 消息进入阶段执行历史（插入到该阶段的 LLM 上下文）
+        message = Message.get(Message.id == accepted["message_id"])
+        assert message.channel == "execution"
+        assert message.role == "user"
+        assert message.step_key == "do"
+        assert message.content == "请改用中文输出"
+        assert message.run_status == "completed"
+
+        # 4) 同时保存为阶段引导，后续重跑提示中包含该消息
+        supplement = StageSupplement.get(
+            (StageSupplement.task == task)
+            & (StageSupplement.step_key == "do")
+        )
+        assert supplement.content == "请改用中文输出"
+        assert supplement.active is True
+
+        # 5) 阶段重新执行并完成
+        child = WorkflowRun.get_by_id(accepted["run_id"])
+        assert child.restart_from_step_key == "do"
+        await _wait_run_finished(accepted["run_id"])
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert step.status == "passed"
+        assert Task.get_by_id(task.id).status == "ready"
+
+        prompt = assemble_prompt(
+            task,
+            Step.from_dict({"key": "do", "prompt": "work", "outputs": []}),
+            tmp_path / "artifacts",
+        )
+        assert "请改用中文输出" in prompt
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_resume_stage_rejects_empty_or_unstopped_stage(tmp_path):
+    """空消息与未停止的阶段不能触发带消息重跑。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-resume-validation",
+        title="Resume validation",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="pending",
+        engine="claude",
+        started_at=None,
+        ended_at=None,
+    )
+    project = SimpleNamespace(
+        id="project-resume-validation",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        with pytest.raises(ValueError, match="不能为空"):
+            await runtime.resume_stage_with_message(
+                project.id, task.id, "do", "   "
+            )
+        with pytest.raises(ValueError, match="阶段未停止"):
+            await runtime.resume_stage_with_message(
+                project.id, task.id, "do", "重新来"
+            )
+        with pytest.raises(ValueError, match="Stage does not exist"):
+            await runtime.resume_stage_with_message(
+                project.id, task.id, "missing", "重新来"
+            )
+    finally:
+        await runtime.shutdown()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()

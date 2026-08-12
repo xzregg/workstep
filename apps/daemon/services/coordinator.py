@@ -10,9 +10,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from engines.events import InternalEvent
-from engines.registry import create_engine, get_available_engines
-from engines.schema import EngineImage
+from engines.core.events import InternalEvent
+from engines.core.registry import (
+    COORDINATOR_FALLBACK_ORDER,
+    create_engine,
+    get_available_engines,
+)
+from engines.core.schema import EngineImage
+from services.assistant_base import (
+    AssistantConfig,
+    SCOPE_TASK,
+    assistant_registry,
+    extract_streaming_reply,  # re-exported for back-compat
+    invoke_engine,
+)
 from models import (
     ActionProposal,
     CoordinatorSession,
@@ -25,60 +36,36 @@ from models import (
 )
 from models.base import db_proxy
 from models.fields import utc_now
-from services.config import config_store
-from services.messages import allocate_message_sequences
+from services.config import CODEX_REASONING_EFFORTS, config_store
+from services.messages import allocate_message_sequences, new_message_id
 from services.task_runner import extract_usage_json
+from services.tool_registry import workstep_tools_instruction
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
 
 COORDINATOR_CHANNEL = "coordinator"
+
+# Registered in the shared assistant registry: the task coordinator is one
+# assistant, described declaratively (its task-specific conversation logic
+# lives in CoordinatorModule below).
+assistant_registry.register(
+    AssistantConfig(
+        name="task_coordinator",
+        channel=COORDINATOR_CHANNEL,
+        scope=SCOPE_TASK,
+        system_prompt=(
+            "任务协调 Agent：理解任务与工作流上下文，回答用户问题，"
+            "必要时提出不超过一个动作提案（supplement_stage / "
+            "rerun_from_stage / review_decision），从不直接执行。"
+        ),
+        engine_label="Coordinator engine",
+    )
+)
 ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
-
-
-def extract_streaming_reply(raw: str) -> str:
-    """Extract the currently complete part of a JSON reply string."""
-    match = re.search(r'"reply"\s*:\s*"', raw)
-    if match is None:
-        return ""
-    index = match.end()
-    result: list[str] = []
-    escapes = {
-        '"': '"',
-        "\\": "\\",
-        "/": "/",
-        "b": "\b",
-        "f": "\f",
-        "n": "\n",
-        "r": "\r",
-        "t": "\t",
-    }
-    while index < len(raw):
-        character = raw[index]
-        if character == '"':
-            break
-        if character != "\\":
-            result.append(character)
-            index += 1
-            continue
-        if index + 1 >= len(raw):
-            break
-        escape = raw[index + 1]
-        if escape == "u":
-            digits = raw[index + 2:index + 6]
-            if len(digits) != 4 or not all(char in "0123456789abcdefABCDEF" for char in digits):
-                break
-            result.append(chr(int(digits, 16)))
-            index += 6
-            continue
-        if escape not in escapes:
-            break
-        result.append(escapes[escape])
-        index += 2
-    return "".join(result)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,8 +130,8 @@ class CoordinatorModule:
             context_step_key = self._single_active_step(task)
             now = utc_now()
             turn_id = str(uuid.uuid4())
-            user_message_id = str(uuid.uuid4())
-            assistant_message_id = str(uuid.uuid4())
+            user_message_id = new_message_id()
+            assistant_message_id = new_message_id()
 
             with db_proxy.atomic():
                 current = Task.get_by_id(task.id)
@@ -224,13 +211,14 @@ class CoordinatorModule:
             ) = (
                 self._resolve_engine_models(task)
             )
+            thinking_effort = self._resolve_thinking_effort(task)
             available = [
                 item
                 for item in get_available_engines()
                 if item.get("installed")
                 and (
                     item.get("supports_coordinator")
-                    or item.get("id") in {"api", "pydantic_ai"}
+                    or item.get("id") == "pydantic_ai"
                 )
             ]
             return {
@@ -239,12 +227,14 @@ class CoordinatorModule:
                     "model": task.coordinator_model,
                     "fast_model": task.coordinator_fast_model,
                     "vision_model": task.coordinator_vision_model,
+                    "thinking_effort": task.coordinator_thinking_effort or "",
                 },
                 "resolved": {
                     "engine": resolved_engine,
                     "model": resolved_model,
                     "fast_model": resolved_fast_model,
                     "vision_model": resolved_vision_model,
+                    "thinking_effort": thinking_effort,
                 },
                 "available_engines": available,
             }
@@ -257,6 +247,7 @@ class CoordinatorModule:
         model: str | None,
         fast_model: str | None,
         vision_model: str | None,
+        thinking_effort: str | None = None,
     ) -> dict:
         with self._project_manager.activate_project_by_id(project_id):
             task = Task.get_or_none(Task.id == task_id)
@@ -266,6 +257,11 @@ class CoordinatorModule:
             normalized_model = model.strip() if model else None
             normalized_fast_model = fast_model.strip() if fast_model else None
             normalized_vision_model = vision_model.strip() if vision_model else None
+            normalized_effort = thinking_effort.strip() if thinking_effort else ""
+            if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
+                raise ValueError(
+                    f"Unsupported thinking effort: {normalized_effort}"
+                )
             if normalized_engine is not None:
                 engine = create_engine(normalized_engine)
                 if engine is None or not engine.capabilities.supports_coordinator:
@@ -283,19 +279,34 @@ class CoordinatorModule:
             ):
                 raise ValueError("A coordinator model requires an engine")
 
+            previous = {
+                "engine": task.coordinator_engine,
+                "model": task.coordinator_model,
+                "fast_model": task.coordinator_fast_model,
+                "vision_model": task.coordinator_vision_model,
+            }
             task.coordinator_engine = normalized_engine
             task.coordinator_model = normalized_model
             task.coordinator_fast_model = normalized_fast_model
             task.coordinator_vision_model = normalized_vision_model
+            task.coordinator_thinking_effort = normalized_effort or None
             task.updated_at = utc_now()
             task.save()
             session = CoordinatorSession.get_or_none(
                 CoordinatorSession.task == task
             )
-            if session is not None:
+            config_changed = (
+                normalized_engine is not None
+                and previous["engine"] != normalized_engine
+            )
+            if session is not None and config_changed:
                 session.status = "reset"
                 session.session_id = None
                 session.version += 1
+                session.updated_at = utc_now()
+                session.save()
+            elif session is not None and previous["model"] != normalized_model:
+                session.model = normalized_model
                 session.updated_at = utc_now()
                 session.save()
             (
@@ -312,12 +323,14 @@ class CoordinatorModule:
                     "model": task.coordinator_model,
                     "fast_model": task.coordinator_fast_model,
                     "vision_model": task.coordinator_vision_model,
+                    "thinking_effort": task.coordinator_thinking_effort or "",
                 },
                 "resolved": {
                     "engine": resolved_engine,
                     "model": resolved_model,
                     "fast_model": resolved_fast_model,
                     "vision_model": resolved_vision_model,
+                    "thinking_effort": self._resolve_thinking_effort(task),
                 },
             }
 
@@ -460,7 +473,14 @@ class CoordinatorModule:
                 assistant.started_at = turn.started_at
                 assistant.save()
                 session = self._prepare_session(task, turn.engine or "", turn.model)
+                engine_state = None
+                if session.engine_state_json:
+                    try:
+                        engine_state = json.loads(session.engine_state_json)
+                    except json.JSONDecodeError:
+                        engine_state = None
                 _, _, fast_model, _ = self._resolve_engine_models(task)
+                thinking_effort = self._resolve_thinking_effort(task)
                 prompt, artifacts = self._assemble_context(project, task, turn)
                 user_message = Message.get_by_id(turn.user_message_id)
                 images = self._extract_images(
@@ -511,6 +531,10 @@ class CoordinatorModule:
                             "tool_use",
                             "tool_input_delta",
                             "tool_result",
+                            "interaction_request",
+                            "interaction_response",
+                            "plan",
+                            "subagent",
                         }:
                             await self._publish_message_event(
                                 task_id,
@@ -532,6 +556,8 @@ class CoordinatorModule:
                     make_live_callback(),
                     turn_id,
                     images=images,
+                    message_history=engine_state,
+                    thinking_effort=thinking_effort,
                 )
                 if turn_id in self._cancelled_turns:
                     await self._mark_turn_stopped(
@@ -570,6 +596,7 @@ class CoordinatorModule:
                         None,
                         make_live_callback(),
                         turn_id,
+                        thinking_effort=thinking_effort,
                     )
                     events.extend(more_events)
                     if turn_id in self._cancelled_turns:
@@ -622,6 +649,14 @@ class CoordinatorModule:
                     session.session_id = session_id
                     session.status = "active"
                     session.last_error = None
+                    for engine_event in events:
+                        if engine_event.get("type") == "engine_state":
+                            state = (engine_event.get("data") or {}).get("state")
+                            if state is not None:
+                                session.engine_state_json = json.dumps(
+                                    state, ensure_ascii=False
+                                )
+                            break
                     session.updated_at = assistant.ended_at
                     session.save()
                     self._refresh_summary(task, session)
@@ -705,18 +740,29 @@ class CoordinatorModule:
         self,
         task: Task,
     ) -> tuple[str, str | None, str | None, str | None]:
-        engine_id = (
+        requested_id = (
             task.coordinator_engine
             or config_store.get_coordinator_default_engine()
             or task.engine
             or "claude"
         )
+        engine_id = requested_id
         engine = create_engine(engine_id)
         if engine is None or not engine.capabilities.supports_coordinator:
-            raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
+            # 默认引擎未配置/不可用时，回退到第一个可用的协调引擎
+            engine_id, engine = self._fallback_coordinator_engine(requested_id)
+            if engine is None:
+                raise ValueError(
+                    f"Coordinator engine is unavailable: {requested_id}"
+                )
+        use_global_models = engine_id == requested_id
         model = (
             task.coordinator_model
-            or config_store.get_coordinator_default_model()
+            or (
+                config_store.get_coordinator_default_model()
+                if use_global_models
+                else ""
+            )
             or config_store.get_engine_default_model(engine_id)
             or None
         )
@@ -727,7 +773,7 @@ class CoordinatorModule:
         )
         fast_model = (
             task.coordinator_fast_model
-            or get_default_fast_model()
+            or (get_default_fast_model() if use_global_models else "")
             or model
         )
         get_default_vision_model = getattr(
@@ -737,10 +783,32 @@ class CoordinatorModule:
         )
         vision_model = (
             task.coordinator_vision_model
-            or get_default_vision_model()
+            or (get_default_vision_model() if use_global_models else "")
             or None
         )
         return engine_id, model, fast_model, vision_model
+
+    @staticmethod
+    def _resolve_thinking_effort(task: Task) -> str:
+        return (
+            task.coordinator_thinking_effort
+            or config_store.get_coordinator_default_thinking_effort()
+            or ""
+        )
+
+    @staticmethod
+    def _fallback_coordinator_engine(
+        requested_id: str,
+    ) -> tuple[str, object | None]:
+        """Return the first usable coordinator engine, or (requested_id, None)."""
+        candidates = [requested_id] + [
+            key for key in COORDINATOR_FALLBACK_ORDER if key != requested_id
+        ]
+        for candidate in candidates:
+            engine = create_engine(candidate)
+            if engine is not None and engine.capabilities.supports_coordinator:
+                return candidate, engine
+        return requested_id, None
 
     def _prepare_session(
         self,
@@ -759,12 +827,17 @@ class CoordinatorModule:
                 created_at=now,
                 updated_at=now,
             )
-        if session.engine != engine or session.model != model:
+        if session.engine != engine:
             session.engine = engine
             session.model = model
             session.session_id = None
+            session.engine_state_json = None
             session.status = "reset"
             session.version += 1
+            session.updated_at = now
+            session.save()
+        elif session.model != model:
+            session.model = model
             session.updated_at = now
             session.save()
         return session
@@ -853,6 +926,16 @@ class CoordinatorModule:
         ]
         messages.reverse()
         session = CoordinatorSession.get_or_none(CoordinatorSession.task == task)
+        engine = create_engine(turn.engine) if turn.engine else None
+        engine_manages_context = engine is not None and engine.supports_resume
+        if engine_manages_context:
+            # 引擎侧会话维护对话历史：prompt 只带当前用户消息，
+            # 历史由引擎（resume / message_history）恢复，不再拼接。
+            recent_messages = messages[-1:] if messages else []
+            summary = None
+        else:
+            recent_messages = messages
+            summary = session.summary if session else None
         artifacts = self._artifact_index(project, task)
         artifact_views = [metadata[0] for metadata in artifacts.values()]
         schema = {
@@ -882,8 +965,8 @@ class CoordinatorModule:
             "active_step_keys": active_step_keys,
             "reviews": reviews,
             "artifacts": artifact_views,
-            "recent_coordinator_messages": messages,
-            "coordinator_summary": session.summary if session else None,
+            "recent_coordinator_messages": recent_messages,
+            "coordinator_summary": summary,
         }
         prompt = (
             "Understand the task and answer the user. You may propose at most one "
@@ -899,6 +982,8 @@ class CoordinatorModule:
             f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
         )
+        if engine is not None and engine.capabilities.supports_workstep_tools:
+            prompt = f"{prompt}\n\n{workstep_tools_instruction()}"
         return prompt, artifacts
 
     def _refresh_summary(
@@ -941,43 +1026,34 @@ class CoordinatorModule:
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
         turn_id: str | None = None,
         images: list[EngineImage] | None = None,
+        message_history: list | None = None,
+        thinking_effort: str | None = None,
     ) -> tuple[str, list[dict], str | None]:
-        engine = create_engine(engine_id)
-        if engine is None:
-            raise RuntimeError(f"Coordinator engine is unavailable: {engine_id}")
-        content: list[str] = []
-        events: list[dict] = []
-        resolved_session_id = session_id
-        error: str | None = None
-        try:
-            if turn_id is not None:
-                self._running_engines[turn_id] = engine
-            async for event in engine.spawn_coordinator(
+        def spawn(engine):
+            return engine.spawn_coordinator(
                 prompt=prompt,
                 cwd=cwd,
                 model=model,
                 session_id=session_id if engine.supports_resume else None,
                 images=images,
-            ):
-                events.append(event.to_dict())
-                if on_event is not None:
-                    await on_event(event)
-                if event.type == "text_delta":
-                    content.append(str(event.data.get("delta", "")))
-                elif event.type == "session_started":
-                    resolved_session_id = str(event.data.get("session_id") or "") or None
-                elif event.type == "usage" and event.data.get("session_id"):
-                    resolved_session_id = str(event.data["session_id"])
-                elif event.type == "error" and error is None:
-                    error = str(event.data.get("message") or "Coordinator engine failed")
-        finally:
-            if turn_id is not None:
-                self._running_engines.pop(turn_id, None)
-        if resolved_session_id is None and not engine.supports_resume:
-            resolved_session_id = str(uuid.uuid4())
-        if error:
-            raise RuntimeError(error)
-        return "".join(content).strip(), events, resolved_session_id
+                message_history=message_history,
+                report_engine_state=True,
+                thinking_effort=thinking_effort,
+            )
+
+        return await invoke_engine(
+            engine_id,
+            model,
+            cwd,
+            prompt,
+            session_id,
+            on_event,
+            spawner=spawn,
+            error_prefix="Coordinator engine",
+            run_key=turn_id,
+            running_engines=self._running_engines,
+            assign_session_on_no_resume=True,
+        )
 
     @staticmethod
     def _extract_images(

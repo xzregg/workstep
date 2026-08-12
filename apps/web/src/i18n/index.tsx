@@ -58,7 +58,7 @@ interface LocaleState {
 }
 
 function resolveInitialLocale(): Locale {
-  if (typeof navigator !== 'undefined') {
+  if (typeof navigator !== 'undefined' && typeof navigator.language === 'string') {
     const lang = navigator.language.toLowerCase()
     if (lang.startsWith('zh')) {
       return /zh-(tw|hk|mo)/.test(lang) ? 'zh-TW' : 'zh-CN'

@@ -8,6 +8,8 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useTaskStore } from '../stores/taskStore'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
+import { useTaskDraftStore } from '../stores/taskDraftStore'
+import { useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
 
 const WS_RECONNECT_BASE_MS = 1000
@@ -17,6 +19,8 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const handleEvent = useTaskStore((s) => s.handleWsEvent)
   const handleGenEvent = useWorkflowGenStore((s) => s.handleWsEvent)
+  const handleTaskDraftEvent = useTaskDraftStore((s) => s.handleWsEvent)
+  const handleChatSessionEvent = useChatSessionStore((s) => s.handleWsEvent)
 
   const send = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -51,7 +55,9 @@ export function useWebSocket() {
       ws.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data)
-          if (parsed.session_id) handleGenEvent(parsed)
+          if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
+          if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
+          if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)
           handleEvent(parsed)
         } catch (error) {
           console.warn('[WS] invalid message:', error)
@@ -81,7 +87,7 @@ export function useWebSocket() {
       wsRef.current = null
       ws?.close()
     }
-  }, [handleEvent])
+  }, [handleEvent, handleGenEvent, handleTaskDraftEvent])
 
   return { send }
 }

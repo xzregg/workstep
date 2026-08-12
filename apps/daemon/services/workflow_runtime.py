@@ -8,12 +8,20 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun
+from models import (
+    Message,
+    ReviewRun,
+    StageSupplement,
+    StepRun,
+    Task,
+    TaskStep,
+    WorkflowRun,
+)
 from models.fields import utc_now
 from models.base import db_proxy
 from services.task_runner import TaskRunner
 from services.workflow_definition import WorkflowDefinition
-from services.messages import create_task_message
+from services.messages import create_task_message, new_message_id
 from services.pipeline import DAGScheduler, Step
 from streaming.bus import EventBus
 
@@ -148,7 +156,7 @@ class WorkflowRuntime:
                 step_statuses,
             )
             create_task_message(
-                id=str(uuid.uuid4()),
+                id=new_message_id(),
                 task=task,
                 channel="execution",
                 step_key=message_step_key,
@@ -221,6 +229,77 @@ class WorkflowRuntime:
                 raise ValueError("任务没有正在执行的阶段")
             return await runner.cancel_step(task_id, step_key)
 
+    async def resume_stage_with_message(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        content: str,
+    ) -> dict:
+        """Persist a user message for a stopped stage and re-run that stage.
+
+        The message is stored in the stage's execution history (and as active
+        stage guidance) so the next attempt carries it into the stage LLM,
+        then the stage plus its downstream is restarted from ``step_key``.
+        """
+        normalized = content.strip()
+        if not normalized:
+            raise ValueError("消息内容不能为空")
+        with self._project_manager.activate_project_by_id(project_id):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if step is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            if step.status not in ("cancelled", "failed", "rejected"):
+                raise ValueError(
+                    f"阶段未停止: {step_key}（当前状态 {step.status}）"
+                )
+            now = utc_now()
+            message_id = new_message_id()
+            create_task_message(
+                id=message_id,
+                task=task,
+                channel="execution",
+                step_key=step_key,
+                role="user",
+                content=normalized,
+                run_id=message_id,
+                run_status="completed",
+                position=0,
+                started_at=now,
+                ended_at=now,
+                created_at=now,
+            )
+            StageSupplement.create(
+                id=str(uuid.uuid4()),
+                task=task,
+                step_key=step_key,
+                content=normalized,
+                source_proposal=None,
+                created_sequence=(
+                    task.next_message_sequence - 1
+                    if task.next_message_sequence > 0
+                    else 0
+                ),
+                created_at=now,
+            )
+            task.state_version += 1
+            task.save()
+        handle = await self.restart_from_stage(project_id, task_id, step_key)
+        message = Message.get_by_id(message_id)
+        return {
+            "message_id": message_id,
+            "step_key": step_key,
+            "run_id": handle.id,
+            "status": "queued",
+            "sequence": message.sequence,
+            "created_at": message.created_at.isoformat(),
+        }
+
     async def decide_review(
         self,
         project_id: str,
@@ -264,21 +343,37 @@ class WorkflowRuntime:
             review.status = "passed" if approved else "rejected"
             review.save()
 
+            # 人工审核完成后，同步审核消息的结束时间，前端据此显示审核耗时。
+            Message.update(
+                ended_at=review.ended_at,
+                run_status="completed",
+            ).where(
+                (Message.task == task_id)
+                & (Message.channel == "review")
+                & (Message.step_key == step_key)
+                & (Message.ended_at.is_null())
+            ).execute()
+
             task_step = TaskStep.get(
                 (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
             )
-            task_step.status = "passed" if approved else "rejected"
-            task_step.error = None if approved else (comment or "用户驳回审核")
-            task_step.ended_at = now
+            if approved:
+                task_step.status = "passed"
+                task_step.error = None
+                task_step.ended_at = now
+                task_step.review_feedback = None
+            else:
+                # 人工审核不通过：保存原因，带反馈自动重跑当前阶段。
+                task_step.status = "retrying"
+                task_step.error = comment or "用户驳回审核"
+                task_step.review_feedback = comment or ""
+                task_step.ended_at = None
             task_step.save()
             task = Task.get_by_id(task_id)
-            task.status = "running" if approved else "paused"
+            task.status = "running"
             task.state_version += 1
             task.updated_at = now
             task.save()
-
-            if not approved:
-                return None
             # The awaiting-review event can reach the UI just before the
             # scheduler retires. Wait briefly so an immediate click resumes
             # instead of racing the still-active runner.
@@ -794,7 +889,9 @@ class WorkflowRuntime:
                 workflow_run.status = "succeeded"
             elif task.status == "paused" and TaskStep.select().where(
                 (TaskStep.task == task)
-                & (TaskStep.status.in_(["awaiting_review", "rejected"]))
+                & (TaskStep.status.in_(
+                    ["awaiting_review", "rejected", "retrying"]
+                ))
             ).exists():
                 workflow_run.status = "paused"
             else:

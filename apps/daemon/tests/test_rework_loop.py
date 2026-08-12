@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from engines.events import InternalEvent
-from engines.registry import ENGINE_REGISTRY
+from engines.core.events import InternalEvent
+from engines.core.registry import ENGINE_REGISTRY
 from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun, init_db
 from services.task_runner import TaskRunner
 from streaming.bus import EventBus
@@ -241,7 +241,7 @@ async def test_rework_exhausts_max_retries_and_pauses(tmp_path):
         assert Task.get_by_id(task.id).status == "paused"
         assert TaskStep.get(
             (TaskStep.task == task) & (TaskStep.step_key == "check")
-        ).status == "rejected"
+        ).status == "awaiting_review"
         assert (
             StepRun.select().where(
                 (StepRun.run == workflow_run) & (StepRun.step_key == "build")
@@ -258,8 +258,11 @@ async def test_rework_exhausts_max_retries_and_pauses(tmp_path):
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)
         )
-        assert len(reviews) == 2
-        assert all(review.status == "rejected" for review in reviews)
+        # 重跑次数耗尽后转入人工审核：两次自动驳回 + 一次待人工确认
+        assert len(reviews) == 3
+        assert sorted(review.status for review in reviews) == [
+            "pending", "rejected", "rejected",
+        ]
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

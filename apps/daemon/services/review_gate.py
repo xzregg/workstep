@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from engines.registry import create_engine
-from models import ReviewRun, StepRun, Task, WorkflowRun
+from engines.core.registry import create_engine
+from models import ReviewRun, StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.config import config_store
 from services.pipeline import Step
@@ -57,9 +57,15 @@ class ReviewGate:
         artifacts_dir: Path,
         execution_output: str,
         review_config: dict | None = None,
+        mode: str | None = None,
     ) -> ReviewOutcome:
         config = dict(review_config) if review_config is not None else dict(step.review or {})
-        mode = "auto" if config.get("auto", False) else "manual"
+        if mode is None:
+            mode = (
+                "auto"
+                if config.get("mode") == "auto" or config.get("auto", False)
+                else "manual"
+            )
         engine_id = str(config.get("engine") or step.engine)
         model = str(
             config.get("model")
@@ -71,13 +77,20 @@ class ReviewGate:
             task, step, artifacts_dir, execution_output, str(config.get("prompt", ""))
         )
         now = utc_now()
+        # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，
+        # attempt 按已有记录递增，避免 (step_run, attempt) 唯一约束冲突。
+        existing_attempts = [
+            review.attempt
+            for review in ReviewRun.select().where(ReviewRun.step_run == step_run)
+        ]
+        attempt = max(existing_attempts, default=0) + 1
         review_run = ReviewRun.create(
             id=str(uuid.uuid4()),
             workflow_run=workflow_run,
             step_run=step_run,
             task=task,
             step_key=step.key,
-            attempt=1,
+            attempt=attempt,
             mode=mode,
             status="pending" if mode == "manual" else "running",
             engine=engine_id if mode == "auto" else None,
@@ -103,6 +116,10 @@ class ReviewGate:
 
         await self._emit(task, step, step_run, review_run, "reviewing")
         engine = create_engine(engine_id)
+        ts = TaskStep.get_or_none(
+            (TaskStep.task == task) & (TaskStep.step_key == step.key)
+        )
+        review_session_id = ts.review_session_id if ts is not None else None
         response_parts: list[str] = []
         events_collected: list[dict] = []
         error: str | None = None
@@ -114,12 +131,34 @@ class ReviewGate:
                     prompt=prompt,
                     cwd=task.cwd,
                     model=model or None,
+                    session_id=(
+                        review_session_id if engine.supports_resume else None
+                    ),
+                    config_overrides=(
+                        config.get("config")
+                        or step.config
+                        or None
+                    ),
                 ):
+                    normalize_event = getattr(engine, "normalize_event", None)
+                    if normalize_event is not None:
+                        event = normalize_event(event)
+                    if event is None:
+                        continue
                     events_collected.append(event.to_dict())
                     if event.type == "text_delta":
                         response_parts.append(str(event.data.get("delta", "")))
                     elif event.type == "error" and error is None:
                         error = str(event.data.get("message") or "Review engine failed")
+                    elif event.type == "session_started":
+                        review_session_id = (
+                            str(event.data.get("session_id") or "") or None
+                        )
+                    elif (
+                        event.type == "usage"
+                        and event.data.get("session_id")
+                    ):
+                        review_session_id = str(event.data["session_id"])
                     await self._publish({
                         "type": "review_event",
                         "data": {
@@ -133,6 +172,10 @@ class ReviewGate:
                     })
             except Exception as exc:
                 error = str(exc)
+
+        if review_session_id and ts is not None:
+            ts.review_session_id = review_session_id
+            ts.save(only=[TaskStep.review_session_id])
 
         response = "".join(response_parts)
         try:

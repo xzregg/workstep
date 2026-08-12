@@ -114,7 +114,7 @@ workstep/
 ## P5：扩展
 
 - [ ] QCodeEngine / OpenClawEngine
-- [ ] APIEngine: 直接调 OpenAI / Anthropic API
+- [x] APIEngine 移除：API 直调不再作为独立引擎，凭据改为「供应商」统一管理（见设置 → 供应商）
 - [ ] 工作流模板市场
 - [ ] F1.4 条件路由
 - [ ] F2.4 卡片操作（暂停/删除/复制）

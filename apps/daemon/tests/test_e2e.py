@@ -5,8 +5,8 @@ import json
 import pytest
 from unittest.mock import patch
 
-from engines.events import InternalEvent
-from engines.base import BaseLLMEngine
+from engines.core.events import InternalEvent
+from engines.core.base import BaseLLMEngine
 
 
 class MemoryConfigStore:
@@ -35,7 +35,7 @@ class FakeEngine(BaseLLMEngine):
     def resolve_binary():
         return "fake"
 
-    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None):
+    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None, **kwargs):
         yield InternalEvent(type="status", data={"status": "initializing"})
         await asyncio.sleep(0.01)
         yield InternalEvent(type="text_delta", data={"delta": "Hello"})
@@ -75,7 +75,7 @@ async def test_e2e_task_run_publishes_events(tmp_path, monkeypatch):
     from services.project import ProjectManager
     import services.project as project_service
     from services.task import TaskService
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     # Patch engine
     original = ENGINE_REGISTRY.copy()
@@ -93,8 +93,8 @@ async def test_e2e_task_run_publishes_events(tmp_path, monkeypatch):
         proj = pm.init_project(proj_dir)
         assert proj.name == "e2e-project"
 
-        # 2. Create task
-        task = ts.create_task(title="E2E Test", cwd=str(proj_dir))
+        # 2. Create task (explicitly using the patched fake engine)
+        task = ts.create_task(title="E2E Test", cwd=str(proj_dir), engine="claude")
         assert task["status"] == "ready"
 
         # 3. Subscribe to bus BEFORE running
@@ -151,7 +151,7 @@ async def test_e2e_multiple_subscribers_receive_events(tmp_path, monkeypatch):
     """Multiple WebSocket clients all receive the same events."""
     from streaming.bus import EventBus
     from services.task import TaskService
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import services.project as project_service
 
     original = ENGINE_REGISTRY.copy()

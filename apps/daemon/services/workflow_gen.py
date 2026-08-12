@@ -1,34 +1,37 @@
-"""In-memory, non-task workflow generation chat module.
+"""AI flow-design assistant (workflow generation chat).
 
-The AI flow generator lets users design a workflow canvas through a
-multi-turn conversation with the coordinator engine (generation mode).
-Sessions live in memory only — no task rows, no message rows and no DB
-writes. Live events are published on the global event bus with a
-``session_id`` (and no ``task_id``) so the web UI can render the chat and
-apply ``flow_proposals`` events to the canvas preview.
+This module is one *assistant* registered in the shared assistant layer
+(``services/assistant_base.py``): it only declares an ``AssistantConfig``
+(system prompt, response parser, workflow-scoped persistence) plus the
+flow-specific parsing/validation hooks. Session lifecycle, idempotency,
+engine invocation with resume and streaming events all live in the generic
+``AssistantRuntime``.
+
+Sessions are pinned per workflow when ``workflow_id`` is provided (editing
+the same workflow always resumes the same conversation, surviving daemon
+restarts through ``WorkflowGenSession``); create-mode chats (no workflow)
+stay memory-only and start fresh.
 """
 
-import asyncio
 import json
-import logging
 import re
-import time
 import uuid
-from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from dataclasses import dataclass
 
-from engines.events import InternalEvent
-from engines.registry import create_engine
-from models.fields import utc_now
+from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
+from services.assistant_base import (
+    AssistantConfig,
+    AssistantRuntime,
+    JsonRowPersistence,
+    SCOPE_WORKFLOW,
+    assistant_registry,
+    extract_streaming_reply,
+)
 from services.config import config_store
-from services.coordinator import extract_streaming_reply
 from services.workflow_definition import (
     WorkflowDefinition,
     WorkflowValidationError,
 )
-from streaming.bus import EventBus
-
-logger = logging.getLogger(__name__)
 
 GEN_CHANNEL = "flow_gen"
 
@@ -41,7 +44,7 @@ SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流�
 工作方式：
 1. 第一轮先澄清关键信息，最多追问 2 个问题（每次只问当前最关键的问题）：目标产物、输入与输出、约束或偏好（是否需要审核、是否并行分支、使用哪些阶段）。
 2. 信息足够后，输出自然语言说明 + 2~3 个不同的完整流程方案（flow_proposals），供用户选择。方案之间要有实质差异（例如：简洁版 / 标准版（含并行或审核）/ 完整版），每个方案包含标题、一句话摘要与完整画布 JSON。
-3. 用户后续会用自然语言调整（如"去掉测试阶段"、"加一个审核"、"这两段并行执行"），你要基于最新会话历史重新输出完整 JSON，不要只给增量。
+3. 用户后续会用自然语言调整（如"去掉测试阶段"、"加一个审核"、"这两段并行执行"），你要基于最新会话历史返回一个完整方案到 flow_proposals，不要只给增量。编辑已有流程且调整目标明确时只返回 1 个方案，并设置 "autoApply": true，由前端直接应用到画布。
 
 画布 JSON 规范：
 {
@@ -59,24 +62,21 @@ SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流�
 - engine 可选，默认 "claude"；color 可选；review 可选（{"auto": true/false, "maxRetries": 1, "prompt": "审核标准"}）。
 - connections 可省略，缺省表示按 nodes 顺序串行；from/to 必须是已有节点 id；fromPort/toPort 在对应端口范围内；kind 为 "solid"（数据流）或 "dashed"（返工反馈）。
 
-回复必须是合法 JSON，格式：{"reply": "给用户的自然语言回复（markdown）", "flow_proposals": [{"title": "方案标题", "summary": "一句话说明", "steps": <画布JSON>}]}
-当还在澄清阶段时 flow_proposals 必须为空数组 []。"""
+回复必须是合法 JSON，格式：{"reply": "给用户的自然语言回复（markdown）", "flow_proposals": [{"title": "方案标题", "summary": "一句话说明", "steps": <画布JSON>, "autoApply": false}]}
+当还在澄清阶段时 flow_proposals 必须为空数组 []。
+- reply 只能包含给用户看的说明和 A2UI 控件，严禁在 reply 中输出画布 JSON、```json 代码块或“当前完整画布 JSON 如下”等内容。完整画布只能放入 flow_proposals[].steps。
+- 首次给出 2~3 个备选方案时 autoApply 必须为 false 或省略；用户已明确选择方案、或要求直接修改当前流程时，返回唯一一个完整方案并设置 autoApply: true，前端会自动加载到画布。
 
-
-@dataclass
-class GenSession:
-    """One in-memory workflow generation conversation."""
-
-    session_id: str
-    project_id: str
-    cwd: str
-    engine: str
-    model: str | None = None
-    fast_model: str | None = None
-    resolved_session_id: str | None = None
-    messages: list[dict] = field(default_factory=list)
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    last_active: float = field(default_factory=time.monotonic)
+A2UI 交互控件（方案/选项必须给用户可点选的界面）：
+向用户展示方案或选项时，reply 中必须包含完整的 ```a2ui 代码块，输出 A2UI v0.9.1 JSONL 交互界面（方案选择按钮、澄清问题选项等），不要只用纯文本罗列。如果 reply 中没有 a2ui 方案按钮，后端会自动为 flow_proposals 追加方案选择界面。每条 JSON 消息占一行，先 createSurface 再 updateComponents：
+{"version":"v0.9.1","createSurface":{"surfaceId":"plan-select","catalogId":"basic"}}
+{"version":"v0.9.1","updateComponents":{"surfaceId":"plan-select","components":[{"component":"Column","id":"root","children":["hint","b1","b2"]},{"component":"Text","id":"hint","text":"请选择一个方案"},{"component":"Text","id":"b1-label","text":"简洁版"},{"component":"Button","id":"b1","child":"b1-label","variant":"primary","action":{"event":{"name":"apply_flow","context":{"proposal":1}}}},{"component":"Text","id":"b2-label","text":"标准版"},{"component":"Button","id":"b2","child":"b2-label","action":{"event":{"name":"apply_flow","context":{"proposal":2}}}}]}}
+- 组件树必须有一个 id 固定为 "root" 的 Column 容器，children 只引用同一条 updateComponents 里已声明的组件 id；Button/Card 的 child 也必须引用已声明的组件 id（按钮文字用单独的 Text 标签组件，不要直接把文案填进 child）。
+- 方案选择按钮的 action.event.name 固定为 apply_flow；context.proposal 填该方案在同一条回复 flow_proposals 中的序号（从 1 开始）。用户点选后前端会把对应方案应用到画布。
+- 方案按钮必须与同条回复的 flow_proposals 一一对应，数量一致。
+- 澄清阶段参考简报问卷来组织控件：选项使用 ChoicePicker（displayStyle 为 chips，单选用 mutuallyExclusive、多选用 multipleSelection），需要用户补充的内容使用 TextField（长文本用 variant: longText），最后提供一个提交 Button。
+- ChoicePicker/TextField 的 value 可直接给 [] / "" 初始值；提交 Button 使用普通 action（例如 submit_clarification，不要带 apply_flow），context 中将每个答案写成 {"path":"/a2ui/<surfaceId>/<componentId>/value"}，这样用户选择与输入后的当前值会随点击一起返回对话。
+- ```a2ui 代码块要完整闭合（前后各三个反引号独占一行），前端只渲染完整闭合的代码块。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,16 +93,36 @@ class ChatAccepted:
         }
 
 
-class WorkflowGenModule:
-    """Coordinates memory-only workflow design conversations."""
+class WorkflowGenModule(AssistantRuntime):
+    """The AI flow-design assistant — config + flow-specific hooks."""
 
-    def __init__(self, event_bus: EventBus, project_manager):
-        self._event_bus = event_bus
-        self._project_manager = project_manager
-        self._sessions: dict[tuple[str, str], GenSession] = {}
-        self._turn_keys: dict[tuple[str, str, str], str] = {}
-        self._turn_states: dict[str, dict] = {}
-        self._active_tasks: set[asyncio.Task] = set()
+    def __init__(self, event_bus, project_manager):
+        config = AssistantConfig(
+            name="workflow_gen",
+            channel=GEN_CHANNEL,
+            system_prompt=SYSTEM_PROMPT,
+            scope=SCOPE_WORKFLOW,
+            engine_label="Workflow generation engine",
+            max_history_turns=MAX_HISTORY_TURNS,
+            max_sessions=MAX_SESSIONS,
+            session_ttl_seconds=SESSION_TTL_SECONDS,
+            persistence=JsonRowPersistence(
+                model=_workflow_gen_session_model(),
+                scope_field="workflow_id",
+                make_id=lambda project_id, workflow_id: (
+                    f"{project_id}:{workflow_id}"
+                ),
+            ),
+            build_prompt=self._build_prompt,
+            parse_response=self._resolve_proposal,
+            publish_structured=self._publish_proposals,
+            extract_streaming_text=extract_streaming_reply,
+            history_message=self._history_message,
+            validate_engine=self._validate_engine,
+        )
+        self._workflow_gen_config = config
+        super().__init__(config, event_bus, project_manager)
+        assistant_registry.register(config)
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -115,292 +135,402 @@ class WorkflowGenModule:
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        thinking_effort: str | None = None,
+        steps: dict | None = None,
+        workflow_name: str | None = None,
+        context_mode: str | None = None,
+        workflow_id: str | None = None,
     ) -> ChatAccepted:
-        """Queue one generation turn; returns immediately with an accepted turn."""
-        normalized = (content or "").strip()
-        if not normalized:
-            raise ValueError("Message content cannot be empty")
-        if not (idempotency_key or "").strip():
-            raise ValueError("Idempotency-Key is required")
+        """Queue one generation turn; returns immediately with an accepted turn.
 
-        key = (project_id, session_id or "", idempotency_key)
-        existing_turn_id = self._turn_keys.get(key)
-        if existing_turn_id is not None and existing_turn_id in self._turn_states:
-            return ChatAccepted(
-                session_id=self._turn_states[existing_turn_id].get(
-                    "session_id", session_id or ""
-                ),
-                turn_id=existing_turn_id,
-                status=self._turn_states[existing_turn_id]["status"],
-            )
-
-        engine_id, default_model, default_fast_model = self._resolve_engine_models()
-        if engine:
-            candidate = create_engine(engine)
-            if candidate is None or not candidate.capabilities.supports_coordinator:
-                raise ValueError(
-                    f"Coordinator engine is unavailable: {engine}"
-                )
-            engine_id = engine
-        model = model or default_model
-        fast_model = fast_model or default_fast_model
-        session = self._get_or_create_session(
-            project_id, session_id, engine_id, model, fast_model
+        ``workflow_id`` pins the conversation to that workflow: editing the
+        same workflow always resumes the same session. Without it the
+        conversation is ephemeral and starts fresh.
+        """
+        memory_key, resolved_sid = self._session_identity(
+            project_id, session_id, workflow_id
         )
-
-        turn_id = str(uuid.uuid4())
-        assistant_message_id = str(uuid.uuid4())
-        session.messages.append({"role": "user", "content": normalized})
-        self._turn_keys[key] = turn_id
-        self._turn_states[turn_id] = {
-            "status": "queued",
-            "assistant_message_id": assistant_message_id,
-            "session_id": session.session_id,
-        }
-        background = asyncio.create_task(
-            self._run_turn(session, turn_id, assistant_message_id),
-            name=f"workflow-gen:{turn_id}",
+        resolved_context_mode = context_mode or (
+            "initial" if steps is not None else "none"
         )
-        self._active_tasks.add(background)
-        background.add_done_callback(self._consume_background)
+        if resolved_context_mode not in {"initial", "canvas_updated", "none"}:
+            raise ValueError(f"Invalid workflow context mode: {resolved_context_mode}")
+        accepted = super().submit_message(
+            project_id,
+            content,
+            idempotency_key,
+            session_id=resolved_sid,
+            memory_key=memory_key,
+            scope_key=workflow_id,
+            idempotency_sid=session_id or "",
+            engine=engine,
+            model=model,
+            fast_model=fast_model,
+            thinking_effort=thinking_effort,
+            steps=steps,
+            extra={
+                "workflow_name": (workflow_name or "").strip(),
+                "context_mode": resolved_context_mode,
+            },
+        )
         return ChatAccepted(
-            session_id=session.session_id,
-            turn_id=turn_id,
-            status="queued",
+            session_id=accepted.session_id,
+            turn_id=accepted.turn_id,
+            status=accepted.status,
         )
 
-    async def shutdown(self) -> None:
-        tasks = tuple(self._active_tasks)
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        self._sessions.clear()
-        self._turn_keys.clear()
-        self._turn_states.clear()
+    def history(self, project_id: str, workflow_id: str) -> dict:
+        """Return the stable workflow conversation (or an empty one)."""
+        session_id = f"wf:{project_id}:{workflow_id}"
+        loaded = super().history(project_id, workflow_id)
+        if loaded is None:
+            try:
+                engine, model, fast_model = self._resolve_engine_models()
+            except ValueError:
+                engine, model, fast_model = "", None, None
+            loaded = {
+                "engine": engine,
+                "model": model,
+                "fast_model": fast_model,
+                "engine_session_id": None,
+                "messages": [],
+            }
+        return {"session_id": session_id, **loaded}
 
-    # ── session management ──────────────────────────────────────────────
+    def reset_session(self, project_id: str, workflow_id: str) -> bool:
+        """Clear the stable AI editing conversation for one workflow."""
+        if not project_id or not workflow_id:
+            raise ValueError("project_id and workflow_id are required")
+        memory_key, session_id = self._session_identity(
+            project_id, None, workflow_id
+        )
+        return self.reset_scoped_session(
+            project_id,
+            workflow_id,
+            memory_key,
+            session_id,
+        )
 
-    def _get_or_create_session(
-        self,
+    @staticmethod
+    def _session_identity(
         project_id: str,
         session_id: str | None,
-        engine_id: str,
-        model: str | None,
-        fast_model: str | None,
-    ) -> GenSession:
-        self._prune_sessions()
-        sid = session_id or str(uuid.uuid4())
-        session = self._sessions.get((project_id, sid))
-        if session is None:
-            with self._project_manager.activate_project_by_id(project_id) as project:
-                cwd = str(project.path)
-            session = GenSession(
-                session_id=sid,
-                project_id=project_id,
-                cwd=cwd,
-                engine=engine_id,
-                model=model,
-                fast_model=fast_model,
+        workflow_id: str | None,
+    ) -> tuple[tuple, str]:
+        """Map (workflow-scoped | ephemeral) to (memory key, canonical sid)."""
+        if workflow_id:
+            return (
+                ("wf", project_id, workflow_id),
+                f"wf:{project_id}:{workflow_id}",
             )
-            self._sessions[(project_id, sid)] = session
-        else:
-            session.engine = engine_id
-            session.model = model
-            session.fast_model = fast_model
-        return session
+        sid = session_id or str(uuid.uuid4())
+        return (project_id, sid), sid
 
-    def _prune_sessions(self) -> None:
-        now = time.monotonic()
-        stale = [
-            key
-            for key, session in self._sessions.items()
-            if now - session.last_active > SESSION_TTL_SECONDS
+    # ── engine / model resolution ───────────────────────────────────────
+
+    @staticmethod
+    def _fallback_engine(default_engine_id: str) -> tuple[str, object | None]:
+        """Resolve a usable coordinator engine, falling back when unconfigured.
+
+        Returns ``(engine_id, engine)``; ``engine`` is ``None`` only when no
+        coordinator-capable engine is available at all.
+        """
+        candidates = [default_engine_id] + [
+            key for key in COORDINATOR_FALLBACK_ORDER if key != default_engine_id
         ]
-        for key in stale:
-            self._sessions.pop(key, None)
-        if len(self._sessions) > MAX_SESSIONS:
-            oldest = sorted(
-                self._sessions.items(), key=lambda item: item[1].last_active
-            )[: len(self._sessions) - MAX_SESSIONS]
-            for key, _ in oldest:
-                self._sessions.pop(key, None)
-        # Bound turn idempotency state (dicts preserve insertion order).
-        if len(self._turn_states) > MAX_SESSIONS * 5:
-            overflow = len(self._turn_states) - MAX_SESSIONS * 5
-            for turn_id in list(self._turn_states)[:overflow]:
-                self._turn_states.pop(turn_id, None)
-        if len(self._turn_keys) > MAX_SESSIONS * 5:
-            overflow = len(self._turn_keys) - MAX_SESSIONS * 5
-            for key in list(self._turn_keys)[:overflow]:
-                self._turn_keys.pop(key, None)
+        for candidate in candidates:
+            engine = create_engine(candidate)
+            if engine is not None and engine.capabilities.supports_coordinator:
+                return candidate, engine
+        return default_engine_id, None
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
-        engine_id = config_store.get_coordinator_default_engine() or "claude"
-        engine = create_engine(engine_id)
-        if engine is None or not engine.capabilities.supports_coordinator:
+        configured_id = config_store.get_coordinator_default_engine() or "claude"
+        engine_id, engine = self._fallback_engine(configured_id)
+        if engine is None:
             raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
-        model = (
-            config_store.get_coordinator_default_model()
-            or config_store.get_engine_default_model(engine_id)
-            or None
-        )
+        if engine_id == configured_id:
+            # 正常路径：沿用协调 Agent 的全局模型。
+            model = (
+                config_store.get_coordinator_default_model()
+                or config_store.get_engine_default_model(engine_id)
+                or None
+            )
+        else:
+            # 回退到其它引擎时，不沿用原引擎的协调模型，改用该引擎自己的默认模型。
+            model = config_store.get_engine_default_model(engine_id) or None
         get_fast_model = getattr(
             config_store,
             "get_coordinator_default_fast_model",
             lambda: "",
         )
-        fast_model = get_fast_model() or model
+        fast_model = (get_fast_model() if engine_id == configured_id else "") or model
         return engine_id, model, fast_model
 
-    # ── turn execution ──────────────────────────────────────────────────
+    def _validate_engine(self, engine_id: str) -> None:
+        candidate = create_engine(engine_id)
+        if candidate is None or not candidate.capabilities.supports_coordinator:
+            raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
 
-    def _build_prompt(self, session: GenSession) -> str:
+    # ── prompt building ─────────────────────────────────────────────────
+
+    def _build_prompt(self, session) -> str:
+        canvas_json = ""
+        steps = session.steps or {}
+        context_mode = session.extra.get("context_mode", "none")
+        if context_mode == "initial":
+            workflow_name = session.extra.get("workflow_name") or "未命名流程"
+            canvas_json = (
+                f"\n\n当前流程标题：{workflow_name}"
+                "\n当前画布 JSON（用户正在编辑的流程，基于它调整或重排，"
+                "不要从零设计；节点 id/type 尽量沿用）：\n"
+                f"{json.dumps(steps, ensure_ascii=False)}"
+            )
+        elif context_mode == "canvas_updated":
+            canvas_json = (
+                "\n\n当前画布已更新（可能包含尚未保存的改动，请以此版本为准）：\n"
+                f"{json.dumps(steps, ensure_ascii=False)}"
+            )
+        engine = create_engine(session.engine)
+        if engine is not None and engine.supports_resume:
+            # 引擎侧维护会话上下文：历史不再拼进 prompt。首轮携带完整系统
+            # 提示，续轮只发当前画布与用户消息，避免重复污染引擎会话。
+            user_message = (
+                session.messages[-1]["content"] if session.messages else ""
+            )
+            head = SYSTEM_PROMPT if not session.resolved_session_id else ""
+            return f"{head}{canvas_json}\n\n{user_message}"
+        # 无引擎侧会话的引擎（不支持 resume）：保留最近对话记录拼接，
+        # 否则多轮对话将完全失去上下文。
         turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
         history = "\n\n".join(
             f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
             for item in turns
         )
-        return f"{SYSTEM_PROMPT}\n\n历史对话：\n{history}\n\n请继续。"
+        return (
+            f"{SYSTEM_PROMPT}"
+            f"{canvas_json}\n\n历史对话：\n{history}\n\n请继续。"
+        )
 
-    async def _run_turn(
-        self,
-        session: GenSession,
-        turn_id: str,
-        assistant_message_id: str,
-    ) -> None:
-        async with session.lock:
-            session.last_active = time.monotonic()
-            self._turn_states[turn_id]["status"] = "running"
-            seq = 0
-            try:
-                prompt = self._build_prompt(session)
-                seq = await self._publish(
-                    session,
-                    assistant_message_id,
-                    "message_started",
-                    {"prompt": prompt},
-                    seq,
-                )
-                seq_holder = [seq]
-
-                def make_live_callback():
-                    raw_content = ""
-                    streamed_reply = ""
-
-                    async def publish_live_event(event: InternalEvent) -> None:
-                        nonlocal raw_content, streamed_reply
-                        if event.type == "text_delta":
-                            raw_content += str(event.data.get("delta", ""))
-                            partial_reply = extract_streaming_reply(raw_content)
-                            if not partial_reply.startswith(streamed_reply):
-                                return
-                            delta = partial_reply[len(streamed_reply):]
-                            if not delta:
-                                return
-                            streamed_reply = partial_reply
-                            await self._publish(
-                                session,
-                                assistant_message_id,
-                                "text_delta",
-                                {"delta": delta},
-                                seq_holder[0],
-                            )
-                            seq_holder[0] += 1
-
-                    return publish_live_event
-
-                raw, _events, resolved = await self._invoke(
-                    session.engine,
-                    session.model,
-                    session.cwd,
-                    prompt,
-                    session.resolved_session_id,
-                    make_live_callback(),
-                )
-                session.resolved_session_id = resolved
-
-                reply, proposals, repair_events = await self._resolve_proposal(
-                    session, raw
-                )
-                for extra_event in repair_events:
-                    await self._publish(
-                        session,
-                        assistant_message_id,
-                        extra_event.get("type", "status"),
-                        extra_event.get("data", {}),
-                        seq_holder[0],
-                    )
-                    seq_holder[0] += 1
-                if proposals:
-                    proposal_cards = []
-                    for index, item in enumerate(proposals):
-                        steps = item["steps"]
-                        proposal_cards.append(
-                            {
-                                "id": f"p{index + 1}",
-                                "title": item.get("title") or f"方案 {index + 1}",
-                                "summary": item.get("summary", ""),
-                                "steps": steps,
-                                "nodeCount": len(
-                                    steps.get("nodes")
-                                    or steps.get("steps")
-                                    or []
-                                ),
-                            }
-                        )
-                    seq_holder[0] = await self._publish(
-                        session,
-                        assistant_message_id,
-                        "flow_proposals",
-                        {"proposals": proposal_cards},
-                        seq_holder[0],
-                    )
-                seq_holder[0] = await self._publish(
-                    session,
-                    assistant_message_id,
-                    "message_snapshot",
-                    {"content": reply},
-                    seq_holder[0],
-                )
-                seq_holder[0] = await self._publish(
-                    session,
-                    assistant_message_id,
-                    "message_completed",
-                    {"status": "succeeded", "content": reply},
-                    seq_holder[0],
-                )
-                session.messages.append({"role": "assistant", "content": reply})
-                self._turn_states[turn_id]["status"] = "completed"
-            except Exception as exc:
-                logger.exception("Workflow generation turn failed")
-                session.messages.append(
-                    {"role": "assistant", "content": f"（生成失败：{exc}）"}
-                )
-                try:
-                    seq = await self._publish(
-                        session,
-                        assistant_message_id,
-                        "error",
-                        {"message": str(exc)},
-                        seq,
-                    )
-                    await self._publish(
-                        session,
-                        assistant_message_id,
-                        "message_completed",
-                        {"status": "error", "content": str(exc)},
-                        seq,
-                    )
-                except Exception:
-                    pass
-                self._turn_states[turn_id]["status"] = "error"
-            finally:
-                session.last_active = time.monotonic()
+    # ── response parsing & proposal publishing ──────────────────────────
 
     async def _resolve_proposal(
         self,
-        session: GenSession,
+        session,
+        raw: str,
+    ) -> tuple[str, list[dict], list[dict]]:
+        """Parse + validate the reply; guarantee an a2ui choice UI for plans."""
+        reply, proposals, events = await self._resolve_proposal_inner(session, raw)
+        reply, canvas = self._extract_canvas_json(reply)
+        if canvas is not None and not proposals:
+            try:
+                WorkflowDefinition.load(canvas).validate()
+                proposals = [{
+                    "title": "更新后的流程",
+                    "summary": "AI 已根据当前对话更新画布",
+                    "steps": canvas,
+                    "autoApply": True,
+                }]
+            except WorkflowValidationError as exc:
+                events.append({
+                    "type": "flow_proposals_rejected",
+                    "data": {"message": f"画布 JSON 未通过校验，已丢弃：{exc}"},
+                })
+        if proposals:
+            reply = self._ensure_a2ui_choice_ui(reply, proposals)
+        return reply, proposals, events
+
+    @staticmethod
+    def _extract_canvas_json(reply: str) -> tuple[str, dict | None]:
+        """Remove a fenced canvas payload from reply and return it as steps."""
+        fence_pattern = re.compile(
+            r"^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*\r?\n?",
+            re.MULTILINE | re.IGNORECASE,
+        )
+        for match in fence_pattern.finditer(reply):
+            try:
+                parsed = json.loads(match.group(1).strip())
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(parsed, dict) or not isinstance(parsed.get("nodes"), list):
+                continue
+            if "connections" in parsed and not isinstance(parsed["connections"], list):
+                continue
+            cleaned = reply[:match.start()] + reply[match.end():]
+            cleaned = re.sub(
+                r"(?im)^.*(?:完整画布|画布).*JSON.*\r?\n(?:\r?\n)?",
+                "",
+                cleaned,
+            )
+            cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+            return cleaned, parsed
+        return reply, None
+
+    @staticmethod
+    def _has_a2ui_fence(content: str) -> bool:
+        """True when the reply already contains a complete ```a2ui fence."""
+        return re.search(
+            r"^```a2ui[ \t]*\r?\n[\s\S]*?^```[ \t]*\r?\n?",
+            content,
+            re.MULTILINE,
+        ) is not None
+
+    @staticmethod
+    def _ensure_a2ui_choice_ui(reply: str, proposals: list[dict]) -> str:
+        """Append an A2UI v0.9.1 button list when the reply has none.
+
+        Keeps the model's own a2ui fence when present; otherwise generates a
+        generic "choose a plan" surface so users always get clickable UI.
+        """
+        if not proposals:
+            return reply
+        if WorkflowGenModule._has_a2ui_fence(reply):
+            return WorkflowGenModule._inject_a2ui_flow_steps(reply, proposals)
+        components: list[dict] = [
+            {
+                "component": "Text",
+                "id": "hint",
+                "text": "请选择一个方案（点击按钮应用到画布）",
+            }
+        ]
+        root_children: list[str] = ["hint"]
+        for index, item in enumerate(proposals, start=1):
+            # A2UI Button.child 引用的是组件 id，按钮文字由独立的 Text 标签提供。
+            label_id = f"l{index}"
+            button_id = f"p{index}"
+            components.append(
+                {
+                    "component": "Text",
+                    "id": label_id,
+                    "text": item.get("title") or f"方案 {index}",
+                }
+            )
+            components.append(
+                {
+                    "component": "Button",
+                    "id": button_id,
+                    "child": label_id,
+                    "variant": "primary" if index == 1 else "default",
+                    "action": {
+                        "event": {
+                            "name": "apply_flow",
+                            "context": {
+                                "proposal": index,
+                                "stepsJson": json.dumps(
+                                    item["steps"],
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            },
+                        }
+                    },
+                }
+            )
+            root_children.extend([label_id, button_id])
+            summary = item.get("summary")
+            if summary:
+                summary_id = f"s{index}"
+                components.append(
+                    {
+                        "component": "Text",
+                        "id": summary_id,
+                        "text": summary,
+                        "variant": "caption",
+                    }
+                )
+                root_children.append(summary_id)
+        components.insert(
+            0,
+            {
+                "component": "Column",
+                "id": "root",
+                "children": root_children,
+            },
+        )
+        lines = [
+            json.dumps(
+                {
+                    "version": "v0.9.1",
+                    "createSurface": {
+                        "surfaceId": "flow-choice",
+                        "catalogId": "basic",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                {
+                    "version": "v0.9.1",
+                    "updateComponents": {
+                        "surfaceId": "flow-choice",
+                        "components": components,
+                    },
+                },
+                ensure_ascii=False,
+            ),
+        ]
+        fence = "\n".join(lines)
+        return f"{reply.rstrip()}\n\n```a2ui\n{fence}\n```\n"
+
+    @staticmethod
+    def _inject_a2ui_flow_steps(reply: str, proposals: list[dict]) -> str:
+        """Make model-authored apply buttons self-contained across refreshes."""
+        fence_pattern = re.compile(
+            r"(^```a2ui[ \t]*\r?\n)([\s\S]*?)(^```[ \t]*\r?\n?)",
+            re.MULTILINE,
+        )
+
+        def enrich(match: re.Match) -> str:
+            body = match.group(2)
+            messages = []
+            decoder = json.JSONDecoder()
+            index = 0
+            try:
+                while index < len(body):
+                    while index < len(body) and body[index].isspace():
+                        index += 1
+                    if index >= len(body):
+                        break
+                    message, index = decoder.raw_decode(body, index)
+                    messages.append(message)
+            except (json.JSONDecodeError, TypeError):
+                return match.group(0)
+
+            changed = False
+            for message in messages:
+                update = message.get("updateComponents") if isinstance(message, dict) else None
+                components = update.get("components") if isinstance(update, dict) else None
+                if not isinstance(components, list):
+                    continue
+                for component in components:
+                    if not isinstance(component, dict) or component.get("component") != "Button":
+                        continue
+                    action = component.get("action")
+                    event = action.get("event") if isinstance(action, dict) else None
+                    if not isinstance(event, dict) or event.get("name") != "apply_flow":
+                        continue
+                    context = event.get("context")
+                    if not isinstance(context, dict) or "stepsJson" in context:
+                        continue
+                    try:
+                        proposal_index = int(context.get("proposal")) - 1
+                        steps = proposals[proposal_index]["steps"]
+                    except (TypeError, ValueError, IndexError, KeyError):
+                        continue
+                    context["stepsJson"] = json.dumps(
+                        steps, ensure_ascii=False, separators=(",", ":")
+                    )
+                    changed = True
+            if not changed:
+                return match.group(0)
+            body = "\n".join(json.dumps(item, ensure_ascii=False) for item in messages)
+            return f"{match.group(1)}{body}\n{match.group(3)}"
+
+        return fence_pattern.sub(enrich, reply)
+
+    async def _resolve_proposal_inner(
+        self,
+        session,
         raw: str,
     ) -> tuple[str, list[dict], list[dict]]:
         """Parse the model reply; validate/repair any flow proposals."""
@@ -475,6 +605,35 @@ class WorkflowGenModule:
 
         return reply, valid, []
 
+    async def _publish_proposals(
+        self,
+        session,
+        assistant_message_id: str,
+        reply: str,
+        proposals: list[dict],
+        seq: int,
+    ) -> int:
+        proposal_cards = []
+        for index, item in enumerate(proposals):
+            steps = item["steps"]
+            proposal_cards.append(
+                {
+                    "id": f"p{index + 1}",
+                    "title": item.get("title") or f"方案 {index + 1}",
+                    "summary": item.get("summary", ""),
+                    "steps": steps,
+                    "nodeCount": len(steps.get("nodes") or steps.get("steps") or []),
+                    "autoApply": bool(item.get("autoApply", False)),
+                }
+            )
+        return await self._publish(
+            session,
+            assistant_message_id,
+            "flow_proposals",
+            {"proposals": proposal_cards},
+            seq,
+        )
+
     @staticmethod
     def _normalize_proposal(item: object) -> dict | None:
         if not isinstance(item, dict):
@@ -490,6 +649,7 @@ class WorkflowGenModule:
                 summary if isinstance(summary, str) and summary.strip() else ""
             ),
             "steps": steps,
+            "autoApply": bool(item.get("autoApply", False)),
         }
 
     @staticmethod
@@ -529,71 +689,15 @@ class WorkflowGenModule:
             return reply, []
         raise RuntimeError("Workflow generator returned invalid JSON")
 
-    async def _invoke(
-        self,
-        engine_id: str,
-        model: str | None,
-        cwd: str,
-        prompt: str,
-        session_id: str | None,
-        on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
-    ) -> tuple[str, list[dict], str | None]:
-        engine = create_engine(engine_id)
-        if engine is None:
-            raise RuntimeError(f"Workflow generation engine is unavailable: {engine_id}")
-        content: list[str] = []
-        events: list[dict] = []
-        resolved_session_id = session_id
-        error: str | None = None
-        async for event in engine.spawn(
-            prompt=prompt,
-            cwd=cwd,
-            model=model,
-            session_id=session_id if engine.supports_resume else None,
-        ):
-            events.append(event.to_dict())
-            if on_event is not None:
-                await on_event(event)
-            if event.type == "text_delta":
-                content.append(str(event.data.get("delta", "")))
-            elif event.type == "session_started":
-                resolved_session_id = str(event.data.get("session_id") or "") or None
-            elif event.type == "usage" and event.data.get("session_id"):
-                resolved_session_id = str(event.data["session_id"])
-            elif event.type == "error" and error is None:
-                error = str(
-                    event.data.get("message")
-                    or "Workflow generation engine failed"
-                )
-        if error:
-            raise RuntimeError(error)
-        return "".join(content).strip(), events, resolved_session_id
+    @staticmethod
+    def _history_message(item: dict) -> dict:
+        from services.assistant_base import default_history_message
 
-    async def _publish(
-        self,
-        session: GenSession,
-        assistant_message_id: str,
-        event_type: str,
-        data: dict,
-        event_sequence: int,
-    ) -> int:
-        await self._event_bus.publish(
-            {
-                "event_id": str(uuid.uuid4()),
-                "session_id": session.session_id,
-                "channel": GEN_CHANNEL,
-                "message_id": assistant_message_id,
-                "engine": session.engine,
-                "model": session.model,
-                "event_sequence": event_sequence,
-                "type": event_type,
-                "data": data,
-                "created_at": utc_now().isoformat(),
-            }
-        )
-        return event_sequence + 1
+        return default_history_message(item)
 
-    def _consume_background(self, task: asyncio.Task) -> None:
-        self._active_tasks.discard(task)
-        if not task.cancelled():
-            task.exception()
+
+def _workflow_gen_session_model():
+    """Lazily import the persistence model (avoids circular imports)."""
+    from models.gen_session import WorkflowGenSession
+
+    return WorkflowGenSession

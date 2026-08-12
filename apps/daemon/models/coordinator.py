@@ -15,6 +15,7 @@ class CoordinatorSession(BaseModel):
     engine = pw.TextField()
     model = pw.TextField(null=True)
     session_id = pw.TextField(null=True)
+    engine_state_json = pw.TextField(null=True)
     summary = pw.TextField(null=True)
     summary_through_sequence = pw.IntegerField(null=True)
     version = pw.IntegerField(default=1)

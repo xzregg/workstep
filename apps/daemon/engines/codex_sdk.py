@@ -4,11 +4,19 @@ import asyncio
 import importlib.metadata
 import logging
 import os
+import uuid
 from typing import Any, AsyncIterator
 
-from engines.base import BaseLLMEngine, EngineModel
-from engines.events import InternalEvent, compacted_event, normalize_token_usage
-from engines.schema import EngineConfigField, EngineConfigOption, EngineImage
+from engines.core.base import (
+    BaseLLMEngine,
+    EngineInstallResult,
+    EngineModel,
+    install_python_package,
+)
+from engines.core.events import InternalEvent, compacted_event, normalize_token_usage
+from engines.core.interactions import permission_request, permission_signature
+from engines.core.plans import plan_event
+from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services.config import (
     CODEX_REASONING_EFFORTS,
     CODEX_SANDBOX_MODES,
@@ -30,8 +38,6 @@ class CodexSDKEngine(BaseLLMEngine):
     """
 
     ENGINE_ID = "codex_sdk"
-
-    _live_message_wait_seconds: float = 1.5
 
     def __init__(self):
         self._running = False
@@ -76,6 +82,14 @@ class CodexSDKEngine(BaseLLMEngine):
             return str(path) if path else None
         except Exception:
             return None
+
+    @staticmethod
+    def install_command() -> str:
+        return "pip install openai-codex"
+
+    async def install(self) -> EngineInstallResult:
+        """Install the official ``openai-codex`` Python SDK package."""
+        return await install_python_package("openai-codex")
 
     # --- Config schema (backend-driven settings form) ---
 
@@ -164,25 +178,91 @@ class CodexSDKEngine(BaseLLMEngine):
         return getattr(item, "root", item)
 
     @staticmethod
-    def _tool_use_event(root: Any) -> InternalEvent:
-        return InternalEvent(type="tool_use", data={
-            "id": getattr(root, "id", "") or "",
-            "name": getattr(root, "tool", "") or "",
-            "input": getattr(root, "arguments", {}) or {},
-        })
+    def _plain(value: Any) -> Any:
+        if hasattr(value, "model_dump"):
+            return value.model_dump(by_alias=True, mode="json")
+        if isinstance(value, list):
+            return [CodexSDKEngine._plain(item) for item in value]
+        if isinstance(value, dict):
+            return {key: CodexSDKEngine._plain(item) for key, item in value.items()}
+        enum_value = getattr(value, "value", None)
+        return enum_value if enum_value is not None else value
 
     @staticmethod
-    def _tool_result_event(root: Any) -> InternalEvent:
+    def _status_value(root: Any) -> str:
+        status = getattr(root, "status", "")
+        return str(getattr(status, "value", status) or "").lower()
+
+    @classmethod
+    def _tool_use_event(cls, root: Any) -> InternalEvent:
+        rtype = getattr(root, "type", "")
+        if rtype == "commandExecution":
+            name = "Bash"
+            tool_input = {"command": getattr(root, "command", "") or ""}
+            if getattr(root, "cwd", None):
+                tool_input["cwd"] = str(root.cwd)
+        elif rtype == "mcpToolCall":
+            server = getattr(root, "server", "") or ""
+            tool = getattr(root, "tool", "") or ""
+            name = f"{server}/{tool}" if server else tool
+            tool_input = cls._plain(getattr(root, "arguments", {}) or {})
+        elif rtype == "fileChange":
+            name = "FileChange"
+            tool_input = {"changes": cls._plain(getattr(root, "changes", []) or [])}
+        elif rtype == "webSearch":
+            name = "WebSearch"
+            tool_input = {"query": getattr(root, "query", "") or ""}
+        elif rtype == "collabAgentToolCall":
+            name = str(cls._plain(getattr(root, "tool", "Agent")) or "Agent")
+            tool_input = {
+                "prompt": getattr(root, "prompt", None),
+                "model": getattr(root, "model", None),
+                "receiver_thread_ids": list(
+                    getattr(root, "receiver_thread_ids", []) or []
+                ),
+            }
+        else:
+            name = getattr(root, "tool", "") or ""
+            tool_input = cls._plain(getattr(root, "arguments", {}) or {})
+        return InternalEvent(type="tool_use", data={
+            "id": getattr(root, "id", "") or "",
+            "name": name,
+            "input": tool_input,
+        })
+
+    @classmethod
+    def _tool_result_event(cls, root: Any) -> InternalEvent:
+        rtype = getattr(root, "type", "")
         content_parts: list[str] = []
-        for content_item in getattr(root, "content_items", None) or []:
-            item_root = CodexSDKEngine._root_of(content_item)
-            text = getattr(item_root, "text", None)
-            if text:
-                content_parts.append(str(text))
-        status = getattr(root, "status", None)
+        if rtype == "commandExecution":
+            content_parts.append(str(getattr(root, "aggregated_output", "") or ""))
+        elif rtype == "mcpToolCall":
+            result = getattr(root, "result", None)
+            if result is not None:
+                content_parts.append(str(cls._plain(result)))
+            error = getattr(root, "error", None)
+            if error is not None:
+                content_parts.append(str(cls._plain(error)))
+        elif rtype in {"fileChange", "collabAgentToolCall", "webSearch"}:
+            value = (
+                getattr(root, "changes", None)
+                or getattr(root, "agents_states", None)
+                or getattr(root, "query", None)
+                or ""
+            )
+            content_parts.append(str(cls._plain(value)))
+        else:
+            for content_item in getattr(root, "content_items", None) or []:
+                item_root = cls._root_of(content_item)
+                text = getattr(item_root, "text", None)
+                if text:
+                    content_parts.append(str(text))
+        exit_code = getattr(root, "exit_code", None)
         is_error = (
-            getattr(status, "value", None) == "failed"
+            cls._status_value(root) in {"failed", "declined", "error"}
             or getattr(root, "success", True) is False
+            or getattr(root, "error", None) is not None
+            or (isinstance(exit_code, int) and exit_code != 0)
         )
         return InternalEvent(type="tool_result", data={
             "tool_use_id": getattr(root, "id", "") or "",
@@ -219,6 +299,7 @@ class CodexSDKEngine(BaseLLMEngine):
         elif method in ("item/reasoning/textDelta", "item/reasoning/summaryTextDelta"):
             delta = getattr(payload, "delta", None) or ""
             if delta:
+                state["emitted_thinking"] = True
                 events.append(
                     InternalEvent(type="thinking_delta", data={"delta": str(delta)})
                 )
@@ -227,7 +308,10 @@ class CodexSDKEngine(BaseLLMEngine):
             root = self._root_of(getattr(payload, "item", None))
             tool_id = getattr(root, "id", None)
             if (
-                getattr(root, "type", "") == "dynamicToolCall"
+                getattr(root, "type", "") in {
+                    "commandExecution", "fileChange", "mcpToolCall",
+                    "dynamicToolCall", "collabAgentToolCall", "webSearch",
+                }
                 and tool_id not in state["tool_emitted"]
             ):
                 state["tool_emitted"].add(tool_id)
@@ -247,16 +331,22 @@ class CodexSDKEngine(BaseLLMEngine):
                     )
             elif rtype == "reasoning":
                 content = getattr(root, "content", None)
-                text = getattr(self._root_of(content), "text", None) or ""
-                if text:
+                if isinstance(content, list):
+                    text = "\n".join(str(item) for item in content if item)
+                else:
+                    text = getattr(self._root_of(content), "text", None) or ""
+                if text and not state.get("emitted_thinking", False):
+                    state["emitted_thinking"] = True
                     events.append(
                         InternalEvent(type="thinking_delta", data={"delta": str(text)})
                     )
-            elif rtype == "dynamicToolCall":
-                status = getattr(root, "status", None)
-                status_value = getattr(status, "value", None) or str(status or "").lower()
+            elif rtype in {
+                "commandExecution", "fileChange", "mcpToolCall",
+                "dynamicToolCall", "collabAgentToolCall", "webSearch",
+            }:
+                status_value = self._status_value(root)
                 tool_id = getattr(root, "id", None)
-                if status_value == "inProgress":
+                if status_value in {"inprogress", "pending", "running"}:
                     if tool_id not in state["tool_emitted"]:
                         state["tool_emitted"].add(tool_id)
                         events.append(self._tool_use_event(root))
@@ -283,6 +373,19 @@ class CodexSDKEngine(BaseLLMEngine):
 
         elif method == "thread/compacted":
             events.append(compacted_event())
+
+        elif method == "turn/plan/updated":
+            entries = []
+            for step in getattr(payload, "plan", None) or []:
+                status = getattr(step, "status", "pending")
+                entries.append({
+                    "step": getattr(step, "step", "") or "",
+                    "status": getattr(status, "value", status),
+                })
+            events.append(plan_event(
+                entries,
+                explanation=getattr(payload, "explanation", None),
+            ))
 
         elif method == "turn/completed":
             turn = getattr(payload, "turn", None)
@@ -317,6 +420,8 @@ class CodexSDKEngine(BaseLLMEngine):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
+        thinking_effort: str | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in self._spawn_with_sandbox(
             prompt=prompt,
@@ -326,6 +431,8 @@ class CodexSDKEngine(BaseLLMEngine):
             images=images,
             read_only=False,
             live_message_queue=live_message_queue,
+            thinking_effort=thinking_effort,
+            config_overrides=config_overrides,
         ):
             yield event
 
@@ -336,9 +443,10 @@ class CodexSDKEngine(BaseLLMEngine):
         model: str | None = None,
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
+        thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         guarded_prompt = self.render_image_prompt(
-            self.coordinator_guard(prompt),
+            self._coordinator_prompt(prompt),
             images,
         )
         async for event in self._spawn_with_sandbox(
@@ -348,6 +456,7 @@ class CodexSDKEngine(BaseLLMEngine):
             session_id=session_id,
             images=images,
             read_only=True,
+            thinking_effort=thinking_effort,
         ):
             yield event
 
@@ -360,6 +469,8 @@ class CodexSDKEngine(BaseLLMEngine):
         read_only: bool = False,
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
+        thinking_effort: str | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Internal spawn with an explicit codex sandbox policy."""
         if not CodexSDKEngine._sdk_available():
@@ -376,7 +487,9 @@ class CodexSDKEngine(BaseLLMEngine):
             )
             return
 
-        sdk_config = config_store.get_codex_sdk_config()
+        sdk_config = self.merge_config_overrides(
+            config_store.get_codex_sdk_config(), config_overrides
+        )
         sandbox_map = {
             "read-only": Sandbox.read_only,
             "workspace-write": Sandbox.workspace_write,
@@ -390,10 +503,9 @@ class CodexSDKEngine(BaseLLMEngine):
         if sdk_config["approval_mode"]:
             approval_mode = ApprovalMode(sdk_config["approval_mode"])
         thread_config = {}
-        if sdk_config["model_reasoning_effort"]:
-            thread_config["model_reasoning_effort"] = sdk_config[
-                "model_reasoning_effort"
-            ]
+        reasoning_effort = thinking_effort or sdk_config["model_reasoning_effort"]
+        if reasoning_effort:
+            thread_config["model_reasoning_effort"] = reasoning_effort
         thread_kwargs: dict[str, Any] = {
             "cwd": cwd,
             "model": model or None,
@@ -413,10 +525,19 @@ class CodexSDKEngine(BaseLLMEngine):
 
         client: Any = None
         try:
+            event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
+            client_kwargs["approval_handler"] = self._build_approval_handler(
+                event_queue,
+                asyncio.get_running_loop(),
+                session_id or "",
+            )
             client = AsyncCodex(**client_kwargs)
             self._client = client
-            event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
-            state: dict[str, Any] = {"emitted_text": False, "tool_emitted": set()}
+            state: dict[str, Any] = {
+                "emitted_text": False,
+                "emitted_thinking": False,
+                "tool_emitted": set(),
+            }
 
             async def pump() -> None:
                 try:
@@ -445,24 +566,13 @@ class CodexSDKEngine(BaseLLMEngine):
                         while not live_message_queue.empty():
                             live_items.append(live_message_queue.get_nowait())
                         if not live_items:
-                            # 轮间等待窗口：任务收尾时刚发出的插入消息不应静默丢失
-                            try:
-                                first = await asyncio.wait_for(
-                                    live_message_queue.get(),
-                                    timeout=self._live_message_wait_seconds,
-                                )
-                            except asyncio.TimeoutError:
-                                break
-                            live_items = [first]
-                            while not live_message_queue.empty():
-                                live_items.append(live_message_queue.get_nowait())
+                            # 插入队列已空：回复即收尾，不等待插入窗口。
+                            break
                         injected = "\n\n".join(
                             content for _, content in live_items
                         )
-                        turn = await thread.turn(injected, model=model or None)
-                        async for notification in turn.stream():
-                            for event in self._map_notification(notification, state):
-                                await event_queue.put(event)
+                        # 先确认送达再开启响应 turn：runner 收到 delivered 后
+                        # 封口插入前的输出段并开启新的响应段，响应事件归入新段。
                         for message_id, _ in live_items:
                             await event_queue.put(InternalEvent(
                                 type="live_message",
@@ -472,6 +582,10 @@ class CodexSDKEngine(BaseLLMEngine):
                                     "detail": "",
                                 },
                             ))
+                        turn = await thread.turn(injected, model=model or None)
+                        async for notification in turn.stream():
+                            for event in self._map_notification(notification, state):
+                                await event_queue.put(event)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -510,6 +624,101 @@ class CodexSDKEngine(BaseLLMEngine):
                         pass
             self._running = False
 
+    def _build_approval_handler(
+        self,
+        event_queue: asyncio.Queue[InternalEvent | None],
+        loop: asyncio.AbstractEventLoop,
+        session_id: str,
+    ) -> Any:
+        """Build the synchronous approval callback handed to ``AsyncCodex``.
+
+        The SDK invokes it from its stdout reader thread when Codex requests
+        approval for a command/file change. We bridge it to the ACP-shaped
+        ``interaction_request`` flow: submit the prompt to the main loop,
+        block the reader thread until the user answers, then return the
+        ``decision`` the SDK expects.
+        """
+        approval_methods = {
+            "item/commandExecution/requestApproval",
+            "item/fileChange/requestApproval",
+        }
+
+        def handler(method: str, params: Any) -> dict:
+            if method not in approval_methods:
+                return {}
+            future = asyncio.run_coroutine_threadsafe(
+                self._ask_approval(event_queue, session_id, method, params or {}),
+                loop,
+            )
+            try:
+                allowed = future.result(timeout=300)
+            except Exception:
+                return {}
+            return {"decision": "accept" if allowed else "deny"}
+
+        return handler
+
+    async def _ask_approval(
+        self,
+        event_queue: asyncio.Queue[InternalEvent | None],
+        session_id: str,
+        method: str,
+        params: dict[str, Any],
+    ) -> bool:
+        """Ask the user to allow/deny a Codex approval request (ACP-shaped)."""
+        raw = params if isinstance(params, dict) else {}
+        if method == "item/fileChange/requestApproval":
+            tool_name = "Edit"
+            title = "文件修改"
+            tool_input = raw
+        else:
+            tool_name = "Bash"
+            proposed = raw.get("proposed_exec") or {}
+            command = (
+                raw.get("command")
+                or (proposed.get("command") if isinstance(proposed, dict) else None)
+                or ""
+            )
+            title = f"执行命令: {command[:120]}" if command else "执行命令"
+            tool_input = {"command": command} if command else raw
+        signature = permission_signature(tool_name, tool_input)
+        session_allow = getattr(self, "_permission_session_allow", None)
+        if session_allow is None:
+            session_allow = set()
+            self._permission_session_allow = session_allow
+        session_reject = getattr(self, "_permission_session_reject", None)
+        if session_reject is None:
+            session_reject = set()
+            self._permission_session_reject = session_reject
+        if signature and signature in session_allow:
+            return True
+        if signature and signature in session_reject:
+            return False
+        event = permission_request(
+            interaction_id=str(uuid.uuid4()),
+            session_id=session_id or "codex-sdk",
+            tool_call={
+                "tool_call_id": str(raw.get("approval_id") or uuid.uuid4()),
+                "title": title,
+                "name": tool_name,
+                "raw_input": raw,
+            },
+            options=[
+                {"option_id": "allow_once", "name": "允许一次", "kind": "allow_once"},
+                {"option_id": "allow_for_session", "name": "允许本次运行", "kind": "allow_for_session"},
+                {"option_id": "reject_once", "name": "拒绝", "kind": "reject_once"},
+                {"option_id": "reject_for_session", "name": "拒绝本次运行", "kind": "reject_for_session"},
+            ],
+        )
+        response = await self.request_interaction(event, event_queue.put)
+        outcome = response.get("outcome") or {}
+        option_id = str(outcome.get("option_id") or "")
+        if option_id == "allow_for_session" and signature:
+            session_allow.add(signature)
+        elif option_id == "reject_for_session" and signature:
+            session_reject.add(signature)
+        return option_id in {"allow_once", "allow_for_session"}
+
     async def stop(self) -> None:
         if self._stream_task is not None and not self._stream_task.done():
             self._stream_task.cancel()
@@ -539,6 +748,11 @@ class CodexSDKEngine(BaseLLMEngine):
 
     @property
     def supports_live_stage_message(self) -> bool:
+        return True
+
+    @property
+    def supports_thinking_effort(self) -> bool:
+        """``config.model_reasoning_effort`` supports a per-turn override."""
         return True
 
     def build_resume_params(self, session_id: str) -> dict:

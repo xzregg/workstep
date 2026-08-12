@@ -10,6 +10,7 @@ import pytest
 from services.project import ProjectManager
 from services.workflow_definition import WorkflowDefinition
 from services.workflow_gen import WorkflowGenModule
+from services.assistant_base import AssistantConfig, AssistantRuntime
 from streaming.bus import EventBus
 
 
@@ -43,6 +44,31 @@ class FakeEngine:
     supports_resume = False
 
 
+def test_assistant_model_switch_preserves_engine_session_id():
+    runtime = AssistantRuntime(
+        AssistantConfig(
+            name="test",
+            channel="test",
+            cwd_resolver=lambda manager, project_id: "/tmp",
+        ),
+        EventBus(),
+        None,
+    )
+    session = runtime._get_or_create_session(
+        "project-1", "assistant-1", ("project-1", "assistant-1"), None,
+        "claude_agent_sdk", "sonnet", None,
+    )
+    session.resolved_session_id = "engine-session-1"
+
+    updated = runtime._get_or_create_session(
+        "project-1", "assistant-1", ("project-1", "assistant-1"), None,
+        "claude_agent_sdk", "opus", None,
+        model_override="opus",
+    )
+
+    assert updated.resolved_session_id == "engine-session-1"
+
+
 async def _wait_turn(module, turn_id, timeout=5.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -51,6 +77,81 @@ async def _wait_turn(module, turn_id, timeout=5.0):
             return state["status"]
         await asyncio.sleep(0.01)
     raise AssertionError("turn did not finish")
+
+
+@pytest.mark.anyio
+async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
+    import services.assistant_base as assistant_base
+    import services.workflow_gen as wfgen_service
+
+    module, bus, _, project, _ = gen_module
+    started = asyncio.Event()
+    release = asyncio.Event()
+    stop_started = asyncio.Event()
+    allow_stop = asyncio.Event()
+
+    class CancellationSwallowingEngine:
+        capabilities = SimpleNamespace(supports_coordinator=True)
+        supports_resume = False
+        supports_message_history = False
+
+        def __init__(self):
+            self.stop_called = False
+
+        async def spawn(self, **kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await release.wait()
+            if False:
+                yield None
+
+        async def stop(self):
+            self.stop_called = True
+            stop_started.set()
+            await allow_stop.wait()
+            release.set()
+
+    engine = CancellationSwallowingEngine()
+    monkeypatch.setattr(assistant_base, "create_engine", lambda engine_id: engine)
+    monkeypatch.setattr(wfgen_service, "create_engine", lambda engine_id: engine)
+
+    queue = bus.subscribe()
+    accepted = module.submit_message(
+        project.id, None, "帮我创建流程", "idem-stop"
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    stop_request = asyncio.create_task(module.stop_current(accepted.session_id))
+    await asyncio.wait_for(stop_started.wait(), timeout=2)
+    returned_before_engine_cleanup = stop_request.done()
+    allow_stop.set()
+    assert await stop_request is True
+    assert returned_before_engine_cleanup is True
+    assert await module.stop_current(accepted.session_id) is True
+    assert engine.stop_called is True
+
+    deadline = time.monotonic() + 2
+    while module._turn_states[accepted.turn_id]["status"] != "stopped":
+        assert time.monotonic() < deadline
+        await asyncio.sleep(0.01)
+
+    completed = None
+    while completed is None:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event["type"] == "message_completed":
+            completed = event
+    assert completed["session_id"] == accepted.session_id
+    assert completed["data"]["status"] == "stopped"
+
+    session = module._sessions[(project.id, accepted.session_id)]
+    stopped_message = session.messages[-1]
+    assert stopped_message["role"] == "assistant"
+    assert stopped_message["status"] == "stopped"
+    assert stopped_message["ended_at"]
+
+    assert await module.stop_current("missing-session") is False
 
 
 @pytest.fixture
@@ -81,7 +182,7 @@ async def gen_module(tmp_path, monkeypatch):
 async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         return json.dumps({"reply": "先澄清一下", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -100,6 +201,56 @@ async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch)
     )
     assert replayed.turn_id == accepted.turn_id
     assert replayed.session_id == accepted.session_id
+
+
+@pytest.mark.anyio
+async def test_thinking_effort_reaches_workflow_generation_engine(
+    gen_module,
+    monkeypatch,
+):
+    import services.assistant_base as assistant_base
+    import services.workflow_gen as wfgen_service
+    from engines.core.events import InternalEvent
+
+    module, _, _, project, _ = gen_module
+    calls: list[dict] = []
+
+    class ThinkingEngine:
+        capabilities = SimpleNamespace(
+            supports_coordinator=True,
+            supports_thinking_effort=True,
+        )
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            calls.append(kwargs)
+            yield InternalEvent(
+                type="text_delta",
+                data={
+                    "delta": json.dumps(
+                        {"reply": "ok", "flow_proposals": []}
+                    )
+                },
+                timestamp=time.time(),
+            )
+
+        async def stop(self):
+            return None
+
+    engine = ThinkingEngine()
+    monkeypatch.setattr(assistant_base, "create_engine", lambda engine_id: engine)
+    monkeypatch.setattr(wfgen_service, "create_engine", lambda engine_id: engine)
+
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "设计流程",
+        "idem-thinking",
+        thinking_effort="high",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert calls[0]["thinking_effort"] == "high"
 
 
 @pytest.mark.anyio
@@ -136,10 +287,10 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
         }
     )
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         if on_event is not None:
             # Simulate a streamed JSON reply with an escaped reply field
-            from engines.events import InternalEvent
+            from engines.core.events import InternalEvent
             chunk = '"reply":"这是完整流程"'
             for char in chunk:
                 await on_event(
@@ -193,7 +344,7 @@ async def test_invalid_proposal_is_repaired(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
     calls: list[str] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         calls.append(prompt)
         if len(calls) == 1:
             return (
@@ -249,7 +400,9 @@ async def test_invalid_proposal_is_repaired(gen_module, monkeypatch):
     assert len(calls) == 2
 
     session = module._sessions[(project.id, accepted.session_id)]
-    assert session.messages[-1]["content"] == "已修复"
+    # The repaired reply also carries the auto-generated a2ui choice UI.
+    assert session.messages[-1]["content"].startswith("已修复")
+    assert "```a2ui" in session.messages[-1]["content"]
 
 
 @pytest.mark.anyio
@@ -298,7 +451,7 @@ async def test_multiple_proposals_filter_invalid(gen_module, monkeypatch):
         }
     )
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         return raw, [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -319,7 +472,7 @@ async def test_multiple_proposals_filter_invalid(gen_module, monkeypatch):
 async def test_unrepairable_proposal_drops_proposal(gen_module, monkeypatch):
     module, bus, manager, project, _ = gen_module
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         return (
             json.dumps(
                 {
@@ -350,6 +503,70 @@ async def test_unrepairable_proposal_drops_proposal(gen_module, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_module, monkeypatch):
+    import services.workflow_gen as wfgen_service
+
+    module, bus, manager, project, config_store = gen_module
+    config_store.values["coordinator_default_engine"] = "pydantic_ai"
+    config_store.values["coordinator_default_model"] = "gpt-x"
+    config_store.values["coordinator_default_fast_model"] = "gpt-fast"
+    config_store.values["engine_default_models"] = {"claude": "claude-default"}
+
+    def fake_create(engine_id):
+        if engine_id == "pydantic_ai":
+            return None  # 默认引擎未配置/不可用
+        return FakeEngine()
+
+    monkeypatch.setattr(wfgen_service, "create_engine", fake_create)
+
+    engine_id, model, fast_model = module._resolve_engine_models()
+    # 回退到第一个可用的协调引擎，且不沿用原引擎的协调模型
+    assert engine_id == "claude"
+    assert model == "claude-default"
+    assert fast_model == "claude-default"
+
+    # 没有任何可用引擎时仍给出明确错误
+    monkeypatch.setattr(
+        wfgen_service,
+        "create_engine",
+        lambda engine_id: None,
+    )
+    with pytest.raises(ValueError, match="Coordinator engine is unavailable"):
+        module._resolve_engine_models()
+
+
+@pytest.mark.anyio
+async def test_history_survives_unavailable_coordinator_engine(gen_module, monkeypatch):
+    import services.workflow_gen as wfgen_service
+
+    module, bus, manager, project, config_store = gen_module
+    config_store.values["coordinator_default_engine"] = "pydantic_ai"
+    config_store.values["engine_default_models"] = {"claude": "claude-default"}
+
+    # 默认引擎不可用，但有可用的回退引擎：历史正常返回，并带上回退引擎信息
+    def fake_create(engine_id):
+        if engine_id == "pydantic_ai":
+            return None
+        return FakeEngine()
+
+    monkeypatch.setattr(wfgen_service, "create_engine", fake_create)
+    history = module.history(project.id, "wf-x")
+    assert history["session_id"] == f"wf:{project.id}:wf-x"
+    assert history["engine"] == "claude"
+    assert history["model"] == "claude-default"
+    assert history["messages"] == []
+
+    # 任何引擎都不可用时：只读历史仍然不抛错，返回空会话
+    monkeypatch.setattr(
+        wfgen_service,
+        "create_engine",
+        lambda engine_id: None,
+    )
+    empty = module.history(project.id, "wf-x")
+    assert empty["session_id"] == f"wf:{project.id}:wf-x"
+    assert empty["messages"] == []
+
+
 async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monkeypatch):
     import services.workflow_gen as wfgen_service
 
@@ -358,11 +575,11 @@ async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monke
         wfgen_service, "create_engine", lambda engine_id: FakeEngine()
     )
 
-    config_store.values["coordinator_default_engine"] = "api"
+    config_store.values["coordinator_default_engine"] = "pydantic_ai"
     config_store.values["coordinator_default_model"] = "gpt-x"
     config_store.values["coordinator_default_fast_model"] = "gpt-fast"
     engine_id, model, fast_model = module._resolve_engine_models()
-    assert (engine_id, model, fast_model) == ("api", "gpt-x", "gpt-fast")
+    assert (engine_id, model, fast_model) == ("pydantic_ai", "gpt-x", "gpt-fast")
 
     config_store.values.clear()
     engine_id, model, fast_model = module._resolve_engine_models()
@@ -374,17 +591,20 @@ async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monke
 async def test_chat_http_contract(tmp_path, monkeypatch):
     import main
     import services.project as project_service
+    import services.workflow_gen as wfgen_service
     from httpx import ASGITransport, AsyncClient
     from services.project import ProjectManager
 
     manager = ProjectManager()
-    monkeypatch.setattr(project_service, "config_store", MemoryConfigStore())
+    store = MemoryConfigStore()
+    monkeypatch.setattr(project_service, "config_store", store)
+    monkeypatch.setattr(wfgen_service, "config_store", store)
     monkeypatch.setattr(main, "project_manager", manager)
 
     bus = EventBus()
     module = WorkflowGenModule(bus, manager)
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -396,7 +616,11 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/workflow/generate/chat",
-                json={"project_id": project.id, "content": "设计一个流程"},
+                json={
+                    "project_id": project.id,
+                    "content": "设计一个流程",
+                    "thinking_effort": "high",
+                },
                 headers={"Idempotency-Key": "idem-http"},
             )
             assert resp.status_code == 200
@@ -404,6 +628,7 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             assert body["session_id"]
             assert body["turn_id"]
             assert body["status"] == "queued"
+            assert module._turn_states[body["turn_id"]]["thinking_effort"] == "high"
 
             empty = await client.post(
                 "/api/workflow/generate/chat",
@@ -415,6 +640,30 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
         await module.shutdown()
         await bus.close()
         manager.close_all()
+
+
+@pytest.mark.anyio
+async def test_stop_http_contract_decodes_workflow_session_id(monkeypatch):
+    import main
+    from httpx import ASGITransport, AsyncClient
+
+    received: list[str] = []
+
+    class StubWorkflowGen:
+        async def stop_current(self, session_id):
+            received.append(session_id)
+            return True
+
+    monkeypatch.setattr(main, "workflow_gen_module", StubWorkflowGen())
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/workflow/generate/wf%3A383b11e6%3Af0e8bc06/stop"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"stopped": True}
+    assert received == ["wf:383b11e6:f0e8bc06"]
 
 
 @pytest.mark.anyio
@@ -472,7 +721,7 @@ async def test_all_invalid_proposals_repaired_by_fast_model(gen_module, monkeypa
     }
     calls = {"count": 0}
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         calls["count"] += 1
         return (json.dumps(fixed if calls["count"] > 1 else invalid), [], None)
 
@@ -533,7 +782,7 @@ async def test_unrepairable_multi_proposals_emit_rejected_event(gen_module, monk
         ],
     }
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         return json.dumps(invalid), [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -564,7 +813,7 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
 
     seen: list[tuple] = []
 
-    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None):
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         seen.append((engine_id, model, session_id))
         return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
 
@@ -622,3 +871,987 @@ async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch
             "idem-override-3",
             engine="unknown-engine",
         )
+
+
+@pytest.mark.anyio
+async def test_session_cwd_is_project_directory(gen_module, monkeypatch):
+    """The generation agent always runs in the corresponding project's directory."""
+    module, bus, manager, project, _ = gen_module
+    seen: list[tuple[str, str]] = []  # (cwd, prompt)
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen.append((cwd, prompt))
+        return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(project.id, None, "设计一个发布流程", "idem-cwd-1")
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    session = module._sessions[(project.id, accepted.session_id)]
+    assert session.cwd == str(project.path)
+
+    assert seen, "expected _invoke to be called"
+    cwd, prompt = seen[0]
+    assert cwd == str(project.path)
+    # The working directory is passed to the engine via `cwd`, not the prompt.
+    assert "当前工作目录" not in prompt
+    assert str(project.path) not in prompt
+
+    # Follow-up turns keep using the project directory.
+    seen.clear()
+    follow = module.submit_message(project.id, accepted.session_id, "继续", "idem-cwd-2")
+    status = await _wait_turn(module, follow.turn_id)
+    assert status == "completed"
+    assert seen, "expected a follow-up _invoke call"
+    assert seen[0][0] == str(project.path)
+
+
+@pytest.mark.anyio
+async def test_sessions_use_their_own_project_directory(gen_module, monkeypatch):
+    """Each project's session resolves to its own directory, not a shared one."""
+    module, bus, manager, project, _ = gen_module
+    other = manager.init_project(project.path.parent / "other-proj")
+    seen: list[tuple[str, str]] = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen.append((cwd, prompt))
+        return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    first = module.submit_message(project.id, None, "设计一个流程", "idem-cwd-a")
+    await _wait_turn(module, first.turn_id)
+    second = module.submit_message(other.id, None, "设计另一个流程", "idem-cwd-b")
+    await _wait_turn(module, second.turn_id)
+
+    assert seen[0][0] == str(project.path)
+    assert seen[1][0] == str(other.path)
+    assert module._sessions[(project.id, first.session_id)].cwd == str(project.path)
+    assert module._sessions[(other.id, second.session_id)].cwd == str(other.path)
+
+
+@pytest.mark.anyio
+async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypatch):
+    """Editor context is injected initially and again only after changes."""
+    module, bus, manager, project, _ = gen_module
+    seen: list[tuple[str, str]] = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen.append((cwd, prompt))
+        return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    steps = {
+        "nodes": [{"id": 1, "type": "req", "title": "需求"}],
+        "connections": [],
+    }
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "把测试阶段加上",
+        "idem-steps-1",
+        steps=steps,
+        workflow_name="发布流程",
+        context_mode="initial",
+    )
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    assert seen, "expected _invoke to be called"
+    _cwd, prompt = seen[0]
+    assert "当前流程标题：发布流程" in prompt
+    assert "当前画布 JSON" in prompt
+    assert '"type": "req"' in prompt
+
+    # Unchanged canvas → no repeated title or canvas section.
+    seen.clear()
+    follow = module.submit_message(
+        project.id,
+        accepted.session_id,
+        "继续",
+        "idem-steps-2",
+        context_mode="none",
+    )
+    status = await _wait_turn(module, follow.turn_id)
+    assert status == "completed"
+    assert seen
+    assert "当前画布 JSON" not in seen[0][1]
+    assert "当前流程标题" not in seen[0][1]
+
+    # Changed live canvas → inject the new unsaved snapshot without the title.
+    changed_steps = {"nodes": [], "connections": []}
+    seen.clear()
+    changed = module.submit_message(
+        project.id,
+        accepted.session_id,
+        "画布刚刚改过",
+        "idem-steps-3",
+        steps=changed_steps,
+        context_mode="canvas_updated",
+    )
+    assert await _wait_turn(module, changed.turn_id) == "completed"
+    assert "当前画布已更新" in seen[0][1]
+    assert "当前流程标题" not in seen[0][1]
+
+    session = module._sessions[(project.id, accepted.session_id)]
+    assert session.steps == changed_steps
+
+
+@pytest.mark.anyio
+async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
+    """thinking_delta and usage from the engine reach the WS event bus."""
+    module, bus, manager, project, _ = gen_module
+    queue = bus.subscribe()
+    collected: list[dict] = []
+    stop = asyncio.Event()
+
+    async def collector():
+        while not stop.is_set():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            collected.append(event)
+
+    collector_task = asyncio.create_task(collector())
+
+    from engines.core.events import InternalEvent
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        assert on_event is not None
+        await on_event(
+            InternalEvent(
+                type="thinking_delta",
+                data={"delta": "先分析用户需求"},
+                timestamp=time.time(),
+            )
+        )
+        chunk = '"reply":"好的"'
+        for char in chunk:
+            await on_event(
+                InternalEvent(
+                    type="text_delta",
+                    data={"delta": char},
+                    timestamp=time.time(),
+                )
+            )
+        await on_event(
+            InternalEvent(
+                type="usage",
+                data={
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150,
+                    "session_id": "sess-x",
+                },
+                timestamp=time.time(),
+            )
+        )
+        return json.dumps({"reply": "好的", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(project.id, None, "设计一个流程", "idem-think-1")
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    stop.set()
+    await asyncio.wait_for(collector_task, timeout=2)
+
+    thinking = [e for e in collected if e["type"] == "thinking_delta"]
+    usage = [e for e in collected if e["type"] == "usage"]
+    assert thinking, "expected thinking_delta events on the bus"
+    assert "".join(e["data"]["delta"] for e in thinking) == "先分析用户需求"
+    assert usage, "expected usage events on the bus"
+    assert usage[-1]["data"]["total_tokens"] == 150
+    for event in (*thinking, *usage):
+        assert event["session_id"] == accepted.session_id
+        assert event["message_id"]
+        assert "task_id" not in event
+
+
+@pytest.mark.anyio
+async def test_workflow_scoped_session_is_stable_and_persisted(
+    gen_module, monkeypatch
+):
+    """Editing the same workflow always resumes the same conversation."""
+    module, bus, manager, project, _ = gen_module
+    seen: list[tuple[str, str]] = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen.append((cwd, prompt))
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    workflow_id = "wf-stable"
+    first = module.submit_message(
+        project.id, None, "帮我设计发布流程", "idem-wf-1", workflow_id=workflow_id
+    )
+    assert first.session_id == f"wf:{project.id}:{workflow_id}"
+    assert await _wait_turn(module, first.turn_id) == "completed"
+
+    second = module.submit_message(
+        project.id,
+        first.session_id,
+        "加一个审核阶段",
+        "idem-wf-2",
+        workflow_id=workflow_id,
+    )
+    assert second.session_id == first.session_id
+    assert await _wait_turn(module, second.turn_id) == "completed"
+
+    # The second prompt carries the first exchange (history kept in memory).
+    assert "帮我设计发布流程" in seen[1][1]
+
+    # History is persisted and exposed through the history endpoint shape.
+    history = module.history(project.id, workflow_id)
+    assert history["session_id"] == f"wf:{project.id}:{workflow_id}"
+    assert [item["role"] for item in history["messages"]] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+
+
+@pytest.mark.anyio
+async def test_reset_workflow_session_clears_memory_and_persistence(
+    gen_module, monkeypatch
+):
+    module, bus, manager, project, _ = gen_module
+    seen_prompts: list[str] = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen_prompts.append(prompt)
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    workflow_id = "wf-reset"
+    first = module.submit_message(
+        project.id, None, "旧会话内容", "idem-reset-1", workflow_id=workflow_id
+    )
+    assert await _wait_turn(module, first.turn_id) == "completed"
+
+    assert module.reset_session(project.id, workflow_id) is True
+    assert module.history(project.id, workflow_id)["messages"] == []
+
+    from models.gen_session import WorkflowGenSession
+
+    with manager.activate_project_by_id(project.id):
+        assert WorkflowGenSession.select().where(
+            WorkflowGenSession.workflow_id == workflow_id
+        ).count() == 0
+
+    second = module.submit_message(
+        project.id, first.session_id, "新会话内容", "idem-reset-2", workflow_id=workflow_id
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+    assert "旧会话内容" not in seen_prompts[-1]
+    assert "新会话内容" in seen_prompts[-1]
+
+
+@pytest.mark.anyio
+async def test_different_workflows_have_independent_sessions(
+    gen_module, monkeypatch
+):
+    module, bus, manager, project, _ = gen_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    first = module.submit_message(
+        project.id, None, "设计 A", "idem-wf-a", workflow_id="wf-a"
+    )
+    second = module.submit_message(
+        project.id, None, "设计 B", "idem-wf-b", workflow_id="wf-b"
+    )
+    await _wait_turn(module, first.turn_id)
+    await _wait_turn(module, second.turn_id)
+
+    assert first.session_id != second.session_id
+    history_a = module.history(project.id, "wf-a")
+    history_b = module.history(project.id, "wf-b")
+    assert [m["content"] for m in history_a["messages"] if m["role"] == "user"] == ["设计 A"]
+    assert [m["content"] for m in history_b["messages"] if m["role"] == "user"] == ["设计 B"]
+
+
+@pytest.mark.anyio
+async def test_ephemeral_chat_never_writes_gen_sessions(gen_module, monkeypatch):
+    """Create-mode chats (no workflow) stay memory-only."""
+    module, bus, manager, project, _ = gen_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(project.id, None, "随便聊聊", "idem-eph-1")
+    await _wait_turn(module, accepted.turn_id)
+
+    from models.gen_session import WorkflowGenSession
+
+    with manager.activate_project_by_id(project.id):
+        assert WorkflowGenSession.select().count() == 0
+
+
+@pytest.mark.anyio
+async def test_workflow_session_history_survives_module_restart(
+    gen_module, monkeypatch
+):
+    """Reconstructing the module (daemon restart) resumes the same workflow chat."""
+    module, bus, manager, project, _ = gen_module
+    seen: list[tuple[str, str]] = []
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        seen.append((cwd, prompt))
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    workflow_id = "wf-restart"
+    first = module.submit_message(
+        project.id, None, "设计一个流程", "idem-wf-r1", workflow_id=workflow_id
+    )
+    await _wait_turn(module, first.turn_id)
+    await module.shutdown()
+
+    bus2 = EventBus()
+    restarted = WorkflowGenModule(bus2, manager)
+    monkeypatch.setattr(restarted, "_invoke", fake_invoke)
+    try:
+        history = restarted.history(project.id, workflow_id)
+        assert [
+            m["content"] for m in history["messages"] if m["role"] == "user"
+        ] == ["设计一个流程"]
+
+        follow = restarted.submit_message(
+            project.id,
+            first.session_id,
+            "继续",
+            "idem-wf-r2",
+            workflow_id=workflow_id,
+        )
+        assert follow.session_id == first.session_id
+        assert await _wait_turn(restarted, follow.turn_id) == "completed"
+        # The restored history is injected into the new turn's prompt.
+        assert "设计一个流程" in seen[-1][1]
+    finally:
+        await restarted.shutdown()
+        await bus2.close()
+
+
+@pytest.mark.anyio
+async def test_workflow_history_persists_prompt_events_and_session_id(
+    gen_module, monkeypatch
+):
+    """Prompt, engine events and the engine session id survive refresh via history."""
+    module, bus, manager, project, _ = gen_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        events = [
+            {
+                "type": "session_started",
+                "data": {"session_id": "engine-sid-123"},
+                "timestamp": 1000,
+            },
+            {
+                "type": "status",
+                "data": {"status": "running"},
+                "timestamp": 1001,
+            },
+            {
+                "type": "text_delta",
+                "data": {"delta": "partial"},
+                "timestamp": 1002,
+            },
+            {
+                "type": "usage",
+                "data": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15,
+                    "session_id": "engine-sid-123",
+                },
+                "timestamp": 1003,
+            },
+            {
+                "type": "engine_state",
+                "data": {"state": [{"role": "user", "content": "hi"}]},
+                "timestamp": 1004,
+            },
+        ]
+        return (
+            json.dumps({"reply": "ok", "flow_proposals": []}),
+            events,
+            "engine-sid-123",
+        )
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    workflow_id = "wf-events"
+    accepted = module.submit_message(
+        project.id, None, "设计一个流程", "idem-evt-1", workflow_id=workflow_id
+    )
+    await _wait_turn(module, accepted.turn_id)
+
+    history = module.history(project.id, workflow_id)
+    assert history["session_id"] == f"wf:{project.id}:{workflow_id}"
+    assert history["engine_session_id"] == "engine-sid-123"
+    assistants = [m for m in history["messages"] if m["role"] == "assistant"]
+    assert len(assistants) == 1
+    msg = assistants[0]
+    assert msg["prompt"] and "设计一个流程" in msg["prompt"]
+    event_types = [e["type"] for e in msg["events"]]
+    # text_delta is not persisted (content is already in the message).
+    assert "text_delta" not in event_types
+    assert set(event_types) == {
+        "session_started",
+        "status",
+        "usage",
+        "engine_state",
+    }
+    usage = next(e for e in msg["events"] if e["type"] == "usage")
+    assert usage["data"]["input_tokens"] == 10
+    assert usage["data"]["session_id"] == "engine-sid-123"
+    assert msg["events"][0]["timestamp"] == 1000
+
+    # Survives a module restart (page refresh re-reads from the DB).
+    await module.shutdown()
+    bus2 = EventBus()
+    restarted = WorkflowGenModule(bus2, manager)
+    monkeypatch.setattr(restarted, "_invoke", fake_invoke)
+    try:
+        again = restarted.history(project.id, workflow_id)
+        assert again["engine_session_id"] == "engine-sid-123"
+        restored = [m for m in again["messages"] if m["role"] == "assistant"][0]
+        assert restored["prompt"] == msg["prompt"]
+        assert [e["type"] for e in restored["events"]] == event_types
+        assert restored["events"] == msg["events"]
+    finally:
+        await restarted.shutdown()
+        await bus2.close()
+
+
+@pytest.mark.anyio
+async def test_workflow_history_persists_error_message_prompt(
+    gen_module, monkeypatch
+):
+    """Failed turns still persist the prompt so the viewer works after refresh."""
+    module, bus, manager, project, _ = gen_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    workflow_id = "wf-error"
+    accepted = module.submit_message(
+        project.id, None, "设计一个流程", "idem-err-1", workflow_id=workflow_id
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "error"
+
+    history = module.history(project.id, workflow_id)
+    assistants = [m for m in history["messages"] if m["role"] == "assistant"]
+    assert len(assistants) == 1
+    assert assistants[0]["status"] == "error"
+    assert assistants[0]["prompt"] and "设计一个流程" in assistants[0]["prompt"]
+    assert assistants[0]["events"] == []
+
+
+@pytest.mark.anyio
+async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
+    """Plan replies always carry an a2ui button list for user selection."""
+    module, bus, manager, project, _ = gen_module
+    queue = bus.subscribe()
+    collected: list[dict] = []
+    stop = asyncio.Event()
+
+    async def collector():
+        while not stop.is_set():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            collected.append(event)
+
+    collector_task = asyncio.create_task(collector())
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return json.dumps({
+            "reply": "我准备了两个方案，请选择",
+            "flow_proposals": [
+                {
+                    "title": "简洁版",
+                    "summary": "最少阶段",
+                    "steps": {"nodes": [{"id": 1, "type": "req", "title": "需求"}], "connections": []},
+                },
+                {
+                    "title": "完整版",
+                    "summary": "含审核",
+                    "steps": {
+                        "nodes": [
+                            {"id": 1, "type": "req", "title": "需求"},
+                            {"id": 2, "type": "review", "title": "审核"},
+                        ],
+                        "connections": [],
+                    },
+                },
+            ],
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(project.id, None, "设计一个流程", "idem-a2ui-1")
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    snapshot = next(
+        (e for e in collected if e.get("type") == "message_snapshot"),
+        None,
+    )
+    assert snapshot is not None
+    content = snapshot["data"]["content"]
+    assert "```a2ui" in content
+    assert '"name": "apply_flow"' in content
+    assert '"proposal": 1' in content
+    assert '"proposal": 2' in content
+    update_line = next(
+        line for line in content.splitlines() if '"updateComponents"' in line
+    )
+    update = json.loads(update_line)
+    buttons = [
+        component
+        for component in update["updateComponents"]["components"]
+        if component.get("component") == "Button"
+    ]
+    assert len(buttons) == 2
+    assert json.loads(
+        buttons[0]["action"]["event"]["context"]["stepsJson"]
+    )["nodes"][0]["title"] == "需求"
+    # The structured flow_proposals event is still emitted for the canvas.
+    proposals_event = next(
+        (e for e in collected if e.get("type") == "flow_proposals"),
+        None,
+    )
+    assert proposals_event is not None
+    assert len(proposals_event["data"]["proposals"]) == 2
+
+    stop.set()
+    await collector_task
+
+
+@pytest.mark.anyio
+async def test_a2ui_fence_not_duplicated_and_skipped_without_proposals(
+    gen_module, monkeypatch
+):
+    module, bus, manager, project, _ = gen_module
+
+    session = SimpleNamespace(
+        engine="claude",
+        fast_model="claude-fast",
+        cwd=str(project.path),
+    )
+    existing = (
+        "好的\n\n```a2ui\n"
+        '{"version":"v0.9.1","createSurface":{"surfaceId":"s","catalogId":"basic"}}\n'
+        '{"version":"v0.9.1","updateComponents":{"surfaceId":"s","components":['
+        '{"component":"Text","id":"label","text":"简洁版"},'
+        '{"component":"Button","id":"apply","child":"label","action":{"event":{'
+        '"name":"apply_flow","context":{"proposal":1}}}}]}}\n'
+        "```\n"
+    )
+    reply, proposals, events = await module._resolve_proposal(
+        session,
+        json.dumps({
+            "reply": existing,
+            "flow_proposals": [
+                {
+                    "title": "A",
+                    "steps": {"nodes": [{"id": 1, "type": "req", "title": "需求"}], "connections": []},
+                }
+            ],
+        }),
+    )
+    assert reply.count("```a2ui") == 1
+    assert len(proposals) == 1
+    assert events == []
+    update_line = next(
+        line for line in reply.splitlines() if '"updateComponents"' in line
+    )
+    update = json.loads(update_line)
+    button = next(
+        component
+        for component in update["updateComponents"]["components"]
+        if component.get("component") == "Button"
+    )
+    assert json.loads(
+        button["action"]["event"]["context"]["stepsJson"]
+    )["nodes"][0]["title"] == "需求"
+
+    # Clarification replies (no proposals) stay untouched.
+    reply, proposals, events = await module._resolve_proposal(
+        session,
+        json.dumps({"reply": "还需要澄清一下", "flow_proposals": []}),
+    )
+    assert "```a2ui" not in reply
+    assert proposals == []
+
+
+@pytest.mark.anyio
+async def test_canvas_json_in_reply_becomes_hidden_auto_apply_proposal(
+    gen_module,
+):
+    module, bus, manager, project, _ = gen_module
+    session = SimpleNamespace(
+        engine="claude",
+        fast_model="claude-fast",
+        cwd=str(project.path),
+    )
+    canvas = {
+        "nodes": [{"id": 1, "type": "req", "title": "需求"}],
+        "connections": [],
+    }
+    reply, proposals, events = await module._resolve_proposal(
+        session,
+        json.dumps({
+            "reply": (
+                "已完成调整。\n\n当前完整画布 JSON 如下：\n\n"
+                f"```json\n{json.dumps(canvas, ensure_ascii=False)}\n```\n"
+            ),
+            "flow_proposals": [],
+        }),
+    )
+
+    assert "```json" not in reply
+    assert "完整画布 JSON" not in reply
+    assert proposals == [{
+        "title": "更新后的流程",
+        "summary": "AI 已根据当前对话更新画布",
+        "steps": canvas,
+        "autoApply": True,
+    }]
+    assert events == []
+
+
+class ResumeFakeEngine:
+    capabilities = SimpleNamespace(supports_coordinator=True)
+    supports_resume = True
+
+
+@pytest.mark.anyio
+async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeypatch):
+    """Resume-capable engines keep context engine-side: no spliced history."""
+    import services.workflow_gen as wfgen_service
+
+    module, bus, manager, project, _ = gen_module
+    seen: list[str] = []
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        seen.append(prompt)
+        return json.dumps({"reply": "好的", "flow_proposals": []}), [], "engine-sid-1"
+
+    monkeypatch.setattr(
+        wfgen_service, "create_engine", lambda engine_id: ResumeFakeEngine()
+    )
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    first = module.submit_message(
+        project.id,
+        None,
+        "帮我设计发布流程",
+        "idem-resume-1",
+        workflow_id="wf-resume",
+    )
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    assert "历史对话" not in seen[0]
+    assert "帮我设计发布流程" in seen[0]
+    assert "你是 WorkStep 的流程设计助手" in seen[0]
+
+    follow = module.submit_message(
+        project.id,
+        first.session_id,
+        "去掉测试阶段",
+        "idem-resume-2",
+        workflow_id="wf-resume",
+    )
+    assert await _wait_turn(module, follow.turn_id) == "completed"
+    # 续轮：历史与系统提示都不再拼入，只发当前画布与用户消息。
+    assert "历史对话" not in seen[1]
+    assert "帮我设计发布流程" not in seen[1]
+    assert "去掉测试阶段" in seen[1]
+    assert "你是 WorkStep 的流程设计助手" not in seen[1]
+
+
+@pytest.mark.anyio
+async def test_engine_state_flows_through_session_and_survives_restart(
+    gen_module, monkeypatch
+):
+    """Pydantic AI 风格引擎状态作为 message_history 传递并跨重启持久化。"""
+    module, bus, manager, project, _ = gen_module
+    seen: list[tuple[object, str]] = []
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        seen.append((message_history, prompt))
+        return (
+            json.dumps({"reply": "ok", "flow_proposals": []}),
+            [{"type": "engine_state", "data": {"state": {"turns": len(seen)}}}],
+            "engine-sid-1",
+        )
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    workflow_id = "wf-state"
+    first = module.submit_message(
+        project.id, None, "第一轮", "idem-st-1", workflow_id=workflow_id
+    )
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    assert seen[0][0] is None  # 首轮无引擎历史
+    session = module._sessions[("wf", project.id, workflow_id)]
+    assert session.engine_state == {"turns": 1}
+
+    follow = module.submit_message(
+        project.id,
+        first.session_id,
+        "第二轮",
+        "idem-st-2",
+        workflow_id=workflow_id,
+    )
+    assert await _wait_turn(module, follow.turn_id) == "completed"
+    assert seen[1][0] == {"turns": 1}  # 上一轮引擎状态被传回
+
+    # daemon 重启后引擎状态从 DB 恢复并继续传递。
+    await module.shutdown()
+    bus2 = EventBus()
+    restarted = WorkflowGenModule(bus2, manager)
+    monkeypatch.setattr(restarted, "_invoke", fake_invoke)
+    try:
+        third = restarted.submit_message(
+            project.id,
+            first.session_id,
+            "第三轮",
+            "idem-st-3",
+            workflow_id=workflow_id,
+        )
+        assert await _wait_turn(restarted, third.turn_id) == "completed"
+        assert seen[2][0] == {"turns": 2}
+    finally:
+        await restarted.shutdown()
+        await bus2.close()
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_forwards_message_history_only_to_capable_engines(
+    monkeypatch,
+):
+    """invoke_engine 只向支持 message_history 的引擎透传引擎状态。"""
+    import services.assistant_base as assistant_base
+    from engines.core.events import InternalEvent
+
+    calls: list[dict] = []
+
+    class CapableEngine:
+        supports_resume = True
+        supports_message_history = True
+
+        async def spawn(self, **kwargs):
+            calls.append(kwargs)
+            yield InternalEvent(
+                type="session_started", data={"session_id": "s-1"}
+            )
+
+    class StatelessEngine:
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            calls.append(kwargs)
+            yield InternalEvent(
+                type="session_started", data={"session_id": "s-2"}
+            )
+
+    monkeypatch.setattr(
+        assistant_base,
+        "create_engine",
+        lambda engine_id: CapableEngine(),
+    )
+    await assistant_base.invoke_engine(
+        "capable",
+        None,
+        "/tmp",
+        "p",
+        "sid",
+        message_history=[1, 2],
+        report_engine_state=True,
+    )
+    assert calls[0]["message_history"] == [1, 2]
+    assert calls[0]["report_engine_state"] is True
+    assert calls[0]["session_id"] == "sid"
+
+    calls.clear()
+    monkeypatch.setattr(
+        assistant_base,
+        "create_engine",
+        lambda engine_id: StatelessEngine(),
+    )
+    await assistant_base.invoke_engine("stateless", None, "/tmp", "p", "sid")
+    assert "message_history" not in calls[0]
+    assert "report_engine_state" not in calls[0]
+    assert calls[0]["session_id"] is None
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_pauses_and_routes_assistant_interactions(monkeypatch):
+    """共享助手调用层也必须把交互注册到统一 intervention broker。"""
+    import services.assistant_base as assistant_base
+    from engines.core.interactions import elicitation_request
+    from services.intervention import intervention_manager
+
+    responded = asyncio.Event()
+    received: list[tuple[dict, dict]] = []
+    published = []
+
+    async def publish(event):
+        published.append(event)
+
+    class InteractiveEngine:
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            yield elicitation_request(
+                interaction_id="assistant-ask-1",
+                message="选择范围",
+                requested_schema={
+                    "type": "object",
+                    "properties": {"answer": {"type": "string"}},
+                    "required": ["answer"],
+                },
+            )
+            await responded.wait()
+            yield assistant_base.InternalEvent(
+                type="text_delta", data={"delta": "继续执行"}
+            )
+
+        def normalize_interaction_event(self, event):
+            return event
+
+        async def respond_interaction(self, request, response):
+            received.append((request, response))
+            responded.set()
+            return True
+
+    monkeypatch.setattr(
+        assistant_base,
+        "create_engine",
+        lambda engine_id: InteractiveEngine(),
+    )
+    invocation = asyncio.create_task(assistant_base.invoke_engine(
+        "interactive",
+        None,
+        "/tmp",
+        "prompt",
+        None,
+        publish,
+        run_key="assistant-turn-1",
+    ))
+    try:
+        for _ in range(20):
+            if "assistant-ask-1" in intervention_manager.list_pending():
+                break
+            await asyncio.sleep(0)
+        assert "assistant-ask-1" in intervention_manager.list_pending()
+        response = {"action": "accept", "content": {"answer": "后端"}}
+        assert intervention_manager.deliver_response("assistant-ask-1", response)
+        text, events, _ = await asyncio.wait_for(invocation, timeout=1)
+        assert text == "继续执行"
+        assert [event["type"] for event in events] == [
+            "interaction_request", "interaction_response", "text_delta",
+        ]
+        assert received[0][1] == response
+        assert [event.type for event in published] == [
+            "interaction_request", "interaction_response", "text_delta",
+        ]
+    finally:
+        if not invocation.done():
+            invocation.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await invocation
+        intervention_manager.cancel("assistant-ask-1")
+
+
+@pytest.mark.anyio
+async def test_default_assistant_prompt_omits_history_for_resume_engines(
+    monkeypatch,
+):
+    """共享层默认 prompt 构建：resume 引擎不拼历史，无状态引擎保留拼接。"""
+    import services.assistant_base as assistant_base
+    from services.assistant_base import (
+        AssistantConfig,
+        AssistantRuntime,
+        AssistantSession,
+    )
+    from streaming.bus import EventBus
+
+    class ResumeEngine:
+        supports_resume = True
+
+    class StatelessEngine:
+        supports_resume = False
+
+    runtime = AssistantRuntime(
+        AssistantConfig(
+            name="generic",
+            channel="gen",
+            system_prompt="系统提示",
+            scope="ephemeral",
+        ),
+        EventBus(),
+        None,
+    )
+    messages = [
+        {"role": "user", "content": "第一问"},
+        {"role": "assistant", "content": "答1"},
+        {"role": "user", "content": "第二问"},
+    ]
+    session = AssistantSession(
+        session_id="s1",
+        project_id="p",
+        scope="ephemeral",
+        engine="claude",
+        messages=list(messages),
+    )
+    monkeypatch.setattr(
+        assistant_base, "create_engine", lambda engine_id: ResumeEngine()
+    )
+    prompt = runtime._build_prompt(session)
+    assert "系统提示" in prompt
+    assert "历史对话" not in prompt
+    assert "第一问" not in prompt
+    assert "第二问" in prompt
+
+    resumed = AssistantSession(
+        session_id="s1",
+        project_id="p",
+        scope="ephemeral",
+        engine="claude",
+        resolved_session_id="engine-1",
+        messages=list(messages),
+    )
+    prompt = runtime._build_prompt(resumed)
+    assert "系统提示" not in prompt
+    assert "第二问" in prompt
+
+    monkeypatch.setattr(
+        assistant_base, "create_engine", lambda engine_id: StatelessEngine()
+    )
+    prompt = runtime._build_prompt(session)
+    assert "历史对话" in prompt
+    assert "第一问" in prompt

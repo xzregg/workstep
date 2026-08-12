@@ -1,13 +1,12 @@
-"""Tests for P5 engines (OpenClaw, API)."""
+"""Tests for P5 engines (OpenClaw)."""
 
 import json
 
 import httpx
 import pytest
 
-from engines.api import APIEngine
 from engines.openclaw import OpenClawEngine
-from engines.events import InternalEvent
+from engines.core.events import InternalEvent
 
 
 class TestOpenClawEngine:
@@ -28,9 +27,10 @@ class TestOpenClawEngine:
         assert binary is None or isinstance(binary, str)
 
     def test_supports_resume(self):
-        """Test OpenClaw does not support resume."""
+        """The stable headless `agent exec` contract is one-shot."""
         engine = OpenClawEngine()
         assert engine.supports_resume is False
+        assert engine.build_resume_params("test-session") == {}
 
     def test_supports_interactive(self):
         """Test OpenClaw does not support interactive."""
@@ -42,6 +42,42 @@ class TestOpenClawEngine:
         engine = OpenClawEngine()
         params = engine.build_resume_params("test-session")
         assert isinstance(params, dict)
+
+    def test_build_command_uses_official_agent_exec_json_contract(self):
+        command = OpenClawEngine.build_command(
+            "/fake/openclaw", "完成任务", "/repo", model="openai/gpt-5"
+        )
+        assert command == [
+            "/fake/openclaw", "agent", "exec", "完成任务",
+            "--cwd", "/repo", "--json", "--model", "openai/gpt-5",
+        ]
+
+    def test_maps_stable_agent_exec_envelope(self):
+        events = OpenClawEngine()._map_envelope({
+            "ok": True,
+            "status": "ok",
+            "final": "完成",
+            "usage": {"input": 12, "output": 3, "total": 15},
+            "costUsd": 0.02,
+            "sessionId": "session-1",
+        })
+
+        assert [event.type for event in events] == [
+            "session_started", "text_delta", "usage"
+        ]
+        assert events[1].data["delta"] == "完成"
+        assert events[2].data["total_tokens"] == 15
+        assert events[2].data["cost"] == {"amount": 0.02, "currency": "USD"}
+
+    def test_maps_agent_exec_error_envelope(self):
+        events = OpenClawEngine()._map_envelope({
+            "ok": False,
+            "status": "error",
+            "error": {"message": "认证失败", "kind": "auth"},
+        })
+
+        assert [event.type for event in events] == ["error"]
+        assert events[0].data["message"] == "认证失败"
 
     def test_map_total_only_usage_to_canonical_fields(self):
         event = OpenClawEngine()._map_event({"type": "usage", "tokens": 42})
@@ -62,197 +98,3 @@ class TestOpenClawEngine:
         assert thinking is not None and thinking.type == "thinking_delta"
         assert result is not None and result.type == "tool_result"
         assert result.data["is_error"] is False
-
-
-class TestAPIEngine:
-    """Tests for APIEngine."""
-
-    def test_is_installed(self, monkeypatch):
-        """API mode ships with the daemon, with readiness tracked separately."""
-        monkeypatch.setattr(
-            "engines.api.config_store.get_api_engine_config",
-            lambda: {
-                "provider": "openai",
-                "base_url": "https://example.test/v1",
-                "api_key": "",
-                "model": "",
-            },
-        )
-        assert APIEngine.is_installed() is True
-        assert APIEngine.is_configured() is False
-        monkeypatch.setattr(
-            "engines.api.config_store.get_api_engine_config",
-            lambda: {
-                "provider": "openai",
-                "base_url": "https://example.test/v1",
-                "api_key": "configured",
-                "model": "test-model",
-            },
-        )
-        assert APIEngine.is_configured() is True
-
-    def test_get_version(self):
-        """Test get_version returns version string."""
-        version = APIEngine.get_version()
-        assert isinstance(version, str)
-        assert version == "1.0.0"
-
-    def test_resolve_binary(self):
-        """Test resolve_binary returns identifier."""
-        binary = APIEngine.resolve_binary()
-        assert binary == "api-engine"
-
-    def test_supports_resume(self):
-        """Test API engine does not support resume."""
-        engine = APIEngine()
-        assert engine.supports_resume is False
-
-    def test_supports_interactive(self):
-        """Test API engine does not support interactive."""
-        engine = APIEngine()
-        assert engine.supports_interactive is False
-
-    def test_build_resume_params(self):
-        """Test build_resume_params returns dict."""
-        engine = APIEngine()
-        params = engine.build_resume_params("test-session")
-        assert isinstance(params, dict)
-
-    def test_internal_event_creation(self):
-        """Test InternalEvent creation works."""
-        event = InternalEvent(
-            type="text_delta",
-            data={"delta": "test"},
-        )
-        assert event.type == "text_delta"
-        assert event.data["delta"] == "test"
-        assert event.to_dict()["type"] == "text_delta"
-
-    def test_map_openai_usage_with_cache(self):
-        """OpenAI usage maps prompt_tokens_details.cached_tokens to cache read."""
-        engine = APIEngine()
-        event = engine._map_openai_event({
-            "usage": {
-                "prompt_tokens": 300,
-                "completion_tokens": 100,
-                "total_tokens": 400,
-                "prompt_tokens_details": {"cached_tokens": 120},
-            },
-        })
-        assert event is not None
-        assert event.type == "usage"
-        assert event.data["input_tokens"] == 300
-        assert event.data["output_tokens"] == 100
-        assert event.data["cache_read_input_tokens"] == 120
-
-    def test_map_openai_usage_without_cache_details(self):
-        """OpenAI usage without prompt_tokens_details still maps to zeros."""
-        engine = APIEngine()
-        event = engine._map_openai_event({
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "total_tokens": 15,
-            },
-        })
-        assert event is not None
-        assert event.type == "usage"
-        assert event.data["cache_read_input_tokens"] == 0
-
-    def test_maps_openai_reasoning_delta(self):
-        event = APIEngine()._map_openai_event({
-            "object": "chat.completion.chunk",
-            "choices": [{"delta": {"reasoning_content": "分析中"}}],
-        })
-
-        assert event is not None
-        assert event.type == "thinking_delta"
-        assert event.data["delta"] == "分析中"
-
-    def test_map_anthropic_usage_with_cache(self):
-        """Anthropic message_delta usage includes cache hit tokens."""
-        engine = APIEngine()
-        event = engine._map_anthropic_event({
-            "type": "message_delta",
-            "usage": {
-                "input_tokens": 300,
-                "output_tokens": 100,
-                "cache_creation_input_tokens": 150,
-                "cache_read_input_tokens": 120,
-            },
-        })
-        assert event is not None
-        assert event.type == "usage"
-        assert event.data["input_tokens"] == 300
-        assert event.data["output_tokens"] == 100
-        assert event.data["cache_creation_input_tokens"] == 150
-        assert event.data["cache_read_input_tokens"] == 120
-
-    def test_maps_anthropic_thinking_delta(self):
-        event = APIEngine()._map_anthropic_event({
-            "type": "content_block_delta",
-            "delta": {"type": "thinking_delta", "thinking": "分析中"},
-        })
-
-        assert event is not None
-        assert event.type == "thinking_delta"
-
-    @pytest.mark.anyio
-    async def test_openai_stream_requests_and_maps_usage(self):
-        captured_payload = {}
-
-        def handler(request: httpx.Request):
-            captured_payload.update(json.loads(request.content))
-            body = (
-                'data: {"object":"chat.completion.chunk","choices":[],"usage":'
-                '{"prompt_tokens":30,"completion_tokens":12,"total_tokens":42}}\n\n'
-                'data: [DONE]\n\n'
-            )
-            return httpx.Response(200, text=body)
-
-        transport = httpx.MockTransport(handler)
-        engine = APIEngine(transport=transport)
-        async with httpx.AsyncClient(transport=transport) as client:
-            events = await engine._call_openai(
-                client,
-                "test-model",
-                [{"role": "user", "content": "hello"}],
-                "https://example.test/v1",
-            )
-
-        assert captured_payload["stream_options"] == {"include_usage": True}
-        assert events[-1].type == "usage"
-        assert events[-1].data["total_tokens"] == 42
-
-    @pytest.mark.anyio
-    async def test_anthropic_stream_merges_initial_and_final_usage(self):
-        body = "\n\n".join([
-            'data: {"type":"message_start","message":{"usage":'
-            '{"input_tokens":30,"output_tokens":1,'
-            '"cache_creation_input_tokens":4,"cache_read_input_tokens":8}}}',
-            'data: {"type":"message_delta","usage":{"output_tokens":12}}',
-            'data: [DONE]',
-            '',
-        ])
-
-        transport = httpx.MockTransport(
-            lambda request: httpx.Response(200, text=body)
-        )
-        engine = APIEngine(transport=transport)
-        async with httpx.AsyncClient(transport=transport) as client:
-            events = await engine._stream_anthropic(
-                client,
-                "https://example.test/v1/messages",
-                {"stream": True},
-                "secret",
-            )
-
-        usage_events = [event for event in events if event.type == "usage"]
-        assert len(usage_events) == 1
-        assert usage_events[0].data == {
-            "input_tokens": 30,
-            "output_tokens": 12,
-            "cache_creation_input_tokens": 4,
-            "cache_read_input_tokens": 8,
-            "total_tokens": 42,
-        }

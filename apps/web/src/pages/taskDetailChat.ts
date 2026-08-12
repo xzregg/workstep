@@ -1,4 +1,6 @@
 import { toMilliseconds } from '../utils/datetime'
+import { mergeInteractionEvents } from '../utils/interaction'
+import { mergePlanEvents } from '../utils/plan'
 import { zhCNT, type TFunction } from '../i18n'
 
 export interface OptimisticUserMessage {
@@ -20,12 +22,24 @@ interface ConversationMessage {
   id?: string
   channel?: string
   role?: string
+  step_key?: string
   content?: unknown
   run_status?: string
   status?: string
   events?: Array<{ type?: string; data?: Record<string, unknown> }>
   prompt?: string | null
   created_at?: string
+  started_at?: string | null
+  review_run_id?: string | null
+  engine?: string | null
+}
+
+interface MessageReview {
+  id: string
+  step_key: string
+  status?: string
+  mode?: string
+  started_at?: string | null
 }
 
 function hasMessageContent(content: unknown): boolean {
@@ -33,6 +47,61 @@ function hasMessageContent(content: unknown): boolean {
 }
 
 const TERMINAL_EXECUTION_STATUSES = ['cancelled', 'stopped', 'failed']
+
+export function resolveMessageReview<T extends MessageReview>(
+  message: ConversationMessage,
+  reviews: readonly T[],
+): T | undefined {
+  if (message.channel !== 'review' && message.role !== 'review') return undefined
+  const eventReviewId = message.events?.find((event) => (
+    event.type === 'review_context' && event.data?.review_run_id
+  ))?.data?.review_run_id
+  const reviewId = String(message.review_run_id || eventReviewId || '')
+  if (reviewId) return reviews.find((review) => review.id === reviewId)
+
+  const messageStartedAt = toMilliseconds(message.started_at)
+  if (messageStartedAt !== null) {
+    const timestampMatch = reviews.find((review) => (
+      review.step_key === message.step_key
+      && toMilliseconds(review.started_at) === messageStartedAt
+    ))
+    if (timestampMatch) return timestampMatch
+  }
+
+  const stageReviews = reviews.filter((review) => review.step_key === message.step_key)
+  return stageReviews.length === 1 ? stageReviews[0] : undefined
+}
+
+export function isMessageReviewActionable<T extends MessageReview>(
+  message: ConversationMessage,
+  reviews: readonly T[],
+  stepStatus?: string,
+): boolean {
+  if (stepStatus !== 'awaiting_review') return false
+  const review = resolveMessageReview(message, reviews)
+  if (!review || (review.status !== 'pending' && review.status !== 'rejected')) {
+    return false
+  }
+  const stageReviews = reviews.filter((item) => item.step_key === review.step_key)
+  const latest = stageReviews.reduce<T | undefined>((current, item) => {
+    if (!current) return item
+    const currentTime = toMilliseconds(current.started_at) ?? Number.NEGATIVE_INFINITY
+    const itemTime = toMilliseconds(item.started_at) ?? Number.NEGATIVE_INFINITY
+    return itemTime > currentTime ? item : current
+  }, undefined)
+  return latest?.id === review.id
+}
+
+export function isManualReviewMessage<T extends MessageReview>(
+  message: ConversationMessage,
+  reviews: readonly T[],
+): boolean {
+  if (message.channel !== 'review' && message.role !== 'review') return false
+  const review = resolveMessageReview(message, reviews)
+  if (review) return review.mode === 'manual'
+  // 无匹配审核记录的旧数据兜底：人工审核不运行引擎，消息无引擎字段。
+  return !message.engine
+}
 
 export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
   if (message.channel === 'review') return hasMessageContent(message.content)
@@ -72,12 +141,13 @@ export function mergeHistoryMessageWithLive(
     content: hasMessageContent(liveMessage.content)
       ? liveMessage.content
       : historyMessage.content,
-    events: Array.isArray(liveMessage.events) && liveMessage.events.length > 0
-      ? liveMessage.events
-      : historyMessage.events,
+    events: mergePlanEvents(
+      historyMessage.events,
+      mergeInteractionEvents(historyMessage.events, liveMessage.events),
+    ),
     // 实时插入的用户消息不带完成事件（引擎只发 live_message 确认），
     // 保持乐观消息的 completed，避免右侧用户消息被误标为 streaming。
-    run_status: liveMessage.role === 'user'
+    run_status: liveMessage.role === 'user' || historyMessage.role === 'user'
       ? historyMessage.run_status
       : liveMessage.status || historyMessage.run_status,
     engine: liveMessage.engine || historyMessage.engine,
@@ -94,7 +164,9 @@ export function mergeHistoryMessageWithLive(
  *   stage output that is still going (or finished) after the user's message
  *   lands below the inserted user message instead of above it;
  * - user messages anchor by their send time (`created_at`).
- * `sequence` is kept as a tiebreaker for same-instant messages.
+ * Review and execution messages in the same displayed second use `sequence`,
+ * so the review stays after the stage output it reviews without faking time.
+ * `sequence` is also kept as a tiebreaker for other same-instant messages.
  */
 export function orderConversationMessages(
   messages: Array<Record<string, any>>,
@@ -116,6 +188,21 @@ export function orderConversationMessages(
   return [...messages].sort((left, right) => {
     const leftTime = effectiveTime(left)
     const rightTime = effectiveTime(right)
+    const leftStage = left.context_step_key || left.step_key
+    const rightStage = right.context_step_key || right.step_key
+    const isExecutionReviewPair = leftStage === rightStage
+      && left.role !== 'user'
+      && right.role !== 'user'
+      && ((left.channel === 'execution' && right.channel === 'review')
+        || (left.channel === 'review' && right.channel === 'execution'))
+    const sameDisplayedSecond = Math.floor(leftTime / 1000) === Math.floor(rightTime / 1000)
+    if (isExecutionReviewPair && sameDisplayedSecond) {
+      const leftSeq = left.sequence
+      const rightSeq = right.sequence
+      if (typeof leftSeq === 'number' && typeof rightSeq === 'number') {
+        return leftSeq - rightSeq
+      }
+    }
     if (leftTime !== rightTime) return leftTime - rightTime
     const leftSeq = left.sequence
     const rightSeq = right.sequence
@@ -132,8 +219,14 @@ export function liveExecutionStatus(
   t: TFunction = zhCNT,
 ): string {
   const latest = [...events].reverse().find((event) => [
-    'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started',
+    'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started', 'subagent',
   ].includes(event.type || ''))
+  if (latest?.type === 'subagent') {
+    const status = String(latest.data?.status || '')
+    if (['running', 'pending', 'paused', 'in_progress'].includes(status)) {
+      return t('chat.subagentRunning')
+    }
+  }
   if (latest?.type === 'tool_use') {
     const name = String(latest.data?.name || t('chat.tool'))
     return t('chat.toolRunning', { name })
@@ -142,6 +235,12 @@ export function liveExecutionStatus(
   if (latest?.type === 'thinking_delta') return t('chat.thinking')
   if (latest?.type === 'status' && latest.data?.status === 'initializing') {
     return t('chat.engineInitializing')
+  }
+  if (latest?.type === 'status' && latest.data?.status === 'idle_timeout') {
+    return t('chat.idleTimeout')
+  }
+  if (latest?.type === 'status' && latest.data?.status === 'done') {
+    return t('chat.waitingInjection')
   }
   return t('chat.processing')
 }
@@ -206,4 +305,9 @@ export function createOptimisticUserMessage(
     created_at: createdAt,
     events: [],
   }
+}
+
+/** 把对话容器钉到底部所需的 scrollTop（不低于 0）。 */
+export function conversationBottomScrollTop(scrollHeight: number, clientHeight: number): number {
+  return Math.max(0, scrollHeight - clientHeight)
 }

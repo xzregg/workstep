@@ -1,19 +1,7 @@
 import { useState, useEffect } from 'react'
 import Button from './Button'
 import { useI18n } from '../i18n'
-
-interface DirEntry {
-  name: string
-  type: 'directory' | 'file'
-  path: string
-}
-
-interface BrowseResult {
-  path: string
-  name: string
-  parent: string | null
-  entries: DirEntry[]
-}
+import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/client'
 
 interface Props {
   onSelect: (path: string) => void
@@ -22,18 +10,14 @@ interface Props {
 
 export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
   const { t } = useI18n()
-  const [current, setCurrent] = useState<BrowseResult | null>(null)
+  const [current, setCurrent] = useState<DirectoryBrowseResult | null>(null)
   const [loading, setLoading] = useState(false)
 
   const browse = async (path?: string) => {
     setLoading(true)
     try {
-      const url = path ? `/api/fs/browse?path=${encodeURIComponent(path)}` : '/api/fs/browse'
-      const res = await fetch(url)
-      if (res.ok) {
-        const data: BrowseResult = await res.json()
-        setCurrent(data)
-      }
+      const data = await fsApi.browse(path)
+      setCurrent(data)
     } catch (e) {
       console.error('Browse failed:', e)
     } finally {
@@ -45,7 +29,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
     browse(initialPath)
   }, [initialPath])
 
-  const handleDoubleClick = (entry: DirEntry) => {
+  const handleDoubleClick = (entry: DirectoryEntry) => {
     if (entry.type === 'directory') {
       browse(entry.path)
     }

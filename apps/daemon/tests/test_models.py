@@ -21,7 +21,7 @@ def test_init_db_creates_tables(tmp_db):
     """init_db creates all expected tables."""
     db, _ = tmp_db
     tables = db.get_tables()
-    assert "task" in tables
+    assert "tasks" in tables
     assert "taskstep" in tables
     assert "message" in tables
 

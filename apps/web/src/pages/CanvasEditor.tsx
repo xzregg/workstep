@@ -27,13 +27,16 @@ function CanvasEditorInner() {
   const setCanvasDirty = useProjectStore(s => s.setCanvasDirty)
   const wfParam = searchParams.get('workflow')
   const projectParam = searchParams.get('project')
+  const activeWorkflow = activeProject?.workflows?.find((workflow) => workflow.id === activeWorkflowId)
   const [confirmLeave, setConfirmLeave] = useState(false)
   const [pendingWfId, setPendingWfId] = useState<string | null>(null)
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [aiPanelWidth, setAiPanelWidth] = useState<number | null>(null)
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
   const canvasRef = useRef<FlowCanvasHandle>(null)
+  const aiPanelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!projectParam) return
@@ -52,6 +55,23 @@ function CanvasEditorInner() {
     }
     doLoad()
   }, [projectParam, wfParam]) // eslint-disable-line
+
+  const startAiPanelDrag = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = aiPanelRef.current?.getBoundingClientRect().width ?? 400
+    const onMove = (ev: MouseEvent) => {
+      setAiPanelWidth(Math.min(720, Math.max(280, startWidth - (ev.clientX - startX))))
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'col-resize'
+  }
 
   const switchWorkflow = (id: string) => {
     setActiveWorkflow(id || null)
@@ -105,8 +125,15 @@ function CanvasEditorInner() {
             )}
             <Button
               variant="ghost"
-              title={t('canvas.aiEditTitle')}
-              onClick={() => { setAiPanelOpen(true); setAiConfirmClose(false) }}
+              title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
+              disabled={!activeProject?.id}
+              onClick={() => {
+                if (activeProject?.id) {
+                  setAiPanelWidth(null)
+                  setAiPanelOpen(true)
+                  setAiConfirmClose(false)
+                }
+              }}
               style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
             >
               {t('canvas.aiEdit')}
@@ -120,13 +147,31 @@ function CanvasEditorInner() {
 
       {/* AI flow-design right side panel (inline, pushes the canvas — not a floating overlay) */}
       {aiPanelOpen && (
-        <div style={{
-          width: 400, maxWidth: '90vw', flexShrink: 0,
-          background: 'var(--surface)', borderLeft: '1px solid var(--border-soft)',
-          display: 'flex', flexDirection: 'column', minHeight: 0,
-        }}>
+        <>
+          {/* Draggable divider to resize the AI panel */}
+          <div
+            onMouseDown={startAiPanelDrag}
+            title={t('layout.dragResizeChat')}
+            style={{
+              width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
+              background: 'transparent', userSelect: 'none',
+            }}
+          >
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)',
+              width: 1, background: 'var(--border-soft)',
+            }} />
+          </div>
+          <div ref={aiPanelRef} style={{
+            width: aiPanelWidth ?? '33.333%', maxWidth: '90vw', flexShrink: 0,
+            background: 'var(--surface)', borderLeft: '1px solid var(--border-soft)',
+            display: 'flex', flexDirection: 'column', minHeight: 0,
+          }}>
           <AiFlowChat
             projectId={activeProject?.id || ''}
+            workflowId={activeWorkflowId || undefined}
+            workflowName={activeWorkflow?.name || ''}
+            getCanvasSteps={() => canvasRef.current?.getSteps()}
             onProposal={(steps) => {
               // Applying a proposal replaces the canvas; guard manual edits.
               if (dirty) { setPendingAiSteps(steps); return }
@@ -136,7 +181,8 @@ function CanvasEditorInner() {
             onClose={() => { if (aiGenBusy) { setAiConfirmClose(true); return } setAiPanelOpen(false) }}
             title={t('canvas.aiEditFlowTitle')}
           />
-        </div>
+          </div>
+        </>
       )}
 
       {/* AI panel: close while generating */}

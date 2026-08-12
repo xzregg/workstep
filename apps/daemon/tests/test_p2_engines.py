@@ -1,6 +1,7 @@
 """Tests for P2 engines: Codex, Hermes, SDK engines, registry strategy."""
 
 import asyncio
+from contextlib import asynccontextmanager
 
 import pytest
 from engines.codex import CodexEngine
@@ -9,16 +10,15 @@ from engines.claude_agent_sdk import ClaudeAgentSDKEngine
 from engines.qoder_sdk import QoderSDKEngine
 from engines.codex_sdk import CodexSDKEngine
 from engines.claude_code import ClaudeCodeEngine
-from engines.api import APIEngine
 from engines.pydantic_ai import PydanticAIEngine
-from engines.registry import (
+from engines.core.registry import (
     ENGINE_REGISTRY,
     get_available_engines,
     create_engine,
     refresh_registry,
     _ALL_ENGINES,
 )
-from engines.events import InternalEvent
+from engines.core.events import InternalEvent
 
 
 # --- CodexEngine ---
@@ -47,6 +47,23 @@ def test_codex_resume_and_capabilities():
     # codex exec 无注入协议，但插入消息以「终止进程 + 新消息 resume」方式支持
     assert engine.supports_live_stage_message is True
     assert engine.build_resume_params("019f-abc") == {"session_id": "019f-abc"}
+
+
+def test_engine_install_commands():
+    """CLI/SDK 引擎暴露可自动安装命令，内置与占位引擎不支持。"""
+    assert CodexEngine.install_command() == "npm install -g @openai/codex"
+    assert (
+        ClaudeCodeEngine.install_command()
+        == "npm install -g @anthropic-ai/claude-code"
+    )
+    assert (
+        ClaudeAgentSDKEngine.install_command()
+        == "pip install claude-agent-sdk"
+    )
+    assert CodexSDKEngine.install_command() == "pip install openai-codex"
+    assert QoderSDKEngine.install_command() == "pip install qoder-agent-sdk"
+    assert HermesEngine.install_command() is None
+    assert PydanticAIEngine.install_command() is None
 
 
 def test_codex_map_thread_started():
@@ -101,6 +118,871 @@ def test_codex_map_command_execution():
     assert not event.data["is_error"]
 
 
+def test_codex_map_sandbox_denial_to_interaction_request():
+    """沙箱拒绝的 command_execution 必须转成 ACP 形 interaction_request。"""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "id": "cmd1",
+            "command": "touch x",
+            "output": "touch: cannot touch 'x': Operation not permitted",
+            "exit_code": 1,
+        },
+    })
+    assert event is not None
+    assert event.type == "interaction_request"
+    assert event.data["method"] == "session/request_permission"
+    assert event.data["tool_call"]["tool_call_id"] == "cmd1"
+    assert event.data["tool_call"]["name"] == "Bash"
+    assert [o["option_id"] for o in event.data["options"]] == [
+        "allow_once", "reject_once", "reject_for_session",
+    ]
+
+    # 普通命令失败（非权限拒绝）仍透传为 tool_result
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "id": "cmd2",
+            "command": "ls /nonexistent",
+            "output": "ls: /nonexistent: No such file or directory",
+            "exit_code": 2,
+        },
+    })
+    assert event is not None
+    assert event.type == "tool_result"
+    assert event.data["is_error"] is True
+
+    # 成功命令照常透传
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "id": "cmd3",
+            "command": "ls",
+            "output": "file1",
+            "exit_code": 0,
+        },
+    })
+    assert event.type == "tool_result"
+    assert event.data["is_error"] is False
+
+
+@pytest.mark.anyio
+async def test_codex_denial_round_trip_escalates_sandbox(monkeypatch):
+    """被拒命令 → 弹窗 → 批准 → 提升沙箱并以 resume 重启会话重试。"""
+    spawned: list[list[str]] = []
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+    class _FakeProc:
+        def __init__(self, stdout: bytes):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stdout.feed_data(stdout)
+            self.stdout.feed_eof()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    first = _FakeProc(stdout=(
+        b'{"type":"thread.started","thread_id":"thread-1"}\n'
+        b'{"type":"item.started","item":{"type":"command_execution",'
+        b'"id":"cmd1","command":"touch x"}}\n'
+        b'{"type":"item.completed","item":{"type":"command_execution",'
+        b'"id":"cmd1","command":"touch x",'
+        b'"output":"touch: cannot touch x: Operation not permitted",'
+        b'"exit_code":1}}\n'
+    ))
+    second = _FakeProc(stdout=(
+        '{"type":"thread.started","thread_id":"thread-1"}\n'
+        '{"type":"item.completed","item":{"type":"agent_message",'
+        '"text":"已重试成功"}}\n'
+    ).encode())
+    processes = [first, second]
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        spawned.append([program, *args])
+        return processes.pop(0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr(
+        "engines.codex.config_store.get_codex_config",
+        lambda: {
+            "sandbox_mode": "read-only",
+            "model_reasoning_effort": "",
+            "approval_policy": "",
+        },
+    )
+
+    engine = CodexEngine()
+    request_seen = asyncio.Event()
+    request_data = {}
+
+    async def consume():
+        async for event in engine.spawn(
+            prompt="hello",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                request_data.update(event.data)
+                request_seen.set()
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+
+    assert request_data["method"] == "session/request_permission"
+    assert request_data["session_id"] == "thread-1"
+    assert "touch x" in request_data["tool_call"]["title"]
+
+    delivered = await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "allow_once"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    # 第二次启动：resume 会话 + 显式提升 sandbox 到 workspace-write
+    assert len(spawned) == 2
+    resume_cmd = spawned[1]
+    assert "resume" in resume_cmd
+    assert "thread-1" in resume_cmd
+    assert "-c" in resume_cmd
+    assert "sandbox_mode=workspace-write" in resume_cmd
+
+
+@pytest.mark.anyio
+async def test_codex_denial_reject_injects_decision_without_escalation(monkeypatch):
+    """拒绝时不提升沙箱，仅以 resume 把用户决定带给模型。"""
+    spawned: list[list[str]] = []
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+    class _FakeProc:
+        def __init__(self, stdout: bytes):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stdout.feed_data(stdout)
+            self.stdout.feed_eof()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    first = _FakeProc(stdout=(
+        b'{"type":"thread.started","thread_id":"thread-1"}\n'
+        b'{"type":"item.completed","item":{"type":"command_execution",'
+        b'"id":"cmd1","command":"touch x",'
+        b'"output":"touch: cannot touch x: Operation not permitted",'
+        b'"exit_code":1}}\n'
+    ))
+    second = _FakeProc(stdout=(
+        '{"type":"thread.started","thread_id":"thread-1"}\n'
+        '{"type":"item.completed","item":{"type":"agent_message",'
+        '"text":"已改用其他方式"}}\n'
+    ).encode())
+    processes = [first, second]
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        spawned.append([program, *args])
+        return processes.pop(0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr(
+        "engines.codex.config_store.get_codex_config",
+        lambda: {
+            "sandbox_mode": "read-only",
+            "model_reasoning_effort": "",
+            "approval_policy": "",
+        },
+    )
+
+    engine = CodexEngine()
+    request_seen = asyncio.Event()
+    request_data = {}
+    decisions: list[str] = []
+
+    async def consume():
+        async for event in engine.spawn(
+            prompt="hello",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                request_data.update(event.data)
+                request_seen.set()
+            elif event.type == "live_message":
+                decisions.append(event.data.get("content", ""))
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+    await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "reject_once"},
+    })
+    await asyncio.wait_for(consumer, timeout=5)
+
+    assert any("用户拒绝" in content for content in decisions)
+    resume_cmd = spawned[1]
+    assert "sandbox_mode=" not in " ".join(resume_cmd)
+
+
+async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
+    """选择「拒绝本次运行」后，本次运行内相同命令不再弹窗，自动注入拒绝决定。"""
+    spawned: list[list[str]] = []
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+    class _FakeProc:
+        def __init__(self, stdout: bytes):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stdout.feed_data(stdout)
+            self.stdout.feed_eof()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    denial = (
+        b'{"type":"thread.started","thread_id":"thread-1"}\n'
+        b'{"type":"item.completed","item":{"type":"command_execution",'
+        b'"id":"cmd1","command":"touch x",'
+        b'"output":"touch: cannot touch x: Operation not permitted",'
+        b'"exit_code":1}}\n'
+    )
+    processes = [
+        _FakeProc(stdout=denial),
+        _FakeProc(stdout=denial),
+        _FakeProc(stdout=(
+            '{"type":"thread.started","thread_id":"thread-1"}\n'
+            '{"type":"item.completed","item":{"type":"agent_message",'
+            '"text":"已改用其他方式"}}\n'
+        ).encode()),
+    ]
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        spawned.append([program, *args])
+        return processes.pop(0)
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr(
+        "engines.codex.config_store.get_codex_config",
+        lambda: {
+            "sandbox_mode": "read-only",
+            "model_reasoning_effort": "",
+            "approval_policy": "",
+        },
+    )
+
+    engine = CodexEngine()
+    request_seen = asyncio.Event()
+    request_data = {}
+    interaction_count = 0
+    decisions: list[str] = []
+
+    async def consume():
+        nonlocal interaction_count
+        async for event in engine.spawn(
+            prompt="hello",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                interaction_count += 1
+                request_data.update(event.data)
+                request_seen.set()
+            elif event.type == "live_message":
+                decisions.append(event.data.get("content", ""))
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+    await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "reject_for_session"},
+    })
+    await asyncio.wait_for(consumer, timeout=5)
+
+    assert interaction_count == 1
+    assert len(spawned) == 3
+    assert "resume" in " ".join(spawned[1])
+    assert "resume" in " ".join(spawned[2])
+    assert len(decisions) == 2
+    assert all("用户拒绝" in content for content in decisions)
+    assert all("自动拒绝" in content for content in decisions)
+
+
+def test_claude_code_maps_subagent_task_frames():
+    """Claude CLI stream-json 的 task_* system 帧映射为 subagent 事件。"""
+    engine = ClaudeCodeEngine()
+
+    started = engine._map_events({
+        "type": "system", "subtype": "task_started",
+        "task_id": "task-7", "description": "实现后端",
+        "uuid": "u1", "session_id": "s1",
+        "tool_use_id": "task-call-1", "task_type": "chain",
+    })
+    progress = engine._map_events({
+        "type": "system", "subtype": "task_progress",
+        "task_id": "task-7", "description": "实现后端",
+        "usage": {"input_tokens": 10}, "uuid": "u2", "session_id": "s1",
+        "last_tool_name": "Edit",
+    })
+    updated = engine._map_events({
+        "type": "system", "subtype": "task_updated",
+        "task_id": "task-7", "patch": {"status": "running"},
+    })
+    failed = engine._map_events({
+        "type": "system", "subtype": "task_notification",
+        "task_id": "task-7", "status": "failed",
+        "output_file": "logs/task-7.json", "summary": "工具执行错误",
+        "uuid": "u3", "session_id": "s1",
+    })
+
+    assert [event.type for event in started] == ["subagent"]
+    assert started[0].data["task_id"] == "task-7"
+    assert started[0].data["status"] == "running"
+    assert started[0].data["stage"] == "started"
+    assert started[0].data["description"] == "实现后端"
+    assert started[0].data["tool_use_id"] == "task-call-1"
+    assert progress[0].data["stage"] == "progress"
+    assert progress[0].data["last_tool_name"] == "Edit"
+    assert progress[0].data["usage"] == {"input_tokens": 10}
+    assert updated[0].data["status"] == "running"
+    assert updated[0].data["stage"] == "updated"
+    assert failed[0].data["status"] == "failed"
+    assert failed[0].data["summary"] == "工具执行错误"
+
+
+def test_codex_maps_collab_agent_tool_call_items():
+    """Codex CLI 的 collab_agent_tool_call item 映射为子代理工具调用。"""
+    engine = CodexEngine()
+
+    started = engine._map_event({
+        "type": "item.started",
+        "item": {
+            "type": "collab_agent_tool_call",
+            "id": "agent-1",
+            "tool": "spawnAgent",
+            "prompt": "分析 provider 代码",
+        },
+    })
+    completed = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "collab_agent_tool_call",
+            "id": "agent-1",
+            "tool": "spawnAgent",
+            "agents_states": [{"message": "已完成", "status": "completed"}],
+        },
+    })
+
+    assert started is not None and started.type == "tool_use"
+    assert started.data["name"] == "spawnAgent"
+    assert started.data["input"]["prompt"] == "分析 provider 代码"
+    assert completed is not None and completed.type == "tool_result"
+    assert completed.data["tool_use_id"] == "agent-1"
+    assert "已完成" in completed.data["content"]
+    assert completed.data["is_error"] is False
+
+def test_claude_code_denial_maps_to_interaction_request():
+    """live 模式下「requires approval」tool_result 转成 interaction_request。"""
+    engine = ClaudeCodeEngine()
+
+    # 非 live 模式：拒绝照常透传为 tool_result
+    events = engine._map_events({
+        "type": "user",
+        "message": {"role": "user", "content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu-1",
+            "content": "This command requires approval",
+            "is_error": True,
+        }]},
+    })
+    assert [e.type for e in events] == ["tool_result"]
+
+    engine._live_mode = True
+    # 需先记录 tool_use 名称
+    engine._map_events({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use",
+            "id": "toolu-1",
+            "name": "Bash",
+            "input": {"command": "cat file.txt"},
+        }]},
+    })
+    events = engine._map_events({
+        "type": "user",
+        "message": {"role": "user", "content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu-1",
+            "content": (
+                "This Bash command contains multiple operations. "
+                "The following part requires approval: cat file.txt"
+            ),
+            "is_error": True,
+        }]},
+    })
+    assert [e.type for e in events] == ["interaction_request"]
+    assert events[0].data["method"] == "session/request_permission"
+    assert events[0].data["tool_call"]["tool_call_id"] == "toolu-1"
+    assert events[0].data["tool_call"]["name"] == "Bash"
+    assert [o["option_id"] for o in events[0].data["options"]] == [
+        "allow_once", "allow_always", "allow_for_session",
+        "reject_once", "reject_for_session",
+    ]
+
+    # 非权限的普通命令失败仍透传为 tool_result
+    events = engine._map_events({
+        "type": "user",
+        "message": {"role": "user", "content": [{
+            "type": "tool_result",
+            "tool_use_id": "toolu-2",
+            "content": "bash: command not found: foobar",
+            "is_error": True,
+        }]},
+    })
+    assert [e.type for e in events] == ["tool_result"]
+    assert events[0].data["is_error"] is True
+
+
+def test_claude_code_permission_signature():
+    """会话记忆的签名：Bash 按命令、其它按输入 JSON，无输入不记忆。"""
+    from engines.core.interactions import permission_signature
+
+    assert permission_signature("Bash", {"command": "cat file.txt"}) == "Bash:cat file.txt"
+    assert permission_signature("Bash", {"command": "  cat file.txt  "}) == "Bash:cat file.txt"
+    assert permission_signature("Bash", {}) == ""
+    assert permission_signature("Bash", None) == ""
+    assert permission_signature("Write", {"file_path": "a.txt", "content": "x"}) == (
+        'Write:{"content": "x", "file_path": "a.txt"}'
+    )
+
+
+@pytest.mark.anyio
+async def test_claude_code_denial_round_trip(monkeypatch):
+    """live 模式权限拒绝 → interaction_request 弹窗 → 批准 → 注入 tool_result。"""
+    import json as _json
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+            self.closed = False
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def is_closing(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    process = _FakeProc()
+    process.stdout.feed_data((
+        '{"type":"system","subtype":"init","session_id":"sess-1"}\n'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use",'
+        '"id":"toolu-1","name":"Bash","input":{"command":"cat file.txt"}}]}}\n'
+        '{"type":"user","message":{"content":[{"type":"tool_result",'
+        '"tool_use_id":"toolu-1","content":"This command requires approval",'
+        '"is_error":true}]}}\n'
+    ).encode())
+    process.stdout.feed_eof()
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_permission_mode",
+        lambda: "default",
+    )
+
+    engine = ClaudeCodeEngine()
+    request_seen = asyncio.Event()
+    request_data = {}
+
+    async def consume():
+        async for event in engine.spawn(
+            prompt="hi",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                request_data.update(event.data)
+                request_seen.set()
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+
+    assert request_data["method"] == "session/request_permission"
+    assert request_data["tool_call"]["tool_call_id"] == "toolu-1"
+    assert request_data["session_id"] == "sess-1"
+    assert "requires approval" in request_data["tool_call"]["title"]
+
+    delivered = await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "allow_once"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    written = process.stdin.written.decode()
+    tool_result_lines = [
+        line for line in written.splitlines()
+        if '"tool_result"' in line
+    ]
+    assert tool_result_lines, written
+    injected = _json.loads(tool_result_lines[-1])
+    content = injected["message"]["content"][0]
+    assert content["type"] == "tool_result"
+    assert content["tool_use_id"] == "toolu-1"
+    assert "已批准" in content["content"]
+
+
+@pytest.mark.anyio
+async def test_claude_code_allow_always_auto_approves_same_command(monkeypatch):
+    """「允许所有」记住命令签名，后续相同命令不再弹窗、自动注入批准。"""
+    import json as _json
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+            self.closed = False
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def is_closing(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    process = _FakeProc()
+    process.stdout.feed_data((
+        '{"type":"system","subtype":"init","session_id":"sess-1"}\n'
+        # 第一次：cat file.txt 被权限拒绝
+        '{"type":"assistant","message":{"content":[{"type":"tool_use",'
+        '"id":"toolu-1","name":"Bash","input":{"command":"cat file.txt"}}]}}\n'
+        '{"type":"user","message":{"content":[{"type":"tool_result",'
+        '"tool_use_id":"toolu-1","content":"This command requires approval",'
+        '"is_error":true}]}}\n'
+        # 第二次：相同命令再次被权限拒绝
+        '{"type":"assistant","message":{"content":[{"type":"tool_use",'
+        '"id":"toolu-2","name":"Bash","input":{"command":"cat file.txt"}}]}}\n'
+        '{"type":"user","message":{"content":[{"type":"tool_result",'
+        '"tool_use_id":"toolu-2","content":"This command requires approval",'
+        '"is_error":true}]}}\n'
+    ).encode())
+    process.stdout.feed_eof()
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_permission_mode",
+        lambda: "default",
+    )
+
+    persisted_rules = []
+    import engines.claude_code as claude_code_module
+
+    monkeypatch.setattr(
+        claude_code_module,
+        "_append_claude_permission_rule",
+        lambda path, rule: (persisted_rules.append(rule), True)[1],
+    )
+
+    engine = ClaudeCodeEngine()
+    request_seen = asyncio.Event()
+    requests = []
+
+    async def consume():
+        async for event in engine.spawn(
+            prompt="hi",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                requests.append(event.data)
+                request_seen.set()
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+    assert len(requests) == 1
+
+    delivered = await engine.respond_interaction(requests[0], {
+        "outcome": {"outcome": "selected", "option_id": "allow_always"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    # 「允许所有」按 Claude Code 原生机制写入项目权限设置。
+    assert persisted_rules == ["Bash(cat file.txt *)"]
+
+    # 第二次相同命令被自动放行：不再弹窗，且注入到 toolu-2。
+    assert len(requests) == 1
+    written = process.stdin.written.decode()
+    tool_result_lines = [
+        line for line in written.splitlines()
+        if '"tool_result"' in line
+    ]
+    assert len(tool_result_lines) == 2, written
+    injected = _json.loads(tool_result_lines[-1])
+    content = injected["message"]["content"][0]
+    assert content["tool_use_id"] == "toolu-2"
+    assert "自动放行" in content["content"]
+
+
+def test_claude_code_append_permission_rule_merges_settings(tmp_path):
+    """「允许所有」写入项目 .claude/settings.local.json，保留既有配置并去重。"""
+    import json as _json
+
+    from engines.claude_code import _append_claude_permission_rule
+
+    settings = tmp_path / ".claude" / "settings.local.json"
+    settings.parent.mkdir()
+    settings.write_text(
+        '{"permissions": {"allow": ["Bash(ls *)"], "deny": ["Bash(rm *)"]}}',
+        encoding="utf-8",
+    )
+
+    assert _append_claude_permission_rule(settings, "Bash(cat file.txt *)") is True
+    assert _append_claude_permission_rule(settings, "Bash(cat file.txt *)") is True
+    data = _json.loads(settings.read_text(encoding="utf-8"))
+    assert data["permissions"]["allow"] == ["Bash(ls *)", "Bash(cat file.txt *)"]
+    assert data["permissions"]["deny"] == ["Bash(rm *)"]
+
+    # 新文件（无 .claude 目录）也能创建
+    fresh = tmp_path / "other" / ".claude" / "settings.local.json"
+    assert _append_claude_permission_rule(fresh, "Bash(git status *)") is True
+    data = _json.loads(fresh.read_text(encoding="utf-8"))
+    assert data["permissions"]["allow"] == ["Bash(git status *)"]
+
+    # 空规则不写入
+    assert _append_claude_permission_rule(fresh, "") is False
+
+
+@pytest.mark.anyio
+async def test_claude_code_reject_for_session_auto_denies_same_command(monkeypatch):
+    """「拒绝本次会话」记住命令签名，后续相同命令不再弹窗、自动注入拒绝。"""
+    import json as _json
+
+    class _FakeStdin:
+        def __init__(self):
+            self.written = b""
+            self.closed = False
+
+        def write(self, data):
+            self.written += data
+
+        async def drain(self):
+            return None
+
+        def is_closing(self):
+            return self.closed
+
+        def close(self):
+            self.closed = True
+
+    class _FakeProc:
+        def __init__(self):
+            self.stdin = _FakeStdin()
+            self.stdout = asyncio.StreamReader()
+            self.stderr = asyncio.StreamReader()
+            self.stderr.feed_eof()
+            self.returncode = 0
+            self.terminated = False
+
+        async def wait(self) -> int:
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    process = _FakeProc()
+    process.stdout.feed_data((
+        '{"type":"system","subtype":"init","session_id":"sess-1"}\n'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use",'
+        '"id":"toolu-1","name":"Bash","input":{"command":"rm tmp.txt"}}]}}\n'
+        '{"type":"user","message":{"content":[{"type":"tool_result",'
+        '"tool_use_id":"toolu-1","content":"This command requires approval",'
+        '"is_error":true}]}}\n'
+        '{"type":"assistant","message":{"content":[{"type":"tool_use",'
+        '"id":"toolu-2","name":"Bash","input":{"command":"rm tmp.txt"}}]}}\n'
+        '{"type":"user","message":{"content":[{"type":"tool_result",'
+        '"tool_use_id":"toolu-2","content":"This command requires approval",'
+        '"is_error":true}]}}\n'
+    ).encode())
+    process.stdout.feed_eof()
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_permission_mode",
+        lambda: "default",
+    )
+
+    engine = ClaudeCodeEngine()
+    request_seen = asyncio.Event()
+    requests = []
+
+    async def consume():
+        async for event in engine.spawn(
+            prompt="hi",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            if event.type == "interaction_request":
+                requests.append(event.data)
+                request_seen.set()
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+    assert len(requests) == 1
+
+    delivered = await engine.respond_interaction(requests[0], {
+        "outcome": {"outcome": "selected", "option_id": "reject_for_session"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    # 第二次相同命令被自动拒绝：不再弹窗，且注入到 toolu-2。
+    assert len(requests) == 1
+    written = process.stdin.written.decode()
+    tool_result_lines = [
+        line for line in written.splitlines()
+        if '"tool_result"' in line
+    ]
+    assert len(tool_result_lines) == 2, written
+    injected = _json.loads(tool_result_lines[-1])
+    content = injected["message"]["content"][0]
+    assert content["tool_use_id"] == "toolu-2"
+    assert "自动拒绝" in content["content"]
+
+
 def test_codex_map_turn_completed():
     engine = CodexEngine()
     event = engine._map_event({
@@ -110,6 +992,23 @@ def test_codex_map_turn_completed():
     assert event is not None
     assert event.type == "usage"
     assert event.data["input_tokens"] == 200
+
+
+def test_codex_cli_maps_plan_snapshot_when_transport_emits_it():
+    event = CodexEngine()._map_event({
+        "type": "turn.plan.updated",
+        "explanation": "按步骤执行",
+        "plan": [
+            {"step": "修改代码", "status": "inProgress"},
+            {"step": "运行测试", "status": "pending"},
+        ],
+    })
+
+    assert event is not None
+    assert event.type == "plan"
+    assert event.data["entries"][0] == {
+        "content": "修改代码", "priority": "medium", "status": "in_progress",
+    }
 
 
 def test_codex_map_turn_completed_with_cache():
@@ -336,7 +1235,11 @@ def test_hermes_resolve_binary():
 def test_hermes_supports_interactive():
     engine = HermesEngine()
     assert engine.supports_interactive is True
-    assert engine.supports_resume is False
+    assert engine.get_permission_mode() == "ask"
+    assert engine.supports_resume is True
+    assert engine.build_resume_params("session-1") == {
+        "session_id": "session-1"
+    }
 
 
 def test_hermes_map_update_text():
@@ -420,10 +1323,101 @@ def test_hermes_map_usage_update_with_cost():
 # --- ACP Engines ---
 
 
+def test_acp_plan_update_maps_to_unified_snapshot():
+    from acp import schema
+
+    event = HermesEngine()._map_notification(schema.Plan(entries=[
+        schema.PlanEntry(
+            content="实现协议映射",
+            priority="high",
+            status="in_progress",
+        ),
+        schema.PlanEntry(
+            content="运行回归测试",
+            priority="medium",
+            status="pending",
+        ),
+    ]))
+
+    assert event is not None
+    assert event.type == "plan"
+    assert event.data["entries"] == [
+        {"content": "实现协议映射", "priority": "high", "status": "in_progress"},
+        {"content": "运行回归测试", "priority": "medium", "status": "pending"},
+    ]
+
+
+def test_acp_usage_update_includes_canonical_token_fields():
+    from acp import schema
+
+    event = HermesEngine()._map_notification(schema.UsageUpdate(
+        used=320,
+        size=200000,
+        sessionUpdate="usage_update",
+    ))
+
+    assert event is not None
+    assert event.type == "usage"
+    assert event.data["total_tokens"] == 320
+    assert event.data["context_window"] == 200000
+
+
+@pytest.mark.anyio
+async def test_acp_resume_failure_is_explicit_and_does_not_start_new_session(
+    monkeypatch,
+):
+    from engines.core.acp_base import AcpEngineBase
+
+    class TestEngine(AcpEngineBase):
+        COMMAND = ["fake-acp"]
+        ENGINE_ID = "test-acp"
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return "fake-acp"
+
+    class Client:
+        new_session_calls = 0
+
+        async def initialize(self, **kwargs):
+            return None
+
+        async def load_session(self, **kwargs):
+            raise RuntimeError("session missing")
+
+        async def new_session(self, **kwargs):
+            self.new_session_calls += 1
+            return _SdkFake(session_id="new-session")
+
+    client = Client()
+
+    @asynccontextmanager
+    async def fake_spawn(*args, **kwargs):
+        yield client, _SdkFake()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+
+    events = [event async for event in TestEngine().spawn(
+        prompt="继续", cwd="/tmp", session_id="missing-session"
+    )]
+
+    assert [event.type for event in events] == ["status", "error"]
+    assert "missing-session" in events[1].data["message"]
+    assert client.new_session_calls == 0
+
+
 @pytest.mark.anyio
 async def test_claude_acp_permission_policy_respects_confirmed_mode():
     from types import SimpleNamespace
-    from engines.acp_base import _StreamingClient
+    from engines.core.acp_base import _StreamingClient
 
     options = [
         SimpleNamespace(kind="allow_once", option_id="allow-once"),
@@ -449,7 +1443,7 @@ async def test_claude_acp_permission_policy_respects_confirmed_mode():
 @pytest.mark.anyio
 async def test_acp_client_ask_mode_parks_permission_until_approved():
     from types import SimpleNamespace
-    from engines.acp_base import _StreamingClient
+    from engines.core.acp_base import _StreamingClient
 
     client = _StreamingClient(permission_mode="ask")
     options = [
@@ -468,6 +1462,11 @@ async def test_acp_client_ask_mode_parks_permission_until_approved():
     )
     await asyncio.sleep(0)
 
+    interaction = await client.updates.get()
+    assert interaction.type == "interaction_request"
+    assert interaction.data["method"] == "session/request_permission"
+    assert interaction.data["options"][0]["option_id"] == "allow-once"
+
     assert client.pending_permissions == [
         {
             "tool_call_id": "tool-1",
@@ -485,9 +1484,74 @@ async def test_acp_client_ask_mode_parks_permission_until_approved():
 
 
 @pytest.mark.anyio
+async def test_acp_client_returns_the_exact_permission_option_selected_by_user():
+    from types import SimpleNamespace
+    from engines.core.acp_base import _StreamingClient
+
+    client = _StreamingClient(permission_mode="ask")
+    options = [
+        SimpleNamespace(kind="allow_once", option_id="allow-once", name="允许一次"),
+        SimpleNamespace(kind="allow_always", option_id="allow-always", name="始终允许"),
+    ]
+    request_task = asyncio.create_task(client.request_permission(
+        "session-1",
+        SimpleNamespace(
+            tool_call_id="tool-1",
+            title="Bash",
+            kind="execute",
+            raw_input={"command": "pytest"},
+        ),
+        options,
+    ))
+    await asyncio.sleep(0)
+    await client.updates.get()
+
+    assert client.resolve_permission("tool-1", "allow-always") is True
+    response = await request_task
+    assert response.outcome.option_id == "allow-always"
+
+
+@pytest.mark.anyio
+async def test_acp_client_form_elicitation_waits_for_structured_user_input():
+    from types import SimpleNamespace
+    from engines.core.acp_base import _StreamingClient
+
+    client = _StreamingClient(permission_mode="ask")
+    mode = SimpleNamespace(
+        session_id="session-1",
+        tool_call_id="ask-1",
+        requested_schema=SimpleNamespace(model_dump=lambda **kwargs: {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }),
+    )
+    request_task = asyncio.create_task(client.create_elicitation(
+        "请输入答案",
+        mode,
+    ))
+    await asyncio.sleep(0)
+
+    interaction = await client.updates.get()
+    assert interaction.type == "interaction_request"
+    assert interaction.data["method"] == "elicitation/create"
+    assert interaction.data["session_id"] == "session-1"
+    assert interaction.data["tool_call_id"] == "ask-1"
+    interaction_id = interaction.data["interaction_id"]
+    assert client.resolve_elicitation(interaction_id, {
+        "action": "accept",
+        "content": {"answer": "继续"},
+    }) is True
+
+    response = await request_task
+    assert response.action == "accept"
+    assert response.content == {"answer": "继续"}
+
+
+@pytest.mark.anyio
 async def test_acp_client_ask_mode_rejects_when_denied():
     from types import SimpleNamespace
-    from engines.acp_base import _StreamingClient
+    from engines.core.acp_base import _StreamingClient
 
     client = _StreamingClient(permission_mode="ask")
     options = [SimpleNamespace(kind="allow_once", option_id="allow-once")]
@@ -510,7 +1574,7 @@ async def test_acp_client_ask_mode_rejects_when_denied():
 
 
 def test_acp_client_resolve_approval_unknown_id_returns_false():
-    from engines.acp_base import _StreamingClient
+    from engines.core.acp_base import _StreamingClient
 
     client = _StreamingClient(permission_mode="ask")
     assert client.resolve_approval("missing-tool", True) is False
@@ -528,6 +1592,41 @@ class _SdkFake:
 
 def test_claude_agent_sdk_engine_id():
     assert ClaudeAgentSDKEngine.ENGINE_ID == "claude_agent_sdk"
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_ask_user_callback_round_trips_answers():
+    engine = ClaudeAgentSDKEngine()
+    events = []
+    tool_input = {
+        "questions": [{
+            "header": "方案",
+            "question": "选择方案",
+            "multiSelect": False,
+            "options": [{"label": "A", "description": "方案 A"}],
+        }],
+    }
+    waiting = asyncio.create_task(engine.handle_tool_permission(
+        events.append,
+        tool_name="AskUserQuestion",
+        tool_input=tool_input,
+        tool_use_id="ask-1",
+        title="选择方案",
+    ))
+    await asyncio.sleep(0)
+
+    request = events[0]
+    assert request.type == "interaction_request"
+    assert await engine.respond_interaction(request.data, {
+        "action": "accept",
+        "content": {"question_0": "A"},
+    }) is True
+    allowed, updated_input = await waiting
+    assert allowed is True
+    assert updated_input == {
+        "questions": tool_input["questions"],
+        "answers": {"选择方案": "A"},
+    }
 
 
 def test_claude_agent_sdk_resolve_binary():
@@ -557,7 +1656,7 @@ def test_claude_agent_sdk_not_installed_without_sdk(monkeypatch):
 
 def test_claude_agent_sdk_is_reported_as_sdk_mode(monkeypatch):
     """The SDK-backed engine is not a plain CLI mode."""
-    from engines.registry import get_available_engines, refresh_registry
+    from engines.core.registry import get_available_engines, refresh_registry
 
     monkeypatch.setattr(
         ClaudeAgentSDKEngine, "is_installed", staticmethod(lambda: True)
@@ -571,19 +1670,50 @@ def test_claude_agent_sdk_is_reported_as_sdk_mode(monkeypatch):
     assert engines["claude_agent_sdk"]["mode"] == "sdk"
 
 
-def test_claude_agent_sdk_not_resume():
+def test_claude_agent_sdk_resume():
     engine = ClaudeAgentSDKEngine()
-    assert engine.supports_resume is False
+    assert engine.supports_resume is True
+    assert engine.build_resume_params("session-1") == {
+        "session_id": "session-1"
+    }
     assert engine.supports_interactive is True
     assert engine.supports_live_stage_message is True
 
 
 def test_claude_agent_sdk_maps_system_init():
     engine = ClaudeAgentSDKEngine()
-    msg = _SdkFake(type="system", subtype="init")
+    msg = _SdkFake(type="system", subtype="init", data={"session_id": "session-1"})
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["status"]
+    assert [event.type for event in events] == ["status", "session_started"]
     assert events[0].data["status"] == "initializing"
+    assert events[1].data["session_id"] == "session-1"
+
+
+def test_claude_agent_sdk_maps_partial_stream_without_final_text_duplicate():
+    from claude_agent_sdk.types import AssistantMessage, StreamEvent, TextBlock
+
+    engine = ClaudeAgentSDKEngine()
+    state = {
+        "emitted_text": False,
+        "streamed_text": False,
+        "streamed_thinking": False,
+        "session_started": False,
+    }
+    partial = engine._map_message(StreamEvent(
+        uuid="u1",
+        session_id="session-1",
+        event={
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "增量"},
+        },
+    ), state)
+    completed = engine._map_message(AssistantMessage(
+        content=[TextBlock(text="增量")], model="sonnet"
+    ), state)
+
+    assert [event.type for event in partial] == ["session_started", "text_delta"]
+    assert partial[1].data["delta"] == "增量"
+    assert completed == []
 
 
 def test_claude_agent_sdk_maps_assistant_text():
@@ -685,6 +1815,92 @@ def test_claude_agent_sdk_maps_compact_without_summary():
     assert events[0].data == {}
 
 
+
+
+def test_claude_agent_sdk_maps_subagent_task_lifecycle():
+    """SDK subagent system messages map to subagent InternalEvents."""
+    from claude_agent_sdk.types import (
+        SystemMessage,
+        TaskNotificationMessage,
+        TaskProgressMessage,
+        TaskStartedMessage,
+        TaskUpdatedMessage,
+    )
+
+    engine = ClaudeAgentSDKEngine()
+
+    started = engine._map_message(TaskStartedMessage(
+        subtype="task_started",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        description="实现后端",
+        uuid="u1",
+        session_id="s1",
+        tool_use_id="task-call-1",
+        task_type="chain",
+    ))
+    progress = engine._map_message(TaskProgressMessage(
+        subtype="task_progress",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        description="实现后端",
+        usage={"input_tokens": 10},
+        uuid="u2",
+        session_id="s1",
+        last_tool_name="Edit",
+    ))
+    updated = engine._map_message(TaskUpdatedMessage(
+        subtype="task_updated",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        patch={"status": "completed"},
+    ))
+    failed = engine._map_message(TaskNotificationMessage(
+        subtype="task_notification",
+        data={"task_id": "task-8"},
+        task_id="task-8",
+        status="failed",
+        output_file="logs/task-8.json",
+        summary="工具执行错误",
+        uuid="u3",
+        session_id="s1",
+    ))
+
+    assert [event.type for event in started] == ["subagent"]
+    assert started[0].data == {
+        "task_id": "task-7",
+        "status": "running",
+        "stage": "started",
+        "description": "实现后端",
+        "tool_use_id": "task-call-1",
+        "task_type": "chain",
+    }
+    assert progress[0].data["status"] == "running"
+    assert progress[0].data["stage"] == "progress"
+    assert progress[0].data["last_tool_name"] == "Edit"
+    assert progress[0].data["usage"] == {"input_tokens": 10}
+    assert updated[0].data["status"] == "completed"
+    assert updated[0].data["stage"] == "updated"
+    assert failed[0].data["status"] == "failed"
+    assert failed[0].data["summary"] == "工具执行错误"
+    assert failed[0].data["output_file"] == "logs/task-8.json"
+
+
+def test_claude_agent_sdk_maps_generic_system_task_frames():
+    """Raw ``SystemMessage`` task frames (e.g. ``task_updated``) also map."""
+    from claude_agent_sdk.types import SystemMessage
+
+    engine = ClaudeAgentSDKEngine()
+    msg = SystemMessage(
+        subtype="task_updated",
+        data={"task_id": "task-7", "patch": {"status": "killed"}},
+    )
+    events = engine._map_message(msg)
+
+    assert [event.type for event in events] == ["subagent"]
+    assert events[0].data["status"] == "killed"
+
+
 def test_claude_agent_sdk_maps_modern_typed_messages():
     """Current SDK versions drop the ``type`` field; mapping falls back to class names."""
     from claude_agent_sdk.types import (
@@ -772,18 +1988,37 @@ def test_claude_agent_sdk_maps_modern_typed_messages():
 
 @pytest.mark.anyio
 async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
-    """The adapter drives the current SDK query() API with ClaudeAgentOptions."""
+    """The adapter drives ClaudeSDKClient with ClaudeAgentOptions and streams the
+    initial prompt via query() (interactive mode, not batch query())."""
     import claude_agent_sdk as sdk_module
 
     captured = {}
 
-    async def fake_query(*, prompt, options=None, transport=None):
-        captured["prompt"] = prompt
-        captured["options"] = options
-        if False:
-            yield None
+    class _ClaudeClientCapture:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+            self.queries: list[str] = []
+            captured["client"] = self
 
-    monkeypatch.setattr(sdk_module, "query", fake_query)
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            # 真实 SDK 消费流式输入源（初始 prompt + 注入消息）。
+            if hasattr(prompt, "__aiter__"):
+                async for message in prompt:
+                    self.queries.append(message["message"]["content"])
+            else:
+                self.queries.append(prompt)
+
+        async def receive_messages(self):
+            if False:  # pragma: no cover
+                yield None
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _ClaudeClientCapture)
     monkeypatch.setattr(
         ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
     )
@@ -793,27 +2028,129 @@ async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
             "permission_mode": "acceptEdits",
             "max_turns": "25",
             "fallback_model": "claude-haiku-latest",
-            "max_budget_usd": "0.75",
         },
     )
 
     engine = ClaudeAgentSDKEngine()
+    live_queue: asyncio.Queue = asyncio.Queue()
     events = [
         event
         async for event in engine.spawn(
-            prompt="hi", cwd="/tmp", model="sonnet", add_dirs=["/repo/src"]
+            prompt="hi",
+            cwd="/tmp",
+            model="sonnet",
+            add_dirs=["/repo/src"],
+            session_id="session-1",
+            live_message_queue=live_queue,
         )
     ]
     assert [event.type for event in events] == ["status"]
-    options = captured["options"]
+    client = captured["client"]
+    assert client.queries == ["hi"]
+    options = client.options
     assert options.cli_path == "/fake/claude"
     assert options.cwd == "/tmp"
     assert options.model == "sonnet"
     assert options.permission_mode == "acceptEdits"
     assert options.max_turns == 25
     assert options.fallback_model == "claude-haiku-latest"
-    assert options.max_budget_usd == 0.75
     assert options.add_dirs == ["/repo/src"]
+    assert options.resume == "session-1"
+    assert options.include_partial_messages is True
+    # resume 有明确会话目标时不得再设置 --continue，否则会覆盖 --resume
+    # 并串到目录最近会话（阶段/审核会话互相污染）。
+    assert options.continue_conversation is False
+    assert engine.supports_resume is True
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_can_use_tool_permission_round_trip(monkeypatch):
+    """can_use_tool 权限回调 → interaction_request 弹窗 → 用户允许 → PermissionResultAllow。
+
+    Covers the full spawn-level permission flow: the SDK callback blocks until
+    respond_interaction delivers the user's choice, then the run continues.
+    """
+    import claude_agent_sdk as sdk_module
+    from types import SimpleNamespace
+
+    permission_result = {}
+
+    class _ClaudeClientPermission:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            pass
+
+        async def receive_messages(self):
+            result = await self.options.can_use_tool(
+                "Bash",
+                {"command": "ls"},
+                SimpleNamespace(tool_use_id="tool-1", title="Bash"),
+            )
+            permission_result["allowed"] = isinstance(
+                result, sdk_module.PermissionResultAllow
+            )
+            yield _SdkFake(
+                type="result",
+                result="done",
+                is_error=False,
+                usage={"input_tokens": 5, "output_tokens": 5},
+                session_id="s1",
+            )
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _ClaudeClientPermission)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_agent_sdk.config_store.get_claude_agent_sdk_config",
+        lambda: {
+            "permission_mode": "acceptEdits",
+            "max_turns": "",
+            "fallback_model": "",
+        },
+    )
+
+    engine = ClaudeAgentSDKEngine()
+    collected = []
+    request_seen = asyncio.Event()
+    request_data = {}
+
+    async def consume():
+        async for event in engine.spawn(prompt="hi", cwd="/tmp"):
+            if event.type == "interaction_request":
+                request_data.update(event.data)
+                request_seen.set()
+            collected.append(event)
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+
+    assert request_data["method"] == "session/request_permission"
+    assert request_data["tool_call"]["name"] == "Bash"
+    assert request_data["session_id"] == "claude-agent-sdk"
+    assert [o["option_id"] for o in request_data["options"]] == [
+        "allow_once",
+        "allow_for_session",
+        "reject_once",
+        "reject_for_session",
+    ]
+
+    delivered = await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "allow_once"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    assert permission_result.get("allowed") is True
+    assert [event.type for event in collected][-1] == "status"
 
 
 def test_codex_sdk_engine_id():
@@ -834,7 +2171,7 @@ def test_codex_sdk_not_installed_without_sdk(monkeypatch):
 
 def test_codex_sdk_is_reported_as_sdk_mode(monkeypatch):
     """The SDK-backed engine is not a plain CLI mode."""
-    from engines.registry import get_available_engines, refresh_registry
+    from engines.core.registry import get_available_engines, refresh_registry
 
     monkeypatch.setattr(
         CodexSDKEngine, "is_installed", staticmethod(lambda: True)
@@ -866,6 +2203,32 @@ def test_codex_sdk_maps_compacted_notification():
     assert events[0].data == {}
 
 
+def test_codex_sdk_maps_turn_plan_updated_to_acp_snapshot():
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="turn/plan/updated",
+            payload=_SdkFake(
+                explanation="先实现后测试",
+                plan=[
+                    _SdkFake(step="实现功能", status=_SdkFake(value="inProgress")),
+                    _SdkFake(step="运行测试", status=_SdkFake(value="pending")),
+                ],
+            ),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["plan"]
+    assert events[0].data == {
+        "entries": [
+            {"content": "实现功能", "priority": "medium", "status": "in_progress"},
+            {"content": "运行测试", "priority": "medium", "status": "pending"},
+        ],
+        "explanation": "先实现后测试",
+    }
+
+
 def test_codex_sdk_maps_started_and_text_delta():
     engine = CodexSDKEngine()
     notification = _SdkFake(
@@ -891,6 +2254,79 @@ def test_codex_sdk_maps_reasoning_deltas():
     )
     assert [event.type for event in events] == ["thinking_delta"]
     assert events[0].data["delta"] == "正在推理"
+
+    completed = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="reasoning", content=["正在推理"], summary=[], id="r1",
+            ))),
+        ),
+        state,
+    )
+    assert completed == []
+
+
+@pytest.mark.parametrize(
+    ("root", "expected_name", "expected_input", "expected_result"),
+    [
+        (
+            _SdkFake(type="commandExecution", id="cmd-1", command="ls", status="inProgress"),
+            "Bash",
+            {"command": "ls"},
+            _SdkFake(
+                type="commandExecution", id="cmd-1", command="ls",
+                status="completed", aggregated_output="ok", exit_code=0,
+            ),
+        ),
+        (
+            _SdkFake(type="mcpToolCall", id="mcp-1", server="fs", tool="read", arguments={"path": "a"}, status="inProgress"),
+            "fs/read",
+            {"path": "a"},
+            _SdkFake(
+                type="mcpToolCall", id="mcp-1", server="fs", tool="read",
+                arguments={"path": "a"}, status="completed", result="content", error=None,
+            ),
+        ),
+        (
+            _SdkFake(type="fileChange", id="patch-1", changes=["a.py"], status="inProgress"),
+            "FileChange",
+            {"changes": ["a.py"]},
+            _SdkFake(type="fileChange", id="patch-1", changes=["a.py"], status="completed"),
+        ),
+        (
+            _SdkFake(type="webSearch", id="web-1", query="WorkStep"),
+            "WebSearch",
+            {"query": "WorkStep"},
+            _SdkFake(type="webSearch", id="web-1", query="WorkStep"),
+        ),
+    ],
+)
+def test_codex_sdk_maps_supported_tool_item_families(
+    root, expected_name, expected_input, expected_result
+):
+    engine = CodexSDKEngine()
+    state = {
+        "emitted_text": False,
+        "emitted_thinking": False,
+        "tool_emitted": set(),
+    }
+    started = engine._map_notification(
+        _SdkFake(method="item/started", payload=_SdkFake(item=_SdkFake(root=root))),
+        state,
+    )
+    completed = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=expected_result)),
+        ),
+        state,
+    )
+
+    assert [event.type for event in started] == ["tool_use"]
+    assert started[0].data["name"] == expected_name
+    assert started[0].data["input"] == expected_input
+    assert [event.type for event in completed] == ["tool_result"]
 
 
 def test_codex_sdk_maps_tool_use_and_result():
@@ -1149,43 +2585,139 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
     ]
 
 
+@pytest.mark.anyio
+async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
+    """AsyncCodex 必须收到 approval_handler，否则 SDK 默认自动 accept 无弹窗。"""
+    import openai_codex as codex_module
+
+    captured = {}
+
+    class FakeTurn:
+        async def stream(self):
+            if False:
+                yield None
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+
+        async def thread_start(self, **kwargs):
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    monkeypatch.setattr(
+        "engines.codex_sdk.config_store.get_codex_sdk_config",
+        lambda: {
+            "model_reasoning_effort": "",
+            "approval_mode": "deny_all",
+            "sandbox": "workspace-write",
+        },
+    )
+
+    events = [
+        event async for event in CodexSDKEngine().spawn(prompt="hi", cwd="/tmp")
+    ]
+    handler = captured["client_kwargs"]["approval_handler"]
+    assert callable(handler)
+    assert [event.type for event in events] == [
+        "status",
+        "session_started",
+        "status",
+    ]
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_approval_handler_round_trip():
+    """审批回调 → interaction_request 弹窗 → 用户允许/拒绝 → decision。"""
+    import threading
+
+    engine = CodexSDKEngine()
+    event_queue: asyncio.Queue = asyncio.Queue()
+    handler = engine._build_approval_handler(
+        event_queue, asyncio.get_running_loop(), "session-1"
+    )
+
+    def invoke(params):
+        return handler("item/commandExecution/requestApproval", params)
+
+    result = {}
+    thread = threading.Thread(
+        target=lambda: result.update(decision=invoke(
+            {"approval_id": "approval-1", "command": "ls -la"}
+        ))
+    )
+    thread.start()
+
+    request = await asyncio.wait_for(event_queue.get(), timeout=5)
+    assert request.type == "interaction_request"
+    assert request.data["method"] == "session/request_permission"
+    assert request.data["session_id"] == "session-1"
+    assert request.data["tool_call"]["name"] == "Bash"
+    assert request.data["tool_call"]["tool_call_id"] == "approval-1"
+    assert request.data["tool_call"]["title"].startswith("执行命令:")
+
+    await engine.respond_interaction(request.data, {
+        "outcome": {"outcome": "selected", "option_id": "allow_once"},
+    })
+    # 让事件循环推进 _ask_approval 任务，避免 thread.join 阻塞循环
+    for _ in range(200):
+        if not thread.is_alive():
+            break
+        await asyncio.sleep(0.01)
+    thread.join(timeout=1)
+    assert result["decision"] == {"decision": "accept"}
+
+    # 拒绝路径
+    result.clear()
+    thread = threading.Thread(
+        target=lambda: result.update(decision=invoke(
+            {"approval_id": "approval-2", "command": "rm -rf /"}
+        ))
+    )
+    thread.start()
+    request = await asyncio.wait_for(event_queue.get(), timeout=5)
+    await engine.respond_interaction(request.data, {
+        "outcome": {"outcome": "selected", "option_id": "reject_once"},
+    })
+    for _ in range(200):
+        if not thread.is_alive():
+            break
+        await asyncio.sleep(0.01)
+    thread.join(timeout=1)
+    assert result["decision"] == {"decision": "deny"}
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_approval_handler_unknown_method_returns_empty():
+    engine = CodexSDKEngine()
+    handler = engine._build_approval_handler(
+        asyncio.Queue(), asyncio.get_running_loop(), ""
+    )
+    assert handler("item/unknown", {}) == {}
+
+
 def test_codex_sdk_registered_in_registry():
     assert "codex_sdk" in _ALL_ENGINES
     assert CodexSDKEngine in _ALL_ENGINES.values()
 
 
-def test_api_engine_tracks_configuration(monkeypatch):
-    """The direct API adapter tracks configuration readiness."""
-    monkeypatch.setattr(
-        "engines.api.config_store.get_api_engine_config",
-        lambda: {
-            "provider": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "",
-            "model": "",
-        },
-    )
-    assert APIEngine.is_installed() is True
-    assert APIEngine.is_configured() is False
-
-
 # --- Engine config schema (backend-driven settings forms) ---
 
 def test_engine_config_schemas_are_declared():
-    api_fields = {field.key: field for field in APIEngine.config_schema()}
-    assert set(api_fields) == {"provider", "base_url", "api_key"}
-    assert api_fields["provider"].type == "select"
-    assert [option.value for option in api_fields["provider"].options] == [
-        "openai",
-        "anthropic",
-    ]
-    assert api_fields["api_key"].sensitive is True
-    assert api_fields["base_url"].required is True
-
     pydantic_fields = {
         field.key for field in PydanticAIEngine.config_schema()
     }
-    assert pydantic_fields == {"provider", "base_url", "api_key"}
+    assert pydantic_fields == {"provider_id", "mcp_servers"}
+    assert PydanticAIEngine.config_schema()[0].type == "select"
 
     claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}
     assert set(claude_fields) == {"permission_mode"}
@@ -1207,10 +2739,8 @@ def test_engine_config_schemas_are_declared():
         "permission_mode",
         "max_turns",
         "fallback_model",
-        "max_budget_usd",
     }
     assert claude_sdk_fields["max_turns"].type == "number"
-    assert claude_sdk_fields["max_budget_usd"].type == "number"
     assert "bypassPermissions" in claude_sdk_fields["permission_mode"].confirm_values
 
     codex_sdk_fields = {field.key: field for field in CodexSDKEngine.config_schema()}
@@ -1221,88 +2751,8 @@ def test_engine_config_schemas_are_declared():
     }
     assert codex_sdk_fields["approval_mode"].type == "select"
 
-    from engines.base import BaseLLMEngine
+    from engines.core.base import BaseLLMEngine
     assert BaseLLMEngine.config_schema() == []
-
-
-def test_api_engine_config_values_mask_secrets(monkeypatch):
-    store = {
-        "provider": "openai",
-        "base_url": "https://gateway.example.com/v1",
-        "api_key": "stored-secret",
-        "model": "model-x",
-    }
-    monkeypatch.setattr(
-        "engines.api.config_store.get_api_engine_config", lambda: dict(store)
-    )
-    engine = APIEngine()
-    assert engine.get_config_values()["api_key"] == ""
-    assert engine.get_config_secrets() == {"api_key": True}
-    assert engine.reveal_config_value("api_key") == "stored-secret"
-
-
-@pytest.mark.anyio
-async def test_api_engine_save_keeps_and_clears_secret(monkeypatch):
-    saved = {}
-
-    class Store:
-        def get_api_engine_config(self):
-            return {
-                "provider": "openai",
-                "base_url": "https://gateway.example.com/v1",
-                "api_key": "stored-secret",
-                "model": "model-x",
-            }
-
-        def set_api_engine_config(self, **kwargs):
-            saved.update(kwargs)
-
-    monkeypatch.setattr("engines.api.config_store", Store())
-
-    engine = APIEngine()
-    # Not provided → keep existing key
-    await engine.save_config_values({
-        "provider": "openai",
-        "base_url": "https://gateway.example.com/v1",
-    })
-    assert saved["api_key"] is None
-
-    # Provided → replace
-    await engine.save_config_values({
-        "provider": "openai",
-        "base_url": "https://gateway.example.com/v1",
-        "api_key": "new-secret",
-    })
-    assert saved["api_key"] == "new-secret"
-
-    # Clear flag → wipe
-    await engine.save_config_values(
-        {
-            "provider": "openai",
-            "base_url": "https://gateway.example.com/v1",
-        },
-        clear={"api_key": True},
-    )
-    assert saved["api_key"] == ""
-
-
-@pytest.mark.anyio
-async def test_api_engine_save_rejects_remote_plain_http(monkeypatch):
-    monkeypatch.setattr(
-        "engines.api.config_store.get_api_engine_config",
-        lambda: {
-            "provider": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "",
-            "model": "",
-        },
-    )
-    engine = APIEngine()
-    with pytest.raises(ValueError, match="HTTPS"):
-        await engine.save_config_values({
-            "provider": "openai",
-            "base_url": "http://192.168.1.20:11434/v1",
-        })
 
 
 @pytest.mark.anyio
@@ -1329,16 +2779,24 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
 
 def test_all_engines_registered():
     """All engines are in the full list."""
-    assert len(_ALL_ENGINES) == 9
+    assert len(_ALL_ENGINES) == 8
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES
     assert "qoder_sdk" in _ALL_ENGINES
     assert "openclaw" in _ALL_ENGINES
-    assert "api" in _ALL_ENGINES
     assert "pydantic_ai" in _ALL_ENGINES
     assert "claude_agent_sdk" in _ALL_ENGINES
     assert "codex_sdk" in _ALL_ENGINES
+
+
+def test_registered_engines_declare_resume_capability_accurately():
+    unsupported = [
+        engine_id
+        for engine_id, engine_class in _ALL_ENGINES.items()
+        if not engine_class().supports_resume
+    ]
+    assert unsupported == ["openclaw"]
 
 
 def test_registry_resolves_installed():
@@ -1361,7 +2819,7 @@ def test_get_available_engines_lists_all_backends():
 
 def test_create_engine_returns_instance():
     """create_engine returns an instance or None."""
-    from engines.base import BaseLLMEngine
+    from engines.core.base import BaseLLMEngine
     for backend in ENGINE_REGISTRY:
         engine = create_engine(backend)
         assert engine is not None
@@ -1439,9 +2897,44 @@ def test_qoder_sdk_not_installed_without_sdk(monkeypatch):
     assert QoderSDKEngine.is_installed() is False
 
 
+def test_qoder_sdk_configured_with_stored_or_environment_token(monkeypatch):
+    monkeypatch.setattr(
+        "engines.qoder_sdk.config_store.get_qoder_sdk_config",
+        lambda: {"personal_access_token": "stored-token"},
+    )
+    assert QoderSDKEngine.is_configured() is True
+
+    monkeypatch.setattr(
+        "engines.qoder_sdk.config_store.get_qoder_sdk_config",
+        lambda: {"personal_access_token": ""},
+    )
+    monkeypatch.setenv("QODER_PERSONAL_ACCESS_TOKEN", "env-token")
+    assert QoderSDKEngine.is_configured() is True
+
+
+def test_qoder_sdk_requires_local_login_without_token(monkeypatch):
+    monkeypatch.setattr(
+        "engines.qoder_sdk.config_store.get_qoder_sdk_config",
+        lambda: {"personal_access_token": ""},
+    )
+    monkeypatch.delenv("QODER_PERSONAL_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(
+        QoderSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/qodercli")
+    )
+    QoderSDKEngine._status_cache = None
+
+    class Status:
+        returncode = 0
+        stdout = "Version: 1.1.11\nAccount: Not logged in\n"
+
+    monkeypatch.setattr("engines.qoder_sdk.subprocess.run", lambda *a, **k: Status())
+
+    assert QoderSDKEngine.is_configured() is False
+
+
 def test_qoder_sdk_is_reported_as_sdk_mode(monkeypatch):
     """The SDK-backed engine is not a plain CLI mode."""
-    from engines.registry import get_available_engines, refresh_registry
+    from engines.core.registry import get_available_engines, refresh_registry
 
     monkeypatch.setattr(
         QoderSDKEngine, "is_installed", staticmethod(lambda: True)
@@ -1455,19 +2948,25 @@ def test_qoder_sdk_is_reported_as_sdk_mode(monkeypatch):
     assert engines["qoder_sdk"]["mode"] == "sdk"
 
 
-def test_qoder_sdk_not_resume():
+def test_qoder_sdk_resume():
     engine = QoderSDKEngine()
-    assert engine.supports_resume is False
+    assert engine.supports_resume is True
+    assert engine.build_resume_params("session-1") == {
+        "session_id": "session-1"
+    }
     assert engine.supports_interactive is True
     assert engine.supports_live_stage_message is True
 
 
 def test_qoder_sdk_maps_system_init():
     engine = QoderSDKEngine()
-    msg = _QoderSystemMessage(subtype="init", data={"model": "auto"})
+    msg = _QoderSystemMessage(
+        subtype="init", data={"model": "auto", "session_id": "session-1"}
+    )
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["status"]
+    assert [event.type for event in events] == ["status", "session_started"]
     assert events[0].data["status"] == "initializing"
+    assert events[1].data["session_id"] == "session-1"
 
 
 def test_qoder_sdk_maps_compact_boundary():
@@ -1479,6 +2978,67 @@ def test_qoder_sdk_maps_compact_boundary():
     events = engine._map_message(msg)
     assert [event.type for event in events] == ["compacted"]
     assert events[0].data == {"summary": "前文已压缩为摘要"}
+
+
+
+
+def test_qoder_sdk_maps_subagent_task_lifecycle():
+    """Qoder subagent system messages map to subagent InternalEvents."""
+    from qoder_agent_sdk.types import (
+        SystemMessage,
+        TaskNotificationMessage,
+        TaskProgressMessage,
+        TaskStartedMessage,
+    )
+
+    engine = QoderSDKEngine()
+
+    started = engine._map_message(TaskStartedMessage(
+        subtype="task_started",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        description="实现后端",
+        uuid="u1",
+        session_id="s1",
+        tool_use_id="task-call-1",
+        task_type="chain",
+    ))
+    progress = engine._map_message(TaskProgressMessage(
+        subtype="task_progress",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        description="实现后端",
+        usage={"input_tokens": 10},
+        uuid="u2",
+        session_id="s1",
+        last_tool_name="Edit",
+    ))
+    updated = engine._map_message(SystemMessage(
+        subtype="task_updated",
+        data={"task_id": "task-7", "patch": {"status": "running"}},
+    ))
+    completed = engine._map_message(TaskNotificationMessage(
+        subtype="task_notification",
+        data={"task_id": "task-7"},
+        task_id="task-7",
+        status="completed",
+        output_file="",
+        summary="完成",
+        uuid="u3",
+        session_id="s1",
+    ))
+
+    assert [event.type for event in started] == ["subagent"]
+    assert started[0].data["status"] == "running"
+    assert started[0].data["stage"] == "started"
+    assert started[0].data["description"] == "实现后端"
+    assert started[0].data["tool_use_id"] == "task-call-1"
+    assert progress[0].data["stage"] == "progress"
+    assert progress[0].data["last_tool_name"] == "Edit"
+    assert updated[0].data["status"] == "running"
+    assert updated[0].data["stage"] == "updated"
+    assert completed[0].data["status"] == "completed"
+    assert completed[0].data["summary"] == "完成"
 
 
 def test_qoder_sdk_maps_assistant_blocks():
@@ -1510,6 +3070,264 @@ def test_qoder_sdk_assistant_text_skipped_when_streamed():
     assert [e.data["delta"] for e in stream_events] == ["增量"]
     assert final_events == []
 
+
+def test_qoder_sdk_preserves_multiple_complete_text_blocks_without_partial_stream():
+    engine = QoderSDKEngine()
+    msg = _QoderAssistantMessage(content=[
+        _QoderFake(type="text", text="A"),
+        _QoderFake(type="text", text="B"),
+    ])
+
+    events = engine._map_message(msg)
+
+    assert [event.data["delta"] for event in events] == ["A", "B"]
+
+
+@pytest.mark.anyio
+async def test_qoder_sdk_spawn_uses_message_dicts_and_resume(monkeypatch):
+    import qoder_agent_sdk as sdk_module
+
+    captured = {}
+
+    class _QoderClientCapture:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+            self.queries: list[str] = []
+            captured["client"] = self
+
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            # 真实 SDK 消费流式输入源（初始 prompt + 注入消息）。
+            if hasattr(prompt, "__aiter__"):
+                async for message in prompt:
+                    self.queries.append(message["message"]["content"])
+            else:
+                self.queries.append(prompt)
+
+        async def receive_messages(self):
+            if False:  # pragma: no cover
+                yield None
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "QoderSDKClient", _QoderClientCapture)
+    monkeypatch.setattr(
+        QoderSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/qodercli")
+    )
+    monkeypatch.setattr(
+        "engines.qoder_sdk.config_store.get_qoder_sdk_config",
+        lambda: {
+            "personal_access_token": "test-token",
+            "model": "auto",
+            "permission_mode": "default",
+            "include_partial_messages": True,
+            "allowed_tools": "",
+            "max_turns": "",
+        },
+    )
+
+    live_queue: asyncio.Queue = asyncio.Queue()
+    events = [event async for event in QoderSDKEngine().spawn(
+        prompt="hi", cwd="/tmp", session_id="session-1",
+        live_message_queue=live_queue,
+    )]
+
+    assert [event.type for event in events] == ["status"]
+    client = captured["client"]
+    assert client.queries == ["hi"]
+    assert client.options.resume == "session-1"
+    # resume 有明确会话目标时不得设置 --continue，避免覆盖 --resume 串会话。
+    assert client.options.continue_conversation is False
+
+
+@pytest.mark.anyio
+async def test_qoder_sdk_can_use_tool_permission_round_trip(monkeypatch):
+    """can_use_tool 权限回调 → interaction_request 弹窗 → 允许 → PermissionResultAllow。
+
+    Mirrors the Claude Agent SDK spawn-level permission flow for Qoder: the
+    SDK callback blocks until respond_interaction delivers the user's choice,
+    then the run continues.
+    """
+    import qoder_agent_sdk as sdk_module
+    from types import SimpleNamespace
+
+    permission_result = {}
+
+    class _QoderClientPermission:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            pass
+
+        async def receive_messages(self):
+            result = await self.options.can_use_tool(
+                "Bash",
+                {"command": "ls"},
+                SimpleNamespace(tool_use_id="tool-1", title="Bash"),
+            )
+            permission_result["allowed"] = isinstance(
+                result, sdk_module.PermissionResultAllow
+            )
+            yield _QoderResultMessage(
+                type="result",
+                result="done",
+                usage={"input_tokens": 5, "output_tokens": 5},
+                session_id="s1",
+            )
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "QoderSDKClient", _QoderClientPermission)
+    monkeypatch.setattr(
+        QoderSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/qodercli")
+    )
+    monkeypatch.setattr(
+        "engines.qoder_sdk.config_store.get_qoder_sdk_config",
+        lambda: {
+            "personal_access_token": "test-token",
+            "model": "auto",
+            "permission_mode": "default",
+            "include_partial_messages": True,
+            "allowed_tools": "",
+            "max_turns": "",
+        },
+    )
+
+    engine = QoderSDKEngine()
+    collected = []
+    request_seen = asyncio.Event()
+    request_data = {}
+
+    async def consume():
+        async for event in engine.spawn(prompt="hi", cwd="/tmp"):
+            if event.type == "interaction_request":
+                request_data.update(event.data)
+                request_seen.set()
+            collected.append(event)
+
+    consumer = asyncio.create_task(consume())
+    await asyncio.wait_for(request_seen.wait(), timeout=5)
+
+    assert request_data["method"] == "session/request_permission"
+    assert request_data["tool_call"]["name"] == "Bash"
+    assert request_data["session_id"] == "qoder-agent-sdk"
+    assert [o["option_id"] for o in request_data["options"]] == [
+        "allow_once",
+        "allow_for_session",
+        "reject_once",
+        "reject_for_session",
+    ]
+
+    delivered = await engine.respond_interaction(request_data, {
+        "outcome": {"outcome": "selected", "option_id": "allow_once"},
+    })
+    assert delivered is True
+    await asyncio.wait_for(consumer, timeout=5)
+
+    assert permission_result.get("allowed") is True
+    assert [event.type for event in collected][-1] == "status"
+
+
+
+
+
+def test_qoder_sdk_maps_real_sdk_blocks_without_type_field():
+    """Real qoder blocks carry no ``type`` attr; class names must map too."""
+    from qoder_agent_sdk.types import (
+        AssistantMessage,
+        TextBlock,
+        ToolResultBlock,
+        ToolUseBlock,
+        UserMessage,
+    )
+
+    engine = QoderSDKEngine()
+
+    assistant = AssistantMessage(content=[
+        TextBlock(text="开始"),
+        ToolUseBlock(id="tool-1", name="Read", input={"path": "a.py"}),
+    ], model="auto")
+    events = engine._map_message(assistant)
+    assert [event.type for event in events] == ["text_delta", "tool_use"]
+    assert events[1].data == {
+        "id": "tool-1",
+        "name": "Read",
+        "input": {"path": "a.py"},
+    }
+
+    user = UserMessage(content=[
+        ToolResultBlock(tool_use_id="tool-1", content="file content", is_error=False),
+    ], uuid="u")
+    events = engine._map_message(user)
+    assert [event.type for event in events] == ["tool_result"]
+    assert events[0].data == {
+        "tool_use_id": "tool-1",
+        "content": "file content",
+        "is_error": False,
+    }
+
+
+def test_qoder_sdk_real_task_tools_produce_plan_events():
+    """Tool_use from real qoder blocks reaches the plan tracker."""
+    from qoder_agent_sdk.types import (
+        AssistantMessage,
+        ToolUseBlock,
+        UserMessage,
+        ToolResultBlock,
+    )
+
+    engine = QoderSDKEngine()
+
+    def push(msg):
+        normalized = []
+        for event in engine._map_message(msg):
+            result = engine.normalize_event(event)
+            if result is not None:
+                normalized.append(result)
+        return normalized
+
+    created = push(AssistantMessage(content=[
+        ToolUseBlock(id="task-call-1", name="TaskCreate",
+                     input={"description": "实现后端"}),
+    ], model="auto"))
+    finished = push(UserMessage(content=[
+        ToolResultBlock(tool_use_id="task-call-1",
+                        content='{"task":{"id":"task-7","description":"实现后端"}}',
+                        is_error=False),
+    ], uuid="u"))
+
+    assert created[0].type == "plan"
+    assert created[0].data["entries"] == [{
+        "content": "实现后端",
+        "priority": "medium",
+        "status": "pending",
+    }]
+    # TaskCreate 的 tool_result 只确认任务已建（pending）；终态由
+    # task_notification / TaskUpdate 帧驱动，此处验证两者衔接。
+    assert finished[0].type == "plan"
+    assert finished[0].data["entries"] == [{
+        "content": "实现后端",
+        "priority": "medium",
+        "status": "pending",
+    }]
+    updated = push(AssistantMessage(content=[
+        ToolUseBlock(id="update-call-1", name="TaskUpdate",
+                     input={"taskId": "task-7", "status": "completed"}),
+    ], model="auto"))
+    assert updated[0].type == "plan"
+    assert updated[0].data["entries"] == [{
+        "content": "实现后端",
+        "priority": "medium",
+        "status": "completed",
+    }]
 
 def test_qoder_sdk_maps_tool_result():
     engine = QoderSDKEngine()
@@ -1576,21 +3394,36 @@ def test_qoder_sdk_result_error():
     assert error_event.data["message"] == "达到最大轮数"
 
 
+def test_pydantic_ai_capabilities_match_session_and_interaction_support():
+    engine = PydanticAIEngine()
+
+    assert engine.supports_interactive is True
+    assert engine.supports_resume is True
+    assert engine.build_resume_params("session-1") == {"session_id": "session-1"}
+
+
 # --- PydanticAIEngine session id ---
 
 @pytest.mark.anyio
 async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     """The built-in agent emits a per-run session id like other engines."""
-    import engines.pydantic_ai as pydantic_ai_module
+    import engines.pydantic_ai.engine as pydantic_ai_module
     from engines.pydantic_ai import PydanticAIEngine
 
     class FakeStore:
         def get_pydantic_ai_engine_config(self):
+            return {"provider_id": "prov_1", "model": "agent-model"}
+
+        def get_provider(self, provider_id):
             return {
-                "provider": "openai",
+                "id": provider_id,
+                "name": "主账号",
+                "type": "openai",
                 "base_url": "https://agent-gateway.example.com/v1",
                 "api_key": "k",
-                "model": "agent-model",
+                "enabled": True,
+                "verified": True,
+                "created_at": "",
             }
 
     class FakeUsage:
@@ -1612,7 +3445,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
 
     monkeypatch.setattr(pydantic_ai_module, "config_store", FakeStore())
     monkeypatch.setattr(
-        PydanticAIEngine, "build_model", staticmethod(lambda **config: object())
+        PydanticAIEngine, "build_model", staticmethod(lambda *, provider, model_name: object())
     )
     monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
 
@@ -1626,3 +3459,211 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     assert usage_event.data["session_id"] == session_id
     assert events[-1].type == "status"
     assert events[-1].data["status"] == "done"
+
+
+class _FakeSDKClient:
+    """Duck-typed ClaudeSDKClient: consumes the streamed prompt source and
+    yields one assistant+result per user message; the message stream ends when
+    the input source ends (stdin EOF → CLI exits → end frame), like the real
+    SDK."""
+
+    last: "_FakeSDKClient | None" = None
+    # 模拟 CLI 把 result 前到达的注入合并进当前回合：注入消息不产生独立
+    # 的新回合（a47f9b1e 场景：全程只有一个 result）。测试可临时置 True。
+    merge_injections = False
+
+    def __init__(self, options):
+        type(self).last = self
+        self.options = options
+        self.disconnected = False
+        self.queries: list[str] = []
+        self.turn_ready: asyncio.Queue = asyncio.Queue()
+        self.input_ended = asyncio.Event()
+
+    async def connect(self):
+        return None
+
+    async def query(self, prompt):
+        if hasattr(prompt, "__aiter__"):
+            async for message in prompt:
+                self.queries.append(message["message"]["content"])
+                if type(self).merge_injections and len(self.queries) > 1:
+                    continue
+                await self.turn_ready.put(None)
+        else:
+            self.queries.append(prompt)
+            await self.turn_ready.put(None)
+        self.input_ended.set()
+
+    async def receive_messages(self):
+        yield _SdkFake(
+            type="system",
+            subtype="init",
+            data={"session_id": "sdk-session-1"},
+        )
+        turn = 0
+        while not self.disconnected:
+            get_task = asyncio.create_task(self.turn_ready.get())
+            end_task = asyncio.create_task(self.input_ended.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    {get_task, end_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            except asyncio.CancelledError:
+                get_task.cancel()
+                end_task.cancel()
+                raise
+            if end_task in done and get_task not in done:
+                # stdin 已关闭：CLI 处理完剩余输入后才退出并结束流。
+                get_task.cancel()
+                return
+            turn += 1
+            yield _SdkFake(type="assistant", content=[
+                _SdkFake(type="text", text=f"回复 {turn}"),
+            ])
+            yield _SdkFake(
+                type="result",
+                result=_SdkFake(
+                    is_error=False,
+                    output="",
+                    subtype="success",
+                    usage={"input_tokens": 1, "output_tokens": 1},
+                    total_cost_usd=0.0,
+                    session_id="sdk-session-1",
+                ),
+            )
+
+    async def disconnect(self):
+        self.disconnected = True
+        try:
+            self.turn_ready.put_nowait(None)
+        except Exception:
+            pass
+
+
+def _patch_claude_sdk(monkeypatch):
+    import claude_agent_sdk as sdk_module
+    from services.config import config_store
+
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _FakeSDKClient)
+    monkeypatch.setattr(sdk_module, "ClaudeAgentOptions", _SdkFake)
+    monkeypatch.setattr(sdk_module, "PermissionResultAllow", _SdkFake)
+    monkeypatch.setattr(sdk_module, "PermissionResultDeny", _SdkFake)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(config_store, "get_claude_agent_sdk_config", lambda: {
+        "permission_mode": "acceptEdits",
+        "max_turns": "",
+        "fallback_model": "",
+    })
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_turn_without_injection_ends_immediately(monkeypatch):
+    """A finished turn without any live injection ends the session right away:
+    the reply is the end of the stage, so no insertion grace is applied and no
+    idle_timeout marker is needed."""
+    _patch_claude_sdk(monkeypatch)
+    engine = ClaudeAgentSDKEngine()
+    # 带 live 队列才是真实路径：prompt 源在首条消息后保持打开，
+    # 由 watchdog 在回合结束后立即关闭（无队列时源立刻结束，watchdog 不参与）。
+    live_queue: asyncio.Queue = asyncio.Queue()
+    events = []
+    async for event in engine.spawn(
+        "开始任务", cwd="/tmp", live_message_queue=live_queue
+    ):
+        events.append(event)
+
+    client = _FakeSDKClient.last
+    assert client.disconnected is True
+    assert client.queries == ["开始任务"]
+    assert any(
+        event.type == "text_delta" and event.data["delta"] == "回复 1"
+        for event in events
+    )
+    assert any(
+        event.type == "status" and event.data.get("status") == "done"
+        for event in events
+    )
+    assert not any(
+        event.type == "status" and event.data.get("status") == "idle_timeout"
+        for event in events
+    ), "无插入的回合回复即结尾：应立即收尾，不应出现 idle_timeout"
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_early_injection_ends_when_queue_empty(monkeypatch):
+    """注入在回合 result 之前已被消费（CLI 合并处理、全程只有一个 result）时，
+    回合结束且插入队列为空必须立即收尾：不论本回合是否插入过消息都不等
+    宽限期（a47f9b1e 卡死回归）。"""
+    _patch_claude_sdk(monkeypatch)
+    engine = ClaudeAgentSDKEngine()
+    live_queue: asyncio.Queue = asyncio.Queue()
+    live_queue.put_nowait(("pre-1", "提前注入"))
+    events: list[InternalEvent] = []
+
+    async def consume():
+        async for event in engine.spawn(
+            "开始任务", cwd="/tmp", live_message_queue=live_queue
+        ):
+            events.append(event)
+
+    _FakeSDKClient.merge_injections = True
+    try:
+        # 3s 超时保护：修复前 watchdog 误判保活、流只能靠外部取消收尾，
+        # 会留下 cancelled 事件；修复后 grace(0.2s) 内自然收尾、无 cancelled。
+        await asyncio.wait_for(consume(), timeout=3)
+    finally:
+        _FakeSDKClient.merge_injections = False
+
+    client = _FakeSDKClient.last
+    assert client.disconnected is True
+    assert client.queries == ["开始任务", "提前注入"]
+    delivered = [
+        e for e in events
+        if e.type == "live_message" and e.data.get("status") == "delivered"
+    ]
+    assert delivered and delivered[0].data["message_id"] == "pre-1"
+    assert any(
+        e.type == "status" and e.data.get("status") == "done" for e in events
+    ), "回合完成但流未正常收尾（watchdog 误判保活）"
+    assert not any(
+        e.type == "status" and e.data.get("status") == "idle_timeout" for e in events
+    ), "合并注入回合结束时队列已空：应立即收尾，不应出现 idle_timeout"
+    assert not any(
+        e.type == "status" and e.data.get("status") == "cancelled" for e in events
+    ), "流被外部取消才收尾：watchdog 误判保活导致卡死"
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_injection_keeps_session_alive(monkeypatch):
+    """A pending message in the insert queue is consumed into a follow-up turn
+    (回复 2 runs); once the queue is empty the session closes right away."""
+    _patch_claude_sdk(monkeypatch)
+    engine = ClaudeAgentSDKEngine()
+    live_queue: asyncio.Queue = asyncio.Queue()
+    live_queue.put_nowait(("live-1", "继续"))
+    events = []
+    async for event in engine.spawn(
+        "开始任务", cwd="/tmp", live_message_queue=live_queue
+    ):
+        events.append(event)
+
+    client = _FakeSDKClient.last
+    assert client.disconnected is True
+    assert client.queries == ["开始任务", "继续"]
+    deltas = [
+        event.data["delta"]
+        for event in events
+        if event.type == "text_delta"
+    ]
+    assert "回复 2" in deltas
+    delivered = [
+        event for event in events
+        if event.type == "live_message"
+        and event.data.get("status") == "delivered"
+    ]
+    assert len(delivered) == 1
+    assert delivered[0].data["message_id"] == "live-1"

@@ -1,6 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react'
-import EngineSelect from './EngineSelect'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import EngineSelect, { isEngineSelectable } from './EngineSelect'
 import Select from './Select'
+import Icon from './Icon'
+import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import {
   fetchEngineModels,
   getCachedEngineModels,
@@ -29,10 +31,14 @@ export interface CoordinatorConfigBarProps {
   model: string
   fastModel: string
   visionModel?: string
+  /** '' = follow the engine default. */
+  thinkingEffort?: string
   onEngineChange: (engineId: string) => void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
+  /** Show the thinking-effort row only when provided. */
+  onThinkingEffortChange?: (value: string) => void
   /** Disable every control (config not loaded / a turn is running). */
   disabled?: boolean
   error?: string
@@ -53,6 +59,91 @@ const selectStyle: CSSProperties = {
   borderRadius: 6, background: 'var(--bg)', color: 'var(--fg)', padding: '2px 5px',
 }
 
+export const THINKING_EFFORT_LEVELS = ['minimal', 'low', 'medium', 'high'] as const
+
+interface MenuOption {
+  value: string
+  label: string
+  description?: string
+  disabled?: boolean
+}
+
+interface MenuFieldProps {
+  label: string
+  title?: string
+  value: string
+  placeholder: string
+  disabled?: boolean
+  options: MenuOption[]
+  onChange: (value: string) => void
+  icon: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image'
+}
+
+/** Codex-style field: a compact row that opens an option menu to the right on click. */
+function MenuField({
+  label,
+  title,
+  value,
+  placeholder,
+  disabled = false,
+  options,
+  onChange,
+  icon,
+}: MenuFieldProps) {
+  const rowRef = useRef<HTMLDivElement>(null)
+  const { anchor, openFrom, close } = useFloatingMenu()
+  const current = options.find((option) => option.value === value)
+
+  const handleRowToggle = () => {
+    if (disabled) return
+    if (anchor) close()
+    else openFrom(rowRef.current)
+  }
+
+  return (
+    <div>
+      <div
+        ref={rowRef}
+        role="button"
+        tabIndex={disabled ? -1 : 0}
+        aria-expanded={anchor != null}
+        data-open={anchor != null}
+        title={title}
+        className="chat-input-config-row"
+        style={{ opacity: disabled ? 0.55 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+        onClick={handleRowToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            handleRowToggle()
+          }
+        }}
+      >
+        <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--meta)' }}>{label}</span>
+        <span style={{
+          flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap', textAlign: 'right', fontSize: 12, fontWeight: 500,
+        }}>
+          {current?.label ?? placeholder}
+        </span>
+        <Icon name="chevron-right" size={11} strokeWidth={2.5} style={{ color: 'var(--meta)', opacity: 0.6, flexShrink: 0 }} />
+      </div>
+      {anchor && (
+        <FloatingMenu
+          anchor={anchor}
+          triggerRef={rowRef}
+          options={options}
+          value={value}
+          icon={icon}
+          width={260}
+          onSelect={onChange}
+          onClose={close}
+        />
+      )}
+    </div>
+  )
+}
+
 export default function CoordinatorConfigBar({
   engines,
   engine,
@@ -60,10 +151,12 @@ export default function CoordinatorConfigBar({
   model,
   fastModel,
   visionModel,
+  thinkingEffort = '',
   onEngineChange,
   onModelChange,
   onFastModelChange,
   onVisionModelChange,
+  onThinkingEffortChange,
   disabled = false,
   error = '',
   notice = '',
@@ -109,14 +202,9 @@ export default function CoordinatorConfigBar({
     fontSize: 11,
     ...(isMenu ? { marginTop: 2 } : {}),
   }
-  const menuLabel: CSSProperties = {
-    width: 64, flexShrink: 0, fontSize: 11, color: 'var(--meta)', lineHeight: 1,
-  }
-  const menuRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8 }
-
   return (
     <div style={isMenu
-      ? { display: 'flex', flexDirection: 'column', gap: 6 }
+      ? { display: 'flex', flexDirection: 'column', gap: 2 }
       : {
         display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6,
         flexWrap: 'wrap', rowGap: 6, marginBottom: 8,
@@ -127,71 +215,86 @@ export default function CoordinatorConfigBar({
       )}
       {isMenu ? (
         <>
-          <div style={menuRow}>
-            <span style={menuLabel}>{t('coord.engine')}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <EngineSelect
-                engines={engines}
-                value={engine}
-                disabled={disabled}
-                onChange={onEngineChange}
-                requireCoordinator
-                defaultOption={{
-                  value: '',
-                  label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
-                }}
-                ariaLabel={t('coord.engineAria')}
-                title={engineTitle ?? t('coord.engineTitle')}
-                style={engineStyle}
-              />
-            </div>
-          </div>
-          <div style={menuRow}>
-            <span style={menuLabel}>{t('coord.reasoning')}</span>
-            <Select
-              value={model}
-              disabled={modelDisabled}
-              onChange={(event) => onModelChange(event.target.value)}
-              title={t('coord.reasoningTitle')}
-              style={fieldStyle}
-            >
-              <option value="">{t('coord.reasoningDefault')}</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.label || m.id}</option>
-              ))}
-            </Select>
-          </div>
-          <div style={menuRow}>
-            <span style={menuLabel}>{t('coord.fast')}</span>
-            <Select
-              value={fastModel}
-              disabled={modelDisabled}
-              onChange={(event) => onFastModelChange(event.target.value)}
-              title={t('coord.fastTitle')}
-              style={fieldStyle}
-            >
-              <option value="">{t('coord.fastFollow')}</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>{m.label || m.id}</option>
-              ))}
-            </Select>
-          </div>
+          <MenuField
+            label={t('coord.engine')}
+            title={engineTitle ?? t('coord.engineTitle')}
+            value={engine}
+            placeholder={t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) })}
+            disabled={disabled}
+            icon="terminal"
+            onChange={onEngineChange}
+            options={[
+              {
+                value: '',
+                label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
+              },
+              ...engines
+                .filter((item) => item.installed || item.built_in)
+                .map((item) => ({
+                  value: item.id,
+                  label: `${engineLabel(item.id, t)}${item.mode ? ` · ${item.mode.toUpperCase()}` : ''}`,
+                  disabled: !isEngineSelectable(item, true),
+                })),
+            ]}
+          />
+          <MenuField
+            label={t('coord.reasoning')}
+            title={t('coord.reasoningTitle')}
+            value={model}
+            placeholder={t('coord.reasoningDefault')}
+            disabled={modelDisabled}
+            icon="sparkles"
+            onChange={onModelChange}
+            options={[
+              { value: '', label: t('coord.reasoningDefault') },
+              ...models.map((m) => ({ value: m.id, label: m.label || m.id, description: m.description || undefined })),
+            ]}
+          />
+          <MenuField
+            label={t('coord.fast')}
+            title={t('coord.fastTitle')}
+            value={fastModel}
+            placeholder={t('coord.fastFollow')}
+            disabled={modelDisabled}
+            icon="sparkles"
+            onChange={onFastModelChange}
+            options={[
+              { value: '', label: t('coord.fastFollow') },
+              ...models.map((m) => ({ value: m.id, label: m.label || m.id, description: m.description || undefined })),
+            ]}
+          />
           {showVision && onVisionModelChange && (
-            <div style={menuRow}>
-              <span style={menuLabel}>{t('coord.vision')}</span>
-              <Select
-                value={visionModel || ''}
-                disabled={modelDisabled}
-                onChange={(event) => onVisionModelChange(event.target.value)}
-                title={t('coord.visionTitle')}
-                style={fieldStyle}
-              >
-                <option value="">{t('coord.visionFollow')}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label || m.id}</option>
-                ))}
-              </Select>
-            </div>
+            <MenuField
+              label={t('coord.vision')}
+              title={t('coord.visionTitle')}
+              value={visionModel || ''}
+              placeholder={t('coord.visionFollow')}
+              disabled={modelDisabled}
+              icon="image"
+              onChange={onVisionModelChange}
+              options={[
+                { value: '', label: t('coord.visionFollow') },
+                ...models.map((m) => ({ value: m.id, label: m.label || m.id, description: m.description || undefined })),
+              ]}
+            />
+          )}
+          {onThinkingEffortChange && (
+            <MenuField
+              label={t('coord.thinkingEffort')}
+              title={t('coord.thinkingEffortTitle')}
+              value={thinkingEffort}
+              placeholder={t('coord.thinkingEffortDefault')}
+              disabled={disabled}
+              icon="sliders-horizontal"
+              onChange={onThinkingEffortChange}
+              options={[
+                { value: '', label: t('coord.thinkingEffortDefault') },
+                ...THINKING_EFFORT_LEVELS.map((level) => ({
+                  value: level,
+                  label: t(`coord.thinkingLevels.${level}`),
+                })),
+              ]}
+            />
           )}
         </>
       ) : (
@@ -245,6 +348,22 @@ export default function CoordinatorConfigBar({
               <option value="">{t('coord.visionFollow')}</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>{m.label || m.id}</option>
+              ))}
+            </Select>
+          )}
+          {onThinkingEffortChange && (
+            <Select
+              value={thinkingEffort}
+              disabled={disabled}
+              onChange={(event) => onThinkingEffortChange(event.target.value)}
+              title={t('coord.thinkingEffortTitle')}
+              style={fieldStyle}
+            >
+              <option value="">{t('coord.thinkingEffortDefault')}</option>
+              {THINKING_EFFORT_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {t(`coord.thinkingLevels.${level}`)}
+                </option>
               ))}
             </Select>
           )}

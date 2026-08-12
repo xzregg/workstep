@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from engines.base import BaseLLMEngine
-from engines.events import InternalEvent
+from engines.core.base import BaseLLMEngine
+from engines.core.events import InternalEvent
 from models import StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
 from services.project import ProjectManager
@@ -95,7 +95,7 @@ def _reset_fake_engine():
 
 def _project_with_run(tmp_path, *, run_status="running", task_status="running"):
     """Project with a two-node chain where node 'a' finished and 'b' is in flight."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = RecoveryFakeEngine
@@ -213,7 +213,7 @@ async def test_recovery_resumes_from_last_completed_node(tmp_path):
         assert "Do A" not in prompts
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
 
@@ -248,7 +248,7 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
             assert message.ended_at is not None
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
 
@@ -269,7 +269,7 @@ async def test_recovery_skips_paused_runs(tmp_path):
         assert RecoveryFakeEngine.prompts == []
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
 
@@ -319,7 +319,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
             assert rerun.status == "succeeded"
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
 
@@ -327,7 +327,7 @@ async def test_graceful_shutdown_leaves_run_recoverable(tmp_path):
 @pytest.mark.anyio
 async def test_e2e_three_stage_run_resumes_after_crash(tmp_path):
     """A three-stage workflow survives a simulated daemon crash."""
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from services.task import TaskService
 
     class CrashStageEngine(RecoveryFakeEngine):

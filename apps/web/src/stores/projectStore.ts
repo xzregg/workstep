@@ -17,9 +17,11 @@ interface ProjectState {
   setCanvasDirty: (d: boolean) => void
   initProject: (path: string, name?: string) => Promise<Project>
   renameProject: (path: string, name: string) => Promise<void>
+  deleteProject: (projectId: string) => Promise<Project | null>
   createWorkflow: (projectId: string, name: string, templateId?: string, steps?: any) => Promise<WorkflowDetail>
   deleteWorkflow: (id: string, projectId: string) => Promise<void>
   restoreWorkflow: (id: string, projectId: string) => Promise<void>
+  reorderWorkflows: (projectId: string, orderedIds: string[]) => Promise<void>
   renameWorkflow: (id: string, projectId: string, name: string) => Promise<WorkflowDetail>
   saveSteps: (projectId: string, steps: any) => Promise<void>
 }
@@ -69,6 +71,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set((s) => ({
         projects: s.projects.map((p: any) => p.id === projectId ? updated : p),
       }))
+    }
+  },
+
+  reorderWorkflows: async (projectId: string, orderedIds: string[]) => {
+    const { projects, activeProject } = get()
+    const target = projects.find((p) => p.id === projectId)
+    if (!target) return
+    const orderMap = new Map(orderedIds.map((id, index) => [id, index]))
+    const workflows = [...(target.workflows || [])].sort((a, b) =>
+      (orderMap.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    )
+    const updated = { ...target, workflows }
+    set((s) => ({
+      projects: s.projects.map((p) => (p.id === projectId ? updated : p)),
+    }))
+    if (activeProject?.id === projectId) set({ activeProject: updated })
+    try {
+      await workflowApi.reorder(projectId, orderedIds)
+    } catch {
+      await get().fetchProjects()
     }
   },
 
@@ -123,6 +145,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         p.path === path ? { ...p, name } : p,
       ),
     }))
+  },
+
+  deleteProject: async (projectId) => {
+    await projectApi.delete(projectId)
+    const { projects, activeProject } = get()
+    const remaining = projects.filter((project) => project.id !== projectId)
+    if (activeProject?.id !== projectId) {
+      set({ projects: remaining })
+      return activeProject
+    }
+
+    const next = remaining[0] ?? null
+    const defaultWorkflow = next?.workflows?.find((workflow) => workflow.is_default)
+      ?? next?.workflows?.[0]
+    set({
+      projects: remaining,
+      activeProject: next,
+      activeWorkflowId: defaultWorkflow?.id ?? null,
+      canvasDirty: false,
+    })
+    return next
   },
 
   createWorkflow: async (projectId, name, templateId, steps) => {

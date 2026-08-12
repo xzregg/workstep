@@ -51,6 +51,14 @@ async def list_projects():
     return {"projects": project_manager.list_projects()}
 
 
+@router.delete("/{project_id}")
+async def delete_project(project_id: str):
+    """Unregister a project without deleting its files."""
+    if project_manager.unregister(project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"deleted": True}
+
+
 @router.post("/save-steps")
 async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project_id"),
                      workflow_id: str | None = Query(None)):

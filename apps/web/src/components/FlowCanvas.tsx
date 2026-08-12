@@ -21,12 +21,20 @@ import {
   fetchTemplates,
   getCachedEngineModels,
   invalidateTemplates,
+  projectApi,
   templateApi,
+  workflowApi,
+  type EngineConfigField,
   type EngineInfo,
   type EngineModel,
+  type Project,
   type TemplateInfo,
+  type WorkflowSummary,
 } from '../api/client'
 import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
+import { DEFAULT_EXECUTION_ENGINE } from '../engineMeta'
+import { initialStageConfig, normalizeStepConfig } from '../utils/stageConfig'
+import StageConfigFields from './StageConfigFields'
 import { useI18n } from '../i18n'
 
 /* ══════════════════════════════════════════
@@ -97,12 +105,24 @@ interface SubOutput { name: string; type: string }
 interface InputField { name: string; type: string; outputs: SubOutput[] }
 interface OutputField { name: string; type: string }
 interface ReviewConfig {
+  mode: 'skip' | 'auto' | 'manual'
   auto: boolean
   maxRetries: number
   engine: string
   model: string
   prompt: string
+  config: Record<string, string>
 }
+
+const emptyReview = (): ReviewConfig => ({
+  mode: 'manual',
+  auto: false,
+  maxRetries: 1,
+  engine: '',
+  model: '',
+  prompt: '',
+  config: {},
+})
 
 interface StepNodeData {
   nodeId: number
@@ -113,6 +133,7 @@ interface StepNodeData {
   model: string
   color: string
   prompt: string
+  config: Record<string, string>
   inputs: InputField[]
   outputs: OutputField[]
   review?: ReviewConfig
@@ -179,11 +200,12 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       key: n.type || n.key,
       label: n.title || n.label || n.type,
       autoStart: Boolean(n.autoStart),
-      engine: n.engine || 'claude',
+      engine: n.engine || DEFAULT_EXECUTION_ENGINE,
       model: n.model || '',
       color: n.color || 'var(--meta)',
       prompt: n.prompt || '',
-      review: n.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
+      config: normalizeStepConfig(n.config),
+      review: { ...(n.review || emptyReview()), config: normalizeStepConfig(n.review?.config) },
       position: n.position,
       inputs: (n.inputs || []).map((inp: any) => ({
         name: inp.name || '', type: inp.type || DEFAULT_OUTPUT_TYPE,
@@ -226,11 +248,12 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       nodeId: i + 1,
       key: s.key || s.id,
       label: s.label || s.name || s.key,
-      engine: s.engine || 'claude',
+      engine: s.engine || DEFAULT_EXECUTION_ENGINE,
       model: s.model || '',
       color: s.color || 'var(--meta)',
       prompt: s.prompt || '',
-      review: s.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
+      config: normalizeStepConfig(s.config),
+      review: { ...(s.review || emptyReview()), config: normalizeStepConfig(s.review?.config) },
       inputs: (s.inputs || []).map((inp: any) => ({
         name: inp.name || inp, type: inp.type || 'document',
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE })),
@@ -509,13 +532,32 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   const currentEngineSelectable = selectableEngines.some(
     (engine) => engine.id === draft.engine
   )
-  const review = draft.review || {
-    auto: false, maxRetries: 1, engine: '', model: '', prompt: '',
-  }
-  const updateReview = (field: keyof ReviewConfig, value: string | number | boolean) => {
+  const review: ReviewConfig = draft.review || emptyReview()
+  const updateReview = (field: keyof ReviewConfig, value: string | number | boolean | Record<string, string>) => {
     updateDraft('review', { ...review, [field]: value })
   }
   const reviewEngine = review.engine || draft.engine
+
+  const engineConfigById = (engineId: string) =>
+    engines.find((engine) => engine.id === engineId)?.config ?? null
+  const stageFields = engineConfigById(draft.engine)?.stage_fields ?? []
+  const reviewFields = engineConfigById(reviewEngine)?.stage_fields ?? []
+  const updateStageConfig = (key: string, value: string) => {
+    const next = { ...(draft.config || {}) }
+    if (value === '') delete next[key]
+    else next[key] = value
+    updateDraft('config', next)
+  }
+  const updateReviewConfig = (key: string, value: string) => {
+    const next = { ...(review.config || {}) }
+    if (value === '') delete next[key]
+    else next[key] = value
+    updateReview('config', next)
+  }
+  const [confirmStageField, setConfirmStageField] = useState<EngineConfigField | null>(null)
+  const [confirmReviewField, setConfirmReviewField] = useState<EngineConfigField | null>(null)
+  const stageConfirmValues = (config: Record<string, string>, fields: EngineConfigField[]) =>
+    fields.find((field) => (field.confirm_values || []).includes(config[field.key] ?? '')) || null
 
   useEffect(() => {
     if (!draft.engine) {
@@ -587,7 +629,19 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             variant="primary"
             style={{ fontSize: 13, padding: '4px 12px' }}
             disabled={Boolean(keyError)}
-            onClick={() => onSave({ ...draft, key: normalizedKey })}
+            onClick={() => {
+              const stageConfirm = stageConfirmValues(draft.config || {}, stageFields)
+              const reviewConfirm = stageConfirmValues(review.config || {}, reviewFields)
+              if (stageConfirm) {
+                setConfirmStageField(stageConfirm)
+                return
+              }
+              if (reviewConfirm) {
+                setConfirmReviewField(reviewConfirm)
+                return
+              }
+              onSave({ ...draft, key: normalizedKey })
+            }}
           >
             {t('flow.stash')}
           </Button>
@@ -679,8 +733,12 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 engines={engines}
                 value={draft.engine}
                 onChange={(engineId) => {
-                  updateDraft('engine', engineId)
-                  setDraft((current) => ({ ...current, engine: engineId, model: '' }))
+                  setDraft((current) => ({
+                    ...current,
+                    engine: engineId,
+                    model: '',
+                    config: initialStageConfig(engineConfigById(engineId)),
+                  }))
                 }}
                 disabled={enginesLoading}
                 ariaLabel={t('flow.stageEngineAria')}
@@ -725,23 +783,49 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               </Select>
             </div>
           </div>
+          {stageFields.length > 0 && (
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+                {t('flow.stageConfig')}
+              </label>
+              <StageConfigFields
+                engineId={draft.engine}
+                fields={stageFields}
+                values={draft.config || {}}
+                onChange={(key, value) => updateStageConfig(key, value)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
       <div>
         <div style={sectionTitle}>{t('flow.stageReview')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={review.auto}
-                onChange={(e) => updateReview('auto', e.target.checked)}
-                style={{ width: 16, height: 16 }}
-              />
-              {t('flow.autoReview')}
-            </label>
-            {review.auto && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {([
+                ['skip', t('flow.reviewSkip')],
+                ['auto', t('flow.autoReview')],
+                ['manual', t('flow.manualReview')],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateReview('mode', value)}
+                  style={{
+                    padding: '3px 10px', fontSize: 12, borderRadius: 999,
+                    border: review.mode === value ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: review.mode === value ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
+                    color: review.mode === value ? 'var(--accent)' : 'var(--fg-2)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {review.mode === 'auto' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
                 <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
                 <Input
@@ -757,13 +841,18 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 />
               </div>
             )}
+            {review.mode === 'skip' && (
+              <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+                {t('flow.reviewSkipHint')}
+              </div>
+            )}
+            {review.mode === 'manual' && (
+              <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+                {t('flow.reviewPauseHint')}
+              </div>
+            )}
           </div>
-          {!review.auto && (
-            <div style={{ fontSize: 11, color: 'var(--meta)' }}>
-              {t('flow.reviewPauseHint')}
-            </div>
-          )}
-          {review.auto && (
+          {review.mode === 'auto' && (
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
@@ -776,6 +865,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                         ...review,
                         engine: engineId,
                         model: '',
+                        config: initialStageConfig(engineConfigById(engineId || draft.engine)),
                       })
                     }}
                     disabled={enginesLoading}
@@ -808,6 +898,17 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   </Select>
                 </div>
               </div>
+              {reviewFields.length > 0 && (
+                <div>
+                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewConfig')}</label>
+                  <StageConfigFields
+                    engineId={reviewEngine}
+                    fields={reviewFields}
+                    values={review.config || {}}
+                    onChange={(key, value) => updateReviewConfig(key, value)}
+                  />
+                </div>
+              )}
               <div>
                 <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
                 <MarkdownEditor
@@ -830,6 +931,32 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         onChange={(inputs) => updateDraft('inputs', inputs)}
       />
 
+      <ConfirmDialog
+        open={confirmStageField !== null}
+        title={t('flow.configConfirmTitle')}
+        message={confirmStageField
+          ? t('flow.configConfirmMessage', { label: confirmStageField.label })
+          : undefined}
+        confirmText={t('common.confirm')}
+        onConfirm={() => {
+          setConfirmStageField(null)
+          onSave({ ...draft, key: normalizedKey })
+        }}
+        onCancel={() => setConfirmStageField(null)}
+      />
+      <ConfirmDialog
+        open={confirmReviewField !== null}
+        title={t('flow.configConfirmTitle')}
+        message={confirmReviewField
+          ? t('flow.configConfirmMessage', { label: confirmReviewField.label })
+          : undefined}
+        confirmText={t('common.confirm')}
+        onConfirm={() => {
+          setConfirmReviewField(null)
+          onSave({ ...draft, key: normalizedKey })
+        }}
+        onCancel={() => setConfirmReviewField(null)}
+      />
     </div>
   )
 }
@@ -900,8 +1027,19 @@ function FlowCanvasInner({
   const [templateDesc, setTemplateDesc] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyProjects, setCopyProjects] = useState<Project[]>([])
+  const [copyProjectsLoading, setCopyProjectsLoading] = useState(false)
+  const [copyProjectsError, setCopyProjectsError] = useState('')
+  const [copyActiveProjectId, setCopyActiveProjectId] = useState<string | null>(null)
+  const [copyActiveWorkflowKey, setCopyActiveWorkflowKey] = useState<string | null>(null)
+  const [copyNodesByWf, setCopyNodesByWf] = useState<Record<string, StepNodeData[]>>({})
+  const [copyWfLoading, setCopyWfLoading] = useState<string | null>(null)
+  const [copyWfErrors, setCopyWfErrors] = useState<Record<string, string>>({})
+  const [copySelected, setCopySelected] = useState<{ data: StepNodeData; srcKey: string } | null>(null)
+  const copyStepsCache = useRef<Record<string, StepNodeData[]>>({})
   const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
-  const [defaultExecutionEngine, setDefaultExecutionEngine] = useState('claude')
+  const [defaultExecutionEngine, setDefaultExecutionEngine] = useState(DEFAULT_EXECUTION_ENGINE)
   const [enginesLoading, setEnginesLoading] = useState(true)
   const [enginesError, setEnginesError] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
@@ -929,8 +1067,8 @@ function FlowCanvasInner({
 
   useEffect(() => {
     engineApi.executionConfig()
-      .then((config) => setDefaultExecutionEngine(config.resolved_engine || 'claude'))
-      .catch(() => setDefaultExecutionEngine('claude'))
+      .then((config) => setDefaultExecutionEngine(config.resolved_engine || DEFAULT_EXECUTION_ENGINE))
+      .catch(() => setDefaultExecutionEngine(DEFAULT_EXECUTION_ENGINE))
   }, [])
 
   useEffect(() => {
@@ -1007,9 +1145,109 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
+  }
+
+  const loadCopyWorkflow = async (srcProjectId: string, workflowId: string) => {
+    const cacheKey = `${srcProjectId}/${workflowId}`
+    if (copyStepsCache.current[cacheKey]) {
+      setCopyNodesByWf((prev) => ({ ...prev, [cacheKey]: copyStepsCache.current[cacheKey] }))
+      setCopyWfErrors((prev) => { const next = { ...prev }; delete next[cacheKey]; return next })
+      return
+    }
+    setCopyWfLoading(cacheKey)
+    setCopyWfErrors((prev) => { const next = { ...prev }; delete next[cacheKey]; return next })
+    try {
+      const wf = await workflowApi.get(workflowId, srcProjectId)
+      const list = loadCanvasData(wf.steps).nodes
+      copyStepsCache.current[cacheKey] = list
+      setCopyNodesByWf((prev) => ({ ...prev, [cacheKey]: list }))
+    } catch (error) {
+      setCopyWfErrors((prev) => ({
+        ...prev,
+        [cacheKey]: t('flow.copyNodeFailed', { error: error instanceof Error ? error.message : t('flow.networkError') }),
+      }))
+    } finally {
+      setCopyWfLoading((prev) => (prev === cacheKey ? null : prev))
+    }
+  }
+
+  const openCopyModal = async () => {
+    setCopyOpen(true)
+    setCopySelected(null)
+    setCopyProjectsLoading(true)
+    setCopyProjectsError('')
+    try {
+      const { projects } = await projectApi.list()
+      setCopyProjects(projects)
+      const first = projects[0]
+      if (first) {
+        setCopyActiveProjectId(first.id)
+        const firstWf = (first.workflows || []).find((w) => !w.deleted)
+        if (firstWf) {
+          const firstKey = `${first.id}/${firstWf.id}`
+          setCopyActiveWorkflowKey(firstKey)
+          void loadCopyWorkflow(first.id, firstWf.id)
+        } else {
+          setCopyActiveWorkflowKey(null)
+        }
+      } else {
+        setCopyActiveProjectId(null)
+        setCopyActiveWorkflowKey(null)
+      }
+    } catch (error) {
+      setCopyProjects([])
+      setCopyProjectsError(t('flow.copyNodeFailed', { error: error instanceof Error ? error.message : t('flow.networkError') }))
+    } finally {
+      setCopyProjectsLoading(false)
+    }
+  }
+
+  const selectCopyProject = (proj: Project) => {
+    setCopyActiveProjectId(proj.id)
+    setCopySelected(null)
+    const firstWf = (proj.workflows || []).find((w) => !w.deleted)
+    if (firstWf) {
+      const key = `${proj.id}/${firstWf.id}`
+      setCopyActiveWorkflowKey(key)
+      void loadCopyWorkflow(proj.id, firstWf.id)
+    } else {
+      setCopyActiveWorkflowKey(null)
+    }
+  }
+
+  const selectCopyWorkflow = (proj: Project, wf: WorkflowSummary) => {
+    const key = `${proj.id}/${wf.id}`
+    setCopyActiveWorkflowKey(key)
+    setCopySelected(null)
+    if (!copyStepsCache.current[key]) void loadCopyWorkflow(proj.id, wf.id)
+  }
+
+  const handleCopyNode = (source: StepNodeData) => {
+    const id = Date.now()
+    const maxId = Math.max(0, ...nodes.map((n) => (n.data as StepNodeData).nodeId))
+    const nodeId = maxId + 1
+    const newNode: Node = {
+      id: String(nodeId), type: 'step',
+      position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
+      data: {
+        ...source,
+        nodeId,
+        key: `step_${id}`,
+        inputs: JSON.parse(JSON.stringify(source.inputs || [])),
+        outputs: JSON.parse(JSON.stringify(source.outputs || [])),
+        review: source.review ? JSON.parse(JSON.stringify(source.review)) : { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
+      } as StepNodeData,
+    }
+    setNodes((nds) => [...nds, newNode])
+    setDirty(true)
+    setCopyOpen(false)
+    setCopySelected(null)
+    setSaveMsg(t('flow.copyNodeDone'))
+    setSaveMsgKind('success')
+    setTimeout(() => setSaveMsg(''), 5000)
   }
 
   const handleAutoLayout = useCallback(() => {
@@ -1057,7 +1295,8 @@ function FlowCanvasInner({
         autoStart: Boolean(d.autoStart),
         position: n.position, engine: d.engine, model: d.model,
         prompt: d.prompt,
-        review: d.review || { auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
+        config: d.config || {},
+        review: d.review || emptyReview(),
         inputs: d.inputs, outputs: d.outputs,
       }
     })
@@ -1307,7 +1546,14 @@ function FlowCanvasInner({
           )}
         </DropdownMenu>
         <Button variant="ghost" onClick={handleAutoLayout}>{t('flow.layout')}</Button>
-        <Button variant="ghost" onClick={handleAddNode}>{t('flow.addStage')}</Button>
+        <DropdownMenu label={`${t('flow.addStage')} ▾`}>
+          {(close) => (
+            <>
+              <MenuItem onClick={() => { close(); handleAddNode() }}>{t('flow.addStage')}</MenuItem>
+              <MenuItem onClick={() => { close(); void openCopyModal() }}>{t('flow.copyNodeFromWorkflow')}</MenuItem>
+            </>
+          )}
+        </DropdownMenu>
         <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel ?? t('common.save')}</Button>
       </div>
 
@@ -1381,7 +1627,7 @@ function FlowCanvasInner({
               <span className="modal-title">{t('flow.templates')}</span>
               <Button variant="icon" onClick={() => setShowTemplateModal(false)}>✕</Button>
             </div>
-            <div className="modal-body" style={{ padding: '8px 16px 16px', overflowY: 'auto' }}>
+            <div className="modal-body" style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               <Input
                 value={templateSearch}
                 onChange={(e) => setTemplateSearch(e.target.value)}
@@ -1445,6 +1691,137 @@ function FlowCanvasInner({
             <div className="modal-footer">
               <Button variant="primary" onClick={() => setShowTemplateSave(true)}>{t('flow.saveAsTemplate')}</Button>
               <Button variant="ghost" onClick={() => setShowTemplateModal(false)}>{t('common.cancel')}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Copy node from existing workflow — 3-lane swimlane picker: project → workflow → stage */}
+      {copyOpen && (
+        <div className="modal-overlay" onClick={() => setCopyOpen(false)} style={{ zIndex: 400 }}>
+          <div className="modal" style={{ width: 780, height: 'min(66vh, 620px)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{t('flow.copyNodeTitle')}</span>
+              <Button variant="icon" onClick={() => setCopyOpen(false)}>✕</Button>
+            </div>
+            <div className="modal-body" style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+              {copyProjectsLoading ? (
+                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
+                </div>
+              ) : copyProjectsError ? (
+                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--danger)' }}>{copyProjectsError}</div>
+              ) : copyProjects.length === 0 ? (
+                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--meta)', marginBottom: 6 }}>{t('flow.copyNodeSelectHint')}</div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
+                    {/* Lane 1: projects */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
+                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnProjects')}</div>
+                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                        {copyProjects.map((proj) => {
+                          const active = copyActiveProjectId === proj.id
+                          const wfs = (proj.workflows || []).filter((w) => !w.deleted)
+                          return (
+                            <button
+                              key={proj.id}
+                              onClick={() => selectCopyProject(proj)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                            >
+                              <span style={{ flexShrink: 0 }}>📁</span>
+                              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
+                              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.workflowCount', { count: wfs.length })}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {/* Lane 2: workflows */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
+                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnWorkflows')}</div>
+                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                        {(() => {
+                          const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
+                          if (!proj) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
+                          const wfs = (proj.workflows || []).filter((w) => !w.deleted)
+                          if (wfs.length === 0) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+                          return wfs.map((wf) => {
+                            const key = `${proj.id}/${wf.id}`
+                            const active = copyActiveWorkflowKey === key
+                            return (
+                              <button
+                                key={wf.id}
+                                onClick={() => selectCopyWorkflow(proj, wf)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                              >
+                                <span style={{ flexShrink: 0 }}>📂</span>
+                                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.name}{wf.is_default ? ` ${t('canvas.defaultSuffix')}` : ''}</span>
+                                <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                              </button>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </div>
+                    {/* Lane 3: stages */}
+                    <div style={{ flex: 1.2, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
+                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnStages')}</div>
+                      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                        {(() => {
+                          const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
+                          if (!proj) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
+                          const activeWfKey = copyActiveWorkflowKey
+                          const activeWf = (proj.workflows || []).find((w) => !w.deleted && `${proj.id}/${w.id}` === activeWfKey)
+                          if (!activeWf || !activeWfKey) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickWorkflowHint')}</div>
+                          const loading = copyWfLoading === activeWfKey
+                          const err = copyWfErrors[activeWfKey]
+                          const nodesList = copyNodesByWf[activeWfKey]
+                          if (loading) return (
+                            <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
+                            </div>
+                          )
+                          if (err) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--danger)' }}>{err}</div>
+                          if (!nodesList || nodesList.length === 0) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+                          return nodesList.map((node) => {
+                            const srcKey = `${proj.id}/${activeWf.id}/${node.nodeId}`
+                            const selected = copySelected && copySelected.srcKey === srcKey
+                            const ports = node.inputs.reduce((sum, inp) => sum + (inp.outputs?.length || 0), 0)
+                            return (
+                              <button
+                                key={`${node.nodeId}`}
+                                onClick={() => setCopySelected({ data: node, srcKey })}
+                                onDoubleClick={() => handleCopyNode(node)}
+                                style={{
+                                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                                  padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)',
+                                  background: selected ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent',
+                                  color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13,
+                                }}
+                              >
+                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: node.color, flexShrink: 0 }} />
+                                <span style={{ flex: 1, minWidth: 0 }}>
+                                  <span style={{ fontWeight: 500 }}>{node.label}</span>
+                                  <span style={{ display: 'block', fontSize: 12, color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {node.key}{node.engine ? ` · ${node.engine}${node.model ? ` / ${node.model}` : ''}` : ''}
+                                  </span>
+                                </span>
+                                <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.portCount', { in: node.inputs.length, out: ports })}</span>
+                              </button>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <Button variant="ghost" onClick={() => setCopyOpen(false)}>{t('common.cancel')}</Button>
+              <Button variant="primary" disabled={!copySelected} onClick={() => copySelected && handleCopyNode(copySelected.data)}>{t('flow.copyNodeConfirm')}</Button>
             </div>
           </div>
         </div>

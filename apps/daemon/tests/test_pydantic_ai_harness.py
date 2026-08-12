@@ -1,10 +1,11 @@
-"""Tests for pydantic_ai_harness and PydanticAIEngine's agents.md / skills / code tools."""
+"""Tests for the engines.pydantic_ai package and PydanticAIEngine's agents.md / skills / code tools."""
 
 from pathlib import Path
+import asyncio
 
 import pytest
 
-from pydantic_ai_harness import FileSystem, Memory, Skills
+from engines.pydantic_ai import FileSystem, Memory, Skills
 from engines.pydantic_ai import PydanticAIEngine
 
 
@@ -143,21 +144,63 @@ def test_skills_discovers_and_loads(tmp_path):
     assert "---" not in loaded.splitlines()[0]  # frontmatter stripped
 
 
-def test_skills_project_root_discovers_project_dirs_and_wins(tmp_path):
+def test_skills_default_scope_is_project_only(tmp_path):
     home_dir = tmp_path / "home"
     _write_skill(home_dir, "review", "Home review skill", "Home instructions.")
     project = tmp_path / "project"
     _write_skill(project / ".claude" / "skills", "review", "Project review skill", "Project instructions.")
 
-    skills = Skills([home_dir], project_root=project)
+    # 默认只加载项目目录技能，home 技能不被扫描
+    skills = Skills(project_root=project)
 
-    assert skills.names() == ["review"]
-    skill = skills.get("review")
-    assert skill is not None
-    # Project-scoped skills override personal skills with the same name
-    assert skill.description == "Project review skill"
-    loaded = skills.load("review")
-    assert "Project instructions." in loaded
+    names = skills.names()
+    assert names == ["review"]
+    assert skills.get("review").description == "Project review skill"
+    assert "Project instructions." in skills.load("review")
+    assert skills.get("home-review") is None
+
+
+def test_skills_project_root_only_scans_project_dirs(tmp_path):
+    project = tmp_path / "project"
+    _write_skill(project / ".codex" / "skills", "codex-skill", "Codex skill", "Codex body.")
+    _write_skill(tmp_path / "home", "personal", "Personal skill", "Personal body.")
+
+    skills = Skills(project_root=project)
+
+    assert skills.names() == ["codex-skill"]
+    assert skills.get("personal") is None
+
+
+def test_skills_project_scans_workstep_skills_dir(tmp_path):
+    project = tmp_path / "project"
+    _write_skill(
+        project / ".workstep" / "skills",
+        "workstep-skill",
+        "WorkStep skill",
+        "WorkStep body.",
+    )
+    _write_skill(
+        project / ".claude" / "skills",
+        "claude-skill",
+        "Claude skill",
+        "Claude body.",
+    )
+
+    skills = Skills(project_root=project)
+
+    assert skills.names() == ["claude-skill", "workstep-skill"]
+    assert skills.get("workstep-skill").description == "WorkStep skill"
+
+
+def test_skills_explicit_directories_override_project_scope(tmp_path):
+    project = tmp_path / "project"
+    _write_skill(project / ".claude" / "skills", "proj", "Project skill", "Project body.")
+    custom = tmp_path / "custom"
+    _write_skill(custom, "custom-skill", "Custom skill", "Custom body.")
+
+    skills = Skills([custom], project_root=project)
+
+    assert skills.names() == ["custom-skill"]
 
 
 def test_skills_missing_name_raises(tmp_path):
@@ -231,7 +274,7 @@ class _FakeRunResult:
 async def test_pydantic_ai_run_agent_injects_live_messages(monkeypatch):
     import asyncio
 
-    from engines.events import InternalEvent
+    from engines.core.events import InternalEvent
 
     engine = PydanticAIEngine()
     calls: list[dict] = []
@@ -253,9 +296,11 @@ async def test_pydantic_ai_run_agent_injects_live_messages(monkeypatch):
     queue.put_nowait(("mid-1", "第一条"))
     queue.put_nowait(("mid-2", "第二条"))
     model = engine.build_model(
-        provider="openai",
-        base_url="http://localhost:1/v1",
-        api_key="test",
+        provider={
+            "type": "openai",
+            "base_url": "http://localhost:1/v1",
+            "api_key": "test",
+        },
         model_name="gpt-4o-mini",
     )
 
@@ -287,3 +332,103 @@ async def test_pydantic_ai_run_agent_injects_live_messages(monkeypatch):
 
 def test_pydantic_ai_advertises_live_stage_message_support():
     assert PydanticAIEngine().supports_live_stage_message is True
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_update_plan_tool_emits_unified_snapshot():
+    engine = PydanticAIEngine()
+    events = []
+
+    result = await engine._update_plan(
+        events.append,
+        entries=[
+            {"content": "实现功能", "status": "in_progress"},
+            {"content": "运行测试", "priority": "high", "status": "pending"},
+        ],
+        explanation="同步执行进度",
+    )
+
+    assert result == "计划已更新：2 项"
+    assert [event.type for event in events] == ["plan"]
+    assert events[0].data["entries"] == [
+        {"content": "实现功能", "priority": "medium", "status": "in_progress"},
+        {"content": "运行测试", "priority": "high", "status": "pending"},
+    ]
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_ask_user_tool_pauses_until_form_response():
+    engine = PydanticAIEngine()
+    events = []
+
+    waiting = asyncio.create_task(engine._ask_user(
+        events.append,
+        question="选择实现范围",
+        options=["后端", "前端"],
+        multiple=True,
+        allow_input=True,
+    ))
+    await asyncio.sleep(0)
+
+    assert len(events) == 1
+    request = events[0]
+    assert request.type == "interaction_request"
+    assert request.data["method"] == "elicitation/create"
+    field = request.data["requested_schema"]["properties"]["answer"]
+    assert field["type"] == "array"
+    assert field["items"]["oneOf"] == [
+        {"const": "后端", "title": "后端"},
+        {"const": "前端", "title": "前端"},
+    ]
+
+    response = {"action": "accept", "content": {"answer": ["后端"]}}
+    assert await engine.respond_interaction(request.data, response) is True
+    assert await waiting == {"answer": ["后端"]}
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_mutating_tool_requests_acp_permission():
+    engine = PydanticAIEngine()
+    events = []
+    waiting = asyncio.create_task(engine._request_permission(
+        events.append,
+        tool_name="write_file",
+        title="写入 src/app.py",
+        kind="edit",
+        tool_input={"path": "src/app.py"},
+    ))
+    await asyncio.sleep(0)
+
+    request = events[0]
+    assert request.type == "interaction_request"
+    assert request.data["method"] == "session/request_permission"
+    assert [option["kind"] for option in request.data["options"]] == [
+        "allow_once", "allow_always", "reject_once", "reject_for_session",
+    ]
+    selected = request.data["options"][1]["option_id"]
+    assert await engine.respond_interaction(request.data, {
+        "outcome": {"outcome": "selected", "option_id": selected},
+    }) is True
+    assert await waiting is True
+
+    # allow_always is remembered for the rest of this engine run.
+    assert await engine._request_permission(
+        events.append,
+        tool_name="write_file",
+        title="写入 src/next.py",
+        kind="edit",
+        tool_input={"path": "src/next.py"},
+    ) is True
+    assert len(events) == 1
+
+    # reject_for_session 被记住：本次运行内相同工具直接拒绝，不再弹窗。
+    engine._interaction_permission_grants.clear()
+    engine._interaction_permission_rejects.add("write_file")
+    assert await engine._request_permission(
+        events.append,
+        tool_name="write_file",
+        title="写入 src/next.py",
+        kind="edit",
+        tool_input={"path": "src/next.py"},
+    ) is False
+    assert len(events) == 1

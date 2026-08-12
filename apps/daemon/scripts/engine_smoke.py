@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engines.registry import create_engine, refresh_registry
+from engines.core.registry import create_engine, refresh_registry
 
 
 async def run(

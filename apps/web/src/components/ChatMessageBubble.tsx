@@ -1,10 +1,22 @@
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
-import MarkdownMessage from './MarkdownMessage'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
+import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
-import { hasA2uiBlocks, stripA2uiBlocks } from '../utils/a2ui'
+import {
+  hasA2uiBlocks,
+  isHiddenA2uiActionMessage,
+  stripAssistantPayloadsForDisplay,
+} from '../utils/a2ui'
 import Icon from './Icon'
+import InteractionPrompt from './InteractionPrompt'
+import PlanChecklist from './PlanChecklist'
+import {
+  pendingInteractionItems,
+  type InteractionEvent,
+} from '../utils/interaction'
 import { useI18n } from '../i18n'
+import { latestPlanFromEvents } from '../utils/plan'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -46,6 +58,15 @@ export interface ChatMessageBubbleProps {
   loading?: ReactNode
   /** User messages: edit action (loads the content back into the composer). */
   onEdit?: (content: string) => void
+  /** Receives user-initiated A2UI actions rendered inside the bubble. */
+  onA2uiAction?: (action: A2uiClientAction) => void
+  /** Engine interaction requests persisted in this message's event stream. */
+  events?: InteractionEvent[]
+  /** Submit an ACP permission or elicitation response. */
+  onInteractionRespond?: (
+    interactionId: string,
+    response: Record<string, unknown>,
+  ) => Promise<void>
   /** Bubble background: 'surface' (default) or 'bg' (+ border). */
   variant?: 'surface' | 'bg'
   /** Extra props for the root element (ref / data attributes). */
@@ -68,11 +89,20 @@ export default function ChatMessageBubble({
   showLoading = false,
   loading,
   onEdit,
+  onA2uiAction,
+  events = [],
+  onInteractionRespond,
   variant = 'surface',
   rootProps,
 }: ChatMessageBubbleProps) {
   const { t } = useI18n()
   const isUser = role === 'user'
+  const interactions = pendingInteractionItems(events)
+  const plan = latestPlanFromEvents(events)
+  const hasToolActivity = !isUser && events.some((event) => (
+    event.type === 'tool_use' || event.type === 'tool_result'
+  ))
+  if (isUser && isHiddenA2uiActionMessage(content)) return null
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
@@ -136,7 +166,7 @@ export default function ChatMessageBubble({
               {header}
             </div>
           )}
-          {content ? (
+          {(content || hasToolActivity) ? (
             <div style={{
               fontSize: 13, lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
@@ -152,19 +182,24 @@ export default function ChatMessageBubble({
                 <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{content}</div>
               ) : (
                 <>
-                  <MarkdownMessage
-                    content={stripA2uiBlocks(content)}
+                  <MessageTimeline
+                    content={stripAssistantPayloadsForDisplay(content)}
+                    events={events}
                     streaming={streaming}
                     projectId={projectId}
                   />
                   {hasA2uiBlocks(content) && (
-                    <A2uiMessage content={content} projectId={projectId} />
+                    <A2uiMessage
+                      content={content}
+                      projectId={projectId}
+                      onAction={onA2uiAction}
+                    />
                   )}
                 </>
               )}
             </div>
           ) : (
-            !isUser && showLoading && streaming && (
+            !isUser && showLoading && streaming && interactions.length === 0 && !plan && (
               loading ?? (
                 <div className="engine-loading-message" role="status" aria-live="polite">
                   <span>{t('bubble.thinking')}</span>
@@ -204,6 +239,15 @@ export default function ChatMessageBubble({
           {!isUser && error && (
             <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 4 }}>{error}</div>
           )}
+          {!isUser && plan && <PlanChecklist plan={plan} />}
+          {!isUser && onInteractionRespond && interactions.map((item) => (
+            <InteractionPrompt
+              key={item.request.interaction_id}
+              request={item.request}
+              response={item.response}
+              onRespond={onInteractionRespond}
+            />
+          ))}
           {footer}
           {children}
         </div>

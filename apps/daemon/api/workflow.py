@@ -3,7 +3,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from schemas.project import CreateWorkflowRequest, UpdateWorkflowRequest
 from services.project import project_manager
@@ -59,6 +59,17 @@ async def list_workflows(pid: str = Query(..., alias="project_id")):
                 for w in proj.workflows
             ]
         }
+
+
+@router.post("/reorder")
+async def reorder_workflows(
+    pid: str = Query(..., alias="project_id"),
+    ordered_ids: list[str] = Body(..., embed=True),
+):
+    """Persist a new display order for the project's workflows."""
+    with project_manager.activate_project_by_id(pid) as proj:
+        project_manager.reorder_workflows(proj, ordered_ids)
+        return {"ok": True}
 
 
 @router.post("/create")

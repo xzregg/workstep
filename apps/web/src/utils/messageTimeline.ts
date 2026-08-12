@@ -1,0 +1,168 @@
+export type MessageTimelineEvent = {
+  type?: string
+  data?: Record<string, unknown>
+}
+
+export type ToolActivity = {
+  id: string
+  name: string
+  input?: unknown
+  result?: unknown
+  hasResult: boolean
+  isError: boolean
+}
+
+export type SubagentActivity = {
+  taskId: string
+  description: string
+  status: string
+  summary?: string
+}
+
+export type MessageTimelineItem =
+  | { type: 'text'; id: string; content: string }
+  | { type: 'thinking'; id: string; content: string }
+  | { type: 'tool'; id: string; activity: ToolActivity }
+  | { type: 'tool-group'; id: string; activities: ToolActivity[] }
+  | { type: 'subagent'; id: string; activity: SubagentActivity }
+
+function eventText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value === undefined || value === null) return ''
+  return String(value)
+}
+
+export function characterCount(content: string): number {
+  return Array.from(content).length
+}
+
+export function buildMessageTimeline(
+  events: MessageTimelineEvent[],
+): MessageTimelineItem[] {
+  const timeline: MessageTimelineItem[] = []
+  const toolsById = new Map<string, ToolActivity>()
+  const subagentsById = new Map<string, SubagentActivity>()
+  const appendTool = (activity: ToolActivity) => {
+    const previous = timeline[timeline.length - 1]
+    if (previous?.type === 'tool-group') {
+      previous.activities.push(activity)
+    } else if (previous?.type === 'tool') {
+      timeline[timeline.length - 1] = {
+        type: 'tool-group',
+        id: `tool-group-${previous.activity.id}`,
+        activities: [previous.activity, activity],
+      }
+    } else {
+      timeline.push({ type: 'tool', id: `tool-${activity.id}`, activity })
+    }
+  }
+
+  events.forEach((event, index) => {
+    const data = event.data || {}
+    if (event.type === 'thinking_delta') {
+      const delta = eventText(data.delta ?? data.text)
+      if (!delta) return
+      const previous = timeline[timeline.length - 1]
+      if (previous?.type === 'thinking') {
+        previous.content += delta
+      } else {
+        timeline.push({ type: 'thinking', id: `thinking-${index}`, content: delta })
+      }
+      return
+    }
+
+    if (event.type === 'text_delta') {
+      const delta = eventText(data.delta ?? data.text)
+      if (!delta) return
+      const previous = timeline[timeline.length - 1]
+      if (previous?.type === 'text') {
+        previous.content += delta
+      } else {
+        timeline.push({ type: 'text', id: `text-${index}`, content: delta })
+      }
+      return
+    }
+
+    if (event.type === 'tool_use') {
+      const id = String(data.id || data.tool_use_id || `tool-${index}`)
+      const existing = toolsById.get(id)
+      if (existing) {
+        existing.name = String(data.name || existing.name)
+        existing.input = data.input ?? existing.input
+        return
+      }
+      const activity: ToolActivity = {
+        id,
+        name: String(data.name || 'tool'),
+        input: data.input,
+        hasResult: false,
+        isError: false,
+      }
+      toolsById.set(id, activity)
+      appendTool(activity)
+      return
+    }
+
+    if (event.type === 'tool_input_delta') {
+      const id = String(data.tool_use_id || data.id || '')
+      const activity = toolsById.get(id)
+      if (!activity) return
+      const delta = eventText(data.delta ?? data.input)
+      if (!delta) return
+      activity.input = typeof activity.input === 'string'
+        ? activity.input + delta
+        : delta
+      return
+    }
+
+    if (event.type === 'tool_result') {
+      const id = String(data.tool_use_id || data.id || `result-${index}`)
+      let activity = toolsById.get(id)
+      if (!activity) {
+        activity = {
+          id,
+          name: String(data.name || 'tool'),
+          hasResult: true,
+          isError: Boolean(data.is_error),
+        }
+        toolsById.set(id, activity)
+        appendTool(activity)
+      }
+      activity.result = data.content ?? data.result
+      activity.hasResult = true
+      activity.isError = Boolean(data.is_error)
+    }
+
+    if (event.type === 'subagent') {
+      const taskId = String(data.task_id || data.id || `subagent-${index}`)
+      const existing = subagentsById.get(taskId)
+      const status = String(data.status || 'running')
+      const description = eventText(data.description ?? data.subject ?? taskId)
+      if (existing) {
+        existing.status = status
+        if (description && description !== taskId) existing.description = description
+        const summary = eventText(data.summary ?? '')
+        if (summary) existing.summary = summary
+        return
+      }
+      const activity: SubagentActivity = {
+        taskId,
+        description,
+        status,
+        ...(eventText(data.summary ?? '') ? { summary: eventText(data.summary) } : {}),
+      }
+      subagentsById.set(taskId, activity)
+      timeline.push({ type: 'subagent', id: `subagent-${taskId}`, activity })
+      return
+    }
+  })
+
+  return timeline
+}
+
+export function timelineText(timeline: MessageTimelineItem[]): string {
+  return timeline
+    .filter((item): item is Extract<MessageTimelineItem, { type: 'text' }> => item.type === 'text')
+    .map((item) => item.content)
+    .join('')
+}

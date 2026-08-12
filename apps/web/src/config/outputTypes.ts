@@ -13,6 +13,7 @@ export const OUTPUT_TYPES = [
   "xlsx",
   "csv",
   "pdf",
+  "directory",
 ] as const
 
 export type OutputType = (typeof OUTPUT_TYPES)[number]

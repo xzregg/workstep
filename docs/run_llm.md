@@ -81,6 +81,7 @@ claude -p \
 | `stream_event` → `content_block_delta` (thinking) | `thinking_delta` |
 | `stream_event` → `content_block_delta` (input_json) | `tool_use` / `tool_input_delta` |
 | `assistant` (完整消息) | 遍历 content 块 |
+| `TodoWrite` / `TaskCreate` / `TaskUpdate` / `TaskList` | Base 聚合为 `plan` 快照 |
 | `result` | `usage` |
 | `user` (含 tool_result) | `tool_result` |
 
@@ -133,6 +134,7 @@ codex exec --json --skip-git-repo-check \
 |---|---|
 | `thread.started` | `status: initializing` |
 | `turn.started` | `status: running` |
+| `turn.plan.updated` / SDK `turn/plan/updated` | `plan` |
 | `item.started` (command_execution) | `tool_use` (name: "Bash") |
 | `item.completed` (command_execution) | `tool_result` |
 | `item.completed` (agent_message) | `text_delta` |
@@ -232,7 +234,7 @@ Daemon → Hermes:
                                    optionId: "approve_for_session" } } }
 ```
 
-Daemon 自动选择 `approve_for_session`，无需人工干预。
+Daemon 将完整 `options` 转换为统一 `interaction_request` 并暂停当前执行；用户选择后，按原 `optionId` 返回 ACP `selected` 结果，拒绝或取消不会被转换成允许。
 
 ### 历史上下文
 
@@ -244,6 +246,7 @@ Daemon 自动选择 `approve_for_session`，无需人工干预。
 |---|---|
 | `agent_thought_chunk` | `thinking_start` + `thinking_delta` |
 | `agent_message_chunk` | `text_delta`（增量去重） |
+| `plan` | `plan`（ACP stable 完整快照） |
 | `tool_call` / `tool_call_update` | 标记 `emittedToolCall` |
 | prompt 完成 `result.usage` | `usage` |
 
@@ -262,28 +265,20 @@ prompt 完成后 `stdin.end()`，给 500ms 宽限期，不退出则 SIGTERM。
 | stdout 协议 | JSONL (Anthropic events) | JSONL (thread/turn events) | JSON-RPC (session/update) |
 | 会话恢复 | `--resume` / `--session-id` | 无 | 无 |
 | 历史传递 | 首轮 transcript，后续靠自身记忆 | 每轮全量 transcript | 每轮全量 transcript |
-| 交互能力 | 中途注入 tool_result | 无 | 响应权限请求 |
+| 交互能力 | AskUserQuestion / 权限确认 | 无 | ACP 权限确认与表单询问 |
 | 工具模型 | 完整工具集 | 仅 shell (Bash) | ACP tool_call |
 | 流解析器 | `claude-stream.ts` | `json-event-stream.ts` | `acp.ts` |
 | streamFormat | `claude-stream-json` | `json-event-stream` | `acp-json-rpc` |
 
-## BYOK SSRF 防护
+## 供应商（Provider）SSRF 防护
 
-自定义 base URL 经过两层检查（`packages/contracts/src/api/connectionTest.ts`）：
+WorkStep 的供应商设置允许自定义 `base_url`（DeepSeek / Kimi / OpenAI / Anthropic / Ollama / 自定义）。保存时经 `validate_api_base_url`（`engines/core/schema.py`）校验：
 
-1. **字面检查**：hostname 直接匹配黑名单网段
-2. **DNS 解析检查**：解析后逐个 IP 检查（`connectionTest.ts:111`）
+- 远程地址必须使用 HTTPS；
+- 仅允许 HTTPS 或本机回环地址（`127.x.x.x` / `localhost` / `::1`）使用 HTTP，供 Ollama 等本地模型运行器使用；
+- 校验失败时拒绝保存并给出明确错误。
 
-黑名单（`isBlockedIpv4`）：
-- `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`（RFC1918 私有）
-- `169.254.x.x`（链路本地）
-- `100.64-127.x.x`（CGNAT）
-- `0.x.x.x`（本网络）
-- `224+`（组播）
-- IPv6: `fc00::/7`（ULA）, `fe80::/10`（链路本地）
-
-**唯一放行**：loopback（`127.x.x.x`, `localhost`, `::1`），供 Ollama 等本地 LLM 使用。
-
+供应商的 API Key 存于 `~/.workstep/config.json`（文件权限 `0600`），列表与配置接口返回时一律掩码，读取需经显式 reveal 接口。
 ---
 
 ## 提示词和返回结果的记录

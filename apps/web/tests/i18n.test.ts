@@ -69,3 +69,15 @@ test('falls back to zh-CN then the raw key for missing entries', () => {
 test('keeps unknown placeholders as-is when params are missing', () => {
   assert.equal(zhCNT('taskDetail.sendAll'), '全部发送（{count}）')
 })
+
+test('uses duration wording for completed and stopped LLM messages', () => {
+  assert.equal(zhCNT('trace.processed'), '耗时')
+  assert.equal(zhCNT('trace.stoppedAfter', { duration: '3秒' }), '已停止，耗时 3秒')
+})
+
+test('builds the AI workflow draft from the flow name', () => {
+  assert.equal(
+    zhCNT('layout.aiCreatePrompt', { name: '发布流程' }),
+    '帮我创建一个“发布流程”的工作流',
+  )
+})

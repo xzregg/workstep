@@ -7,11 +7,22 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
+import time
+import uuid
 from typing import Any, AsyncIterator, Mapping
 
-from engines.base import BaseLLMEngine, EngineModel
-from engines.events import InternalEvent, compacted_event
-from engines.schema import EngineConfigField, EngineConfigOption, EngineImage
+from engines.core.base import (
+    BaseLLMEngine,
+    EngineInstallResult,
+    EngineModel,
+    install_python_package,
+    sdk_turn_watchdog,
+)
+from engines.core.plans import subagent_event_from_message
+from engines.core.events import InternalEvent, compacted_event
+from engines.core.interactions import elicitation_request
+from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services.config import QODER_PERMISSION_MODES, config_store
 
 logger = logging.getLogger(__name__)
@@ -42,11 +53,10 @@ class QoderSDKEngine(BaseLLMEngine):
 
     ENGINE_ID = "qoder_sdk"
 
-    _live_message_wait_seconds: float = 1.5
-
     def __init__(self):
         self._running = False
-        self._query_task: asyncio.Task | None = None
+        self._receive_task: asyncio.Task | None = None
+        self._client = None
 
     # --- Engine discovery ---
 
@@ -64,11 +74,36 @@ class QoderSDKEngine(BaseLLMEngine):
             return False
         return QoderSDKEngine.resolve_binary() is not None
 
-    @staticmethod
-    def is_configured() -> bool:
-        # Auth may come from stored PAT, env, or the local qodercli login;
-        # the SDK raises a clear auth error when none is available.
-        return True
+    _STATUS_TTL = 300.0
+    _status_cache: tuple[float, bool] | None = None
+
+    @classmethod
+    def is_configured(cls) -> bool:
+        config = config_store.get_qoder_sdk_config()
+        if str(config.get("personal_access_token") or "").strip():
+            return True
+        if str(os.environ.get("QODER_PERSONAL_ACCESS_TOKEN") or "").strip():
+            return True
+        binary = cls.resolve_binary()
+        if not binary:
+            return False
+        now = time.monotonic()
+        if cls._status_cache is not None and now - cls._status_cache[0] < cls._STATUS_TTL:
+            return cls._status_cache[1]
+        try:
+            result = subprocess.run(
+                [binary, "status"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            ok = result.returncode == 0 and "not logged in" not in (
+                f"{getattr(result, 'stdout', '')}\n{getattr(result, 'stderr', '')}"
+            ).lower()
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        cls._status_cache = (now, ok)
+        return ok
 
     @staticmethod
     def get_version() -> str | None:
@@ -101,6 +136,14 @@ class QoderSDKEngine(BaseLLMEngine):
         except Exception:
             pass
         return shutil.which("qodercli")
+
+    @staticmethod
+    def install_command() -> str:
+        return "pip install qoder-agent-sdk"
+
+    async def install(self) -> EngineInstallResult:
+        """Install the official ``qoder-agent-sdk`` Python package."""
+        return await install_python_package("qoder-agent-sdk")
 
     # --- Config schema (backend-driven settings form) ---
 
@@ -301,7 +344,9 @@ class QoderSDKEngine(BaseLLMEngine):
             return str(value).lower()
         if raw:
             return str(raw).lower()
-        return type(block).__name__.replace("Block", "").lower()
+        name = type(block).__name__.replace("Block", "")
+        parts = [part for part in re.split(r"(?<!^)(?=[A-Z])", name) if part]
+        return "_".join(part.lower() for part in parts) if parts else name.lower()
 
     def _map_message(
         self,
@@ -313,12 +358,25 @@ class QoderSDKEngine(BaseLLMEngine):
         ``state`` tracks whether text/thinking has already been streamed via
         ``StreamEvent`` so the final ``AssistantMessage`` does not duplicate it.
         """
-        state = state if state is not None else {
-            "emitted_text": False,
-            "emitted_thinking": False,
-        }
+        state = state if state is not None else {}
+        state.setdefault("emitted_text", False)
+        state.setdefault("emitted_thinking", False)
+        state.setdefault("streamed_text", False)
+        state.setdefault("streamed_thinking", False)
+        state.setdefault("session_started", False)
         events: list[InternalEvent] = []
         mtype = self._msg_type(msg)
+        subtype = getattr(msg, "subtype", "") or ""
+        if subtype in (
+            "task_started",
+            "task_progress",
+            "task_updated",
+            "task_notification",
+        ):
+            subagent = subagent_event_from_message(msg)
+            if subagent is not None:
+                events.append(subagent)
+            return events
 
         if mtype == "system":
             subtype = getattr(msg, "subtype", "") or ""
@@ -326,6 +384,14 @@ class QoderSDKEngine(BaseLLMEngine):
                 events.append(
                     InternalEvent(type="status", data={"status": "initializing"})
                 )
+                data = getattr(msg, "data", {}) or {}
+                session_id = data.get("session_id") if isinstance(data, Mapping) else None
+                if session_id and not state["session_started"]:
+                    state["session_started"] = True
+                    events.append(InternalEvent(
+                        type="session_started",
+                        data={"session_id": str(session_id)},
+                    ))
             elif subtype == "error":
                 data = getattr(msg, "data", {}) or {}
                 message = (
@@ -349,6 +415,12 @@ class QoderSDKEngine(BaseLLMEngine):
             return events
 
         if mtype == "stream":
+            session_id = getattr(msg, "session_id", None)
+            if session_id and not state["session_started"]:
+                state["session_started"] = True
+                events.append(InternalEvent(
+                    type="session_started", data={"session_id": str(session_id)}
+                ))
             event = getattr(msg, "event", {}) or {}
             if event.get("type") != "content_block_delta":
                 return events
@@ -358,6 +430,7 @@ class QoderSDKEngine(BaseLLMEngine):
                 text = delta.get("text", "")
                 if text:
                     state["emitted_text"] = True
+                    state["streamed_text"] = True
                     events.append(
                         InternalEvent(type="text_delta", data={"delta": text})
                     )
@@ -365,6 +438,7 @@ class QoderSDKEngine(BaseLLMEngine):
                 thinking = delta.get("thinking", "")
                 if thinking:
                     state["emitted_thinking"] = True
+                    state["streamed_thinking"] = True
                     events.append(
                         InternalEvent(
                             type="thinking_delta", data={"delta": thinking}
@@ -377,14 +451,14 @@ class QoderSDKEngine(BaseLLMEngine):
                 block_type = self._block_type(block)
                 if block_type == "text":
                     text = getattr(block, "text", "") or ""
-                    if text and not state["emitted_text"]:
+                    if text and not state["streamed_text"]:
                         state["emitted_text"] = True
                         events.append(
                             InternalEvent(type="text_delta", data={"delta": text})
                         )
                 elif block_type == "thinking":
                     thinking = getattr(block, "thinking", "") or ""
-                    if thinking and not state["emitted_thinking"]:
+                    if thinking and not state["streamed_thinking"]:
                         state["emitted_thinking"] = True
                         events.append(
                             InternalEvent(
@@ -474,6 +548,7 @@ class QoderSDKEngine(BaseLLMEngine):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         if not self._sdk_available():
             yield InternalEvent(
@@ -486,13 +561,23 @@ class QoderSDKEngine(BaseLLMEngine):
                 type="error", data={"message": "qodercli binary not found"}
             )
             return
+        if not self.is_configured():
+            yield InternalEvent(type="error", data={
+                "message": (
+                    "Qoder 尚未登录：请运行 qodercli login，或在设置中配置 "
+                    "Personal Access Token"
+                ),
+            })
+            return
         try:
             from qoder_agent_sdk import (
+                PermissionResultAllow,
+                PermissionResultDeny,
                 QoderAgentOptions,
+                QoderSDKClient,
                 access_token,
                 access_token_from_env,
                 qodercli_auth,
-                query as sdk_query,
             )
         except Exception as exc:
             yield InternalEvent(
@@ -501,7 +586,41 @@ class QoderSDKEngine(BaseLLMEngine):
             )
             return
 
-        config = config_store.get_qoder_sdk_config()
+        event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
+
+        async def can_use_tool(tool_name, input_data, context):
+            allowed, updated_input = await self.handle_tool_permission(
+                event_queue.put,
+                tool_name=str(tool_name),
+                tool_input=input_data if isinstance(input_data, dict) else {},
+                tool_use_id=str(getattr(context, "tool_use_id", "") or uuid.uuid4()),
+                title=str(getattr(context, "title", "") or ""),
+                session_id=session_id or "qoder-agent-sdk",
+            )
+            if allowed:
+                return PermissionResultAllow(updated_input=updated_input)
+            return PermissionResultDeny(message="用户拒绝了该操作")
+
+        async def on_elicitation(request):
+            request_data = request if isinstance(request, dict) else {}
+            if request_data.get("mode", "form") != "form":
+                return {"action": "decline"}
+            interaction_id = str(
+                request_data.get("elicitationId") or uuid.uuid4()
+            )
+            event = elicitation_request(
+                interaction_id=interaction_id,
+                message=str(request_data.get("message") or "需要你的输入"),
+                requested_schema=request_data.get("requestedSchema") or {
+                    "type": "object", "properties": {},
+                },
+                session_id=session_id or "qoder-agent-sdk",
+            )
+            return await self.request_interaction(event, event_queue.put)
+
+        config = self.merge_config_overrides(
+            config_store.get_qoder_sdk_config(), config_overrides
+        )
         token = str(config.get("personal_access_token") or "").strip()
         if token:
             auth = access_token(token)
@@ -517,13 +636,13 @@ class QoderSDKEngine(BaseLLMEngine):
             model=model or config["model"] or None,
             permission_mode=config["permission_mode"] or "default",
             include_partial_messages=bool(config["include_partial_messages"]),
+            can_use_tool=can_use_tool,
+            on_elicitation=on_elicitation,
         )
-        if live_message_queue is not None:
-            options.continue_conversation = True
         if add_dirs:
             options.add_dirs = list(add_dirs)
         if session_id:
-            options.session_id = session_id
+            options.resume = session_id
         if config["permission_mode"] == "bypassPermissions":
             options.allow_dangerously_skip_permissions = True
         allowed = str(config.get("allowed_tools") or "").strip()
@@ -546,22 +665,70 @@ class QoderSDKEngine(BaseLLMEngine):
         self._running = True
         yield InternalEvent(type="status", data={"status": "running"})
 
-        event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
-        state: dict[str, Any] = {"emitted_text": False, "emitted_thinking": False}
+        state: dict[str, Any] = {
+            "emitted_text": False,
+            "emitted_thinking": False,
+            "streamed_text": False,
+            "streamed_thinking": False,
+            "session_started": False,
+        }
 
-        async def prompt_source() -> AsyncIterator[str]:
-            """Yield the initial prompt, then queued live messages."""
-            yield prompt
+        client = QoderSDKClient(options=options)
+        self._client = client
+        await client.connect()
+
+        turn_ended = asyncio.Event()
+        end_prompt = asyncio.Event()
+        input_closed = asyncio.Event()
+
+        def _user_message(content: str) -> dict:
+            return {
+                "type": "user",
+                "message": {"role": "user", "content": content},
+                "parent_tool_use_id": None,
+                "session_id": "default",
+            }
+
+        async def prompt_source() -> AsyncIterator[dict]:
+            """Stream the initial prompt and live injections to the SDK.
+
+            The SDK keeps stdin open for the whole session; ending this source
+            closes stdin so the CLI finishes the turn, exits gracefully, and
+            the SDK emits its stream-end frame (deterministic end, not a
+            timeout).
+            """
+            yield _user_message(prompt)
             if live_message_queue is None:
                 return
             while True:
+                get_task = asyncio.create_task(live_message_queue.get())
+                end_task = asyncio.create_task(end_prompt.wait())
+                closed_task = asyncio.create_task(input_closed.wait())
                 try:
-                    message_id, content = await asyncio.wait_for(
-                        live_message_queue.get(),
-                        timeout=self._live_message_wait_seconds,
+                    done, _ = await asyncio.wait(
+                        {get_task, end_task, closed_task},
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
-                except asyncio.TimeoutError:
+                except asyncio.CancelledError:
+                    for task in (get_task, end_task, closed_task):
+                        task.cancel()
+                    raise
+                if end_task in done or closed_task in done:
+                    if get_task in done:
+                        # 消息已被取出但引擎收流：补报 error，避免静默丢失。
+                        message_id, _ = get_task.result()
+                        await event_queue.put(InternalEvent(
+                            type="live_message",
+                            data={
+                                "message_id": message_id,
+                                "status": "error",
+                                "detail": "引擎执行已结束，无法接收新消息",
+                            },
+                        ))
+                    else:
+                        get_task.cancel()
                     return
+                message_id, content = get_task.result()
                 extras: list[tuple[str, str]] = []
                 while not live_message_queue.empty():
                     extras.append(live_message_queue.get_nowait())
@@ -577,14 +744,15 @@ class QoderSDKEngine(BaseLLMEngine):
                             "detail": "",
                         },
                     ))
-                yield combined
+                yield _user_message(combined)
 
-        async def pump() -> None:
+        query_task = asyncio.create_task(client.query(prompt_source()))
+
+        async def receive() -> None:
             try:
-                async for message in sdk_query(
-                    prompt=prompt_source(),
-                    options=options,
-                ):
+                async for message in client.receive_messages():
+                    if self._msg_type(message) == "result":
+                        turn_ended.set()
                     for event in self._map_message(message, state):
                         await event_queue.put(event)
             except asyncio.CancelledError:
@@ -595,34 +763,83 @@ class QoderSDKEngine(BaseLLMEngine):
                     InternalEvent(type="error", data={"message": str(exc)})
                 )
             finally:
+                input_closed.set()
+                if query_task is not None:
+                    try:
+                        # 等输入源收尾：prompt_source 可能在收流瞬间已取出
+                        # 插入消息，需先补报 error 事件，避免被 None 抢先吞掉。
+                        await asyncio.wait_for(
+                            asyncio.shield(query_task), timeout=5
+                        )
+                    except asyncio.TimeoutError:
+                        query_task.cancel()
+                    except asyncio.CancelledError:
+                        pass
                 await event_queue.put(None)
 
-        query_task = asyncio.create_task(pump())
-        self._query_task = query_task
+        receive_task = asyncio.create_task(receive())
+        watchdog_task = asyncio.create_task(sdk_turn_watchdog(
+            turn_ended,
+            end_prompt.set,
+            disconnect=client.disconnect,
+            stream_closed=input_closed,
+            pending_injection=(
+                (lambda: not live_message_queue.empty())
+                if live_message_queue is not None else None
+            ),
+        ))
+        self._receive_task = receive_task
         try:
             while True:
                 event = await event_queue.get()
                 if event is None:
                     break
                 yield event
-            await query_task
+            await receive_task
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
         except Exception as exc:
             logger.exception("QoderSDKEngine spawn error")
             yield InternalEvent(type="error", data={"message": str(exc)})
         finally:
-            if self._query_task is not None and not self._query_task.done():
-                self._query_task.cancel()
-                await asyncio.gather(self._query_task, return_exceptions=True)
-            self._query_task = None
+            # 收流结束：尚未投递的插入消息标记失败，避免静默丢失。
+            if live_message_queue is not None:
+                remaining: list[tuple[str, str]] = []
+                while not live_message_queue.empty():
+                    remaining.append(live_message_queue.get_nowait())
+                for message_id, _ in remaining:
+                    yield InternalEvent(type="live_message", data={
+                        "message_id": message_id,
+                        "status": "error",
+                        "detail": "引擎执行已结束，无法接收新消息",
+                    })
+            for task in (receive_task, query_task, watchdog_task):
+                if task is not None and not task.done():
+                    task.cancel()
+            for task in (query_task, watchdog_task):
+                if task is not None:
+                    await asyncio.gather(task, return_exceptions=True)
+            self._receive_task = None
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            self._client = None
             self._running = False
 
     async def stop(self) -> None:
-        if self._query_task is not None and not self._query_task.done():
-            self._query_task.cancel()
-            await asyncio.gather(self._query_task, return_exceptions=True)
-            self._query_task = None
+        receive_task = self._receive_task
+        self._receive_task = None
+        if receive_task is not None and not receive_task.done():
+            receive_task.cancel()
+            await asyncio.gather(receive_task, return_exceptions=True)
+        client = self._client
+        self._client = None
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
         self._running = False
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
@@ -630,15 +847,15 @@ class QoderSDKEngine(BaseLLMEngine):
 
     @property
     def supports_resume(self) -> bool:
-        return False
+        return True
 
     @property
     def supports_interactive(self) -> bool:
-        return True  # continue_conversation accepts ordinary user messages mid-run
+        return True  # QoderSDKClient 双向流式：运行中 query() 注入 + can_use_tool
 
     @property
     def supports_live_stage_message(self) -> bool:
         return True
 
     def build_resume_params(self, session_id: str) -> dict:
-        return {}
+        return {"session_id": session_id}

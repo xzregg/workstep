@@ -1,0 +1,4091 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  useMemo,
+  useCallback,
+} from 'react'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
+import type { LiveMessage } from '../stores/taskStore'
+import {
+  type ActionProposal,
+  type CoordinatorConfig,
+  type ReviewRun,
+  type TaskArtifact,
+  type TaskStepState,
+} from '../api/client'
+import Button from './Button'
+import Input from './Input'
+import Textarea from './Textarea'
+import ChatMessageBubble from './ChatMessageBubble'
+import ChatInput, { type ChatInputEngineConfig } from './ChatInput'
+import MessageMetaBar from './MessageMetaBar'
+import MessageResponseFooter, {
+  usageFromEvents,
+} from './MessageResponseFooter'
+import { stripA2uiBlocks } from '../utils/a2ui'
+import MarkdownEditor from './MarkdownEditor'
+import MarkdownMessage from './MarkdownMessage'
+import ProcessTrace from './ProcessTrace'
+import Icon from './Icon'
+import {
+  isVisibleHistoryMessage,
+  isVisibleLiveExecutionMessage,
+  isUnpersistedLiveMessage,
+  isManualReviewMessage,
+  isMessageReviewActionable,
+  isNearConversationBottom,
+  conversationBottomScrollTop,
+  liveExecutionStatus,
+  mergeHistoryMessageWithLive,
+  orderConversationMessages,
+  resolveMessageReview,
+  shouldRenderLegacyExecution,
+  stageAvatarText,
+} from '../pages/taskDetailChat'
+import {
+  type DateTimeValue,
+  formatConversationDateTime,
+  formatExecutionClock,
+  formatDurationBetween,
+  toMilliseconds,
+} from '../utils/datetime'
+import { useI18n, type TKey } from '../i18n'
+
+// ─── Types ───────────────────────────────────────────────────────────────
+
+export type StageVisualState =
+  | 'completed'
+  | 'current'
+  | 'reviewing'
+  | 'awaiting_review'
+  | 'retrying'
+  | 'rework'
+  | 'rework_waiting'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped'
+  | 'pending'
+
+export interface StageData {
+  key: string
+  label: string
+  color: string
+  engine?: string
+  model?: string
+  config?: Record<string, string>
+  prompt: string
+  inputs: Array<{
+    name: string
+    type: string
+    outputs?: Array<{ name: string; type: string }>
+  }>
+  outputs: Array<{ name: string; type: string }>
+}
+
+export interface StageProgress extends Partial<TaskStepState> {
+  visualState: StageVisualState
+}
+
+const PROCESS_EVENT_TYPES = new Set([
+  'thinking_delta',
+  'tool_use',
+  'tool_input_delta',
+  'tool_result',
+])
+
+const STATUS_LABEL_KEYS: Record<string, TKey> = {
+  ready: 'status.ready',
+  running: 'status.running',
+  paused: 'status.paused',
+  stopped: 'status.stopped',
+  done: 'status.done',
+}
+
+const STAGE_STATE_LABEL_KEYS: Record<StageVisualState, TKey> = {
+  completed: 'status.done',
+  current: 'status.current',
+  reviewing: 'status.reviewing',
+  awaiting_review: 'status.awaiting_review',
+  retrying: 'status.retrying',
+  rework: 'status.rework',
+  rework_waiting: 'status.rework_waiting',
+  failed: 'status.failed',
+  cancelled: 'status.cancelled',
+  skipped: 'status.skipped',
+  pending: 'status.pending',
+}
+
+function hasProcessEvents(events: any[]) {
+  return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
+}
+
+function terminalMessageStatus(status?: string) {
+  return status === 'cancelled' || status === 'stopped' || status === 'failed'
+    ? status
+    : undefined
+}
+
+function lastEventTimestamp(events: any[]): number | null {
+  let latest: number | null = null
+  for (const event of events || []) {
+    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
+    if (timestamp !== null && (latest === null || timestamp > latest)) {
+      latest = timestamp
+    }
+  }
+  return latest
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────
+
+export interface TaskDetailViewProps {
+  /** Hides all editing controls — suitable for the shared read-only view. */
+  readOnly?: boolean
+
+  // ── Task data ──
+  task: {
+    id: string
+    title: string
+    description?: string | null
+    status: string
+    steps: TaskStepState[]
+    created_at: string
+    updated_at?: string
+    run_round?: number
+    engine?: string
+    model?: string | null
+    restart_from_step_key?: string | null
+    coordinator_engine?: string | null
+    coordinator_session_id?: string | null
+    review_overrides?: Record<string, any> | null
+    recovered_count?: number
+  } | null | undefined
+
+  // ── Stage definitions & progress ──
+  stages: StageData[]
+  stageProgress: StageProgress[]
+  selectedStage: number
+  onStageClick: (index: number) => void
+
+  // ── Messages ──
+  historyMessages: any[]
+  liveMessages: Record<string, LiveMessage>
+  events: any[]
+  content: string
+
+  // ── Reviews ──
+  reviews: ReviewRun[]
+  reviewActionPending?: boolean
+  reviewComment?: string
+  onReviewCommentChange?: (value: string) => void
+  onReviewAction?: (
+    action: 'approve' | 'reject' | 'force-approve',
+    review?: any,
+    stepKey?: string,
+  ) => void
+
+  // ── Artifacts ──
+  artifacts: TaskArtifact[]
+  onOpenArtifact: (name: string, stepKey?: string) => void
+
+  // ── Chat (edit mode only) ──
+  chatTarget?: string | 'coordinator'
+  onChatTargetChange?: (target: string | 'coordinator') => void
+  coordinatorRunning?: boolean
+  coordinatorConfig?: CoordinatorConfig | null
+  chatError?: string
+  prompt?: string
+  onPromptChange?: (value: string) => void
+  onSend?: () => void
+  onStop?: () => void
+  stoppingStepKeys?: string[]
+  stageResuming?: boolean
+  onStopStage?: (stepKey: string) => void
+  chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
+
+  // ── Stage inserts (edit mode only) ──
+  stageInserts?: Array<{ id: string; content: string }>
+  onStageInsertRemove?: (id: string) => void
+  onStageInsertSend?: (insert: { id: string; content: string }) => void
+  onStageInsertEditStart?: (insert: { id: string; content: string }) => void
+  onStageInsertEditSave?: (id: string) => void
+  onStageInsertEditCancel?: () => void
+  editingInsertId?: string | null
+  editingInsertContent?: string
+  onEditingInsertContentChange?: (value: string) => void
+  onSendAllInserts?: () => void
+  onClearInserts?: () => void
+
+  // ── Coordinator config (edit mode only) ──
+  onCoordinatorEngineChange?: (engineId: string) => void
+  onCoordinatorModelChange?: (model: string) => void
+  onCoordinatorFastModelChange?: (fastModel: string) => void
+  onCoordinatorVisionModelChange?: (visionModel: string) => void
+  onCoordinatorThinkingEffortChange?: (effort: string) => void
+  coordinatorConfigSaving?: boolean
+  coordinatorConfigError?: string
+  coordinatorConfigNotice?: string
+  coordinatorStopping?: boolean
+
+  // ── Description editing (edit mode only) ──
+  editingDescription?: boolean
+  descriptionDraft?: string
+  onDescriptionDraftChange?: (value: string) => void
+  descriptionSaving?: boolean
+  descriptionError?: string
+  onSaveDescription?: () => void
+  onCancelDescriptionEdit?: () => void
+  onOpenDescriptionEditor?: () => void
+
+  // ── Prompt editing (edit mode only) ──
+  onOpenPromptEditor?: () => void
+
+  // ── Review config (edit mode only) ──
+  showReviewDrawer?: boolean
+  onShowReviewDrawerChange?: (value: boolean) => void
+  editReviewMode?: string
+  onEditReviewModeChange?: (value: string) => void
+  editReviewRetries?: number
+  onEditReviewRetriesChange?: (value: number) => void
+  editReviewPrompt?: string
+  onEditReviewPromptChange?: (value: string) => void
+  onSaveReviewConfig?: () => void
+
+  // ── A2UI (edit mode only) ──
+  onA2uiAction?: (action: A2uiClientAction) => void
+  onInteractionRespond?: (
+    id: string,
+    response: Record<string, unknown>,
+  ) => Promise<void>
+
+  // ── Proposals (edit mode only) ──
+  proposalOverrides?: Record<string, ActionProposal>
+  onProposalOverride?: (proposal: ActionProposal) => void
+
+  // ── Header / layout ──
+  headerActions?: React.ReactNode
+  taskHeaderExtra?: React.ReactNode
+  onClose?: () => void
+
+  // ── Scroll refs (conversation) ──
+  chatScrollRef?: React.RefObject<HTMLDivElement | null>
+  chatEndRef?: React.RefObject<HTMLDivElement | null>
+  shouldFollowMessagesRef?: React.MutableRefObject<boolean>
+  lastProgrammaticScrollTopRef?: React.MutableRefObject<number>
+  stageLastMessageRefs?: React.MutableRefObject<
+    Record<string, HTMLDivElement | null>
+  >
+  pendingStageScrollRef?: React.MutableRefObject<string | null>
+  hasUnreadMessages?: boolean
+  onScrollToBottom?: () => void
+
+  // ── Derived helpers ──
+  locale: string
+  durationNowMs: number
+  currentStage: StageData
+  activeStage: StageData
+  currentStageColor: string
+  activeStageColor: string
+  taskCompleted: boolean
+  runningStages: StageData[]
+  executionStageModel: string
+  executionOrigin: DateTimeValue
+  sessionIdForStep: (stepKey?: string | null) => string | null
+  onViewingPromptChange: (value: string | null) => void
+  running?: boolean
+
+  // ── Project ──
+  projectId?: string
+}
+
+// ─── Component ───────────────────────────────────────────────────────────
+
+export default function TaskDetailView({
+  readOnly,
+  task,
+  stages,
+  stageProgress,
+  selectedStage,
+  onStageClick,
+  historyMessages,
+  liveMessages,
+  events,
+  content,
+  reviews,
+  reviewActionPending,
+  reviewComment,
+  onReviewCommentChange,
+  onReviewAction,
+  artifacts,
+  onOpenArtifact,
+  // Chat
+  chatTarget,
+  onChatTargetChange,
+  coordinatorRunning,
+  coordinatorConfig,
+  chatError,
+  prompt,
+  onPromptChange,
+  onSend,
+  onStop,
+  stoppingStepKeys,
+  stageResuming,
+  onStopStage,
+  chatInputRef,
+  // Stage inserts
+  stageInserts,
+  onStageInsertRemove,
+  onStageInsertSend,
+  onStageInsertEditStart,
+  onStageInsertEditSave,
+  onStageInsertEditCancel,
+  editingInsertId,
+  editingInsertContent,
+  onEditingInsertContentChange,
+  onSendAllInserts,
+  onClearInserts,
+  // Coordinator
+  onCoordinatorEngineChange,
+  onCoordinatorModelChange,
+  onCoordinatorFastModelChange,
+  onCoordinatorVisionModelChange,
+  onCoordinatorThinkingEffortChange,
+  coordinatorConfigSaving,
+  coordinatorConfigError,
+  coordinatorConfigNotice,
+  coordinatorStopping,
+  // Description
+  editingDescription,
+  descriptionDraft,
+  onDescriptionDraftChange,
+  descriptionSaving,
+  descriptionError,
+  onSaveDescription,
+  onCancelDescriptionEdit,
+  onOpenDescriptionEditor,
+  // Prompt
+  onOpenPromptEditor,
+  // Review config
+  showReviewDrawer,
+  onShowReviewDrawerChange,
+  editReviewMode,
+  onEditReviewModeChange,
+  editReviewRetries,
+  onEditReviewRetriesChange,
+  editReviewPrompt,
+  onEditReviewPromptChange,
+  onSaveReviewConfig,
+  // A2UI
+  onA2uiAction,
+  onInteractionRespond,
+  // Proposals
+  proposalOverrides,
+  onProposalOverride,
+  // Header
+  headerActions,
+  taskHeaderExtra,
+  onClose,
+  // Scroll
+  chatScrollRef,
+  chatEndRef,
+  shouldFollowMessagesRef,
+  lastProgrammaticScrollTopRef,
+  stageLastMessageRefs,
+  pendingStageScrollRef,
+  hasUnreadMessages,
+  onScrollToBottom,
+  // Derived
+  locale,
+  durationNowMs,
+  currentStage,
+  currentStageColor,
+  activeStage,
+  activeStageColor,
+  taskCompleted,
+  runningStages,
+  executionStageModel,
+  executionOrigin,
+  sessionIdForStep,
+  onViewingPromptChange,
+  running,
+  projectId,
+}: TaskDetailViewProps) {
+  const { t } = useI18n()
+
+  // Stages manually stopped (人工停止)：仍保留在「发给谁」选择中，
+  // 选中后输入消息可带提示重新执行该阶段。
+  const stoppedStages = stages.filter((stage) => (
+    stageProgress.some((progress) => (
+      progress.step_key === stage.key && progress.status === 'cancelled'
+    ))
+  ))
+  const stoppedTarget = chatTarget !== 'coordinator'
+    ? stoppedStages.find((stage) => stage.key === chatTarget) ?? null
+    : null
+
+  // Local refs for conversation scroll when not provided by parent
+  const localChatScrollRef = useRef<HTMLDivElement>(null)
+  const localChatEndRef = useRef<HTMLDivElement>(null)
+  const localShouldFollowRef = useRef(true)
+  const localLastProgrammaticRef = useRef(0)
+  const localStageLastMessageRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const localPendingStageScrollRef = useRef<string | null>(null)
+  const [localHasUnread, setLocalHasUnread] = useState(false)
+
+  // ── Split ratio (draggable divider between left panel & conversation) ──
+  const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
+  const SPLIT_HANDLE_WIDTH = 8
+  const contentSplitRef = useRef<HTMLDivElement>(null)
+  const interactionCleanupRef = useRef<(() => void) | null>(null)
+  const [splitRatio, setSplitRatio] = useState(() => {
+    try {
+      const stored = Number(sessionStorage.getItem(SPLIT_RATIO_KEY))
+      if (Number.isFinite(stored) && stored > 0 && stored < 1) return stored
+    } catch {
+      /* ignore */
+    }
+    return 1 / 3
+  })
+
+  const beginSplitResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const container = contentSplitRef.current
+      if (!container) return
+      const previousCursor = document.body.style.cursor
+      const previousUserSelect = document.body.style.userSelect
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const rect = container.getBoundingClientRect()
+        const usableWidth = Math.max(1, rect.width - SPLIT_HANDLE_WIDTH)
+        const ratio = (
+          moveEvent.clientX - rect.left
+        ) / usableWidth
+        const clamped = Math.min(0.85, Math.max(0.15, ratio))
+        setSplitRatio(clamped)
+        try {
+          sessionStorage.setItem(SPLIT_RATIO_KEY, String(clamped))
+        } catch {
+          /* ignore */
+        }
+      }
+      const cleanup = () => {
+        window.removeEventListener('pointermove', handleMove)
+        window.removeEventListener('pointerup', cleanup)
+        window.removeEventListener('pointercancel', cleanup)
+        document.body.style.cursor = previousCursor
+        document.body.style.userSelect = previousUserSelect
+        interactionCleanupRef.current = null
+      }
+      interactionCleanupRef.current?.()
+      interactionCleanupRef.current = cleanup
+      window.addEventListener('pointermove', handleMove)
+      window.addEventListener('pointerup', cleanup)
+      window.addEventListener('pointercancel', cleanup)
+    },
+    [],
+  )
+
+  useEffect(() => () => interactionCleanupRef.current?.(), [])
+
+  const scrollRef = chatScrollRef ?? localChatScrollRef
+  const endRef = chatEndRef ?? localChatEndRef
+  const followRef = shouldFollowMessagesRef ?? localShouldFollowRef
+  const programmaticRef = lastProgrammaticScrollTopRef ?? localLastProgrammaticRef
+  const lastScrollTopRef = useRef(0)
+  const stageLastRef = stageLastMessageRefs ?? localStageLastMessageRefs
+  const pendingScrollRef = pendingStageScrollRef ?? localPendingStageScrollRef
+  const unreadMessages = hasUnreadMessages ?? localHasUnread
+  const setUnreadMessages = onScrollToBottom ?? (() => setLocalHasUnread(false))
+
+  // Auto-scroll to bottom when new messages arrive.
+  // 依赖仅含消息内容：durationNowMs 每秒 tick 触发的重渲染不应强制钉底，
+  // 否则 LLM 输出期间用户无法滚动查看历史。
+  useEffect(() => {
+    if (followRef.current) {
+      const container = scrollRef.current
+      if (container) {
+        const target = conversationBottomScrollTop(
+          container.scrollHeight,
+          container.clientHeight,
+        )
+        programmaticRef.current = target
+        container.scrollTop = target
+      }
+      setUnreadMessages()
+    } else {
+      setLocalHasUnread(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyMessages, liveMessages, events, content])
+
+  // Media load re-scroll
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const onMediaLoad = () => {
+      if (!followRef.current) return
+      const target = conversationBottomScrollTop(
+        container.scrollHeight,
+        container.clientHeight,
+      )
+      programmaticRef.current = target
+      container.scrollTop = target
+    }
+    container.addEventListener('load', onMediaLoad, true)
+    return () => container.removeEventListener('load', onMediaLoad, true)
+  }, [scrollRef, followRef, programmaticRef])
+
+  // ── Helpers ──
+
+  const persistedMessageIds = useMemo(
+    () => new Set(historyMessages.map((message) => String(message.id))),
+    [historyMessages],
+  )
+
+  const liveCoordinatorMessages = useMemo(
+    () =>
+      Object.values(liveMessages).filter(
+        (message) =>
+          message.channel === 'coordinator' &&
+          isUnpersistedLiveMessage(message, persistedMessageIds),
+      ),
+    [liveMessages, persistedMessageIds],
+  )
+
+  const liveExecutionMessages = useMemo(
+    () =>
+      Object.values(liveMessages).filter(
+        (message) =>
+          isVisibleLiveExecutionMessage(message) &&
+          isUnpersistedLiveMessage(message, persistedMessageIds),
+      ),
+    [liveMessages, persistedMessageIds],
+  )
+
+  const hasStructuredExecutionMessage = useMemo(
+    () =>
+      Object.values(liveMessages).some(
+        (message) => message.channel === 'execution',
+      ) ||
+      historyMessages.some((message) => message.channel === 'execution'),
+    [historyMessages, liveMessages],
+  )
+
+  const visibleStages = useMemo(() => {
+    const hideSkipped = (task?.run_round ?? 1) > 1
+    const entries = stages.map((stage, index) => ({ stage, index }))
+    if (!hideSkipped) return entries
+    return entries.filter(
+      ({ index }) => stageProgress[index]?.visualState !== 'skipped',
+    )
+  }, [stages, stageProgress, task?.run_round])
+
+  const selectedReview = reviews.find(
+    (review) => review.step_key === currentStage.key,
+  )
+
+  const findArtifact = (
+    name: string,
+    preferredStepKey?: string,
+    source?: TaskArtifact[],
+  ) => {
+    const normalize = (value: string) =>
+      value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
+    const normalizedName = normalize(name)
+    const list = source || artifacts
+    const candidates = preferredStepKey
+      ? list.filter((artifact) => artifact.step_key === preferredStepKey)
+      : list
+    return (
+      candidates.find((artifact) => artifact.logical_name === name) ||
+      candidates.find((artifact) => {
+        const artifactName = normalize(
+          artifact.logical_name || artifact.name,
+        )
+        return (
+          artifactName.includes(normalizedName) ||
+          normalizedName.includes(artifactName)
+        )
+      })
+    )
+  }
+
+  const handleStageClick = (stageIndex: number) => {
+    onStageClick(stageIndex)
+    const stageKey = stages[stageIndex]?.key
+    if (!stageKey) return
+    pendingScrollRef.current = stageKey
+    requestAnimationFrame(() => {
+      stageLastRef.current[stageKey]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      })
+      pendingScrollRef.current = null
+    })
+  }
+
+  // ── Render: Header ──
+
+  const renderHeader = () => {
+    if (!task) return null
+    const time = new Date(task.created_at).toLocaleString(locale)
+
+    return (
+      <div
+        style={{
+          padding: '10px',
+          borderBottom: '1px solid var(--border-soft)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          flexShrink: 0,
+        }}
+      >
+        {!readOnly && onClose && (
+          <Button variant="icon" onClick={onClose}>
+            ←
+          </Button>
+        )}
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>
+              {task.title}
+            </span>
+            {headerActions}
+            {taskHeaderExtra}
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 22,
+                fontSize: 11,
+                fontWeight: 500,
+                padding: '0 8px',
+                borderRadius: 4,
+                lineHeight: 1,
+                background: `color-mix(in oklab, ${activeStageColor}, transparent 85%)`,
+                color: activeStageColor,
+              }}
+            >
+              {t('taskDetail.currentStage', { stage: activeStage.label })}
+            </span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 22,
+                fontSize: 11,
+                fontWeight: 500,
+                padding: '0 8px',
+                borderRadius: 4,
+                lineHeight: 1,
+                background: `color-mix(in oklab, var(--status-${
+                  taskCompleted
+                    ? 'done'
+                    : task.status === 'ready'
+                      ? 'ready'
+                      : task.status
+                }), transparent 85%)`,
+                color: `var(--status-${
+                  taskCompleted
+                    ? 'done'
+                    : task.status === 'ready'
+                      ? 'ready'
+                      : task.status
+                })`,
+              }}
+            >
+              {t(
+                STATUS_LABEL_KEYS[
+                  taskCompleted ? 'done' : task.status
+                ] ?? (task.status as TKey),
+              )}
+            </span>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                minHeight: 22,
+                fontSize: 13,
+                lineHeight: 1,
+                color: 'var(--meta)',
+              }}
+            >
+              {time}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Render: Recovered hint ──
+
+  const renderRecoveredHint = () => {
+    if (
+      readOnly ||
+      task?.status !== 'running' ||
+      !(task?.recovered_count || 0)
+    )
+      return null
+    return (
+      <div
+        role="status"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 16px',
+          fontSize: 13,
+          lineHeight: 1.4,
+          color: 'var(--accent)',
+          background: 'color-mix(in oklab, var(--accent), transparent 92%)',
+          borderBottom: '1px solid var(--border-soft)',
+          flexShrink: 0,
+        }}
+      >
+        <span className="task-status-spinner" aria-hidden="true" />
+        <span>
+          {t('taskDetail.recoveredRunning', {
+            count:
+              task.recovered_count && task.recovered_count > 1
+                ? t('taskDetail.recoveredCount', {
+                    count: task.recovered_count,
+                  })
+                : '',
+          })}
+        </span>
+      </div>
+    )
+  }
+
+  // ── Render: Left panel ──
+
+  const renderLeftPanel = () => {
+    if (!task) return null
+    return (
+      <div
+        style={{
+          minWidth: 0,
+          overflowY: 'auto',
+          padding: '20px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 24,
+        }}
+      >
+        {/* Description */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+              }}
+            >
+              {t('taskDetail.description')}
+            </div>
+            {!readOnly && !editingDescription && (
+              <Button
+                variant="ghost"
+                aria-label={t('taskDetail.editDescriptionAria')}
+                onClick={onOpenDescriptionEditor}
+                style={{ height: 28, padding: '0 9px', fontSize: 11, gap: 4 }}
+              >
+                <span aria-hidden="true">✎</span>
+                {t('common.edit')}
+              </Button>
+            )}
+          </div>
+          {editingDescription ? (
+            <div>
+              <MarkdownEditor
+                value={descriptionDraft ?? ''}
+                onChange={onDescriptionDraftChange ?? (() => {})}
+                projectId={projectId}
+                imagePrefix={task.id.slice(0, 8)}
+                placeholder={t('taskDetail.descriptionPlaceholder')}
+                minHeight={140}
+                maxHeight="33vh"
+                disabled={descriptionSaving}
+                autoFocus
+              />
+              {descriptionError && (
+                <div
+                  role="alert"
+                  style={{
+                    marginTop: 6,
+                    color: 'var(--danger)',
+                    fontSize: 11,
+                  }}
+                >
+                  {descriptionError}
+                </div>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: 8,
+                  marginTop: 8,
+                }}
+              >
+                <Button
+                  variant="ghost"
+                  disabled={descriptionSaving}
+                  onClick={onCancelDescriptionEdit}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={descriptionSaving}
+                  loading={descriptionSaving}
+                  onClick={onSaveDescription}
+                >
+                  {t('common.save')}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border-soft)',
+                fontSize: 13,
+                lineHeight: 1.6,
+                overflowWrap: 'anywhere',
+                maxHeight: '33vh',
+                overflowY: 'auto',
+              }}
+            >
+              {task.description ? (
+                <MarkdownMessage
+                  content={task.description}
+                  projectId={projectId}
+                />
+              ) : (
+                <span
+                  style={{
+                    color: 'var(--meta)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  {t('taskDetail.noDescription')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Progress timeline */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+              }}
+            >
+              {t('taskDetail.progress')}
+            </div>
+            {(task?.run_round ?? 1) > 1 && (
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  color: 'var(--accent)',
+                  background:
+                    'color-mix(in oklab, var(--accent), transparent 90%)',
+                }}
+              >
+                {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
+            {visibleStages.map(({ stage, index: i }, pos) => {
+              const progress = stageProgress[i]
+              const visualState = progress?.visualState || 'pending'
+              const isCompleted = visualState === 'completed'
+              const isCurrentActive = [
+                'current',
+                'reviewing',
+                'awaiting_review',
+                'retrying',
+                'rework',
+                'rework_waiting',
+              ].includes(visualState)
+              const isFailed = visualState === 'failed'
+              const isCancelled = visualState === 'cancelled'
+              const isSkipped = visualState === 'skipped'
+              const isSelected = i === selectedStage
+              const stageColor = stage.color || 'var(--accent)'
+              const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
+              const currentRound = task?.run_round ?? 1
+              const restartIndex = stages.findIndex(
+                (item: any) => item.key === task?.restart_from_step_key,
+              )
+              const stageRound =
+                restartIndex >= 0 && i < restartIndex
+                  ? Math.max(1, currentRound - 1)
+                  : currentRound
+              const stageRoundColor =
+                stageRound >= currentRound ? stageColor : 'var(--meta)'
+              const finishedDuration = progress?.ended_at
+                ? formatDurationBetween(
+                    progress?.started_at,
+                    progress.ended_at,
+                    t,
+                  )
+                : null
+              const startedAtMs =
+                toMilliseconds(progress?.started_at) ??
+                toMilliseconds(task.created_at) ??
+                Date.now()
+              const updatedAtMs =
+                toMilliseconds(task.updated_at) ?? Date.now()
+              const isDurationLive =
+                task.status === 'running' ||
+                [
+                  'reviewing',
+                  'awaiting_review',
+                  'retrying',
+                  'rework',
+                  'rework_waiting',
+                ].includes(visualState)
+              const activeDuration =
+                isCurrentActive && progress?.started_at
+                  ? formatDurationBetween(
+                      progress.started_at,
+                      isDurationLive ? durationNowMs : updatedAtMs,
+                      t,
+                    )
+                  : null
+              const activeStateColor =
+                task.status === 'paused'
+                  ? 'var(--status-paused)'
+                  : task.status === 'stopped'
+                    ? 'var(--status-stopped)'
+                    : visualState === 'reviewing'
+                      ? 'var(--accent)'
+                      : ['retrying', 'rework', 'rework_waiting'].includes(
+                            visualState,
+                          )
+                        ? 'var(--warn)'
+                        : 'var(--status-running)'
+              const stateColor = isCompleted
+                ? 'var(--status-done)'
+                : isFailed
+                  ? 'var(--status-failed)'
+                  : isCancelled
+                    ? '#d97706'
+                    : isCurrentActive
+                      ? activeStateColor
+                      : isSkipped
+                        ? 'var(--meta)'
+                        : 'var(--border)'
+              return (
+                <div
+                  key={stage.key}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t('taskDetail.viewStageMessagesAria', {
+                    stage: stage.label,
+                  })}
+                  onClick={() => handleStageClick(i)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      handleStageClick(i)
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    position: 'relative',
+                    paddingTop: 24,
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  {/* Connector line */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      // Align the connector with the vertical center of the
+                      // stage dot (paddingTop 24 + dotSize 20 / 2 - 1).
+                      top: 33,
+                      left: pos === 0 ? '50%' : 0,
+                      right:
+                        pos === visibleStages.length - 1 ? '50%' : 0,
+                      height: 2,
+                      background: stateColor,
+                    }}
+                  />
+                  {/* Dot */}
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background:
+                        isCompleted ||
+                        isCurrentActive ||
+                        isFailed ||
+                        isCancelled ||
+                        isSkipped
+                          ? stateColor
+                          : 'var(--bg)',
+                      border: `2px solid ${stateColor}`,
+                      position: 'relative',
+                      zIndex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--accent-fg)',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      boxShadow: isSelected
+                        ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
+                        : 'none',
+                    }}
+                  >
+                    {isCompleted
+                      ? '✓'
+                      : isFailed
+                        ? '×'
+                        : isCancelled
+                          ? '▮'
+                          : isSkipped
+                            ? '–'
+                            : ''}
+                  </div>
+                  {visualState !== 'pending' && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 5,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        fontSize: 11,
+                        padding: '2px 6px',
+                        borderRadius: 999,
+                        color: stateColor,
+                        background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        zIndex: 1,
+                      }}
+                    >
+                      {t(STAGE_STATE_LABEL_KEYS[visualState])}
+                    </span>
+                  )}
+                  <div
+                    style={{
+                      height: 28,
+                      marginTop: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        textAlign: 'center',
+                        whiteSpace: 'nowrap',
+                        color: stageLabelColor,
+                        fontWeight: isSelected
+                          ? 750
+                          : isCurrentActive
+                            ? 650
+                            : 500,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        border: isSelected
+                          ? `1px solid ${stageColor}`
+                          : '1px solid transparent',
+                        background: isSelected
+                          ? `color-mix(in oklab, ${stageColor}, transparent 88%)`
+                          : 'transparent',
+                      }}
+                    >
+                      {stage.label}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: 20,
+                      marginTop: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {currentRound > 1 && (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          color: stageRoundColor,
+                          background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {t('taskDetail.runRoundShort', {
+                          round: stageRound,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      minHeight: 32,
+                      marginTop: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    {finishedDuration && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--meta)',
+                          textAlign: 'center',
+                          lineHeight: 1.5,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {t('taskDetail.duration', {
+                          duration: finishedDuration,
+                        })}
+                      </div>
+                    )}
+                    {isCurrentActive && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--meta)',
+                          textAlign: 'center',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        <div>
+                          {t('taskDetail.startedAt', {
+                            time: new Date(startedAtMs).toLocaleTimeString(
+                              locale,
+                              {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              },
+                            ),
+                          })}
+                        </div>
+                        {activeDuration && (
+                          <span
+                            style={{
+                              color: 'var(--fg-2)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {t('taskDetail.duration', {
+                              duration: activeDuration,
+                            })}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Stage prompt */}
+        {!readOnly && (
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                color: `${currentStageColor}`,
+              }}
+            >
+              {' '}
+              {currentStage.label}{' '}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  fontFamily: 'var(--font-mono)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {t('taskDetail.stagePrompt')}
+              </div>
+              <Button
+                variant="ghost"
+                onClick={onOpenPromptEditor}
+                style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
+              >
+                <span aria-hidden="true">✎</span>
+                {t('taskDetail.quickEdit')}
+              </Button>
+            </div>
+            <div
+              style={{
+                background: 'var(--surface)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '14px 16px',
+                borderLeft: `3px solid ${currentStageColor}`,
+              }}
+            >
+              {currentStage.prompt ? (
+                <MarkdownMessage
+                  content={currentStage.prompt}
+                  projectId={projectId}
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--meta)' }}>
+                  {t('taskDetail.noStagePrompt')}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* I/O section */}
+        <div>
+          <div
+            style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}
+          >
+            {t('taskDetail.stageIo')}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <span style={{ color: 'var(--meta)' }}>→</span>{' '}
+                {t('taskDetail.ioInput')}
+              </div>
+              {(() => {
+                const isStageDone =
+                  stageProgress[selectedStage]?.visualState === 'completed'
+                const nextStageIdx = selectedStage + 1
+                const nextStage =
+                  nextStageIdx < stages.length
+                    ? stages[nextStageIdx]
+                    : null
+                const nextInputs = nextStage
+                  ? nextStage.inputs || []
+                  : []
+                const stageOutputs =
+                  currentStage.outputs ||
+                  (currentStage.inputs || [])[0]?.outputs ||
+                  []
+
+                return (currentStage.inputs || []).map(
+                  (inp: any, inpIdx: number) => {
+                    const subOutputs =
+                      inpIdx === 0 ? stageOutputs : []
+                    return (
+                      <div
+                        key={inpIdx}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 4,
+                        }}
+                      >
+                        {/* Input item */}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          aria-label={t('taskDetail.openInputAria', {
+                            name: inp.name,
+                          })}
+                          onClick={() => onOpenArtifact(inp.name)}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === 'Enter' ||
+                              event.key === ' '
+                            ) {
+                              event.preventDefault()
+                              onOpenArtifact(inp.name)
+                            }
+                          }}
+                          title={t('taskDetail.openFileTitle', {
+                            name: inp.name,
+                          })}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 10px',
+                            background: 'var(--surface)',
+                            borderRadius: 6,
+                            border: '1px solid var(--border-soft)',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              background: currentStageColor,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 500,
+                              flex: 1,
+                            }}
+                          >
+                            {inp.name}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: currentStageColor,
+                            }}
+                          >
+                            {t('taskDetail.view')}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--meta)',
+                              background: 'var(--surface)',
+                              border: '1px solid var(--border-soft)',
+                              padding: '0 4px',
+                              borderRadius: 3,
+                            }}
+                          >
+                            {inp.type}
+                          </span>
+                        </div>
+                        {/* Sub-outputs */}
+                        {subOutputs.map(
+                          (out: any, outIdx: number) => {
+                            const nextInput = nextInputs[outIdx]
+                            const statusDone = isStageDone
+                            const outArtifact = findArtifact(
+                              out.name,
+                              currentStage.key,
+                            )
+                            return (
+                              <div
+                                key={outIdx}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={t(
+                                  'taskDetail.openOutputAria',
+                                  { name: out.name },
+                                )}
+                                onClick={() =>
+                                  onOpenArtifact(
+                                    out.name,
+                                    currentStage.key,
+                                  )
+                                }
+                                onKeyDown={(event) => {
+                                  if (
+                                    event.key === 'Enter' ||
+                                    event.key === ' '
+                                  ) {
+                                    event.preventDefault()
+                                    onOpenArtifact(
+                                      out.name,
+                                      currentStage.key,
+                                    )
+                                  }
+                                }}
+                                title={t('taskDetail.openFileTitle', {
+                                  name: out.name,
+                                })}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  marginLeft: 18,
+                                  padding: '4px 8px',
+                                  cursor: 'pointer',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    color: 'var(--meta)',
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  ↳
+                                </span>
+                                {outArtifact?.is_dir ? (
+                                  <Icon
+                                    name="folder"
+                                    size={13}
+                                    color="var(--accent)"
+                                    style={{ flexShrink: 0 }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      background: statusDone
+                                        ? 'var(--success)'
+                                        : currentStageColor,
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    flex: 1,
+                                  }}
+                                >
+                                  {out.name}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    color: currentStageColor,
+                                  }}
+                                >
+                                  {t('common.open')}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    color: 'var(--meta)',
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--border-soft)',
+                                    padding: '0 3px',
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  {out.type}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 500,
+                                    padding: '1px 5px',
+                                    borderRadius: 3,
+                                    background: statusDone
+                                      ? 'color-mix(in oklab, var(--success), transparent 85%)'
+                                      : 'var(--surface)',
+                                    color: statusDone
+                                      ? 'var(--success)'
+                                      : 'var(--meta)',
+                                    border: statusDone
+                                      ? 'none'
+                                      : '1px solid var(--border-soft)',
+                                  }}
+                                >
+                                  {statusDone
+                                    ? t('taskDetail.outputDone')
+                                    : t('taskDetail.outputPending')}
+                                </span>
+                                {nextInput && (
+                                  <span
+                                    style={{
+                                      fontSize: 11,
+                                      color: 'var(--muted)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 2,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: 'var(--meta)',
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      →
+                                    </span>{' '}
+                                    {nextStage?.label}:{' '}
+                                    {nextInput.name}
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          },
+                        )}
+                      </div>
+                    )
+                  },
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+
+        {/* Review results */}
+        {selectedReview && (
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 10,
+              }}
+            >
+              {t('taskDetail.reviewResult')}
+            </div>
+            <div
+              style={{
+                border: '1px solid var(--border-soft)',
+                borderRadius: 8,
+                background: 'var(--surface)',
+                padding: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 9,
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>
+                  {selectedReview.mode === 'auto'
+                    ? t('taskDetail.autoReview')
+                    : t('taskDetail.manualReview')}
+                </strong>
+                <span
+                  className="status-badge"
+                  data-s={
+                    selectedReview.status === 'passed'
+                      ? 'passed'
+                      : selectedReview.status === 'rejected'
+                        ? 'failed'
+                        : 'paused'
+                  }
+                >
+                  {selectedReview.status === 'passed'
+                    ? t('taskDetail.reviewPassed')
+                    : selectedReview.status === 'rejected'
+                      ? t('taskDetail.reviewRejected')
+                      : selectedReview.status === 'running'
+                        ? t('taskDetail.reviewRunning')
+                        : t('taskDetail.reviewWaiting')}
+                </span>
+              </div>
+              {selectedReview.report && (
+                <>
+                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                    {selectedReview.report.score !== null && (
+                      <strong>
+                        {t('taskDetail.scorePoints', {
+                          score: selectedReview.report.score,
+                        })}
+                      </strong>
+                    )}
+                    {selectedReview.report.summary}
+                  </div>
+                  {selectedReview.report.issues.map(
+                    (issue: any, index: number) => (
+                      <div
+                        key={`${issue.category}-${index}`}
+                        style={{
+                          fontSize: 11,
+                          lineHeight: 1.5,
+                          padding: '7px 9px',
+                          borderRadius: 6,
+                          background:
+                            issue.severity === 'error'
+                              ? 'color-mix(in oklab, var(--danger), transparent 90%)'
+                              : 'color-mix(in oklab, var(--warn), transparent 90%)',
+                        }}
+                      >
+                        <strong>{issue.description}</strong>
+                        {issue.suggestion && (
+                          <div>{issue.suggestion}</div>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </>
+              )}
+              {/* Review action buttons (edit mode only) */}
+              {!readOnly &&
+                (selectedReview.status === 'pending' ||
+                  selectedReview.status === 'rejected') && (
+                  <>
+                    <Textarea
+                      rows={2}
+                      value={reviewComment ?? ''}
+                      onChange={(event) =>
+                        onReviewCommentChange?.(event.target.value)
+                      }
+                      placeholder={t(
+                        'taskDetail.reviewCommentPlaceholder',
+                      )}
+                    />
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: 8,
+                      }}
+                    >
+                      {selectedReview.status === 'pending' ? (
+                        <>
+                          <Button
+                            variant="ghost"
+                            disabled={reviewActionPending}
+                            onClick={() => onReviewAction?.('reject')}
+                          >
+                            {t('taskDetail.reject')}
+                          </Button>
+                          <Button
+                            variant="primary"
+                            disabled={reviewActionPending}
+                            loading={reviewActionPending}
+                            onClick={() => onReviewAction?.('approve')}
+                          >
+                            {t('taskDetail.approve')}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          disabled={reviewActionPending}
+                          loading={reviewActionPending}
+                          onClick={() =>
+                            onReviewAction?.('force-approve')
+                          }
+                        >
+                          {t('taskDetail.forceApprove')}
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+            </div>
+          </div>
+        )}
+
+        {/* Review config drawer (edit mode only) */}
+        {!readOnly && (
+          <div style={{ marginTop: 20 }}>
+            <button
+              onClick={() =>
+                onShowReviewDrawerChange?.(!showReviewDrawer)
+              }
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--muted)',
+                fontSize: 11,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '0',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              <span
+                style={{
+                  transform: showReviewDrawer
+                    ? 'rotate(90deg)'
+                    : 'none',
+                  transition: 'transform 150ms',
+                  display: 'inline-block',
+                  fontSize: 11,
+                }}
+              >
+                &#9654;
+              </span>
+              {t('taskDetail.stageReviewConfig')}
+            </button>
+            {showReviewDrawer && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: 4,
+                      alignItems: 'center',
+                    }}
+                  >
+                    {([
+                      ['skip', t('flow.reviewSkip')],
+                      ['auto', t('flow.autoReview')],
+                      ['manual', t('flow.manualReview')],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          onEditReviewModeChange?.(value)
+                        }
+                        style={{
+                          padding: '3px 10px',
+                          fontSize: 12,
+                          borderRadius: 999,
+                          border:
+                            editReviewMode === value
+                              ? '1px solid var(--accent)'
+                              : '1px solid var(--border)',
+                          background:
+                            editReviewMode === value
+                              ? 'color-mix(in oklab, var(--accent), transparent 88%)'
+                              : 'transparent',
+                          color:
+                            editReviewMode === value
+                              ? 'var(--accent)'
+                              : 'var(--fg-2)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {editReviewMode === 'auto' && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        fontSize: 13,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: 'var(--meta)',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {t('flow.retry')}
+                      </span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={editReviewRetries ?? 1}
+                        onChange={(e) =>
+                          onEditReviewRetriesChange?.(
+                            Math.max(
+                              1,
+                              Math.min(
+                                5,
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          )
+                        }
+                        style={{
+                          width: 40,
+                          height: 22,
+                          fontSize: 13,
+                          padding: '0 6px',
+                          border: '1px solid var(--border)',
+                          borderRadius: 4,
+                          background: 'var(--bg)',
+                          color: 'var(--fg)',
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--meta)',
+                        }}
+                      >
+                        {t('flow.reviewAutoRetryHint')}
+                      </span>
+                    </div>
+                  )}
+                  {editReviewMode === 'skip' && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--meta)',
+                      }}
+                    >
+                      {t('flow.reviewSkipHint')}
+                    </div>
+                  )}
+                  {editReviewMode === 'manual' && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--meta)',
+                      }}
+                    >
+                      {t('flow.reviewPauseHint')}
+                    </div>
+                  )}
+                </div>
+                <MarkdownEditor
+                  value={editReviewPrompt ?? ''}
+                  onChange={
+                    onEditReviewPromptChange ?? (() => {})
+                  }
+                  projectId={projectId}
+                  placeholder={t(
+                    'taskDetail.reviewPromptPlaceholder',
+                  )}
+                  minHeight={64}
+                  maxHeight={160}
+                  ariaLabel={t('taskDetail.reviewPromptAria')}
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  <Button
+                    variant="ghost"
+                    onClick={onSaveReviewConfig}
+                    style={{
+                      fontSize: 11,
+                      padding: '3px 10px',
+                    }}
+                  >
+                    {t('common.save')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Render: Right panel (conversation) ──
+
+  const renderConversation = () => {
+    return (
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--bg)',
+        }}
+      >
+        {/* Chat header */}
+        <div
+          style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid var(--border-soft)',
+            background: 'var(--bg)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>
+            {t('taskDetail.conversation')}
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: currentStageColor,
+              background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`,
+              padding: '2px 8px',
+              borderRadius: 4,
+            }}
+          >
+            {currentStage.label}
+          </span>
+        </div>
+
+        {/* Chat messages */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            position: 'relative',
+          }}
+        >
+          <div
+            ref={scrollRef}
+            onScroll={(event) => {
+              const container = event.currentTarget
+              const nearBottom = isNearConversationBottom(
+                container.scrollHeight,
+                container.scrollTop,
+                container.clientHeight,
+              )
+              const programmaticEcho =
+                Math.abs(
+                  container.scrollTop -
+                    programmaticRef.current,
+                ) <= 1
+              if (!programmaticEcho) {
+                // 用户向上滚动（scrollTop 减小）立即取消跟随，
+                // 不能等滚出阈值再取消：流式输出期间内容持续增长，
+                // 幅度不够时永远滚不出阈值。
+                if (container.scrollTop < lastScrollTopRef.current) {
+                  followRef.current = false
+                } else if (nearBottom) {
+                  followRef.current = true
+                  if (nearBottom) setUnreadMessages()
+                }
+              }
+              lastScrollTopRef.current = container.scrollTop
+            }}
+            style={{
+              height: '100%',
+              minWidth: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              padding: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            {historyMessages.length === 0 &&
+              events.length === 0 &&
+              !content &&
+              liveCoordinatorMessages.length === 0 &&
+              !running && (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    color: 'var(--meta)',
+                    padding: 40,
+                    fontSize: 13,
+                  }}
+                >
+                  {t('taskDetail.conversationEmpty')}
+                </div>
+              )}
+
+            {(() => {
+              const orderedMessagesRaw = [
+                ...historyMessages
+                  .filter(isVisibleHistoryMessage)
+                  .map((message: any) =>
+                    mergeHistoryMessageWithLive(
+                      message,
+                      liveMessages[String(message.id)],
+                    ),
+                  ),
+                ...liveExecutionMessages.map((message: any) => ({
+                  ...message,
+                  run_status: message.status,
+                  ended_at:
+                    message.status === 'running'
+                      ? undefined
+                      : lastEventTimestamp(
+                            message.events,
+                          ),
+                })),
+              ]
+              const orderedMessages =
+                orderConversationMessages(
+                  orderedMessagesRaw,
+                  durationNowMs,
+                )
+              return orderedMessages.map((message: any) => {
+                const stageKey =
+                  message.context_step_key ||
+                  message.step_key ||
+                  'unknown'
+                const msgs = [message]
+                const stageInfo = stages.find(
+                  (s: any) => s.key === stageKey,
+                )
+                const stageLabel =
+                  message.channel === 'coordinator'
+                    ? t('aiFlow.agent')
+                    : stageInfo?.label || stageKey
+                return (
+                  <div
+                    key={message.id}
+                    style={{
+                      minWidth: 0,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                    }}
+                  >
+                    {msgs.map(
+                      (msg: any, i: number) => {
+                        const isUser =
+                          msg.role === 'user'
+                        const isSystem =
+                          msg.role === 'system'
+                        const isReview =
+                          msg.channel ===
+                            'review' ||
+                          msg.role === 'review'
+                        const isCoordinator =
+                          msg.channel ===
+                            'coordinator'
+                        const isLiveInsert =
+                          !isCoordinator &&
+                          msg.role === 'user' &&
+                          msg.run_id === msg.id
+                        const msgStageIndex =
+                          stages.findIndex(
+                            (s: any) =>
+                              s.key === stageKey,
+                          )
+                        const msgStepStatus =
+                          msgStageIndex >= 0
+                            ? stageProgress[
+                                msgStageIndex
+                              ]?.status
+                            : undefined
+                        const msgReview =
+                          resolveMessageReview(
+                            msg,
+                            reviews,
+                          )
+                        const msgReviewPending =
+                          isMessageReviewActionable(
+                            msg,
+                            reviews,
+                            msgStepStatus,
+                          )
+                        const msgArtifacts =
+                          isReview
+                            ? artifacts.filter(
+                                (artifact) =>
+                                  artifact.step_key ===
+                                  stageKey,
+                              )
+                            : []
+                        const processEvents =
+                          Array.isArray(
+                            msg.events,
+                          )
+                            ? msg.events
+                            : []
+                        const isManualReview =
+                          isReview &&
+                          isManualReviewMessage(
+                            msg,
+                            reviews,
+                          )
+                        const sender = isUser
+                          ? t('aiFlow.me')
+                          : isSystem
+                            ? t(
+                                'taskDetail.system',
+                              )
+                            : isCoordinator
+                              ? t('aiFlow.agent')
+                              : isManualReview
+                                ? `${stageLabel} · ${t('taskDetail.manualReview')}`
+                                : stageLabel
+                        const initials =
+                          isUser || isSystem
+                            ? sender.slice(0, 2)
+                            : isCoordinator
+                              ? t(
+                                  'aiFlow.agentInitials',
+                                )
+                              : stageAvatarText(
+                                  stageLabel,
+                                  t,
+                                )
+                        const senderColor =
+                          isUser
+                            ? 'var(--accent)'
+                            : isSystem
+                              ? 'var(--warn)'
+                              : isReview
+                                ? (stageInfo?.color ||
+                                    'var(--warn)')
+                                : isCoordinator
+                                  ? 'var(--ai-assistant)'
+                                  : (stageInfo?.color ||
+                                      'var(--fg)')
+                        const reviewLine =
+                          isManualReview
+                            ? t(
+                                'taskDetail.manualReview',
+                              )
+                            : undefined
+                        const messageContent =
+                          isReview &&
+                          msgReview?.decision
+                            ? [
+                                reviewLine,
+                                msgReview.status ===
+                                'passed'
+                                  ? t(
+                                      'taskDetail.reviewPassed',
+                                    )
+                                  : t(
+                                      'taskDetail.reviewRejected',
+                                    ),
+                                msgReview.decision_comment,
+                              ]
+                                .filter(
+                                  Boolean,
+                                )
+                                .join('\n')
+                            : reviewLine
+                              ? `${reviewLine}\n${msg.content || ''}`
+                              : msg.content || ''
+
+                        return (
+                          <ChatMessageBubble
+                            key={i}
+                            role={
+                              isSystem
+                                ? 'system'
+                                : isReview
+                                  ? 'review'
+                                  : isUser
+                                    ? 'user'
+                                    : 'assistant'
+                            }
+                            sender={sender}
+                            initials={initials}
+                            color={senderColor}
+                            content={messageContent}
+                            streaming={
+                              msg.run_status ===
+                              'running'
+                            }
+                            badge={
+                              isReview ? (
+                                <span
+                                  title="Review"
+                                  aria-label={t(
+                                    'taskDetail.reviewBadgeAria',
+                                  )}
+                                >
+                                  R
+                                </span>
+                              ) : undefined
+                            }
+                            onEdit={
+                              !readOnly && isUser
+                                ? (content) => {
+                                    // Handle edit user message — parent should provide
+                                    if (onPromptChange && onSend) {
+                                      onPromptChange(content)
+                                      chatInputRef?.current?.focus()
+                                    }
+                                  }
+                                : undefined
+                            }
+                            onA2uiAction={
+                              !readOnly
+                                ? onA2uiAction
+                                : undefined
+                            }
+                            events={processEvents}
+                            onInteractionRespond={
+                              !readOnly
+                                ? onInteractionRespond
+                                : undefined
+                            }
+                            rootProps={{
+                              ref:
+                                i ===
+                                msgs.length - 1
+                                  ? (
+                                      element,
+                                    ) => {
+                                      stageLastRef.current[
+                                        stageKey
+                                      ] = element
+                                    }
+                                  : undefined,
+                              'data-stage-last-message':
+                                i ===
+                                msgs.length - 1
+                                  ? stageKey
+                                  : undefined,
+                            }}
+                            header={
+                              isUser ? (
+                                <>
+                                  <span
+                                    title={
+                                      isCoordinator
+                                        ? t(
+                                            'taskDetail.sendToCoordinatorTitle',
+                                          )
+                                        : isLiveInsert
+                                          ? t(
+                                              'taskDetail.liveInsertTitle',
+                                            )
+                                          : t(
+                                              'taskDetail.stageInitialInputTitle',
+                                            )
+                                    }
+                                    style={{
+                                      padding:
+                                        '1px 6px',
+                                      borderRadius: 999,
+                                      fontSize: 11,
+                                      border:
+                                        isLiveInsert
+                                          ? 'none'
+                                          : '1px solid var(--border-soft)',
+                                      background:
+                                        isCoordinator
+                                          ? 'rgba(124,58,237,0.08)'
+                                          : isLiveInsert
+                                            ? 'var(--accent)'
+                                            : 'rgba(0,113,227,0.08)',
+                                      color:
+                                        isCoordinator
+                                          ? 'var(--ai-assistant)'
+                                          : isLiveInsert
+                                            ? 'var(--accent-fg)'
+                                            : 'var(--accent)',
+                                    }}
+                                  >
+                                    {isCoordinator
+                                      ? t(
+                                          'taskDetail.coordinatorTag',
+                                        )
+                                      : `@${stageLabel}`}
+                                  </span>
+                                  {isCoordinator
+                                    ? formatConversationDateTime(
+                                        msg.started_at ||
+                                          msg.created_at,
+                                        Date.now(),
+                                        locale,
+                                      )
+                                    : formatExecutionClock(
+                                        msg.started_at ||
+                                          msg.created_at,
+                                      )}
+                                </>
+                              ) : (
+                                <MessageMetaBar
+                                  createdAt={
+                                    msg.created_at
+                                  }
+                                  startedAt={
+                                    msg.started_at
+                                  }
+                                  running={
+                                    msg.run_status ===
+                                    'running'
+                                  }
+                                  events={
+                                    processEvents
+                                  }
+                                  prompt={
+                                    msg.prompt
+                                  }
+                                  sessionId={
+                                    isCoordinator
+                                      ? (task
+                                          ?.coordinator_session_id ||
+                                          null)
+                                      : isReview
+                                        ? undefined
+                                        : sessionIdForStep(
+                                            stageKey,
+                                          )
+                                  }
+                                  onViewPrompt={
+                                    onViewingPromptChange
+                                  }
+                                  origin={
+                                    isCoordinator
+                                      ? undefined
+                                      : executionOrigin
+                                  }
+                                  status={terminalMessageStatus(
+                                    msg.run_status,
+                                  )}
+                                  endedAt={
+                                    msg.ended_at ||
+                                    msgReview?.ended_at
+                                  }
+                                  reviewMode={
+                                    isManualReview
+                                  }
+                                  reviewStatus={
+                                    msgReview?.status
+                                  }
+                                />
+                              )
+                            }
+                            showLoading={
+                              !isUser &&
+                              !isCoordinator &&
+                              msg.run_status ===
+                                'running' &&
+                              !msg.content
+                            }
+                            loading={
+                              !isUser &&
+                              msg.run_status ===
+                                'running'
+                                ? (
+                                  <div
+                                    className="engine-loading-message"
+                                    role="status"
+                                    aria-live="polite"
+                                  >
+                                    <span>
+                                      {liveExecutionStatus(
+                                        processEvents,
+                                        t,
+                                      )}
+                                    </span>
+                                    <span
+                                      className="engine-loading-dots"
+                                      aria-hidden="true"
+                                    >
+                                      <i />
+                                      <i />
+                                      <i />
+                                    </span>
+                                  </div>
+                                )
+                                : undefined
+                            }
+                            footer={
+                              !isUser &&
+                              !isSystem &&
+                              msg.content &&
+                              !(isReview &&
+                                !msg.engine)
+                                ? (
+                                  <MessageResponseFooter
+                                    content={stripA2uiBlocks(
+                                      String(
+                                        msg.content,
+                                      ),
+                                    )}
+                                    usage={
+                                      msg.usage ||
+                                      usageFromEvents(
+                                        processEvents,
+                                      )
+                                    }
+                                    engine={
+                                      msg.engine
+                                    }
+                                    model={
+                                      msg.model
+                                    }
+                                    executionModel={
+                                      isCoordinator
+                                        ? undefined
+                                        : executionStageModel
+                                    }
+                                    endedAt={
+                                      msg.ended_at
+                                    }
+                                    running={
+                                      msg.run_status ===
+                                      'running'
+                                    }
+                                    stopped={
+                                      !isCoordinator &&
+                                      (msg.run_status ===
+                                        'cancelled' ||
+                                        msg.run_status ===
+                                          'stopped')
+                                    }
+                                    onContinueStage={
+                                      !readOnly &&
+                                      !isCoordinator &&
+                                      task?.id
+                                        ? () => {
+                                            // Parent should handle
+                                          }
+                                        : undefined
+                                    }
+                                  />
+                                )
+                                : undefined
+                            }
+                          >
+                            {!readOnly &&
+                              (msg.proposals ||
+                                [])
+                                .map(
+                                  (
+                                    proposal: ActionProposal,
+                                  ) => {
+                                    const currentProposal =
+                                      (proposalOverrides ??
+                                        {})[
+                                        proposal.id
+                                      ] || proposal
+                                    return (
+                                      <CoordinatorProposalCard
+                                        key={
+                                          proposal.id
+                                        }
+                                        proposal={
+                                          currentProposal
+                                        }
+                                        taskId={
+                                          task?.id ||
+                                          ''
+                                        }
+                                        projectId={
+                                          projectId ||
+                                          ''
+                                        }
+                                        onChanged={(
+                                          updated,
+                                        ) =>
+                                          onProposalOverride?.(
+                                            updated,
+                                          )
+                                        }
+                                      />
+                                    )
+                                  },
+                                )}
+                            {isReview &&
+                              msgReviewPending && (
+                                <div
+                                  style={{
+                                    display:
+                                      'flex',
+                                    flexDirection:
+                                      'column',
+                                    gap: 8,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {msgArtifacts.length >
+                                    0 && (
+                                    <div
+                                      style={{
+                                        display:
+                                          'flex',
+                                        flexDirection:
+                                          'column',
+                                        gap: 4,
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          fontSize: 11,
+                                          fontWeight: 600,
+                                          color: 'var(--muted)',
+                                          fontFamily:
+                                            'var(--font-mono)',
+                                          textTransform:
+                                            'uppercase',
+                                          letterSpacing:
+                                            '0.08em',
+                                        }}
+                                      >
+                                        {t(
+                                          'taskDetail.reviewArtifacts',
+                                        )}
+                                      </div>
+                                      {msgArtifacts.map(
+                                        (
+                                          artifact,
+                                        ) => (
+                                          <div
+                                            key={
+                                              artifact.path
+                                            }
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label={t(
+                                              'taskDetail.openOutputAria',
+                                              {
+                                                name:
+                                                  artifact.name,
+                                              },
+                                            )}
+                                            onClick={() =>
+                                              onOpenArtifact(
+                                                artifact.name,
+                                                artifact.step_key,
+                                              )
+                                            }
+                                            onKeyDown={(
+                                              event,
+                                            ) => {
+                                              if (
+                                                event.key ===
+                                                  'Enter' ||
+                                                event.key ===
+                                                  ' '
+                                              ) {
+                                                event.preventDefault()
+                                                onOpenArtifact(
+                                                  artifact.name,
+                                                  artifact.step_key,
+                                                )
+                                              }
+                                            }}
+                                            title={t(
+                                              'taskDetail.openFileTitle',
+                                              {
+                                                name:
+                                                  artifact.name,
+                                              },
+                                            )}
+                                            style={{
+                                              display:
+                                                'flex',
+                                              alignItems:
+                                                'center',
+                                              gap: 8,
+                                              padding:
+                                                '6px 10px',
+                                              background:
+                                                'var(--surface)',
+                                              borderRadius: 6,
+                                              border:
+                                                '1px solid var(--border-soft)',
+                                              cursor:
+                                                'pointer',
+                                              fontSize: 13,
+                                            }}
+                                          >
+                                            {artifact.is_dir
+                                              ? (
+                                                <Icon
+                                                  name="folder"
+                                                  size={14}
+                                                  color="var(--accent)"
+                                                  style={{
+                                                    flexShrink: 0,
+                                                  }}
+                                                />
+                                              )
+                                              : (
+                                                <span
+                                                  style={{
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius:
+                                                      '50%',
+                                                    background:
+                                                      stageInfo
+                                                        ?.color ||
+                                                      'var(--accent)',
+                                                    flexShrink: 0,
+                                                  }}
+                                                />
+                                              )}
+                                            <span
+                                              style={{
+                                                flex: 1,
+                                                fontWeight: 500,
+                                              }}
+                                            >
+                                              {
+                                                artifact.name
+                                              }
+                                            </span>
+                                            <span
+                                              style={{
+                                                fontSize: 11,
+                                                color: 'var(--accent)',
+                                              }}
+                                            >
+                                              {t(
+                                                'common.open',
+                                              )}
+                                            </span>
+                                          </div>
+                                        ),
+                                      )}
+                                    </div>
+                                  )}
+                                  {!readOnly &&
+                                    msgReview!.status ===
+                                      'pending' && (
+                                      <Textarea
+                                        rows={2}
+                                        value={
+                                          reviewComment ??
+                                          ''
+                                        }
+                                        onChange={(
+                                          event,
+                                        ) =>
+                                          onReviewCommentChange?.(
+                                            event
+                                              .target
+                                              .value,
+                                          )
+                                        }
+                                        placeholder={t(
+                                          'taskDetail.reviewCommentPlaceholder',
+                                        )}
+                                      />
+                                    )}
+                                  {!readOnly && (
+                                    <div
+                                      style={{
+                                        display:
+                                          'flex',
+                                        justifyContent:
+                                          'flex-end',
+                                        gap: 8,
+                                      }}
+                                    >
+                                      {msgReview!
+                                          .status ===
+                                        'pending' ? (
+                                        <>
+                                          <Button
+                                            variant="ghost"
+                                            disabled={
+                                              reviewActionPending
+                                            }
+                                            onClick={() =>
+                                              onReviewAction?.(
+                                                'reject',
+                                                msgReview!,
+                                                stageKey,
+                                              )
+                                            }
+                                          >
+                                            {t(
+                                              'taskDetail.reject',
+                                            )}
+                                          </Button>
+                                          <Button
+                                            variant="primary"
+                                            disabled={
+                                              reviewActionPending
+                                            }
+                                            loading={
+                                              reviewActionPending
+                                            }
+                                            onClick={() =>
+                                              onReviewAction?.(
+                                                'approve',
+                                                msgReview!,
+                                                stageKey,
+                                              )
+                                            }
+                                          >
+                                            {t(
+                                              'taskDetail.approve',
+                                            )}
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <Button
+                                          variant="primary"
+                                          disabled={
+                                            reviewActionPending
+                                          }
+                                          loading={
+                                            reviewActionPending
+                                          }
+                                          onClick={() =>
+                                            onReviewAction?.(
+                                              'force-approve',
+                                              msgReview!,
+                                              stageKey,
+                                            )
+                                          }
+                                        >
+                                          {t(
+                                            'taskDetail.forceApprove',
+                                          )}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                          </ChatMessageBubble>
+                        )
+                      },
+                    )}
+                  </div>
+                )
+              })
+            })()}
+
+            {liveCoordinatorMessages.map(
+              (message) => (
+                <ChatMessageBubble
+                  key={message.id}
+                  role="assistant"
+                  sender={t('aiFlow.agent')}
+                  initials={t(
+                    'aiFlow.agentInitials',
+                  )}
+                  color="var(--ai-assistant)"
+                  content={
+                    message.content || ''
+                  }
+                  streaming={
+                    message.status === 'running'
+                  }
+                  variant="bg"
+                  onA2uiAction={
+                    !readOnly
+                      ? onA2uiAction
+                      : undefined
+                  }
+                  events={message.events}
+                  onInteractionRespond={
+                    !readOnly
+                      ? onInteractionRespond
+                      : undefined
+                  }
+                  header={
+                    <MessageMetaBar
+                      createdAt={
+                        message.created_at
+                      }
+                      running={
+                        message.status ===
+                        'running'
+                      }
+                      events={message.events}
+                      prompt={
+                        message.prompt
+                      }
+                      sessionId={
+                        task?.coordinator_session_id ||
+                        sessionIdForStep(
+                          message.step_key,
+                        )
+                      }
+                      onViewPrompt={
+                        onViewingPromptChange
+                      }
+                      status={terminalMessageStatus(
+                        message.status,
+                      )}
+                    />
+                  }
+                  showLoading={
+                    !message.content &&
+                    message.status === 'running'
+                  }
+                  loading={
+                    <div
+                      className="engine-loading-message"
+                      role="status"
+                    >
+                      {t('aiFlow.thinking')}
+                    </div>
+                  }
+                  footer={
+                    message.content ? (
+                      <MessageResponseFooter
+                        content={stripA2uiBlocks(
+                          message.content,
+                        )}
+                        usage={usageFromEvents(
+                          message.events,
+                        )}
+                        engine={
+                          message.engine
+                        }
+                        model={
+                          message.model
+                        }
+                        endedAt={
+                          message.status ===
+                          'running'
+                            ? undefined
+                            : lastEventTimestamp(
+                                message.events,
+                              )
+                        }
+                        running={
+                          message.status ===
+                          'running'
+                        }
+                      />
+                    ) : undefined
+                  }
+                >
+                  {!readOnly &&
+                    message.proposals.map(
+                      (rawProposal) => {
+                        const proposal =
+                          rawProposal as unknown as ActionProposal
+                        const currentProposal =
+                          (proposalOverrides ??
+                            {})[
+                            proposal.id
+                          ] || proposal
+                        return (
+                          <CoordinatorProposalCard
+                            key={
+                              proposal.id
+                            }
+                            proposal={
+                              currentProposal
+                            }
+                            taskId={
+                              task?.id ||
+                              ''
+                            }
+                            projectId={
+                              projectId ||
+                              ''
+                            }
+                            onChanged={(
+                              updated,
+                            ) =>
+                              onProposalOverride?.(
+                                updated,
+                              )
+                            }
+                          />
+                        )
+                      },
+                    )}
+                </ChatMessageBubble>
+              ),
+            )}
+
+            {/* Legacy execution */}
+            {shouldRenderLegacyExecution(
+              running ?? false,
+              hasProcessEvents(events),
+              content,
+              hasStructuredExecutionMessage,
+            ) && (
+              <ChatMessageBubble
+                role="assistant"
+                sender={activeStage.label}
+                initials={stageAvatarText(
+                  activeStage.label,
+                  t,
+                )}
+                color={activeStageColor}
+                content={content}
+                streaming={running}
+                variant="bg"
+                onA2uiAction={
+                  !readOnly
+                    ? onA2uiAction
+                    : undefined
+                }
+                events={events}
+                onInteractionRespond={
+                  !readOnly
+                    ? onInteractionRespond
+                    : undefined
+                }
+                header={
+                  <ProcessTrace
+                    events={events}
+                    running={running ?? false}
+                  />
+                }
+                showLoading={
+                  (running ?? false) &&
+                  !content &&
+                  !hasProcessEvents(events)
+                }
+                loading={
+                  <div
+                    className="engine-loading-message"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span>
+                      {t('chat.processing')}
+                    </span>
+                    <span className="engine-loading-dots">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  </div>
+                }
+                footer={
+                  content ? (
+                    <MessageResponseFooter
+                      content={stripA2uiBlocks(
+                        content,
+                      )}
+                      usage={usageFromEvents(
+                        events,
+                      )}
+                      engine={
+                        task?.engine
+                      }
+                      model={
+                        task?.model
+                      }
+                      executionModel={
+                        executionStageModel
+                      }
+                      endedAt={
+                        running
+                          ? undefined
+                          : lastEventTimestamp(
+                              events,
+                            )
+                      }
+                      running={running}
+                    />
+                  ) : undefined
+                }
+              />
+            )}
+
+            <div ref={endRef} />
+          </div>
+
+          {unreadMessages && (
+            <button
+              type="button"
+              onClick={() => {
+                followRef.current = true
+                setUnreadMessages()
+                const container = scrollRef.current
+                if (container) {
+                  const target =
+                    conversationBottomScrollTop(
+                      container.scrollHeight,
+                      container.clientHeight,
+                    )
+                  programmaticRef.current = target
+                  container.scrollTop = target
+                }
+              }}
+              aria-label={t(
+                'taskDetail.viewNewMessagesAria',
+              )}
+              style={{
+                position: 'absolute',
+                right: 12,
+                bottom: 12,
+                zIndex: 2,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '6px 10px',
+                borderRadius: 999,
+                border:
+                  '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
+                background: 'var(--bg)',
+                color: 'var(--accent)',
+                boxShadow:
+                  '0 3px 12px rgba(0,0,0,0.14)',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {t('taskDetail.newMessages')}{' '}
+              <span aria-hidden="true">↓</span>
+            </button>
+          )}
+        </div>
+
+        {/* Chat input (edit mode only) */}
+        {!readOnly && (
+          <div
+            style={{
+              position: 'relative',
+              padding: '14px 20px',
+              borderTop: '1px solid var(--border-soft)',
+              background: 'var(--bg)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              flexShrink: 0,
+            }}
+          >
+            {/* Stage inserts */}
+            {chatTarget !== 'coordinator' &&
+              runningStages.length > 0 &&
+              (stageInserts ?? []).length > 0 && (
+                <div
+                  role="region"
+                  aria-label={t(
+                    'taskDetail.insertMessages',
+                  )}
+                  style={{
+                    position: 'absolute',
+                    bottom: '100%',
+                    left: 20,
+                    right: 20,
+                    marginBottom: 6,
+                    zIndex: 30,
+                    borderRadius: 8,
+                    border:
+                      '1px solid var(--border-soft)',
+                    background: 'var(--bg)',
+                    boxShadow:
+                      '0 2px 12px rgba(0,0,0,0.12)',
+                    padding: '6px 10px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  <div
+                    title={t(
+                      'taskDetail.insertMessagesTitle',
+                      {
+                        stage:
+                          runningStages[0]
+                            ?.label ?? '',
+                      },
+                    )}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: 'var(--meta)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {t('taskDetail.insertMessages')}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 400,
+                        color: 'var(--muted)',
+                      }}
+                    >
+                      {t('taskDetail.itemCount', {
+                        count: (
+                          stageInserts ?? []
+                        ).length,
+                      })}
+                    </span>
+                  </div>
+                  {(stageInserts ?? []).map(
+                    (insert) => (
+                      <div
+                        key={insert.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                        }}
+                      >
+                        {editingInsertId ===
+                        insert.id ? (
+                          <Textarea
+                            autoFocus
+                            value={
+                              editingInsertContent ??
+                              ''
+                            }
+                            onChange={(e) =>
+                              onEditingInsertContentChange?.(
+                                e.target
+                                  .value,
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (
+                                e.key ===
+                                  'Enter' &&
+                                !e.shiftKey
+                              ) {
+                                e.preventDefault()
+                                onStageInsertEditSave?.(
+                                  insert.id,
+                                )
+                              }
+                              if (
+                                e.key === 'Escape'
+                              ) {
+                                e.preventDefault()
+                                onStageInsertEditCancel?.()
+                              }
+                            }}
+                            rows={2}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              fontSize: 11,
+                              lineHeight: 1.4,
+                              color: 'var(--fg)',
+                              background:
+                                'var(--bg)',
+                              border:
+                                '1px solid var(--accent)',
+                              borderRadius: 6,
+                              padding: '4px 6px',
+                              outline: 'none',
+                              resize: 'none',
+                              fontFamily:
+                                'var(--font-body)',
+                            }}
+                          />
+                        ) : (
+                          <>
+                            <Icon
+                              name="list"
+                              size={12}
+                              strokeWidth={1.6}
+                              color="var(--muted)"
+                              style={{
+                                flexShrink: 0,
+                                opacity: 0.7,
+                              }}
+                            />
+                            <div
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                fontSize: 13,
+                                lineHeight: 1.4,
+                                color: 'var(--fg)',
+                                whiteSpace:
+                                  'nowrap',
+                                overflow:
+                                  'hidden',
+                                textOverflow:
+                                  'ellipsis',
+                              }}
+                            >
+                              {insert.content}
+                            </div>
+                          </>
+                        )}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {editingInsertId ===
+                          insert.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onStageInsertEditSave?.(
+                                    insert.id,
+                                  )
+                                }
+                                title={t(
+                                  'taskDetail.saveEditTitle',
+                                )}
+                                style={{
+                                  padding:
+                                    '2px 8px',
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  border: 'none',
+                                  background:
+                                    'var(--accent)',
+                                  color:
+                                    'var(--accent-fg)',
+                                  cursor:
+                                    'pointer',
+                                }}
+                              >
+                                {t(
+                                  'common.save',
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={
+                                  onStageInsertEditCancel
+                                }
+                                title={t(
+                                  'taskDetail.cancelEditTitle',
+                                )}
+                                style={{
+                                  padding:
+                                    '2px 8px',
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  border:
+                                    '1px solid var(--border)',
+                                  background:
+                                    'transparent',
+                                  color:
+                                    'var(--meta)',
+                                  cursor:
+                                    'pointer',
+                                }}
+                              >
+                                {t(
+                                  'common.cancel',
+                                )}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onStageInsertSend?.(
+                                    insert,
+                                  )
+                                }
+                                title={t(
+                                  'taskDetail.sendInsertTitle',
+                                )}
+                                style={{
+                                  padding:
+                                    '2px 6px',
+                                  fontSize: 11,
+                                  border: 'none',
+                                  background:
+                                    'transparent',
+                                  color:
+                                    'var(--accent)',
+                                  cursor:
+                                    'pointer',
+                                }}
+                              >
+                                {t(
+                                  'chatInput.send',
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onStageInsertEditStart?.(
+                                    insert,
+                                  )
+                                }
+                                title={t(
+                                  'taskDetail.editInsertTitle',
+                                )}
+                                style={{
+                                  padding: '4px',
+                                  border: 'none',
+                                  background:
+                                    'transparent',
+                                  color:
+                                    'var(--muted)',
+                                  cursor:
+                                    'pointer',
+                                  display:
+                                    'flex',
+                                  alignItems:
+                                    'center',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                <Icon
+                                  name="pencil"
+                                  size={12}
+                                  strokeWidth={2}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onStageInsertRemove?.(
+                                    insert.id,
+                                  )
+                                }
+                                title={t(
+                                  'taskDetail.deleteInsertTitle',
+                                )}
+                                style={{
+                                  padding: '4px',
+                                  border: 'none',
+                                  background:
+                                    'transparent',
+                                  color:
+                                    'var(--muted)',
+                                  cursor:
+                                    'pointer',
+                                  display:
+                                    'flex',
+                                  alignItems:
+                                    'center',
+                                  borderRadius: 4,
+                                }}
+                              >
+                                <Icon
+                                  name="trash"
+                                  size={12}
+                                  strokeWidth={2}
+                                />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                  {(stageInserts ?? []).length >
+                    1 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent:
+                          'flex-end',
+                        gap: 6,
+                        paddingTop: 4,
+                        borderTop:
+                          '1px solid var(--border-soft)',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={onSendAllInserts}
+                        title={t(
+                          'taskDetail.sendAllTitle',
+                        )}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: 11,
+                          borderRadius: 6,
+                          border: 'none',
+                          background:
+                            'var(--accent)',
+                          color:
+                            'var(--accent-fg)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t(
+                          'taskDetail.sendAll',
+                          {
+                            count: (
+                              stageInserts ?? []
+                            ).length,
+                          },
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onClearInserts}
+                        title={t(
+                          'taskDetail.clearAllTitle',
+                        )}
+                        style={{
+                          padding: '2px 8px',
+                          fontSize: 11,
+                          borderRadius: 6,
+                          border:
+                            '1px solid var(--border)',
+                          background:
+                            'transparent',
+                          color: 'var(--meta)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {t(
+                          'taskDetail.clearAll',
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            {/* Chat target tabs */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 2,
+                  padding: 2,
+                  borderRadius: 8,
+                  background:
+                    'var(--bg-soft, rgba(128,128,128,0.08))',
+                  border:
+                    '1px solid var(--border-soft)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChatTargetChange?.(
+                      'coordinator',
+                    )
+                  }
+                  aria-pressed={
+                    chatTarget === 'coordinator'
+                  }
+                  title={t(
+                    'taskDetail.coordinatorTabTitle',
+                  )}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background:
+                      chatTarget !==
+                        'coordinator'
+                        ? 'transparent'
+                        : 'var(--accent)',
+                    color:
+                      chatTarget !==
+                        'coordinator'
+                        ? 'var(--meta)'
+                        : 'var(--accent-fg)',
+                  }}
+                >
+                  {t('aiFlow.agent')}
+                </button>
+                {runningStages.map((stage) => (
+                  <button
+                    key={stage.key}
+                    type="button"
+                    onClick={() =>
+                      onChatTargetChange?.(
+                        stage.key,
+                      )
+                    }
+                    aria-pressed={
+                      chatTarget === stage.key
+                    }
+                    title={t(
+                      'taskDetail.stageTabTitle',
+                      {
+                        stage: stage.label,
+                      },
+                    )}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background:
+                        chatTarget === stage.key
+                          ? 'var(--accent)'
+                          : 'transparent',
+                      color:
+                        chatTarget === stage.key
+                          ? 'var(--accent-fg)'
+                          : 'var(--meta)',
+                      maxWidth: 140,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {stage.label}
+                  </button>
+                ))}
+                {stoppedStages.map((stage) => (
+                  <button
+                    key={stage.key}
+                    type="button"
+                    onClick={() =>
+                      onChatTargetChange?.(
+                        stage.key,
+                      )
+                    }
+                    aria-pressed={
+                      chatTarget === stage.key
+                    }
+                    title={t(
+                      'taskDetail.stoppedStageTabTitle',
+                      {
+                        stage: stage.label,
+                      },
+                    )}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background:
+                        chatTarget === stage.key
+                          ? 'var(--accent)'
+                          : 'transparent',
+                      color:
+                        chatTarget === stage.key
+                          ? 'var(--accent-fg)'
+                          : 'var(--meta)',
+                      maxWidth: 140,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {stage.label}
+                  </button>
+                ))}
+              </div>
+              {stoppedTarget && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--warn)',
+                  }}
+                >
+                  {t('taskDetail.stoppedStageHint', {
+                    stage: stoppedTarget.label,
+                  })}
+                </span>
+              )}
+              {!stoppedTarget &&
+                chatTarget !== 'coordinator' &&
+                runningStages.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--meta)',
+                    }}
+                  >
+                    {t('taskDetail.enterHint', {
+                      stage:
+                        runningStages[0]
+                          ?.label ?? '',
+                    })}
+                  </span>
+                )}
+              {!stoppedTarget &&
+                chatTarget !== 'coordinator' &&
+                runningStages.length === 0 && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--warn)',
+                    }}
+                  >
+                    {t(
+                      'taskDetail.stageNotRunningHint',
+                    )}
+                  </span>
+                )}
+            </div>
+
+            {chatError && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 13,
+                  color: 'var(--danger)',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  border:
+                    '1px solid rgba(217,45,32,0.25)',
+                  background:
+                    'rgba(217,45,32,0.06)',
+                }}
+              >
+                {chatError}
+              </div>
+            )}
+
+            <ChatInput
+              value={prompt ?? ''}
+              onChange={
+                onPromptChange ?? (() => {})
+              }
+              onSend={onSend ?? (() => {})}
+              inputRef={chatInputRef}
+              imageAttach={
+                projectId
+                  ? {
+                      projectId,
+                      prefix:
+                        task?.id?.slice(0, 8) ??
+                        '',
+                      onError: () => {
+                        /* handled by parent */
+                      },
+                    }
+                  : undefined
+              }
+              stopTitle={
+                chatTarget !== 'coordinator'
+                  ? t('taskDetail.stopStageTitle')
+                  : t('chatInput.stopGenerating')
+              }
+              config={
+                {
+                  engines:
+                    coordinatorConfig
+                      ?.available_engines ||
+                    [],
+                  engine:
+                    coordinatorConfig
+                      ?.configured.engine || '',
+                  defaultEngine:
+                    coordinatorConfig?.resolved
+                      .engine ||
+                    task?.coordinator_engine ||
+                    task?.engine ||
+                    'claude',
+                  model:
+                    coordinatorConfig
+                      ?.configured.model || '',
+                  fastModel:
+                    coordinatorConfig
+                      ?.configured.fast_model ||
+                    '',
+                  visionModel:
+                    coordinatorConfig
+                      ?.configured.vision_model ||
+                    '',
+                  thinkingEffort:
+                    coordinatorConfig
+                      ?.configured
+                      .thinking_effort || '',
+                  showVision: true,
+                  disabled:
+                    !coordinatorConfig ||
+                    (coordinatorRunning ??
+                      false),
+                  saving:
+                    coordinatorConfigSaving,
+                  error: coordinatorConfigError,
+                  notice:
+                    coordinatorConfigNotice,
+                  hint: coordinatorConfig
+                    ? t(
+                        'taskDetail.hintFromNextMessage',
+                      )
+                    : '',
+                  engineTitle: t(
+                    'taskDetail.engineTitle',
+                  ),
+                  onEngineChange:
+                    onCoordinatorEngineChange ??
+                    (() => {}),
+                  onModelChange:
+                    onCoordinatorModelChange ??
+                    (() => {}),
+                  onFastModelChange:
+                    onCoordinatorFastModelChange ??
+                    (() => {}),
+                  onVisionModelChange:
+                    onCoordinatorVisionModelChange ??
+                    (() => {}),
+                  onThinkingEffortChange:
+                    onCoordinatorThinkingEffortChange ??
+                    (() => {}),
+                  onReset: () =>
+                    onCoordinatorEngineChange?.(
+                      '',
+                    ),
+                } as ChatInputEngineConfig
+              }
+              disabled={
+                chatTarget !== 'coordinator'
+                  ? (stoppedTarget
+                      ? (stageResuming ?? false)
+                      : false)
+                  : (coordinatorRunning ??
+                      false)
+              }
+              running={
+                (chatTarget !== 'coordinator' &&
+                  runningStages.length > 0 &&
+                  (prompt ?? '').trim()
+                    .length === 0) ||
+                (stoppedTarget &&
+                  (stageResuming ?? false)) ||
+                (chatTarget === 'coordinator' &&
+                  (coordinatorRunning ??
+                    false))
+              }
+              stopping={
+                (chatTarget !== 'coordinator' &&
+                  (stoppingStepKeys ?? [])
+                    .length > 0) ||
+                (chatTarget === 'coordinator' &&
+                  (coordinatorStopping ??
+                    false))
+              }
+              onStop={
+                chatTarget !== 'coordinator' &&
+                runningStages[0]
+                  ? () =>
+                      onStopStage?.(
+                        runningStages[0].key,
+                      )
+                  : onStop ?? (() => {})
+              }
+              placeholder={
+                stoppedTarget
+                  ? t('taskDetail.resumeStagePlaceholder', {
+                      stage: stoppedTarget.label,
+                    })
+                  : chatTarget !== 'coordinator' &&
+                      runningStages[0]
+                    ? t('taskDetail.stagePlaceholder', {
+                        stage: runningStages[0].label,
+                      })
+                    : coordinatorRunning
+                      ? t(
+                          'taskDetail.coordinatorProcessing',
+                        )
+                      : t(
+                          'taskDetail.coordinatorPlaceholder',
+                        )
+              }
+              title={
+                stoppedTarget
+                  ? t('taskDetail.resumeStageTitle', {
+                      stage: stoppedTarget.label,
+                    })
+                  : chatTarget !== 'coordinator'
+                    ? t(
+                        'taskDetail.stageInputTitle',
+                      )
+                    : coordinatorRunning
+                      ? t(
+                          'taskDetail.stopCoordinatorTitle',
+                        )
+                      : t(
+                          'taskDetail.sendToCoordinator',
+                        )
+              }
+            />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Render: Main layout ──
+
+  if (!task) {
+    return (
+      <div
+        style={{
+          padding: 40,
+          textAlign: 'center',
+          color: 'var(--meta)',
+        }}
+      >
+        {t('taskDetail.taskNotFound')}
+        {!readOnly && onClose && (
+          <>
+            <br />
+            <Button
+              variant="ghost"
+              style={{ marginTop: 12 }}
+              onClick={onClose}
+            >
+              ← {t('common.back')}
+            </Button>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* Header */}
+      {renderHeader()}
+
+      {/* Recovered hint */}
+      {renderRecoveredHint()}
+
+      {/* Content split */}
+      <div
+        ref={contentSplitRef}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'grid',
+          gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr`,
+        }}
+      >
+        {/* Left panel */}
+        {renderLeftPanel()}
+
+        {/* Split handle */}
+        <div
+          style={{
+            background: 'var(--border-soft)',
+            cursor: 'col-resize',
+            position: 'relative',
+          }}
+          onPointerDown={beginSplitResize}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              color: 'var(--meta)',
+              fontSize: 11,
+              opacity: 0.5,
+            }}
+          >
+            ⋮
+          </span>
+        </div>
+
+        {/* Right panel (conversation) */}
+        {renderConversation()}
+      </div>
+    </>
+  )
+}
+
+// ─── CoordinatorProposalCard (inline) ────────────────────────────────────
+
+function CoordinatorProposalCard({
+  proposal,
+  taskId,
+  projectId,
+  onChanged,
+}: {
+  proposal: ActionProposal
+  taskId: string
+  projectId: string
+  onChanged: (proposal: ActionProposal) => void
+}) {
+  const { t } = useI18n()
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState('')
+  const current = proposal
+  const retryable =
+    current.status === 'failed' && current.type === 'rerun_from_stage'
+  const canAct = (current.status === 'pending' || retryable) && !pending
+
+  const confirm = async () => {
+    setPending(true)
+    setError('')
+    try {
+      // Import taskApi dynamically to avoid circular dependency
+      const { taskApi } = await import('../api/client')
+      onChanged(
+        await taskApi.confirmAction(
+          taskId,
+          current.id,
+          projectId,
+          crypto.randomUUID(),
+        ),
+      )
+    } catch (reason) {
+      const fallbackError =
+        reason instanceof Error
+          ? reason.message
+          : t('taskDetail.proposalConfirmFailed')
+      try {
+        const { taskApi } = await import('../api/client')
+        const history = await taskApi.history(taskId, projectId)
+        const latest = [...history.messages]
+          .reverse()
+          .flatMap((message) => message.proposals || [])
+          .find((item) => item.id === current.id) as
+          | ActionProposal
+          | undefined
+        if (latest && latest.status !== 'pending') {
+          onChanged(latest)
+          setError('')
+        } else {
+          setError(fallbackError)
+        }
+      } catch {
+        setError(fallbackError)
+      }
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const cancel = async () => {
+    setPending(true)
+    setError('')
+    try {
+      const { taskApi } = await import('../api/client')
+      onChanged(await taskApi.cancelAction(taskId, current.id, projectId))
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : t('taskDetail.proposalCancelFailed'),
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  return (
+    <div
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: 12,
+        background: 'var(--bg)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 700 }}>
+        {t('taskDetail.proposalTitle', { type: current.type })}
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+        {current.impact?.summary ||
+          t('taskDetail.proposalTargetStage', {
+            step: current.target_step_key || t('common.none'),
+          })}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          color:
+            current.status === 'failed' ? 'var(--danger)' : 'var(--meta)',
+        }}
+      >
+        {t('taskDetail.proposalStatus', { status: current.status })}
+        {current.error ? ` · ${current.error}` : ''}
+      </div>
+      {error && (
+        <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>
+      )}
+      {(current.status === 'pending' || retryable) && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            variant="primary"
+            disabled={!canAct}
+            loading={pending}
+            onClick={() => void confirm()}
+          >
+            {retryable ? t('common.retry') : t('common.confirm')}
+          </Button>
+          {current.status === 'pending' && (
+            <Button
+              variant="ghost"
+              disabled={!canAct}
+              onClick={() => void cancel()}
+            >
+              {t('common.cancel')}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

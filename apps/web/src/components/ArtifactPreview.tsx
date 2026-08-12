@@ -1,15 +1,25 @@
-/** Artifact Preview Component - Displays file contents based on type. */
+/** Artifact Preview Component - shows file contents or a directory listing. */
 
 import Icon from './Icon'
-import { useState, useEffect } from 'react'
-import { fsApi, type FilePreview } from '../api/client'
+import { useState, useEffect, type ReactNode } from 'react'
+import {
+  fsApi,
+  type DirectoryBrowseResult,
+  type DirectoryEntry,
+  type FilePreview,
+} from '../api/client'
 import Button from './Button'
 import { useI18n } from '../i18n'
 
 interface ArtifactPreviewProps {
   path: string
+  isDir?: boolean
   onClose?: () => void
 }
+
+type PreviewView =
+  | { kind: 'listing'; path: string }
+  | { kind: 'file'; path: string; parent: string }
 
 async function copyText(content: string) {
   if (navigator.clipboard?.writeText) {
@@ -65,50 +75,234 @@ function CopyTextButton({ content }: { content: string }) {
   )
 }
 
-export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps) {
+export default function ArtifactPreview({ path, isDir = false, onClose }: ArtifactPreviewProps) {
   const { t } = useI18n()
-  const [preview, setPreview] = useState<FilePreview | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<PreviewView>(() =>
+    isDir
+      ? { kind: 'listing', path }
+      : { kind: 'file', path, parent: '' }
+  )
 
+  const [listing, setListing] = useState<DirectoryBrowseResult | null>(null)
+  const [listingLoading, setListingLoading] = useState(false)
+  const [listingError, setListingError] = useState<string | null>(null)
+
+  const [preview, setPreview] = useState<FilePreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+
+  // Reset the view when the artifact changes.
   useEffect(() => {
+    setView(isDir ? { kind: 'listing', path } : { kind: 'file', path, parent: '' })
+  }, [path, isDir])
+
+  // Load the directory listing.
+  useEffect(() => {
+    if (view.kind !== 'listing') return
     let active = true
-    setLoading(true)
-    setError(null)
-    fsApi.preview(path)
+    setListingLoading(true)
+    setListingError(null)
+    fsApi.browse(view.path)
+      .then((data) => {
+        if (active) setListing(data)
+      })
+      .catch((e) => {
+        if (active) {
+          setListingError(e instanceof Error ? e.message : t('artifact.loadFallbackError'))
+        }
+      })
+      .finally(() => {
+        if (active) setListingLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [view, t])
+
+  // Load the file preview.
+  useEffect(() => {
+    if (view.kind !== 'file') return
+    let active = true
+    setPreviewLoading(true)
+    setPreviewError(null)
+    fsApi.preview(view.path)
       .then((data) => {
         if (active) setPreview(data)
       })
       .catch((e) => {
         if (active) {
-          setError(e instanceof Error ? e.message : t('artifact.loadFallbackError'))
+          setPreviewError(e instanceof Error ? e.message : t('artifact.loadFallbackError'))
         }
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) setPreviewLoading(false)
       })
     return () => {
       active = false
     }
-  }, [path])
+  }, [view, t])
 
-  if (loading) {
+  const openEntry = (entry: DirectoryEntry) => {
+    if (entry.type === 'directory') {
+      setView({ kind: 'listing', path: entry.path })
+    } else if (view.kind === 'listing') {
+      setView({ kind: 'file', path: entry.path, parent: view.path })
+    }
+  }
+
+  const goUp = () => {
+    if (view.kind === 'listing' && listing?.parent) {
+      setView({ kind: 'listing', path: listing.parent })
+    }
+  }
+
+  const backToListing = () => {
+    if (view.kind === 'file' && view.parent) {
+      setView({ kind: 'listing', path: view.parent })
+    }
+  }
+
+  const backButton = (
+    <Button
+      variant="icon"
+      onClick={backToListing}
+      title={t('artifact.backToList')}
+      aria-label={t('artifact.backToList')}
+      style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
+    >
+      <Icon name="undo-2" size={14} />
+    </Button>
+  )
+
+  const fileHeader = (label: string, extra?: ReactNode) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        {view.kind === 'file' && view.parent ? backButton : null}
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {label}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {extra}
+        {onClose && (
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.close')}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+
+  const fileFooter = (content_type: string, content: string) => (
+    <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
+      {content_type} | {(content.length / 1024).toFixed(2)} KB
+    </div>
+  )
+
+  // ── Directory listing view ──
+  if (view.kind === 'listing') {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
-        {t('common.loading')}
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Button
+            variant="icon"
+            onClick={goUp}
+            disabled={!listing?.parent}
+            title={t('artifact.upLevel')}
+            aria-label={t('artifact.upLevel')}
+            style={{ width: 28, height: 28, minWidth: 28, padding: 0, justifyContent: 'center' }}
+          >
+            <Icon name="undo-2" size={14} />
+          </Button>
+          <div style={{ flex: 1, fontSize: 13, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {listing?.path || t('common.loading')}
+          </div>
+          {onClose && (
+            <Button variant="ghost" onClick={onClose}>
+              {t('common.close')}
+            </Button>
+          )}
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 4 }}>
+          {listingLoading && (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
+              {t('common.loading')}
+            </div>
+          )}
+          {!listingLoading && listingError && (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
+              {t('artifact.loadFailed', { error: listingError })}
+            </div>
+          )}
+          {!listingLoading && !listingError && listing?.entries.length === 0 && (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
+              {t('browser.emptyDir')}
+            </div>
+          )}
+          {!listingLoading && !listingError && listing?.entries.map((entry) => (
+            <div
+              key={entry.path}
+              role="button"
+              tabIndex={0}
+              onClick={() => openEntry(entry)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  openEntry(entry)
+                }
+              }}
+              title={entry.path}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 10px', borderRadius: 6,
+                cursor: 'pointer', fontSize: 13,
+                color: entry.type === 'directory' ? 'var(--fg)' : 'var(--fg-2)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover, var(--border-soft))' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <Icon
+                name={entry.type === 'directory' ? 'folder' : 'file'}
+                size={15}
+                color={entry.type === 'directory' ? 'var(--accent)' : 'var(--muted)'}
+              />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.name}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>
+                {entry.type === 'directory' ? t('artifact.directory') : t('artifact.previewFile')}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
-  if (error) {
+  // ── File preview view ──
+  if (previewLoading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--danger)' }}>
-        {t('artifact.loadFailed', { error })}
-        {onClose && (
-          <Button variant="ghost" style={{ marginTop: 12 }} onClick={onClose}>
-            {t('common.close')}
-          </Button>
-        )}
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('common.loading'))}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
+          {t('common.loading')}
+        </div>
+      </div>
+    )
+  }
+
+  if (previewError) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('artifact.file'))}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', gap: 12 }}>
+          {t('artifact.loadFailed', { error: previewError })}
+          {onClose && (
+            <Button variant="ghost" onClick={onClose}>
+              {t('common.close')}
+            </Button>
+          )}
+        </div>
       </div>
     )
   }
@@ -120,18 +314,14 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
   const { type, content_type, content, extension = '' } = preview
   const isImage = type === 'image'
   const isText = type === 'text'
-  const isCode = isText && ['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'cpp', 'c', 'h', 'json', 'md', 'html', 'css'].includes(extension.slice(1))
+  const ext = extension.slice(1).toLowerCase()
+  const isHtml = isText && ['html', 'htm'].includes(ext)
+  const isCode = isText && !isHtml && ['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'cpp', 'c', 'h', 'json', 'md', 'css'].includes(ext)
 
   if (isImage) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {onClose && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <Button variant="ghost" onClick={onClose}>
-              {t('common.close')}
-            </Button>
-          </div>
-        )}
+        {fileHeader(t('artifact.imageAlt'))}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
           <img
             src={content}
@@ -139,8 +329,42 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         </div>
-        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
-          {content_type} | {(content.length / 1024).toFixed(2)} KB
+        {fileFooter(content_type, content)}
+      </div>
+    )
+  }
+
+  if (isHtml) {
+    const htmlUrl = fsApi.fileUrl(view.path)
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('artifact.htmlFile'), <CopyTextButton content={content} />)}
+        <div style={{
+          flex: 1, overflow: 'auto', borderRadius: 8, padding: 16,
+          border: '1px dashed var(--border)', background: 'var(--surface)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+        }}>
+          <Icon name="external-link" size={26} color="var(--muted)" />
+          <div style={{ fontSize: 13, color: 'var(--fg-2)', textAlign: 'center', maxWidth: 420 }}>
+            {t('artifact.htmlHint')}
+          </div>
+          <a
+            href={htmlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: 'var(--accent)', color: '#fff',
+              padding: '7px 14px', borderRadius: 'var(--radius-sm)',
+              fontSize: 13, fontWeight: 500, textDecoration: 'none',
+              transition: 'background var(--motion-fast) var(--ease)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
+          >
+            <Icon name="external-link" size={14} />
+            {t('artifact.openHtml')}
+          </a>
         </div>
       </div>
     )
@@ -149,27 +373,13 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
   if (isCode) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
-            {t('artifact.codeFile', { extension })}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <CopyTextButton content={content} />
-            {onClose && (
-              <Button variant="ghost" onClick={onClose}>
-                {t('common.close')}
-              </Button>
-            )}
-          </div>
-        </div>
+        {fileHeader(t('artifact.codeFile', { extension }), <CopyTextButton content={content} />)}
         <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8 }}>
           <pre style={{ padding: 16, margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {content}
           </pre>
         </div>
-        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
-          {content_type} | {(content.length / 1024).toFixed(2)} KB
-        </div>
+        {fileFooter(content_type, content)}
       </div>
     )
   }
@@ -177,27 +387,13 @@ export default function ArtifactPreview({ path, onClose }: ArtifactPreviewProps)
   // Default text preview
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)' }}>
-          {t('artifact.textPreview', { name: extension || t('artifact.file') })}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <CopyTextButton content={content} />
-          {onClose && (
-            <Button variant="ghost" onClick={onClose}>
-              {t('common.close')}
-            </Button>
-          )}
-        </div>
-      </div>
+      {fileHeader(t('artifact.textPreview', { name: extension || t('artifact.file') }), <CopyTextButton content={content} />)}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 16 }}>
         <pre style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {content}
         </pre>
       </div>
-      <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
-        {content_type} | {(content.length / 1024).toFixed(2)} KB
-      </div>
+      {fileFooter(content_type, content)}
     </div>
   )
 }

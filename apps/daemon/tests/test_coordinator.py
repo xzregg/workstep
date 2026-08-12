@@ -2,13 +2,15 @@
 
 import asyncio
 import json
+import uuid
 from contextlib import AsyncExitStack
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from engines.base import BaseLLMEngine
-from engines.events import InternalEvent
+from engines.core.base import BaseLLMEngine
+from engines.core.events import InternalEvent
 from services.coordinator import CoordinatorModule
 from services.project import ProjectManager
 from services.task import TaskService
@@ -41,6 +43,9 @@ class MemoryConfigStore:
     def get_coordinator_default_vision_model(self):
         return self.values.get("coordinator_default_vision_model", "")
 
+    def get_coordinator_default_thinking_effort(self):
+        return self.values.get("coordinator_default_thinking_effort", "")
+
     def get_engine_default_model(self, engine_id):
         return ""
 
@@ -61,6 +66,9 @@ async def api_context(tmp_path, monkeypatch):
     import services.coordinator as coordinator_service
 
     config_store = MemoryConfigStore()
+    # 默认执行引擎固定为 claude：协调器按 task.engine 回退时会命中
+    # 测试注册到 "claude" 的假引擎；需要验证全局默认的测试会自行覆盖。
+    config_store.set("execution_default_engine", "claude")
     manager = ProjectManager()
     bus = EventBus()
     task_service = TaskService(bus)
@@ -210,6 +218,65 @@ class RoutedCoordinatorFakeEngine(CoordinatorFakeEngine):
         )
 
 
+class ThinkingEffortCoordinatorFakeEngine(CoordinatorFakeEngine):
+    """Fake that records the per-turn thinking effort passed to spawn."""
+
+    calls: list[dict] = []
+
+    @property
+    def supports_thinking_effort(self):
+        return True
+
+    async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+        type(self).calls.append({
+            "prompt": prompt,
+            "model": model,
+            "thinking_effort": kwargs.get("thinking_effort"),
+        })
+        yield InternalEvent(
+            type="text_delta",
+            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+        )
+
+
+class ResumeCoordinatorFakeEngine(CoordinatorFakeEngine):
+    """Resume-capable fake that also maintains engine-side message history."""
+
+    calls: list[dict] = []
+
+    @property
+    def supports_resume(self):
+        return True
+
+    @property
+    def supports_message_history(self):
+        return True
+
+    async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
+        type(self).calls.append({
+            "prompt": prompt,
+            "session_id": session_id,
+            "message_history": kwargs.get("message_history"),
+            "report_engine_state": kwargs.get("report_engine_state"),
+        })
+        yield InternalEvent(
+            type="session_started",
+            data={"session_id": "engine-session-1"},
+        )
+        yield InternalEvent(
+            type="text_delta",
+            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+        )
+        yield InternalEvent(
+            type="engine_state",
+            data={"state": {"round": len(type(self).calls)}},
+        )
+        yield InternalEvent(
+            type="usage",
+            data={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        )
+
+
 async def _create_task(client, tmp_path):
     project_dir = tmp_path / "coordinator-project"
     project_dir.mkdir()
@@ -258,6 +325,37 @@ async def _wait_for_reply(
             return assistants[-1]
         await asyncio.sleep(0.01)
     raise AssertionError("Coordinator reply did not complete")
+
+
+@pytest.mark.anyio
+async def test_chat_message_ids_are_monotonic_uuid7(api_context, monkeypatch):
+    """新消息 ID 自带时间，并且可直接按字符串还原创建顺序。"""
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    responses = []
+    for index in range(2):
+        response = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": f"sortable-{index}"},
+            json={"content": f"第 {index + 1} 条消息"},
+        )
+        assert response.status_code == 200
+        responses.append(response.json())
+
+    message_ids = [
+        message_id
+        for response in responses
+        for message_id in (
+            response["user_message_id"],
+            response["assistant_message_id"],
+        )
+    ]
+    assert all(uuid.UUID(message_id).version == 7 for message_id in message_ids)
+    assert message_ids == sorted(message_ids)
 
 
 def test_assemble_context_includes_review_mode(tmp_path):
@@ -381,12 +479,189 @@ def test_assemble_context_includes_review_mode(tmp_path):
         db.close()
 
 
+def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, monkeypatch):
+    """resume 引擎不再拼接历史（只带当前用户消息），无状态引擎保留。"""
+    from models import (
+        CoordinatorSession,
+        CoordinatorTurn,
+        Message,
+        Task,
+        init_db,
+    )
+    from services.coordinator import CoordinatorModule
+    import services.coordinator as coordinator_service
+    from streaming.bus import EventBus
+
+    class StubProject:
+        steps = {}
+        workstep_dir = tmp_path
+
+        def workflow_by_id(self, workflow_id):
+            return None
+
+    class ResumeEngine:
+        capabilities = SimpleNamespace(supports_workstep_tools=False)
+        supports_resume = True
+
+    class StatelessEngine:
+        capabilities = SimpleNamespace(supports_workstep_tools=False)
+        supports_resume = False
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        task = Task.create(
+            id="ctx-hist-task",
+            title="t",
+            cwd=str(tmp_path),
+            engine="claude",
+            created_at=1,
+            updated_at=1,
+        )
+        for index, (mid, role, content, status) in enumerate([
+            ("ctx-old-user", "user", "第一问", "completed"),
+            ("ctx-old-assist", "assistant", "第一答", "succeeded"),
+            ("ctx-curr-user", "user", "现在呢", "completed"),
+        ]):
+            Message.create(
+                id=mid,
+                task=task,
+                channel="coordinator",
+                step_key="build",
+                role=role,
+                content=content,
+                run_id=mid,
+                run_status=status,
+                position=index + 1,
+                sequence=index + 1,
+                created_at=1,
+            )
+        Message.create(
+            id="ctx-curr-assist",
+            task=task,
+            channel="coordinator",
+            step_key="build",
+            role="assistant",
+            content="",
+            run_id="ctx-curr-assist",
+            run_status="running",
+            position=4,
+            sequence=4,
+            created_at=1,
+        )
+        turn = CoordinatorTurn.create(
+            id="ctx-hist-turn",
+            task=task,
+            user_message_id="ctx-curr-user",
+            assistant_message_id="ctx-curr-assist",
+            idempotency_key="ctx-hist-ik",
+            engine="claude",
+            status="running",
+            created_at=1,
+        )
+        CoordinatorSession.create(
+            task=task,
+            engine="claude",
+            summary="旧摘要",
+            created_at=1,
+            updated_at=1,
+        )
+
+        module = CoordinatorModule(EventBus(), None, None)
+        monkeypatch.setattr(
+            coordinator_service,
+            "create_engine",
+            lambda engine_id: ResumeEngine(),
+        )
+        prompt, _ = module._assemble_context(StubProject(), task, turn)
+        context = json.loads(prompt.split("Context:\n", 1)[1])
+        assert [
+            m["content"] for m in context["recent_coordinator_messages"]
+        ] == ["现在呢"]
+        assert context["coordinator_summary"] is None
+
+        monkeypatch.setattr(
+            coordinator_service,
+            "create_engine",
+            lambda engine_id: StatelessEngine(),
+        )
+        prompt, _ = module._assemble_context(StubProject(), task, turn)
+        context = json.loads(prompt.split("Context:\n", 1)[1])
+        assert [
+            m["content"] for m in context["recent_coordinator_messages"]
+        ] == ["第一问", "第一答", "现在呢"]
+        assert context["coordinator_summary"] == "旧摘要"
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_coordinator_resume_engine_keeps_history_engine_side(
+    api_context,
+    monkeypatch,
+):
+    """任务协调走 resume 引擎：prompt 不带历史，引擎状态跨轮传递并持久化。"""
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    ResumeCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", ResumeCoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    sent = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "chat-r1"},
+        json={"content": "第一问"},
+    )
+    assert sent.status_code == 200
+    await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        assistant_message_id=sent.json()["assistant_message_id"],
+    )
+
+    assert ResumeCoordinatorFakeEngine.calls[0]["message_history"] is None
+    first_context = json.loads(
+        ResumeCoordinatorFakeEngine.calls[0]["prompt"].split("Context:\n", 1)[1]
+    )
+    assert [
+        m["content"] for m in first_context["recent_coordinator_messages"]
+    ] == ["第一问"]
+    assert first_context["coordinator_summary"] is None
+
+    second = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "chat-r2"},
+        json={"content": "第二问"},
+    )
+    assert second.status_code == 200
+    await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        assistant_message_id=second.json()["assistant_message_id"],
+    )
+
+    # 第二轮：引擎状态被传回，会话 id 保持稳定，prompt 依旧只带当前用户消息。
+    assert ResumeCoordinatorFakeEngine.calls[1]["message_history"] == {
+        "round": 1
+    }
+    # 第二轮复用第一轮建立的引擎会话 id。
+    assert ResumeCoordinatorFakeEngine.calls[1]["session_id"] == "engine-session-1"
+    second_context = json.loads(
+        ResumeCoordinatorFakeEngine.calls[1]["prompt"].split("Context:\n", 1)[1]
+    )
+    assert [
+        m["content"] for m in second_context["recent_coordinator_messages"]
+    ] == ["第二问"]
+
+
 @pytest.mark.anyio
 async def test_chat_calls_selected_engine_without_starting_workflow(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import CoordinatorTurn, WorkflowRun
     import main
 
@@ -450,7 +725,7 @@ async def test_coordinator_pushes_reply_before_engine_turn_finishes(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import main
 
     client, tmp_path = api_context
@@ -506,7 +781,7 @@ async def test_coordinator_engine_switch_only_affects_new_turns(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     client, tmp_path = api_context
     CoordinatorFakeEngine.calls.clear()
@@ -539,11 +814,53 @@ async def test_coordinator_engine_switch_only_affects_new_turns(
 
 
 @pytest.mark.anyio
+async def test_coordinator_model_switch_preserves_engine_session_id(
+    api_context,
+    monkeypatch,
+):
+    import main
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import CoordinatorSession, Task
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    configured = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "claude", "model": "sonnet"},
+    )
+    assert configured.status_code == 200
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        session = CoordinatorSession.create(
+            task=task,
+            engine="claude",
+            model="sonnet",
+            session_id="engine-session-1",
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+
+    updated = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "claude", "model": "opus"},
+    )
+
+    assert updated.status_code == 200
+    with main.project_manager.activate_project_by_id(project_id):
+        session = CoordinatorSession.get_by_id(task_id)
+        assert session.model == "opus"
+        assert session.session_id == "engine-session-1"
+
+
+@pytest.mark.anyio
 async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     client, tmp_path = api_context
     RoutedCoordinatorFakeEngine.calls.clear()
@@ -565,6 +882,7 @@ async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
         "model": "reasoning-model",
         "fast_model": "fast-model",
         "vision_model": "vision-model",
+        "thinking_effort": "",
     }
     assert updated.json()["resolved"]["vision_model"] == "vision-model"
 
@@ -592,7 +910,7 @@ async def test_coordinator_vision_model_global_default_and_task_override(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import services.coordinator as coordinator_service
 
     client, tmp_path = api_context
@@ -620,8 +938,97 @@ async def test_coordinator_vision_model_global_default_and_task_override(
 
 
 @pytest.mark.anyio
+async def test_coordinator_thinking_effort_persists_and_reaches_engine(
+    api_context,
+    monkeypatch,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    ThinkingEffortCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(
+        ENGINE_REGISTRY,
+        "claude",
+        ThinkingEffortCoordinatorFakeEngine,
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    updated = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "claude", "thinking_effort": "high"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["configured"]["thinking_effort"] == "high"
+    assert updated.json()["resolved"]["thinking_effort"] == "high"
+
+    rejected = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"thinking_effort": "insane"},
+    )
+    assert rejected.status_code == 400
+
+    sent = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "effort-chat"},
+        json={"content": "深度思考后回复"},
+    )
+    assert sent.status_code == 200
+    assistant = await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        sent.json()["assistant_message_id"],
+    )
+    assert assistant["content"] == "协调回复"
+    assert ThinkingEffortCoordinatorFakeEngine.calls
+    assert (
+        ThinkingEffortCoordinatorFakeEngine.calls[0]["thinking_effort"] == "high"
+    )
+
+
+@pytest.mark.anyio
+async def test_coordinator_inherits_global_thinking_effort(
+    api_context,
+    monkeypatch,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+    import services.coordinator as coordinator_service
+
+    client, tmp_path = api_context
+    ThinkingEffortCoordinatorFakeEngine.calls.clear()
+    monkeypatch.setitem(
+        ENGINE_REGISTRY,
+        "claude",
+        ThinkingEffortCoordinatorFakeEngine,
+    )
+    coordinator_service.config_store.set(
+        "coordinator_default_thinking_effort", "medium"
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    loaded = await client.get(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}"
+    )
+    assert loaded.json()["configured"]["thinking_effort"] == ""
+    assert loaded.json()["resolved"]["thinking_effort"] == "medium"
+
+    sent = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "global-effort-chat"},
+        json={"content": "按全局思考强度回复"},
+    )
+    await _wait_for_reply(
+        client,
+        project_id,
+        task_id,
+        sent.json()["assistant_message_id"],
+    )
+    assert ThinkingEffortCoordinatorFakeEngine.calls[0]["thinking_effort"] == "medium"
+
+
+@pytest.mark.anyio
 async def test_coordinator_routes_message_images_to_engine(api_context, monkeypatch):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     client, tmp_path = api_context
     ImageRoutingCoordinatorFakeEngine.calls.clear()
@@ -664,7 +1071,7 @@ async def test_coordinator_routes_message_images_to_engine(api_context, monkeypa
 
 @pytest.mark.anyio
 async def test_coordinator_ignores_images_outside_uploads(api_context, monkeypatch):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
 
     client, tmp_path = api_context
     ImageRoutingCoordinatorFakeEngine.calls.clear()
@@ -696,7 +1103,7 @@ async def test_global_defaults_apply_without_overriding_task_selection(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import services.coordinator as coordinator_service
 
     client, tmp_path = api_context
@@ -762,7 +1169,7 @@ async def test_coordinator_config_lists_unconfigured_builtin_and_api_engines(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import services.coordinator as coordinator_service
 
     client, tmp_path = api_context
@@ -787,14 +1194,6 @@ async def test_coordinator_config_lists_unconfigured_builtin_and_api_engines(
                 "mode": "agent",
                 "supports_coordinator": False,
             },
-            {
-                "id": "api",
-                "installed": True,
-                "configured": False,
-                "built_in": False,
-                "mode": "api",
-                "supports_coordinator": False,
-            },
         ],
     )
     project_id, task_id = await _create_task(client, tmp_path)
@@ -807,8 +1206,7 @@ async def test_coordinator_config_lists_unconfigured_builtin_and_api_engines(
     engines = {item["id"]: item for item in response.json()["available_engines"]}
     assert engines["pydantic_ai"]["built_in"] is True
     assert engines["pydantic_ai"]["configured"] is False
-    assert engines["api"]["mode"] == "api"
-    assert engines["api"]["configured"] is False
+    assert "api" not in engines
 
 
 @pytest.mark.anyio
@@ -816,7 +1214,7 @@ async def test_confirmed_stage_supplement_is_persisted(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import StageSupplement
     import main
 
@@ -870,7 +1268,7 @@ async def test_coordinator_can_start_from_stage_before_any_workflow_run(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import Task, WorkflowRun
     import main
 
@@ -932,7 +1330,7 @@ async def test_restart_from_stage_creates_child_run_and_archives_outputs(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import StepRun, Task, WorkflowRun
     import main
 
@@ -1067,7 +1465,7 @@ async def test_coordinator_stop_marks_turn_stopped(
     api_context,
     monkeypatch,
 ):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import CoordinatorTurn
     import main
 

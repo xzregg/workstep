@@ -8,11 +8,12 @@ import uuid
 from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
-from engines.registry import create_engine
-from engines.events import InternalEvent
+from engines.core.registry import create_engine
+from engines.core.events import InternalEvent
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 from services.task_runner import extract_usage_json
-from services.messages import create_task_message
+from services.config import DEFAULT_EXECUTION_ENGINE
+from services.messages import create_task_message, new_message_id
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class TaskService:
         title: str,
         cwd: str,
         description: str | None = None,
-        engine: str = "claude",
+        engine: str = DEFAULT_EXECUTION_ENGINE,
         workflow: dict | None = None,
         start_step_key: str | None = None,
         review_overrides: dict[str, object] | None = None,
@@ -213,7 +214,7 @@ class TaskService:
             logger.error("Task not found: %s", task_id)
             return
 
-        engine = create_engine(task.engine or "claude")
+        engine = create_engine(task.engine or DEFAULT_EXECUTION_ENGINE)
         if not engine:
             await self._publish(task_id, "do", {
                 "type": "error",
@@ -233,7 +234,7 @@ class TaskService:
         step.save()
 
         # Create message record
-        msg_id = str(uuid.uuid4())
+        msg_id = new_message_id()
         message_started_at = utc_now()
         create_task_message(
             id=msg_id,
@@ -263,6 +264,11 @@ class TaskService:
 
         try:
             async for event in engine.spawn(prompt=prompt, cwd=task.cwd):
+                normalize_event = getattr(engine, "normalize_event", None)
+                if normalize_event is not None:
+                    event = normalize_event(event)
+                if event is None:
+                    continue
                 events_collected.append(event.to_dict())
 
                 # Collect text content
@@ -408,7 +414,7 @@ class TaskService:
                 title=new_title,
                 description=original.description,
                 cwd=original.cwd,
-                engine=original.engine or "claude",
+                engine=original.engine or DEFAULT_EXECUTION_ENGINE,
                 created_at=now,
                 updated_at=now,
             )

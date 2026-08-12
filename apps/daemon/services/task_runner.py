@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
+from typing import AsyncIterator
 
 from models import (
     Message,
@@ -20,9 +21,11 @@ from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt
 from services.review_gate import ReviewGate
 from services.config import config_store
-from services.messages import create_task_message
-from engines.registry import create_engine
-from engines.events import InternalEvent
+from services.messages import create_task_message, new_message_id
+from services.intervention import intervention_manager
+from engines.core.base import BaseLLMEngine
+from engines.core.registry import create_engine
+from engines.core.events import InternalEvent
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -39,7 +42,59 @@ def extract_usage_json(events_collected: list[dict]) -> str | None:
     return None
 
 
+def _effective_review_mode(config: dict) -> str:
+    """Resolve skip/auto/manual, honouring explicit mode or legacy auto flag."""
+    if config.get("mode") in ("skip", "auto", "manual"):
+        return str(config["mode"])
+    return "auto" if config.get("auto", False) else "manual"
+
+
+async def _with_engine_idle_timeout(
+    engine: BaseLLMEngine,
+    spawn_iter: AsyncIterator[InternalEvent],
+    timeout_seconds: float,
+) -> AsyncIterator[InternalEvent]:
+    """Yield engine events, failing the stage when the engine goes idle.
+
+    If no event arrives within ``timeout_seconds`` (e.g. a stalled API
+    connection), the engine is stopped and its stream closed, then an error
+    event is yielded so the stage fails instead of hanging forever. The engine
+    session is left intact, so re-running the stage resumes the same session.
+    """
+    while True:
+        try:
+            event = await asyncio.wait_for(
+                spawn_iter.__anext__(),
+                timeout=timeout_seconds,
+            )
+        except StopAsyncIteration:
+            return
+        except asyncio.TimeoutError:
+            try:
+                await engine.stop()
+            except Exception:
+                logger.exception("Engine stop failed after idle timeout")
+            try:
+                await spawn_iter.aclose()
+            except Exception:
+                logger.exception(
+                    "Failed to close engine stream after idle timeout"
+                )
+            yield InternalEvent(
+                type="error",
+                data={
+                    "message": (
+                        f"引擎空闲超时（{int(timeout_seconds)}s 无输出），"
+                        "已停止执行并保留会话，可重新执行该阶段恢复"
+                    ),
+                },
+            )
+            return
+        yield event
+
+
 class TaskRunner:
+
     """Runs a task through its multi-stage pipeline.
 
     Handles:
@@ -229,6 +284,11 @@ class TaskRunner:
         if rework_feedback:
             ts.rework_feedback = None
             ts.save()
+        # Consume human-review rejection reason queued for the next attempt.
+        manual_review_feedback = ts.review_feedback
+        if manual_review_feedback:
+            ts.review_feedback = None
+            ts.save()
         ts.status = "running"
         # A review retry is still part of the same stage lifecycle. Preserve the
         # first attempt's start time so the final duration includes execution,
@@ -269,11 +329,16 @@ class TaskRunner:
         })
 
         # Assemble prompt
-        feedback = review_feedback or rework_feedback
+        feedback = review_feedback or manual_review_feedback or rework_feedback
         prompt = assemble_prompt(task, step, artifacts_dir, user_input)
         if feedback:
+            label = (
+                "人工审核反馈"
+                if manual_review_feedback
+                else "验证反馈"
+            )
             prompt += (
-                "\n\n## 上一轮验证反馈\n"
+                f"\n\n## 上一轮{label}\n"
                 f"{feedback}\n\n"
                 "请保留已有正确结果，并修复以上问题。"
             )
@@ -284,7 +349,7 @@ class TaskRunner:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # Create message record
-        msg_id = str(uuid.uuid4())
+        msg_id = new_message_id()
         message_started_at = utc_now()
         create_task_message(
             id=msg_id,
@@ -354,12 +419,45 @@ class TaskRunner:
                 cwd=task.cwd,
                 model=resolved_model,
                 session_id=ts.session_id if engine.supports_resume else None,
+                config_overrides=step.config or None,
             )
             if live_queue is not None:
                 spawn_kwargs["live_message_queue"] = live_queue
-            async for event in engine.spawn(**spawn_kwargs):
-                events_collected.append(event.to_dict())
+            spawn_iter = engine.spawn(**spawn_kwargs)
+            idle_timeout = config_store.get_engine_idle_timeout_seconds()
+            if idle_timeout and idle_timeout > 0:
+                spawn_iter = _with_engine_idle_timeout(
+                    engine, spawn_iter, idle_timeout
+                )
+            async for event in spawn_iter:
+                normalize_event = getattr(
+                    engine,
+                    "normalize_event",
+                    getattr(engine, "normalize_interaction_event", None),
+                )
+                if normalize_event is not None:
+                    event = normalize_event(event)
+                if event is None:
+                    continue
                 live_message_id = None
+                interaction_waiter: asyncio.Task | None = None
+                if event.type == "interaction_request":
+                    interaction_id = str(
+                        event.data.get("interaction_id") or uuid.uuid4()
+                    )
+                    event.data["interaction_id"] = interaction_id
+                    interaction_waiter = asyncio.create_task(
+                        intervention_manager.request_response(
+                            interaction_id,
+                            task.id,
+                            step_key,
+                            event.data,
+                        )
+                    )
+                    # Register before publishing so a fast UI response cannot
+                    # race the in-memory intervention broker.
+                    await asyncio.sleep(0)
+                events_collected.append(event.to_dict())
                 if event.type == "text_delta":
                     content_parts.append(event.data.get("delta", ""))
                 elif event.type == "session_started":
@@ -410,7 +508,7 @@ class TaskRunner:
                             })
                         except Message.DoesNotExist:
                             pass
-                        new_msg_id = str(uuid.uuid4())
+                        new_msg_id = new_message_id()
                         create_task_message(
                             id=new_msg_id,
                             task=task,
@@ -447,6 +545,49 @@ class TaskRunner:
                     "type": event.type,
                     "data": {**event.data, "task_id": task.id, "step_key": step_key},
                 })
+                if interaction_waiter is not None:
+                    # Persist before blocking so navigation/reload can rebuild
+                    # the active interaction card from normal message history.
+                    try:
+                        pending_message = Message.get_by_id(msg_id)
+                        pending_message.content = "".join(content_parts)
+                        pending_message.events_json = json.dumps(
+                            events_collected,
+                            ensure_ascii=False,
+                        )
+                        pending_message.save()
+                    except Message.DoesNotExist:
+                        pass
+                    response = await interaction_waiter
+                    if response.get("error"):
+                        response = (
+                            {"outcome": {"outcome": "cancelled"}}
+                            if event.data.get("method") == "session/request_permission"
+                            else {"action": "cancel"}
+                        )
+                    await engine.respond_interaction(event.data, response)
+                    response_event = InternalEvent(
+                        type="interaction_response",
+                        data={
+                            "interaction_id": event.data["interaction_id"],
+                            "method": event.data.get("method"),
+                            "response": response,
+                        },
+                    )
+                    events_collected.append(response_event.to_dict())
+                    await self._publish(task.id, step_key, {
+                        "channel": "execution",
+                        "message_id": msg_id,
+                        "engine": step.engine,
+                        "model": resolved_model,
+                        "event_sequence": len(events_collected),
+                        "type": response_event.type,
+                        "data": {
+                            **response_event.data,
+                            "task_id": task.id,
+                            "step_key": step_key,
+                        },
+                    })
 
             if captured_session_id is None and not engine.supports_resume:
                 # 无状态引擎没有原生会话，仍生成本次运行的会话标识供前端展示。
@@ -501,86 +642,114 @@ class TaskRunner:
                                 review_config.update(step_ov)
                         except (json.JSONDecodeError, TypeError):
                             pass
-                    ts.status = (
-                        "reviewing"
-                        if review_config.get("auto", False)
-                        else "awaiting_review"
-                    )
-                    ts.save()
-                    await self._publish(task.id, step_key, {
-                        "type": "status",
-                        "data": {
-                            "status": ts.status,
-                            "step_key": step_key,
-                            "task_id": task.id,
-                        },
-                    })
-                    gate = ReviewGate(
-                        lambda event: self._publish(task.id, step_key, event)
-                    )
-                    outcome = await gate.evaluate(
-                        task=task,
-                        step=step,
-                        workflow_run=workflow_run,
-                        step_run=step_run,
-                        artifacts_dir=artifacts_dir,
-                        execution_output="".join(content_parts),
-                        review_config=review_config,
-                    )
-                    if outcome.status == "passed":
+                    review_mode = _effective_review_mode(review_config)
+                    if review_mode == "skip":
+                        # 跳过审核：阶段执行完成后直接通过，不创建审核记录。
                         ts.status = "passed"
                         ts.ended_at = utc_now()
                         ts.error = None
                         ts.save()
                         completed.add(step_key)
-                    elif outcome.status == "awaiting_review":
-                        ts.status = "awaiting_review"
-                        # The stage remains open until the reviewer decides.
-                        # decide_review() records the actual lifecycle end.
-                        ts.ended_at = None
+                        outcome = None
+                    else:
+                        if review_mode == "auto":
+                            ts.status = "reviewing"
+                        else:
+                            ts.status = "awaiting_review"
                         ts.save()
-                        failed.add(step_key)
-                    elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
-                        if step.rework_upstream:
-                            await self._schedule_rework(
-                                task,
-                                step,
-                                scheduler,
-                                completed,
-                                outcome.feedback,
-                                step_run.attempt,
+                        await self._publish(task.id, step_key, {
+                            "type": "status",
+                            "data": {
+                                "status": ts.status,
+                                "step_key": step_key,
+                                "task_id": task.id,
+                            },
+                        })
+                        gate = ReviewGate(
+                            lambda event: self._publish(task.id, step_key, event)
+                        )
+                        outcome = await gate.evaluate(
+                            task=task,
+                            step=step,
+                            workflow_run=workflow_run,
+                            step_run=step_run,
+                            artifacts_dir=artifacts_dir,
+                            execution_output="".join(content_parts),
+                            review_config=review_config,
+                            mode=review_mode,
+                        )
+                        # 重新加载最新 ts：gate 在审核期间写入了 review_session_id，
+                        # 用旧实例整行 save 会把它覆盖回 None。
+                        ts = TaskStep.get(
+                            (TaskStep.task == task)
+                            & (TaskStep.step_key == step_key)
+                        )
+                        if outcome.status == "passed":
+                            ts.status = "passed"
+                            ts.ended_at = utc_now()
+                            ts.error = None
+                            ts.save()
+                            completed.add(step_key)
+                        elif outcome.status == "awaiting_review":
+                            ts.status = "awaiting_review"
+                            # The stage remains open until the reviewer decides.
+                            # decide_review() records the actual lifecycle end.
+                            ts.ended_at = None
+                            ts.save()
+                            failed.add(step_key)
+                        elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
+                            if step.rework_upstream:
+                                await self._schedule_rework(
+                                    task,
+                                    step,
+                                    scheduler,
+                                    completed,
+                                    outcome.feedback,
+                                    step_run.attempt,
+                                )
+                                ts.status = "rework_waiting"
+                                ts.error = outcome.feedback
+                                ts.ended_at = None
+                                ts.save()
+                            else:
+                                retry_feedback = outcome.feedback
+                                ts.status = "retrying"
+                                ts.error = outcome.feedback
+                                ts.save()
+                                await self._publish(task.id, step_key, {
+                                    "type": "step_retrying",
+                                    "data": {
+                                        "task_id": task.id,
+                                        "step_key": step_key,
+                                        "attempt": step_run.attempt + 1,
+                                        "max_retries": review_config.get("maxRetries", 1),
+                                    },
+                                })
+                        else:
+                            # 自动审核次数耗尽：转入人工审核，等待用户确认或驳回修正。
+                            outcome = await gate.evaluate(
+                                task=task,
+                                step=step,
+                                workflow_run=workflow_run,
+                                step_run=step_run,
+                                artifacts_dir=artifacts_dir,
+                                execution_output="".join(content_parts),
+                                review_config=review_config,
+                                mode="manual",
                             )
-                            ts.status = "rework_waiting"
+                            ts.status = "awaiting_review"
                             ts.error = outcome.feedback
                             ts.ended_at = None
                             ts.save()
-                        else:
-                            retry_feedback = outcome.feedback
-                            ts.status = "retrying"
-                            ts.error = outcome.feedback
-                            ts.save()
-                            await self._publish(task.id, step_key, {
-                                "type": "step_retrying",
-                                "data": {
-                                    "task_id": task.id,
-                                    "step_key": step_key,
-                                    "attempt": step_run.attempt + 1,
-                                    "max_retries": review_config.get("maxRetries", 1),
-                                },
-                            })
-                    else:
-                        ts.status = "rejected"
-                        ts.error = outcome.feedback
-                        ts.ended_at = utc_now()
-                        ts.save()
-                        failed.add(step_key)
+                            failed.add(step_key)
 
                 if (
                     step.review is not None
                     and workflow_run is not None
                     and step_run is not None
+                    and outcome is not None
                 ):
-                    rmsg_id = str(uuid.uuid4())
+                    rmsg_id = new_message_id()
                     rnow = utc_now()
                     rsummary = outcome.report.get("summary", "")
                     rissues = outcome.report.get("issues", [])
@@ -617,7 +786,12 @@ class TaskRunner:
                         run_status="completed",
                         prompt_json=outcome.review_run.prompt_json,
                         events_json=json.dumps(
-                            outcome.events,
+                            [{
+                                "type": "review_context",
+                                "data": {
+                                    "review_run_id": outcome.review_run.id,
+                                },
+                            }, *outcome.events],
                             ensure_ascii=False,
                         ),
                         usage_json=extract_usage_json(list(outcome.events)),
@@ -687,7 +861,19 @@ class TaskRunner:
                 logger.exception("Failed to update message %s", msg_id)
 
             self._running_engines.pop(run_key, None)
-            self._live_message_queues.pop(run_key, None)
+            live_queue = self._live_message_queues.pop(run_key, None)
+            if live_queue is not None:
+                pending: list[tuple[str, str]] = []
+                while not live_queue.empty():
+                    pending.append(live_queue.get_nowait())
+                for message_id, _ in pending:
+                    try:
+                        live_message = Message.get_by_id(message_id)
+                        live_message.run_status = "failed"
+                        live_message.ended_at = utc_now()
+                        live_message.save()
+                    except Message.DoesNotExist:
+                        pass
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
             if step_run is not None:
@@ -829,7 +1015,7 @@ class TaskRunner:
         except Task.DoesNotExist:
             raise ValueError(f"任务不存在: {task_id}")
         now = utc_now()
-        message_id = str(uuid.uuid4())
+        message_id = new_message_id()
         message = create_task_message(
             id=message_id,
             task=task,

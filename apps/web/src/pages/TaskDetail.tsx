@@ -1,14 +1,14 @@
 import Button from '../components/Button'
-import Input from '../components/Input'
-import Textarea from '../components/Textarea'
 import {
   useState,
   useEffect,
   useRef,
   useMemo,
+  useCallback,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import {
@@ -22,159 +22,28 @@ import {
   type TaskStepState,
 } from '../api/client'
 import ArtifactPreview from '../components/ArtifactPreview'
-import ChatMessageBubble from '../components/ChatMessageBubble'
-import ChatInput from '../components/ChatInput'
-import MessageMetaBar from '../components/MessageMetaBar'
-import MessageResponseFooter, {
-  copyMessageText,
-  usageFromEvents,
-} from '../components/MessageResponseFooter'
-import { stripA2uiBlocks } from '../utils/a2ui'
+import { copyMessageText } from '../components/MessageResponseFooter'
+import { a2uiActionMessageParams } from '../utils/a2ui'
 import MarkdownEditor from '../components/MarkdownEditor'
 import MarkdownMessage from '../components/MarkdownMessage'
-import ProcessTrace from '../components/ProcessTrace'
 import Icon from '../components/Icon'
+import ShareDialog from '../components/ShareDialog'
+import TaskDetailView from '../components/TaskDetailView'
 import {
   createOptimisticUserMessage,
-  isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
   isUnpersistedLiveMessage,
   isTaskCompleted,
   isTaskNotStarted,
-  isNearConversationBottom,
-  liveExecutionStatus,
-  mergeHistoryMessageWithLive,
-  orderConversationMessages,
-  shouldRenderLegacyExecution,
-  stageAvatarText,
+  conversationBottomScrollTop,
 } from './taskDetailChat'
 import {
   type DateTimeValue,
-  formatConversationDateTime,
-  formatExecutionClock,
-  formatDurationBetween,
-  toMilliseconds,
 } from '../utils/datetime'
 import { useI18n, type TKey } from '../i18n'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
-const PROCESS_EVENT_TYPES = new Set([
-  'thinking_delta',
-  'tool_use',
-  'tool_input_delta',
-  'tool_result',
-])
-
-function hasProcessEvents(events: any[]) {
-  return events.some((event) => PROCESS_EVENT_TYPES.has(event.type))
-}
-
-function terminalMessageStatus(status?: string) {
-  return status === 'cancelled' || status === 'stopped' || status === 'failed'
-    ? status
-    : undefined
-}
-
-function lastEventTimestamp(events: any[]): number | null {
-  let latest: number | null = null
-  for (const event of events || []) {
-    const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
-    if (timestamp !== null && (latest === null || timestamp > latest)) {
-      latest = timestamp
-    }
-  }
-  return latest
-}
-
-function CoordinatorProposalCard({
-  proposal,
-  taskId,
-  projectId,
-  onChanged,
-}: {
-  proposal: ActionProposal
-  taskId: string
-  projectId: string
-  onChanged: (proposal: ActionProposal) => void
-}) {
-  const { t } = useI18n()
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
-  const current = proposal
-  const retryable = current.status === 'failed' && current.type === 'rerun_from_stage'
-  const canAct = (current.status === 'pending' || retryable) && !pending
-
-  const confirm = async () => {
-    setPending(true)
-    setError('')
-    try {
-      onChanged(await taskApi.confirmAction(
-        taskId,
-        current.id,
-        projectId,
-        crypto.randomUUID(),
-      ))
-    } catch (reason) {
-      const fallbackError = reason instanceof Error ? reason.message : t('taskDetail.proposalConfirmFailed')
-      try {
-        const history = await taskApi.history(taskId, projectId)
-        const latest = [...history.messages]
-          .reverse()
-          .flatMap((message) => message.proposals || [])
-          .find((item) => item.id === current.id) as ActionProposal | undefined
-        if (latest && latest.status !== 'pending') {
-          onChanged(latest)
-          setError('')
-        } else {
-          setError(fallbackError)
-        }
-      } catch {
-        setError(fallbackError)
-      }
-    } finally {
-      setPending(false)
-    }
-  }
-
-  const cancel = async () => {
-    setPending(true)
-    setError('')
-    try {
-      onChanged(await taskApi.cancelAction(taskId, current.id, projectId))
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('taskDetail.proposalCancelFailed'))
-    } finally {
-      setPending(false)
-    }
-  }
-
-  return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12, background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontSize: 13, fontWeight: 700 }}>{t('taskDetail.proposalTitle', { type: current.type })}</div>
-      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
-        {current.impact?.summary || t('taskDetail.proposalTargetStage', { step: current.target_step_key || t('common.none') })}
-      </div>
-      <div style={{ fontSize: 11, color: current.status === 'failed' ? 'var(--danger)' : 'var(--meta)' }}>
-        {t('taskDetail.proposalStatus', { status: current.status })}{current.error ? ` · ${current.error}` : ''}
-      </div>
-      {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
-      {(current.status === 'pending' || retryable) && (
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="primary" disabled={!canAct} loading={pending} onClick={() => void confirm()}>{retryable ? t('common.retry') : t('common.confirm')}</Button>
-          {current.status === 'pending' && (
-            <Button variant="ghost" disabled={!canAct} onClick={() => void cancel()}>{t('common.cancel')}</Button>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const STATUS_LABEL_KEYS: Record<string, TKey> = {
-  ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
-  done: 'status.done',
-}
 
 type StageVisualState =
   | 'completed'
@@ -193,7 +62,9 @@ interface StageData {
   key: string
   label: string
   color: string
+  engine?: string
   model?: string
+  config?: Record<string, string>
   prompt: string
   inputs: Array<{
     name: string
@@ -205,20 +76,6 @@ interface StageData {
 
 interface StageProgress extends Partial<TaskStepState> {
   visualState: StageVisualState
-}
-
-const STAGE_STATE_LABEL_KEYS: Record<StageVisualState, TKey> = {
-  completed: 'status.done',
-  current: 'status.current',
-  reviewing: 'status.reviewing',
-  awaiting_review: 'status.awaiting_review',
-  retrying: 'status.retrying',
-  rework: 'status.rework',
-  rework_waiting: 'status.rework_waiting',
-  failed: 'status.failed',
-  cancelled: 'status.cancelled',
-  skipped: 'status.skipped',
-  pending: 'status.pending',
 }
 
 interface TaskDetailProps {
@@ -393,13 +250,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [chatError, setChatError] = useState('')
   const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
+  const [stageResuming, setStageResuming] = useState(false)
   const [stageInserts, setStageInserts] = useState<Array<{
     id: string
     content: string
   }>>([])
   const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
   const [editingInsertContent, setEditingInsertContent] = useState('')
-  const [openInsertMenuId, setOpenInsertMenuId] = useState<string | null>(null)
   const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
   const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
@@ -409,6 +266,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
   const [taskIdCopied, setTaskIdCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const [selectedStage, setSelectedStage] = useState(0)
   const selectedStageTaskRef = useRef<string | null>(null)
@@ -417,6 +275,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement>(null)
   const shouldFollowMessagesRef = useRef(true)
+  const lastProgrammaticScrollTopRef = useRef(0)
   const stageLastMessageRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const pendingStageScrollRef = useRef<string | null>(null)
   const [historyMessages, setHistoryMessages] = useState<any[]>([])
@@ -429,7 +288,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [previewArtifact, setPreviewArtifact] = useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
-  const [editReviewAuto, setEditReviewAuto] = useState(false)
+  const [editReviewMode, setEditReviewMode] = useState<'skip' | 'auto' | 'manual'>('manual')
   const [editReviewRetries, setEditReviewRetries] = useState(1)
   const [editReviewPrompt, setEditReviewPrompt] = useState('')
   const [showReviewDrawer, setShowReviewDrawer] = useState(false)
@@ -443,7 +302,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
   const [splitRatio, setSplitRatio] = useState(initialSplitRatio)
   const historyFetchedRef = useRef<string>('')
-  const contentSplitRef = useRef<HTMLDivElement>(null)
   const interactionCleanupRef = useRef<(() => void) | null>(null)
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
@@ -470,14 +328,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .sort(),
     [liveExecutionMessages, livePromptOverrides],
   )
-  const hasStructuredExecutionMessage = useMemo(
-    () => Object.values(liveMessages).some(
-      (message) => message.channel === 'execution',
-    ) || historyMessages.some(
-      (message) => message.channel === 'execution',
-    ),
-    [historyMessages, liveMessages],
-  )
 
   useEffect(() => {
     sessionStorage.setItem(PANEL_BOUNDS_KEY, JSON.stringify(panelBounds))
@@ -500,40 +350,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [])
 
   useEffect(() => () => interactionCleanupRef.current?.(), [])
-
-  const beginPanelMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button, input, textarea, select, a')) {
-      return
-    }
-    event.preventDefault()
-    const startPointer = { x: event.clientX, y: event.clientY }
-    const startBounds = panelBounds
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'move'
-    document.body.style.userSelect = 'none'
-
-    const handleMove = (moveEvent: PointerEvent) => {
-      setPanelBounds(clampPanelBounds({
-        ...startBounds,
-        x: startBounds.x + moveEvent.clientX - startPointer.x,
-        y: startBounds.y + moveEvent.clientY - startPointer.y,
-      }))
-    }
-    const cleanup = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', cleanup)
-      window.removeEventListener('pointercancel', cleanup)
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-      interactionCleanupRef.current = null
-    }
-    interactionCleanupRef.current?.()
-    interactionCleanupRef.current = cleanup
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', cleanup)
-    window.addEventListener('pointercancel', cleanup)
-  }
 
   const beginPanelResize = (
     edge: ResizeEdge,
@@ -592,75 +408,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setPanelBounds((current) =>
       resizePanelBounds(current, edge, deltaX, deltaY)
     )
-  }
-
-  const beginSplitResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    const container = contentSplitRef.current
-    if (!container) return
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    const handleMove = (moveEvent: PointerEvent) => {
-      const rect = container.getBoundingClientRect()
-      const usableWidth = Math.max(1, rect.width - SPLIT_HANDLE_WIDTH)
-      const next = (
-        moveEvent.clientX
-        - rect.left
-        - SPLIT_HANDLE_WIDTH / 2
-      ) / usableWidth
-      setSplitRatio(clampSplitRatio(next, rect.width))
-    }
-    const cleanup = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', cleanup)
-      window.removeEventListener('pointercancel', cleanup)
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-      interactionCleanupRef.current = null
-    }
-    interactionCleanupRef.current?.()
-    interactionCleanupRef.current = cleanup
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', cleanup)
-    window.addEventListener('pointercancel', cleanup)
-  }
-
-  const resizeSplitWithKeyboard = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    event.preventDefault()
-    const containerWidth = contentSplitRef.current?.clientWidth || panelBounds.width
-    const step = event.shiftKey ? 0.08 : 0.025
-    setSplitRatio((current) => clampSplitRatio(
-      current + (event.key === 'ArrowLeft' ? -step : step),
-      containerWidth,
-    ))
-  }
-
-  const moveWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? 40 : 12
-    const deltaX = event.key === 'ArrowLeft'
-      ? -step
-      : event.key === 'ArrowRight'
-        ? step
-        : 0
-    const deltaY = event.key === 'ArrowUp'
-      ? -step
-      : event.key === 'ArrowDown'
-        ? step
-        : 0
-    if (deltaX === 0 && deltaY === 0) return
-    event.preventDefault()
-    setPanelBounds((current) => clampPanelBounds({
-      ...current,
-      x: current.x + deltaX,
-      y: current.y + deltaY,
-    }))
   }
 
   // Load historical messages when panel opens (or task changes)
@@ -736,17 +483,27 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return () => window.clearTimeout(timer)
   }, [projectId, reviewEventSignal, taskId])
 
+  const refreshArtifacts = useCallback((): Promise<TaskArtifact[]> => {
+    if (!taskId || !projectId) return Promise.resolve([])
+    return taskApi.artifacts(taskId, projectId)
+      .then((res) => {
+        setArtifacts(res.artifacts || [])
+        return res.artifacts || []
+      })
+      .catch(() => {
+        setArtifacts([])
+        return []
+      })
+  }, [taskId, projectId])
+
   useEffect(() => {
     if (!taskId || !projectId) {
       setArtifacts([])
       return
     }
     setArtifactsLoading(true)
-    taskApi.artifacts(taskId, projectId)
-      .then((res) => setArtifacts(res.artifacts || []))
-      .catch(() => setArtifacts([]))
-      .finally(() => setArtifactsLoading(false))
-  }, [taskId, projectId])
+    refreshArtifacts().finally(() => setArtifactsLoading(false))
+  }, [taskId, projectId, task?.steps, refreshArtifacts])
 
   // Fetch tasks if not already loaded
   useEffect(() => {
@@ -757,7 +514,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (historyLoading) return
     if (shouldFollowMessagesRef.current) {
       const container = chatScrollRef.current
-      if (container) container.scrollTop = container.scrollHeight
+      if (container) {
+        const target = conversationBottomScrollTop(
+          container.scrollHeight,
+          container.clientHeight,
+        )
+        lastProgrammaticScrollTopRef.current = target
+        container.scrollTop = target
+      }
       setHasUnreadMessages(false)
     } else {
       setHasUnreadMessages(true)
@@ -768,6 +532,24 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     shouldFollowMessagesRef.current = true
     setHasUnreadMessages(false)
   }, [taskId])
+
+  // 图片/媒体异步加载会撑高内容且不触发上面的跟随 effect，
+  // 跟随中时在 capture 阶段监听 load 重新钉底。
+  useEffect(() => {
+    const container = chatScrollRef.current
+    if (!container) return
+    const onMediaLoad = () => {
+      if (!shouldFollowMessagesRef.current) return
+      const target = conversationBottomScrollTop(
+        container.scrollHeight,
+        container.clientHeight,
+      )
+      lastProgrammaticScrollTopRef.current = target
+      container.scrollTop = target
+    }
+    container.addEventListener('load', onMediaLoad, true)
+    return () => container.removeEventListener('load', onMediaLoad, true)
+  }, [])
 
   useEffect(() => {
     if (!activeCoordinatorMessageId) return
@@ -802,9 +584,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   // Get stages from project steps
   const stages = useMemo<StageData[]>(() => {
     const steps = activeProject?.steps
-    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', model: n.model || '', prompt: n.prompt || '', inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
-    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', model: s.model || '', prompt: s.prompt || '', inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
-    return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', prompt: '', inputs: [], outputs: [] }]
+    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', engine: n.engine || '', model: n.model || '', prompt: n.prompt || '', config: n.config || {}, inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
+    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', engine: s.engine || '', model: s.model || '', prompt: s.prompt || '', config: s.config || {}, inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
+    return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', engine: '', model: '', prompt: '', inputs: [], outputs: [] }]
   }, [activeProject?.steps, t])
 
   const stageProgress = useMemo<StageProgress[]>(() => {
@@ -843,15 +625,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     })
   }, [stages, task?.steps])
 
-  const visibleStages = useMemo(() => {
-    const hideSkipped = (task?.run_round ?? 1) > 1
-    const entries = stages.map((stage, index) => ({ stage, index }))
-    if (!hideSkipped) return entries
-    return entries.filter(
-      ({ index }) => stageProgress[index]?.visualState !== 'skipped'
-    )
-  }, [stages, stageProgress, task?.run_round])
-
   const activeStageIndex = useMemo(() => {
     const current = stageProgress.findIndex((progress: StageProgress) =>
       ['current', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(
@@ -883,7 +656,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   useEffect(() => {
     const config = (task?.review_overrides || {})[currentStage.key]
-    setEditReviewAuto(config?.auto ?? false)
+    const mode = ['skip', 'auto', 'manual'].includes(config?.mode)
+      ? config.mode
+      : config?.auto
+        ? 'auto'
+        : 'manual'
+    setEditReviewMode(mode)
     setEditReviewRetries(config?.maxRetries ?? 1)
     setEditReviewPrompt(config?.prompt ?? '')
   }, [currentStage.key, task?.review_overrides])
@@ -910,46 +688,111 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return stages.filter((stage) => runningKeys.has(stage.key))
   }, [stages, stageProgress])
 
+  const stoppedStages = useMemo(() => {
+    const stoppedKeys = new Set(
+      stageProgress
+        .filter((progress) => progress.status === 'cancelled')
+        .map((progress) => progress.step_key),
+    )
+    return stages.filter((stage) => stoppedKeys.has(stage.key))
+  }, [stages, stageProgress])
+
   const chatTargetStageKey = chatTarget === 'coordinator' ? null : chatTarget
   const chatTargetStage = chatTargetStageKey !== null
   const targetStage = chatTargetStageKey
-    ? runningStages.find((stage) => stage.key === chatTargetStageKey) ?? null
+    ? (runningStages.find((stage) => stage.key === chatTargetStageKey)
+      ?? stoppedStages.find((stage) => stage.key === chatTargetStageKey)
+      ?? null)
     : null
   const activeStageRunning = targetStage !== null
+    && runningStages.some((stage) => stage.key === targetStage.key)
   const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
 
   // When a stage engine starts, the input switches to the matching stage tab
-  // for direct insert-into-execution messages; when all stages finish it
-  // returns to the coordinator Agent. Manual user selection is preserved
-  // (only synced on running-state changes).
+  // for direct insert-into-execution messages; after a manual stop the tab
+  // stays on the stopped stage so a message can re-run it; otherwise it
+  // returns to the coordinator Agent. Manual user selection is preserved.
   useEffect(() => {
     setChatTarget((current) => {
-      if (runningStages.length === 0) return 'coordinator'
+      if (runningStages.length === 0) {
+        if (current !== 'coordinator' && stoppedStages.some((stage) => stage.key === current)) {
+          return current
+        }
+        return stoppedStages[0]?.key ?? 'coordinator'
+      }
       if (current !== 'coordinator' && runningStages.some((stage) => stage.key === current)) {
         return current
       }
       return runningStages[0].key
     })
-  }, [runningStages])
+  }, [runningStages, stoppedStages])
 
   const handleRun = async () => {
     if (!taskId || !projectId) return
     if (!chatTargetStage && coordinatorRunning) return
-    // Stage mode (Codex-like): sends land in the "Insert message" panel above,
-    // then are injected into the running stage after the user confirms.
+    // Stage mode (Codex-like): while the stage runs, sends land in the
+    // "Insert message" panel above and are injected after the user confirms;
+    // after a manual stop, sending persists the message and re-runs the stage.
     if (chatTargetStage) {
       const submittedPrompt = prompt.trim()
-      if (!submittedPrompt || !activeStageRunning) return
-      setStageInserts((current) => [
-        ...current,
-        { id: `insert-${crypto.randomUUID()}`, content: submittedPrompt },
-      ])
-      setPrompt('')
+      if (!submittedPrompt || stageResuming) return
+      if (activeStageRunning) {
+        setStageInserts((current) => [
+          ...current,
+          { id: `insert-${crypto.randomUUID()}`, content: submittedPrompt },
+        ])
+        setPrompt('')
+        setChatError('')
+        return
+      }
+      if (!targetStage) return
       setChatError('')
+      const optimisticId = `pending-${crypto.randomUUID()}`
+      const optimisticMessage = createOptimisticUserMessage(
+        optimisticId,
+        submittedPrompt,
+        targetStage.key,
+        new Date().toISOString(),
+      )
+      shouldFollowMessagesRef.current = true
+      setHasUnreadMessages(false)
+      setHistoryMessages((current) => [...current, optimisticMessage])
+      setPrompt('')
+      setStageResuming(true)
+      try {
+        const accepted = await taskApi.resumeStageWithMessage(
+          taskId,
+          targetStage.key,
+          submittedPrompt,
+          projectId,
+        )
+        setHistoryMessages((current) => current.map((message) => (
+          message.id === optimisticId
+            ? {
+                ...message,
+                id: accepted.message_id,
+                run_id: accepted.run_id,
+                channel: 'execution',
+                run_status: 'completed',
+                sequence: accepted.sequence,
+                created_at: accepted.created_at || message.created_at,
+              }
+            : message
+        )))
+      } catch (reason) {
+        setHistoryMessages((current) => current.filter(
+          (message) => message.id !== optimisticId
+        ))
+        setPrompt(submittedPrompt)
+        setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+      } finally {
+        setStageResuming(false)
+      }
       return
     }
     const submittedPrompt = prompt.trim()
     if (!submittedPrompt) return
+    shouldFollowMessagesRef.current = true
     const optimisticId = `pending-${crypto.randomUUID()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
@@ -1103,17 +946,56 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     void sendStageInserts(stageInserts)
   }
 
-  useEffect(() => {
-    if (!openInsertMenuId) return
-    const close = () => setOpenInsertMenuId(null)
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [openInsertMenuId])
+  // A2UI protocol: clicks inside rendered UI bubbles (buttons, pickers, ...)
+  // arrive as client actions. Relay them to the coordinator as a user message
+  // so the model sees what the user selected and can continue the turn.
+  const handleA2uiAction = useCallback((action: A2uiClientAction) => {
+    if (!taskId || !projectId) return
+    const content = t(
+      'taskDetail.a2uiActionMessage',
+      a2uiActionMessageParams(action),
+    )
+    const optimisticId = `pending-a2ui-${crypto.randomUUID()}`
+    const optimisticMessage = createOptimisticUserMessage(
+      optimisticId,
+      content,
+      activeStage.key,
+      new Date().toISOString(),
+    )
+    shouldFollowMessagesRef.current = true
+    setHasUnreadMessages(false)
+    setChatError('')
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    setCoordinatorRunning(true)
+    taskApi.chat(taskId, content, projectId, crypto.randomUUID())
+      .then((accepted) => {
+        setHistoryMessages((current) => current.map((message) => (
+          message.id === optimisticId
+            ? {
+                ...message,
+                id: accepted.user_message_id,
+                channel: 'coordinator',
+                run_status: 'completed',
+              }
+            : message
+        )))
+        setActiveCoordinatorMessageId(accepted.assistant_message_id)
+      })
+      .catch((reason) => {
+        setHistoryMessages((current) => current.filter(
+          (message) => message.id !== optimisticId
+        ))
+        setCoordinatorRunning(false)
+        setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+      })
+  }, [taskId, projectId, activeStage, t])
 
-  const handleEditUserMessage = (content: string) => {
-    setPrompt(content)
-    chatInputRef.current?.focus()
-  }
+  const handleInteractionRespond = useCallback(async (
+    interactionId: string,
+    response: Record<string, unknown>,
+  ) => {
+    await taskApi.respondInteraction(interactionId, response)
+  }, [])
 
   const handleCoordinatorEngineChange = async (engineId: string) => {
     if (!taskId || !projectId) return
@@ -1128,6 +1010,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         null,
         null,
         null,
+        coordinatorConfig?.configured.thinking_effort || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1156,6 +1039,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         model || null,
         coordinatorConfig.configured.fast_model,
         coordinatorConfig.configured.vision_model,
+        coordinatorConfig.configured.thinking_effort,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1184,6 +1068,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.model,
         fastModel || null,
         coordinatorConfig.configured.vision_model,
+        coordinatorConfig.configured.thinking_effort,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1212,6 +1097,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.model,
         coordinatorConfig.configured.fast_model,
         visionModel || null,
+        coordinatorConfig.configured.thinking_effort,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1221,6 +1107,35 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     } catch (reason) {
       setCoordinatorConfigError(
         reason instanceof Error ? reason.message : t('taskDetail.visionModelSwitchFailed'),
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleCoordinatorThinkingEffortChange = async (thinkingEffort: string) => {
+    if (!taskId || !projectId || !coordinatorConfig) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
+        coordinatorConfig.configured.model,
+        coordinatorConfig.configured.fast_model,
+        coordinatorConfig.configured.vision_model,
+        thinkingEffort || null,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : t('taskDetail.effortSwitchFailed'),
       )
     } finally {
       setCoordinatorConfigSaving(false)
@@ -1251,7 +1166,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStageColor = activeStage.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
   const activeReview = reviews.find((review) => review.step_key === activeStage.key)
-  const time = new Date(task.created_at).toLocaleString(locale)
 
   const openDescriptionEditor = () => {
     setDescriptionDraft(task.description || '')
@@ -1416,13 +1330,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return { label: t('taskDetail.waitForStage'), disabled: true }
   })()
 
-  const findArtifact = (name: string, preferredStepKey?: string) => {
+  const findArtifact = (name: string, preferredStepKey?: string, source?: TaskArtifact[]) => {
     const normalize = (value: string) =>
       value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
     const normalizedName = normalize(name)
+    const list = source || artifacts
     const candidates = preferredStepKey
-      ? artifacts.filter((artifact) => artifact.step_key === preferredStepKey)
-      : artifacts
+      ? list.filter((artifact) => artifact.step_key === preferredStepKey)
+      : list
     return candidates.find((artifact) => artifact.logical_name === name)
       || candidates.find((artifact) => {
         const artifactName = normalize(artifact.logical_name || artifact.name)
@@ -1432,7 +1347,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const openArtifact = (name: string, preferredStepKey?: string) => {
-    if (artifactsLoading) {
+    if (artifactsLoading && artifacts.length === 0) {
       setArtifactNotice(t('taskDetail.artifactLoading'))
     } else {
       const artifact = findArtifact(name, preferredStepKey)
@@ -1441,7 +1356,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setArtifactNotice('')
         return
       }
-      setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
+      // 阶段可能刚执行完、产物列表尚未刷新：重新拉取一次再尝试打开。
+      setArtifactNotice(t('taskDetail.artifactLoading'))
+      refreshArtifacts().then((fresh) => {
+        const latest = findArtifact(name, preferredStepKey, fresh)
+        if (latest) {
+          setPreviewArtifact(latest)
+          setArtifactNotice('')
+        } else {
+          setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
+        }
+      })
     }
     setTimeout(() => setArtifactNotice(''), 3000)
   }
@@ -1488,32 +1413,111 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         />
       ))}
 
-      {/* ── Header ── */}
-      <div
-        role="group"
-        tabIndex={0}
-        aria-label={t('taskDetail.dragWindowAria')}
-        className="task-detail-drag-header"
-        onPointerDown={beginPanelMove}
-        onKeyDown={moveWithKeyboard}
-        onDoubleClick={() => setPanelBounds(initialPanelBounds())}
-        title={t('taskDetail.dragWindowTitle')}
-        style={{
-          padding: '10px',
-          borderBottom: '1px solid var(--border-soft)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          flexShrink: 0,
-          cursor: 'move',
-          userSelect: 'none',
+      <TaskDetailView
+        task={task}
+        stages={stages}
+        stageProgress={stageProgress}
+        selectedStage={selectedStage}
+        onStageClick={handleStageClick}
+        historyMessages={historyMessages}
+        liveMessages={liveMessages}
+        events={events}
+        content={content}
+        reviews={reviews}
+        reviewActionPending={reviewActionPending}
+        reviewComment={reviewComment}
+        onReviewCommentChange={setReviewComment}
+        onReviewAction={decideReview}
+        artifacts={artifacts}
+        onOpenArtifact={openArtifact}
+        chatTarget={chatTarget}
+        onChatTargetChange={setChatTarget}
+        coordinatorRunning={coordinatorRunning}
+        coordinatorConfig={coordinatorConfig}
+        chatError={chatError}
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSend={handleRun}
+        onStop={chatTarget !== 'coordinator' && activeStageRunning
+          ? () => void handleStopStage(chatTarget)
+          : handleStopCoordinator}
+        stoppingStepKeys={stoppingStepKeys}
+        stageResuming={stageResuming}
+        onStopStage={handleStopStage}
+        chatInputRef={chatInputRef}
+        stageInserts={stageInserts}
+        onStageInsertRemove={handleStageInsertRemove}
+        onStageInsertSend={handleStageInsertSend}
+        onStageInsertEditStart={handleStageInsertEditStart}
+        onStageInsertEditSave={handleStageInsertEditSave}
+        onStageInsertEditCancel={handleStageInsertEditCancel}
+        editingInsertId={editingInsertId}
+        editingInsertContent={editingInsertContent}
+        onEditingInsertContentChange={setEditingInsertContent}
+        onSendAllInserts={handleSendAllInserts}
+        onClearInserts={() => setStageInserts([])}
+        onCoordinatorEngineChange={handleCoordinatorEngineChange}
+        onCoordinatorModelChange={handleCoordinatorModelChange}
+        onCoordinatorFastModelChange={handleCoordinatorFastModelChange}
+        onCoordinatorVisionModelChange={handleCoordinatorVisionModelChange}
+        onCoordinatorThinkingEffortChange={handleCoordinatorThinkingEffortChange}
+        coordinatorConfigSaving={coordinatorConfigSaving}
+        coordinatorConfigError={coordinatorConfigError}
+        coordinatorConfigNotice={coordinatorConfigNotice}
+        coordinatorStopping={coordinatorStopping}
+        editingDescription={editingDescription}
+        descriptionDraft={descriptionDraft}
+        onDescriptionDraftChange={setDescriptionDraft}
+        descriptionSaving={descriptionSaving}
+        descriptionError={descriptionError}
+        onSaveDescription={saveDescription}
+        onCancelDescriptionEdit={() => setEditingDescription(false)}
+        onOpenDescriptionEditor={openDescriptionEditor}
+        onOpenPromptEditor={openPromptEditor}
+        showReviewDrawer={showReviewDrawer}
+        onShowReviewDrawerChange={setShowReviewDrawer}
+        editReviewMode={editReviewMode}
+        onEditReviewModeChange={(value) => setEditReviewMode(value as 'skip' | 'auto' | 'manual')}
+        editReviewRetries={editReviewRetries}
+        onEditReviewRetriesChange={setEditReviewRetries}
+        editReviewPrompt={editReviewPrompt}
+        onEditReviewPromptChange={setEditReviewPrompt}
+        onSaveReviewConfig={async () => {
+          const updated = {
+            ...(task.review_overrides || {}),
+            [currentStage.key]: {
+              mode: editReviewMode,
+              auto: editReviewMode === 'auto',
+              maxRetries: editReviewRetries,
+              prompt: editReviewPrompt,
+            },
+          }
+          await updateTaskDescription(task.id, undefined, projectId!, updated)
         }}
-      >
-        <span className="task-detail-drag-grip" aria-hidden="true">⠿</span>
-        <Button variant="icon" onClick={onClose}>←</Button>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>{task.title}</span>
+        onA2uiAction={handleA2uiAction}
+        onInteractionRespond={handleInteractionRespond}
+        proposalOverrides={proposalOverrides}
+        onProposalOverride={(updated) => setProposalOverrides((current) => ({ ...current, [updated.id]: updated }))}
+        headerActions={
+          <>
+            <Button
+              variant="ghost"
+              title={t('taskDetail.shareButtonTitle')}
+              aria-label={t('taskDetail.shareButtonTitle')}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                setShareOpen(true)
+              }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                minHeight: 22, padding: '0 7px', fontSize: 11, color: 'var(--meta)',
+                marginLeft: 'auto', order: 98,
+              }}
+            >
+              <Icon name="share" size={13} strokeWidth={1.75} />
+              {t('share.dialogTitle')}
+            </Button>
             <Button
               variant="ghost"
               title={t('taskDetail.copyTaskIdTitle')}
@@ -1527,1222 +1531,46 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               style={{
                 fontFamily: 'var(--font-mono)', fontSize: 11,
                 color: taskIdCopied ? 'var(--success)' : 'var(--meta)',
-                minHeight: 22, padding: '0 5px', marginLeft: 'auto', order: 99,
+                minHeight: 22, padding: '0 5px', order: 99,
               }}
             >
               {taskIdCopied ? t('common.copied') : `ID: ${task.id}`}
             </Button>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', minHeight: 22,
-              fontSize: 11, fontWeight: 500, padding: '0 8px', borderRadius: 4, lineHeight: 1,
-              background: `color-mix(in oklab, ${activeStageColor}, transparent 85%)`,
-              color: activeStageColor,
-            }}>
-              {t('taskDetail.currentStage', { stage: activeStage.label })}
-            </span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', minHeight: 22,
-              fontSize: 11, fontWeight: 500, padding: '0 8px', borderRadius: 4, lineHeight: 1,
-              background: `color-mix(in oklab, var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status}), transparent 85%)`,
-              color: `var(--status-${taskCompleted ? 'done' : task.status === 'ready' ? 'ready' : task.status})`,
-            }}>
-              {t(STATUS_LABEL_KEYS[taskCompleted ? 'done' : task.status] ?? (task.status as TKey))}
-            </span>
-
-            <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 22, fontSize: 13, lineHeight: 1, color: 'var(--meta)' }}>{time}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Recovered-after-restart hint */}
-      {task.status === 'running' && (task.recovered_count || 0) > 0 && (
-        <div
-          role="status"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 16px', fontSize: 13, lineHeight: 1.4,
-            color: 'var(--accent)',
-            background: 'color-mix(in oklab, var(--accent), transparent 92%)',
-            borderBottom: '1px solid var(--border-soft)',
-            flexShrink: 0,
-          }}
-        >
-          <span className="task-status-spinner" aria-hidden="true" />
-          <span>
-            {t('taskDetail.recoveredRunning', {
-              count: task.recovered_count && task.recovered_count > 1
-                ? t('taskDetail.recoveredCount', { count: task.recovered_count })
-                : '',
-            })}
-          </span>
-        </div>
-      )}
-
-      {/* ── Content split ── */}
-      <div
-        ref={contentSplitRef}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'grid',
-          gridTemplateColumns: `${splitRatio}fr ${SPLIT_HANDLE_WIDTH}px ${1 - splitRatio}fr`,
-          overflow: 'hidden',
+          </>
+        }
+        locale={locale}
+        durationNowMs={durationNowMs}
+        currentStage={currentStage}
+        activeStage={activeStage}
+        currentStageColor={currentStageColor}
+        activeStageColor={activeStageColor}
+        taskCompleted={taskCompleted}
+        runningStages={runningStages}
+        executionStageModel={executionStageModel}
+        executionOrigin={executionOrigin}
+        sessionIdForStep={sessionIdForStep}
+        onViewingPromptChange={setViewingPrompt}
+        running={running}
+        projectId={projectId}
+        onClose={onClose}
+        chatScrollRef={chatScrollRef}
+        chatEndRef={chatEndRef}
+        shouldFollowMessagesRef={shouldFollowMessagesRef}
+        lastProgrammaticScrollTopRef={lastProgrammaticScrollTopRef}
+        stageLastMessageRefs={stageLastMessageRefs}
+        pendingStageScrollRef={pendingStageScrollRef}
+        hasUnreadMessages={hasUnreadMessages}
+        onScrollToBottom={() => {
+          shouldFollowMessagesRef.current = true
+          setHasUnreadMessages(false)
+          const container = chatScrollRef.current
+          if (container) {
+            const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
+            lastProgrammaticScrollTopRef.current = target
+            container.scrollTop = target
+          }
         }}
-      >
-        {/* ── Left panel ── */}
-        <div style={{ minWidth: 0, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-
-          <div>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 8,
-            }}>
-              <div style={{
-                fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-              }}>
-                {t('taskDetail.description')}
-              </div>
-              {!editingDescription && (
-                <Button
-                  variant="ghost"
-                  aria-label={t('taskDetail.editDescriptionAria')}
-                  onClick={openDescriptionEditor}
-                  style={{ height: 28, padding: '0 9px', fontSize: 11, gap: 4 }}
-                >
-                  <span aria-hidden="true">✎</span>
-                  {t('common.edit')}
-                </Button>
-              )}
-            </div>
-            {editingDescription ? (
-              <div>
-                <MarkdownEditor
-                  value={descriptionDraft}
-                  onChange={setDescriptionDraft}
-                  projectId={projectId}
-                  imagePrefix={taskId.slice(0, 8)}
-                  placeholder={t('taskDetail.descriptionPlaceholder')}
-                  minHeight={140}
-                  maxHeight="33vh"
-                  disabled={descriptionSaving}
-                  autoFocus
-                />
-                {descriptionError && (
-                  <div role="alert" style={{
-                    marginTop: 6, color: 'var(--danger)', fontSize: 11,
-                  }}>
-                    {descriptionError}
-                  </div>
-                )}
-                <div style={{
-                  display: 'flex', justifyContent: 'flex-end',
-                  gap: 8, marginTop: 8,
-                }}>
-                  <Button
-                    variant="ghost"
-                    disabled={descriptionSaving}
-                    onClick={() => setEditingDescription(false)}
-                  >
-                    {t('common.cancel')}
-                  </Button>
-                  <Button
-                    variant="primary"
-                    disabled={descriptionSaving}
-                    loading={descriptionSaving}
-                    onClick={() => void saveDescription()}
-                  >
-                    {t('common.save')}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div style={{
-                padding: '10px 12px', borderRadius: 8,
-                border: '1px solid var(--border-soft)',
-                fontSize: 13, lineHeight: 1.6,
-                overflowWrap: 'anywhere', maxHeight: '33vh', overflowY: 'auto',
-              }}>
-                {task.description ? <MarkdownMessage content={task.description} projectId={projectId} /> : <span style={{ color: 'var(--meta)', fontStyle: 'italic' }}>{t('taskDetail.noDescription')}</span>}
-              </div>
-            )}
-          </div>
-
-          {/* Progress timeline */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('taskDetail.progress')}</div>
-              {(task?.run_round ?? 1) > 1 && (
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 999, color: 'var(--accent)', background: 'color-mix(in oklab, var(--accent), transparent 90%)' }}>
-                  {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
-              {visibleStages.map(({ stage, index: i }, pos) => {
-                const progress = stageProgress[i]
-                const visualState = progress?.visualState || 'pending'
-                const isCompleted = visualState === 'completed'
-                const isCurrentActive = [
-                  'current', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
-                ].includes(visualState)
-                const isFailed = visualState === 'failed'
-                const isCancelled = visualState === 'cancelled'
-                const isSkipped = visualState === 'skipped'
-                const isSelected = i === selectedStage
-                const stageColor = stage.color || 'var(--accent)'
-                const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
-                const currentRound = task?.run_round ?? 1
-                const restartIndex = stages.findIndex(
-                  (item: any) => item.key === task?.restart_from_step_key
-                )
-                const stageRound = restartIndex >= 0 && i < restartIndex
-                  ? Math.max(1, currentRound - 1)
-                  : currentRound
-                const stageRoundColor = stageRound >= currentRound
-                  ? stageColor
-                  : 'var(--meta)'
-                const finishedDuration = progress?.ended_at
-                  ? formatDurationBetween(progress?.started_at, progress.ended_at, t)
-                  : null
-                const startedAtMs = toMilliseconds(progress?.started_at)
-                  ?? toMilliseconds(task.created_at)
-                  ?? Date.now()
-                const updatedAtMs = toMilliseconds(task.updated_at) ?? Date.now()
-                const isDurationLive = task.status === 'running' || [
-                  'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
-                ].includes(visualState)
-                const activeDuration = isCurrentActive && progress?.started_at
-                  ? formatDurationBetween(
-                      progress.started_at,
-                      isDurationLive ? durationNowMs : updatedAtMs,
-                      t,
-                    )
-                  : null
-                const activeStateColor = task.status === 'paused'
-                  ? 'var(--status-paused)'
-                  : task.status === 'stopped'
-                    ? 'var(--status-stopped)'
-                    : visualState === 'reviewing'
-                      ? 'var(--accent)'
-                      : ['retrying', 'rework', 'rework_waiting'].includes(visualState)
-                        ? 'var(--warn)'
-                    : 'var(--status-running)'
-                const stateColor = isCompleted
-                  ? 'var(--status-done)'
-                    : isFailed
-                      ? 'var(--status-failed)'
-                      : isCancelled
-                        ? '#d97706'
-                      : isCurrentActive
-                      ? activeStateColor
-                      : isSkipped
-                        ? 'var(--meta)'
-                        : 'var(--border)'
-                return (
-                  <div
-                    key={stage.key}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={t('taskDetail.viewStageMessagesAria', { stage: stage.label })}
-                    onClick={() => handleStageClick(i)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        handleStageClick(i)
-                      }
-                    }}
-                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', paddingTop: 24, cursor: 'pointer', outline: 'none' }}
-                  >
-                    {/* Connector line */}
-                    <div style={{
-                      position: 'absolute', top: 10,
-                      left: pos === 0 ? '50%' : 0, right: pos === visibleStages.length - 1 ? '50%' : 0,
-                      height: 2, background: stateColor,
-                    }} />
-                    {/* Dot */}
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '50%',
-                      background: isCompleted || isCurrentActive || isFailed || isCancelled || isSkipped
-                        ? stateColor
-                        : 'var(--bg)',
-                      border: `2px solid ${stateColor}`,
-                      position: 'relative', zIndex: 1,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: 'var(--accent-fg)', fontSize: 13, fontWeight: 700,
-                      boxShadow: isSelected
-                        ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
-                        : 'none',
-                    }}>
-                      {isCompleted ? '✓' : isFailed ? '×' : isCancelled ? '▮' : isSkipped ? '–' : ''}
-                    </div>
-                    <span style={{
-                      fontSize: 13, marginTop: 9, textAlign: 'center', whiteSpace: 'nowrap',
-                      color: stageLabelColor,
-                      fontWeight: isSelected ? 750 : isCurrentActive ? 650 : 500,
-                      padding: '3px 8px', borderRadius: 6,
-                      border: isSelected ? `1px solid ${stageColor}` : '1px solid transparent',
-                      background: isSelected
-                        ? `color-mix(in oklab, ${stageColor}, transparent 88%)`
-                        : 'transparent',
-                    }}>
-                      {stage.label}
-                    </span>
-                    {visualState !== 'pending' && (
-                      <span style={{
-                        fontSize: 11, marginTop: 4, padding: '2px 6px',
-                        borderRadius: 999,
-                        color: stateColor,
-                        background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
-                        fontWeight: 600,
-                      }}>
-                        {t(STAGE_STATE_LABEL_KEYS[visualState])}
-                      </span>
-                    )}
-                    {currentRound > 1 && (
-                      <span style={{
-                        fontSize: 11, marginTop: 4, padding: '2px 6px',
-                        borderRadius: 999,
-                        color: stageRoundColor,
-                        background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
-                        fontWeight: 600,
-                      }}>
-                        {t('taskDetail.runRoundShort', { round: stageRound })}
-                      </span>
-                    )}
-                    {finishedDuration && (
-                      <div style={{
-                        fontSize: 11, color: 'var(--meta)', marginTop: 5,
-                        textAlign: 'center', lineHeight: 1.5, whiteSpace: 'nowrap',
-                      }}>
-                        {t('taskDetail.duration', { duration: finishedDuration })}
-                      </div>
-                    )}
-                    {/* Time info for active stage */}
-                    {isCurrentActive && (
-                      <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 5, textAlign: 'center', lineHeight: 1.5 }}>
-                        <div>{t('taskDetail.startedAt', { time: new Date(startedAtMs).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })}</div>
-                        {activeDuration && (
-                          <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>
-                            {t('taskDetail.duration', { duration: activeDuration })}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Prompt section */}
-          <div>
-             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 ,color: `${currentStageColor}`}}> {currentStage.label} </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('taskDetail.stagePrompt')}</div>
-              <Button
-                variant="ghost"
-                onClick={openPromptEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
-              >
-                <span aria-hidden="true">✎</span>
-                {t('taskDetail.quickEdit')}
-              </Button>
-            </div>
-            <div style={{ background: 'var(--surface)', borderRadius: 'var(--radius-sm)', padding: '14px 16px', borderLeft: `3px solid ${currentStageColor}` }}>
-              {currentStage.prompt
-                ? <MarkdownMessage content={currentStage.prompt} projectId={projectId} />
-                : <div style={{ fontSize: 13, color: 'var(--meta)' }}>{t('taskDetail.noStagePrompt')}</div>}
-            </div>
-          </div>
-
-          {/* I/O section — matching card-detail.html layout */}
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-              {t('taskDetail.stageIo')}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: 'var(--meta)' }}>→</span> {t('taskDetail.ioInput')}
-                </div>
-                {(() => {
-                  const isStageDone = stageProgress[selectedStage]?.visualState === 'completed'
-                  const nextStageIdx = selectedStage + 1
-                  const nextStage = nextStageIdx < stages.length ? stages[nextStageIdx] : null
-                  const nextInputs = nextStage ? (nextStage.inputs || []) : []
-                  // Outputs are attached to the FIRST input only (matching card-detail.html)
-                  const stageOutputs = currentStage.outputs || (currentStage.inputs || [])[0]?.outputs || []
-
-                  return (currentStage.inputs || []).map((inp: any, inpIdx: number) => {
-                    const subOutputs = inpIdx === 0 ? stageOutputs : []
-                    return (
-                      <div key={inpIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {/* Input item */}
-                        <div
-                          role="button"
-                          tabIndex={0}
-                          aria-label={t('taskDetail.openInputAria', { name: inp.name })}
-                          onClick={() => openArtifact(inp.name)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              openArtifact(inp.name)
-                            }
-                          }}
-                          title={t('taskDetail.openFileTitle', { name: inp.name })}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface)', borderRadius: 6, border: '1px solid var(--border-soft)', cursor: 'pointer' }}
-                        >
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: currentStageColor, flexShrink: 0 }} />
-                          <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{inp.name}</span>
-                          <span style={{ fontSize: 11, color: currentStageColor }}>{t('taskDetail.view')}</span>
-                          <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 4px', borderRadius: 3 }}>{inp.type}</span>
-                        </div>
-                        {/* Sub-outputs (only on first input) */}
-                        {subOutputs.map((out: any, outIdx: number) => {
-                          const nextInput = nextInputs[outIdx]
-                          const statusDone = isStageDone
-                          return (
-                            <div
-                              key={outIdx}
-                              role="button"
-                              tabIndex={0}
-                              aria-label={t('taskDetail.openOutputAria', { name: out.name })}
-                              onClick={() => openArtifact(out.name, currentStage.key)}
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                  event.preventDefault()
-                                  openArtifact(out.name, currentStage.key)
-                                }
-                              }}
-                              title={t('taskDetail.openFileTitle', { name: out.name })}
-                              style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 18, padding: '4px 8px', cursor: 'pointer', borderRadius: 4 }}
-                            >
-                              <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusDone ? 'var(--success)' : currentStageColor, flexShrink: 0 }} />
-                              <span style={{ fontSize: 13, flex: 1 }}>{out.name}</span>
-                              <span style={{ fontSize: 11, color: currentStageColor }}>{t('common.open')}</span>
-                              <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', border: '1px solid var(--border-soft)', padding: '0 3px', borderRadius: 2 }}>{out.type}</span>
-                              <span style={{
-                                fontSize: 11, fontWeight: 500, padding: '1px 5px', borderRadius: 3,
-                                background: statusDone ? 'color-mix(in oklab, var(--success), transparent 85%)' : 'var(--surface)',
-                                color: statusDone ? 'var(--success)' : 'var(--meta)',
-                                border: statusDone ? 'none' : '1px solid var(--border-soft)',
-                              }}>
-                                {statusDone ? t('taskDetail.outputDone') : t('taskDetail.outputPending')}
-                              </span>
-                              {nextInput && (
-                                <span style={{ fontSize: 11, color: 'var(--muted)', display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <span style={{ color: 'var(--meta)', fontSize: 11 }}>→</span> {nextStage?.label}: {nextInput.name}
-                                </span>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )
-                  })
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {selectedReview && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-                {t('taskDetail.reviewResult')}
-              </div>
-              <div style={{
-                border: '1px solid var(--border-soft)', borderRadius: 8,
-                background: 'var(--surface)', padding: 12,
-                display: 'flex', flexDirection: 'column', gap: 9,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <strong style={{ fontSize: 13 }}>
-                    {selectedReview.mode === 'auto' ? t('taskDetail.autoReview') : t('taskDetail.manualReview')}
-                  </strong>
-                  <span className="status-badge" data-s={
-                    selectedReview.status === 'passed'
-                      ? 'passed'
-                      : selectedReview.status === 'rejected'
-                        ? 'failed'
-                        : 'paused'
-                  }>
-                    {selectedReview.status === 'passed'
-                      ? t('taskDetail.reviewPassed')
-                      : selectedReview.status === 'rejected'
-                        ? t('taskDetail.reviewRejected')
-                        : selectedReview.status === 'running'
-                          ? t('taskDetail.reviewRunning')
-                          : t('taskDetail.reviewWaiting')}
-                  </span>
-                </div>
-                {selectedReview.report && (
-                  <>
-                    <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-                      {selectedReview.report.score !== null && (
-                        <strong>{t('taskDetail.scorePoints', { score: selectedReview.report.score })}</strong>
-                      )}
-                      {selectedReview.report.summary}
-                    </div>
-                    {selectedReview.report.issues.map((issue, index) => (
-                      <div key={`${issue.category}-${index}`} style={{
-                        fontSize: 11, lineHeight: 1.5, padding: '7px 9px',
-                        borderRadius: 6,
-                        background: issue.severity === 'error'
-                          ? 'color-mix(in oklab, var(--danger), transparent 90%)'
-                          : 'color-mix(in oklab, var(--warn), transparent 90%)',
-                      }}>
-                        <strong>{issue.description}</strong>
-                        {issue.suggestion && <div>{issue.suggestion}</div>}
-                      </div>
-                    ))}
-                  </>
-                )}
-                {(selectedReview.status === 'pending' || selectedReview.status === 'rejected') && (
-                  <>
-                    <Textarea
-                      rows={2}
-                      value={reviewComment}
-                      onChange={(event) => setReviewComment(event.target.value)}
-                      placeholder={t('taskDetail.reviewCommentPlaceholder')}
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                      {selectedReview.status === 'pending' ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            disabled={reviewActionPending}
-                            onClick={() => void decideReview('reject')}
-                          >
-                            {t('taskDetail.reject')}
-                          </Button>
-                          <Button
-                            variant="primary"
-                            disabled={reviewActionPending}
-                            loading={reviewActionPending}
-                            onClick={() => void decideReview('approve')}
-                          >
-                            {t('taskDetail.approve')}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          variant="primary"
-                          disabled={reviewActionPending}
-                          loading={reviewActionPending}
-                          onClick={() => void decideReview('force-approve')}
-                        >
-                          {t('taskDetail.forceApprove')}
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Per-stage review config (collapsible) */}
-          <div style={{ marginTop: 20 }}>
-            <button
-              onClick={() => setShowReviewDrawer(!showReviewDrawer)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'var(--muted)', fontSize: 11, fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.08em',
-                padding: '0', fontFamily: 'var(--font-mono)',
-              }}
-            >
-              <span style={{
-                transform: showReviewDrawer ? 'rotate(90deg)' : 'none',
-                transition: 'transform 150ms', display: 'inline-block', fontSize: 11,
-              }}>&#9654;</span>
-              {t('taskDetail.stageReviewConfig')}
-            </button>
-            {showReviewDrawer && (
-              <div style={{
-                marginTop: 10, padding: '10px 12px', borderRadius: 6,
-                border: '1px solid var(--border)', background: 'var(--surface)',
-                display: 'flex', flexDirection: 'column', gap: 8,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={editReviewAuto} onChange={(e) => setEditReviewAuto(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 14, height: 14, margin: 0 }} />
-                    {t('taskDetail.autoReview')}
-                  </label>
-                  <span style={{ fontSize: 13, color: 'var(--meta)' }}>{t('common.retry')}</span>
-                  <Input type="number" min={1} max={5} value={editReviewRetries} onChange={(e) => setEditReviewRetries(Math.max(1, Math.min(5, Number(e.target.value) || 1)))}
-                    style={{ width: 40, height: 22, fontSize: 13, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', color: 'var(--fg)' }} />
-                </div>
-                <MarkdownEditor
-                  value={editReviewPrompt}
-                  onChange={setEditReviewPrompt}
-                  projectId={projectId}
-                  placeholder={t('taskDetail.reviewPromptPlaceholder')}
-                  minHeight={64}
-                  maxHeight={160}
-                  ariaLabel={t('taskDetail.reviewPromptAria')}
-                />
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button variant="ghost"
-                    onClick={async () => {
-                      const updated = { ...(task.review_overrides || {}), [currentStage.key]: { auto: editReviewAuto, maxRetries: editReviewRetries, prompt: editReviewPrompt } }
-                      await updateTaskDescription(task.id, undefined, projectId!, updated)
-                    }}
-                    style={{ fontSize: 11, padding: '3px 10px' }}
-                  >{t('common.save')}</Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-        </div>
-
-        <div
-          role="separator"
-          tabIndex={0}
-          aria-label={t('taskDetail.adjustSplitAria')}
-          aria-orientation="vertical"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(splitRatio * 100)}
-          className="task-detail-split-handle"
-          onPointerDown={beginSplitResize}
-          onKeyDown={resizeSplitWithKeyboard}
-          onDoubleClick={() => setSplitRatio(DEFAULT_SPLIT_RATIO)}
-          title={t('taskDetail.adjustSplitTitle')}
-        >
-          <span aria-hidden="true" />
-        </div>
-
-        {/* ── Right panel: Chat ── */}
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
-          {/* Chat header */}
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{t('taskDetail.conversation')}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: currentStageColor, background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`, padding: '2px 8px', borderRadius: 4 }}>
-              {currentStage.label}
-            </span>
-          </div>
-          {/* Chat messages */}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0, position: 'relative' }}>
-          <div
-            ref={chatScrollRef}
-            onScroll={(event) => {
-              const container = event.currentTarget
-              const nearBottom = isNearConversationBottom(
-                container.scrollHeight,
-                container.scrollTop,
-                container.clientHeight,
-              )
-              shouldFollowMessagesRef.current = nearBottom
-              if (nearBottom) setHasUnreadMessages(false)
-            }}
-            style={{ height: '100%', minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}
-          >
-            {historyLoading && (
-              <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 20, fontSize: 13 }}>{t('common.loading')}</div>
-            )}
-
-            {!historyLoading && historyMessages.length === 0 && events.length === 0 && !content && liveCoordinatorMessages.length === 0 && !running && (
-              <div style={{ textAlign: 'center', color: 'var(--meta)', padding: 40, fontSize: 13 }}>
-                {t('taskDetail.conversationEmpty')}
-              </div>
-            )}
-
-            {/* Conversation messages in persistent task sequence order
-                (history merged with live execution segments, so an inserted
-                message lands between the pre-insert stage output and the
-                stage's follow-up response, like Codex segments). */}
-            {(() => {
-              const orderedMessagesRaw = [
-                ...historyMessages
-                .filter(isVisibleHistoryMessage)
-                .map((message: any) => mergeHistoryMessageWithLive(
-                  message,
-                  liveMessages[String(message.id)],
-                )),
-                // Unpersisted live execution messages (segment A / response B)
-                // are sorted with history so inserts land between stage outputs.
-                ...liveExecutionMessages.map((message: any) => ({
-                  ...message,
-                  run_status: message.status,
-                  ended_at: message.status === 'running'
-                    ? undefined
-                    : lastEventTimestamp(message.events),
-                })),
-              ]
-              const orderedMessages = orderConversationMessages(orderedMessagesRaw, durationNowMs)
-              return orderedMessages.map((message: any) => {
-                const stageKey = message.context_step_key || message.step_key || 'unknown'
-                const msgs = [message]
-                const stageInfo = stages.find((s: any) => s.key === stageKey)
-                const stageLabel = message.channel === 'coordinator'
-                  ? t('aiFlow.agent')
-                  : stageInfo?.label || stageKey
-                return (
-                  <div key={message.id} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {/* Messages in this stage */}
-                    {msgs.map((msg: any, i: number) => {
-                      const isUser = msg.role === 'user'
-                      const isSystem = msg.role === 'system'
-                      const isReview = msg.channel === 'review' || msg.role === 'review'
-                      const isCoordinator = msg.channel === 'coordinator'
-                      const isLiveInsert = !isCoordinator && msg.role === 'user'
-                        && msg.run_id === msg.id
-                      const processEvents = Array.isArray(msg.events) ? msg.events : []
-                      const sender = isUser
-                        ? t('aiFlow.me')
-                        : isSystem
-                          ? t('taskDetail.system')
-                          : isCoordinator
-                            ? t('aiFlow.agent')
-                            : stageLabel
-                      const initials = isUser || isSystem
-                          ? sender.slice(0, 2)
-                          : isCoordinator
-                            ? t('aiFlow.agentInitials')
-                          : stageAvatarText(stageLabel, t)
-                      const senderColor = isUser
-                        ? 'var(--accent)'
-                        : isSystem
-                          ? 'var(--warn)'
-                          : isReview
-                            ? (stageInfo?.color || 'var(--warn)')
-                          : isCoordinator
-                            ? 'var(--ai-assistant)'
-                            : (stageInfo?.color || 'var(--fg)')
-
-                      return (
-                        <ChatMessageBubble
-                          key={i}
-                          role={isSystem ? 'system' : isReview ? 'review' : (isUser ? 'user' : 'assistant')}
-                          sender={sender}
-                          initials={initials}
-                          color={senderColor}
-                          content={msg.content || ''}
-                          streaming={msg.run_status === 'running'}
-                          badge={isReview ? <span title="Review" aria-label={t('taskDetail.reviewBadgeAria')}>R</span> : undefined}
-                          onEdit={isUser ? handleEditUserMessage : undefined}
-                          rootProps={{
-                            ref: i === msgs.length - 1
-                              ? (element) => {
-                                  stageLastMessageRefs.current[stageKey] = element
-                                }
-                              : undefined,
-                            'data-stage-last-message': i === msgs.length - 1 ? stageKey : undefined,
-                          }}
-                          header={isUser ? (
-                            <>
-                              <span
-                                title={isCoordinator
-                                  ? t('taskDetail.sendToCoordinatorTitle')
-                                  : isLiveInsert
-                                    ? t('taskDetail.liveInsertTitle')
-                                    : t('taskDetail.stageInitialInputTitle')}
-                                style={{
-                                  padding: '1px 6px', borderRadius: 999, fontSize: 11,
-                                  border: isLiveInsert ? 'none' : '1px solid var(--border-soft)',
-                                  background: isCoordinator
-                                    ? 'rgba(124,58,237,0.08)'
-                                    : isLiveInsert
-                                      ? 'var(--accent)'
-                                      : 'rgba(0,113,227,0.08)',
-                                  color: isCoordinator
-                                    ? 'var(--ai-assistant)'
-                                    : isLiveInsert ? 'var(--accent-fg)' : 'var(--accent)',
-                                }}
-                              >
-                                {isCoordinator ? t('taskDetail.coordinatorTag') : `@${stageLabel}`}
-                              </span>
-                              {isCoordinator
-                                ? formatConversationDateTime(msg.started_at || msg.created_at, Date.now(), locale)
-                                : formatExecutionClock(msg.started_at || msg.created_at)}
-                            </>
-                          ) : (
-                            <MessageMetaBar
-                              createdAt={msg.created_at}
-                              startedAt={msg.started_at}
-                              endedAt={msg.ended_at}
-                              running={msg.run_status === 'running'}
-                              events={processEvents}
-                              prompt={msg.prompt}
-                              sessionId={isCoordinator
-                                ? (task?.coordinator_session_id || null)
-                                : isReview
-                                  ? undefined
-                                  : sessionIdForStep(stageKey)}
-                              onViewPrompt={setViewingPrompt}
-                              origin={isCoordinator ? undefined : executionOrigin}
-                              status={terminalMessageStatus(msg.run_status)}
-                            />
-                          )}
-                          showLoading={!isUser && !isCoordinator && msg.run_status === 'running' && !msg.content}
-                          loading={!isUser && msg.run_status === 'running'
-                            ? (
-                              <div className="engine-loading-message" role="status" aria-live="polite">
-                                <span>{liveExecutionStatus(processEvents, t)}</span>
-                                <span className="engine-loading-dots" aria-hidden="true">
-                                  <i />
-                                  <i />
-                                  <i />
-                                </span>
-                              </div>
-                            )
-                            : undefined}
-                          footer={!isUser && !isSystem && msg.content
-                            && !(isReview && !msg.engine)
-                            ? (
-                              <MessageResponseFooter
-                                content={stripA2uiBlocks(String(msg.content))}
-                                usage={msg.usage || usageFromEvents(processEvents)}
-                                engine={msg.engine}
-                                model={msg.model}
-                                executionModel={isCoordinator ? undefined : executionStageModel}
-                                endedAt={msg.ended_at}
-                                running={msg.run_status === 'running'}
-                                stopped={!isCoordinator && (msg.run_status === 'cancelled' || msg.run_status === 'stopped')}
-                                onContinueStage={!isCoordinator && taskId
-                                  ? () => void runTask(taskId, '', projectId)
-                                  : undefined}
-                              />
-                            )
-                            : undefined}
-                        >
-                          {(msg.proposals || []).map((proposal: ActionProposal) => {
-                            const currentProposal = proposalOverrides[proposal.id] || proposal
-                            return (
-                              <CoordinatorProposalCard
-                                key={proposal.id}
-                                proposal={currentProposal}
-                                taskId={taskId || ''}
-                                projectId={projectId}
-                                onChanged={(updated) => setProposalOverrides((current) => ({
-                                  ...current,
-                                  [updated.id]: updated,
-                                }))}
-                              />
-                            )
-                          })}
-                        </ChatMessageBubble>
-                      )
-                    })}
-                  </div>
-                )
-              })
-            })()}
-
-            {liveCoordinatorMessages.map((message) => (
-              <ChatMessageBubble
-                key={message.id}
-                role="assistant"
-                sender={t('aiFlow.agent')}
-                initials={t('aiFlow.agentInitials')}
-                color="var(--ai-assistant)"
-                content={message.content || ''}
-                streaming={message.status === 'running'}
-                variant="bg"
-                header={
-                  <MessageMetaBar
-                    createdAt={message.created_at}
-                    running={message.status === 'running'}
-                    events={message.events}
-                    prompt={message.prompt || livePromptOverrides[message.id]}
-                    sessionId={task?.coordinator_session_id || sessionIdForStep(message.step_key)}
-                    onViewPrompt={setViewingPrompt}
-                    status={terminalMessageStatus(message.status)}
-                  />
-                }
-                showLoading={!message.content && message.status === 'running'}
-                loading={
-                  <div className="engine-loading-message" role="status">{t('aiFlow.thinking')}</div>
-                }
-                footer={message.content ? (
-                  <MessageResponseFooter
-                    content={stripA2uiBlocks(message.content)}
-                    usage={usageFromEvents(message.events)}
-                    engine={message.engine}
-                    model={message.model}
-                    endedAt={message.status === 'running'
-                      ? undefined
-                      : lastEventTimestamp(message.events)}
-                    running={message.status === 'running'}
-                  />
-                ) : undefined}
-              >
-                {message.proposals.map((rawProposal) => {
-                  const proposal = rawProposal as unknown as ActionProposal
-                  const currentProposal = proposalOverrides[proposal.id] || proposal
-                  return (
-                    <CoordinatorProposalCard
-                      key={proposal.id}
-                      proposal={currentProposal}
-                      taskId={taskId || ''}
-                      projectId={projectId}
-                      onChanged={(updated) => setProposalOverrides((current) => ({
-                        ...current,
-                        [updated.id]: updated,
-                      }))}
-                    />
-                  )
-                })}
-              </ChatMessageBubble>
-            ))}
-
-            {/* Live assistant process and response */}
-            {shouldRenderLegacyExecution(
-              running,
-              hasProcessEvents(events),
-              content,
-              hasStructuredExecutionMessage,
-            ) && (
-              <ChatMessageBubble
-                role="assistant"
-                sender={activeStage.label}
-                initials={stageAvatarText(activeStage.label, t)}
-                color={activeStageColor}
-                content={content}
-                streaming={running}
-                variant="bg"
-                header={<ProcessTrace events={events} running={running} />}
-                showLoading={running && !content && !hasProcessEvents(events)}
-                loading={
-                  <div className="engine-loading-message" role="status" aria-live="polite">
-                    <span>{t('chat.processing')}</span>
-                    <span className="engine-loading-dots" aria-hidden="true">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  </div>
-                }
-                footer={content ? (
-                  <MessageResponseFooter
-                    content={stripA2uiBlocks(content)}
-                    usage={usageFromEvents(events)}
-                    engine={task.engine}
-                    model={task.model}
-                    executionModel={executionStageModel}
-                    endedAt={running ? undefined : lastEventTimestamp(events)}
-                    running={running}
-                  />
-                ) : undefined}
-              />
-            )}
-
-            <div ref={chatEndRef} />
-          </div>
-          {hasUnreadMessages && (
-            <button
-              type="button"
-              onClick={() => {
-                shouldFollowMessagesRef.current = true
-                setHasUnreadMessages(false)
-                const container = chatScrollRef.current
-                if (container) container.scrollTop = container.scrollHeight
-              }}
-              aria-label={t('taskDetail.viewNewMessagesAria')}
-              style={{
-                position: 'absolute', right: 12, bottom: 12, zIndex: 2,
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '6px 10px', borderRadius: 999,
-                border: '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
-                background: 'var(--bg)', color: 'var(--accent)',
-                boxShadow: '0 3px 12px rgba(0,0,0,0.14)',
-                fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              {t('taskDetail.newMessages')} <span aria-hidden="true">↓</span>
-            </button>
-          )}
-          </div>
-
-          {/* Chat input */}
-          <div style={{ position: 'relative', padding: '14px 20px', borderTop: '1px solid var(--border-soft)', background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10, flexShrink: 0 }}>
-            {chatTargetStage && activeStageRunning && targetStage && stageInserts.length > 0 && (
-              <div role="region" aria-label={t('taskDetail.insertMessages')} style={{
-                position: 'absolute', bottom: '100%', left: 20, right: 20,
-                marginBottom: 6, zIndex: 30,
-                borderRadius: 8, border: '1px solid var(--border-soft)',
-                background: 'var(--bg)',
-                boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-                padding: '6px 10px',
-                display: 'flex', flexDirection: 'column', gap: 4,
-              }}>
-                <div
-                  title={t('taskDetail.insertMessagesTitle', { stage: targetStage.label })}
-                  style={{ fontSize: 11, fontWeight: 600, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}
-                >
-                  {t('taskDetail.insertMessages')}
-                  <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>
-                    {t('taskDetail.itemCount', { count: stageInserts.length })}
-                  </span>
-                  <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: 'var(--muted)' }}>
-                    @{targetStage.label}
-                  </span>
-                </div>
-                {stageInserts.map((insert) => (
-                  <div key={insert.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '4px 6px', borderRadius: 6,
-                    position: 'relative',
-                  }}>
-                    {editingInsertId === insert.id ? (
-                      <Textarea
-                        autoFocus
-                        value={editingInsertContent}
-                        onChange={(e) => setEditingInsertContent(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            handleStageInsertEditSave(insert.id)
-                          }
-                          if (e.key === 'Escape') {
-                            e.preventDefault()
-                            handleStageInsertEditCancel()
-                          }
-                        }}
-                        rows={2}
-                        style={{
-                          flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.4,
-                          color: 'var(--fg)', background: 'var(--bg)',
-                          border: '1px solid var(--accent)', borderRadius: 6,
-                          padding: '4px 6px', outline: 'none', resize: 'none',
-                          fontFamily: 'var(--font-body)',
-                        }}
-                      />
-                    ) : (
-                      <>
-                        <Icon name="list" size={12} strokeWidth={1.6} color="var(--muted)" style={{ flexShrink: 0, opacity: 0.7 }} />
-                        <div style={{
-                          flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4,
-                          color: 'var(--fg)',
-                          whiteSpace: 'nowrap', overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}>
-                          {insert.content}
-                        </div>
-                      </>
-                    )}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-                      {editingInsertId === insert.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleStageInsertEditSave(insert.id)}
-                            title={t('taskDetail.saveEditTitle')}
-                            style={{
-                              padding: '2px 8px', borderRadius: 6, fontSize: 11,
-                              border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {t('common.save')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleStageInsertEditCancel}
-                            title={t('taskDetail.cancelEditTitle')}
-                            style={{
-                              padding: '2px 8px', borderRadius: 6, fontSize: 11,
-                              border: '1px solid var(--border)',
-                              background: 'transparent', color: 'var(--meta)',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {t('common.cancel')}
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleStageInsertSend(insert)}
-                            title={t('taskDetail.sendInsertTitle')}
-                            style={{
-                              padding: '2px 6px', fontSize: 11,
-                              border: 'none', background: 'transparent',
-                              color: 'var(--accent)', cursor: 'pointer',
-                            }}
-                          >
-                            {t('chatInput.send')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStageInsertEditStart(insert)}
-                            title={t('taskDetail.editInsertTitle')}
-                            style={{
-                              padding: '4px', border: 'none', background: 'transparent',
-                              color: 'var(--muted)', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', borderRadius: 4,
-                            }}
-                          >
-                            <Icon name="pencil" size={12} strokeWidth={2} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStageInsertRemove(insert.id)}
-                            title={t('taskDetail.deleteInsertTitle')}
-                            style={{
-                              padding: '4px', border: 'none', background: 'transparent',
-                              color: 'var(--muted)', cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', borderRadius: 4,
-                            }}
-                          >
-                            <Icon name="trash" size={12} strokeWidth={2} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {stageInserts.length > 1 && (
-                  <div style={{
-                    display: 'flex', justifyContent: 'flex-end', gap: 6,
-                    paddingTop: 4, borderTop: '1px solid var(--border-soft)',
-                  }}>
-                    <button
-                      type="button"
-                      onClick={handleSendAllInserts}
-                      title={t('taskDetail.sendAllTitle')}
-                      style={{
-                        padding: '2px 8px', fontSize: 11, borderRadius: 6,
-                        border: 'none', background: 'var(--accent)', color: 'var(--accent-fg)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {t('taskDetail.sendAll', { count: stageInserts.length })}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStageInserts([])}
-                      title={t('taskDetail.clearAllTitle')}
-                      style={{
-                        padding: '2px 8px', fontSize: 11, borderRadius: 6,
-                        border: '1px solid var(--border)',
-                        background: 'transparent', color: 'var(--meta)',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {t('taskDetail.clearAll')}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 8, background: 'var(--bg-soft, rgba(128,128,128,0.08))', border: '1px solid var(--border-soft)' }}>
-                <button
-                  type="button"
-                  onClick={() => setChatTarget('coordinator')}
-                  aria-pressed={chatTarget === 'coordinator'}
-                  title={t('taskDetail.coordinatorTabTitle')}
-                  style={{
-                    padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                    border: 'none', cursor: 'pointer',
-                    background: chatTargetStage ? 'transparent' : 'var(--accent)',
-                    color: chatTargetStage ? 'var(--meta)' : 'var(--accent-fg)',
-                  }}
-                >
-                  {t('aiFlow.agent')}
-                </button>
-                {runningStages.map((stage) => (
-                  <button
-                    key={stage.key}
-                    type="button"
-                    onClick={() => setChatTarget(stage.key)}
-                    aria-pressed={chatTarget === stage.key}
-                    title={t('taskDetail.stageTabTitle', { stage: stage.label })}
-                    style={{
-                      padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                      border: 'none', cursor: 'pointer',
-                      background: chatTarget === stage.key ? 'var(--accent)' : 'transparent',
-                      color: chatTarget === stage.key ? 'var(--accent-fg)' : 'var(--meta)',
-                      maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {stage.label}
-                  </button>
-                ))}
-              </div>
-              {chatTargetStage && activeStageRunning && targetStage && (
-                <span style={{ fontSize: 11, color: 'var(--meta)' }}>
-                  {t('taskDetail.enterHint', { stage: targetStage.label })}
-                </span>
-              )}
-              {chatTargetStage && !activeStageRunning && (
-                <span style={{ fontSize: 11, color: 'var(--warn)' }}>
-                  {t('taskDetail.stageNotRunningHint')}
-                </span>
-              )}
-            </div>
-            {chatError && (
-              <div role="alert" style={{
-                fontSize: 13, color: 'var(--danger)', padding: '6px 10px',
-                borderRadius: 6, border: '1px solid rgba(217,45,32,0.25)',
-                background: 'rgba(217,45,32,0.06)',
-              }}>
-                {chatError}
-              </div>
-            )}
-            <ChatInput
-              value={prompt}
-              onChange={setPrompt}
-              onSend={handleRun}
-              inputRef={chatInputRef}
-              imageAttach={projectId ? {
-                projectId,
-                prefix: taskId?.slice(0, 8) ?? '',
-                onError: (message) => setChatError(message),
-              } : undefined}
-              stopTitle={chatTargetStage ? t('taskDetail.stopStageTitle') : t('chatInput.stopGenerating')}
-              config={{
-                engines: coordinatorConfig?.available_engines || [],
-                engine: coordinatorConfig?.configured.engine || '',
-                defaultEngine: coordinatorConfig?.resolved.engine || task.coordinator_engine || task.engine || 'claude',
-                model: coordinatorConfig?.configured.model || '',
-                fastModel: coordinatorConfig?.configured.fast_model || '',
-                visionModel: coordinatorConfig?.configured.vision_model || '',
-                showVision: true,
-                disabled: !coordinatorConfig || coordinatorRunning,
-                saving: coordinatorConfigSaving,
-                error: coordinatorConfigError,
-                notice: coordinatorConfigNotice,
-                hint: coordinatorConfig ? t('taskDetail.hintFromNextMessage') : '',
-                engineTitle: t('taskDetail.engineTitle'),
-                onEngineChange: (engineId) => void handleCoordinatorEngineChange(engineId),
-                onModelChange: (model) => void handleCoordinatorModelChange(model),
-                onFastModelChange: (fastModel) => void handleCoordinatorFastModelChange(fastModel),
-                onVisionModelChange: (visionModel) => void handleCoordinatorVisionModelChange(visionModel),
-                onReset: () => void handleCoordinatorEngineChange(''),
-              }}
-              disabled={chatTargetStage ? false : coordinatorRunning}
-              running={(chatTargetStage && activeStageRunning && prompt.trim().length === 0)
-                || (!chatTargetStage && coordinatorRunning)}
-              stopping={(chatTargetStage && targetStage
-                ? stoppingStepKeys.includes(targetStage.key)
-                : false)
-                || (!chatTargetStage && coordinatorStopping)}
-              onStop={chatTargetStage && targetStage
-                ? () => void handleStopStage(targetStage.key)
-                : handleStopCoordinator}
-              placeholder={chatTargetStage && targetStage
-                ? t('taskDetail.stagePlaceholder', { stage: targetStage.label })
-                : coordinatorRunning
-                  ? t('taskDetail.coordinatorProcessing')
-                  : t('taskDetail.coordinatorPlaceholder')}
-              title={chatTargetStage
-                ? t('taskDetail.stageInputTitle')
-                : coordinatorRunning ? t('taskDetail.stopCoordinatorTitle') : t('taskDetail.sendToCoordinator')}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Footer ── */}
+      />
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
         <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
         <Button
@@ -2897,11 +1725,21 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <Button variant="icon" onClick={() => setPreviewArtifact(null)}>✕</Button>
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <ArtifactPreview path={previewArtifact.path} onClose={() => setPreviewArtifact(null)} />
+              <ArtifactPreview
+                path={previewArtifact.path}
+                isDir={!!previewArtifact.is_dir}
+                onClose={() => setPreviewArtifact(null)}
+              />
             </div>
           </div>
         </div>
       )}
+      <ShareDialog
+        open={shareOpen && !!task}
+        taskId={taskId}
+        projectId={projectId}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   )
 }

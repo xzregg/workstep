@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import services.project as project_service
-from engines.registry import refresh_registry
+from engines.core.registry import refresh_registry
 from models import Message, Task
 from services.project import ProjectManager
 from services.task import TaskService

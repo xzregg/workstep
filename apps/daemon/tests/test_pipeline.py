@@ -9,8 +9,9 @@ from unittest.mock import patch
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt, SYSTEM_PROMPT
 from services.task_runner import TaskRunner
-from engines.events import InternalEvent
-from engines.base import BaseLLMEngine
+from engines.core.events import InternalEvent
+from engines.core.base import BaseLLMEngine
+from engines.core.interactions import elicitation_request
 from streaming.bus import EventBus
 
 
@@ -31,6 +32,7 @@ def test_step_from_dict_legacy_id():
     s = Step.from_dict({"id": "do", "name": "执行", "prompt": "go"})
     assert s.key == "do"
     assert s.label == "执行"
+    assert s.engine == "pydantic_ai"
 
 
 # --- DAGScheduler ---
@@ -164,7 +166,7 @@ def test_assemble_prompt_basic(tmp_path):
     assert "MEMORY" not in SYSTEM_PROMPT
     assert "## 任务说明\nCurrent task context" in prompt
     assert "Write a PRD" in prompt
-    assert str(artifacts_dir / "req" / task.id) in prompt
+    assert str(artifacts_dir / "default" / task.id / "req") in prompt
     db.close()
 
 
@@ -203,7 +205,7 @@ def test_assemble_prompt_with_upstream(tmp_path):
     )
     artifacts_dir = tmp_path / "artifacts"
     # Create upstream artifact
-    req_dir = artifacts_dir / "req" / task.id
+    req_dir = artifacts_dir / "default" / task.id / "req"
     req_dir.mkdir(parents=True)
     (req_dir / "prd.md").write_text("# PRD\nHello")
 
@@ -327,6 +329,63 @@ def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
     db.close()
 
 
+def test_assemble_prompt_file_output_uses_single_file_path(tmp_path):
+    """File outputs must point to a single file with the proper extension,
+    not a per-artifact subdirectory."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="do", label="Do", prompt="Produce a doc", outputs=[
+        {"name": "说明", "type": "md"},
+        {"name": "数据", "type": "json"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+
+    assert "## 产物输出目录\n" + str(artifacts_dir / "default" / task.id / "do") in prompt
+    assert "说明: " + str(artifacts_dir / "default" / task.id / "do" / "说明.md") in prompt
+    assert "数据: " + str(artifacts_dir / "default" / task.id / "do" / "数据.json") in prompt
+    assert ".workstep/artifacts/default/" + task.id + "/do/说明.md" in prompt
+    assert "数据.json" in prompt
+    assert "每个产物写入" in prompt
+    assert "单个文件" in prompt
+    assert "不要为文件型产物再创建同名子目录" in prompt
+    db.close()
+
+
+def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
+    """Directory outputs tell the engine to create a multi-file deliverable."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="design", label="设计", prompt="Produce prototypes", outputs=[
+        {"name": "原型集合", "type": "directory"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+
+    assert "类型: `directory`" in prompt
+    assert "目录型产物" in prompt
+    assert "创建多个文件和子目录" in prompt
+    assert "不要将所有内容合并为单个文件" in prompt
+    assert "目录内的文件类型和数量按阶段要求确定" in prompt
+    db.close()
+
+
 # --- TaskRunner integration ---
 
 class PipelineFakeEngine(BaseLLMEngine):
@@ -378,7 +437,7 @@ class PipelineResumeEngine(PipelineFakeEngine):
     def supports_resume(self):
         return True
 
-    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None):
+    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None, **kwargs):
         self.seen.append(session_id)
         active = session_id or f"sess-{len(self.seen)}"
         yield InternalEvent(type="session_started", data={"session_id": active})
@@ -386,11 +445,167 @@ class PipelineResumeEngine(PipelineFakeEngine):
         yield InternalEvent(type="status", data={"status": "done"})
 
 
+class PipelineInteractionEngine(PipelineFakeEngine):
+    def __init__(self):
+        super().__init__("answered")
+        self.responses: list[tuple[dict, dict]] = []
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield elicitation_request(
+            interaction_id="ask-pipeline",
+            message="请选择实现范围",
+            requested_schema={
+                "type": "object",
+                "properties": {"scope": {"type": "string"}},
+                "required": ["scope"],
+            },
+            tool_call_id="ask-pipeline",
+        )
+        yield InternalEvent(type="text_delta", data={"delta": "answered"})
+        yield InternalEvent(type="status", data={"status": "done"})
+
+    async def respond_interaction(self, request, response):
+        self.responses.append((request, response))
+        return True
+
+
+class PipelinePlanEngine(PipelineFakeEngine):
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield InternalEvent(type="tool_use", data={
+            "id": "todo-1",
+            "name": "TodoWrite",
+            "input": {"todos": [
+                {"content": "实现功能", "status": "in_progress"},
+                {"content": "运行测试", "status": "pending"},
+            ]},
+        })
+        yield InternalEvent(type="text_delta", data={"delta": "done"})
+
+
+@pytest.mark.anyio
+async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
+    from models import init_db, Message, Task
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.intervention import intervention_manager
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "interaction.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Interaction",
+        cwd=str(tmp_path),
+        engine="interaction",
+        created_at=int(time.time()),
+        updated_at=int(time.time()),
+    )
+    engine = PipelineInteractionEngine()
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["interaction"] = lambda: engine
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        running = asyncio.create_task(runner.run_pipeline(
+            task,
+            {"steps": [{
+                "key": "a",
+                "label": "A",
+                "engine": "interaction",
+                "prompt": "Do A",
+            }]},
+            tmp_path / "artifacts",
+        ))
+        for _ in range(100):
+            if "ask-pipeline" in intervention_manager.list_pending():
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("interaction was not registered")
+
+        pending_message = Message.get(
+            (Message.task == task) & (Message.step_key == "a")
+        )
+        assert [
+            event["type"] for event in json.loads(pending_message.events_json)
+        ] == ["interaction_request"]
+        assert pending_message.run_status == "running"
+
+        response = {
+            "action": "accept",
+            "content": {"scope": "backend"},
+        }
+        assert intervention_manager.deliver_response("ask-pipeline", response)
+        await running
+
+        assert engine.responses == [(
+            {
+                "interaction_id": "ask-pipeline",
+                "method": "elicitation/create",
+                "message": "请选择实现范围",
+                "requested_schema": {
+                    "type": "object",
+                    "properties": {"scope": {"type": "string"}},
+                    "required": ["scope"],
+                },
+                "tool_call_id": "ask-pipeline",
+            },
+            response,
+        )]
+        message = Message.get((Message.task == task) & (Message.step_key == "a"))
+        persisted = json.loads(message.events_json)
+        assert [event["type"] for event in persisted] == [
+            "interaction_request",
+            "interaction_response",
+            "text_delta",
+            "status",
+        ]
+        assert persisted[1]["data"]["response"] == response
+        assert message.content == "answered"
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        intervention_manager.cancel("ask-pipeline")
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_persists_base_normalized_plan_snapshots(tmp_path):
+    from models import init_db, Message, Task
+    from engines.core.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "plan.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Plan", cwd=str(tmp_path), engine="plan",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["plan"] = PipelinePlanEngine
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [{
+                "key": "a", "label": "A", "engine": "plan", "prompt": "Do A",
+            }]},
+            tmp_path / "artifacts",
+        )
+
+        message = Message.get((Message.task == task) & (Message.step_key == "a"))
+        events = json.loads(message.events_json)
+        assert [event["type"] for event in events] == ["plan", "text_delta"]
+        assert events[0]["data"]["entries"][0]["status"] == "in_progress"
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
 @pytest.mark.anyio
 async def test_task_runner_persists_usage_json(tmp_path):
     """TaskRunner persists usage (incl. cache) to message.usage_json."""
     from models import init_db, Task, Message
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid, json as _json
 
     db = init_db(str(tmp_path / "test.db"))
@@ -418,7 +633,7 @@ async def test_task_runner_persists_usage_json(tmp_path):
 
         msg = Message.select().where(Message.task == task).get()
         assert _json.loads(msg.prompt_json)["prompt"].endswith(
-            str(artifacts_dir / "a" / task.id)
+            str(artifacts_dir / "default" / task.id / "a")
         )
         assert "## 阶段要求\nDo A" in _json.loads(msg.prompt_json)["prompt"]
         assert msg.usage_json is not None
@@ -437,7 +652,7 @@ async def test_task_runner_persists_usage_json(tmp_path):
 async def test_task_runner_stage_session_id_isolated_and_reused(tmp_path):
     """同任务同阶段重跑复用同一 session id；不同阶段各自隔离。"""
     from models import init_db, Task, TaskStep
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid
 
     db = init_db(str(tmp_path / "test.db"))
@@ -488,7 +703,7 @@ async def test_task_runner_stage_session_id_isolated_and_reused(tmp_path):
 async def test_task_runner_linear_pipeline(tmp_path):
     """Run a 2-step linear pipeline: A → B."""
     from models import init_db, Task
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid
 
     db = init_db(str(tmp_path / "test.db"))
@@ -545,7 +760,7 @@ async def test_task_runner_linear_pipeline(tmp_path):
 
 @pytest.mark.anyio
 async def test_task_runner_inherits_the_engine_default_model(tmp_path, monkeypatch):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from models import Task, init_db
     import services.task_runner as task_runner_module
     import time
@@ -593,7 +808,7 @@ async def test_task_runner_inherits_the_engine_default_model(tmp_path, monkeypat
 async def test_task_runner_starts_after_persisted_skipped_stages(tmp_path):
     """Skipped predecessors satisfy the DAG without invoking their engines."""
     from models import Task, TaskStep, init_db
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time
     import uuid
 
@@ -658,7 +873,7 @@ async def test_task_runner_starts_after_persisted_skipped_stages(tmp_path):
 async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path):
     """A reported engine error fails its step without retrying or unblocking dependants."""
     from models import init_db, Message, Task, TaskStep
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid
 
     class ReportedErrorEngine(PipelineFakeEngine):
@@ -735,7 +950,7 @@ async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path
 async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
     """Cancelling a running step fails the run and leaves the pipeline paused."""
     from models import init_db, Message, Task, TaskStep
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid
 
     class BlockingPipelineEngine(PipelineFakeEngine):
@@ -860,7 +1075,7 @@ async def test_task_runner_unavailable_engine_finalizes_message(tmp_path):
 async def test_task_runner_parallel_branches(tmp_path):
     """Run a pipeline with parallel branches: A → {B, C} → D."""
     from models import init_db, Task
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time, uuid
 
     db = init_db(str(tmp_path / "test.db"))
@@ -907,7 +1122,7 @@ async def test_task_runner_parallel_branches(tmp_path):
 async def test_new_workflow_run_executes_steps_again(tmp_path):
     """A new workflow run creates a new attempt instead of reusing prior success."""
     from models import Message, StepRun, Task, WorkflowRun, init_db
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     import time
     import uuid
 

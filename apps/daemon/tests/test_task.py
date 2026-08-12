@@ -12,8 +12,8 @@ from httpx import ASGITransport, AsyncClient
 from models import init_db
 from streaming.bus import EventBus
 from services.task import TaskService
-from engines.events import InternalEvent
-from engines.base import BaseLLMEngine
+from engines.core.events import InternalEvent
+from engines.core.base import BaseLLMEngine
 
 
 class MockEngine(BaseLLMEngine):
@@ -36,7 +36,7 @@ class MockEngine(BaseLLMEngine):
     def resolve_binary():
         return "mock"
 
-    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None):
+    async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None, **kwargs):
         if self._fail:
             yield InternalEvent(type="error", data={"message": "mock failure"})
             raise RuntimeError("mock failure")
@@ -90,7 +90,7 @@ def test_create_task(db_and_service):
     assert task["title"] == "Test"
     assert task["cwd"] == "/tmp"
     assert task["status"] == "ready"
-    assert task["engine"] == "claude"
+    assert task["engine"] == "pydantic_ai"
 
     from models import TaskStep
     steps = TaskStep.select().where(TaskStep.task == task["id"])
@@ -361,7 +361,7 @@ async def test_run_task_success(subscriber):
     # Patch registry to use mock engine
     from engines import registry
     original = registry.ENGINE_REGISTRY.copy()
-    registry.ENGINE_REGISTRY["claude"] = lambda: MockEngine(events=[
+    registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: MockEngine(events=[
         InternalEvent(type="text_delta", data={"delta": "Hello"}),
         InternalEvent(type="text_delta", data={"delta": " world"}),
         InternalEvent(type="usage", data={
@@ -393,6 +393,7 @@ async def test_run_task_success(subscriber):
         # Usage (incl. cache hit) must be persisted to message.usage_json
         from models import Message
         msg = Message.select().where(Message.task == task["id"]).order_by(Message.created_at.desc()).get()
+        assert uuid.UUID(msg.id).version == 7
         assert msg.usage_json is not None
         import json as _json
         usage = _json.loads(msg.usage_json)
@@ -419,7 +420,7 @@ async def test_run_task_failure(subscriber):
             yield InternalEvent(type="error", data={"message": "boom"})
             raise RuntimeError("boom")
 
-    registry.ENGINE_REGISTRY["claude"] = lambda: FailEngine()
+    registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: FailEngine()
 
     try:
         task = service.create_task(title="Fail test", cwd="/tmp")
@@ -443,7 +444,7 @@ async def test_run_task_error_event_is_a_failed_run(subscriber):
     from models import Message, TaskStep
 
     original = registry.ENGINE_REGISTRY.copy()
-    registry.ENGINE_REGISTRY["claude"] = lambda: MockEngine(events=[
+    registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: MockEngine(events=[
         InternalEvent(type="error", data={"message": "binary not found"}),
     ])
 
@@ -520,7 +521,7 @@ async def test_cancel_task_finalizes_running_records(subscriber):
 
     engine = BlockingEngine()
     original = registry.ENGINE_REGISTRY.copy()
-    registry.ENGINE_REGISTRY["claude"] = lambda: engine
+    registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: engine
 
     try:
         task = service.create_task(title="Cancel active run", cwd="/tmp")

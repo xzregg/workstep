@@ -2,7 +2,7 @@
 
 ## 设计原则
 
-每种 LLM CLI 引擎（Claude Code / Codex / Hermes / QCode / OpenClaw / API 直调）实现同一个 `BaseLLMEngine` 接口。新增引擎 = 新增一个文件，实现接口即可接入。
+每种 LLM 引擎（Claude Code / Codex / Hermes / QCode / OpenClaw / Pydantic AI 等）实现同一个 `BaseLLMEngine` 接口。新增引擎 = 新增一个文件，实现接口即可接入。API 直调不再作为独立引擎，凭据改为「供应商」统一管理后由 Pydantic AI 等引擎复用。
 
 ## BaseLLMEngine
 
@@ -236,7 +236,7 @@ class InternalEvent:
 |------|------|
 | QCodeEngine | QCode CLI，协议待调研 |
 | OpenClawEngine | OpenClaw CLI，协议待调研 |
-| APIEngine | 直接调 OpenAI/Anthropic API，HTTP + SSE 流式 |
+| PydanticAIEngine | 内置 Agent，由 Pydantic AI 加载所选供应商（base_url / api_key），消息流 |
 
 ## 引擎注册表
 

@@ -19,8 +19,12 @@ from models.coordinator import (
     CoordinatorTurn,
     StageSupplement,
 )
+from models.gen_session import WorkflowGenSession
+from models.schedule import Schedule, ScheduleRun
+from models.share import TaskShare
+from models.chat_session import ChatSession, ChatMessage, ProjectSetting
 
-LATEST_SCHEMA_VERSION = 20
+LATEST_SCHEMA_VERSION = 34
 
 
 def _create_initial_tables(db: pw.SqliteDatabase) -> None:
@@ -55,6 +59,37 @@ def _add_workflow_deleted_column(db: pw.SqliteDatabase) -> None:
     cols = {row[1] for row in db.execute_sql("PRAGMA table_info(workflows)")}
     if "deleted" not in cols:
         db.execute_sql("ALTER TABLE workflows ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
+
+
+def _add_workflow_sort_order_column(db: pw.SqliteDatabase) -> None:
+    """Drag-and-drop reordering support: add `sort_order` column to the workflows table."""
+    cols = {row[1] for row in db.execute_sql("PRAGMA table_info(workflows)")}
+    if "sort_order" not in cols:
+        db.execute_sql("ALTER TABLE workflows ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+
+
+def _create_task_shares_table(db: pw.SqliteDatabase) -> None:
+    """Create the task_shares table with a unique constraint on task_id
+    so each task has at most one active share link."""
+    db.create_tables([TaskShare], safe=True)
+    db.execute_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS task_shares_task_unique "
+        "ON task_shares(task_id)"
+    )
+
+
+def _make_task_shares_password_nullable(db: pw.SqliteDatabase) -> None:
+    """Migration 31: Make password_hash and salt columns nullable so
+    shares can be created without a password."""
+    migrator = SqliteMigrator(db)
+    for col_name in ("password_hash", "salt"):
+        _add_column_if_missing(db, "task_shares", col_name, "TEXT")
+    # SQLite can't ALTER COLUMN directly; use the migrator to recreate
+    # the table with the new nullable column definition.
+    migrate(
+        migrator.alter_column_type("task_shares", "password_hash", pw.TextField(null=True)),
+        migrator.alter_column_type("task_shares", "salt", pw.TextField(null=True)),
+    )
 
 
 def _add_task_review_overrides_column(db: pw.SqliteDatabase) -> None:
@@ -244,14 +279,30 @@ def _add_coordinator_vision_model_column(db: pw.SqliteDatabase) -> None:
     _add_column_if_missing(db, "tasks", "coordinator_vision_model", "TEXT")
 
 
+def _add_coordinator_thinking_effort_column(db: pw.SqliteDatabase) -> None:
+    """Per-task coordinator thinking effort (minimal/low/medium/high)."""
+    _add_column_if_missing(db, "tasks", "coordinator_thinking_effort", "TEXT")
+
+
 def _add_task_step_session_id_column(db: pw.SqliteDatabase) -> None:
     """Per-stage engine session: same task+stage reuses the same session id."""
     _add_column_if_missing(db, "taskstep", "session_id", "TEXT")
 
 
+def _add_task_step_review_session_id_column(db: pw.SqliteDatabase) -> None:
+    """Per-stage review session: isolated from the execution session, reused
+    across automatic review attempts of the same task+stage."""
+    _add_column_if_missing(db, "taskstep", "review_session_id", "TEXT")
+
+
 def _add_task_step_rework_feedback_column(db: pw.SqliteDatabase) -> None:
     """Rework feedback sent from a downstream verifier to an upstream producer."""
     _add_column_if_missing(db, "taskstep", "rework_feedback", "TEXT")
+
+
+def _add_task_step_review_feedback_column(db: pw.SqliteDatabase) -> None:
+    """Human review rejection reason injected into the next stage attempt."""
+    _add_column_if_missing(db, "taskstep", "review_feedback", "TEXT")
 
 
 def _add_task_archived_column(db: pw.SqliteDatabase) -> None:
@@ -271,12 +322,82 @@ def _make_stage_supplement_source_optional(db: pw.SqliteDatabase) -> None:
     )
 
 
+def _create_gen_sessions_table(db: pw.SqliteDatabase) -> None:
+    db.create_tables([WorkflowGenSession], safe=True)
+
+
+def _add_gen_sessions_engine_state_column(db: pw.SqliteDatabase) -> None:
+    """Persist engine-side conversation state (e.g. Pydantic AI messages)."""
+    _add_column_if_missing(
+        db, "gen_sessions", "engine_state_json", "TEXT"
+    )
+
+
+def _add_coordinator_engine_state_column(db: pw.SqliteDatabase) -> None:
+    """Persist engine-side conversation state for task coordinator chats."""
+    _add_column_if_missing(
+        db, "coordinator_sessions", "engine_state_json", "TEXT"
+    )
+
+
 def _add_workflow_run_recovery_columns(db: pw.SqliteDatabase) -> None:
     """Track restart recovery so the UI can show a resume hint."""
     _add_column_if_missing(db, "workflow_runs", "recovered_at", "DATETIME")
     _add_column_if_missing(
         db, "workflow_runs", "recovered_count", "INTEGER NOT NULL DEFAULT 0"
     )
+
+
+def _create_schedule_tables(db: pw.SqliteDatabase) -> None:
+    db.create_tables([Schedule, ScheduleRun], safe=True)
+
+
+def _create_statistics_indexes(db: pw.SqliteDatabase) -> None:
+    """Speed up dashboard time-window scans without duplicating facts."""
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at)",
+        "CREATE INDEX IF NOT EXISTS tasks_workflow_created ON tasks(workflow_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS workflow_runs_started_at ON workflow_runs(started_at)",
+        "CREATE INDEX IF NOT EXISTS step_runs_started_at ON step_runs(started_at)",
+        "CREATE INDEX IF NOT EXISTS review_runs_started_at ON review_runs(started_at)",
+        "CREATE INDEX IF NOT EXISTS message_started_at ON message(started_at)",
+    ):
+        db.execute_sql(statement)
+
+
+def _create_chat_session_tables(db: pw.SqliteDatabase) -> None:
+    """Codex-style chat sessions, their messages and project settings."""
+    db.create_tables([ChatSession, ChatMessage, ProjectSetting], safe=True)
+
+
+def _add_chat_session_sort_order_column(db: pw.SqliteDatabase) -> None:
+    """Drag-and-drop reordering support: add `sort_order` to chat_sessions."""
+    cols = {row[1] for row in db.execute_sql("PRAGMA table_info(chat_sessions)")}
+    if "sort_order" not in cols:
+        db.execute_sql("ALTER TABLE chat_sessions ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+        # Backfill: preserve the existing newest-first order per workflow.
+        rows = db.execute_sql(
+            "SELECT id, project_id, workflow_id FROM chat_sessions "
+            "ORDER BY updated_at DESC, created_at DESC"
+        ).fetchall()
+        per_workflow: dict[tuple, int] = {}
+        for row in rows:
+            key = (row[1], row[2])
+            index = per_workflow.get(key, 0)
+            db.execute_sql(
+                "UPDATE chat_sessions SET sort_order = ? WHERE id = ?",
+                (index, row[0]),
+            )
+            per_workflow[key] = index + 1
+
+
+def _add_chat_session_permission_mode_column(db: pw.SqliteDatabase) -> None:
+    """Per-session permission mode selection for the session chat."""
+    cols = {row[1] for row in db.execute_sql("PRAGMA table_info(chat_sessions)")}
+    if "permission_mode" not in cols:
+        db.execute_sql(
+            "ALTER TABLE chat_sessions ADD COLUMN permission_mode TEXT"
+        )
 
 
 MIGRATIONS: dict[int, Callable[[pw.SqliteDatabase], None]] = {
@@ -300,6 +421,20 @@ MIGRATIONS: dict[int, Callable[[pw.SqliteDatabase], None]] = {
     18: _add_task_archived_column,
     19: _add_workflow_run_recovery_columns,
     20: _add_coordinator_vision_model_column,
+    21: _add_task_step_review_feedback_column,
+    22: _create_gen_sessions_table,
+    23: _add_gen_sessions_engine_state_column,
+    24: _add_coordinator_engine_state_column,
+    25: _add_coordinator_thinking_effort_column,
+    26: _create_schedule_tables,
+    27: _create_statistics_indexes,
+    28: _add_task_step_review_session_id_column,
+    29: _add_workflow_sort_order_column,
+    30: _create_task_shares_table,
+    31: _make_task_shares_password_nullable,
+    32: _create_chat_session_tables,
+    33: _add_chat_session_sort_order_column,
+    34: _add_chat_session_permission_mode_column,
 }
 
 NON_ATOMIC_MIGRATIONS = {10, 11}

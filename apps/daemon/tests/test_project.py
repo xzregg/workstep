@@ -250,6 +250,38 @@ def test_rename_project(tmp_path, manager):
     assert m.rename(tmp_path / "nope", "x") is None
 
 
+def test_unregister_project_only_removes_config_entry(tmp_path, manager):
+    """Unregistering forgets a project without deleting its workspace data."""
+    m, store, config_file = manager
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first = m.init_project(first_dir, name="First")
+    second = m.init_project(second_dir, name="Second")
+
+    removed = m.unregister(first.id)
+
+    assert removed is first
+    assert m.get_project_by_id(first.id) is None
+    assert m.get_project_by_id(second.id) is second
+    assert store.get("projects") == [
+        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second"}
+    ]
+    assert json.loads(config_file.read_text())["projects"] == [
+        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second"}
+    ]
+    assert (first_dir / ".workstep" / "workstep.db").exists()
+    assert (first_dir / ".workstep" / "steps.json").exists()
+
+
+def test_unregister_unknown_project_does_nothing(manager):
+    m, store, _ = manager
+
+    assert m.unregister("missing") is None
+    assert store.get("projects") is None
+
+
 def test_load_saved_projects_restores(tmp_path, manager):
     """_load_saved_projects restores projects from config store on startup."""
     m, store, _ = manager

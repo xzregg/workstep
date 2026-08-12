@@ -9,18 +9,23 @@ import {
   getCachedEngineModels,
   invalidateEngineModels,
   type EngineInfo,
+  type EngineInspectResult,
+  type EngineInstallResult,
   type EngineModel,
   type EngineTestResult,
 } from '../api/client'
-import EngineConfigForm from '../components/EngineConfigForm'
+import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
+import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
 import TemplateSettings from './TemplateSettings'
+import ProviderSettings from './ProviderSettings'
 import {
   ENGINE_COLORS,
   engineLabel,
   engineDescription,
 } from '../engineMeta'
 import { useI18n } from '../i18n'
+import { useProjectStore } from '../stores/projectStore'
 
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
@@ -132,6 +137,7 @@ function CoordinatorAgentSettings() {
   const [model, setModel] = useState('')
   const [fastModel, setFastModel] = useState('')
   const [visionModel, setVisionModel] = useState('')
+  const [thinkingEffort, setThinkingEffort] = useState('')
   const [models, setModels] = useState<EngineModel[]>([])
   const [loading, setLoading] = useState(true)
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -152,6 +158,7 @@ function CoordinatorAgentSettings() {
         setModel(config.model)
         setFastModel(config.fast_model)
         setVisionModel(config.vision_model)
+        setThinkingEffort(config.thinking_effort)
         setError('')
       })
       .catch((reason) => setError(
@@ -212,11 +219,18 @@ function CoordinatorAgentSettings() {
     setError('')
     setNotice('')
     try {
-      const result = await engineApi.setCoordinatorDefaults(engine, model, fastModel, visionModel)
+      const result = await engineApi.setCoordinatorDefaults(
+        engine,
+        model,
+        fastModel,
+        visionModel,
+        thinkingEffort,
+      )
       setEngine(result.engine)
       setModel(result.model)
       setFastModel(result.fast_model)
       setVisionModel(result.vision_model)
+      setThinkingEffort(result.thinking_effort)
       setNotice(t('settings.saveCoordinatorSuccess'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
@@ -309,6 +323,25 @@ function CoordinatorAgentSettings() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            {t('coord.thinkingEffort')}
+          </label>
+          <Select
+            value={thinkingEffort}
+            disabled={loading || saving}
+            onChange={(event) => setThinkingEffort(event.target.value)}
+            title={t('coord.thinkingEffortTitle')}
+            style={{ flex: 1, minWidth: 0, height: 30 }}
+          >
+            <option value="">{t('coord.thinkingEffortDefault')}</option>
+            {THINKING_EFFORT_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {t(`coord.thinkingLevels.${level}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
             {t('settings.visionModel')}
           </label>
           <Select
@@ -364,6 +397,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [error, setError] = useState('')
   const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, EngineTestResult>>({})
+  const [installingEngine, setInstallingEngine] = useState<string | null>(null)
+  const [installResults, setInstallResults] = useState<Record<string, EngineInstallResult>>({})
   const [models, setModels] = useState<Record<string, EngineModel[]>>({})
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({})
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
@@ -372,10 +407,16 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [customModelMode, setCustomModelMode] = useState<Record<string, boolean>>({})
   const [customModelDrafts, setCustomModelDrafts] = useState<Record<string, string>>({})
   const [editingEngine, setEditingEngine] = useState<string | null>(null)
+  const [expandedConfigs, setExpandedConfigs] = useState<Record<string, boolean>>({})
+  const engineFormRefs = useRef<Record<string, EngineConfigFormHandle | null>>({})
+  const [engineFormState, setEngineFormState] = useState<Record<string, { saving: boolean; canSave: boolean }>>({})
   const [pathDraft, setPathDraft] = useState('')
   const [pathSaving, setPathSaving] = useState(false)
   const [pathError, setPathError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'coordinator' | 'templates' | 'language'>('engines')
+  const [inspecting, setInspecting] = useState(false)
+  const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
+  const [inspectError, setInspectError] = useState('')
+  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'coordinator' | 'templates' | 'language'>('providers')
 
   const loadEngineModels = async (engineId: string, force = false) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
@@ -466,15 +507,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     void loadEngines(false)
   }, [])
 
-  // 模型列表自动加载一次并缓存：命中缓存不请求，只有「刷新」才强制调远程接口。
-  useEffect(() => {
-    if (loading || engines.length === 0) return
-    for (const engine of engines) {
-      if (engine.installed) void loadEngineModels(engine.id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, engines])
-
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -510,6 +542,60 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       }))
     } finally {
       setTestingEngine(null)
+    }
+  }
+
+  const installEngine = async (engineId: string) => {
+    setInstallingEngine(engineId)
+    setInstallResults((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    try {
+      const result = await engineApi.install(engineId)
+      setInstallResults((current) => ({ ...current, [engineId]: result }))
+      if (result.success) {
+        // 安装成功后重新扫描，让该引擎进入可用列表
+        await loadEngines(true)
+      }
+    } catch (installError) {
+      setInstallResults((current) => ({
+        ...current,
+        [engineId]: {
+          engine_id: engineId,
+          success: false,
+          already_installed: false,
+          message: installError instanceof Error
+            ? installError.message
+            : t('settings.installFailed', { error: '' }),
+        },
+      }))
+    } finally {
+      setInstallingEngine(null)
+    }
+  }
+
+  const viewCapabilities = async (engineId: string) => {
+    setInspecting(true)
+    setInspectResult(null)
+    setInspectError('')
+    const project = useProjectStore.getState().activeProject
+    try {
+      const result = await engineApi.inspect(
+        engineId,
+        project?.id,
+        project?.path || undefined,
+      )
+      setInspectResult(result)
+    } catch (inspectError) {
+      setInspectError(
+        inspectError instanceof Error
+          ? inspectError.message
+          : t('settings.inspectFailed', { error: '' }),
+      )
+    } finally {
+      setInspecting(false)
     }
   }
 
@@ -557,6 +643,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     }
   }
 
+  const toggleConfig = (engineId: string) => {
+    setExpandedConfigs((current) => ({ ...current, [engineId]: !current[engineId] }))
+  }
+
   const openPathEditor = (engine: EngineInfo) => {
     setEditingEngine(engine.id)
     setPathDraft(engine.configured_path || engine.binary_path || '')
@@ -585,7 +675,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   }
 
   const enginePriority = (id: string) => (
-    id === 'pydantic_ai' ? 0 : id === 'api' ? 1 : 2
+    id === 'pydantic_ai' ? 0 : 1
   )
   const sortedEngines = useMemo(
     () => [...engines].sort((a, b) =>
@@ -638,10 +728,23 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           {t('nav.settings')}
         </div>
         <button
+          aria-current={activeSection === 'providers' ? 'page' : undefined}
+          onClick={() => setActiveSection('providers')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px',
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'providers' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'providers' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
+          {t('providerSettings.nav')}
+        </button>
+        <button
           aria-current={activeSection === 'engines' ? 'page' : undefined}
           onClick={() => setActiveSection('engines')}
           style={{
-            width: '100%', height: 38, padding: '0 11px',
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'engines' ? 'var(--bg)' : 'transparent',
             color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
@@ -747,7 +850,9 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {sortedEngines.map((engine) => {
                 const testResult = testResults[engine.id]
+                const installResult = installResults[engine.id]
                 const isTesting = testingEngine === engine.id
+                const isInstalling = installingEngine === engine.id
                 const engineModels = models[engine.id] || []
                 const savedDefaultModel = defaultModels[engine.id] || ''
                 const usesCustomModel = Boolean(
@@ -757,6 +862,84 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                     && !engineModels.some((model) => model.id === savedDefaultModel)
                   )
                 )
+                const modelSelectRow = (
+                  <>
+                    <span
+                      style={{
+                        flexShrink: 0, fontSize: 11, fontWeight: 600,
+                        color: 'var(--muted)',
+                      }}
+                    >
+                      {t('chatInput.model')}
+                    </span>
+                    <Select
+                      id={`default-model-${engine.id}`}
+                      aria-label={t('settings.defaultModelAria', { name: engineLabel(engine.id, t) })}
+                      title={t('settings.defaultModelTitle')}
+                      value={usesCustomModel ? '__custom__' : savedDefaultModel}
+                      disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
+                      onClick={() => void loadEngineModels(engine.id)}
+                      onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
+                      style={{
+                        flex: '0 1 auto', minWidth: 0, maxWidth: 240, width: 'auto', height: 28,
+                      }}
+                    >
+                      <option value="">
+                        {modelsLoading[engine.id] ? t('settings.readingModels') : t('settings.followEngineDefault')}
+                      </option>
+                      {engineModels.map((model) => (
+                        <option key={model.id} value={model.id}>{model.label}</option>
+                      ))}
+                      <option value="__custom__">{t('settings.customModelOption')}</option>
+                    </Select>
+                    {savingModel === engine.id && (
+                      <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
+                        {t('settings.saving')}
+                      </span>
+                    )}
+                    {usesCustomModel && (
+                      <>
+                        <span
+                          style={{
+                            flexShrink: 0, fontSize: 11,
+                            color: 'var(--muted)',
+                          }}
+                        >
+                          {t('settings.customModel')}
+                        </span>
+                        <Input
+                          id={`custom-model-${engine.id}`}
+                          value={customModelDrafts[engine.id] ?? savedDefaultModel}
+                          placeholder={t('settings.customModelPlaceholder')}
+                          disabled={savingModel === engine.id}
+                          onChange={(event) => setCustomModelDrafts((current) => ({
+                            ...current,
+                            [engine.id]: event.target.value,
+                          }))}
+                          onBlur={() => saveCustomModel(engine.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.currentTarget.blur()
+                            }
+                          }}
+                          style={{
+                            flex: '0 1 auto', minWidth: 0, maxWidth: 200, width: 'auto', height: 28,
+                          }}
+                        />
+                      </>
+                    )}
+                    {!modelsLoading[engine.id] && (
+                      <Button
+                        variant="ghost"
+                        style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                        onClick={() => void loadEngineModels(engine.id, true)}
+                      >
+                        {t('settings.refresh')}
+                      </Button>
+                    )}
+                  </>
+                )
+                const isExpanded = expandedConfigs[engine.id] === true
                 return (
                 <div
                   key={engine.id}
@@ -771,10 +954,35 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 >
                   <div style={{
                     padding: '12px 14px', display: 'flex',
-                    alignItems: 'center', gap: 12,
+                    alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8,
                   }}>
+                  <Button
+                    variant="ghost"
+                    aria-label={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
+                    title={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
+                    onClick={() => toggleConfig(engine.id)}
+                    style={{
+                      flexShrink: 0, width: 28, height: 28, padding: 0,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={14} />
+                  </Button>
                   <EngineIcon engine={engine} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
+                    onClick={() => toggleConfig(engine.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        toggleConfig(engine.id)
+                      }
+                    }}
+                    title={isExpanded ? t('settings.collapseConfig') : t('settings.expandConfig')}
+                    style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
                       {engine.mode && (
@@ -803,6 +1011,18 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                         {testResult.duration_ms > 0 && ` · ${testResult.duration_ms}ms`}
                       </div>
                     )}
+                    {installResult && (
+                      <div
+                        role="status"
+                        style={{
+                          marginTop: 7, fontSize: 11,
+                          color: installResult.success ? 'var(--success)' : 'var(--danger)',
+                          overflowWrap: 'anywhere',
+                        }}
+                      >
+                        {installResult.success ? '✓' : '×'} {installResult.message}
+                      </div>
+                    )}
                   </div>
                   {engine.installed && (
                     <Button
@@ -815,15 +1035,34 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       {t('settings.test')}
                     </Button>
                   )}
-                  {engine.id !== 'api' && engine.id !== 'pydantic_ai' && (
+
+                  {!engine.installed && engine.installable && (
                     <Button
                       variant="ghost"
-                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                      onClick={() => openPathEditor(engine)}
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      disabled={installingEngine !== null}
+                      loading={isInstalling}
+                      title={engine.install_command
+                        ? `${t('settings.installHint')}：${engine.install_command}`
+                        : undefined}
+                      onClick={() => void installEngine(engine.id)}
                     >
-                      {t('common.edit')}
+                      {t('settings.install')}
                     </Button>
                   )}
+                  {engine.id === 'pydantic_ai' && engine.installed && (
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      disabled={inspecting}
+                      loading={inspecting}
+                      onClick={() => void viewCapabilities(engine.id)}
+                    >
+                      {t('settings.viewCapabilities')}
+                    </Button>
+                  )}
+
+
                   <span style={{
                     minWidth: 60, textAlign: 'center', padding: '3px 8px',
                     borderRadius: 999, fontSize: 11, fontWeight: 600,
@@ -838,11 +1077,47 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   }}>
                     {engine.verified ? t('settings.verified') : engine.installed ? t('engine.needsTest') : t('engine.notInstalled')}
                   </span>
+                  {engine.config && (
+                    <Button
+                      variant="primary"
+                      style={{ minWidth: 84, height: 30, justifyContent: 'center' }}
+                      disabled={!engineFormState[engine.id]?.canSave}
+                      loading={engineFormState[engine.id]?.saving}
+                      onClick={() => {
+                        if (!isExpanded) {
+                          setExpandedConfigs((current) => ({ ...current, [engine.id]: true }))
+                        }
+                        engineFormRefs.current[engine.id]?.save()
+                      }}
+                    >
+                      {t('engineForm.saveConfig')}
+                    </Button>
+                  )}
                   </div>
+                  <div style={{ display: isExpanded ? undefined : 'none' }}>
                   {engine.config && (
                     <EngineConfigForm
+                      ref={(el) => { engineFormRefs.current[engine.id] = el }}
                       engineId={engine.id}
                       config={engine.config}
+                      footerSlot={engine.installed ? (
+                        <>
+                          {modelSelectRow}
+                          {engine.id !== 'pydantic_ai' && (
+                            <Button
+                              variant="ghost"
+                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                              onClick={() => openPathEditor(engine)}
+                            >
+                              {t('settings.editPath')}
+                            </Button>
+                          )}
+                        </>
+                      ) : undefined}
+                      onFormStateChange={(state) => setEngineFormState((current) => ({
+                        ...current,
+                        [engine.id]: state,
+                      }))}
                       onSaved={(result) => {
                         if (result.engine) {
                           setEngines((current) => current.map((item) =>
@@ -850,59 +1125,32 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           ))
                         }
                         clearEngineModelCache(engine.id)
-                        void loadEngineModels(engine.id)
                       }}
                     />
                   )}
-                  {engine.installed && (
+                  {engine.installed && (!engine.config || modelErrors[engine.id]) && (
                     <div style={{
                       padding: '9px 14px',
                       borderTop: '1px solid var(--border-soft)',
                       background: 'var(--surface)',
                     }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span
-                          style={{
-                            flexShrink: 0, fontSize: 11, fontWeight: 600,
-                            color: 'var(--muted)',
-                          }}
-                        >
-                          {t('chatInput.model')}
-                        </span>
-                        <Select
-                          id={`default-model-${engine.id}`}
-                          aria-label={t('settings.defaultModelAria', { name: engineLabel(engine.id, t) })}
-                          title={t('settings.defaultModelTitle')}
-                          value={usesCustomModel ? '__custom__' : savedDefaultModel}
-                          disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
-                          onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
-                          style={{
-                            flex: 1, minWidth: 0, height: 28,
-                          }}
-                        >
-                          <option value="">
-                            {modelsLoading[engine.id] ? t('settings.readingModels') : t('settings.followEngineDefault')}
-                          </option>
-                          {engineModels.map((model) => (
-                            <option key={model.id} value={model.id}>{model.label}</option>
-                          ))}
-                          <option value="__custom__">{t('settings.customModelOption')}</option>
-                        </Select>
-                        {savingModel === engine.id && (
-                          <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
-                            {t('settings.saving')}
-                          </span>
-                        )}
-                        {models[engine.id] && !modelsLoading[engine.id] && (
-                          <Button
-                            variant="ghost"
-                            style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
-                            onClick={() => void loadEngineModels(engine.id, true)}
-                          >
-                            {t('settings.refresh')}
-                          </Button>
-                        )}
-                      </div>
+                      {!engine.config && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          flexWrap: 'wrap', rowGap: 8,
+                        }}>
+                          {modelSelectRow}
+                          {engine.id !== 'pydantic_ai' && (
+                            <Button
+                              variant="ghost"
+                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                              onClick={() => openPathEditor(engine)}
+                            >
+                              {t('settings.editPath')}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       {modelErrors[engine.id] && (
                         <div style={{
                           marginTop: 4, color: 'var(--meta)', fontSize: 11,
@@ -910,39 +1158,20 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           {t('settings.modelErrorHint2', { error: modelErrors[engine.id] })}
                         </div>
                       )}
-                      {usesCustomModel && (
-                        <div style={{
-                          marginTop: 6, display: 'flex', alignItems: 'center', gap: 8,
-                        }}>
-                          <span
-                            style={{
-                              flexShrink: 0, fontSize: 11,
-                              color: 'var(--muted)',
-                            }}
-                          >
-                            {t('settings.customModel')}
-                          </span>
-                          <Input
-                            id={`custom-model-${engine.id}`}
-                            value={customModelDrafts[engine.id] ?? savedDefaultModel}
-                            placeholder={t('settings.customModelPlaceholder')}
-                            disabled={savingModel === engine.id}
-                            onChange={(event) => setCustomModelDrafts((current) => ({
-                              ...current,
-                              [engine.id]: event.target.value,
-                            }))}
-                            onBlur={() => saveCustomModel(engine.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.currentTarget.blur()
-                              }
-                            }}
-                            style={{
-                              flex: 1, minWidth: 0, height: 28,
-                            }}
-                          />
-                        </div>
-                      )}
+                    </div>
+                  )}
+                  {!engine.installed && engine.id !== 'pydantic_ai' && (
+                    <div style={{
+                      padding: '9px 14px', borderTop: '1px solid var(--border-soft)',
+                      background: 'var(--surface)', borderRadius: '0 0 12px 12px',
+                    }}>
+                      <Button
+                        variant="ghost"
+                        style={{ height: 28, padding: '0 10px', fontSize: 12 }}
+                        onClick={() => openPathEditor(engine)}
+                      >
+                        {t('settings.editPath')}
+                      </Button>
                     </div>
                   )}
                   {editingEngine === engine.id && (
@@ -988,12 +1217,20 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       </div>
                     </div>
                   )}
+                  </div>
                 </div>
                 )
               })}
             </div>
           )}
         </div>
+        ) : activeSection === 'providers' ? (
+          <ProviderSettings
+            onChanged={() => {
+              clearEngineModelCache('pydantic_ai')
+              void loadEngines(false)
+            }}
+          />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
         ) : activeSection === 'language' ? (
@@ -1037,6 +1274,132 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       </section>
       </div>
       </div>
+      {(inspecting || inspectResult || inspectError) && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('settings.viewCapabilitiesTitle')}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setInspectResult(null)
+              setInspectError('')
+            }
+          }}
+          style={{ padding: 24, zIndex: 60 }}
+        >
+          <div
+            className="modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            style={{ width: 640, maxWidth: 'calc(100vw - 48px)', maxHeight: 'calc(100vh - 48px)' }}
+          >
+            <div className="modal-header" style={{ padding: '16px 20px' }}>
+              <span className="modal-title">{t('settings.viewCapabilitiesTitle')}</span>
+              <Button
+                variant="icon"
+                aria-label={t('settings.closeSettings')}
+                onClick={() => {
+                  setInspectResult(null)
+                  setInspectError('')
+                }}
+              >✕</Button>
+            </div>
+            <div className="modal-body" style={{ padding: '18px 20px 20px', overflowY: 'auto' }}>
+              {inspecting ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
+                  {t('settings.inspectLoading')}
+                </div>
+              ) : inspectError ? (
+                <div role="status" style={{ color: 'var(--danger)', fontSize: 13, overflowWrap: 'anywhere' }}>
+                  × {inspectError}
+                </div>
+              ) : inspectResult ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ fontSize: 12, color: 'var(--meta)', overflowWrap: 'anywhere' }}>
+                    {inspectResult.project_root
+                      ? t('settings.inspectProject', { path: inspectResult.project_root })
+                      : t('settings.inspectProjectNone')}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
+                      {t('settings.inspectSkills')}
+                      <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
+                        {' '}· {inspectResult.skills.length}
+                      </span>
+                    </div>
+                    {inspectResult.skills.length === 0 ? (
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                        {t('settings.inspectSkillsEmpty')}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {inspectResult.skills.map((skill) => (
+                          <div
+                            key={`${skill.source_dir}:${skill.name}`}
+                            style={{
+                              border: '1px solid var(--border-soft)', borderRadius: 8,
+                              padding: '8px 10px', background: 'var(--surface)',
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 600 }}>{skill.name}</div>
+                            {skill.description && (
+                              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                                {skill.description}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 4, overflowWrap: 'anywhere' }}>
+                              {skill.source_dir}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
+                      {t('settings.inspectMcp')}
+                      <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
+                        {' '}· {inspectResult.mcp_servers.length}
+                      </span>
+                    </div>
+                    {inspectResult.mcp_supported ? (
+                      <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>
+                        ✓ {t('settings.inspectMcpSupported')}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 6, overflowWrap: 'anywhere' }}>
+                        {inspectResult.mcp_error || t('settings.inspectMcpUnsupported')}
+                      </div>
+                    )}
+                    {inspectResult.mcp_servers.length === 0 ? (
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                        {t('settings.inspectMcpEmpty')}
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {inspectResult.mcp_servers.map((server) => (
+                          <div
+                            key={server.name}
+                            style={{
+                              border: '1px solid var(--border-soft)', borderRadius: 8,
+                              padding: '8px 10px', background: 'var(--surface)',
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 600 }}>{server.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
+                              {server.command} {server.args.join(' ')}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
       </div>
   )
 }

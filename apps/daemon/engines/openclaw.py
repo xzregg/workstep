@@ -8,18 +8,17 @@ import shutil
 import uuid
 from typing import AsyncIterator
 
-from engines.base import BaseLLMEngine
-from engines.schema import EngineImage
-from engines.events import InternalEvent, normalize_token_usage
+from engines.core.base import BaseLLMEngine
+from engines.core.schema import EngineImage
+from engines.core.events import InternalEvent, normalize_token_usage
 
 logger = logging.getLogger(__name__)
 
 
 class OpenClawEngine(BaseLLMEngine):
-    """OpenClaw CLI engine implementation.
+    ENGINE_ID = "openclaw"
 
-    Protocol details to be determined based on actual OpenClaw CLI specification.
-    """
+    """OpenClaw's stable one-shot ``agent exec --json`` integration."""
 
     def __init__(self):
         self._process: asyncio.subprocess.Process | None = None
@@ -57,6 +56,18 @@ class OpenClawEngine(BaseLLMEngine):
 
     # --- Execution ---
 
+    @staticmethod
+    def build_command(
+        binary: str,
+        prompt: str,
+        cwd: str,
+        model: str | None = None,
+    ) -> list[str]:
+        cmd = [binary, "agent", "exec", prompt, "--cwd", cwd, "--json"]
+        if model:
+            cmd.extend(["--model", model])
+        return cmd
+
     async def spawn(
         self,
         prompt: str,
@@ -65,75 +76,104 @@ class OpenClawEngine(BaseLLMEngine):
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        """Spawn openclaw CLI and stream events."""
+        """Run OpenClaw's stable JSON envelope command.
+
+        OpenClaw does not expose token deltas on this headless interface, so
+        the final assistant text is emitted as one ``text_delta`` event.
+        """
+        prompt = self.render_image_prompt(prompt, images)
         binary = self.resolve_binary()
         if not binary:
             yield InternalEvent(type="error", data={"message": "openclaw binary not found"})
             return
 
-        # Placeholder command - adjust based on actual openclaw CLI spec
-        cmd = [binary, "run", "--prompt", prompt]
-
-        if model:
-            cmd.extend(["--model", model])
-        if session_id:
-            cmd.extend(["--session", session_id])
+        cmd = self.build_command(binary, prompt, cwd, model=model)
 
         logger.info("Spawning: %s (cwd=%s)", " ".join(cmd), cwd)
 
         self._process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
         )
         self._running = True
 
-        yield InternalEvent(
-            type="session_started",
-            data={"session_id": session_id or str(uuid.uuid4())},
-        )
         yield InternalEvent(type="status", data={"status": "running"})
-
-        # Parse stdout - adjust based on actual openclaw output format
-        async for event in self._parse_stdout():
-            yield event
-
-        # Wait for process exit
-        exit_code = await self._process.wait()
+        stdout, stderr = await self._process.communicate()
+        exit_code = self._process.returncode
         self._running = False
 
-        if exit_code != 0:
-            stderr = await self._process.stderr.read()
+        try:
+            envelope = json.loads(stdout.decode(errors="replace"))
+        except json.JSONDecodeError:
             yield InternalEvent(type="error", data={
-                "message": f"Process exited with code {exit_code}",
+                "message": "OpenClaw 未返回有效 JSON",
                 "stderr": stderr.decode(errors="replace"),
             })
-        else:
+            return
+
+        mapped = self._map_envelope(envelope)
+        if (
+            not any(event.type in {"session_started", "error"} for event in mapped)
+            and envelope.get("ok")
+        ):
+            mapped.insert(0, InternalEvent(
+                type="session_started", data={"session_id": str(uuid.uuid4())}
+            ))
+        for event in mapped:
+            yield event
+        has_error = any(event.type == "error" for event in mapped)
+        if exit_code != 0 and not has_error:
+            yield InternalEvent(type="error", data={
+                "message": f"OpenClaw 进程退出码 {exit_code}",
+                "stderr": stderr.decode(errors="replace"),
+            })
+        elif exit_code == 0 and not has_error:
             yield InternalEvent(type="status", data={"status": "done"})
 
-    async def _parse_stdout(self) -> AsyncIterator[InternalEvent]:
-        """Parse OpenClaw stdout into InternalEvents.
+    def _map_envelope(self, obj: dict) -> list[InternalEvent]:
+        """Map the documented ``agent exec --json`` response envelope."""
+        if not obj.get("ok") or obj.get("status") in {"error", "timeout"}:
+            error = obj.get("error") or {}
+            message = error.get("message") if isinstance(error, dict) else error
+            return [InternalEvent(type="error", data={
+                "message": str(message or "OpenClaw 执行失败"),
+                "kind": error.get("kind") if isinstance(error, dict) else None,
+            })]
 
-        This implementation assumes a JSONL format.
-        Adjust based on actual openclaw output specification.
-        """
-        async for line in self._process.stdout:
-            line = line.decode(errors="replace").strip()
-            if not line:
-                continue
-
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                logger.warning("Non-JSON line from openclaw: %s", line[:100])
-                continue
-
-            event = self._map_event(obj)
-            if event:
-                yield event
+        events: list[InternalEvent] = []
+        session_id = obj.get("sessionId")
+        if session_id:
+            events.append(InternalEvent(
+                type="session_started", data={"session_id": str(session_id)}
+            ))
+        final = obj.get("final") or ""
+        if not final:
+            final = "\n".join(
+                str(item.get("text") or "")
+                for item in obj.get("payloads") or []
+                if isinstance(item, dict) and item.get("text")
+            )
+        if final:
+            events.append(InternalEvent(
+                type="text_delta", data={"delta": str(final)}
+            ))
+        usage = obj.get("usage")
+        if isinstance(usage, dict):
+            usage_data = normalize_token_usage({
+                "input_tokens": usage.get("input", 0),
+                "output_tokens": usage.get("output", 0),
+                "total_tokens": usage.get("total", 0),
+                "cost_usd": obj.get("costUsd"),
+            })
+            if session_id:
+                usage_data["session_id"] = str(session_id)
+            events.append(InternalEvent(type="usage", data=usage_data))
+        return events
 
     def _map_event(self, obj: dict) -> InternalEvent | None:
         """Map an OpenClaw event to InternalEvent."""
@@ -199,7 +239,7 @@ class OpenClawEngine(BaseLLMEngine):
 
     @property
     def supports_resume(self) -> bool:
-        return False  # OpenClaw does not support session resume
+        return False
 
     @property
     def supports_interactive(self) -> bool:

@@ -9,7 +9,7 @@ export interface EngineSelectOption {
   configured: boolean
   verified: boolean
   built_in: boolean
-  mode: 'cli' | 'acp' | 'api' | 'agent' | 'sdk' | null
+  mode: 'cli' | 'acp' | 'agent' | 'sdk' | null
   supports_coordinator?: boolean
 }
 
@@ -25,7 +25,7 @@ interface EngineSelectProps {
   style?: CSSProperties
 }
 
-function isEngineSelectable(
+export function isEngineSelectable(
   engine: EngineSelectOption,
   requireCoordinator = false,
 ) {
@@ -72,13 +72,13 @@ export default function EngineSelect({
 }: EngineSelectProps) {
   const { t } = useI18n()
   const visibleEngines = engines.filter((engine) => (
-    engine.installed || engine.built_in || engine.mode === 'api'
+    engine.installed || engine.built_in
   ))
   const managedEngines = visibleEngines.filter((engine) => (
-    engine.built_in || engine.mode === 'api'
+    engine.built_in
   ))
   const localEngines = visibleEngines.filter((engine) => (
-    !engine.built_in && engine.mode !== 'api'
+    !engine.built_in
   ))
   const currentIsListed = visibleEngines.some((engine) => engine.id === value)
 

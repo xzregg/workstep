@@ -1,7 +1,45 @@
 """Persistent task message creation and ordering."""
 
+import secrets
+import threading
+import time
+import uuid
+
 from models import Message, Task
 from models.base import db_proxy
+
+
+_UUID7_RANDOM_BITS = 74
+_UUID7_RANDOM_MASK = (1 << _UUID7_RANDOM_BITS) - 1
+_uuid7_lock = threading.Lock()
+_uuid7_last_timestamp_ms = -1
+_uuid7_last_random = 0
+
+
+def new_message_id() -> str:
+    """Return a monotonic UUID v7 suitable for lexicographic ordering."""
+    global _uuid7_last_timestamp_ms, _uuid7_last_random
+
+    with _uuid7_lock:
+        timestamp_ms = time.time_ns() // 1_000_000
+        if timestamp_ms > _uuid7_last_timestamp_ms:
+            random_bits = secrets.randbits(_UUID7_RANDOM_BITS)
+        else:
+            timestamp_ms = _uuid7_last_timestamp_ms
+            random_bits = _uuid7_last_random + 1
+            if random_bits > _UUID7_RANDOM_MASK:
+                timestamp_ms += 1
+                random_bits = 0
+
+        _uuid7_last_timestamp_ms = timestamp_ms
+        _uuid7_last_random = random_bits
+
+        value = (timestamp_ms & ((1 << 48) - 1)) << 80
+        value |= 0x7 << 76
+        value |= (random_bits >> 62) << 64
+        value |= 0b10 << 62
+        value |= random_bits & ((1 << 62) - 1)
+        return str(uuid.UUID(int=value))
 
 
 def allocate_message_sequences(task_id: str, count: int = 1) -> int:
@@ -30,6 +68,8 @@ def create_task_message(*, task: Task, channel: str, **fields) -> Message:
     """Create a message with a task-local monotonic sequence."""
     sequence = allocate_message_sequences(task.id)
     task.next_message_sequence = sequence + 1
+    if "id" not in fields:
+        fields["id"] = new_message_id()
     return Message.create(
         task=task,
         channel=channel,

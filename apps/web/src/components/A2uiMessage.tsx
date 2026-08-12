@@ -1,58 +1,98 @@
 import { useMemo } from 'react'
-import { MessageProcessor } from '@a2ui/web_core/v0_9'
+import {
+  Catalog,
+  ComponentModel,
+  MessageProcessor,
+  type A2uiClientAction,
+} from '@a2ui/web_core/v0_9'
 import { A2uiSurface, MarkdownContext, basicCatalog } from '@a2ui/react/v0_9'
+import type { z } from 'zod'
 import { renderMarkdown } from '@a2ui/markdown-it'
 import {
+  bindStaticInteractiveValues,
+  ensureA2uiRoots,
   extractA2uiMessages,
   hasA2uiBlocks,
+  normalizeA2uiInteractiveComponents,
   normalizeA2uiMessages,
+  reconcileA2uiReferences,
+  splitA2uiUpdateComponents,
 } from '../utils/a2ui'
 import '../styles/a2ui-v09.css'
 
 /* ══════════════════════════════════════════
    A2uiMessage — renders A2UI v0.9/v0.9.1 payloads embedded in assistant
-   message content (complete ```a2ui fences) as interactive-looking UI.
+   message content (complete ```a2ui fences) as interactive UI.
 
-   Display-only: the MessageProcessor action handler is a no-op, so buttons
-   and forms only mutate the in-memory surface state of this message.
+   When ``onAction`` is provided, user clicks dispatch client actions to it
+   (e.g. applying a flow proposal); without it the surface stays display-only.
+
+   Rendering is intentionally tolerant of imperfect model payloads:
+   - component schemas are stripped of unknown keys instead of rejecting them,
+   - unknown component types degrade to Text,
+   - dangling child references resolve to synthesized Text components,
+   so the library's "[Loading x...]" placeholders never appear.
    ══════════════════════════════════════════ */
+
+/**
+ * Basic catalog with schemas downgraded from strict to strip: extra keys in
+ * model payloads are dropped instead of failing validation, while the schema
+ * shape is preserved so the generic binder still resolves value/action/child
+ * behaviors exactly like the official catalog.
+ */
+const TOLERANT_CATALOG = new Catalog(
+  basicCatalog.id,
+  Array.from(basicCatalog.components.values()).map((api) => ({
+    ...api,
+    schema: (api.schema as z.ZodObject<z.ZodRawShape>).strip(),
+  })),
+  Array.from(basicCatalog.functions.values()),
+  basicCatalog.themeSchema,
+)
 
 export default function A2uiMessage({
   content,
   projectId,
+  onAction,
 }: {
   content: string
   projectId?: string
+  /** Receives user-initiated component actions (e.g. proposal buttons). */
+  onAction?: (action: A2uiClientAction) => void
 }) {
   const surfaces = useMemo(() => {
     if (!hasA2uiBlocks(content)) return []
-    const messages = normalizeA2uiMessages(
-      extractA2uiMessages(content),
-      projectId,
-    ).map((message) => (
-      // Best-effort rendering: force the basic catalog so any catalogId works.
-      'createSurface' in message
-        ? {
-            ...message,
-            createSurface: {
-              ...message.createSurface,
-              catalogId: basicCatalog.id,
-            },
-          }
-        : message
-    ))
+    const messages = ensureA2uiRoots(
+      normalizeA2uiInteractiveComponents(
+        normalizeA2uiMessages(
+          extractA2uiMessages(content),
+          projectId,
+        ),
+      ).map((message) => (
+        // Best-effort rendering: force the basic catalog so any catalogId works.
+        'createSurface' in message
+          ? {
+              ...message,
+              createSurface: {
+                ...message.createSurface,
+                catalogId: basicCatalog.id,
+              },
+            }
+          : message
+      )),
+    )
     if (messages.length === 0) return []
     const processor = new MessageProcessor(
-      [basicCatalog],
-      // Display-only: suppress action dispatch until a backend hook exists.
-      undefined,
+      [TOLERANT_CATALOG],
+      onAction,
       { version: 'v0.9.1' },
     )
-    // The processor validates strictly and throws on invalid messages
-    // (unknown catalog, duplicate surface, schema violations). Skip bad
-    // messages so one malformed payload degrades to partial/raw rendering
-    // instead of crashing the whole conversation.
-    for (const message of messages) {
+    // Components are processed one per message so a single invalid component
+    // degrades to itself instead of dropping the whole updateComponents batch.
+    // Remaining irrecoverable messages (missing required props, unknown
+    // surface, duplicate surface) are skipped so one malformed payload never
+    // crashes the whole conversation.
+    for (const message of splitA2uiUpdateComponents(messages)) {
       try {
         processor.processMessages([message])
       } catch {
@@ -60,7 +100,50 @@ export default function A2uiMessage({
       }
     }
     return Array.from(processor.model.surfacesMap.values())
-  }, [content, projectId])
+      .map((surface) => {
+        // Unknown component types would render as red "Unknown component: x".
+        // Degrade them to a Text carrying whatever string prop is available.
+        for (const [id, model] of Array.from(surface.componentsModel.entries)) {
+          if (surface.catalog.components.get(model.type)) continue
+          const props = model.properties
+          const text = typeof props.title === 'string' ? props.title
+            : typeof props.text === 'string' ? props.text
+            : typeof props.label === 'string' ? props.label
+            : typeof props.child === 'string' ? props.child
+            : ''
+          surface.componentsModel.removeComponent(id)
+          if (text.trim()) {
+            surface.componentsModel.addComponent(
+              new ComponentModel(id, 'Text', { text }),
+            )
+          }
+        }
+        // Synthesize Text components for dangling child references so the
+        // library's "[Loading x...]" placeholders never appear.
+        reconcileA2uiReferences({
+          componentIds: () => Array.from(surface.componentsModel.entries).map(([id]) => id),
+          getProperties: (id) => surface.componentsModel.get(id)?.properties,
+          setProperties: (id, props) => {
+            const model = surface.componentsModel.get(id)
+            if (model) model.properties = props
+          },
+          addText: (id, text) => surface.componentsModel.addComponent(
+            new ComponentModel(id, 'Text', { text }),
+          ),
+        })
+        // Static DYNAMIC props get bound to the data model so interactive
+        // controls (ChoicePicker/TextField/CheckBox/Slider/...) respond to
+        // clicks and input instead of being read-only.
+        bindStaticInteractiveValues(surface)
+        return surface
+      })
+      // Skip surfaces that produced no components (e.g. a bare createSurface),
+      // so the library's "[Loading root...]" placeholder never shows.
+      .filter((surface) => {
+        for (const _ of surface.componentsModel.entries) return true
+        return false
+      })
+  }, [content, projectId, onAction])
 
   if (surfaces.length === 0) return null
 

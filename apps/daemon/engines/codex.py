@@ -10,9 +10,17 @@ import uuid
 from contextlib import suppress
 from typing import AsyncIterator
 
-from engines.base import BaseLLMEngine
-from engines.events import InternalEvent, normalize_cost
-from engines.schema import EngineConfigField, EngineConfigOption, EngineImage
+import re
+
+from engines.core.base import (
+    BaseLLMEngine,
+    EngineInstallResult,
+    install_with_command,
+)
+from engines.core.events import InternalEvent, normalize_cost
+from engines.core.interactions import permission_request, permission_signature
+from engines.core.plans import plan_event
+from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services.config import (
     CODEX_APPROVAL_POLICIES,
     CODEX_REASONING_EFFORTS,
@@ -23,7 +31,32 @@ from services.config import (
 logger = logging.getLogger(__name__)
 
 
+def _noop_publish(_event: InternalEvent) -> None:
+    """CLI 引擎的事件由 ``_parse_stdout`` 直接 yield，无需再入队。"""
+
+# codex exec 模式没有执行中审批协议：沙箱/策略拒绝只表现为失败的
+# command_execution 项。以下特征串用于识别「权限拒绝」而非普通命令失败。
+_SANDBOX_DENIAL_PATTERN = re.compile(
+    r"operation\s+not\s+permitted|permission\s+denied|read-only\s+file"
+    r"\s+system|requires\s+approval|denied|not\s+permitted|被拒绝|未授权",
+    re.IGNORECASE,
+)
+
+_SANDBOX_ESCALATION = {
+    "read-only": "workspace-write",
+    "workspace-write": "danger-full-access",
+    "danger-full-access": "danger-full-access",
+}
+
+
+def _escalate_sandbox(mode: str) -> str:
+    """用户批准被拒命令后，把当前沙箱提升一档供重启会话使用。"""
+    return _SANDBOX_ESCALATION.get(mode, mode)
+
+
 class CodexEngine(BaseLLMEngine):
+    ENGINE_ID = "codex"
+
     """Codex CLI engine using direct subprocess.
 
     Spawns `codex exec --json` and parses JSONL stdout.
@@ -34,6 +67,11 @@ class CodexEngine(BaseLLMEngine):
         self._running = False
         self._stderr: list[bytes] = []
         self._thread_id: str | None = None
+        self._escalate_sandbox = False
+        # interaction_id → 命令签名（「拒绝本次运行」跨调用记忆用）。
+        self._permission_signatures: dict[str, str] = {}
+        # 本运行内记住的「拒绝本次运行」命令签名。
+        self._session_reject: set[str] = set()
 
     @staticmethod
     def is_installed() -> bool:
@@ -68,6 +106,17 @@ class CodexEngine(BaseLLMEngine):
         if system in ("Darwin", "Linux"):
             return "workspace-write"
         return "danger-full-access"  # Windows
+
+    @staticmethod
+    def install_command() -> str:
+        return "npm install -g @openai/codex"
+
+    async def install(self) -> EngineInstallResult:
+        """Install Codex CLI via npm global install."""
+        return await install_with_command(
+            ["npm", "install", "-g", "@openai/codex"],
+            display="Codex CLI",
+        )
 
     # --- Config schema (backend-driven settings form) ---
 
@@ -132,28 +181,48 @@ class CodexEngine(BaseLLMEngine):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
+        thinking_effort: str | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Run ``codex exec``, restarting with ``resume`` on live messages.
 
         codex exec 没有执行中注入协议。当 ``live_message_queue`` 中出现插入
         消息时，终止当前进程，并用该消息作为提示词经 ``codex exec resume
         <session_id> <消息>`` 重启同一会话，从而延续完整上下文继续作答。
+
+        ``config_overrides`` 覆盖 sandbox_mode / model_reasoning_effort /
+        approval_policy（空值回退全局配置）。
         """
         binary = self.resolve_binary()
         if not binary:
             yield InternalEvent(type="error", data={"message": "codex binary not found"})
             return
 
-        codex_config = config_store.get_codex_config()
+        codex_config = self.merge_config_overrides(
+            config_store.get_codex_config(), config_overrides
+        )
         run_prompt = prompt
         resume_session = session_id or None
+        self._escalate_sandbox = False
+        self._permission_signatures.clear()
+        self._session_reject.clear()
+        escalated_mode: str | None = None
 
         while True:
+            if self._escalate_sandbox:
+                # 用户批准被拒命令：提升沙箱一档，重启会话让模型重试。
+                escalated_mode = _escalate_sandbox(codex_config["sandbox_mode"])
+                codex_config["sandbox_mode"] = escalated_mode
+                self._escalate_sandbox = False
             cmd = [binary, "exec", "--json", "--skip-git-repo-check"]
             if resume_session:
                 # `codex exec resume <session_id> <prompt>` 恢复上次会话，复用完整
                 # 上下文；会话已记录 cwd，恢复时沿用原工作目录。
                 cmd.extend(["resume", resume_session, run_prompt])
+                if escalated_mode:
+                    # resume 复用会话记录的沙箱，需显式覆盖才能提权重试。
+                    cmd.extend(["-c", f"sandbox_mode={escalated_mode}"])
+                    escalated_mode = None
             else:
                 cmd.extend([
                     "--sandbox",
@@ -164,9 +233,10 @@ class CodexEngine(BaseLLMEngine):
             if model:
                 cmd.extend(["--model", model])
 
-            if codex_config["model_reasoning_effort"]:
+            reasoning_effort = thinking_effort or codex_config["model_reasoning_effort"]
+            if reasoning_effort:
                 cmd.extend(
-                    ["-c", f"model_reasoning_effort={codex_config['model_reasoning_effort']}"]
+                    ["-c", f"model_reasoning_effort={reasoning_effort}"]
                 )
             if codex_config["approval_policy"]:
                 cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
@@ -330,8 +400,59 @@ class CodexEngine(BaseLLMEngine):
                 )
 
             event = self._map_event(obj)
-            if event:
+            if event is None:
+                continue
+            if (
+                event.type == "interaction_request"
+                and event.data.get("method") == "session/request_permission"
+            ):
+                # 沙箱/策略拒绝 → 弹窗等待用户决定；批准则提升沙箱，
+                # 之后以 live_message 触发 spawn 的「终止 + resume 重启」流程。
+                tool_call = event.data.get("tool_call") or {}
+                raw_input = tool_call.get("raw_input") or {}
+                command = str(raw_input.get("command") or "")[:120]
+                tool_use_id = str(tool_call.get("tool_call_id") or "")
+                interaction_id = str(event.data.get("interaction_id") or "")
+                signature = self._permission_signatures.pop(interaction_id, "")
+                if signature and signature in self._session_reject:
+                    # 本运行内已记住「拒绝本次运行」：不再弹窗，直接注入决定。
+                    yield InternalEvent(type="live_message", data={
+                        "message_id": f"approval:{tool_use_id or 'unknown'}",
+                        "content": (
+                            f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
+                            f"本次运行内相同命令将自动拒绝。"
+                        ),
+                        "status": "delivered",
+                        "session_id": self._thread_id,
+                    })
+                    return
                 yield event
+                response = await self.request_interaction(event, _noop_publish)
+                outcome = response.get("outcome") or {}
+                option_id = str(outcome.get("option_id") or "")
+                if option_id == "allow_once":
+                    self._escalate_sandbox = True
+                    content = (
+                        f"用户已批准执行被拒的命令，沙箱权限已提升，"
+                        f"请重新尝试该命令：{command}"
+                    )
+                else:
+                    if option_id == "reject_for_session" and signature:
+                        self._session_reject.add(signature)
+                        content = (
+                            f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
+                            f"本次运行内相同命令将自动拒绝。"
+                        )
+                    else:
+                        content = f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
+                yield InternalEvent(type="live_message", data={
+                    "message_id": f"approval:{tool_use_id or 'unknown'}",
+                    "content": content,
+                    "status": "delivered",
+                    "session_id": self._thread_id,
+                })
+                return
+            yield event
 
     def _map_event(self, obj: dict) -> InternalEvent | None:
         """Map Codex event to InternalEvent."""
@@ -343,9 +464,31 @@ class CodexEngine(BaseLLMEngine):
         if event_type == "turn.started":
             return InternalEvent(type="status", data={"status": "running"})
 
+        if event_type in {"turn.plan.updated", "turn/plan/updated"}:
+            return plan_event(
+                obj.get("plan") or [],
+                explanation=obj.get("explanation"),
+            )
+
         if event_type == "item.completed":
             item = obj.get("item", {})
             item_type = item.get("type", "")
+
+            if item_type == "collab_agent_tool_call":
+                agents_states = item.get("agents_states") or []
+                content = "\n".join(
+                    str(state.get("message") or state)
+                    for state in agents_states
+                    if isinstance(state, dict)
+                )
+                status = ""
+                if agents_states and isinstance(agents_states[-1], dict):
+                    status = str(agents_states[-1].get("status") or "")
+                return InternalEvent(type="tool_result", data={
+                    "tool_use_id": item.get("id", ""),
+                    "content": content or "",
+                    "is_error": status in {"failed", "error", "declined"},
+                })
 
             if item_type == "agent_message":
                 text = item.get("text") or item.get("message") or ""
@@ -365,14 +508,45 @@ class CodexEngine(BaseLLMEngine):
             elif item_type == "command_execution":
                 cmd = item.get("command", "")
                 output = item.get("output", "")
+                is_error = item.get("exit_code", 0) != 0
+                if is_error and _SANDBOX_DENIAL_PATTERN.search(str(output or "")):
+                    interaction_id = str(uuid.uuid4())
+                    signature = permission_signature("Bash", {"command": cmd})
+                    if signature:
+                        self._permission_signatures[interaction_id] = signature
+                    return permission_request(
+                        interaction_id=interaction_id,
+                        session_id=self._thread_id or "codex",
+                        tool_call={
+                            "tool_call_id": item.get("id", ""),
+                            "title": f"执行命令: {str(cmd)[:120]}",
+                            "name": "Bash",
+                            "raw_input": {"command": cmd, "denial": output},
+                        },
+                        options=[
+                            {"option_id": "allow_once", "name": "允许并提升沙箱", "kind": "allow_once"},
+                            {"option_id": "reject_once", "name": "拒绝", "kind": "reject_once"},
+                            {"option_id": "reject_for_session", "name": "拒绝本次运行", "kind": "reject_for_session"},
+                        ],
+                    )
                 return InternalEvent(type="tool_result", data={
                     "tool_use_id": item.get("id", ""),
                     "content": output,
-                    "is_error": item.get("exit_code", 0) != 0,
+                    "is_error": is_error,
                 })
 
         if event_type == "item.started":
             item = obj.get("item", {})
+            if item.get("type") == "collab_agent_tool_call":
+                return InternalEvent(type="tool_use", data={
+                    "id": item.get("id", ""),
+                    "name": item.get("tool") or "spawnAgent",
+                    "input": {
+                        "prompt": item.get("prompt"),
+                        "model": item.get("model"),
+                        "receiver_thread_ids": item.get("receiver_thread_ids") or [],
+                    },
+                })
             if item.get("type") == "command_execution":
                 return InternalEvent(type="tool_use", data={
                     "id": item.get("id", ""),
@@ -436,6 +610,11 @@ class CodexEngine(BaseLLMEngine):
     @property
     def supports_live_stage_message(self) -> bool:
         """插入消息以「终止当前进程 + 新消息 resume 重启」的方式支持。"""
+        return True
+
+    @property
+    def supports_thinking_effort(self) -> bool:
+        """``-c model_reasoning_effort=...`` supports a per-turn override."""
         return True
 
     def build_resume_params(self, session_id: str) -> dict:

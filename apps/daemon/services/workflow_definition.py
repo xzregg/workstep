@@ -11,6 +11,8 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from services.config import DEFAULT_EXECUTION_ENGINE
+
 
 class WorkflowValidationError(ValueError):
     """Raised when a workflow definition cannot be compiled safely."""
@@ -275,11 +277,18 @@ class WorkflowDefinition:
 
     @staticmethod
     def _normalize_step(step: Mapping[str, Any]) -> dict[str, Any]:
+        config = step.get("config", {})
+        if not isinstance(config, dict):
+            raise WorkflowValidationError(
+                f"step '{step.get('key', step.get('id', ''))}'.config: "
+                "expected a dict"
+            )
         normalized = {
             "key": step.get("key", step.get("id", "")),
             "label": step.get("label", step.get("name", "")),
-            "engine": step.get("engine", "claude"),
+            "engine": step.get("engine", DEFAULT_EXECUTION_ENGINE),
             "model": step.get("model", ""),
+            "config": dict(config),
             "prompt": step.get("prompt", ""),
             "color": step.get("color", "#888"),
             "inputs": deepcopy(step.get("inputs", [])),
@@ -302,11 +311,21 @@ class WorkflowDefinition:
                     f"step '{normalized['key']}'.review.maxRetries: "
                     "expected a non-negative integer"
                 )
+            review_config = review.get("config", {})
+            if not isinstance(review_config, dict):
+                raise WorkflowValidationError(
+                    f"step '{normalized['key']}'.review.config: "
+                    "expected a dict"
+                )
             normalized["review"] = {
+                "mode": review.get(
+                    "mode", "auto" if review.get("auto", False) else "manual"
+                ),
                 "auto": bool(review.get("auto", False)),
                 "maxRetries": max_retries,
                 "engine": review.get("engine", ""),
                 "model": review.get("model", ""),
                 "prompt": review.get("prompt", ""),
+                "config": dict(review_config),
             }
         return normalized

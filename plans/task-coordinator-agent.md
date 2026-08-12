@@ -781,3 +781,33 @@ GET 响应同时返回任务配置、最终生效配置和可切换引擎摘要�
 7. Daemon 重启、WebSocket 断线和页面刷新后都能从数据库恢复正确状态。
 8. 真实三阶段 E2E 和全部迁移测试通过。
 9. 用户可以在至少两个已安装且支持协调模式的 LLM Engine 之间切换；切换只影响后续协调消息，不影响工作流阶段引擎。
+
+## 17. WorkStep 内部工具（接口抽象为 CLI / 内部 Tool）
+
+把 daemon 内置接口抽象成 Agent 可按需加载的内部工具与 CLI，让 Agent 助手
+辅助使用 WorkStep 系统本身。
+
+### 17.1 范围与设计
+
+- 工具注册表：`apps/daemon/services/tool_registry.py` 定义 `WorkstepTool`
+  （operation、描述、HTTP method/path、参数 JSON schema、`read_only`、
+  副作用说明），首版开放 7 个工具，全部映射现有 REST 端点：
+  - 只读：`workstep_list_projects`、`workstep_get_project`、
+    `workstep_list_tasks`、`workstep_get_task`、`workstep_list_engines`。
+  - 有副作用（创建类）：`workstep_create_project`、`workstep_create_task`，
+    参数 schema 强制 `confirm='yes'`。
+- `WorkstepClient.call(operation, arguments)`：httpx 异步调用本地 daemon
+  （默认 `http://127.0.0.1:8765`，支持 `WORKSTEP_DAEMON_URL` 覆盖），成功
+  返回响应 JSON，失败返回结构化 `{"ok": False, "error": ...}`。
+- CLI：`apps/daemon/cli.py`（argparse，无新依赖，`uv run workstep ...`），
+  `project list/init`、`task list/get/create`、`engine list`，统一 JSON 输出，
+  与工具共用同一个 HTTP 客户端。
+- 引擎按需加载：`EngineCapabilities.supports_workstep_tools` 能力位（默认
+  False）。PydanticAI 引擎开启，并在 `_run_agent` 注册内嵌工具
+  `workstep_call(operation, arguments)`，docstring 附接口文档；协调 Agent 的
+  `spawn_coordinator` guard 与 `_assemble_context` 在能力位开启时注入
+  workstep 工具文档与使用约束（只读可直接用；创建类必须 `confirm='yes'`
+  且仅当用户明确要求副作用）。无此能力的引擎（Claude/Codex/API/ACP）
+  prompt 不变。
+- 不开放运行控制类接口（run/pause/cancel/archive）——需异步
+  `WorkflowRuntime`，列为后续扩展；删除/重命名等高风险接口不开放。

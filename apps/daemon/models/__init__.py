@@ -14,6 +14,10 @@ from models.coordinator import (
     CoordinatorTurn,
     StageSupplement,
 )
+from models.gen_session import WorkflowGenSession
+from models.schedule import Schedule, ScheduleRun
+from models.share import TaskShare
+from models.chat_session import ChatSession, ChatMessage, ProjectSetting
 from models.migrations import LATEST_SCHEMA_VERSION, migrate_database
 
 # Complete model registry for callers that need model metadata.
@@ -30,6 +34,13 @@ ALL_MODELS = [
     CoordinatorTurn,
     ActionProposal,
     StageSupplement,
+    WorkflowGenSession,
+    Schedule,
+    ScheduleRun,
+    TaskShare,
+    ChatSession,
+    ChatMessage,
+    ProjectSetting,
 ]
 
 

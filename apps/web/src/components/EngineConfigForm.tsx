@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   engineApi,
   type EngineConfigField,
@@ -12,11 +13,19 @@ import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
 
+export interface EngineConfigFormHandle {
+  save: () => void
+}
+
 interface Props {
   engineId: string
   /** Config template + masked values, embedded in /api/engine/list. */
   config: EngineConfigPayload | null
+  /** Extra controls rendered in the footer row. */
+  footerSlot?: ReactNode
   onSaved?: (result: EngineConfigSchema) => void
+  /** Reports save availability so an external save button stays in sync. */
+  onFormStateChange?: (state: { saving: boolean; canSave: boolean }) => void
 }
 
 /**
@@ -28,7 +37,10 @@ interface Props {
  * PUT /api/engine/{id}/config and the returned engine entry refreshes the
  * embedded payload.
  */
-export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
+const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function EngineConfigForm(
+  { engineId, config, footerSlot, onSaved, onFormStateChange },
+  ref,
+) {
   const { t } = useI18n()
   const fields = config?.fields ?? []
   const [values, setValues] = useState<Record<string, string>>({})
@@ -140,6 +152,23 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
   const hasRequiredGaps = fields.some((field) => (
     field.required && !((values[field.key] ?? '').trim())
   ))
+
+  const reportedSaveState = useRef<{ saving: boolean; canSave: boolean } | null>(null)
+
+  useEffect(() => {
+    const next = { saving, canSave: !saving && !hasRequiredGaps }
+    const prev = reportedSaveState.current
+    if (
+      !prev
+      || prev.saving !== next.saving
+      || prev.canSave !== next.canSave
+    ) {
+      reportedSaveState.current = next
+      onFormStateChange?.(next)
+    }
+  })
+
+  useImperativeHandle(ref, () => ({ save }))
 
   const renderField = (field: EngineConfigField) => {
     const value = values[field.key] ?? ''
@@ -312,18 +341,26 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
       background: 'var(--surface)',
     }}>
       <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+        display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10,
       }}>
         {fields.map((field) => renderField(field))}
       </div>
       <div style={{
-        marginTop: 8, display: 'flex', alignItems: 'center', gap: 10,
+        marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
+        flexWrap: 'wrap', rowGap: 8,
         color: 'var(--muted)', fontSize: 11,
       }}>
+        <div style={{
+          flex: '0 1 auto', minWidth: 0,
+          display: 'flex', alignItems: 'center',
+          gap: 8, flexWrap: 'wrap', rowGap: 8,
+        }}>
+          {footerSlot}
+        </div>
         <div
           role="status"
           style={{
-            flex: 1, minHeight: 18,
+            flex: '1 1 auto', minWidth: 0, minHeight: 18,
             color: messageKind === 'error'
               ? 'var(--danger)'
               : messageKind === 'success'
@@ -331,17 +368,8 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
                 : 'var(--muted)',
           }}
         >
-          {message || t('engineForm.keyHint')}
+          {message}
         </div>
-        <Button
-          variant="primary"
-          disabled={saving || hasRequiredGaps}
-          loading={saving}
-          onClick={() => save()}
-          style={{ minWidth: 84, height: 30, justifyContent: 'center' }}
-        >
-          {t('engineForm.saveConfig')}
-        </Button>
       </div>
 
       <ConfirmDialog
@@ -355,4 +383,6 @@ export default function EngineConfigForm({ engineId, config, onSaved }: Props) {
       />
     </div>
   )
-}
+})
+
+export default EngineConfigForm

@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from engines.core.events import InternalEvent
+from engines.core.registry import ENGINE_REGISTRY
 from services.project import ProjectManager
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
@@ -108,7 +110,14 @@ async def api_context(tmp_path, monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_task_creation_binds_selected_workflow(api_context):
+async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
+    import api.task as task_api
+
+    monkeypatch.setattr(
+        task_api.config_store,
+        "get_execution_default_engine",
+        lambda: "",
+    )
     client, tmp_path = api_context
     project_dir = tmp_path / "selected-workflow-project"
     project_dir.mkdir()
@@ -147,6 +156,7 @@ async def test_task_creation_binds_selected_workflow(api_context):
     )
 
     assert created.status_code == 200
+    assert created.json()["engine"] == "pydantic_ai"
     assert created.json()["workflow_id"] == workflow_id
     assert [step["step_key"] for step in created.json()["steps"]] == ["selected"]
 
@@ -339,6 +349,29 @@ async def test_project_http_lifecycle_returns_a_stable_identity(api_context):
     )
     assert registered.status_code == 200
     assert registered.json()["id"] == project_id
+
+
+@pytest.mark.anyio
+async def test_delete_project_only_unregisters_it(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "project-to-forget"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir), "name": "Temporary"},
+    )
+    project_id = initialized.json()["id"]
+
+    deleted = await client.delete(f"/api/project/{project_id}")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True}
+    assert (project_dir / ".workstep" / "workstep.db").exists()
+    assert (project_dir / ".workstep" / "steps.json").exists()
+    listed = await client.get("/api/project/list")
+    assert listed.json() == {"projects": []}
+    missing = await client.delete(f"/api/project/{project_id}")
+    assert missing.status_code == 404
 
 
 @pytest.mark.anyio
@@ -759,7 +792,6 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
         "hermes",
         "qoder_sdk",
         "openclaw",
-        "api",
         "pydantic_ai",
         "claude_agent_sdk",
         "codex_sdk",
@@ -794,7 +826,7 @@ async def test_engine_refresh_rescans_before_returning_results(
 async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
     client, _ = api_context
     import api.engine as engine_api
-    from engines.base import EngineTestResult
+    from engines.core.base import EngineTestResult
 
     class FakeEngine:
         tested = False
@@ -846,7 +878,7 @@ async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
 async def test_engine_models_delegate_to_the_adapter(api_context, monkeypatch):
     client, _ = api_context
     import api.engine as engine_api
-    from engines.base import EngineModel
+    from engines.core.base import EngineModel
 
     class FakeEngine:
         async def list_models(self, cwd):
@@ -1195,7 +1227,7 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
     )
     task_id = created.json()["id"]
 
-    artifact_dir = project_dir / ".workstep" / "artifacts" / "req" / task_id
+    artifact_dir = project_dir / ".workstep" / "artifacts" / "default" / task_id / "req"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "prd.md").write_text("# Product requirements")
     (artifact_dir / "manifest.json").write_text(json.dumps({
@@ -1217,7 +1249,65 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
         "path": str((artifact_dir / "prd.md").resolve()),
         "relative_path": "prd.md",
         "size": 22,
+        "is_dir": False,
     }]
+
+
+@pytest.mark.anyio
+async def test_task_artifacts_include_directories_with_manifest_metadata(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "artifact-dir-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Directory artifact task", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+
+    artifact_dir = project_dir / ".workstep" / "artifacts" / "default" / task_id / "req"
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "prd.md").write_text("# PRD")
+    (artifact_dir / "docs").mkdir()
+    (artifact_dir / "docs" / "index.html").write_text("<h1>Docs</h1>")
+    (artifact_dir / "docs" / "guide").mkdir()
+    (artifact_dir / "docs" / "guide" / "intro.md").write_text("# Intro")
+    (artifact_dir / ".hidden").mkdir()
+    (artifact_dir / "manifest.json").write_text(json.dumps({
+        "artifacts": [
+            {"name": "PRD 文档", "type": "Markdown", "path": "prd.md"},
+            {"name": "文档目录", "type": "Directory", "path": "docs"},
+        ],
+    }))
+
+    response = await client.get(
+        f"/api/task/{task_id}/artifacts",
+        params={"project_id": project_id},
+    )
+    assert response.status_code == 200
+    artifacts = response.json()["artifacts"]
+    by_path = {item["path"]: item for item in artifacts}
+
+    docs = by_path[str((artifact_dir / "docs").resolve())]
+    assert docs["name"] == "docs"
+    assert docs["logical_name"] == "文档目录"
+    assert docs["artifact_type"] == "Directory"
+    assert docs["relative_path"] == "docs/"
+    assert docs["size"] is None
+    assert docs["is_dir"] is True
+
+    prd = by_path[str((artifact_dir / "prd.md").resolve())]
+    assert prd["is_dir"] is False
+
+    # Only the declared directory appears as a directory artifact; nested and
+    # hidden directories stay browsable via the fs API instead.
+    directories = [item for item in artifacts if item["is_dir"]]
+    assert [item["relative_path"] for item in directories] == ["docs/"]
+    assert not any(item["name"] == ".hidden" for item in artifacts)
 
 
 @pytest.mark.anyio
@@ -1269,6 +1359,30 @@ async def test_file_browser_and_preview_cover_text_image_binary_and_size_limit(
         "/api/fs/preview", params={"path": str(large_file)}
     )
     assert too_large.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_file_endpoint_serves_raw_html_for_browser_preview(api_context):
+    client, tmp_path = api_context
+    html_file = tmp_path / "page.html"
+    html_file.write_text("<h1>Hello</h1>")
+
+    response = await client.get(
+        "/api/fs/file", params={"path": str(html_file)}
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<h1>Hello</h1>" in response.text
+
+    missing = await client.get(
+        "/api/fs/file", params={"path": str(tmp_path / "nope.html")}
+    )
+    assert missing.status_code == 404
+
+    directory = await client.get(
+        "/api/fs/file", params={"path": str(tmp_path)}
+    )
+    assert directory.status_code == 400
 
 
 @pytest.mark.anyio
@@ -1492,3 +1606,375 @@ async def test_workflow_soft_delete_and_restore_via_api(api_context):
     listed = await client.get("/api/workflow/list", params={"project_id": project_id})
     active_workflow = next(w for w in listed.json()["workflows"] if w["id"] == workflow_id)
     assert active_workflow["deleted"] is False
+
+
+class ScriptedStageEngine:
+    """Deterministic stage engine that records every prompt it receives."""
+
+    def __init__(self, prompts: list[str]):
+        self.prompts = prompts
+
+    @property
+    def supports_resume(self):
+        return False
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.prompts.append(prompt)
+        yield InternalEvent(type="text_delta", data={"delta": "阶段执行完成"})
+        yield InternalEvent(type="usage", data={
+            "input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0,
+        })
+
+    async def stop(self):
+        return None
+
+
+class ScriptedReviewEngine:
+    """Deterministic review agent driven by a queue of (passed, score, summary)."""
+
+    def __init__(self, prompts: list[str], results: list[tuple[bool, int, str]]):
+        self.prompts = prompts
+        self.results = results
+
+    @property
+    def supports_resume(self):
+        return False
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.prompts.append(prompt)
+        index = min(len(self.prompts) - 1, len(self.results) - 1)
+        passed, score, summary = self.results[index]
+        text = json.dumps({
+            "passed": passed,
+            "score": score,
+            "summary": summary,
+            "issues": [] if passed else [{
+                "severity": "error",
+                "category": "quality",
+                "description": "缺少验收内容",
+                "suggestion": "补充验收内容后重试",
+            }],
+        }, ensure_ascii=False)
+        yield InternalEvent(type="text_delta", data={"delta": text})
+        yield InternalEvent(type="usage", data={
+            "input_tokens": 20, "output_tokens": 10, "cache_read_input_tokens": 0,
+        })
+
+    async def stop(self):
+        return None
+
+
+async def _wait_for_task_status(client, project_id, task_id, expected, timeout=20):
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        response = await client.get(f"/api/task/{task_id}?project_id={project_id}")
+        assert response.status_code == 200, response.text
+        last = response.json()
+        if last.get("status") in expected:
+            return last
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"task {task_id} did not reach {expected}: {last}")
+
+
+@pytest.mark.anyio
+async def test_review_flow_end_to_end_via_api(api_context):
+    """整个审核流程：跳过审核 → 自动审核重试 → 人工审核 → 驳回注入反馈 → 通过。"""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "review-flow-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    assert initialized.status_code == 200, initialized.text
+    project_id = initialized.json()["id"]
+
+    workflow = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": "ReviewFlow",
+            "steps": {
+                "nodes": [
+                    {
+                        "id": "plan", "type": "plan", "title": "需求",
+                        "engine": "stage-fake", "prompt": "编写需求文档",
+                        "review": {"mode": "skip"},
+                    },
+                    {
+                        "id": "build", "type": "build", "title": "实现",
+                        "engine": "stage-fake", "prompt": "编写代码",
+                        "review": {
+                            "mode": "auto", "auto": True, "maxRetries": 1,
+                            "engine": "review-fake", "prompt": "检查代码质量",
+                        },
+                    },
+                    {
+                        "id": "verify", "type": "verify", "title": "验收",
+                        "engine": "stage-fake", "prompt": "执行验收",
+                        "review": {"mode": "manual", "auto": False},
+                    },
+                ],
+                "connections": [
+                    {"from": "plan", "to": "build"},
+                    {"from": "build", "to": "verify"},
+                ],
+            },
+        },
+    )
+    assert workflow.status_code == 200, workflow.text
+    workflow_id = workflow.json()["id"]
+
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Review flow task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+        },
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["id"]
+
+    stage_prompts: list[str] = []
+    review_prompts: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY.clear()
+    ENGINE_REGISTRY["stage-fake"] = lambda: ScriptedStageEngine(stage_prompts)
+    ENGINE_REGISTRY["review-fake"] = lambda: ScriptedReviewEngine(
+        review_prompts,
+        [
+            (False, 60, "缺少验收内容"),
+            (True, 95, "修复完成"),
+        ],
+    )
+    try:
+        started = await client.post(
+            f"/api/task/run?project_id={project_id}",
+            json={"task_id": task_id, "prompt": ""},
+        )
+        assert started.status_code == 200, started.text
+
+        # 1) plan 跳过审核直接通过；build 自动审核第一次不通过后自动重跑并再次审核通过；
+        #    verify 人工审核停在 awaiting_review。
+        task = await _wait_for_task_status(
+            client, project_id, task_id, {"ready", "paused"}
+        )
+        assert task["status"] == "paused"
+        steps = {step["step_key"]: step["status"] for step in task["steps"]}
+        assert steps == {
+            "plan": "passed", "build": "passed", "verify": "awaiting_review",
+        }
+        # plan + build + build(自动审核不通过后重跑) + verify
+        assert len(stage_prompts) == 4
+        assert len(review_prompts) == 2
+
+        reviews = (await client.get(
+            f"/api/task/{task_id}/reviews?project_id={project_id}"
+        )).json()["reviews"]
+        build_reviews = [r for r in reviews if r["step_key"] == "build"]
+        assert [r["mode"] for r in build_reviews] == ["auto", "auto"]
+        assert [r["status"] for r in build_reviews] == ["passed", "rejected"]
+        verify_reviews = [r for r in reviews if r["step_key"] == "verify"]
+        assert len(verify_reviews) == 1
+        assert verify_reviews[0]["mode"] == "manual"
+        assert verify_reviews[0]["status"] == "pending"
+
+        # 2) 人工审核不通过：带原因驳回 → 自动重跑 verify，下一次提示词包含驳回原因
+        reject = await client.post(
+            f"/api/task/{task_id}/steps/verify/review/reject?project_id={project_id}",
+            json={
+                "review_run_id": verify_reviews[0]["id"],
+                "comment": "缺少验收记录",
+            },
+        )
+        assert reject.status_code == 200, reject.text
+        assert reject.json()["resumed"] is True
+        task = await _wait_for_task_status(
+            client, project_id, task_id, {"ready", "paused"}
+        )
+        assert task["status"] == "paused"
+        assert len(stage_prompts) == 5
+        assert "缺少验收记录" in stage_prompts[4]
+        assert "人工审核反馈" in stage_prompts[4]
+
+        # 3) 审核通过 → verify 完成，任务 ready
+        reviews = (await client.get(
+            f"/api/task/{task_id}/reviews?project_id={project_id}"
+        )).json()["reviews"]
+        verify_reviews = [r for r in reviews if r["step_key"] == "verify"]
+        assert [r["status"] for r in verify_reviews] == ["pending", "rejected"]
+        approve = await client.post(
+            f"/api/task/{task_id}/steps/verify/review/approve?project_id={project_id}",
+            json={"review_run_id": verify_reviews[0]["id"]},
+        )
+        assert approve.status_code == 200, approve.text
+        task = await _wait_for_task_status(
+            client, project_id, task_id, {"ready", "paused"}
+        )
+        assert task["status"] == "ready"
+        steps = {step["step_key"]: step["status"] for step in task["steps"]}
+        assert steps == {
+            "plan": "passed", "build": "passed", "verify": "passed",
+        }
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+async def _create_workflow(client, project_id: str, name: str):
+    response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": name,
+            "steps": {
+                "nodes": [
+                    {
+                        "id": name,
+                        "title": name,
+                        "engine": "claude",
+                        "inputs": [],
+                        "outputs": [],
+                    }
+                ],
+                "connections": [],
+            },
+        },
+    )
+    assert response.status_code == 200
+    return response.json()["id"]
+
+
+@pytest.mark.anyio
+async def test_reorder_workflows_persists_new_order(api_context):
+    """Reordering via the API is reflected in the list and survives reloads."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "reorder-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+
+    # Initial project seeds a default workflow; create two more.
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    initial_ids = [w["id"] for w in listed.json()["workflows"]]
+    extra_a = await _create_workflow(client, project_id, "FlowA")
+    extra_b = await _create_workflow(client, project_id, "FlowB")
+    original = initial_ids + [extra_a, extra_b]
+
+    # New workflows land at the end of the list.
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    assert [w["id"] for w in listed.json()["workflows"]] == original
+
+    # Move the default workflow to the end.
+    reordered = original[1:] + [original[0]]
+    response = await client.post(
+        f"/api/workflow/reorder?project_id={project_id}",
+        json={"ordered_ids": reordered},
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    assert [w["id"] for w in listed.json()["workflows"]] == reordered
+
+    # Order survives re-opening the same project.
+    reopened = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    assert reopened.status_code == 200
+    assert reopened.json()["id"] == project_id
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    assert [w["id"] for w in listed.json()["workflows"]] == reordered
+
+
+@pytest.mark.anyio
+async def test_reorder_workflows_ignores_unknown_ids(api_context):
+    """Unknown ids are skipped and the remaining order is applied."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "reorder-unknown"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    ids = [w["id"] for w in listed.json()["workflows"]]
+
+    response = await client.post(
+        f"/api/workflow/reorder?project_id={project_id}",
+        json={"ordered_ids": ["missing", ids[0]]},
+    )
+    assert response.status_code == 200
+    listed = await client.get(f"/api/workflow/list?project_id={project_id}")
+    assert [w["id"] for w in listed.json()["workflows"]] == ids
+
+
+@pytest.mark.anyio
+async def test_resume_stage_message_routes_to_runtime(api_context, monkeypatch):
+    """停止后的阶段发送消息：持久化并触发从该阶段重新执行。"""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "resume-stage-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.resume_stage_with_message = AsyncMock(
+        return_value={
+            "message_id": "m-1",
+            "step_key": "do",
+            "run_id": "run-1",
+            "status": "queued",
+            "sequence": 3,
+            "created_at": "2026-08-12T00:00:00+00:00",
+        }
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    sent = await client.post(
+        f"/api/task/task-1/step/do/resume?project_id={project_id}",
+        json={"content": "请改用中文输出"},
+    )
+    assert sent.status_code == 200
+    assert sent.json()["status"] == "queued"
+    assert sent.json()["run_id"] == "run-1"
+    runtime.resume_stage_with_message.assert_awaited_once_with(
+        project_id,
+        "task-1",
+        "do",
+        "请改用中文输出",
+    )
+
+
+@pytest.mark.anyio
+async def test_resume_stage_message_conflict_when_stage_not_stopped(api_context, monkeypatch):
+    """未停止的阶段发送消息重跑返回冲突。"""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "resume-stage-conflict-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.resume_stage_with_message = AsyncMock(
+        side_effect=ValueError("阶段未停止: do（当前状态 running）")
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    sent = await client.post(
+        f"/api/task/task-1/step/do/resume?project_id={project_id}",
+        json={"content": "请改用中文输出"},
+    )
+    assert sent.status_code == 409
+    assert "阶段未停止" in sent.json()["detail"]

@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from services.config import DEFAULT_EXECUTION_ENGINE
+
 
 @dataclass
 class Step:
@@ -11,8 +13,9 @@ class Step:
 
     key: str
     label: str
-    engine: str = "claude"
+    engine: str = DEFAULT_EXECUTION_ENGINE
     model: str = ""
+    config: dict = field(default_factory=dict)
     prompt: str = ""
     color: str = "#888"
     inputs: list[dict] = field(default_factory=list)
@@ -27,8 +30,9 @@ class Step:
         return cls(
             key=d["key"] if "key" in d else d.get("id", ""),
             label=d.get("label", d.get("name", "")),
-            engine=d.get("engine", "claude"),
+            engine=d.get("engine", DEFAULT_EXECUTION_ENGINE),
             model=d.get("model", ""),
+            config=dict(d.get("config") or {}),
             prompt=d.get("prompt", ""),
             color=d.get("color", "#888"),
             inputs=d.get("inputs", []),

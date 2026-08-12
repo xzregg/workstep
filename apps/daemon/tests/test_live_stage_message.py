@@ -13,9 +13,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from engines.base import BaseLLMEngine
+from engines.core.base import BaseLLMEngine
 from engines.claude_code import ClaudeCodeEngine
-from engines.events import InternalEvent
+from engines.core.events import InternalEvent
 from models import CoordinatorTurn, Message, StageSupplement, Task, TaskStep, init_db
 from models.fields import utc_now
 from streaming.bus import EventBus
@@ -261,7 +261,7 @@ class SplitLiveFakeEngine(LiveFakeEngine):
 
 
 def _make_runner_task(tmp_path, engine_cls):
-    from engines.registry import ENGINE_REGISTRY
+    from engines.core.registry import ENGINE_REGISTRY
     from services.task_runner import TaskRunner
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -312,7 +312,7 @@ async def test_runner_delivers_live_message_to_running_stage(tmp_path):
         assert message.created_at.isoformat() == accepted["created_at"]
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -352,7 +352,7 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path):
         assert "第二段" not in pre_insert.events_json
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -396,7 +396,7 @@ async def test_runner_as_guidance_persists_stage_supplement(tmp_path):
         assert "do work" in prompt
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -415,7 +415,7 @@ async def test_runner_rejects_live_message_for_unsupported_engine(tmp_path):
         await pipeline
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -429,7 +429,7 @@ async def test_runner_rejects_live_message_when_stage_not_running(tmp_path):
             await runner.send_live_message(task.id, "do", "x")
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -459,7 +459,7 @@ async def test_runner_cancel_stops_running_stage(tmp_path):
         assert message.ended_at is not None
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -487,7 +487,7 @@ async def test_runner_cancel_step_is_idempotent_and_swallows_stop_errors(tmp_pat
         assert step.error == "手动停止"
     finally:
         await bus.close()
-        from engines.registry import ENGINE_REGISTRY
+        from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
@@ -632,3 +632,103 @@ def test_message_sequence_allocation_is_atomic_across_threads(tmp_path):
     assert not errors, errors
     assert sorted(results) == list(range(1, 9))
     assert len(set(results)) == 8
+
+
+class IgnoreLiveQueueEngine(LiveFakeEngine):
+    """Spawn 收流结束前不消费插入消息队列（模拟引擎已收流）。"""
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield InternalEvent(type="status", data={"status": "running"})
+        await asyncio.sleep(0.3)
+        yield InternalEvent(type="status", data={"status": "done"})
+
+
+@pytest.mark.anyio
+async def test_runner_marks_undelivered_message_failed_on_finish(tmp_path):
+    """阶段收尾时队列残留的插入消息标记 failed，避免永久停留在 running。"""
+    db, task, steps_config, bus, runner, original = _make_runner_task(
+        tmp_path, IgnoreLiveQueueEngine
+    )
+    try:
+        pipeline = asyncio.create_task(
+            runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+        )
+        await asyncio.sleep(0.1)
+        accepted = await runner.send_live_message(task.id, "do", "没被接收的消息")
+        assert accepted["status"] == "queued"
+        await pipeline
+
+        message = Message.get(Message.id == accepted["message_id"])
+        assert message.run_status == "failed"
+        assert message.ended_at is not None
+    finally:
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+class IdleHangEngine(LiveFakeEngine):
+    """Emits a session then never yields again, simulating a stalled engine."""
+
+    closed = False
+    stop_calls = 0
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield InternalEvent(type="status", data={"status": "running"})
+        yield InternalEvent(type="session_started", data={"session_id": "session-idle-1"})
+        try:
+            await asyncio.Event().wait()
+        finally:
+            type(self).closed = True
+
+    async def stop(self):
+        type(self).stop_calls += 1
+        return None
+
+    @property
+    def supports_resume(self):
+        return True
+
+
+@pytest.mark.anyio
+async def test_runner_idle_timeout_fails_stage_and_keeps_session(tmp_path, monkeypatch):
+    """An engine that stalls (no events) is stopped after the idle timeout;
+    the stage fails but the session id survives for a resumable re-run."""
+    from services.config import config_store
+
+    monkeypatch.setattr(
+        config_store, "get_engine_idle_timeout_seconds", lambda: 0.2
+    )
+    db, task, steps_config, bus, runner, original = _make_runner_task(
+        tmp_path, IdleHangEngine
+    )
+    IdleHangEngine.closed = False
+    IdleHangEngine.stop_calls = 0
+    try:
+        pipeline = asyncio.create_task(
+            runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+        )
+        await pipeline
+
+        ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert ts.status == "failed"
+        assert "空闲超时" in (ts.error or "")
+        assert ts.session_id == "session-idle-1"
+        assert IdleHangEngine.closed is True
+        assert IdleHangEngine.stop_calls == 1
+
+        message = Message.get(Message.task == task)
+        assert message.run_status == "failed"
+        events = json.loads(message.events_json or "[]")
+        assert any(
+            "空闲超时" in str(event.get("data", {}).get("message", ""))
+            for event in events
+        )
+    finally:
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()

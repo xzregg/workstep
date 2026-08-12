@@ -1,5 +1,6 @@
 """Behavior tests for the workflow definition compiler."""
 
+import contextlib
 import json
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ def test_legacy_steps_compile_to_task_runner_config():
                 "label": "Requirements",
                 "engine": "claude",
                 "model": "sonnet",
+                "config": {},
                 "prompt": "Write the requirements",
                 "color": "#123456",
                 "inputs": [{"name": "brief", "type": "document"}],
@@ -43,6 +45,7 @@ def test_legacy_steps_compile_to_task_runner_config():
                 "label": "Requirements",
                 "engine": "claude",
                 "model": "sonnet",
+                "config": {},
                 "prompt": "Write the requirements",
                 "color": "#123456",
                 "inputs": [{"name": "brief", "type": "document"}],
@@ -56,6 +59,7 @@ def test_legacy_steps_compile_to_task_runner_config():
                 "label": "Build",
                 "engine": "codex",
                 "model": "",
+                "config": {},
                 "prompt": "Build it",
                 "color": "#888",
                 "inputs": [],
@@ -397,6 +401,21 @@ async def test_project_rejects_an_invalid_workflow_before_saving(
         def get_project_by_id(self, project_id):
             return project if project_id == project.id else None
 
+        def activate_project_by_id(self, project_id):
+            proj = self.get_project_by_id(project_id)
+            if not proj:
+                raise ValueError(f"Project not found: {project_id}")
+            return contextlib.nullcontext(proj)
+
+        def update_workflow(self, proj, workflow_id, steps):
+            proj.steps = steps
+            (proj.workstep_dir / "steps.json").write_text(
+                json.dumps(steps, ensure_ascii=False, indent=2)
+            )
+            return {"id": workflow_id}
+
+    project.default_workflow = lambda: {"id": "default-wf", "steps": project.steps}
+
     monkeypatch.setattr(project_api, "project_manager", ProjectManagerStub())
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -451,6 +470,21 @@ async def test_saved_workflow_becomes_the_project_runtime_definition(
         def get_project_by_id(self, project_id):
             return project if project_id == project.id else None
 
+        def activate_project_by_id(self, project_id):
+            proj = self.get_project_by_id(project_id)
+            if not proj:
+                raise ValueError(f"Project not found: {project_id}")
+            return contextlib.nullcontext(proj)
+
+        def update_workflow(self, proj, workflow_id, steps):
+            proj.steps = steps
+            (proj.workstep_dir / "steps.json").write_text(
+                json.dumps(steps, ensure_ascii=False, indent=2)
+            )
+            return {"id": workflow_id}
+
+    project.default_workflow = lambda: {"id": "default-wf", "steps": project.steps}
+
     monkeypatch.setattr(project_api, "project_manager", ProjectManagerStub())
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -462,3 +496,61 @@ async def test_saved_workflow_becomes_the_project_runtime_definition(
     assert response.status_code == 200
     assert project.steps == saved
     assert json.loads(steps_path.read_text()) == saved
+
+
+def test_stage_config_passthrough_and_defaults():
+    """阶段级 engine config 透传，缺省为 {}。"""
+    raw = {
+        "steps": [
+            {"key": "a", "label": "A", "config": {"sandbox_mode": "read-only"}},
+            {"key": "b", "label": "B"},
+        ]
+    }
+
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
+    steps = {s["key"]: s for s in compiled}
+    assert steps["a"]["config"] == {"sandbox_mode": "read-only"}
+    assert steps["b"]["config"] == {}
+
+
+def test_stage_config_rejects_non_dict():
+    raw = {"steps": [{"key": "a", "label": "A", "config": "read-only"}]}
+
+    with pytest.raises(WorkflowValidationError, match="expected a dict"):
+        WorkflowDefinition.load(raw).compile()
+
+
+def test_review_config_passthrough_and_defaults():
+    """评审块同样支持阶段级 config，缺省为 {}。"""
+    raw = {
+        "steps": [{
+            "key": "a",
+            "label": "A",
+            "review": {
+                "mode": "auto",
+                "auto": True,
+                "maxRetries": 1,
+                "engine": "codex",
+                "model": "",
+                "prompt": "",
+                "config": {"approval_policy": "never"},
+            },
+        }]
+    }
+
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
+    steps = {s["key"]: s for s in compiled}
+    assert steps["a"]["review"]["config"] == {"approval_policy": "never"}
+
+
+def test_review_config_rejects_non_dict():
+    raw = {
+        "steps": [{
+            "key": "a",
+            "label": "A",
+            "review": {"mode": "auto", "auto": True, "maxRetries": 1, "config": "never"},
+        }]
+    }
+
+    with pytest.raises(WorkflowValidationError, match="expected a dict"):
+        WorkflowDefinition.load(raw).compile()

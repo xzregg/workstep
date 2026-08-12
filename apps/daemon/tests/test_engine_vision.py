@@ -4,9 +4,9 @@ import base64
 
 import pytest
 
-from engines.base import BaseLLMEngine, EngineCapabilities
-from engines.events import InternalEvent
-from engines.schema import EngineImage
+from engines.core.base import BaseLLMEngine, EngineCapabilities
+from engines.core.events import InternalEvent
+from engines.core.schema import EngineImage
 
 
 def test_engine_image_to_data_url_from_local_file(tmp_path):
@@ -109,142 +109,41 @@ async def test_base_spawn_coordinator_without_images_keeps_prompt_clean():
     )
 
 
-@pytest.mark.anyio
-async def test_api_engine_sends_openai_image_blocks(monkeypatch, tmp_path):
-    import json
-
-    import httpx
-
-    import engines.api as api_engine_module
-    from engines.api import APIEngine
-
-    captured = {}
-
-    async def handler(request):
-        captured["payload"] = json.loads(request.content)
-        stream = 'data: {"choices": [{"delta": {"content": "ok"}}]}\n\ndata: [DONE]\n\n'
-        return httpx.Response(
-            200,
-            content=stream.encode(),
-            headers={"content-type": "text/event-stream"},
-        )
-
-    store = SimpleStore(provider="openai", base_url="https://gateway.example.com/v1")
-    monkeypatch.setattr(api_engine_module, "config_store", store)
-    engine = APIEngine(transport=httpx.MockTransport(handler))
-
-    async for _ in engine.spawn(
-        "hi",
-        cwd="/tmp",
-        images=[EngineImage(url="https://example.com/x.png", description="截图")],
-    ):
-        pass
-
-    messages = captured["payload"]["messages"]
-    assert messages[0]["content"] == [
-        {"type": "text", "text": "hi"},
-        {"type": "image_url", "image_url": {"url": "https://example.com/x.png"}},
-    ]
-
-
-@pytest.mark.anyio
-async def test_api_engine_sends_anthropic_base64_image_blocks(monkeypatch, tmp_path):
-    import json
-
-    import httpx
-
-    import engines.api as api_engine_module
-    from engines.api import APIEngine
-
-    png = tmp_path / "shot.png"
-    png.write_bytes(b"\x89PNG\r\n\x1a\nfakepngbytes")
-    captured = {}
-
-    async def handler(request):
-        captured["payload"] = json.loads(request.content)
-        stream = 'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "ok"}}\n\ndata: [DONE]\n\n'
-        return httpx.Response(
-            200,
-            content=stream.encode(),
-            headers={"content-type": "text/event-stream"},
-        )
-
-    store = SimpleStore(provider="anthropic", base_url="https://gateway.example.com/v1")
-    monkeypatch.setattr(api_engine_module, "config_store", store)
-    engine = APIEngine(transport=httpx.MockTransport(handler))
-
-    async for _ in engine.spawn(
-        "hi",
-        cwd="/tmp",
-        images=[EngineImage(path=str(png))],
-    ):
-        pass
-
-    messages = captured["payload"]["messages"]
-    content = messages[0]["content"]
-    assert content[0] == {"type": "text", "text": "hi"}
-    image_block = content[1]
-    assert image_block["type"] == "image"
-    assert image_block["source"]["type"] == "base64"
-    assert image_block["source"]["media_type"] == "image/png"
-    assert base64.b64decode(image_block["source"]["data"]) == png.read_bytes()
-
-
-@pytest.mark.anyio
-async def test_api_engine_without_images_keeps_plain_text_content(
-    monkeypatch, tmp_path
-):
-    import json
-
-    import httpx
-
-    import engines.api as api_engine_module
-    from engines.api import APIEngine
-
-    captured = {}
-
-    async def handler(request):
-        captured["payload"] = json.loads(request.content)
-        stream = 'data: {"choices": [{"delta": {"content": "ok"}}]}\n\ndata: [DONE]\n\n'
-        return httpx.Response(
-            200,
-            content=stream.encode(),
-            headers={"content-type": "text/event-stream"},
-        )
-
-    store = SimpleStore(provider="openai", base_url="https://gateway.example.com/v1")
-    monkeypatch.setattr(api_engine_module, "config_store", store)
-    engine = APIEngine(transport=httpx.MockTransport(handler))
-
-    async for _ in engine.spawn("hi", cwd="/tmp"):
-        pass
-
-    assert captured["payload"]["messages"][0]["content"] == "hi"
-
-
 class SimpleStore:
-    """Minimal config-store stub used by vision engine tests."""
+    """Minimal provider-backed config-store stub used by vision engine tests."""
 
     def __init__(self, provider="openai", base_url="https://gateway.example.com/v1"):
-        self.config = {"provider": provider, "base_url": base_url, "api_key": "k", "model": "m"}
-
-    def get_api_engine_config(self):
-        return dict(self.config)
+        self.provider = {
+            "id": "prov_1",
+            "name": "主账号",
+            "type": provider,
+            "base_url": base_url,
+            "api_key": "k",
+            "enabled": True,
+            "verified": True,
+            "created_at": "",
+        }
+        self.pydantic_config = {"provider_id": "prov_1", "model": "m"}
 
     def get_pydantic_ai_engine_config(self):
-        return dict(self.config)
+        return dict(self.pydantic_config)
+
+    def get_provider(self, provider_id):
+        if provider_id != "prov_1":
+            return None
+        return dict(self.provider)
 
 
 @pytest.mark.anyio
 async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
-    import engines.pydantic_ai as pydantic_ai_module
+    import engines.pydantic_ai.engine as pydantic_ai_module
     from engines.pydantic_ai import PydanticAIEngine
 
     store = SimpleStore(
         provider="openai",
         base_url="https://agent-gateway.example.com/v1",
     )
-    store.config["model"] = "agent-model"
+    store.pydantic_config["model"] = "agent-model"
     monkeypatch.setattr(pydantic_ai_module, "config_store", store)
 
     class FakeUsage:
@@ -380,14 +279,12 @@ async def test_pydantic_ai_run_agent_without_images_keeps_string_prompt(monkeypa
 
 
 def test_vision_capabilities_advertised_per_engine():
-    from engines.api import APIEngine
     from engines.claude_agent_sdk import ClaudeAgentSDKEngine
     from engines.claude_code import ClaudeCodeEngine
     from engines.codex import CodexEngine
     from engines.codex_sdk import CodexSDKEngine
     from engines.pydantic_ai import PydanticAIEngine
 
-    assert APIEngine().capabilities.supports_vision is True
     assert PydanticAIEngine().capabilities.supports_vision is True
     assert ClaudeCodeEngine().capabilities.supports_vision is True
     assert ClaudeAgentSDKEngine().capabilities.supports_vision is True

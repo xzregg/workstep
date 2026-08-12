@@ -106,6 +106,13 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         def close_all(self):
             events.append("projects-close")
 
+    class ScheduleStub:
+        async def start(self):
+            events.append("schedules-start")
+
+        async def shutdown(self):
+            events.append("schedules-shutdown")
+
     monkeypatch.setattr(main, "event_bus", BusStub())
     monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
@@ -115,6 +122,11 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         "WorkflowRuntime",
         lambda bus, project_manager: RuntimeStub(),
     )
+    monkeypatch.setattr(
+        main,
+        "ScheduleModule",
+        lambda project_manager, task_service, runtime: ScheduleStub(),
+    )
 
     async with main.lifespan(main.app):
         events.append("serving")
@@ -122,7 +134,9 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     assert events == [
         "projects-load",
         "workflows-recover",
+        "schedules-start",
         "serving",
+        "schedules-shutdown",
         "runtime-shutdown",
         "bus-close",
         "projects-close",

@@ -24,6 +24,7 @@ class Task(BaseModel):
     coordinator_model = pw.TextField(null=True)
     coordinator_fast_model = pw.TextField(null=True)
     coordinator_vision_model = pw.TextField(null=True)
+    coordinator_thinking_effort = pw.TextField(null=True)
     active_workflow_run_id = pw.TextField(null=True)
     state_version = pw.IntegerField(default=0)
     next_message_sequence = pw.IntegerField(default=1)
@@ -41,7 +42,9 @@ class TaskStep(BaseModel):
     status = pw.TextField(default="pending")  # pending / running / passed / failed / skipped
     engine = pw.TextField(null=True)
     session_id = pw.TextField(null=True)  # 该任务该阶段专属的引擎会话（重跑时复用）
+    review_session_id = pw.TextField(null=True)  # 该任务该阶段专属的审核会话（与执行会话隔离）
     rework_feedback = pw.TextField(null=True)  # 下游验证阶段下发的返工反馈（重跑时注入 prompt）
+    review_feedback = pw.TextField(null=True)  # 人工审核驳回原因（重跑该阶段时注入 prompt）
     started_at = UTCDateTimeField(null=True)
     ended_at = UTCDateTimeField(null=True)
     error = pw.TextField(null=True)

@@ -72,28 +72,16 @@ npm run build
 
 ## 前端开发规范（`apps/web`）
 
-- 禁止使用原生 `window.alert()` / `window.confirm()` 弹窗；确认类交互一律使用通用组件 `apps/web/src/components/ConfirmDialog.tsx`（删除、离开/切换前有未保存更改等场景）。
-- 表单必填校验：必填项为空时「提交/创建」按钮不置灰；点击后在弹框内提示具体缺失字段（如「流程名称为必填项，请输入流程名称」）并聚焦对应输入框，不使用原生 alert/confirm。校验提示放在**固定高度区域**（如 `minHeight` 占位）里，避免提示出现/消失导致布局上下跳动；不要把提示塞进输入框 `title` 或插入 DOM 挤压布局。
-- 侧边滑出面板（新建任务、编辑记忆等）：内容未变更时，点击面板外部（遮罩）直接关闭；内容有未保存变更时，必须先经 `ConfirmDialog` 确认（放弃更改）才可关闭。
-- 新建 / 重命名项目与工作流的名称禁止包含空白字符（空格、Tab 等），前端输入即时校验，后端 schema 同样强制。
-- 新建流程默认为空白画布（`{ nodes: [], connections: [] }`），不自动加载默认模板；需要模板时由用户从「流程模板」下拉选择。流程模板统一存放在 `~/.workstep/data/templates/*.json`：daemon 启动时把随产品发布的 `apps/daemon/data/templates/*.json` 复制过去（同名不覆盖，保留用户改动），全局模板的读取与编辑保存均以 `~/.workstep/data/templates/` 为准。每个模板文件带 `id` / `name` / `description` / `steps` 元数据；随产品发布的默认模板额外带 `default: true`（不可删除），用户自建模板无该标记。
-- AI 流程生成：`apps/web/src/components/AiFlowChat.tsx` 是复用的 AI 流程助手聊天组件（「添加流程」弹框左侧与流程编辑器工具栏「AI 编辑」浮层共用），通过 `POST /api/workflow/generate/chat`（后端 `apps/daemon/services/workflow_gen.py`，内存会话、不写任务库）与协调引擎多轮对话生成画布 JSON；`flow_proposal` 事件经全局 WebSocket 以 `session_id`（无 `task_id`）推送到 `apps/web/src/stores/workflowGenStore.ts`，前端渲染进可编辑画布预览（`FlowCanvas` 通过 ref 暴露 `getSteps()` / `validate()` / `loadSteps()`）。AI 助手消息/气泡/元信息/底部统计一律复用任务对话的公共组件（见下方 LLM 消息组件统一条目）；让用户选择方案时必须返回**可点选的提案卡片列表**（标题 + 步数 + 摘要 + 应用态），不要用纯文本段落替代。
-- 任务说明等任何 markdown 富文本**编辑**一律使用通用组件 `apps/web/src/components/MarkdownEditor.tsx`（编辑/预览切换 + 图片粘贴/插入）；纯展示用 `apps/web/src/components/MarkdownMessage.tsx`。禁止自建 textarea + 图片上传的重复实现。图片经 `/api/fs/upload/image` 上传到项目 `.workstep/uploads/`，markdown 中以项目相对路径 `项目名/.workstep/uploads/<uuid>.<ext>` 存储（对 LLM prompt 有意义），预览时由 `MarkdownMessage` 自动映射回 `/api/fs/serve/...`。
-- LLM 消息组件统一：所有对话/消息渲染（任务对话 `apps/web/src/pages/TaskDetail.tsx` 的历史消息、实时协调消息、实时阶段执行消息、旧执行消息，以及 AI 流程助手 `apps/web/src/components/AiFlowChat.tsx`）一律由三个共享组件组合渲染，禁止在页面里另写气泡、状态栏或底部统计：
-  - 气泡：`apps/web/src/components/ChatMessageBubble.tsx`（头像 + 气泡 + 元信息栏/提案卡片插槽 + 加载/错误态；用户消息右侧、助手/系统/审核消息左侧）；
-  - 元信息栏：`apps/web/src/components/MessageMetaBar.tsx`（时间 + 过程轨迹 + 会话 ID 复制 + 查看提示词）；
-  - 底部统计：`apps/web/src/components/MessageResponseFooter.tsx`（Token/引擎/模型 + 复制按钮）。
-  后续样式调整只改上述组件一处即可全局生效；新增消息类型（如审核、提案）也应复用这三个组件。
-- 聊天输入框统一使用 `apps/web/src/components/ChatInput.tsx`，设计参照 Codex composer：一个圆角边框容器内包含自适应 textarea + 底部工具行（左侧图片上传/粘贴按钮，右侧引擎/模型选择胶囊 + 发送/停止按钮），聚焦时容器显示 accent 边框与光环，含 Enter 发送、生成中旋转加载；任务对话与 AI 流程助手必须共用，禁止在页面里另写一套输入框样式、图片上传或粘贴逻辑。引擎/模型选择弹出菜单内容用公共组件 `apps/web/src/components/CoordinatorConfigBar.tsx`（内部负责拉取引擎模型列表），两处聊天通过 `ChatInput` 的 `config` prop 传入各自的选择状态与回调（任务详情持久化到任务协调配置，AI 流程助手仅会话级覆盖）；图片上传通过 `imageAttach` prop 传入 `projectId`/`prefix`/`onError`。两处输入框高度由 `ChatInput` 统一默认值（`rows=1, minHeight=40, maxHeight=120`），调用方不得再单独覆盖。
-- 弹框布局（添加流程等）：表单/名称放顶部，主内容区（如聊天 + 画布预览）占满剩余高度且可拖动分隔条调整比例；弹框应支持右下角拖拽缩放；内容高度不足时优先保证可用高度，不要给输入区写死过矮的高度。
-- 全局样式污染防护：在 `.modal` / `.modal-body` 等受全局表单样式影响的作用域内使用公共组件时，先检查全局 `label / input / select / textarea` 选择器是否会覆盖组件样式（例：`.modal-body label` 的 `display:block; margin` 会把 `ChatInput` 图片按钮挤错位）；公共组件关键样式用高特异性选择器防御（如 `.modal-body label.chat-input-attach`），并在改动后于 modal 场景内人工核对。
-- 聊天输入细节（`ChatInput.tsx`）：
-  - 聊天输入发送/停止图标：发送按钮为 **30px 圆形**；发送图标使用 Lucide 风格 send 图标（13px SVG，`viewBox="0 0 24 24"`，`fill="none"` + `stroke="currentColor"` `strokeWidth=1.6`，路径 `M22 2 11 13` 与 `m22 2-7 20-4-9-9-4z`）；停止时用 12px 圆角方块（CSS div + `currentColor`）；生成中显示旋转 spinner；按钮与输入框底部对齐，避免「按钮对不齐 / 图标太小」；
-  - 图片上传按钮选中态：输入内容已含 `![图片](...)` 时按钮显示 accent 色 + 右下角对勾徽标，图标保持描边、不要填充成实心；
-  - 引擎/模型弹层（`CoordinatorConfigBar` menu 变体）用「左标签 + 右下拉」行布局：标签（引擎/推理/快速/图片理解）常驻、下拉不占满整行宽度，用户选中后仍能看出每行含义。
-- 复用一致性原则：同一 UI 出现在两处及以上（聊天输入、LLM 消息、引擎/模型配置、图片上传、提案卡片）必须抽公共组件并统一默认值；新功能先复用现有公共组件，改一处全局生效，禁止在页面里复制实现导致两处漂移（例：输入框高度曾因一处传 `rows=2`、一处用默认值而不一致）。
-- i18n 文案规范：功能开发不被翻译阻塞。新增用户可见文案一律写入 `apps/web/src/i18n/locales/zh-CN.ts`（中文）；`en-US.ts` / `zh-TW.ts` / `ja-JP.ts` 等其它语言词典允许先用中文占位（复制中文文案即可），翻译后续批量补齐；不得因等待翻译而阻塞功能开发、测试与发布。词典键结构需与 zh-CN 保持一致（`apps/web/tests/i18n.test.ts` 会校验各语言词典键集合一致、无空值）。
-- 前端展示「进行中」「审核中」等异步处理中状态时，状态文字旁必须显示持续旋转的加载图标，明确反馈任务仍在执行；任务结束、暂停或等待用户操作后停止旋转。
+- **优先复用**：同一 UI 出现两次即抽公共组件并统一默认值，禁止复制实现。现有入口：消息用 `ChatMessageBubble` + `MessageMetaBar` + `MessageResponseFooter`；输入用 `ChatInput`（配置菜单用 `CoordinatorConfigBar`）；Markdown 编辑/展示用 `MarkdownEditor` / `MarkdownMessage`；确认用 `ConfirmDialog`。
+- **交互与校验**：禁用原生 `alert/confirm`。必填项为空时提交类按钮禁用；触发类按钮（如「AI 创建」）可点击，但须在弹框固定高度区域提示、聚焦缺失字段。侧边面板有改动时，关闭前用 `ConfirmDialog` 确认；无改动时遮罩点击直接关闭。
+- **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
+- **流程与模板**：新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。
+- **助手架构**：所有新助手和后续助手能力扩展必须建立在同一套基础设施上，禁止复制会话、流式事件、停止、引擎配置或聊天 UI 实现。后端通过 `assistant_base.py` 的 `AssistantConfig` 注册并复用 `AssistantRuntime`，仅提供助手自己的 system prompt、上下文构建、结构化结果解析/校验和发布逻辑；创建态会话默认仅内存，需要跨重启恢复时才增加持久化适配器。前端通过 `createAssistantStore(config)` 创建配置实例，统一使用 `AssistantChatPanel`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter` 和 `ChatInput`；助手特有 UI 只通过组合插槽或薄包装组件扩展。每个助手必须使用独立 WebSocket `channel` 并按 channel 分流，结构化结果通过通用 store 的 `resultEvent` / `proposalEvent` 配置接入，不得让其它助手 store 接收。AI 流程助手统一用 `AiFlowChat`；方案选择必须呈现可点击的提案卡片（标题、步数、摘要、应用态）。新增助手必须覆盖会话隔离、结构化结果、停止、错误、无意外落库及既有助手回归测试。
+- **聊天与 Markdown**：任务对话和 AI 流程助手共用上述聊天组件，不得覆盖 `ChatInput` 的统一高度或重复实现上传/粘贴。Markdown 图片上传至项目 `.workstep/uploads/`，正文保存项目相对路径，并由 `MarkdownMessage` 映射预览地址。
+- **布局与样式**：复杂弹框顶部放表单，主区域占满余高、支持分隔拖动和弹框缩放；避免写死过矮高度。公共组件放入 modal 后须检查全局表单样式污染，必要时提高选择器特异性并人工核对。
+- **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
+- **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
+- **i18n**：新增文案先写 `zh-CN.ts`；其他词典可暂用中文占位，但键集合必须一致且非空（由 `apps/web/tests/i18n.test.ts` 校验）。
 
 ## 技术架构（已确定）
 
@@ -117,9 +105,11 @@ npm run build
 | Hermes | JSON-RPC 双向 | JSON-RPC | 无 | P2 实现 |
 | Claude / Codex / Qoder Agent SDK | 官方 SDK 进程内驱动 | 消息流 | 视 SDK | 已实现 |
 | OpenClaw | 待调研 | 待调研 | 待定 | P5 实现 |
-| API 直调 | HTTP POST | SSE 流式 | 无 | P5 实现 |
+| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无 | 已实现 |
 
-统一内部事件：`text_delta`、`thinking_delta`、`tool_use`、`tool_result`、`usage`、`compacted`（上下文已自动压缩）、`error`、`status`。
+统一内部事件（`apps/daemon/engines/core/events.py`）：
+- 执行流：`status`、`text_delta`、`thinking_delta`、`tool_use`、`tool_input_delta`（实时专用，不持久化）、`tool_result`、`usage`、`compacted`（上下文已自动压缩）、`error`
+- 会话与交互：`session_started`（可复用引擎会话标识）、`live_message`（阶段中途插入消息）、`interaction_request`（权限申请 / 提问弹窗，ACP 语义）、`interaction_response`（弹窗用户回复）、`plan`（ACP 执行计划快照）、`subagent`（子代理 / 后台任务生命周期事件）、`engine_state`（进程内引擎状态快照）
 
 ## 数据模型
 
