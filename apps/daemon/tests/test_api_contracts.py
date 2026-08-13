@@ -1386,6 +1386,40 @@ async def test_file_endpoint_serves_raw_html_for_browser_preview(api_context):
 
 
 @pytest.mark.anyio
+async def test_raw_file_endpoint_mirrors_the_filesystem_path(api_context):
+    client, tmp_path = api_context
+    site_dir = tmp_path / "docs site"
+    site_dir.mkdir()
+    (site_dir / "index.html").write_text('<link rel="stylesheet" href="./style.css">')
+    (site_dir / "style.css").write_text("body { color: red; }")
+
+    # Path-based URL keeps relative assets inside HTML working.
+    raw = await client.get(
+        f"/api/fs/raw/{site_dir.resolve().as_posix().lstrip('/')}/index.html"
+    )
+    assert raw.status_code == 200
+    assert raw.headers["content-type"].startswith("text/html")
+    assert "style.css" in raw.text
+
+    css = await client.get(
+        f"/api/fs/raw/{site_dir.resolve().as_posix().lstrip('/')}/style.css"
+    )
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert "red" in css.text
+
+    missing = await client.get(
+        f"/api/fs/raw/{site_dir.resolve().as_posix().lstrip('/')}/nope.html"
+    )
+    assert missing.status_code == 404
+
+    directory = await client.get(
+        f"/api/fs/raw/{site_dir.resolve().as_posix().lstrip('/')}"
+    )
+    assert directory.status_code == 400
+
+
+@pytest.mark.anyio
 async def test_open_directory_uses_the_artifacts_parent(
     api_context,
     monkeypatch,

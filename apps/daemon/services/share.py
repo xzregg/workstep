@@ -182,25 +182,40 @@ def resolve_share_session(session_token: str) -> dict | None:
     ctx = _SHARE_SESSIONS.get(session_token)
     if not ctx:
         return None
-    # Confirm the share is still active.
-    try:
-        share = (
-            TaskShare.select()
-            .where(
-                (TaskShare.id == ctx["share_id"])
-                & (TaskShare.revoked == 0)
+    # TaskShare rows live inside per-project databases and the global
+    # db_proxy may be bound to any project, so scan registered projects
+    # (same pattern as resolve_share_by_token / verify_share_password).
+    from services.project import project_manager
+    from models import db_proxy
+    for project in project_manager.iter_projects():
+        if project.db.is_closed():
+            try:
+                project.db.connect(reuse_if_open=True)
+            except Exception:
+                continue
+        token_ctx = db_proxy.activate(project.db)
+        try:
+            share = (
+                TaskShare.select()
+                .where(
+                    (TaskShare.id == ctx["share_id"])
+                    & (TaskShare.revoked == 0)
+                )
+                .get()
             )
-            .get()
-        )
-    except TaskShare.DoesNotExist:
-        _SHARE_SESSIONS.pop(session_token, None)
-        return None
-    return {
-        "share_id": share.id,
-        "token": share.token,
-        "task_id": share.task_id,
-        "project_id": ctx["project_id"],
-    }
+        except TaskShare.DoesNotExist:
+            continue
+        finally:
+            db_proxy.reset(token_ctx)
+        return {
+            "share_id": share.id,
+            "token": share.token,
+            "task_id": share.task_id,
+            "project_id": ctx["project_id"],
+        }
+    # The share was revoked or its project is no longer registered.
+    _SHARE_SESSIONS.pop(session_token, None)
+    return None
 
 
 def invalidate_session(session_token: str) -> None:

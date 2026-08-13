@@ -8,6 +8,7 @@ import {
   getCachedEngineModels,
   type CoordinatorEngineSummary,
   type EngineModel,
+  type ProviderInfo,
 } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
@@ -33,7 +34,12 @@ export interface CoordinatorConfigBarProps {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  /** Enabled providers for the built-in Pydantic AI engine's dynamic config. */
+  providers?: ProviderInfo[]
+  /** '' = follow the default provider. */
+  providerId?: string
   onEngineChange: (engineId: string) => void
+  onProviderChange?: (providerId: string) => void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
@@ -59,7 +65,7 @@ const selectStyle: CSSProperties = {
   borderRadius: 6, background: 'var(--bg)', color: 'var(--fg)', padding: '2px 5px',
 }
 
-export const THINKING_EFFORT_LEVELS = ['minimal', 'low', 'medium', 'high'] as const
+export const THINKING_EFFORT_LEVELS = ['auto', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
 
 interface MenuOption {
   value: string
@@ -152,7 +158,10 @@ export default function CoordinatorConfigBar({
   fastModel,
   visionModel,
   thinkingEffort = '',
+  providers = [],
+  providerId = '',
   onEngineChange,
+  onProviderChange,
   onModelChange,
   onFastModelChange,
   onVisionModelChange,
@@ -169,18 +178,20 @@ export default function CoordinatorConfigBar({
   const [models, setModels] = useState<EngineModel[]>([])
 
   const engineId = engine || defaultEngine
+  const isPydanticAi = engineId === 'pydantic_ai'
   useEffect(() => {
     if (!engineId) {
       setModels([])
       return
     }
-    const cached = getCachedEngineModels(engineId)
+    const effectiveProvider = isPydanticAi ? providerId : ''
+    const cached = getCachedEngineModels(engineId, effectiveProvider)
     if (cached) {
       setModels(cached.models || [])
       return
     }
     let active = true
-    fetchEngineModels(engineId)
+    fetchEngineModels(engineId, false, effectiveProvider)
       .then((result) => {
         if (active) setModels(result.models || [])
       })
@@ -188,7 +199,7 @@ export default function CoordinatorConfigBar({
         if (active) setModels([])
       })
     return () => { active = false }
-  }, [engineId])
+  }, [engineId, providerId, isPydanticAi])
 
   const modelDisabled = disabled || models.length === 0
   const isMenu = variant === 'menu'
@@ -237,6 +248,23 @@ export default function CoordinatorConfigBar({
                 })),
             ]}
           />
+          {isPydanticAi && onProviderChange && (
+            <MenuField
+              label={t('coord.provider')}
+              title={t('coord.providerTitle')}
+              value={providerId}
+              placeholder={t('coord.providerFollow')}
+              disabled={disabled}
+              icon="terminal"
+              onChange={onProviderChange}
+              options={[
+                { value: '', label: t('coord.providerFollow') },
+                ...providers
+                  .filter((item) => item.enabled)
+                  .map((item) => ({ value: item.id, label: item.name || item.id })),
+              ]}
+            />
+          )}
           <MenuField
             label={t('coord.reasoning')}
             title={t('coord.reasoningTitle')}
@@ -313,6 +341,20 @@ export default function CoordinatorConfigBar({
             title={engineTitle ?? t('coord.engineTitle')}
             style={engineStyle}
           />
+          {isPydanticAi && onProviderChange && (
+            <Select
+              value={providerId}
+              disabled={disabled}
+              onChange={(event) => onProviderChange(event.target.value)}
+              title={t('coord.providerTitle')}
+              style={fieldStyle}
+            >
+              <option value="">{t('coord.providerFollow')}</option>
+              {providers.filter((item) => item.enabled).map((item) => (
+                <option key={item.id} value={item.id}>{item.name || item.id}</option>
+              ))}
+            </Select>
+          )}
           <Select
             value={model}
             disabled={modelDisabled}

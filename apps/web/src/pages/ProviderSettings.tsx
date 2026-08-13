@@ -7,6 +7,7 @@ import Input from '../components/Input'
 import Select from '../components/Select'
 import {
   providerApi,
+  type EngineModel,
   type ProviderInfo,
   type ProviderImportResult,
   type ProviderImportSource,
@@ -101,7 +102,9 @@ export default function ProviderSettings({ onChanged }: Props) {
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({})
   const [modelsLoadingId, setModelsLoadingId] = useState<string | null>(null)
   const [modelCounts, setModelCounts] = useState<Record<string, number>>({})
+  const [modelFetchedAt, setModelFetchedAt] = useState<Record<string, string | null>>({})
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
+  const [modelLists, setModelLists] = useState<Record<string, EngineModel[]>>({})
   const [deleting, setDeleting] = useState<ProviderInfo | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [importOpen, setImportOpen] = useState(false)
@@ -120,6 +123,26 @@ export default function ProviderSettings({ onChanged }: Props) {
       const result = await providerApi.list()
       setProviders(result.providers)
       setTypes(result.types)
+      setModelCounts(Object.fromEntries(
+        result.providers.map((item) => [item.id, item.model_count]),
+      ))
+      setModelFetchedAt(Object.fromEntries(
+        result.providers.map((item) => [item.id, item.models_fetched_at]),
+      ))
+      const lists: Record<string, EngineModel[]> = {}
+      await Promise.all(
+        result.providers
+          .filter((item) => item.models_fetched_at)
+          .map(async (item) => {
+            try {
+              const models = await providerApi.models(item.id, false)
+              lists[item.id] = models.models
+            } catch {
+              // 缓存读取失败时保持空列表，行内状态仍会显示获取时间
+            }
+          }),
+      )
+      setModelLists(lists)
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('providerSettings.loadFailed'))
@@ -293,8 +316,13 @@ export default function ProviderSettings({ onChanged }: Props) {
       return next
     })
     try {
-      const result = await providerApi.models(provider.id)
+      const result = await providerApi.models(provider.id, true)
+      setModelLists((current) => ({ ...current, [provider.id]: result.models }))
       setModelCounts((current) => ({ ...current, [provider.id]: result.models.length }))
+      setModelFetchedAt((current) => ({
+        ...current,
+        [provider.id]: result.fetched_at || null,
+      }))
       if (result.error) {
         setModelErrors((current) => ({ ...current, [provider.id]: String(result.error) }))
       }
@@ -443,6 +471,7 @@ export default function ProviderSettings({ onChanged }: Props) {
           {providers.map((provider) => {
             const testResult = testResults[provider.id]
             const modelCount = modelCounts[provider.id]
+            const modelList = modelLists[provider.id] || []
             return (
               <div
                 key={provider.id}
@@ -497,6 +526,39 @@ export default function ProviderSettings({ onChanged }: Props) {
                         × {t('providerSettings.modelsFailed')}: {modelErrors[provider.id]}
                       </div>
                     )}
+                    {modelFetchedAt[provider.id] ? (
+                      <div role="status" style={{ marginTop: 4, fontSize: 11, color: 'var(--success)' }}>
+                        ✓ {t('providerSettings.modelsFetched', { count: modelCounts[provider.id] ?? 0 })}
+                        {' · '}
+                        {t('providerSettings.modelsFetchedAt', { time: modelFetchedAt[provider.id] ?? '' })}
+                      </div>
+                    ) : (
+                      <div role="status" style={{ marginTop: 4, fontSize: 11, color: 'var(--meta)' }}>
+                        {t('providerSettings.modelsNotFetched')}
+                      </div>
+                    )}
+                    {modelList.length > 0 && (
+                      <div role="list" style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {modelList.map((model) => (
+                          <span
+                            key={model.id}
+                            role="listitem"
+                            title={model.description || model.label || model.id}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              fontSize: 11,
+                              background: 'var(--surface)',
+                              color: 'var(--text)',
+                              border: '1px solid var(--border)',
+                              overflowWrap: 'anywhere',
+                            }}
+                          >
+                            {model.label || model.id}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
@@ -518,14 +580,6 @@ export default function ProviderSettings({ onChanged }: Props) {
                     {modelCount !== undefined && !modelsLoadingId && (
                       <span style={{ marginLeft: 4, color: 'var(--meta)' }}>{modelCount}</span>
                     )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                    disabled
-                    title={t('providerSettings.balanceHint')}
-                  >
-                    {t('providerSettings.balance')}
                   </Button>
                   <Button
                     variant="ghost"

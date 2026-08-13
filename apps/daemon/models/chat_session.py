@@ -23,6 +23,7 @@ class ChatSession(BaseModel):
     engine = pw.TextField()
     model = pw.TextField(null=True)
     fast_model = pw.TextField(null=True)
+    provider_id = pw.TextField(null=True)
     engine_session_id = pw.TextField(null=True)
     engine_state_json = pw.TextField(null=True)
     permission_mode = pw.TextField(null=True)

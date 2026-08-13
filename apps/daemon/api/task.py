@@ -270,6 +270,7 @@ async def update_coordinator_config(
             req.fast_model,
             req.vision_model,
             req.thinking_effort,
+            req.provider_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

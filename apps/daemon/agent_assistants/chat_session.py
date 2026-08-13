@@ -31,6 +31,8 @@ from agent_assistants.base import (
     PersistenceAdapter,
     SCOPE_CHAT,
     assistant_registry,
+    repair_message_times,
+    validate_provider_override,
 )
 from services.chat_permissions import is_valid_permission_mode
 from services.config import config_store
@@ -99,7 +101,7 @@ def _preview(text: str, limit: int) -> str:
 
 def _extract_usage(events: list | None) -> dict | None:
     for event in events or []:
-        if isinstance(event, dict) and event.get("type") == "usage":
+        if isinstance(event, dict) and event.get("type") in ("usage", "usage_update"):
             data = event.get("data")
             return data if isinstance(data, dict) else dict(event)
     return None
@@ -154,6 +156,7 @@ class ChatRowPersistence(PersistenceAdapter):
             events = _load_json(item.events_json, [])
             if events:
                 message["events"] = events
+            message = repair_message_times(message)
             messages.append(message)
         return messages
 
@@ -331,6 +334,7 @@ class ChatSessionModule(AssistantRuntime):
         model: str | None = None,
         fast_model: str | None = None,
         permission_mode: str | None = None,
+        provider_id: str | None = None,
     ) -> dict:
         if not project_id:
             raise ValueError("project_id is required")
@@ -341,6 +345,7 @@ class ChatSessionModule(AssistantRuntime):
         if engine:
             self._validate_engine(engine)
             engine_id = engine
+        normalized_provider = validate_provider_override(provider_id, engine_id)
         model = model or default_model
         fast_model = fast_model or default_fast_model
         session_id = str(uuid.uuid4())
@@ -362,6 +367,7 @@ class ChatSessionModule(AssistantRuntime):
                 engine=engine_id,
                 model=model,
                 fast_model=fast_model,
+                provider_id=normalized_provider or None,
                 permission_mode=permission_mode or None,
                 created_at=now,
                 updated_at=now,
@@ -450,6 +456,7 @@ class ChatSessionModule(AssistantRuntime):
             "title": row.title or "未命名会话",
             "engine": row.engine,
             "model": row.model,
+            "provider_id": row.provider_id,
             "permission_mode": row.permission_mode or "",
             "message_count": ChatMessage.select()
             .where(ChatMessage.session == row)
@@ -473,6 +480,7 @@ class ChatSessionModule(AssistantRuntime):
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
+        provider_id: str | None = None,
     ) -> ChatAccepted:
         if not session_id:
             raise ValueError("Chat session id is required")
@@ -501,6 +509,7 @@ class ChatSessionModule(AssistantRuntime):
             thinking_effort=thinking_effort,
             permission_mode=permission_mode or None,
             plan_mode=plan_mode,
+            provider_id=provider_id,
         )
         return ChatAccepted(
             session_id=accepted.session_id,
@@ -580,26 +589,58 @@ class ChatSessionModule(AssistantRuntime):
         return prompt
 
     async def enhance_prompt(self, project_id: str, prompt: str) -> str:
-        """Rewrite a draft prompt into a clearer version via the default engine."""
-        from agent_assistants.base import invoke_engine
+        """Rewrite a draft prompt via the configured enhance provider (direct chat/completions).
 
+        未配置提示词增强供应商时回退 Pydantic AI 一次性调用；仍未配置时回退
+        协调引擎（fast model + minimal 强度 + 自动批准）。
+        """
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("提示词不能为空")
         if len(prompt) > ENHANCE_MAX_LENGTH:
             raise ValueError(f"提示词不能超过 {ENHANCE_MAX_LENGTH} 字")
-        engine_id, model, _ = self._resolve_engine_models()
-        with self._project_ctx(project_id) as project:
-            cwd = str(project.path)
-        raw, _events, _session_id = await invoke_engine(
-            engine_id,
-            model,
-            cwd,
-            f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}",
-            None,
-            None,
-            error_prefix="Enhance engine",
-        )
+        enhance_config = config_store.get_prompt_enhance_config()
+        if enhance_config["provider_id"] and enhance_config["model"]:
+            from services import providers as provider_service
+
+            provider = config_store.get_provider(enhance_config["provider_id"])
+            if provider is None:
+                raise ValueError("提示词增强的供应商不存在，请在设置中重新配置")
+            raw = await provider_service.chat_completion(
+                provider,
+                enhance_config["model"],
+                [
+                    {"role": "system", "content": ENHANCE_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                thinking="disabled",
+            )
+            result = raw.strip()
+            if not result:
+                raise ValueError("提示词增强失败，请重试")
+            return result
+        enhance_input = f"{ENHANCE_SYSTEM_PROMPT}\n\n用户提示词：\n{prompt}"
+        try:
+            from engines.pydantic_ai import PydanticAIEngine
+
+            raw = await PydanticAIEngine.run_simple(enhance_input)
+        except RuntimeError:
+            from agent_assistants.base import invoke_engine
+
+            engine_id, _model, fast_model = self._resolve_engine_models()
+            with self._project_ctx(project_id) as project:
+                cwd = str(project.path)
+            raw, _events, _session_id = await invoke_engine(
+                engine_id,
+                fast_model,
+                cwd,
+                enhance_input,
+                None,
+                None,
+                error_prefix="Enhance engine",
+                thinking_effort="minimal",
+                permission_mode="auto",
+            )
         result = raw.strip()
         if not result:
             raise ValueError("提示词增强失败，请重试")
@@ -641,7 +682,10 @@ class ChatSessionModule(AssistantRuntime):
 
     def _validate_engine(self, engine_id: str) -> None:
         candidate = create_engine(engine_id)
-        if candidate is None or not candidate.capabilities.supports_coordinator:
+        if candidate is None or not (
+            candidate.capabilities.supports_coordinator
+            or engine_id == "pydantic_ai"
+        ):
             raise ValueError(f"Chat engine is unavailable: {engine_id}")
 
     # ── per-project quick buttons ──────────────────────────────────────

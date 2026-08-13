@@ -316,7 +316,10 @@ test('describes the latest live engine activity before text arrives', () => {
   ]), '等待插入消息超时，会话已自动结束')
   assert.equal(liveExecutionStatus([
     { type: 'status', data: { status: 'done' } },
-  ]), '回复已完成，等待插入消息…')
+  ]), '处理中')
+  assert.equal(liveExecutionStatus([
+    { type: 'status', data: { status: 'done' } },
+  ], undefined, true), '回复已完成，等待插入消息…')
   assert.equal(liveExecutionStatus([]), '处理中')
 })
 

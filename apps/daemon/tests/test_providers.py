@@ -440,6 +440,125 @@ async def test_fetch_models_skips_malformed_items():
 
 
 @pytest.mark.anyio
+async def test_chat_completion_direct_call():
+    captured = {}
+
+    async def handler(request):
+        captured["url"] = str(request.url)
+        captured["headers"] = dict(request.headers)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "改写后的提示词"}}],
+        })
+
+    text = await provider_service.chat_completion(
+        {
+            "type": "deepseek",
+            "base_url": "https://gateway.example.com/v1",
+            "api_key": "sk-test",
+        },
+        "fast-model",
+        [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+        ],
+        thinking="disabled",
+        transport=httpx.MockTransport(handler),
+    )
+    assert text == "改写后的提示词"
+    assert captured["url"].endswith("/chat/completions")
+    assert captured["headers"]["authorization"] == "Bearer sk-test"
+    assert captured["body"] == {
+        "model": "fast-model",
+        "messages": [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+        ],
+        "max_tokens": 4096,
+        "stream": False,
+        "thinking": {"type": "disabled"},
+    }
+
+
+@pytest.mark.anyio
+async def test_chat_completion_falls_back_when_thinking_unsupported():
+    bodies: list[dict] = []
+
+    async def handler(request):
+        bodies.append(json.loads(request.content))
+        if "thinking" in bodies[-1]:
+            return httpx.Response(400, json={"error": "unknown param: thinking"})
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "改写后的提示词"}}],
+        })
+
+    text = await provider_service.chat_completion(
+        {"type": "custom", "base_url": "https://gateway.example.com/v1", "api_key": ""},
+        "m",
+        [{"role": "user", "content": "hi"}],
+        thinking="disabled",
+        transport=httpx.MockTransport(handler),
+    )
+    assert text == "改写后的提示词"
+    assert len(bodies) == 2
+    assert "thinking" not in bodies[1]
+
+
+@pytest.mark.anyio
+async def test_chat_completion_empty_content_raises():
+    async def handler(request):
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "", "reasoning_content": "..."}}],
+        })
+
+    with pytest.raises(RuntimeError, match="未返回内容"):
+        await provider_service.chat_completion(
+            {"type": "deepseek", "base_url": "https://gateway.example.com/v1", "api_key": "x"},
+            "m",
+            [{"role": "user", "content": "hi"}],
+            transport=httpx.MockTransport(handler),
+        )
+
+
+@pytest.mark.anyio
+async def test_chat_completion_rejects_anthropic_type():
+    with pytest.raises(ValueError, match="chat/completions"):
+        await provider_service.chat_completion(
+            {
+                "type": "anthropic",
+                "base_url": "https://api.anthropic.com/v1",
+                "api_key": "sk-ant",
+            },
+            "claude-test",
+            [{"role": "user", "content": "hi"}],
+        )
+
+
+@pytest.mark.anyio
+async def test_chat_completion_requires_config():
+    with pytest.raises(ValueError, match="供应商或模型未配置"):
+        await provider_service.chat_completion(
+            {"type": "deepseek", "base_url": "", "api_key": ""},
+            "",
+            [],
+        )
+
+
+@pytest.mark.anyio
+async def test_chat_completion_malformed_response():
+    async def handler(request):
+        return httpx.Response(200, json={"choices": []})
+
+    with pytest.raises(RuntimeError, match="响应格式异常"):
+        await provider_service.chat_completion(
+            {"type": "deepseek", "base_url": "https://gateway.example.com/v1", "api_key": "x"},
+            "m",
+            [{"role": "user", "content": "hi"}],
+            transport=httpx.MockTransport(handler),
+        )
+
+
+@pytest.mark.anyio
 async def test_test_connection_success_and_failure():
     async def ok_handler(request):
         return httpx.Response(200, json={"data": [{"id": "a"}, {"id": "b"}]})

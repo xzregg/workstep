@@ -247,8 +247,16 @@ async def inspect_engine(
 
 
 @router.get("/{engine_id}/models")
-async def list_engine_models(engine_id: str):
-    """Return selectable models through the engine adapter interface."""
+async def list_engine_models(
+    engine_id: str,
+    provider_id: str = "",
+    refresh: bool = False,
+):
+    """Return selectable models through the engine adapter interface.
+
+    Pydantic AI reads its saved per-provider model list by default;
+    ``refresh=1`` re-fetches from the provider and saves the result.
+    """
     refresh_registry(invalidate_scan=False)
     engine = create_engine(engine_id)
     if engine is None:
@@ -258,11 +266,23 @@ async def list_engine_models(engine_id: str):
             "default_model": "",
             "error": "引擎未安装或当前不可用",
         }
+    fetched_at = None
     try:
+        models_kwargs: dict = {"cwd": str(Path.cwd())}
+        if engine_id == "pydantic_ai" and provider_id.strip():
+            models_kwargs["provider_id"] = provider_id.strip()
+        if engine_id == "pydantic_ai" and refresh:
+            models_kwargs["refresh"] = True
         models = await asyncio.wait_for(
-            engine.list_models(cwd=str(Path.cwd())),
+            engine.list_models(**models_kwargs),
             timeout=15,
         )
+        if engine_id == "pydantic_ai":
+            effective_provider = (
+                provider_id.strip()
+                or config_store.get_pydantic_ai_engine_config().get("provider_id", "")
+            )
+            fetched_at = config_store.get_provider_models(effective_provider).get("fetched_at")
         error = None
     except asyncio.TimeoutError:
         models = []
@@ -274,6 +294,7 @@ async def list_engine_models(engine_id: str):
         "engine_id": engine_id,
         "models": [asdict(model) for model in models],
         "default_model": config_store.get_engine_default_model(engine_id),
+        "fetched_at": fetched_at,
         "error": error,
     }
 

@@ -38,6 +38,24 @@ class MemoryConfigStore:
     def get_engine_default_model(self, engine_id):
         return self.values.get("engine_default_models", {}).get(engine_id, "")
 
+    def get_assistant_defaults(self, name):
+        merged = {
+            "engine": self.get_coordinator_default_engine(),
+            "model": self.get_coordinator_default_model(),
+            "fast_model": self.get_coordinator_default_fast_model(),
+            "vision_model": "",
+            "thinking_effort": "",
+            "provider_id": "",
+        }
+        overrides = self.get("assistant_defaults", {})
+        overlay = overrides.get(name) if isinstance(overrides, dict) else None
+        if isinstance(overlay, dict):
+            for key in merged:
+                value = overlay.get(key)
+                if isinstance(value, str) and value.strip():
+                    merged[key] = value.strip()
+        return merged
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)
@@ -195,6 +213,13 @@ async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch)
     status = await _wait_turn(module, accepted.turn_id)
     assert status == "completed"
     assert module._turn_states[accepted.turn_id]["status"] == "completed"
+
+    session = module._sessions[(project.id, accepted.session_id)]
+    assistant_message = session.messages[-1]
+    assert assistant_message["role"] == "assistant"
+    assert assistant_message["status"] == "succeeded"
+    assert assistant_message["ended_at"]
+    assert assistant_message["created_at"] <= assistant_message["ended_at"]
 
     replayed = module.submit_message(
         project.id, None, "帮我设计一个内容发布流程", "idem-1"
@@ -541,6 +566,39 @@ async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_mod
     )
     with pytest.raises(ValueError, match="Coordinator engine is unavailable"):
         module._resolve_engine_models()
+
+
+@pytest.mark.anyio
+async def test_resolve_engine_models_keeps_builtin_with_provider(gen_module, monkeypatch):
+    """显式选择 Pydantic AI 并配置供应商后，不参与协调引擎回退。"""
+    import agent_assistants.workflow_gen as wfgen_service
+    from types import SimpleNamespace
+
+    module, bus, manager, project, config_store = gen_module
+    config_store.values["coordinator_default_engine"] = "pydantic_ai"
+    config_store.values["engine_default_models"] = {
+        "claude": "claude-default",
+        "pydantic_ai": "pai-default",
+    }
+    config_store.values["assistant_defaults"] = {
+        "workflow_gen": {"provider_id": "p-b"}
+    }
+
+    class UnconfiguredBuiltin:
+        # 全局未配置：supports_coordinator 为 False，但供应商动态配置仍应生效
+        capabilities = SimpleNamespace(supports_coordinator=False)
+        supports_resume = False
+
+    def fake_create(engine_id):
+        if engine_id == "pydantic_ai":
+            return UnconfiguredBuiltin()
+        return FakeEngine()
+
+    monkeypatch.setattr(wfgen_service, "create_engine", fake_create)
+    engine_id, model, fast_model = module._resolve_engine_models()
+    assert engine_id == "pydantic_ai"
+    assert model == "pai-default"
+    assert fast_model == "pai-default"
 
 
 @pytest.mark.anyio
@@ -1252,6 +1310,12 @@ async def test_workflow_session_history_survives_module_restart(
         assert [
             m["content"] for m in history["messages"] if m["role"] == "user"
         ] == ["设计一个流程"]
+        assistant_messages = [
+            m for m in history["messages"] if m["role"] == "assistant"
+        ]
+        assert assistant_messages
+        assert all(m["ended_at"] for m in assistant_messages)
+        assert all(m["created_at"] <= m["ended_at"] for m in assistant_messages)
 
         follow = restarted.submit_message(
             project.id,
@@ -1267,6 +1331,35 @@ async def test_workflow_session_history_survives_module_restart(
     finally:
         await restarted.shutdown()
         await bus2.close()
+
+
+def test_history_repairs_legacy_message_without_ended_at():
+    """旧数据回补：成功回合无 ended_at、created_at 为完成时刻时，历史接口补全起止时间。"""
+    from agent_assistants.base import default_history_message
+
+    legacy = default_history_message({
+        "role": "assistant",
+        "content": "ok",
+        "created_at": "2026-08-12T09:16:25.231045+00:00",
+        "events": [
+            {"type": "session_started", "data": {}, "timestamp": 1786526183803},
+            {"type": "usage", "data": {}, "timestamp": 1786526185230},
+        ],
+    })
+    assert legacy["ended_at"] == "2026-08-12T09:16:25.231045+00:00"
+    assert legacy["created_at"] == "2026-08-12T09:16:23.803000+00:00"
+    assert legacy["ended_at"] > legacy["created_at"]
+
+    # 新数据（已有 ended_at）原样保留。
+    fresh = default_history_message({
+        "role": "assistant",
+        "content": "ok",
+        "created_at": "2026-08-12T09:16:23.803000+00:00",
+        "ended_at": "2026-08-12T09:16:25.231045+00:00",
+        "events": [{"type": "status", "data": {}, "timestamp": 1786526183803}],
+    })
+    assert fresh["created_at"] == "2026-08-12T09:16:23.803000+00:00"
+    assert fresh["ended_at"] == "2026-08-12T09:16:25.231045+00:00"
 
 
 @pytest.mark.anyio

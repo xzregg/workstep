@@ -52,11 +52,15 @@ def allocate_message_sequences(task_id: str, count: int = 1) -> int:
     if count < 1:
         raise ValueError("count must be positive")
     with db_proxy.atomic():
+        # 先对齐再分配：若历史回写导致计数器落后于已有消息的最大 sequence，
+        # 在同一事务内自愈（max(next, 实际最大值+1)），避免撞号触发唯一约束冲突。
         cursor = db_proxy.execute_sql(
             "UPDATE tasks SET next_message_sequence = "
-            "next_message_sequence + ? WHERE id = ? "
+            "MAX(next_message_sequence, "
+            "COALESCE((SELECT MAX(sequence) + 1 FROM message "
+            "WHERE task_id = ?), 1)) + ? WHERE id = ? "
             "RETURNING next_message_sequence",
-            (count, task_id),
+            (task_id, count, task_id),
         )
         row = cursor.fetchone()
     if row is None:

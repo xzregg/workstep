@@ -1,10 +1,59 @@
 """Intervention — mid-execution user interaction via WebSocket."""
 
 import asyncio
+import json
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def seal_unanswered_interactions(events_json: str | None) -> str | None:
+    """Append cancelled responses for unanswered interaction requests.
+
+    Runs end without resolving every interaction when the daemon restarts, a
+    step is stopped manually, or the engine errors out. Sealing keeps every
+    ``interaction_request`` paired with a terminal ``interaction_response``
+    so the frontend never rebuilds a stale permission card from history.
+    Input without unanswered requests (or invalid input) is returned as-is.
+    """
+    if not events_json:
+        return events_json
+    try:
+        events = json.loads(events_json)
+    except (TypeError, ValueError):
+        return events_json
+    if not isinstance(events, list):
+        return events_json
+    answered = {
+        str(event["data"].get("interaction_id"))
+        for event in events
+        if event.get("type") == "interaction_response"
+        and isinstance(event.get("data"), dict)
+    }
+    appended: list[dict[str, Any]] = []
+    for event in events:
+        if event.get("type") != "interaction_request":
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            continue
+        interaction_id = str(data.get("interaction_id") or "")
+        if interaction_id and interaction_id not in answered:
+            answered.add(interaction_id)
+            appended.append({
+                "type": "interaction_response",
+                "data": {
+                    "interaction_id": interaction_id,
+                    "method": data.get("method"),
+                    "response": {"outcome": {"outcome": "cancelled"}},
+                },
+                "timestamp": int(time.time() * 1000),
+            })
+    if not appended:
+        return events_json
+    return json.dumps([*events, *appended], ensure_ascii=False)
 
 
 class InterventionManager:
@@ -43,12 +92,11 @@ class InterventionManager:
         )
 
         try:
-            # Block until user responds (with timeout)
-            response = await asyncio.wait_for(future, timeout=300)  # 5 min
-            return response
-        except asyncio.TimeoutError:
-            logger.warning("Intervention timed out: %s", intervention_id)
-            return {"error": "timeout", "message": "No response within 5 minutes"}
+            # Block until the user responds. No safety timeout: a pending
+            # permission/question request waits indefinitely — users skip
+            # permissions via engine config instead, and cancel() is the
+            # only way to unblock it without a user response.
+            return await future
         finally:
             self._pending.pop(intervention_id, None)
 

@@ -545,3 +545,42 @@ class _ApprovalProbeEngine(AcpEngineBase):
     @staticmethod
     def resolve_binary() -> str | None:
         return None
+
+
+def test_resolve_thinking_effort():
+    from engines.core.base import (
+        THINKING_EFFORT_LEVELS,
+        THINKING_EFFORT_VALUES,
+        resolve_thinking_effort,
+    )
+    assert THINKING_EFFORT_VALUES == (
+        "auto",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    )
+    assert THINKING_EFFORT_LEVELS == (
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    )
+    # 显式级别原样传递
+    for level in THINKING_EFFORT_LEVELS:
+        assert resolve_thinking_effort(level) == level
+    # 自动：不传任何强度（忽略引擎配置默认）
+    assert resolve_thinking_effort("auto") is None
+    assert resolve_thinking_effort("auto", "high") is None
+    assert resolve_thinking_effort("AUTO") is None
+    # 空值回退引擎配置默认；默认不可用时返回 None
+    assert resolve_thinking_effort("", "high") == "high"
+    assert resolve_thinking_effort(None, "xhigh") == "xhigh"
+    assert resolve_thinking_effort("") is None
+    assert resolve_thinking_effort("", "auto") is None
+    assert resolve_thinking_effort("", "ultra") is None
+    # 非法值防御性回退默认
+    assert resolve_thinking_effort("ultra", "medium") == "medium"
+    assert resolve_thinking_effort("ultra") is None

@@ -12,7 +12,9 @@ import {
 import {
   workflowGenApi,
   engineApi,
+  providerApi,
   type CoordinatorDefaultConfig,
+  type ProviderInfo,
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
 import { useI18n } from '../i18n'
@@ -87,9 +89,11 @@ export default function AiFlowChat({
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const session = useWorkflowGenStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const running = session?.running ?? false
   const messages = session?.messages ?? []
@@ -133,6 +137,16 @@ export default function AiFlowChat({
       })
     return () => { active = false }
   }, [t])
+
+  useEffect(() => {
+    let active = true
+    providerApi.list()
+      .then((result) => {
+        if (active) setProviders(result.providers.filter((item) => item.enabled))
+      })
+      .catch(() => { /* provider list is optional for the engine picker */ })
+    return () => { active = false }
+  }, [])
 
   // Workflow edit sessions reuse a stable conversation: load prior history.
   useEffect(() => {
@@ -201,6 +215,7 @@ export default function AiFlowChat({
     try {
       const accepted = await workflowGenApi.chat(projectId, content, sid, randomId(), {
         engine: selectedEngine || undefined,
+        providerId: selectedProvider || undefined,
         model: selectedModel || undefined,
         fastModel: selectedFastModel || undefined,
         thinkingEffort: selectedThinkingEffort || undefined,
@@ -229,7 +244,7 @@ export default function AiFlowChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
     }
-  }, [input, running, sessionId, projectId, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t])
+  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
     const flow = resolveA2uiFlowSteps(action, latestProposals)
@@ -327,8 +342,6 @@ export default function AiFlowChat({
           meInitials: t('aiFlow.meInitials'),
           agent: t('aiFlow.agent'),
           agentInitials: t('aiFlow.agentInitials'),
-          tag: t('aiFlow.tag'),
-          userTagTitle: t('aiFlow.userTagTitle'),
           placeholder: t('aiFlow.placeholder'),
           fullPrompt: t('aiFlow.fullPrompt'),
           closePrompt: t('aiFlow.closePrompt'),
@@ -404,6 +417,8 @@ export default function AiFlowChat({
         config={{
           engines: coordinatorConfig?.available_engines || [],
           engine: selectedEngine,
+          providers,
+          providerId: selectedProvider,
           defaultEngine: coordinatorConfig?.engine || 'claude',
           model: selectedModel,
           fastModel: selectedFastModel,
@@ -415,6 +430,14 @@ export default function AiFlowChat({
           onEngineChange: (engineId) => {
             lastCanvasSnapshotRef.current = null
             setSelectedEngine(engineId)
+            setSelectedProvider('')
+            setSelectedModel('')
+            setSelectedFastModel('')
+            setSelectedThinkingEffort('')
+          },
+          onProviderChange: (providerId) => {
+            lastCanvasSnapshotRef.current = null
+            setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
             setSelectedThinkingEffort('')
@@ -428,6 +451,7 @@ export default function AiFlowChat({
           onReset: () => {
             lastCanvasSnapshotRef.current = null
             setSelectedEngine('')
+            setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
             setSelectedThinkingEffort('')

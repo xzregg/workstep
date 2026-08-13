@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
+import { setDetailTaskIds } from '../hooks/useWebSocket'
 import { fsApi, scheduleApi, type DirectoryOpener } from '../api/client'
 import TaskDetail from './TaskDetail'
 import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
@@ -16,6 +17,8 @@ import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
+import { formatDuration } from '../utils/datetime'
+import { formatTokenTotal } from '../utils/statistics'
 import SchedulePage from './SchedulePage'
 import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
 
@@ -159,7 +162,7 @@ function deriveTaskLane(
 }
 
 export default function TaskList() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const navigate = useNavigate()
   const openerDisplayLabel = (opener: DirectoryOpener) =>
     opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
@@ -178,6 +181,13 @@ export default function TaskList() {
   const [confirmArchiveTaskId, setConfirmArchiveTaskId] = useState<string | null>(null)
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+
+  // Subscribe the daemon to this task's full event stream while its
+  // detail panel is open; unsubscribe when closed or navigating away.
+  useEffect(() => {
+    setDetailTaskIds(selectedTaskId ? [selectedTaskId] : [])
+    return () => setDetailTaskIds([])
+  }, [selectedTaskId])
   const [scheduleCount, setScheduleCount] = useState(0)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
   const [newTitle, setNewTitle] = useState('')
@@ -911,7 +921,15 @@ export default function TaskList() {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1 }}>{task.title}</span>
+                        <span
+                          title={task.title}
+                          style={{
+                            fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {task.title.length > 20 ? task.title.slice(0, 20) + '…' : task.title}
+                        </span>
                         <span
                           className="status-badge"
                           data-s={displayStatus}
@@ -950,8 +968,17 @@ export default function TaskList() {
                           {task.description}
                         </div>
                       )}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div className="card-actions" style={{ display: 'flex', gap: 2, width: '100%', opacity: 0, transition: 'opacity var(--motion-fast)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                        {taskCompleted && task.duration_ms != null && (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+                          }}>
+                            <Icon name="clock" size={11} strokeWidth={2} />
+                            {t('taskList.duration')} {formatDuration(task.duration_ms, t)}
+                          </span>
+                        )}
+                        <div className="card-actions" style={{ display: 'flex', gap: 2, flex: 1, opacity: 0, transition: 'opacity var(--motion-fast)' }}>
           {taskNotStarted && status !== 'running' && (
             <Button
               variant="icon"
@@ -964,6 +991,17 @@ export default function TaskList() {
             >
               ▶️
             </Button>
+          )}
+          {(task.total_tokens ?? 0) > 0 && (
+            <span
+              title={t('taskList.tokensTitle')}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+              }}
+            >
+              {formatTokenTotal(task.total_tokens as number, locale)} {t('taskList.tokens')}
+            </span>
           )}
           <Button variant="icon" title={t('common.edit')} onClick={(e) => { e.stopPropagation(); handleSelectTask(task.id) }} style={{ width: 22, height: 22 }}>
             <Icon name="pencil" size={12} strokeWidth={2} />

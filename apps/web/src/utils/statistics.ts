@@ -1,3 +1,12 @@
+export function formatTokenTotal(value: number, locale = 'zh-CN'): string {
+  if (!Number.isFinite(value)) return '—'
+  if (Math.abs(value) >= 10_000) {
+    return `${(value / 10_000).toFixed(2)} 万`
+  }
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value)
+}
+
+
 export function formatCompactMetric(value: number, locale: string): string {
   if (!Number.isFinite(value)) return '—'
   return new Intl.NumberFormat(locale, {

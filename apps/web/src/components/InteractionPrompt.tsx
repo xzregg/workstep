@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import Button from './Button'
 import Textarea from './Textarea'
+import { ApiError } from '../api/client'
 import { useI18n } from '../i18n'
 import {
   buildInteractionResponse,
@@ -98,7 +99,13 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
       await onRespond(request.interaction_id, nextResponse)
       setSubmittedResponse(nextResponse)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('interaction.submitFailed'))
+      if (reason instanceof ApiError && reason.status === 404) {
+        // 该交互已不在后端等待（daemon 重启或已在别处响应）：
+        // 视为已失效关闭卡片，避免假死弹框。
+        setSubmittedResponse(cancelInteractionResponse(request))
+      } else {
+        setError(reason instanceof Error ? reason.message : t('interaction.submitFailed'))
+      }
     } finally {
       setSubmitting(false)
     }

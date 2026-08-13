@@ -331,6 +331,19 @@ async def serve_file(path: str):
     return FileResponse(file_path, media_type=content_type or "application/octet-stream")
 
 
+@router.get("/raw/{full_path:path}")
+async def serve_raw_file(full_path: str):
+    """Serve a file at a URL mirroring its filesystem path so relative assets
+    inside HTML resolve correctly (e.g. /api/fs/raw/Users/me/proj/index.html)."""
+    file_path = Path("/" + full_path).expanduser().resolve()
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+
+
 @router.get("/preview")
 async def preview_file(path: str):
     """Preview a file content for display."""

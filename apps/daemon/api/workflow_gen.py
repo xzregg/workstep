@@ -17,6 +17,7 @@ class WorkflowGenChatRequest(BaseSchema):
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
+    provider_id: str | None = None
     thinking_effort: str | None = None
     steps: dict | None = None
     workflow_name: str | None = None
@@ -85,6 +86,7 @@ async def workflow_gen_chat(
             engine=req.engine,
             model=req.model,
             fast_model=req.fast_model,
+            provider_id=req.provider_id,
             thinking_effort=req.thinking_effort,
             steps=req.steps,
             workflow_name=req.workflow_name,

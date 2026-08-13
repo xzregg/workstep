@@ -22,7 +22,7 @@ from services.prompt import assemble_prompt
 from services.review_gate import ReviewGate
 from services.config import config_store
 from services.messages import create_task_message, new_message_id
-from services.intervention import intervention_manager
+from services.intervention import intervention_manager, seal_unanswered_interactions
 from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
 from engines.core.agui import AGUIContext, to_agui_events
@@ -802,6 +802,31 @@ class TaskRunner:
                         ended_at=outcome.review_run.ended_at,
                         created_at=rnow,
                     )
+                    # 审核消息已持久化：实时推送完整消息事件，前端据此刷新
+                    # reviews / history（否则打开面板期间不会显示审核消息）。
+                    await self._publish(task.id, step_key, {
+                        "channel": "review",
+                        "message_id": rmsg_id,
+                        "engine": outcome.review_run.engine,
+                        "model": outcome.review_run.model,
+                        "event_sequence": 0,
+                        "type": "message_started",
+                        "data": {"content": rcontent},
+                        "created_at": rnow.isoformat(),
+                    })
+                    await self._publish(task.id, step_key, {
+                        "channel": "review",
+                        "message_id": rmsg_id,
+                        "engine": outcome.review_run.engine,
+                        "model": outcome.review_run.model,
+                        "event_sequence": 1,
+                        "type": "message_completed",
+                        "data": {
+                            "status": "completed",
+                            "content": rcontent,
+                        },
+                        "created_at": rnow.isoformat(),
+                    })
 
                 await self._publish(task.id, step_key, {
                     "type": "status",
@@ -832,7 +857,9 @@ class TaskRunner:
             try:
                 if not interrupted_by_shutdown:
                     msg = Message.get_by_id(msg_id)
-                    msg.events_json = json.dumps(events_collected)
+                    msg.events_json = seal_unanswered_interactions(
+                        json.dumps(events_collected, ensure_ascii=False)
+                    )
                     msg.usage_json = extract_usage_json(events_collected)
                     msg.content = "".join(content_parts)
                     if run_key in self._cancelled_steps:

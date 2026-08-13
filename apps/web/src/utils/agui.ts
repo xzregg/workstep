@@ -108,6 +108,8 @@ export const CUSTOM = {
   stepRetrying: 'workstep.step_retrying',
   stepRework: 'workstep.step_rework',
   runRecovered: 'workstep.run_recovered',
+  reviewStatus: 'workstep.review_status',
+  reviewResult: 'workstep.review_result',
   reviewContext: 'workstep.review_context',
   sessionInfoUpdate: 'workstep.session_info_update',
   availableCommandsUpdate: 'workstep.available_commands_update',

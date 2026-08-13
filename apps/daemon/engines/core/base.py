@@ -20,6 +20,39 @@ from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineImage
 
 
+# WorkStep thinking-effort values. ``"auto"`` means "let the engine decide":
+# no per-turn effort is sent, and engine-config effort defaults are ignored so
+# the model/provider picks. The remaining levels map to each engine's own
+# supported set (engines without a level map to the closest one, e.g. Claude
+# ``minimal -> low``, pydantic-ai ``xhigh -> high`` on providers without it).
+THINKING_EFFORT_LEVELS = ("minimal", "low", "medium", "high", "xhigh")
+THINKING_EFFORT_VALUES = ("auto",) + THINKING_EFFORT_LEVELS
+
+
+def resolve_thinking_effort(
+    value: str | None,
+    engine_default: str | None = None,
+) -> str | None:
+    """Resolve one thinking-effort value into the engine-level override.
+
+    - ``"auto"`` → ``None``: never send a forced level (model decides).
+    - ``""`` / ``None`` → falls back to ``engine_default`` (follow engine
+      config); an unusable default also resolves to ``None``.
+    - ``minimal/low/medium/high/xhigh`` → that level, passed through.
+    - anything else → ``engine_default`` (defensive; validation upstream
+      already rejects unknown values).
+    """
+    value = (value or "").strip().lower()
+    if value == "auto":
+        return None
+    if value in THINKING_EFFORT_LEVELS:
+        return value
+    default = (engine_default or "").strip().lower()
+    if default == "auto":
+        return None
+    return default if default in THINKING_EFFORT_LEVELS else None
+
+
 async def sdk_turn_watchdog(
     turn_ended: asyncio.Event,
     on_idle: Callable[[], None],
@@ -403,7 +436,11 @@ class BaseLLMEngine(ABC):
 
     @property
     def supports_workstep_tools(self) -> bool:
-        """Whether this engine can load WorkStep internal tools (list/create)."""
+        """Whether this engine can host the native ``workstep_call`` tool.
+
+        This is a transport mechanism only: whether an assistant loads the
+        WorkStep internal tools is decided by assistant config, not here.
+        """
         return False
 
 
@@ -411,5 +448,3 @@ class BaseLLMEngine(ABC):
     def supports_vision(self) -> bool:
         """Whether the engine can accept image content for multimodal models."""
         return False
-
-

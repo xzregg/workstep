@@ -144,7 +144,7 @@ SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程�
 | `install_command()` | 否 | 返回该引擎可执行的安装命令字符串；不支持自动安装时返回 `None`。 |
 | `install()` | 否 | 安装该引擎所需运行时（CLI 二进制或 Python SDK）。基类默认返回「无需安装」。 |
 | `config_schema()` / `get_config_values()` / `save_config_values()` 等 | 否 | 有专属配置时声明（见 4.6）。 |
-| `supports_vision` / `supports_workstep_tools` / `supports_thinking_effort` 等 | 否 | 如实声明能力，不夸大。 |
+| `supports_vision` / `supports_workstep_tools` / `supports_thinking_effort` 等 | 否 | 如实声明能力，不夸大。`supports_workstep_tools` 只表示引擎能承载原生 `workstep_call` 工具（机制）；哪个助手加载它由助手配置决定。 |
 
 ### 3.2 `AcpEngineBase` 协议方法（按引擎类型覆盖）
 
@@ -242,6 +242,12 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
 
 协调 Agent 使用只读 turn：基类 `spawn_coordinator` 自动加读保护指令并透传 `spawn`；支持 `message_history`（Pydantic AI）的引擎通过 `report_engine_state` 上报可序列化状态。一般无需覆盖。
 
+WorkStep 内部工具（`workstep_call`）不是引擎层能力：由助手在
+`AssistantConfig.workstep_tools` 声明是否加载，引擎仅按 `workstep_tools`
+标志决定是否注册原生工具；提示词不注入工具文档（docstring 即接口文档）。
+PydanticAI 引擎在 `spawn(..., workstep_tools=True)` 时注册该工具；其他引擎
+如实声明 `supports_workstep_tools=False`，不注册、提示词不变。
+
 ### 4.6 配置模板
 
 引擎有专属配置时，在实现类上声明 `config_schema()` 并实现 `get_config_values()`、`get_config_secrets()`、`save_config_values()`、`reveal_config_value()`。设置页从 `/api/engine/list` 内嵌的模板自动渲染表单，保存走通用 `PUT /api/engine/{id}/config`，不需要为引擎编写专有配置接口。
@@ -257,9 +263,33 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
 | Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`、`max_turns`、`fallback_model` | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
-| Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id`、`model`、`mcp_servers`、`thinking_effort` | 供应商 base_url/key 构建模型，`model_settings.thinking` 映射推理强度 |
+| Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；harness 扩展不暴露配置、固定 `auto`：已安装 `pydantic-ai-harness` 时挂载压缩与持久化能力，否则回退 `message_history`（见 4.7） |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
+
+### 4.7 Pydantic AI harness 扩展（上下文压缩与会话持久化）
+
+`pydantic-ai-harness` 是 PydanticAI 引擎的**可选扩展**（不是独立引擎、也不替代
+`AcpEngineBase` 的会话/审批缝）：引擎按 `auto` 规则在 `Agent(..., capabilities=[...])` 挂载
+harness 能力，其余协议行为（spawn / interaction / AG-UI 翻译）保持不变。
+
+- 开关：动态配置不暴露 `harness` 字段（见 4.6），引擎固定按 `auto` 处理——已安装
+  `pydantic-ai-harness` 且项目根存在时挂载能力；未安装或项目根缺失时回退到原有
+  `message_history` 内存往返，行为不变。保存引擎配置时统一写回 `harness="auto"`。
+- 挂载能力（`_harness_capabilities`）：
+  - `TieredCompaction(target_fraction=0.9, tiers=[ClearToolResults(max_messages=200, keep_pairs=10), SummarizingCompaction(max_messages=120, keep_messages=30, receipts=True)])`：上下文超限时自动压缩；
+  - `WarnNearLimits(max_context_fraction=0.85)`：接近上限时告警；
+  - `StepPersistence(store, agent_name="workstep")`：会话持久化，store 为
+    `SqliteStepStore(database=<项目根>/.workstep/harness_runs.db)`。
+- 会话恢复：`spawn(..., session_id=...)` 开启时以 `conversation_id=session_id` 调用
+  `continue_run` 恢复最新 run；无历史 run 时回退 `message_history`。持久化后不再依赖
+  `engine_state` 往返携带消息历史（`engine_state` 事件仍保留用于协调只读 turn）。
+- `compacted` 事件：本轮压缩接收（receipt）在 run 结束后经 `open_receipt_scope` /
+  `drain_receipts` 排空，映射为 `InternalEvent("compacted", {"summary": ...})`
+  （`acp_events` 已声明 `compacted`，见 5.2）。
+
+关键参考：https://pydantic.dev/docs/ai/harness/compaction/ ；能力类位于
+`pydantic_ai_harness.compaction` / `pydantic_ai_harness.step_persistence`。
 
 ## 5. `InternalEvent` 协议（ACP 词汇）
 
@@ -290,7 +320,7 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
 | `interaction_request` | `interaction_id`、`method` | 暂停执行并请求用户确认或输入；载荷采用 ACP `session/request_permission` 或 `elicitation/create` 形状。 |
 | `interaction_response` | `interaction_id`、`method`、`response` | 用户响应已送回引擎；与请求一起持久化，供消息历史恢复交互状态。 |
 | `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。同时并入 `plan` 快照条目。 |
-| `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`）；`summary` 为压缩摘要。 |
+| `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`、Pydantic AI harness `TieredCompaction` 接收）；`summary` 为压缩摘要。 |
 | `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出（Pydantic AI `report_engine_state`）。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |
 | `a2ui` | `payload` | A2UI 结构化载荷（前端按 messageId 追加）。 |
@@ -360,6 +390,10 @@ yield InternalEvent("status", {"status": "done"})
 | `FunctionToolCallEvent` | `tool_call` |
 | `FunctionToolResultEvent` | `tool_call_update` |
 | `AgentRunResultEvent.result.usage()` | `usage_update` |
+
+启用 harness 时（见 4.7），`run_stream_events` 传 `conversation_id=session_id`，种子历史优先经
+`continue_run` 从 `.workstep/harness_runs.db` 恢复（无历史 run 回退 `message_history`）；
+压缩接收经 `drain_receipts` 排空后映射为 `compacted` 事件。
 
 Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...))` 驱动，`options.cli_path` 指定 `claude` 二进制，逐条产出消息，映射关系：
 

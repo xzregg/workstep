@@ -71,6 +71,39 @@ async def test_event_bus_multiple_subscribers():
 
 
 @pytest.mark.anyio
+async def test_event_bus_predicate_filter():
+    """EventBus: a filtered subscriber only receives matching events."""
+    filtered = event_bus.subscribe(lambda e: e.get("task_id") == "t1")
+    unfiltered = event_bus.subscribe()
+    try:
+        await event_bus.publish({"type": "x", "task_id": "t1", "n": 1})
+        await event_bus.publish({"type": "x", "task_id": "t2", "n": 2})
+        received = []
+        while not filtered.empty():
+            received.append(await filtered.get())
+        assert received == [{"type": "x", "task_id": "t1", "n": 1}]
+        assert unfiltered.qsize() == 2
+    finally:
+        event_bus.unsubscribe(filtered)
+        event_bus.unsubscribe(unfiltered)
+
+
+@pytest.mark.anyio
+async def test_event_bus_set_filter_updates_live():
+    """EventBus: set_filter replaces the predicate of a subscriber."""
+    q = event_bus.subscribe()
+    try:
+        event_bus.set_filter(q, lambda e: e.get("task_id") == "t1")
+        await event_bus.publish({"type": "x", "task_id": "t2"})
+        assert q.empty()
+        event_bus.set_filter(q, None)
+        await event_bus.publish({"type": "y", "task_id": "t2"})
+        assert (await asyncio.wait_for(q.get(), timeout=1))["type"] == "y"
+    finally:
+        event_bus.unsubscribe(q)
+
+
+@pytest.mark.anyio
 async def test_event_bus_unsubscribe():
     """Unsubscribed queue no longer receives events."""
     q = event_bus.subscribe()
@@ -125,7 +158,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     monkeypatch.setattr(
         main,
         "ScheduleModule",
-        lambda project_manager, task_service, runtime: ScheduleStub(),
+        lambda project_manager, task_service, runtime, task_agent=None: ScheduleStub(),
     )
 
     async with main.lifespan(main.app):
@@ -164,3 +197,88 @@ async def test_websocket_cancel_reaches_the_pipeline_runtime(monkeypatch):
     )
 
     assert cancelled == ["task-1"]
+
+
+def test_parse_subscription_defaults_to_full_broadcast():
+    """A subscribe message without subscription keys resets to full mode."""
+    from main import parse_subscription
+
+    sub = parse_subscription({"type": "subscribe"})
+    assert sub.active is False
+
+
+def test_parse_subscription_dimensions():
+    """subscribe lists become string sets; unknown keys are ignored."""
+    from main import parse_subscription
+
+    sub = parse_subscription({
+        "type": "subscribe",
+        "task_ids": ["t1", "t2"],
+        "status_only_task_ids": ["t3"],
+        "session_ids": ["s1"],
+        "channels": ["execution"],
+        "junk": 42,
+    })
+    assert sub.active is True
+    assert sub.task_ids == {"t1", "t2"}
+    assert sub.status_only_task_ids == {"t3"}
+    assert sub.session_ids == {"s1"}
+    assert sub.channels == {"execution"}
+
+
+def test_matches_subscription():
+    """Events are routed by task / status-only / session / channel."""
+    from main import WsSubscription, matches_subscription
+
+    full = WsSubscription()
+    assert matches_subscription({"type": "RUN_STARTED", "task_id": "x"}, full)
+
+    detail = WsSubscription(active=True, task_ids={"t1"})
+    assert matches_subscription({"type": "TEXT_MESSAGE_CHUNK", "task_id": "t1"}, detail)
+    assert not matches_subscription({"type": "TEXT_MESSAGE_CHUNK", "task_id": "t2"}, detail)
+
+    status_only = WsSubscription(active=True, status_only_task_ids={"t2"})
+    assert matches_subscription({"type": "RUN_STARTED", "task_id": "t2"}, status_only)
+    assert matches_subscription(
+        {"type": "CUSTOM", "name": "workstep.status", "task_id": "t2"}, status_only
+    )
+    assert not matches_subscription(
+        {"type": "TEXT_MESSAGE_CHUNK", "task_id": "t2"}, status_only
+    )
+    assert not matches_subscription({"type": "RUN_STARTED", "task_id": "t1"}, status_only)
+
+    session = WsSubscription(active=True, session_ids={"s1"})
+    assert matches_subscription({"type": "TEXT_MESSAGE_CHUNK", "session_id": "s1"}, session)
+    assert not matches_subscription({"type": "TEXT_MESSAGE_CHUNK", "session_id": "s2"}, session)
+
+    channel = WsSubscription(active=True, channels={"execution"})
+    assert matches_subscription({"type": "TOOL_CALL_START", "channel": "execution"}, channel)
+    assert not matches_subscription({"type": "TOOL_CALL_START", "channel": "review"}, channel)
+
+
+@pytest.mark.anyio
+async def test_handle_client_message_subscribe_updates_filter(monkeypatch):
+    """A subscribe message narrows the connection's event filter."""
+    import json
+    import main
+    from main import WsSubscription
+
+    q = event_bus.subscribe()
+    sub = WsSubscription()
+    try:
+        await main._handle_client_message(
+            json.dumps({"type": "subscribe", "task_ids": ["t1"]}),
+            sub,
+            q,
+        )
+        assert sub.active is True
+        assert sub.task_ids == {"t1"}
+        # Matching event reaches the queue…
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "task_id": "t1"})
+        assert (await asyncio.wait_for(q.get(), timeout=1))["task_id"] == "t1"
+        # …non-matching does not.
+        await event_bus.publish({"type": "TEXT_MESSAGE_CHUNK", "task_id": "t2"})
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(q.get(), timeout=0.1)
+    finally:
+        event_bus.unsubscribe(q)

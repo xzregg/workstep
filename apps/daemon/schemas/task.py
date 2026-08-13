@@ -44,6 +44,7 @@ class CoordinatorConfigRequest(BaseSchema):
     fast_model: str | None = None
     vision_model: str | None = None
     thinking_effort: str | None = None
+    provider_id: str | None = None
 
 
 class StageResumeRequest(BaseSchema):

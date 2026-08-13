@@ -68,6 +68,8 @@ export interface AssistantChatPanelProps {
   onQuickPromptSelect?: (prompt: string) => void
   /** Store 累积的 A2UI 载荷（messageId → payload[]），随消息渲染。 */
   a2uiMessages?: Record<string, Record<string, unknown>[]>
+  /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
+  showUserTag?: boolean
 }
 
 /** Shared visual shell for session-scoped assistant chats. */
@@ -75,7 +77,7 @@ export default function AssistantChatPanel({
   projectId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, plan, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
-  onQuickPromptSelect, a2uiMessages,
+  onQuickPromptSelect, a2uiMessages, showUserTag = false,
 }: AssistantChatPanelProps) {
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -191,7 +193,7 @@ export default function AssistantChatPanel({
               : undefined}
             header={message.role === 'user' ? (
               <>
-                {copy.tag && (
+                {showUserTag && copy.tag && (
                   <span
                     title={copy.userTagTitle}
                     style={{

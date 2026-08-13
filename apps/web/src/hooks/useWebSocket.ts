@@ -2,10 +2,18 @@
  * useWebSocket — WebSocket connection with auto-reconnect.
  *
  * Connects to the daemon's /ws endpoint. Forwards incoming events
- * to the task store. Reconnects with exponential backoff on disconnect.
+ * to the stores, and subscribes the server to a narrowed event set so
+ * this client only receives what it actually renders:
+ * - full streams for the task detail currently open;
+ * - status-only events for every task in the current project (list refresh);
+ * - session streams for active assistant chats (flow_gen / task_create /
+ *   session_chat).
+ * Reconnects with exponential backoff on disconnect and re-subscribes.
  */
 
 import { useEffect, useRef, useCallback } from 'react'
+import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import { useTaskStore } from '../stores/taskStore'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
@@ -15,6 +23,29 @@ import { useProjectStore } from '../stores/projectStore'
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
 
+/**
+ * Which task detail panels are open (full event streams). Populated by
+ * pages that render a task detail (e.g. TaskList) via setDetailTaskIds.
+ */
+export const useWsSubscriptionStore = create<{ taskIds: string[] }>(() => ({
+  taskIds: [],
+}))
+
+export function setDetailTaskIds(taskIds: string[]) {
+  useWsSubscriptionStore.setState({ taskIds })
+}
+
+let notifySubscriptionChange: (() => void) | null = null
+
+/**
+ * 立即把当前订阅状态推给服务端。用于「会话创建后、引擎调用前」先完成订阅，
+ * 避免服务端按 session_ids 过滤时丢掉该会话的首条事件（TEXT_MESSAGE_START 含
+ * prompt），导致消息迟迟不出现、提示词丢失。
+ */
+export function flushWsSubscriptionNow() {
+  notifySubscriptionChange?.()
+}
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const handleEvent = useTaskStore((s) => s.handleWsEvent)
@@ -22,11 +53,48 @@ export function useWebSocket() {
   const handleTaskDraftEvent = useTaskDraftStore((s) => s.handleWsEvent)
   const handleChatSessionEvent = useChatSessionStore((s) => s.handleWsEvent)
 
+  // Stable inputs for the subscription: only change when task ids / session
+  // ids actually change (message chunks mutate session content, not keys).
+  const detailTaskIds = useWsSubscriptionStore((s) => s.taskIds)
+  const tasks = useTaskStore(useShallow((s) => s.tasks))
+  const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
+  const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
+  const chatSessionIds = useChatSessionStore(useShallow((s) => Object.keys(s.sessions)))
+
   const send = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg))
     }
   }, [])
+
+  const buildSubscription = useCallback(() => ({
+    type: 'subscribe',
+    task_ids: useWsSubscriptionStore.getState().taskIds,
+    status_only_task_ids: useTaskStore.getState().tasks.map((t) => t.id),
+    session_ids: [
+      ...Object.keys(useWorkflowGenStore.getState().sessions),
+      ...Object.keys(useTaskDraftStore.getState().sessions),
+      ...Object.keys(useChatSessionStore.getState().sessions),
+    ],
+    channels: [],
+  }), [])
+
+  const flushSubscription = useCallback(() => {
+    send(buildSubscription())
+  }, [buildSubscription, send])
+
+  useEffect(() => {
+    notifySubscriptionChange = flushSubscription
+    return () => { notifySubscriptionChange = null }
+  }, [flushSubscription])
+
+  // Re-send the subscription whenever the derived set changes. The set only
+  // changes on user-driven actions (open detail, create/switch a session,
+  // task list refresh) — never per event chunk — so sending immediately is
+  // cheap and keeps the subscribe-before-stream race window minimal.
+  useEffect(() => {
+    flushSubscription()
+  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds])
 
   useEffect(() => {
     let active = true
@@ -47,6 +115,8 @@ export function useWebSocket() {
       ws.onopen = () => {
         console.log('[WS] connected')
         reconnectAttempt = 0
+        // Narrow the server-side fan-out to what this client renders.
+        flushSubscription()
         // A reconnect (e.g. daemon restart) may have changed persisted task
         // state; re-fetch so the board reflects recovered runs immediately.
         const projectId = useProjectStore.getState().activeProject?.id
@@ -87,7 +157,7 @@ export function useWebSocket() {
       wsRef.current = null
       ws?.close()
     }
-  }, [handleEvent, handleGenEvent, handleTaskDraftEvent])
+  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription])
 
   return { send }
 }

@@ -59,23 +59,78 @@ def test_intervention_cancel():
     asyncio.run(_test())
 
 
-def test_intervention_timeout():
-    """request_response times out after the specified duration."""
+def test_intervention_waits_indefinitely():
+    """request_response waits indefinitely until a response arrives (no timeout)."""
     mgr = InterventionManager()
 
     async def _test():
-        # Use a very short timeout by patching
-        original_wait_for = asyncio.wait_for
+        task = asyncio.create_task(
+            mgr.request_response("int-3", "t", "s", {"q": "?"})
+        )
+        await asyncio.sleep(0.05)
+        # Still pending after a wait — no safety timeout fires.
+        assert mgr.pending_count == 1
+        assert "int-3" in mgr.list_pending()
+        assert not task.done()
 
-        async def fast_wait(future, timeout):
-            return await original_wait_for(future, timeout=0.05)
-
-        with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(asyncio, "wait_for", fast_wait)
-            result = await mgr.request_response("int-3", "t", "s", {"q": "?"})
-            assert result["error"] == "timeout"
+        assert mgr.deliver_response("int-3", {"answer": "yes"})
+        result = await task
+        assert result == {"answer": "yes"}
+        assert mgr.pending_count == 0
 
     asyncio.run(_test())
+
+
+def test_seal_unanswered_interactions_appends_cancelled():
+    """seal_unanswered_interactions 为未决交互补 cancelled 终态，已配对的不动。"""
+    from services.intervention import seal_unanswered_interactions
+
+    events = [
+        {"type": "interaction_request", "data": {
+            "interaction_id": "a",
+            "method": "session/request_permission",
+        }, "timestamp": 1},
+        {"type": "interaction_request", "data": {
+            "interaction_id": "b",
+            "method": "elicitation/create",
+        }, "timestamp": 2},
+        {"type": "interaction_response", "data": {
+            "interaction_id": "b",
+            "method": "elicitation/create",
+            "response": {"action": "accept"},
+        }, "timestamp": 3},
+    ]
+    sealed = json.loads(
+        seal_unanswered_interactions(json.dumps(events, ensure_ascii=False))
+    )
+    responses = [e for e in sealed if e["type"] == "interaction_response"]
+    assert [e["data"]["interaction_id"] for e in responses] == ["b", "a"]
+    assert responses[1]["data"]["response"] == {"outcome": {"outcome": "cancelled"}}
+    assert responses[1]["data"]["method"] == "session/request_permission"
+    assert sealed[:3] == events
+
+
+def test_seal_unanswered_interactions_noop_when_answered():
+    """所有交互均已响应时 events_json 原样返回。"""
+    from services.intervention import seal_unanswered_interactions
+
+    events = [
+        {"type": "interaction_request", "data": {"interaction_id": "a"}, "timestamp": 1},
+        {"type": "interaction_response", "data": {
+            "interaction_id": "a",
+            "response": {"outcome": {"outcome": "cancelled"}},
+        }, "timestamp": 2},
+    ]
+    raw = json.dumps(events, ensure_ascii=False)
+    assert seal_unanswered_interactions(raw) == raw
+
+
+def test_seal_unanswered_interactions_handles_invalid_input():
+    """空值/非法 JSON 原样返回，不抛错。"""
+    from services.intervention import seal_unanswered_interactions
+
+    assert seal_unanswered_interactions(None) is None
+    assert seal_unanswered_interactions("not-json") == "not-json"
 
 
 def test_intervention_double_deliver():

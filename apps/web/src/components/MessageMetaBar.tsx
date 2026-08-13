@@ -57,6 +57,8 @@ export interface MessageMetaBarProps {
   reviewMode?: boolean
   /** Manual review outcome used to color the badge (passed=green, others=red). */
   reviewStatus?: string
+  /** True when the stage insert queue has messages waiting to be sent. */
+  pendingInserts?: boolean
 }
 
 export default function MessageMetaBar({
@@ -72,6 +74,7 @@ export default function MessageMetaBar({
   status,
   reviewMode = false,
   reviewStatus,
+  pendingInserts = false,
 }: MessageMetaBarProps) {
   const { t, locale } = useI18n()
   const [sessionCopied, setSessionCopied] = useState(false)
@@ -191,7 +194,7 @@ export default function MessageMetaBar({
                 {t('meta.idleTimeout')}
               </span>
             )}
-            {running && hasTurnDoneEvent(events) && !hasIdleTimeoutEvent(events) && (
+            {running && hasTurnDoneEvent(events) && !hasIdleTimeoutEvent(events) && pendingInserts && (
               <span
                 title={t('meta.waitingInjectionTitle')}
                 style={{

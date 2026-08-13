@@ -340,3 +340,235 @@ def test_removing_scheduled_start_step_invalidates_schedule(tmp_path):
         )
 
     assert module.get(project.id, schedule["id"])["status"] == "invalid"
+
+
+# ── agent mode (scheduled task assistant) ──────────────────────────────
+
+
+class StubTaskAgent:
+    """Fake task-agent hook for schedule dispatch tests."""
+
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls: list[dict] = []
+        self.feedbacks: list[str] = []
+
+    async def run_schedule(
+        self, project_id, *, instruction, title, description,
+        candidate_workflow_ids, retry_feedback, timeout,
+    ):
+        self.calls.append({
+            "instruction": instruction,
+            "title": title,
+            "description": description,
+            "candidate_workflow_ids": candidate_workflow_ids,
+            "retry_feedback": retry_feedback,
+        })
+        if retry_feedback is not None:
+            self.feedbacks.append(retry_feedback)
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def _agent_schedule(module, project, *, instruction="生成一个任务", **template):
+    return module.create(
+        project.id,
+        name="Agent once",
+        workflow_id="",
+        task_template={"mode": "agent", "instruction": instruction, **template},
+        rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+        execution_mode="manual",
+    )
+
+
+def test_agent_mode_requires_instruction_and_valid_candidates(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule, ScheduleValidationError
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    module = ScheduleModule(manager, None, None)
+
+    with pytest.raises(ScheduleValidationError, match="instruction"):
+        _agent_schedule(module, project, instruction="")
+    with pytest.raises(ScheduleValidationError, match="candidate workflow not found"):
+        _agent_schedule(
+            module, project, candidate_workflow_ids=["missing-workflow"]
+        )
+
+
+@pytest.mark.anyio
+async def test_agent_mode_run_creates_task_from_agent_result(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    workflow = project.default_workflow()
+    agent = StubTaskAgent([{
+        "title": "Agent task",
+        "description": "## 内容",
+        "workflow_id": workflow["id"],
+        "start_step_key": "req",
+    }])
+    module = ScheduleModule(
+        manager, TaskService(EventBus()), workflow_runtime=None, task_agent=agent
+    )
+    created = _agent_schedule(module, project)
+
+    assert created["workflow_id"] == ""
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+
+    runs = module.list_runs(project.id, created["id"])
+    assert len(runs) == 1
+    assert runs[0]["status"] == "created"
+    assert runs[0]["task_id"]
+    assert agent.calls[0]["candidate_workflow_ids"] == []
+    assert agent.calls[0]["instruction"] == "生成一个任务"
+    with manager.activate_project_by_id(project.id):
+        from models import Task
+        task = Task.get_by_id(runs[0]["task_id"])
+        assert task.title == "Agent task"
+        assert task.description == "## 内容"
+        assert task.workflow_id == workflow["id"]
+        assert task.status == "ready"
+
+
+@pytest.mark.anyio
+async def test_agent_mode_run_retries_with_feedback_then_succeeds(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    workflow = project.default_workflow()
+    agent = StubTaskAgent([
+        RuntimeError("engine down"),
+        {"title": "OK", "description": "内容", "workflow_id": workflow["id"]},
+    ])
+    module = ScheduleModule(
+        manager, TaskService(EventBus()), workflow_runtime=None, task_agent=agent
+    )
+    created = module.create(
+        project.id,
+        name="Agent recurring",
+        workflow_id="",
+        task_template={
+            "mode": "agent",
+            "instruction": "生成一个任务",
+            "retry_count": 2,
+        },
+        rule={"kind": "cron", "expression": "0 9 * * *", "timezone": "UTC"},
+        execution_mode="manual",
+    )
+
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+
+    assert len(agent.calls) == 2
+    assert agent.calls[1]["retry_feedback"] is not None
+    assert "engine down" in agent.calls[1]["retry_feedback"]
+    assert module.list_runs(project.id, created["id"])[0]["status"] == "created"
+
+
+@pytest.mark.anyio
+async def test_agent_mode_run_fails_after_retries_but_keeps_schedule(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    agent = StubTaskAgent([RuntimeError("boom"), RuntimeError("boom"), RuntimeError("boom")])
+    module = ScheduleModule(
+        manager, TaskService(EventBus()), workflow_runtime=None, task_agent=agent
+    )
+    created = module.create(
+        project.id,
+        name="Agent recurring",
+        workflow_id="",
+        task_template={
+            "mode": "agent",
+            "instruction": "生成一个任务",
+            "retry_count": 2,
+        },
+        rule={"kind": "cron", "expression": "0 9 * * *", "timezone": "UTC"},
+        execution_mode="manual",
+    )
+
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+
+    assert len(agent.calls) == 3
+    run = module.list_runs(project.id, created["id"])[0]
+    assert run["status"] == "failed"
+    assert "after 3 attempts" in run["reason"]
+    assert module.get(project.id, created["id"])["status"] == "active"
+
+
+def test_deleting_candidate_workflow_prunes_agent_schedule(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    with manager.activate_project_by_id(project.id):
+        workflow = manager.create_workflow(project, "scheduled")
+    module = ScheduleModule(manager, None, None)
+    schedule = module.create(
+        project.id,
+        name="Agent",
+        workflow_id="",
+        task_template={
+            "mode": "agent",
+            "instruction": "生成",
+            "candidate_workflow_ids": [workflow["id"]],
+        },
+        rule={"kind": "cron", "expression": "0 9 * * *", "timezone": "UTC"},
+    )
+
+    with manager.activate_project_by_id(project.id):
+        manager.delete_workflow(project, workflow["id"])
+
+    invalid = module.get(project.id, schedule["id"])
+    assert invalid["status"] == "invalid"
+    assert "Candidate workflow was deleted" in invalid["invalid_reason"]
+
+
+@pytest.mark.anyio
+async def test_schedule_cli_create_agent_mode_maps_candidates_and_instruction():
+    from cli import build_parser, dispatch
+
+    calls = []
+
+    class ClientStub:
+        async def call(self, operation, arguments):
+            calls.append((operation, arguments))
+            return {"id": "schedule-2", "status": "active"}
+
+    args = build_parser().parse_args([
+        "schedule", "create", "--project", "p1", "--mode", "agent",
+        "--name", "Agent", "--instruction", "生成日报",
+        "--candidates", "w1,w2", "--retry-count", "3",
+        "--cron", "0 9 * * *", "--timezone", "UTC",
+    ])
+    result = await dispatch(args, ClientStub())
+
+    assert result["id"] == "schedule-2"
+    op, arguments = calls[0]
+    assert op == "workstep_create_schedule"
+    assert arguments["workflow_id"] == ""
+    assert arguments["task_template"] == {
+        "mode": "agent",
+        "instruction": "生成日报",
+        "candidate_workflow_ids": ["w1", "w2"],
+        "retry_count": 3,
+    }

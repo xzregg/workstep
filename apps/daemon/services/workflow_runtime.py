@@ -22,6 +22,7 @@ from models.base import db_proxy
 from services.task_runner import TaskRunner
 from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message, new_message_id
+from services.intervention import seal_unanswered_interactions
 from services.pipeline import DAGScheduler, Step
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -475,15 +476,19 @@ class WorkflowRuntime:
             if stale_keys:
                 # Close in-flight execution messages so the UI does not keep
                 # an eternally-running spinner for the interrupted attempt.
-                Message.update(
-                    run_status="failed",
-                    ended_at=now,
-                ).where(
+                stale_messages = Message.select().where(
                     (Message.task == task)
                     & (Message.channel == "execution")
                     & (Message.run_status == "running")
                     & (Message.step_key.in_(stale_keys))
-                ).execute()
+                )
+                for stale_message in stale_messages:
+                    stale_message.run_status = "failed"
+                    stale_message.ended_at = now
+                    stale_message.events_json = seal_unanswered_interactions(
+                        stale_message.events_json
+                    )
+                    stale_message.save()
             task.status = "running"
             task.updated_at = now
             task.save()

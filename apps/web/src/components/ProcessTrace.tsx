@@ -14,7 +14,7 @@ import {
   characterCount,
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
-import { isToolEvent } from '../utils/agui.ts'
+import { isToolEvent, toolCallId } from '../utils/agui.ts'
 
 type ProcessEvent = {
   type: string
@@ -120,9 +120,18 @@ export default function ProcessTrace({
     (item): item is Exclude<MessageTimelineItem, { type: 'text' }> => item.type !== 'text',
   )
   const lastProcessItem = processItems[processItems.length - 1]
-  const commandCount = events.filter((event) => (
-    event.type === 'tool_use' || isToolEvent(event)
-  )).length
+  // 按工具调用去重计数：一次命令/工具调用会拆成 start/args/chunk/result
+  // 多条事件（尤其流式参数会逐块产生大量 chunk），不能把事件数当命令数。
+  const commandCount = new Set(events
+    .filter((event) => event.type === 'tool_use' || isToolEvent(event))
+    .map((event) => {
+      if (event.type === 'tool_use') {
+        const data = event.data ?? {}
+        return String(data.id ?? data.tool_use_id ?? '')
+      }
+      return toolCallId(event)
+    })
+    .filter((id) => id !== '')).size
   const eventTimes = events
     .map((event) => toMilliseconds(event.timestamp))
     .filter((timestamp): timestamp is number => timestamp !== null)
@@ -132,8 +141,20 @@ export default function ProcessTrace({
     ? now
     : toMilliseconds(endedAt)
       ?? (eventTimes.length ? Math.max(...eventTimes) : null)
-  const elapsedMs = durationMilliseconds(startTime, endTime)
-  const duration = elapsedMs === null ? '' : formatDuration(elapsedMs, t)
+  let elapsedMs = durationMilliseconds(startTime, endTime)
+  // 旧数据回补：消息没返回 ended_at、且 startedAt 实为完成时刻（不早于最后一条事件）时，
+  // 起点取最早事件时间、终点取原 startedAt，避免刷新后丢失耗时。
+  if (elapsedMs === null && !running && eventTimes.length > 0) {
+    const startedMs = toMilliseconds(startedAt)
+    if (startedMs !== null && startedMs >= Math.max(...eventTimes)) {
+      elapsedMs = durationMilliseconds(Math.min(...eventTimes), startedMs)
+    }
+  }
+  // 历史回放缺少 ended_at 的旧数据：起点=消息落库完成时刻、终点回退到最后事件，
+  // 二者可能相等得出无意义的「耗时 0秒」，此时不展示耗时。
+  const duration = elapsedMs === null || (!running && elapsedMs === 0)
+    ? ''
+    : formatDuration(elapsedMs, t)
 
   if (!duration && processItems.length === 0 && !summaryMeta) return null
 

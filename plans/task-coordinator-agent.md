@@ -802,12 +802,17 @@ GET 响应同时返回任务配置、最终生效配置和可切换引擎摘要�
 - CLI：`apps/daemon/cli.py`（argparse，无新依赖，`uv run workstep ...`），
   `project list/init`、`task list/get/create`、`engine list`，统一 JSON 输出，
   与工具共用同一个 HTTP 客户端。
-- 引擎按需加载：`EngineCapabilities.supports_workstep_tools` 能力位（默认
-  False）。PydanticAI 引擎开启，并在 `_run_agent` 注册内嵌工具
-  `workstep_call(operation, arguments)`，docstring 附接口文档；协调 Agent 的
-  `spawn_coordinator` guard 与 `_assemble_context` 在能力位开启时注入
-  workstep 工具文档与使用约束（只读可直接用；创建类必须 `confirm='yes'`
-  且仅当用户明确要求副作用）。无此能力的引擎（Claude/Codex/API/ACP）
-  prompt 不变。
+- 助手按需加载（配置在助手层，不在引擎层）：`AssistantConfig.workstep_tools`
+  默认 False，任务协调 Agent（`task_coordinator`）与任务创建助手（
+  `task_create`）声明为 True。加载 = 请求引擎**原生注册**内嵌工具
+  `workstep_call(operation, arguments)`，docstring 即接口文档与使用约束
+  （只读可直接用；创建类必须 `confirm='yes'` 且仅当用户明确要求副作用）；
+  **提示词不注入任何工具文档**，模型从工具 schema 感知能力。
+  `EngineCapabilities.supports_workstep_tools` 只是传输机制能力位（默认
+  False，PydanticAI 引擎开启）：是否把原生工具挂进本轮 turn 由助手传来的
+  `workstep_tools` 标志决定，PydanticAI 在 `spawn(..., workstep_tools=True)`
+  时注册该工具。未声明该配置的助手（普通聊天、AI 流程助手等）即使使用
+  PydanticAI 引擎也不会加载 workstep 工具；无此能力的引擎
+  （Claude/Codex/API/ACP）不注册、提示词不变。
 - 不开放运行控制类接口（run/pause/cancel/archive）——需异步
   `WorkflowRuntime`，列为后续扩展；删除/重命名等高风险接口不开放。

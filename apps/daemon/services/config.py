@@ -22,7 +22,7 @@ CLAUDE_PERMISSION_MODES = {
 }
 
 CODEX_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
-CODEX_REASONING_EFFORTS = {"minimal", "low", "medium", "high"}
+CODEX_REASONING_EFFORTS = {"auto", "minimal", "low", "medium", "high", "xhigh"}
 CODEX_APPROVAL_POLICIES = {"never", "on-failure", "on-request", "full-auto"}
 CODEX_SDK_APPROVAL_MODES = {"auto_review", "deny_all"}
 
@@ -165,6 +165,103 @@ class ConfigStore:
         self.set("coordinator_default_vision_model", vision_model)
         self.set("coordinator_default_thinking_effort", thinking_effort)
 
+    def get_assistant_defaults(self, name: str) -> dict:
+        """Resolve one assistant's default engine/model settings.
+
+        Every assistant falls back to the coordinator defaults; per-assistant
+        overrides (``assistant_defaults.<name>``) win when set.
+        """
+        merged = {
+            "engine": self.get_coordinator_default_engine(),
+            "model": self.get_coordinator_default_model(),
+            "fast_model": self.get_coordinator_default_fast_model(),
+            "vision_model": self.get_coordinator_default_vision_model(),
+            "thinking_effort": self.get_coordinator_default_thinking_effort(),
+            "provider_id": "",
+        }
+        overrides = self.get("assistant_defaults", {})
+        if not isinstance(overrides, dict):
+            return merged
+        overlay = overrides.get(name)
+        if not isinstance(overlay, dict):
+            return merged
+        for key in (
+            "engine",
+            "model",
+            "fast_model",
+            "vision_model",
+            "thinking_effort",
+            "provider_id",
+        ):
+            value = overlay.get(key)
+            if isinstance(value, str) and value.strip():
+                merged[key] = value.strip()
+        return merged
+
+    def set_assistant_defaults(
+        self,
+        name: str,
+        engine: str = "",
+        model: str = "",
+        fast_model: str = "",
+        vision_model: str = "",
+        thinking_effort: str = "",
+        provider_id: str = "",
+    ) -> None:
+        """Save one assistant's defaults.
+
+        ``task_coordinator`` keeps using the legacy coordinator keys so
+        existing saved settings and the per-task coordinator config keep
+        working; other assistants store per-name overrides that fall back to
+        the coordinator defaults when empty. ``provider_id`` is the built-in
+        engine's dynamic config override (empty = follow the engine config).
+        """
+        if name == "task_coordinator":
+            self.set_coordinator_defaults(
+                engine, model, fast_model, vision_model, thinking_effort
+            )
+            # 供应商是内置引擎的动态配置：单独存 overlay，走旧键的引擎/模型
+            # 不受影响，读取时经 get_assistant_defaults 合并。
+            overrides = self.get("assistant_defaults", {})
+            if not isinstance(overrides, dict):
+                overrides = {}
+            overrides = dict(overrides)
+            current = dict(overrides.get(name) or {})
+            provider_id = (provider_id or "").strip()
+            if provider_id:
+                current["provider_id"] = provider_id
+            else:
+                current.pop("provider_id", None)
+            if current:
+                overrides[name] = current
+            else:
+                overrides.pop(name, None)
+            self.set("assistant_defaults", overrides)
+            return
+        overrides = self.get("assistant_defaults", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+        overrides = dict(overrides)
+        current = dict(overrides.get(name) or {})
+        for key, value in (
+            ("engine", engine),
+            ("model", model),
+            ("fast_model", fast_model),
+            ("vision_model", vision_model),
+            ("thinking_effort", thinking_effort),
+            ("provider_id", provider_id),
+        ):
+            value = (value or "").strip()
+            if value:
+                current[key] = value
+            else:
+                current.pop(key, None)
+        if current:
+            overrides[name] = current
+        else:
+            overrides.pop(name, None)
+        self.set("assistant_defaults", overrides)
+
     def get_engine_idle_timeout_seconds(self) -> int:
         """Stage-level engine idle timeout in seconds; 0 disables the watchdog.
 
@@ -208,6 +305,7 @@ class ConfigStore:
             or self.get_engine_default_model("pydantic_ai")
             or os.environ.get("PYDANTIC_AI_MODEL", ""),
             "mcp_servers": raw.get("mcp_servers") or [],
+            "harness": raw.get("harness") or "auto",
         }
 
     def set_pydantic_ai_engine_config(
@@ -216,6 +314,7 @@ class ConfigStore:
         provider_id: str,
         model: str,
         mcp_servers: list | None = None,
+        harness: str = "auto",
     ) -> None:
         self.set(
             "pydantic_ai_engine",
@@ -223,6 +322,7 @@ class ConfigStore:
                 "provider_id": provider_id,
                 "model": model,
                 "mcp_servers": list(mcp_servers or []),
+                "harness": harness,
             },
         )
         self.set_engine_default_model("pydantic_ai", model)
@@ -440,6 +540,23 @@ class ConfigStore:
         self.set("providers", providers)
         return dict(provider)
 
+    def get_prompt_enhance_config(self) -> dict[str, str]:
+        """Provider + model used by the one-shot prompt enhancement."""
+        raw = self.get("prompt_enhance", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        return {
+            "provider_id": str(raw.get("provider_id") or ""),
+            "model": str(raw.get("model") or ""),
+        }
+
+    def set_prompt_enhance_config(self, *, provider_id: str, model: str) -> None:
+        """Save the prompt enhancement provider + model (empty clears)."""
+        self.set("prompt_enhance", {
+            "provider_id": str(provider_id or "").strip(),
+            "model": str(model or "").strip(),
+        })
+
     def delete_provider(self, provider_id: str) -> bool:
         providers = self.get_providers()
         remaining = [item for item in providers if item.get("id") != provider_id]
@@ -456,6 +573,44 @@ class ConfigStore:
             and bool(raw.get("provider_id"))
             and raw.get("provider_id") == provider_id
         )
+
+    # --- Provider model list cache (global config, not per-project DB) ---
+
+    def get_provider_models(self, provider_id: str) -> dict:
+        """Saved model list for a provider: ``{"models": [...], "fetched_at": ...}``.
+
+        Stored in the global ``~/.workstep/config.json`` so model dropdowns never
+        hit the provider address again after the first fetch.
+        """
+        cache = self.get("provider_models", {})
+        if not isinstance(cache, dict):
+            return {}
+        entry = cache.get(provider_id)
+        return dict(entry) if isinstance(entry, dict) else {}
+
+    def set_provider_models(
+        self,
+        provider_id: str,
+        models: list[dict],
+        fetched_at: str,
+    ) -> None:
+        cache = self.get("provider_models", {})
+        if not isinstance(cache, dict):
+            cache = {}
+        cache = dict(cache)
+        cache[provider_id] = {
+            "models": models,
+            "fetched_at": fetched_at,
+        }
+        self.set("provider_models", cache)
+
+    def clear_provider_models(self, provider_id: str) -> None:
+        cache = self.get("provider_models", {})
+        if not isinstance(cache, dict) or provider_id not in cache:
+            return
+        cache = dict(cache)
+        cache.pop(provider_id, None)
+        self.set("provider_models", cache)
 
     def migrate_legacy_config(self) -> None:
         """One-time migration after removing the ``api`` (API/BYOK) engine."""

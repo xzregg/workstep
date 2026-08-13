@@ -5,9 +5,18 @@ import {
   formatCompactMetric,
   formatExactMetric,
   formatRate,
+  formatTokenTotal,
   seriesPoints,
   trendTooltipContent,
 } from '../src/utils/statistics.ts'
+
+
+test('formats token totals with 万 scaling beyond ten thousand', () => {
+  assert.equal(formatTokenTotal(9_999, 'zh-CN'), '9,999')
+  assert.equal(formatTokenTotal(10_000, 'zh-CN'), '1.00 万')
+  assert.equal(formatTokenTotal(10_100, 'zh-CN'), '1.01 万')
+  assert.equal(formatTokenTotal(150_000, 'zh-CN'), '15.00 万')
+})
 
 
 test('formats dashboard metrics consistently', () => {

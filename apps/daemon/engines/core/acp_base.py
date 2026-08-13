@@ -17,6 +17,7 @@ from engines.core.base import (
     BaseLLMEngine,
     EngineModel,
     EngineTestResult,
+    resolve_thinking_effort,
 )
 from engines.core.schema import EngineImage
 from engines.core.events import (
@@ -719,6 +720,7 @@ class AcpEngineBase(BaseLLMEngine):
         images: list[EngineImage] | None = None,
         live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
+        thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         # 无配置模板的 ACP 引擎：阶段级覆盖暂不生效，仅保持签名一致。
         del config_overrides
@@ -796,6 +798,23 @@ class AcpEngineBase(BaseLLMEngine):
                         )
                     except Exception:
                         logger.warning("Failed to set model %s", model)
+
+                effort = resolve_thinking_effort(thinking_effort)
+                if effort:
+                    # 思考强度不是 ACP 协议固定字段：各 agent 通过 session
+                    # config options 声明（如 Codex 的 reasoning_effort）。
+                    # 按常见 configId 尽力设置，不支持时忽略。
+                    try:
+                        await client.set_config_option(
+                            config_id="reasoning_effort",
+                            session_id=active_session_id,
+                            value=effort,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "ACP agent does not accept reasoning_effort=%s",
+                            effort,
+                        )
 
                 yield InternalEvent(type="status", data={"status": "running"})
                 prompt_task = asyncio.create_task(
@@ -941,19 +960,24 @@ class AcpEngineBase(BaseLLMEngine):
             return EngineTestResult(False, "引擎未返回文本", duration_ms)
         return EngineTestResult(True, "连接和对话测试通过", duration_ms)
 
-    # --- 协调器（只读 turn 的 ACP 风格入口） ---
+    # --- 协调器（ACP 风格入口：无工具时只读，启用内部工具时可调用） ---
 
-    def _coordinator_prompt(self, prompt: str) -> str:
-        """Apply the read-only coordinator guard plus capability-gated tools."""
-        from services.tool_registry import workstep_tools_instruction
+    def _coordinator_prompt(
+        self,
+        prompt: str,
+        *,
+        workstep_tools: bool = False,
+    ) -> str:
+        """Apply the coordinator guard.
 
-        guarded = self.coordinator_guard(prompt)
-        if (
-            self.capabilities.supports_workstep_tools
-            and "WorkStep internal tools" not in guarded
-        ):
-            guarded = f"{guarded}\n\n{workstep_tools_instruction()}"
-        return guarded
+        The read-only guard applies only when the assistant layer did not
+        enable WorkStep internal tools (loading is driven by the assistant
+        config, not this seam). With tools enabled the seam keeps the
+        propose-don't-execute discipline but allows ``workstep_call``.
+        """
+        if workstep_tools:
+            return self.coordinator_tools_guard(prompt)
+        return self.coordinator_guard(prompt)
 
     async def spawn_coordinator(
         self,
@@ -965,12 +989,19 @@ class AcpEngineBase(BaseLLMEngine):
         message_history: list | None = None,
         report_engine_state: bool = False,
         thinking_effort: str | None = None,
+        workstep_tools: bool = False,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         """Run a no-tools coordinator turn through this adapter seam."""
-        guarded_prompt = self._coordinator_prompt(prompt)
+        guarded_prompt = self._coordinator_prompt(
+            prompt,
+            workstep_tools=workstep_tools,
+        )
         if images and not self.capabilities.supports_vision:
             guarded_prompt = self.render_image_prompt(guarded_prompt, images)
         spawn_kwargs: dict[str, Any] = {}
+        if workstep_tools and self.capabilities.supports_workstep_tools:
+            spawn_kwargs["workstep_tools"] = True
         if self.supports_message_history:
             if message_history is not None:
                 spawn_kwargs["message_history"] = message_history
@@ -978,6 +1009,8 @@ class AcpEngineBase(BaseLLMEngine):
                 spawn_kwargs["report_engine_state"] = True
         if self.capabilities.supports_thinking_effort and thinking_effort:
             spawn_kwargs["thinking_effort"] = thinking_effort
+        if config_overrides:
+            spawn_kwargs["config_overrides"] = config_overrides
         async for event in self.spawn(
             prompt=guarded_prompt,
             cwd=cwd,
@@ -994,6 +1027,19 @@ class AcpEngineBase(BaseLLMEngine):
         return (
             "You are a read-only task coordinator. Do not call tools, execute "
             "commands, or modify files. Return only the requested JSON.\n\n"
+            f"{prompt}"
+        )
+
+    @staticmethod
+    def coordinator_tools_guard(prompt: str) -> str:
+        """Wrap a user prompt with the tool-enabled coordinator instruction."""
+        return (
+            "You are a task coordinator. You may call the WorkStep internal "
+            "tools to inspect projects and tasks — natively via workstep_call "
+            "when available, otherwise through the workstep CLI. Mutating "
+            "operations require explicit user authorization. Never execute "
+            "workflow actions directly — return them in the requested JSON "
+            "instead.\n\n"
             f"{prompt}"
         )
 

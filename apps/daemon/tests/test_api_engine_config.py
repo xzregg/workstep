@@ -14,6 +14,7 @@ import engines.pydantic_ai.engine as pydantic_ai_engine_module
 import engines.core.registry as engine_registry
 import main
 import services.config as config_module
+from services import providers as provider_service
 from services.config import ConfigStore
 from engines.pydantic_ai import PydanticAIEngine
 from engines.core.base import EngineModel, EngineInstallResult, EngineTestResult
@@ -25,6 +26,7 @@ class MemoryEngineConfigStore:
 
     def __init__(self):
         self.providers: list[dict] = []
+        self.provider_models: dict[str, dict] = {}
         self.pydantic_ai_config = {"provider_id": "", "model": "", "mcp_servers": []}
         self.default_models = {}
         self.execution_default_engine = ""
@@ -60,6 +62,18 @@ class MemoryEngineConfigStore:
         self.providers = remaining
         return removed
 
+    # --- provider model list cache ---
+
+    def get_provider_models(self, provider_id):
+        entry = self.provider_models.get(provider_id)
+        return dict(entry) if entry else {}
+
+    def set_provider_models(self, provider_id, models, fetched_at):
+        self.provider_models[provider_id] = {"models": list(models), "fetched_at": fetched_at}
+
+    def clear_provider_models(self, provider_id):
+        self.provider_models.pop(provider_id, None)
+
     def is_provider_in_use(self, provider_id):
         return (
             bool(self.pydantic_ai_config.get("provider_id"))
@@ -72,13 +86,15 @@ class MemoryEngineConfigStore:
         config = dict(self.pydantic_ai_config)
         if not config.get("model"):
             config["model"] = self.get_engine_default_model("pydantic_ai") or ""
+        config.setdefault("harness", "auto")
         return config
 
-    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None):
+    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None, harness="auto"):
         self.pydantic_ai_config = {
             "provider_id": provider_id,
             "model": model,
             "mcp_servers": list(mcp_servers or []),
+            "harness": harness,
         }
         self.default_models["pydantic_ai"] = model
 
@@ -138,6 +154,7 @@ async def engine_client(monkeypatch):
     store = MemoryEngineConfigStore()
     monkeypatch.setattr(engine_api, "config_store", store)
     monkeypatch.setattr(provider_api, "config_store", store)
+    monkeypatch.setattr(provider_service, "config_store", store)
     monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
     monkeypatch.setattr(engine_registry, "config_store", store)
     engine_registry.refresh_registry()
@@ -402,6 +419,93 @@ async def test_provider_models_error_is_surfaced(engine_client, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_provider_models_returns_saved_copy_without_refetch(engine_client, monkeypatch):
+    """模型列表保存后，再次读取不再请求供应商地址。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+    calls = {"count": 0}
+
+    async def fake_models(provider, transport=None):
+        calls["count"] += 1
+        return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
+
+    monkeypatch.setattr(provider_api.provider_service, "fetch_models", fake_models)
+
+    first = await client.get(f"/api/provider/{provider['id']}/models")
+    assert first.json()["models"] == [
+        {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
+    ]
+    assert calls["count"] == 1
+
+    second = await client.get(f"/api/provider/{provider['id']}/models")
+    assert second.json()["models"] == [
+        {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
+    ]
+    assert second.json()["fetched_at"] is not None
+    # 第二次读取走本地保存副本，不再调供应商。
+    assert calls["count"] == 1
+
+    refreshed = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
+    assert refreshed.json()["models"] == [
+        {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
+    ]
+    assert calls["count"] == 2
+
+
+@pytest.mark.anyio
+async def test_provider_list_includes_saved_model_status(engine_client, monkeypatch):
+    """供应商列表透出已保存的模型数量与获取时间。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+
+    async def fake_models(provider, transport=None):
+        return [
+            EngineModel(id="deepseek-chat", label="DeepSeek Chat"),
+            EngineModel(id="deepseek-reasoner", label="DeepSeek Reasoner"),
+        ]
+
+    monkeypatch.setattr(provider_api.provider_service, "fetch_models", fake_models)
+    await client.get(f"/api/provider/{provider['id']}/models")
+
+    listed = await client.get("/api/provider/list")
+    row = next(item for item in listed.json()["providers"] if item["id"] == provider["id"])
+    assert row["model_count"] == 2
+    assert row["models_fetched_at"] is not None
+
+
+@pytest.mark.anyio
+async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypatch):
+    """引擎模型接口默认读已保存副本；refresh=1 才重新拉取。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+    store.set_pydantic_ai_engine_config(
+        provider_id=provider["id"],
+        model="deepseek-chat",
+    )
+    calls = {"count": 0}
+
+    async def fake_models(provider, transport=None):
+        calls["count"] += 1
+        return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
+
+    monkeypatch.setattr(
+        pydantic_ai_engine_module.provider_service,
+        "fetch_models",
+        fake_models,
+    )
+
+    first = await client.get("/api/engine/pydantic_ai/models")
+    assert first.json()["models"] != []
+    assert calls["count"] == 1
+    second = await client.get("/api/engine/pydantic_ai/models")
+    assert second.json()["models"] != []
+    assert calls["count"] == 1
+    refreshed = await client.get("/api/engine/pydantic_ai/models?refresh=1")
+    assert refreshed.json()["models"] != []
+    assert calls["count"] == 2
+
+
+@pytest.mark.anyio
 async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, monkeypatch):
     """GET /api/engine/pydantic_ai/models 直接调用绑定供应商的模型接口。"""
     client, store = engine_client
@@ -433,6 +537,40 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
     assert called["provider"]["id"] == provider["id"]
     assert called["provider"]["base_url"] == provider["base_url"]
     assert called["provider"]["api_key"] == provider["api_key"]
+
+
+@pytest.mark.anyio
+async def test_engine_pydantic_ai_models_provider_override(engine_client, monkeypatch):
+    """引擎动态配置：模型列表可按调用指定的供应商获取（覆盖全局配置）。"""
+    client, store = engine_client
+    provider = _add_provider(store, name="Global Provider")
+    other = _add_provider(store, name="Assistant Provider")
+    store.set_pydantic_ai_engine_config(
+        provider_id=provider["id"],
+        model="deepseek-chat",
+    )
+
+    called: dict = {}
+
+    async def fake_models(provider, transport=None):
+        called["provider"] = dict(provider)
+        return [EngineModel(id="other-model", label="Other Model")]
+
+    monkeypatch.setattr(
+        pydantic_ai_engine_module.provider_service,
+        "fetch_models",
+        fake_models,
+    )
+    response = await client.get(
+        f"/api/engine/pydantic_ai/models?provider_id={other['id']}"
+    )
+    assert response.status_code == 200
+    assert called["provider"]["id"] == other["id"]
+    payload = response.json()
+    assert payload["models"] == [
+        {"id": "other-model", "label": "Other Model", "description": None}
+    ]
+    assert payload["error"] is None
 
 
 @pytest.mark.anyio
@@ -567,11 +705,13 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
     config = pydantic["config"]
     assert config is not None
     fields = {field["key"]: field for field in config["fields"]}
-    assert list(fields) == ["provider_id", "mcp_servers"]
+    assert list(fields) == ["provider_id"]
     assert fields["provider_id"]["type"] == "select"
     option_values = [option["value"] for option in fields["provider_id"]["options"]]
     assert option_values == ["prov_1"]
-    assert config["values"] == {"provider_id": "", "mcp_servers": ""}
+    assert config["values"] == {
+        "provider_id": "",
+    }
     assert config["secrets"] == {}
 
     assert engines["claude"]["config"] is not None
@@ -592,9 +732,24 @@ async def test_pydantic_ai_engine_config_saves_provider_id(engine_client):
     body = saved.json()
     assert body["saved"] is True
     assert store.pydantic_ai_config["provider_id"] == provider["id"]
-    assert body["values"] == {"provider_id": provider["id"], "mcp_servers": ""}
+    assert body["values"] == {
+        "provider_id": provider["id"],
+    }
     assert body["secrets"] == {}
     assert body["configured"] is False  # model not set yet
+
+    # 客户端即使提交 off 也被忽略，始终保存为 auto
+    forced = await client.put(
+        "/api/engine/pydantic-ai/config",
+        json={
+            "values": {
+                "provider_id": provider["id"],
+                "harness": "off",
+            }
+        },
+    )
+    assert forced.json()["saved"] is True
+    assert store.pydantic_ai_config["harness"] == "auto"
 
     model = await client.put(
         "/api/engine/pydantic_ai/default-model",
@@ -792,7 +947,7 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
         usage = FakeUsage()
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None
     ):
         assert prompt == "do work"
         assert cwd == "/tmp/project"
@@ -911,7 +1066,7 @@ async def test_pydantic_ai_run_agent_injects_queued_live_messages(monkeypatch):
         def all_messages(self):
             return ["history-1"]
 
-    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None):
+    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None, conversation_id=None):
         calls.append((prompt, message_history))
         return FakeResult()
 
@@ -971,7 +1126,7 @@ async def test_pydantic_ai_run_agent_ignores_message_after_turn(monkeypatch):
         def all_messages(self):
             return ["history-1"]
 
-    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None):
+    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None, conversation_id=None):
         calls.append((prompt, message_history))
         return FakeResult()
 
@@ -1019,7 +1174,7 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
         usage = None
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None
     ):
         captured["live_message_queue"] = live_message_queue
         return FakeResult(), None
@@ -1077,7 +1232,7 @@ async def test_pydantic_ai_spawn_seeds_history_and_reports_engine_state(monkeypa
 
     async def fake_run_agent(
         self, *, prompt, cwd, add_dirs, model, on_event,
-        live_message_queue=None, images=None, message_history=None,
+        live_message_queue=None, images=None, message_history=None, session_id=None,
     ):
         captured["message_history"] = message_history
         return FakeResult(), None
@@ -1168,6 +1323,7 @@ def test_provider_storage_and_legacy_migration(tmp_path, monkeypatch):
         "provider_id": "prov_1",
         "model": "deepseek-chat",
         "mcp_servers": [],
+        "harness": "auto",
     }
 
     # Legacy api engine values are cleaned up by migration

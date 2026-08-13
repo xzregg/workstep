@@ -9,6 +9,7 @@ API contract.
 import json
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -272,6 +273,38 @@ def workstep_tools_instruction() -> str:
         "使用约束：只读操作（list/get）可直接用于查询；创建、修改、暂停、"
         "恢复和删除操作有副作用，必须携带 confirm='yes'，且仅当用户明确"
         "授权时才可调用。不要编造 id —— 先用 list/get 查出来。"
+    )
+
+
+def workstep_cli_instruction() -> str:
+    """Prompt section teaching CLI engines to call the ``workstep`` CLI.
+
+    Engines without native tool hosting (Codex CLI, Claude Code, Hermes, …)
+    call the local daemon through the ``workstep`` CLI instead; the daemon is
+    already running when the coordinator turn executes.
+    """
+    daemon_dir = Path(__file__).resolve().parent.parent
+    return (
+        "# WorkStep CLI\n"
+        "\n"
+        "You can inspect and manage the WorkStep system by calling the local "
+        "daemon CLI (the daemon is already running). Canonical invocation:\n"
+        "\n"
+        f"    cd {daemon_dir} && uv run python -m cli <command>\n"
+        "\n"
+        "Read-only commands:\n"
+        "- `workstep project list` — list registered projects\n"
+        "- `workstep task list --project <project_id>` — list tasks of a project\n"
+        "- `workstep task get --project <project_id> --task <task_id>` — get one task\n"
+        "- `workstep engine list` — list installed LLM engines\n"
+        "- `workstep schedule list --project <project_id>` — list schedules\n"
+        "- `workstep schedule get --project <project_id> --schedule <schedule_id>` — get one schedule\n"
+        "- `workstep schedule runs --project <project_id> --schedule <schedule_id>` — list schedule runs\n"
+        "\n"
+        "Mutating commands (`project init`, `task create`, `schedule "
+        "create/update/pause/resume/delete`) must only be run with explicit "
+        "user authorization. Never fabricate ids — look them up with the "
+        "list/get commands first.\n"
     )
 
 

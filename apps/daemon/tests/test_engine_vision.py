@@ -165,7 +165,7 @@ async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
     def fake_build_model(**config):
         return object()
 
-    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None):
+    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None):
         captured["images"] = images
         captured["prompt"] = prompt
         return FakeResult(), FakeUsage()
@@ -209,7 +209,7 @@ async def test_pydantic_ai_run_agent_builds_image_user_content(monkeypatch):
         def all_messages(self):
             return []
 
-    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None):
+    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None, conversation_id=None):
         captured["prompt"] = prompt
         return FakeResult()
 
@@ -260,7 +260,7 @@ async def test_pydantic_ai_run_agent_without_images_keeps_string_prompt(monkeypa
         def all_messages(self):
             return []
 
-    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None):
+    async def fake_stream_agent_run(self, agent, *, prompt, on_event, message_history=None, conversation_id=None):
         captured["prompt"] = prompt
         return FakeResult()
 

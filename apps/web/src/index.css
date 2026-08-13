@@ -1605,6 +1605,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .ws-input:disabled, .ws-select:disabled, .ws-textarea:disabled { background: var(--surface); color: var(--meta); cursor: not-allowed; }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
+.field-label-row { display: flex; align-items: center; gap: 8px; }
 .field-label {
   display: block;
   margin: 0 0 0;
@@ -1613,6 +1614,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   color: var(--muted);
   line-height: 1.4;
 }
+.field-label-action { margin-left: auto; flex-shrink: 0; }
 .modal-body label.field-label,
 .modal-body .field-label {
   display: block;
@@ -2104,7 +2106,51 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   font-weight: 600;
 }
 
+.schedule-candidate-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.schedule-candidate-tabs > button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-body);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.schedule-candidate-tabs > button:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.schedule-candidate-tabs > button.active {
+  color: var(--text-accent);
+  background: var(--accent-light);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+
 .schedule-effective-range { margin-top: 16px; }
 .schedule-date-range { display: flex; align-items: center; gap: 10px; }
 .schedule-date-range > input { flex: 1; }
 .schedule-date-range > span { color: var(--meta); }
+
+.schedule-split-handle {
+  position: relative;
+  background: var(--border-soft);
+  cursor: col-resize;
+  outline: none;
+}
+.schedule-split-handle:hover,
+.schedule-split-handle:focus-visible {
+  background: var(--accent);
+}
+.schedule-split-handle:focus-visible {
+  box-shadow: var(--focus-ring);
+}

@@ -135,6 +135,7 @@ class WorkflowGenModule(AssistantRuntime):
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        provider_id: str | None = None,
         thinking_effort: str | None = None,
         steps: dict | None = None,
         workflow_name: str | None = None,
@@ -166,6 +167,7 @@ class WorkflowGenModule(AssistantRuntime):
             engine=engine,
             model=model,
             fast_model=fast_model,
+            provider_id=provider_id,
             thinking_effort=thinking_effort,
             steps=steps,
             extra={
@@ -245,31 +247,44 @@ class WorkflowGenModule(AssistantRuntime):
         return default_engine_id, None
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
-        configured_id = config_store.get_coordinator_default_engine() or "claude"
+        defaults = config_store.get_assistant_defaults("workflow_gen")
+        configured_id = defaults["engine"] or "claude"
+        if (
+            configured_id == "pydantic_ai"
+            and (defaults.get("provider_id") or "").strip()
+        ):
+            # 显式选择内置引擎并配置了供应商：直接使用内置引擎，
+            # 不参与协调引擎回退（其能力由供应商动态配置决定）。
+            if create_engine("pydantic_ai") is None:
+                raise ValueError("内置引擎不可用")
+            model = (
+                defaults["model"]
+                or config_store.get_engine_default_model("pydantic_ai")
+                or None
+            )
+            return "pydantic_ai", model, defaults["fast_model"] or model
         engine_id, engine = self._fallback_engine(configured_id)
         if engine is None:
             raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
         if engine_id == configured_id:
             # 正常路径：沿用协调 Agent 的全局模型。
             model = (
-                config_store.get_coordinator_default_model()
+                defaults["model"]
                 or config_store.get_engine_default_model(engine_id)
                 or None
             )
         else:
             # 回退到其它引擎时，不沿用原引擎的协调模型，改用该引擎自己的默认模型。
             model = config_store.get_engine_default_model(engine_id) or None
-        get_fast_model = getattr(
-            config_store,
-            "get_coordinator_default_fast_model",
-            lambda: "",
-        )
-        fast_model = (get_fast_model() if engine_id == configured_id else "") or model
+        fast_model = (defaults["fast_model"] if engine_id == configured_id else "") or model
         return engine_id, model, fast_model
 
     def _validate_engine(self, engine_id: str) -> None:
         candidate = create_engine(engine_id)
-        if candidate is None or not candidate.capabilities.supports_coordinator:
+        if candidate is None or not (
+            candidate.capabilities.supports_coordinator
+            or engine_id == "pydantic_ai"
+        ):
             raise ValueError(f"Coordinator engine is unavailable: {engine_id}")
 
     # ── prompt building ─────────────────────────────────────────────────

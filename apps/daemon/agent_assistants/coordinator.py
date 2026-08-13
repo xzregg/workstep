@@ -40,7 +40,7 @@ from models.fields import utc_now
 from services.config import CODEX_REASONING_EFFORTS, config_store
 from services.messages import allocate_message_sequences, new_message_id
 from services.task_runner import extract_usage_json
-from services.tool_registry import workstep_tools_instruction
+from services.tool_registry import workstep_cli_instruction
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
 
@@ -50,20 +50,24 @@ COORDINATOR_CHANNEL = "coordinator"
 
 # Registered in the shared assistant registry: the task coordinator is one
 # assistant, described declaratively (its task-specific conversation logic
-# lives in CoordinatorModule below).
-assistant_registry.register(
-    AssistantConfig(
-        name="task_coordinator",
-        channel=COORDINATOR_CHANNEL,
-        scope=SCOPE_TASK,
-        system_prompt=(
-            "任务协调 Agent：理解任务与工作流上下文，回答用户问题，"
-            "必要时提出不超过一个动作提案（supplement_stage / "
-            "rerun_from_stage / review_decision），从不直接执行。"
-        ),
-        engine_label="Coordinator engine",
-    )
+# lives in CoordinatorModule below). It loads the WorkStep internal tools:
+# the agent may inspect projects/tasks via the daemon, but never executes
+# anything itself (read-only guard + confirm-gated mutating tools).
+COORDINATOR_CONFIG = AssistantConfig(
+    name="task_coordinator",
+    channel=COORDINATOR_CHANNEL,
+    scope=SCOPE_TASK,
+    system_prompt=(
+        "任务协调 Agent：理解任务与工作流上下文，回答用户问题，"
+        "可调用 WorkStep 内部工具（workstep_call）查询项目与任务，"
+        "变更类操作需用户明确授权（confirm='yes'）；必要时提出不超过"
+        "一个动作提案（supplement_stage / rerun_from_stage / "
+        "review_decision），从不直接执行工作流动作。"
+    ),
+    engine_label="Coordinator engine",
+    workstep_tools=True,
 )
+assistant_registry.register(COORDINATOR_CONFIG)
 ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
@@ -229,6 +233,7 @@ class CoordinatorModule:
                     "fast_model": task.coordinator_fast_model,
                     "vision_model": task.coordinator_vision_model,
                     "thinking_effort": task.coordinator_thinking_effort or "",
+                    "provider_id": task.coordinator_provider_id or "",
                 },
                 "resolved": {
                     "engine": resolved_engine,
@@ -236,6 +241,7 @@ class CoordinatorModule:
                     "fast_model": resolved_fast_model,
                     "vision_model": resolved_vision_model,
                     "thinking_effort": thinking_effort,
+                    "provider_id": self._resolve_provider_id(task),
                 },
                 "available_engines": available,
             }
@@ -249,6 +255,7 @@ class CoordinatorModule:
         fast_model: str | None,
         vision_model: str | None,
         thinking_effort: str | None = None,
+        provider_id: str | None = None,
     ) -> dict:
         with self._project_manager.activate_project_by_id(project_id):
             task = Task.get_or_none(Task.id == task_id)
@@ -259,17 +266,30 @@ class CoordinatorModule:
             normalized_fast_model = fast_model.strip() if fast_model else None
             normalized_vision_model = vision_model.strip() if vision_model else None
             normalized_effort = thinking_effort.strip() if thinking_effort else ""
+            normalized_provider = (provider_id or "").strip() or None
+            if normalized_provider:
+                provider = config_store.get_provider(normalized_provider)
+                if provider is None:
+                    raise ValueError("供应商不存在")
+                if not provider.get("enabled", True):
+                    raise ValueError("所选供应商已停用")
             if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
                 raise ValueError(
                     f"Unsupported thinking effort: {normalized_effort}"
                 )
             if normalized_engine is not None:
                 engine = create_engine(normalized_engine)
-                if engine is None or not engine.capabilities.supports_coordinator:
+                if engine is None or not (
+                    engine.capabilities.supports_coordinator
+                    or normalized_engine == "pydantic_ai"
+                ):
                     raise ValueError(
                         f"Coordinator engine is unavailable: {normalized_engine}"
                     )
-                if not config_store.is_engine_verified(normalized_engine):
+                if (
+                    normalized_engine != "pydantic_ai"
+                    and not config_store.is_engine_verified(normalized_engine)
+                ):
                     raise ValueError(
                         f"Coordinator engine is not verified: {normalized_engine}"
                     )
@@ -279,18 +299,26 @@ class CoordinatorModule:
                 or normalized_vision_model is not None
             ):
                 raise ValueError("A coordinator model requires an engine")
+            if normalized_provider:
+                current_engine = normalized_engine or task.coordinator_engine
+                if current_engine is not None and current_engine != "pydantic_ai":
+                    raise ValueError(
+                        "供应商是内置引擎的动态配置，请先选择 Pydantic AI 引擎"
+                    )
 
             previous = {
                 "engine": task.coordinator_engine,
                 "model": task.coordinator_model,
                 "fast_model": task.coordinator_fast_model,
                 "vision_model": task.coordinator_vision_model,
+                "provider_id": task.coordinator_provider_id,
             }
             task.coordinator_engine = normalized_engine
             task.coordinator_model = normalized_model
             task.coordinator_fast_model = normalized_fast_model
             task.coordinator_vision_model = normalized_vision_model
             task.coordinator_thinking_effort = normalized_effort or None
+            task.coordinator_provider_id = normalized_provider
             task.updated_at = utc_now()
             task.save()
             session = CoordinatorSession.get_or_none(
@@ -299,6 +327,9 @@ class CoordinatorModule:
             config_changed = (
                 normalized_engine is not None
                 and previous["engine"] != normalized_engine
+            ) or (
+                normalized_provider is not None
+                and previous["provider_id"] != normalized_provider
             )
             if session is not None and config_changed:
                 session.status = "reset"
@@ -325,6 +356,7 @@ class CoordinatorModule:
                     "fast_model": task.coordinator_fast_model,
                     "vision_model": task.coordinator_vision_model,
                     "thinking_effort": task.coordinator_thinking_effort or "",
+                    "provider_id": task.coordinator_provider_id or "",
                 },
                 "resolved": {
                     "engine": resolved_engine,
@@ -332,6 +364,7 @@ class CoordinatorModule:
                     "fast_model": resolved_fast_model,
                     "vision_model": resolved_vision_model,
                     "thinking_effort": self._resolve_thinking_effort(task),
+                    "provider_id": self._resolve_provider_id(task),
                 },
             }
 
@@ -467,6 +500,7 @@ class CoordinatorModule:
                 turn = CoordinatorTurn.get_by_id(turn_id)
                 task = Task.get_by_id(task_id)
                 assistant = Message.get_by_id(turn.assistant_message_id)
+                coordinator_root = self._coordinator_root(project, task)
                 turn.status = "running"
                 turn.started_at = utc_now()
                 turn.save()
@@ -481,8 +515,11 @@ class CoordinatorModule:
                     except json.JSONDecodeError:
                         engine_state = None
                 _, _, fast_model, _ = self._resolve_engine_models(task)
+                provider_id = self._resolve_provider_id(task)
                 thinking_effort = self._resolve_thinking_effort(task)
-                prompt, artifacts = self._assemble_context(project, task, turn)
+                prompt, artifacts = self._assemble_context(
+                    project, task, turn, root_dir=coordinator_root
+                )
                 user_message = Message.get_by_id(turn.user_message_id)
                 images = self._extract_images(
                     project, task.cwd, user_message.content or ""
@@ -555,7 +592,7 @@ class CoordinatorModule:
                 raw, events, session_id = await self._invoke(
                     turn.engine or "",
                     turn.model,
-                    task.cwd,
+                    coordinator_root,
                     prompt,
                     session.session_id,
                     make_live_callback(),
@@ -563,6 +600,7 @@ class CoordinatorModule:
                     images=images,
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
+                    provider_id=provider_id,
                 )
                 if turn_id in self._cancelled_turns:
                     await self._mark_turn_stopped(
@@ -576,7 +614,7 @@ class CoordinatorModule:
                 result, repair_events = await self._parse_or_repair(
                     turn.engine or "",
                     fast_model,
-                    task.cwd,
+                    coordinator_root,
                     raw,
                     turn_id,
                 )
@@ -596,12 +634,13 @@ class CoordinatorModule:
                     raw, more_events, _ = await self._invoke(
                         turn.engine or "",
                         fast_model,
-                        task.cwd,
+                        coordinator_root,
                         followup,
                         None,
                         make_live_callback(),
                         turn_id,
                         thinking_effort=thinking_effort,
+                        provider_id=provider_id,
                     )
                     events.extend(more_events)
                     if turn_id in self._cancelled_turns:
@@ -616,7 +655,7 @@ class CoordinatorModule:
                     result, repair_events = await self._parse_or_repair(
                         turn.engine or "",
                         fast_model,
-                        task.cwd,
+                        coordinator_root,
                         raw,
                         turn_id,
                     )
@@ -751,9 +790,19 @@ class CoordinatorModule:
             or task.engine
             or "claude"
         )
+        # 显式选择内置引擎并配置了供应商：能力由供应商动态配置决定，
+        # 不再要求引擎全局已配置，避免被协调回退吞掉。
+        provider_override = (
+            self._resolve_provider_id(task)
+            if requested_id == "pydantic_ai"
+            else ""
+        )
         engine_id = requested_id
         engine = create_engine(engine_id)
-        if engine is None or not engine.capabilities.supports_coordinator:
+        if engine is None or (
+            not engine.capabilities.supports_coordinator
+            and not provider_override.strip()
+        ):
             # 默认引擎未配置/不可用时，回退到第一个可用的协调引擎
             engine_id, engine = self._fallback_coordinator_engine(requested_id)
             if engine is None:
@@ -792,6 +841,16 @@ class CoordinatorModule:
             or None
         )
         return engine_id, model, fast_model, vision_model
+
+    @staticmethod
+    def _resolve_provider_id(task: Task) -> str:
+        """Effective coordinator provider: task override wins, then assistant default."""
+        if task.coordinator_provider_id:
+            return task.coordinator_provider_id
+        get_defaults = getattr(config_store, "get_assistant_defaults", None)
+        if get_defaults is None:
+            return ""
+        return get_defaults("task_coordinator").get("provider_id", "") or ""
 
     @staticmethod
     def _resolve_thinking_effort(task: Task) -> str:
@@ -847,7 +906,28 @@ class CoordinatorModule:
             session.save()
         return session
 
-    def _assemble_context(self, project, task: Task, turn: CoordinatorTurn):
+    @staticmethod
+    def _coordinator_root(project, task: Task) -> str:
+        """Resolve the coordinator agent's working root directory.
+
+        Defaults to the task's workflow artifacts directory
+        (``.workstep/artifacts/<workflow_id>/``) so the agent can read the
+        task's produced files directly; falls back to ``task.cwd`` for
+        workflow-less tasks.
+        """
+        if task.workflow_id:
+            root = Path(project.workstep_dir) / "artifacts" / task.workflow_id
+            root.mkdir(parents=True, exist_ok=True)
+            return str(root)
+        return task.cwd
+
+    def _assemble_context(
+        self,
+        project,
+        task: Task,
+        turn: CoordinatorTurn,
+        root_dir: str | None = None,
+    ):
         workflow_data = project.steps
         if task.workflow_id:
             workflow = project.workflow_by_id(task.workflow_id)
@@ -952,6 +1032,7 @@ class CoordinatorModule:
             "proposal": None,
         }
         context = {
+            "coordinator_root_dir": root_dir or self._coordinator_root(project, task),
             "task": {
                 "id": task.id,
                 "title": task.title,
@@ -973,7 +1054,7 @@ class CoordinatorModule:
             "recent_coordinator_messages": recent_messages,
             "coordinator_summary": summary,
         }
-        prompt = (
+        instructions = (
             "Understand the task and answer the user. You may propose at most one "
             "action, but never execute it. Allowed proposal types are "
             "supplement_stage, rerun_from_stage, review_decision. For a proposal "
@@ -984,11 +1065,19 @@ class CoordinatorModule:
             "artifact_id. If the user's message references an image and your model "
             "cannot accept image input, use coordinator_vision_model to analyze the "
             "image before replying. Return "
-            f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
+            f"JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}"
+        )
+        if COORDINATOR_CONFIG.workstep_tools and (
+            engine is None
+            or not getattr(engine.capabilities, "supports_workstep_tools", False)
+        ):
+            # 无原生工具宿主能力的引擎（Codex CLI / Claude Code / Hermes 等）
+            # 通过 workstep CLI 调用本地 daemon，而不是被限制为只读。
+            instructions = f"{instructions}\n\n{workstep_cli_instruction()}"
+        prompt = (
+            f"{instructions}\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
         )
-        if engine is not None and engine.capabilities.supports_workstep_tools:
-            prompt = f"{prompt}\n\n{workstep_tools_instruction()}"
         return prompt, artifacts
 
     def _refresh_summary(
@@ -1033,8 +1122,14 @@ class CoordinatorModule:
         images: list[EngineImage] | None = None,
         message_history: list | None = None,
         thinking_effort: str | None = None,
+        provider_id: str | None = None,
     ) -> tuple[str, list[dict], str | None]:
-        def spawn(engine):
+        def spawn(engine, *, workstep_tools=False, config_overrides=None):
+            spawn_kwargs = {}
+            if workstep_tools:
+                spawn_kwargs["workstep_tools"] = True
+            if config_overrides:
+                spawn_kwargs["config_overrides"] = config_overrides
             return engine.spawn_coordinator(
                 prompt=prompt,
                 cwd=cwd,
@@ -1044,8 +1139,19 @@ class CoordinatorModule:
                 message_history=message_history,
                 report_engine_state=True,
                 thinking_effort=thinking_effort,
+                **spawn_kwargs,
             )
 
+        provider_id = provider_id or (
+            config_store.get_assistant_defaults("task_coordinator").get(
+                "provider_id", ""
+            )
+            if engine_id == "pydantic_ai"
+            else ""
+        )
+        config_overrides = (
+            {"provider_id": provider_id} if provider_id else None
+        )
         return await invoke_engine(
             engine_id,
             model,
@@ -1058,6 +1164,8 @@ class CoordinatorModule:
             run_key=turn_id,
             running_engines=self._running_engines,
             assign_session_on_no_resume=True,
+            workstep_tools=COORDINATOR_CONFIG.workstep_tools,
+            config_overrides=config_overrides,
         )
 
     @staticmethod

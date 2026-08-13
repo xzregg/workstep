@@ -634,6 +634,72 @@ def test_message_sequence_allocation_is_atomic_across_threads(tmp_path):
     assert len(set(results)) == 8
 
 
+def test_allocate_message_sequences_self_heals_stale_counter(tmp_path):
+    """计数器被旧 task.save() 回写落后于已有消息时，分配不得撞号。"""
+    from models.base import db_proxy
+    from services.messages import create_task_message
+
+    db = init_db(str(tmp_path / "stale.db"))
+    try:
+        task = Task.create(
+            id="task-stale",
+            title="Stale",
+            cwd=str(tmp_path),
+            engine="claude",
+            created_at=1,
+            updated_at=1,
+        )
+        now = utc_now()
+        Message.create(
+            id="msg-1",
+            task=task,
+            channel="execution",
+            step_key="do",
+            sequence=1,
+            role="user",
+            content="已存在",
+            position=1,
+            created_at=now,
+        )
+        Message.create(
+            id="msg-2",
+            task=task,
+            channel="execution",
+            step_key="do",
+            sequence=2,
+            role="assistant",
+            content="已存在",
+            position=2,
+            created_at=now,
+        )
+        # 模拟旧 task 对象被 save() 回写：计数器落后于实际最大 sequence(2)。
+        token = db_proxy.activate(db)
+        try:
+            Task.update(next_message_sequence=1).where(
+                Task.id == task.id
+            ).execute()
+            # 计数器落后于已有消息最大 sequence(2) 时，新消息应从 3 开始且不撞号。
+            with db_proxy.atomic():
+                msg = create_task_message(
+                    task=task,
+                    channel="chat",
+                    step_key="do",
+                    role="user",
+                    content="新消息",
+                    position=3,
+                    created_at=utc_now(),
+                )
+            assert msg.sequence == 3
+        finally:
+            db_proxy.reset(token)
+        rows = list(Message.select().where(Message.task == task.id))
+        sequences = sorted(r.sequence for r in rows)
+        assert sequences == [1, 2, 3]
+        assert len(sequences) == len(set(sequences))
+    finally:
+        db.close()
+
+
 class IgnoreLiveQueueEngine(LiveFakeEngine):
     """Spawn 收流结束前不消费插入消息队列（模拟引擎已收流）。"""
 

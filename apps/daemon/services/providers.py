@@ -24,6 +24,7 @@ import httpx
 
 from engines.core.base import EngineModel, EngineTestResult
 from engines.core.schema import validate_api_base_url
+from services.config import config_store
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +427,99 @@ async def fetch_models(
             ),
         )
     return sorted(models.values(), key=lambda item: item.label.lower())
+
+
+def saved_models(provider_id: str) -> list[EngineModel]:
+    """Return the locally saved model list for a provider (no network call)."""
+    from dataclasses import fields as dataclass_fields
+
+    entry = config_store.get_provider_models(provider_id)
+    raw_models = entry.get("models") or []
+    result: list[EngineModel] = []
+    for item in raw_models:
+        if not isinstance(item, dict):
+            continue
+        try:
+            result.append(EngineModel(**{
+                field.name: item.get(field.name)
+                for field in dataclass_fields(EngineModel)
+            }))
+        except TypeError:
+            continue
+    return result
+
+
+def save_models(provider: dict, models: list[EngineModel]) -> None:
+    """Persist a provider's model list in the global config (no per-project DB)."""
+    from dataclasses import asdict
+    from datetime import datetime, timezone
+
+    config_store.set_provider_models(
+        str(provider.get("id") or ""),
+        [asdict(model) for model in models],
+        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    )
+
+
+async def fetch_and_save_models(provider: dict) -> list[EngineModel]:
+    """Fetch a provider's model list once and persist it locally."""
+    models = await fetch_models(provider)
+    save_models(provider, models)
+    return models
+
+
+async def chat_completion(
+    provider: dict,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int = 4096,
+    timeout: float = 60,
+    transport: httpx.AsyncBaseTransport | None = None,
+    thinking: str | None = None,
+) -> str:
+    """One-shot OpenAI-compatible ``/chat/completions`` call (no agent machinery).
+
+    Used by lightweight helpers like prompt enhancement: plain single-turn
+    completion against the provider's chat/completions endpoint. ``thinking``
+    accepts ``"disabled"`` to turn off reasoning on models that support it
+    (e.g. DeepSeek); providers that reject the field fall back to a plain call.
+    """
+    base_url = str(provider.get("base_url") or "").rstrip("/")
+    model = (model or "").strip()
+    if not base_url or not model:
+        raise ValueError("供应商或模型未配置")
+    if str(provider.get("type") or "") == "anthropic":
+        raise ValueError("该供应商类型不支持 chat/completions 直连")
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    if thinking:
+        payload["thinking"] = {"type": thinking}
+    url = f"{base_url}/chat/completions"
+    async with httpx.AsyncClient(
+        headers=auth_headers(provider),
+        timeout=timeout,
+        transport=transport,
+    ) as client:
+        response = await client.post(url, json=payload)
+        if response.status_code in (400, 422) and "thinking" in payload:
+            # 供应商不支持 thinking 参数：去掉后重试一次。
+            payload.pop("thinking", None)
+            response = await client.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"chat/completions 响应格式异常：{data}") from exc
+    content = str(content or "")
+    if not content:
+        raise RuntimeError("模型未返回内容，请重试")
+    return content
 
 
 async def test_connection(

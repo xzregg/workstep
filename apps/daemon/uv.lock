@@ -874,6 +874,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pydantic-ai-harness"
+version = "0.18.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "genai-prices" },
+    { name = "httpx" },
+    { name = "pydantic-ai-slim" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/7d/781febbc5724c9563c667a93df060e0eba811d2f8c3b76a22f14369c926e/pydantic_ai_harness-0.18.1.tar.gz", hash = "sha256:a7cc6c5e584df6516c466cda98e9945bfacbd9b58dce0cd5ef61433fb0bdfd50", size = 1841092, upload-time = "2026-08-11T02:47:35.845Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/c5/dc92bb8424399a93c40882e051574fdc6d0ecbbd6edd94ab572afbc95bf8/pydantic_ai_harness-0.18.1-py3-none-any.whl", hash = "sha256:9eeae7147f36e85c804d48624b832e1e3346c02aba1d7bb8f1d455f8f70b44c5", size = 618164, upload-time = "2026-08-11T02:47:33.878Z" },
+]
+
+[[package]]
 name = "pydantic-ai-slim"
 version = "2.23.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2077,6 +2091,7 @@ dependencies = [
     { name = "httpx" },
     { name = "openai-codex" },
     { name = "peewee" },
+    { name = "pydantic-ai-harness" },
     { name = "pydantic-ai-slim", extra = ["anthropic", "openai"] },
     { name = "pydantic-settings" },
     { name = "qoder-agent-sdk" },
@@ -2103,6 +2118,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "openai-codex", specifier = ">=0.144.4" },
     { name = "peewee", specifier = ">=3.17" },
+    { name = "pydantic-ai-harness", specifier = "==0.18.1" },
     { name = "pydantic-ai-slim", extras = ["anthropic", "openai"], specifier = ">=1.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "qoder-agent-sdk", specifier = ">=1.0.11" },

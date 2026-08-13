@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
-import { engineApi, taskDraftApi, type CoordinatorDefaultConfig } from '../api/client'
+import {
+  engineApi,
+  providerApi,
+  taskDraftApi,
+  type CoordinatorDefaultConfig,
+  type ProviderInfo,
+} from '../api/client'
 import { useI18n } from '../i18n'
 import { useTaskDraftStore, type TaskDraftResult } from '../stores/taskDraftStore'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import { applyTaskQuickPrompt } from '../utils/taskQuickPrompts.js'
+import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import AssistantChatPanel from './AssistantChatPanel'
+import MarkdownMessage from './MarkdownMessage'
 
 
 export interface AiTaskCreateChatProps {
@@ -16,6 +24,10 @@ export interface AiTaskCreateChatProps {
   workflowId?: string
   startStepKey?: string
   initialMessage?: string
+  allowGenerateTitle?: boolean
+  candidateWorkflowIds?: string[]
+  /** 挂载后自动发送 initialMessage（headless 预览用），默认不自动发送 */
+  autoSend?: boolean
   onDraft: (draft: TaskDraftResult) => void
   onBusyChange?: (busy: boolean) => void
   onClose?: () => void
@@ -35,6 +47,9 @@ export default function AiTaskCreateChat({
   workflowId,
   startStepKey,
   initialMessage,
+  allowGenerateTitle = false,
+  candidateWorkflowIds,
+  autoSend = false,
   onDraft,
   onBusyChange,
   onClose,
@@ -47,9 +62,11 @@ export default function AiTaskCreateChat({
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const deliveredResultRef = useRef<Record<string, unknown> | undefined>(undefined)
   const sessionIdRef = useRef<string | null>(null)
   const runningRef = useRef(false)
@@ -59,6 +76,7 @@ export default function AiTaskCreateChat({
   const running = session?.running ?? false
   const messages = session?.messages ?? []
   const latestResult = session?.latestResult
+  const autoSentRef = useRef(false)
 
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
   useEffect(() => { runningRef.current = running }, [running])
@@ -92,6 +110,16 @@ export default function AiTaskCreateChat({
   }, [t])
 
   useEffect(() => {
+    let active = true
+    providerApi.list()
+      .then((result) => {
+        if (active) setProviders(result.providers.filter((item) => item.enabled))
+      })
+      .catch(() => { /* provider list is optional for the engine picker */ })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
     if (initialMessage) setInput(initialMessage)
   }, [initialMessage])
 
@@ -114,6 +142,8 @@ export default function AiTaskCreateChat({
     }
     useTaskDraftStore.getState().addUserMessage(sid, content)
     setInput('')
+    // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
+    flushWsSubscriptionNow()
     try {
       const accepted = await taskDraftApi.chat(projectId, content, sid, randomId(), {
         title: taskTitle,
@@ -121,9 +151,12 @@ export default function AiTaskCreateChat({
         workflowId,
         startStepKey,
         engine: selectedEngine || undefined,
+        providerId: selectedProvider || undefined,
         model: selectedModel || undefined,
         fastModel: selectedFastModel || undefined,
         thinkingEffort: selectedThinkingEffort || undefined,
+        allowGenerateTitle,
+        candidateWorkflowIds,
       })
       if (accepted.session_id && accepted.session_id !== sid) {
         const oldSession = useTaskDraftStore.getState().sessions[sid]
@@ -139,7 +172,14 @@ export default function AiTaskCreateChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('taskList.aiSendFailed'))
     }
-  }, [input, projectId, running, selectedEngine, selectedFastModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId])
+  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId])
+
+  useEffect(() => {
+    if (!autoSend || autoSentRef.current) return
+    if (!initialMessage?.trim()) return
+    autoSentRef.current = true
+    void send(initialMessage)
+  }, [autoSend, initialMessage, send])
 
   const stop = useCallback(async () => {
     if (!sessionId || stopping) return
@@ -180,6 +220,21 @@ export default function AiTaskCreateChat({
       onAttachmentError={setSendError}
       onClose={onClose}
       onA2uiAction={handleA2uiAction}
+      afterMessages={latestResult ? (
+        <div style={{ marginTop: 2 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
+            {t('taskList.aiDraftTitle')}
+          </div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)', padding: '9px 11px' }}>
+            {typeof latestResult.title === 'string' && latestResult.title.trim() && (
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{latestResult.title}</div>
+            )}
+            <div style={{ marginTop: typeof latestResult.title === 'string' && latestResult.title.trim() ? 6 : 0, fontSize: 13, lineHeight: 1.6 }}>
+              <MarkdownMessage content={String(latestResult.description || '')} projectId={projectId} />
+            </div>
+          </div>
+        </div>
+      ) : undefined}
       quickPromptsLabel={t('taskList.aiQuickPromptsLabel')}
       quickPrompts={[
         { label: t('taskList.aiQuickDescribe'), prompt: t('taskList.aiQuickDescribePrompt') },
@@ -198,8 +253,6 @@ export default function AiTaskCreateChat({
         meInitials: t('aiFlow.meInitials'),
         agent: t('taskList.aiTaskAgent'),
         agentInitials: t('taskList.aiAgentInitials'),
-        tag: t('taskList.aiTag'),
-        userTagTitle: t('taskList.aiUserTagTitle'),
         placeholder: t('taskList.aiPlaceholder'),
         fullPrompt: t('aiFlow.fullPrompt'),
         closePrompt: t('common.close'),
@@ -207,6 +260,8 @@ export default function AiTaskCreateChat({
       config={{
         engines: coordinatorConfig?.available_engines || [],
         engine: selectedEngine,
+        providers,
+        providerId: selectedProvider,
         defaultEngine: coordinatorConfig?.engine || 'claude',
         model: selectedModel,
         fastModel: selectedFastModel,
@@ -217,6 +272,13 @@ export default function AiTaskCreateChat({
         engineTitle: t('taskList.aiEngineTitle'),
         onEngineChange: (engineId) => {
           setSelectedEngine(engineId)
+          setSelectedProvider('')
+          setSelectedModel('')
+          setSelectedFastModel('')
+          setSelectedThinkingEffort('')
+        },
+        onProviderChange: (providerId) => {
+          setSelectedProvider(providerId)
           setSelectedModel('')
           setSelectedFastModel('')
           setSelectedThinkingEffort('')
@@ -226,6 +288,7 @@ export default function AiTaskCreateChat({
         onThinkingEffortChange: setSelectedThinkingEffort,
         onReset: () => {
           setSelectedEngine('')
+          setSelectedProvider('')
           setSelectedModel('')
           setSelectedFastModel('')
           setSelectedThinkingEffort('')

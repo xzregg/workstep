@@ -8,7 +8,7 @@ import {
 } from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
-import { fsApi, type CoordinatorEngineSummary } from '../api/client'
+import { fsApi, type CoordinatorEngineSummary, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 
@@ -32,6 +32,10 @@ export interface ChatInputEngineConfig {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  /** Enabled providers for the built-in Pydantic AI engine's dynamic config. */
+  providers?: ProviderInfo[]
+  /** '' = follow the default provider. */
+  providerId?: string
   /** Show the vision-model select (task chat only). */
   showVision?: boolean
   /** Disable the picker (config not loaded / a turn is running). */
@@ -43,6 +47,7 @@ export interface ChatInputEngineConfig {
   hint?: string
   engineTitle?: string
   onEngineChange: (engineId: string) => void
+  onProviderChange?: (providerId: string) => void
   onModelChange: (model: string) => void
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
@@ -276,23 +281,6 @@ export default function ChatInput({
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 6px' }}>
-          {plan && (
-            <button
-              type="button"
-              className="chat-input-pill"
-              data-active={planActive}
-              disabled={plan.disabled}
-              onClick={() => plan.onChange(!planActive)}
-              aria-pressed={planActive}
-              title={t('chatInput.planModeTitle')}
-              style={{ opacity: plan.disabled ? 0.55 : 1, cursor: plan.disabled ? 'not-allowed' : 'pointer' }}
-            >
-              <Icon name="lightbulb" size={12} strokeWidth={1.8} color={planActive ? '#f5a623' : 'var(--meta)'} />
-              <span style={{ color: planActive ? '#f5a623' : 'var(--fg)', fontWeight: planActive ? 600 : 500 }}>
-                {t('chatInput.planMode')}
-              </span>
-            </button>
-          )}
           {left}
           {imageAttach && (
             <>
@@ -402,6 +390,23 @@ export default function ChatInput({
                 )}
               </div>
             </>
+          )}
+          {plan && (
+            <button
+              type="button"
+              className="chat-input-pill"
+              data-active={planActive}
+              disabled={plan.disabled}
+              onClick={() => plan.onChange(!planActive)}
+              aria-pressed={planActive}
+              title={t('chatInput.planModeTitle')}
+              style={{ opacity: plan.disabled ? 0.55 : 1, cursor: plan.disabled ? 'not-allowed' : 'pointer' }}
+            >
+              <Icon name="lightbulb" size={12} strokeWidth={1.8} color={planActive ? '#f5a623' : 'var(--meta)'} />
+              <span style={{ color: planActive ? '#f5a623' : 'var(--fg)', fontWeight: planActive ? 600 : 500 }}>
+                {t('chatInput.planMode')}
+              </span>
+            </button>
           )}
           <div style={{ flex: 1 }} />
           {context && (
@@ -522,6 +527,8 @@ export default function ChatInput({
                       fastModel={config.fastModel}
                       visionModel={config.visionModel}
                       thinkingEffort={config.thinkingEffort}
+                      providers={config.providers}
+                      providerId={config.providerId}
                       showVision={config.showVision}
                       disabled={config.disabled}
                       error={config.error}
@@ -529,6 +536,7 @@ export default function ChatInput({
                       hint={config.hint}
                       engineTitle={config.engineTitle}
                       onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
+                      onProviderChange={config.onProviderChange}
                       onModelChange={config.onModelChange}
                       onFastModelChange={config.onFastModelChange}
                       onVisionModelChange={config.onVisionModelChange}

@@ -12,6 +12,7 @@ from engines.core.base import (
     EngineInstallResult,
     EngineModel,
     install_python_package,
+    resolve_thinking_effort,
 )
 
 from engines.core.events import (
@@ -465,9 +466,10 @@ class CodexSDKEngine(AcpEngineBase):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         thinking_effort: str | None = None,
+        workstep_tools: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         guarded_prompt = self.render_image_prompt(
-            self._coordinator_prompt(prompt),
+            self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
             images,
         )
         async for event in self._spawn_with_sandbox(
@@ -476,7 +478,7 @@ class CodexSDKEngine(AcpEngineBase):
             model=model,
             session_id=session_id,
             images=images,
-            read_only=True,
+            read_only=not workstep_tools,
             thinking_effort=thinking_effort,
         ):
             yield event
@@ -524,7 +526,9 @@ class CodexSDKEngine(AcpEngineBase):
         if sdk_config["approval_mode"]:
             approval_mode = ApprovalMode(sdk_config["approval_mode"])
         thread_config = {}
-        reasoning_effort = thinking_effort or sdk_config["model_reasoning_effort"]
+        reasoning_effort = resolve_thinking_effort(
+            thinking_effort, sdk_config["model_reasoning_effort"]
+        )
         if reasoning_effort:
             thread_config["model_reasoning_effort"] = reasoning_effort
         thread_kwargs: dict[str, Any] = {

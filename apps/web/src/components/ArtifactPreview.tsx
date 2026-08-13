@@ -338,33 +338,40 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
     const htmlUrl = fsApi.fileUrl(view.path)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.htmlFile'), <CopyTextButton content={content} />)}
+        {fileHeader(t('artifact.htmlFile'), (
+          <>
+            <CopyTextButton content={content} />
+            <a
+              href={htmlUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'var(--accent)', color: '#fff',
+                padding: '5px 12px', borderRadius: 'var(--radius-sm)',
+                fontSize: 13, fontWeight: 500, textDecoration: 'none',
+                whiteSpace: 'nowrap',
+                transition: 'background var(--motion-fast) var(--ease)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
+            >
+              <Icon name="external-link" size={13} />
+              {t('artifact.openHtml')}
+            </a>
+          </>
+        ))}
         <div style={{
-          flex: 1, overflow: 'auto', borderRadius: 8, padding: 16,
-          border: '1px dashed var(--border)', background: 'var(--surface)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+          flex: 1, minHeight: 0, borderRadius: 8, overflow: 'hidden',
+          border: '1px solid var(--border-soft)', background: '#fff',
+          display: 'flex', flexDirection: 'column',
         }}>
-          <Icon name="external-link" size={26} color="var(--muted)" />
-          <div style={{ fontSize: 13, color: 'var(--fg-2)', textAlign: 'center', maxWidth: 420 }}>
-            {t('artifact.htmlHint')}
-          </div>
-          <a
-            href={htmlUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: 'var(--accent)', color: '#fff',
-              padding: '7px 14px', borderRadius: 'var(--radius-sm)',
-              fontSize: 13, fontWeight: 500, textDecoration: 'none',
-              transition: 'background var(--motion-fast) var(--ease)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
-          >
-            <Icon name="external-link" size={14} />
-            {t('artifact.openHtml')}
-          </a>
+          <iframe
+            src={htmlUrl}
+            title={t('artifact.htmlFile')}
+            sandbox="allow-scripts allow-popups"
+            style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', display: 'block' }}
+          />
         </div>
       </div>
     )

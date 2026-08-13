@@ -13,11 +13,13 @@ interface Props {
   children?: ReactNode
   /** Disable the confirm button while an async action is in flight. */
   loading?: boolean
+  /** Override the default dialog width (px). */
+  width?: number
   onConfirm: () => void
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, children, loading, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, children, loading, width = 380, onConfirm, onCancel }: Props) {
   const { t } = useI18n()
   // Close on Escape
   useEffect(() => {
@@ -43,7 +45,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         style={{
           background: 'var(--bg)', borderRadius: 'var(--radius-md)',
           boxShadow: 'var(--elev-raised), 0 0 0 1px var(--border-soft)',
-          width: 380, overflow: 'hidden',
+          width, maxWidth: '92vw', overflow: 'hidden',
         }}
       >
         {/* Header */}

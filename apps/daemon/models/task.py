@@ -25,6 +25,7 @@ class Task(BaseModel):
     coordinator_fast_model = pw.TextField(null=True)
     coordinator_vision_model = pw.TextField(null=True)
     coordinator_thinking_effort = pw.TextField(null=True)
+    coordinator_provider_id = pw.TextField(null=True)
     active_workflow_run_id = pw.TextField(null=True)
     state_version = pw.IntegerField(default=0)
     next_message_sequence = pw.IntegerField(default=1)

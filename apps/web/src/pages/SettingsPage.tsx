@@ -4,15 +4,19 @@ import Button from '../components/Button'
 import Input from '../components/Input'
 import Select from '../components/Select'
 import {
+  assistantApi,
   engineApi,
   fetchEngineModels,
   getCachedEngineModels,
   invalidateEngineModels,
+  providerApi,
+  type AssistantConfigInfo,
   type EngineInfo,
   type EngineInspectResult,
   type EngineInstallResult,
   type EngineModel,
   type EngineTestResult,
+  type ProviderInfo,
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
@@ -24,7 +28,7 @@ import {
   engineLabel,
   engineDescription,
 } from '../engineMeta'
-import { useI18n } from '../i18n'
+import { useI18n, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 
 
@@ -61,6 +65,7 @@ function ExecutionDefaultSettings({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [loadingConfig, setLoadingConfig] = useState(false)
+  const initialized = useRef(false)
 
   const loadExecutionConfig = async () => {
     setLoadingConfig(true)
@@ -69,13 +74,19 @@ function ExecutionDefaultSettings({
     try {
       const config = await engineApi.executionConfig()
       setEngine(config.engine)
-      setNotice(t('settings.readDefaultSuccess'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.readDefaultFailed'))
     } finally {
       setLoadingConfig(false)
     }
   }
+
+  useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
+    void loadExecutionConfig()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const save = async () => {
     setSaving(true)
@@ -108,16 +119,7 @@ function ExecutionDefaultSettings({
           ariaLabel={t('settings.defaultEngineAria')}
           style={{ width: 300, height: 30 }}
         />
-        <Button
-          variant="ghost"
-          style={{ height: 30 }}
-          disabled={loadingConfig || saving}
-          loading={loadingConfig}
-          onClick={() => void loadExecutionConfig()}
-        >
-          {t('settings.readDefault')}
-        </Button>
-        <Button variant="primary" style={{ height: 30 }} disabled={saving || loading} loading={saving} onClick={() => void save()}>
+        <Button variant="primary" style={{ height: 30 }} disabled={saving || loading || loadingConfig} loading={saving} onClick={() => void save()}>
           {t('settings.saveDefault')}
         </Button>
       </div>
@@ -130,14 +132,27 @@ function ExecutionDefaultSettings({
   )
 }
 
-function CoordinatorAgentSettings() {
+const ASSISTANT_NAME_KEYS: Record<string, TKey> = {
+  task_coordinator: 'settings.assistantNames.taskCoordinator',
+  task_create: 'settings.assistantNames.taskCreate',
+  workflow_gen: 'settings.assistantNames.workflowGen',
+  chat_session: 'settings.assistantNames.chatSession',
+}
+
+function AgentAssistantSettings() {
   const { t } = useI18n()
+  const [assistants, setAssistants] = useState<AssistantConfigInfo[]>([])
+  const [selectedName, setSelectedName] = useState('')
+  const [fields, setFields] = useState<string[]>(['engine'])
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [engine, setEngine] = useState('')
   const [model, setModel] = useState('')
   const [fastModel, setFastModel] = useState('')
   const [visionModel, setVisionModel] = useState('')
   const [thinkingEffort, setThinkingEffort] = useState('')
+  const [providerId, setProviderId] = useState('')
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const [providersLoading, setProvidersLoading] = useState(false)
   const [models, setModels] = useState<EngineModel[]>([])
   const [loading, setLoading] = useState(true)
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -148,28 +163,46 @@ function CoordinatorAgentSettings() {
   const [modelError, setModelError] = useState('')
   const [notice, setNotice] = useState('')
 
+  const applyAssistant = (info: AssistantConfigInfo) => {
+    setSelectedName(info.name)
+    setFields(info.fields)
+    setEngines(info.available_engines as EngineInfo[])
+    setEngine(info.configured.engine || '')
+    setModel(info.configured.model || '')
+    setFastModel(info.configured.fast_model || '')
+    setVisionModel(info.configured.vision_model || '')
+    setThinkingEffort(info.configured.thinking_effort || '')
+    setProviderId(info.configured.provider_id || '')
+    setModelError('')
+    setNotice('')
+    setError('')
+  }
+
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    engineApi.coordinatorDefaults()
-      .then((config) => {
-        setEngines(config.available_engines as EngineInfo[])
-        setEngine(config.engine)
-        setModel(config.model)
-        setFastModel(config.fast_model)
-        setVisionModel(config.vision_model)
-        setThinkingEffort(config.thinking_effort)
+    assistantApi.list()
+      .then(({ assistants: items }) => {
+        setAssistants(items)
+        if (items.length > 0) applyAssistant(items[0])
         setError('')
       })
       .catch((reason) => setError(
-        reason instanceof Error ? reason.message : t('settings.readCoordinatorFailed')
+        reason instanceof Error ? reason.message : t('settings.readAssistantFailed')
       ))
       .finally(() => setLoading(false))
+    setProvidersLoading(true)
+    providerApi.list()
+      .then((result) => setProviders(
+        result.providers.filter((item) => item.enabled),
+      ))
+      .finally(() => setProvidersLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   engineRef.current = engine
 
-  const loadCoordinatorModels = async (engineId: string, force: boolean) => {
+  const loadAssistantModels = async (engineId: string, force: boolean) => {
     if (!force) {
       const cached = getCachedEngineModels(engineId)
       if (cached) {
@@ -183,7 +216,11 @@ function CoordinatorAgentSettings() {
     setModelsLoading(true)
     setModelError('')
     try {
-      const result = await fetchEngineModels(engineId, force)
+      const result = await fetchEngineModels(
+        engineId,
+        force,
+        engineId === 'pydantic_ai' ? providerId : '',
+      )
       if (engineRef.current !== engineId) return
       setModels(result.models || [])
       setModelError(result.error || '')
@@ -202,15 +239,24 @@ function CoordinatorAgentSettings() {
       setModelError('')
       return
     }
-    void loadCoordinatorModels(engine, false)
+    void loadAssistantModels(engine, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine])
+
+  useEffect(() => {
+    if (engine === 'pydantic_ai') {
+      // 切换供应商读取已保存的模型列表；未保存过才由后端拉取一次并保存。
+      void loadAssistantModels(engine, false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId])
 
   const changeEngine = (engineId: string) => {
     setEngine(engineId)
     setModel('')
     setFastModel('')
     setVisionModel('')
+    setProviderId('')
     setNotice('')
   }
 
@@ -219,19 +265,20 @@ function CoordinatorAgentSettings() {
     setError('')
     setNotice('')
     try {
-      const result = await engineApi.setCoordinatorDefaults(
+      const result = await assistantApi.setConfig(selectedName, {
         engine,
-        model,
-        fastModel,
-        visionModel,
-        thinkingEffort,
-      )
-      setEngine(result.engine)
-      setModel(result.model)
-      setFastModel(result.fast_model)
-      setVisionModel(result.vision_model)
-      setThinkingEffort(result.thinking_effort)
-      setNotice(t('settings.saveCoordinatorSuccess'))
+        model: fields.includes('model') ? model : '',
+        fastModel: fields.includes('fast_model') ? fastModel : '',
+        visionModel: fields.includes('vision_model') ? visionModel : '',
+        thinkingEffort: fields.includes('thinking_effort') ? thinkingEffort : '',
+        providerId: fields.includes('provider_id') && engine === 'pydantic_ai' ? providerId : '',
+      })
+      setAssistants((prev) => prev.map((item) =>
+        item.name === selectedName
+          ? { ...item, configured: { ...item.configured, ...result.configured } }
+          : item,
+      ))
+      setNotice(t('settings.saveAssistantSuccess'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
     } finally {
@@ -239,18 +286,47 @@ function CoordinatorAgentSettings() {
     }
   }
 
+  const assistantLabel = (info: AssistantConfigInfo) =>
+    t(ASSISTANT_NAME_KEYS[info.name] || 'settings.assistantSelect')
+
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.coordinatorTitle')}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.assistantTitle')}</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-          {t('settings.coordinatorIntro')}
+          {t('settings.assistantIntro')}
         </p>
       </div>
       <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)' }}>
+        <div
+          role="group"
+          aria-label={t('settings.assistantSelectAria')}
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}
+        >
+          {assistants.map((item) => {
+            const active = item.name === selectedName
+            return (
+              <button
+                key={item.name}
+                type="button"
+                disabled={loading || saving}
+                onClick={() => applyAssistant(item)}
+                style={{
+                  height: 30, padding: '0 14px', border: active ? '1px solid var(--accent)' : '1px solid var(--border)',
+                  borderRadius: 999, cursor: loading || saving ? 'default' : 'pointer',
+                  background: active ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--fg-2)',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)',
+                }}
+              >
+                {assistantLabel(item)}
+              </button>
+            )
+          })}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            {t('settings.coordinatorEngine')}
+            {t('settings.assistantEngine')}
           </label>
           <EngineSelect
             engines={engines}
@@ -258,112 +334,151 @@ function CoordinatorAgentSettings() {
             onChange={changeEngine}
             disabled={loading || saving}
             requireCoordinator
-            defaultOption={{ value: '', label: t('settings.followTaskEngine') }}
-            ariaLabel={t('settings.defaultCoordinatorAria')}
+            allowUnconfiguredBuiltin
+            defaultOption={{ value: '', label: t('settings.followDefaultEngine') }}
+            ariaLabel={t('settings.defaultAssistantAria')}
             style={{ flex: 1, minWidth: 0, height: 30 }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            {t('settings.reasoningModel')}
-          </label>
-          <Select
-            value={model}
-            disabled={!engine || modelsLoading || saving}
-            onChange={(event) => setModel(event.target.value)}
-            aria-label={t('settings.defaultReasoningAria')}
-            style={{
-              flex: 1, minWidth: 0, height: 30,
-            }}
-          >
-            <option value="">
-              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
-            </option>
-            {model && !models.some((item) => item.id === model) && (
-              <option value={model}>{model}{t('flow.currentConfigSuffix')}</option>
-            )}
-            {models.map((item) => (
-              <option key={item.id} value={item.id}>{item.label || item.id}</option>
-            ))}
-          </Select>
-          {engine && (
-            <Button
-              variant="ghost"
-              style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
-              disabled={modelsLoading || saving}
-              onClick={() => void loadCoordinatorModels(engine, true)}
+        {engine === 'pydantic_ai' && fields.includes('provider_id') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+              {t('settings.assistantProvider')}
+            </label>
+            <Select
+              value={providerId}
+              disabled={providersLoading || saving}
+              onChange={(event) => setProviderId(event.target.value)}
+              aria-label={t('settings.assistantProviderAria')}
+              style={{ flex: 1, minWidth: 0, height: 30 }}
             >
-              {t('settings.refresh')}
-            </Button>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            {t('settings.fastModel')}
-          </label>
-          <Select
-            value={fastModel}
-            disabled={!engine || modelsLoading || saving}
-            onChange={(event) => setFastModel(event.target.value)}
-            aria-label={t('settings.defaultFastAria')}
-            style={{
-              flex: 1, minWidth: 0, height: 30,
-            }}
-          >
-            <option value="">
-              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
-            </option>
-            {fastModel && !models.some((item) => item.id === fastModel) && (
-              <option value={fastModel}>{fastModel}{t('flow.currentConfigSuffix')}</option>
-            )}
-            {models.map((item) => (
-              <option key={item.id} value={item.id}>{item.label || item.id}</option>
-            ))}
-          </Select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            {t('coord.thinkingEffort')}
-          </label>
-          <Select
-            value={thinkingEffort}
-            disabled={loading || saving}
-            onChange={(event) => setThinkingEffort(event.target.value)}
-            title={t('coord.thinkingEffortTitle')}
-            style={{ flex: 1, minWidth: 0, height: 30 }}
-          >
-            <option value="">{t('coord.thinkingEffortDefault')}</option>
-            {THINKING_EFFORT_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {t(`coord.thinkingLevels.${level}`)}
+              <option value="">
+                {providersLoading
+                  ? t('flow.modelsLoading')
+                  : t('settings.followEngineProvider')}
               </option>
-            ))}
-          </Select>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
-            {t('settings.visionModel')}
-          </label>
-          <Select
-            value={visionModel}
-            disabled={!engine || modelsLoading || saving}
-            onChange={(event) => setVisionModel(event.target.value)}
-            aria-label={t('settings.defaultVisionAria')}
-            style={{
-              flex: 1, minWidth: 0, height: 30,
-            }}
-          >
-            <option value="">
-              {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
-            </option>
-            {visionModel && !models.some((item) => item.id === visionModel) && (
-              <option value={visionModel}>{visionModel}{t('flow.currentConfigSuffix')}</option>
+              {providers.length === 0 && !providersLoading && (
+                <option value="" disabled>
+                  {t('settings.assistantProviderEmpty')}
+                </option>
+              )}
+              {providers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name || item.id}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+        {fields.includes('model') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+              {t('settings.reasoningModel')}
+            </label>
+            <Select
+              value={model}
+              disabled={!engine || modelsLoading || saving}
+              onChange={(event) => setModel(event.target.value)}
+              aria-label={t('settings.defaultReasoningAria')}
+              style={{
+                flex: 1, minWidth: 0, height: 30,
+              }}
+            >
+              <option value="">
+                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
+              </option>
+              {model && !models.some((item) => item.id === model) && (
+                <option value={model}>{model}{t('flow.currentConfigSuffix')}</option>
+              )}
+              {models.map((item) => (
+                <option key={item.id} value={item.id}>{item.label || item.id}</option>
+              ))}
+            </Select>
+            {engine && (
+              <Button
+                variant="ghost"
+                style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
+                disabled={modelsLoading || saving}
+                onClick={() => void loadAssistantModels(engine, true)}
+              >
+                {t('settings.refresh')}
+              </Button>
             )}
-            {models.map((item) => (
-              <option key={item.id} value={item.id}>{item.label || item.id}</option>
-            ))}
-          </Select>
-        </div>
+          </div>
+        )}
+        {fields.includes('fast_model') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+              {t('settings.fastModel')}
+            </label>
+            <Select
+              value={fastModel}
+              disabled={!engine || modelsLoading || saving}
+              onChange={(event) => setFastModel(event.target.value)}
+              aria-label={t('settings.defaultFastAria')}
+              style={{
+                flex: 1, minWidth: 0, height: 30,
+              }}
+            >
+              <option value="">
+                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
+              </option>
+              {fastModel && !models.some((item) => item.id === fastModel) && (
+                <option value={fastModel}>{fastModel}{t('flow.currentConfigSuffix')}</option>
+              )}
+              {models.map((item) => (
+                <option key={item.id} value={item.id}>{item.label || item.id}</option>
+              ))}
+            </Select>
+          </div>
+        )}
+        {fields.includes('thinking_effort') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+              {t('coord.thinkingEffort')}
+            </label>
+            <Select
+              value={thinkingEffort}
+              disabled={loading || saving}
+              onChange={(event) => setThinkingEffort(event.target.value)}
+              title={t('coord.thinkingEffortTitle')}
+              style={{ flex: 1, minWidth: 0, height: 30 }}
+            >
+              <option value="">{t('coord.thinkingEffortDefault')}</option>
+              {THINKING_EFFORT_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {t(`coord.thinkingLevels.${level}`)}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+        {fields.includes('vision_model') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+              {t('settings.visionModel')}
+            </label>
+            <Select
+              value={visionModel}
+              disabled={!engine || modelsLoading || saving}
+              onChange={(event) => setVisionModel(event.target.value)}
+              aria-label={t('settings.defaultVisionAria')}
+              style={{
+                flex: 1, minWidth: 0, height: 30,
+              }}
+            >
+              <option value="">
+                {!engine ? t('settings.selectEngineFirst') : modelsLoading ? t('flow.modelsLoading') : t('settings.followReasoning')}
+              </option>
+              {visionModel && !models.some((item) => item.id === visionModel) && (
+                <option value={visionModel}>{visionModel}{t('flow.currentConfigSuffix')}</option>
+              )}
+              {models.map((item) => (
+                <option key={item.id} value={item.id}>{item.label || item.id}</option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--meta)' }}>
           {t('settings.modelRolesHint')}
         </div>
@@ -377,12 +492,197 @@ function CoordinatorAgentSettings() {
             {error || notice || t('settings.inProgressHint')}
           </div>
           <Button variant="primary" disabled={loading || saving} loading={saving} onClick={() => void save()}>
-            {t('settings.saveCoordinator')}
+            {t('settings.saveAssistant')}
           </Button>
         </div>
       </div>
+      <PromptEnhanceSettings />
     </div>
   )
+}
+
+function PromptEnhanceSettings() {
+  const { t } = useI18n()
+  const [providerId, setProviderId] = useState('')
+  const [model, setModel] = useState('')
+  const [providers, setProviders] = useState<EnhanceProviderInfo[]>([])
+  const [models, setModels] = useState<EngineModel[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [modelError, setModelError] = useState('')
+  const loaded = useRef(false)
+
+  const loadConfig = async () => {
+    setLoading(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await assistantApi.enhanceConfig()
+      setProviderId(result.provider_id || '')
+      setModel(result.model || '')
+      setProviders(result.providers || [])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('settings.enhanceLoadFailed'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (loaded.current) return
+    loaded.current = true
+    void loadConfig()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!providerId) {
+      setModels([])
+      setModelError('')
+      return
+    }
+    let active = true
+    setModelsLoading(true)
+    setModelError('')
+    providerApi.models(providerId)
+      .then((result) => {
+        if (!active) return
+        setModels(result.models || [])
+        setModelError(result.error || '')
+      })
+      .catch((reason) => {
+        if (!active) return
+        setModels([])
+        setModelError(reason instanceof Error ? reason.message : t('settings.enhanceLoadFailed'))
+      })
+      .finally(() => {
+        if (active) setModelsLoading(false)
+      })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerId])
+
+  const changeProvider = (value: string) => {
+    setProviderId(value)
+    setModel('')
+    setNotice('')
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await assistantApi.setEnhanceConfig({ providerId, model })
+      setProviderId(result.provider_id)
+      setModel(result.model)
+      setNotice(t('settings.enhanceSaved'))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('settings.enhanceSaveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginTop: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 4 }}>{t('settings.enhanceTitle')}</div>
+      <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 14 }}>
+        {t('settings.enhanceIntro')}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+          {t('settings.enhanceProvider')}
+        </label>
+        <Select
+          value={providerId}
+          disabled={loading || saving}
+          onChange={(event) => changeProvider(event.target.value)}
+          aria-label={t('settings.enhanceProvider')}
+          style={{ flex: 1, minWidth: 0, height: 30 }}
+        >
+          <option value="">{t('settings.enhanceSelectProvider')}</option>
+          {providers.filter((item) => item.enabled).map((item) => (
+            <option key={item.id} value={item.id}>{item.name}</option>
+          ))}
+          {providers.filter((item) => !item.enabled).map((item) => (
+            <option key={item.id} value={item.id}>{item.name}{t('flow.currentConfigSuffix')}</option>
+          ))}
+        </Select>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+          {t('settings.enhanceModel')}
+        </label>
+        <Select
+          value={model}
+          disabled={!providerId || modelsLoading || saving}
+          onChange={(event) => setModel(event.target.value)}
+          aria-label={t('settings.enhanceModel')}
+          style={{ flex: 1, minWidth: 0, height: 30 }}
+        >
+          <option value="">
+            {!providerId ? t('settings.enhanceSelectProvider') : modelsLoading ? t('flow.modelsLoading') : t('settings.enhanceSelectModel')}
+          </option>
+          {model && !models.some((item) => item.id === model) && (
+            <option value={model}>{model}{t('flow.currentConfigSuffix')}</option>
+          )}
+          {models.map((item) => (
+            <option key={item.id} value={item.id}>{item.label || item.id}</option>
+          ))}
+        </Select>
+        {providerId && (
+          <Button
+            variant="ghost"
+            style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
+            disabled={modelsLoading || saving}
+            onClick={() => {
+              setModelsLoading(true)
+              setModelError('')
+              providerApi.models(providerId)
+                .then((result) => {
+                  setModels(result.models || [])
+                  setModelError(result.error || '')
+                })
+                .catch((reason) => setModelError(reason instanceof Error ? reason.message : t('settings.enhanceLoadFailed')))
+                .finally(() => setModelsLoading(false))
+            }}
+          >
+            {t('settings.enhanceRefresh')}
+          </Button>
+        )}
+      </div>
+      {modelError && (
+        <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--warn)' }}>
+          {t('settings.enhanceModelErrorHint', { error: modelError })}
+        </div>
+      )}
+      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
+          {error || notice}
+        </div>
+        <Button
+          variant="primary"
+          disabled={loading || saving}
+          loading={saving}
+          onClick={() => void save()}
+        >
+          {t('settings.enhanceSave')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface EnhanceProviderInfo {
+  id: string
+  name: string
+  type: string
+  base_url: string
+  enabled: boolean
 }
 
 interface SettingsPageProps {
@@ -416,7 +716,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [inspecting, setInspecting] = useState(false)
   const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
   const [inspectError, setInspectError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'coordinator' | 'templates' | 'language'>('providers')
+  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'language'>('providers')
 
   const loadEngineModels = async (engineId: string, force = false) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
@@ -754,17 +1054,17 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           {t('settings.enginesNav')}
         </button>
         <button
-          aria-current={activeSection === 'coordinator' ? 'page' : undefined}
-          onClick={() => setActiveSection('coordinator')}
+          aria-current={activeSection === 'assistants' ? 'page' : undefined}
+          onClick={() => setActiveSection('assistants')}
           style={{
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'coordinator' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'coordinator' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            gap: 9, borderRadius: 8, background: activeSection === 'assistants' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'assistants' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
           <span aria-hidden="true" style={{ fontSize: 16 }}>✦</span>
-          {t('settings.coordinatorNav')}
+          {t('settings.assistantNav')}
         </button>
         <button
           aria-current={activeSection === 'templates' ? 'page' : undefined}
@@ -1269,7 +1569,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             </div>
           </div>
         ) : (
-          <CoordinatorAgentSettings />
+          <AgentAssistantSettings />
         )}
       </section>
       </div>

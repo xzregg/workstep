@@ -97,6 +97,8 @@ npm run build
 | 前端 | React + TypeScript + Vite | 画布编辑器是核心约束；store 只消费 AG-UI 事件 |
 | 数据 | **per-project SQLite** | 每个项目独立 `.workstep/workstep.db` |
 
+WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[...],"status_only_task_ids":[...],"session_ids":[...],"channels":[...]}`，`streaming/bus.py` 入队前按谓词过滤）；前端连接后主动订阅：打开的任务详情订阅全量流、当前项目任务订阅状态事件、活跃助手会话按 `session_id` 订阅，未订阅前保持全量广播向后兼容。
+
 ## 多引擎支持
 
 `BaseLLMEngine` = **我方系统扩展**：安装、版本、二进制解析、配置表单、能力声明等 WorkStep 特有自定义函数。
@@ -115,12 +117,19 @@ npm run build
 | Hermes | JSON-RPC 双向 | JSON-RPC | 原生 ACP session | 全集 | P2 实现 |
 | Claude / Qoder Agent SDK | 官方 SDK 进程内驱动 | 消息流 | SDK `resume` | 实际子集 | 已实现 |
 | OpenClaw | 一次性 exec | JSON 信封 | 无 | 信封实际子集 | P5 实现 |
-| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无（message_history） | 实际子集 | 已实现 |
+| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无（message_history）；harness 自动挂载 StepPersistence | 实际子集 | 已实现 |
 
 各引擎声明 `acp_events` capability 元数据（**声明 = 实际**：有原生等价就映射，无来源不发、不合成默认值；
 `tests/test_engine_base_hierarchy.py` 保证 `acp_events ⊆ ACP_EVENTS` 且映射路径产出的事件都被声明）；
 非 ACP 引擎的 `request_permission` 在 `request_interaction` 中登记到基类 pending 审批注册表，
 `approve_tool` / `approve_tool_option` 统一把决定写回挂起交互；Hermes 由 `AcpEngineBase` 直接产出并补全缺失 update 类型。
+
+Pydantic AI 的 harness 扩展不暴露用户配置（引擎动态配置不含 `harness` 字段，固定按 `auto`
+处理）：引擎在 `Agent(..., capabilities=[...])` 挂载 pydantic-ai-harness 扩展（不是独立引擎、
+不替代 `AcpEngineBase` 会话/审批缝）：`TieredCompaction` + `WarnNearLimits` 自动上下文压缩，
+`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`，按 `conversation_id=session_id`
+恢复；压缩发生时经 receipts 排空产出 `compacted` 事件（`acp_events` 已声明）。
+未安装 `pydantic-ai-harness` 时回退 `message_history` 内存往返，行为不变。
 
 统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
 - 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`

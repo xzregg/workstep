@@ -556,3 +556,76 @@ async def test_cancel_task_finalizes_running_records(subscriber):
     finally:
         registry.ENGINE_REGISTRY.clear()
         registry.ENGINE_REGISTRY.update(original)
+
+
+def test_get_task_exposes_duration_fields(db_and_service):
+    """Task dict exposes first-message/completed timestamps and duration_ms."""
+    from datetime import datetime, timedelta, timezone
+
+    from models import Message, TaskStep
+
+    service, _ = db_and_service
+    created = service.create_task(title="Duration", cwd="/tmp")
+
+    fresh = service.get_task(created["id"])
+    assert fresh["first_message_at"] is None
+    assert fresh["completed_at"] is None
+    assert fresh["duration_ms"] is None
+
+    first = datetime(2026, 8, 13, 1, 0, 0, tzinfo=timezone.utc)
+    Message.create(
+        id=str(uuid.uuid4()),
+        task=created["id"],
+        step_key="do",
+        role="assistant",
+        content="first",
+        position=1,
+        created_at=first,
+    )
+    TaskStep.update(
+        status="passed",
+        started_at=first,
+        ended_at=first + timedelta(minutes=25, seconds=30),
+    ).where(TaskStep.task == created["id"]).execute()
+
+    found = service.get_task(created["id"])
+    assert found["first_message_at"] == first
+    assert found["completed_at"] == first + timedelta(minutes=25, seconds=30)
+    assert found["duration_ms"] == 25 * 60_000 + 30_000
+
+
+def test_get_task_exposes_total_tokens(db_and_service):
+    """Task dict aggregates total token usage from message usage_json."""
+    import json as json_mod
+
+    from models import Message
+
+    service, _ = db_and_service
+    created = service.create_task(title="Tokens", cwd="/tmp")
+
+    fresh = service.get_task(created["id"])
+    assert fresh["total_tokens"] is None
+
+    Message.create(
+        id=str(uuid.uuid4()),
+        task=created["id"],
+        step_key="do",
+        role="assistant",
+        content="a",
+        position=1,
+        created_at=1,
+        usage_json=json_mod.dumps({"total_tokens": 1234}),
+    )
+    Message.create(
+        id=str(uuid.uuid4()),
+        task=created["id"],
+        step_key="do",
+        role="assistant",
+        content="b",
+        position=2,
+        created_at=2,
+        usage_json=json_mod.dumps({"input_tokens": 100, "output_tokens": 50}),
+    )
+
+    found = service.get_task(created["id"])
+    assert found["total_tokens"] == 1234 + 150

@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,8 @@ class ProviderImportRequest(BaseModel):
 
 def _public_provider(provider: dict) -> dict:
     """Mask secrets before sending provider records to the frontend."""
+    entry = config_store.get_provider_models(provider.get("id", ""))
+    saved_models = entry.get("models") if isinstance(entry, dict) else None
     return {
         "id": provider.get("id", ""),
         "name": provider.get("name", ""),
@@ -47,7 +49,25 @@ def _public_provider(provider: dict) -> dict:
         "enabled": bool(provider.get("enabled", True)),
         "verified": bool(provider.get("verified", False)),
         "created_at": provider.get("created_at", ""),
+        "model_count": len(saved_models) if isinstance(saved_models, list) else 0,
+        "models_fetched_at": (
+            entry.get("fetched_at") if isinstance(entry, dict) else None
+        ),
     }
+
+
+async def _refresh_models_in_background(provider_id: str) -> None:
+    """Fetch + save a provider's model list once (best effort)."""
+    provider = config_store.get_provider(provider_id)
+    if provider is None:
+        return
+    try:
+        await asyncio.wait_for(
+            provider_service.fetch_and_save_models(provider),
+            timeout=20,
+        )
+    except Exception:
+        pass
 
 
 def _public_candidate(candidate: dict) -> dict:
@@ -82,7 +102,10 @@ async def list_providers():
 
 
 @router.post("")
-async def save_provider(req: ProviderSaveRequest):
+async def save_provider(
+    req: ProviderSaveRequest,
+    background_tasks: BackgroundTasks,
+):
     """Create or update a provider; API keys keep engine-style masking."""
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
@@ -129,6 +152,8 @@ async def save_provider(req: ProviderSaveRequest):
     config_store.save_provider(provider)
     config_store.set_engine_verified(f"provider:{provider_id}", False)
     refresh_registry()
+    # 配置供应商即拉取一次模型列表并保存；失败不阻塞，可手动刷新。
+    background_tasks.add_task(_refresh_models_in_background, provider_id)
     return {
         "saved": True,
         "message": "供应商已保存",
@@ -234,6 +259,7 @@ async def delete_provider(provider_id: str):
             detail="该供应商正被 Pydantic AI 引擎使用，请先切换其它供应商",
         )
     config_store.delete_provider(provider_id)
+    config_store.clear_provider_models(provider_id)
     config_store.set_engine_verified(f"provider:{provider_id}", False)
     refresh_registry()
     return {"deleted": True}
@@ -256,12 +282,24 @@ async def test_provider(provider_id: str, req: ProviderTestRequest):
 
 
 @router.get("/{provider_id}/models")
-async def provider_models(provider_id: str):
-    """Return the provider's selectable models."""
+async def provider_models(provider_id: str, refresh: bool = False):
+    """Return the provider's selectable models.
+
+    Defaults to the locally saved copy; ``refresh=1`` re-fetches from the
+    provider address and saves the result.
+    """
     provider = _require_provider(provider_id)
+    entry = config_store.get_provider_models(provider_id)
+    if not refresh and entry:
+        return {
+            "provider_id": provider_id,
+            "models": [asdict(model) for model in provider_service.saved_models(provider_id)],
+            "fetched_at": entry.get("fetched_at"),
+            "error": None,
+        }
     try:
         models = await asyncio.wait_for(
-            provider_service.fetch_models(provider),
+            provider_service.fetch_and_save_models(provider),
             timeout=15,
         )
         error = None
@@ -274,6 +312,7 @@ async def provider_models(provider_id: str):
     return {
         "provider_id": provider_id,
         "models": [asdict(model) for model in models],
+        "fetched_at": config_store.get_provider_models(provider_id).get("fetched_at"),
         "error": error,
     }
 

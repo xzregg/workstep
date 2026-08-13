@@ -142,6 +142,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const wfInputRef = useRef<HTMLInputElement>(null)
   const renameWfInputRef = useRef<HTMLInputElement>(null)
   const renameSessionInputRef = useRef<HTMLInputElement>(null)
+  const projectMenuRef = useRef<HTMLDivElement>(null)
+  const moreMenuRef = useRef<HTMLDivElement>(null)
+  const sessionMenuRef = useRef<HTMLDivElement>(null)
   const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; title: string } | null>(null)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
@@ -223,38 +226,30 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }, [renameSessionId])
 
+  // Any mousedown outside the open menus dismisses them (row-level
+  // stopPropagation handlers must not be able to swallow the close event).
   useEffect(() => {
-    if (!sessionMenu) return
-    const close = () => setSessionMenu(null)
-    document.addEventListener('click', close)
-    window.addEventListener('blur', close)
-    return () => {
-      document.removeEventListener('click', close)
-      window.removeEventListener('blur', close)
+    const closeAll = () => {
+      setProjectContextMenu(null)
+      setMoreMenu(null)
+      setSessionMenu(null)
     }
-  }, [sessionMenu])
-
-  useEffect(() => {
-    if (!projectContextMenu) return
-    const close = () => setProjectContextMenu(null)
-    document.addEventListener('click', close)
-    window.addEventListener('blur', close)
-    return () => {
-      document.removeEventListener('click', close)
-      window.removeEventListener('blur', close)
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null
+      if (!target) return
+      if (projectMenuRef.current?.contains(target)) return
+      if (moreMenuRef.current?.contains(target)) return
+      if (sessionMenuRef.current?.contains(target)) return
+      closeAll()
     }
-  }, [projectContextMenu])
-
-  useEffect(() => {
-    if (!moreMenu) return
-    const close = () => setMoreMenu(null)
-    document.addEventListener('click', close)
-    window.addEventListener('blur', close)
+    const onBlur = () => closeAll()
+    window.addEventListener('mousedown', onMouseDown)
+    window.addEventListener('blur', onBlur)
     return () => {
-      document.removeEventListener('click', close)
-      window.removeEventListener('blur', close)
+      window.removeEventListener('mousedown', onMouseDown)
+      window.removeEventListener('blur', onBlur)
     }
-  }, [moreMenu])
+  }, [])
 
   // Refresh flow running states whenever a task status event arrives
   const taskStatusEvents = useTaskStore((s) => s.taskStatusEvents)
@@ -288,12 +283,15 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   const openMoreMenu = (e: React.MouseEvent, kind: 'project' | 'workflow', id: string) => {
     e.stopPropagation()
+    setProjectContextMenu(null)
+    setSessionMenu(null)
     const rect = e.currentTarget.getBoundingClientRect()
+    const atCursor = e.type === 'contextmenu'
     setMoreMenu({
       kind,
       id,
-      x: Math.min(rect.left, window.innerWidth - 176),
-      y: Math.min(rect.bottom + 4, window.innerHeight - 128),
+      x: Math.min(atCursor ? e.clientX : rect.left, window.innerWidth - 176),
+      y: Math.min(atCursor ? e.clientY : rect.bottom + 4, window.innerHeight - 128),
     })
   }
 
@@ -467,9 +465,13 @@ export default function Layout({ onSelectProject, children }: Props) {
   const openSessionMenu = (e: React.MouseEvent, sessionId: string, title: string) => {
     e.preventDefault()
     e.stopPropagation()
+    setProjectContextMenu(null)
+    setMoreMenu(null)
+    const rect = e.currentTarget.getBoundingClientRect()
+    const atCursor = e.type === 'contextmenu'
     setSessionMenu({
-      x: Math.min(e.clientX, window.innerWidth - 176),
-      y: Math.min(e.clientY, window.innerHeight - 128),
+      x: Math.min(atCursor ? e.clientX : rect.left, window.innerWidth - 176),
+      y: Math.min(atCursor ? e.clientY : rect.bottom + 4, window.innerHeight - 128),
       sessionId,
       title,
     })
@@ -574,6 +576,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
+                  setMoreMenu(null)
+                  setSessionMenu(null)
                   setProjectContextMenu({
                     x: e.clientX,
                     y: Math.min(e.clientY, window.innerHeight - 48),
@@ -689,6 +693,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                         setActiveProject(p)
                         await setActiveWorkflow(wf.id)
                         navigate('/tasks')
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        openMoreMenu(e, 'workflow', wf.id)
                       }}
                       className="ws-row"
                       draggable={renameWfId !== wf.id}
@@ -927,6 +935,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
                           )}
+                          <Button
+                            variant="icon"
+                            className="ws-more-btn"
+                            onClick={(e) => openSessionMenu(e, session.id, session.title)}
+                            title={t('layout.moreActions')}
+                            aria-label={t('layout.moreActions')}
+                            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, flexShrink: 0 }}
+                          >⋯</Button>
                         </div>
                         )
                       })}
@@ -968,6 +984,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       {projectContextMenu && (
         <div
+          ref={projectMenuRef}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: projectContextMenu.x, top: projectContextMenu.y,
@@ -994,6 +1011,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       {moreMenu && (
         <div
+          ref={moreMenuRef}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: moreMenu.x, top: moreMenu.y,
@@ -1099,6 +1117,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
       {sessionMenu && (
         <div
+          ref={sessionMenuRef}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: sessionMenu.x, top: sessionMenu.y,

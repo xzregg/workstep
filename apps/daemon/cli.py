@@ -82,13 +82,23 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--project", required=True, dest="project_id")
         if not creating:
             target.add_argument("--schedule", required=True, dest="schedule_id")
-        target.add_argument("--workflow", required=creating, dest="workflow_id")
+        target.add_argument("--workflow", dest="workflow_id")
         target.add_argument("--name", required=creating)
-        target.add_argument("--title", required=creating)
+        target.add_argument("--title")
         target.add_argument("--desc", dest="description")
         target.add_argument("--timezone")
         target.add_argument("--start-step")
         target.add_argument("--review-overrides", help="JSON object")
+        target.add_argument(
+            "--mode", choices=("static", "agent"),
+            default="static" if creating else None,
+        )
+        target.add_argument("--instruction", help="agent-mode 生成指令")
+        target.add_argument(
+            "--candidates",
+            help="agent-mode 候选流程 id，逗号分隔；缺省表示项目全部流程",
+        )
+        target.add_argument("--retry-count", type=int)
         target.add_argument(
             "--execution", choices=("workflow", "immediate", "manual"),
             default="workflow" if creating else None,
@@ -177,6 +187,11 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
             existing = None
             if args.subcommand == "update":
                 arguments["schedule_id"] = args.schedule_id
+            mode = getattr(args, "mode", "static") or "static"
+            if args.subcommand == "create" and mode != "agent" and not args.workflow_id:
+                raise ValueError(
+                    "--workflow is required when --mode is static (default)"
+                )
             for source, target in (
                 ("workflow_id", "workflow_id"), ("name", "name"),
                 ("execution", "execution_mode"), ("overlap", "overlap_policy"),
@@ -184,6 +199,8 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 value = getattr(args, source, None)
                 if value is not None:
                     arguments[target] = value
+            if mode == "agent" and args.workflow_id is None:
+                arguments["workflow_id"] = ""
             if args.at or args.cron:
                 arguments["rule"] = {
                     "kind": "once" if args.at else "cron",
@@ -206,6 +223,18 @@ async def dispatch(args: argparse.Namespace, client: WorkstepClient | None = Non
                 template["start_step_key"] = args.start_step
             if args.review_overrides is not None:
                 template["review_overrides"] = json.loads(args.review_overrides)
+            if mode != "static":
+                template["mode"] = mode
+            if args.instruction is not None:
+                template["instruction"] = args.instruction
+            if args.candidates is not None:
+                template["candidate_workflow_ids"] = [
+                    item.strip()
+                    for item in args.candidates.split(",")
+                    if item.strip()
+                ]
+            if args.retry_count is not None:
+                template["retry_count"] = args.retry_count
             if template:
                 if args.subcommand == "update":
                     existing = existing or await client.call("workstep_get_schedule", {

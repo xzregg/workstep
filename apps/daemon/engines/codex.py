@@ -16,6 +16,7 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
     install_with_command,
+    resolve_thinking_effort,
 )
 
 from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
@@ -235,7 +236,9 @@ class CodexEngine(AcpEngineBase):
             if model:
                 cmd.extend(["--model", model])
 
-            reasoning_effort = thinking_effort or codex_config["model_reasoning_effort"]
+            reasoning_effort = resolve_thinking_effort(
+                thinking_effort, codex_config["model_reasoning_effort"]
+            )
             if reasoning_effort:
                 cmd.extend(
                     ["-c", f"model_reasoning_effort={reasoning_effort}"]

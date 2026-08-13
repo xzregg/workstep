@@ -234,6 +234,14 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
             role="assistant",
             run_id="msg-b",
             run_status="running",
+            events_json=json.dumps([{
+                "type": "interaction_request",
+                "data": {
+                    "interaction_id": "ask-1",
+                    "method": "session/request_permission",
+                },
+                "timestamp": 1,
+            }], ensure_ascii=False),
             position=0,
             started_at=now,
             created_at=now,
@@ -246,6 +254,15 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
             message = Message.get_by_id("msg-b")
             assert message.run_status == "failed"
             assert message.ended_at is not None
+            sealed = json.loads(message.events_json)
+            assert [event["type"] for event in sealed] == [
+                "interaction_request",
+                "interaction_response",
+            ]
+            assert sealed[1]["data"]["interaction_id"] == "ask-1"
+            assert sealed[1]["data"]["response"] == {
+                "outcome": {"outcome": "cancelled"},
+            }
     finally:
         await bus.close()
         from engines.core.registry import ENGINE_REGISTRY

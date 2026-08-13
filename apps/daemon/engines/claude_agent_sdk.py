@@ -14,6 +14,7 @@ from engines.core.base import (
     EngineInstallResult,
     EngineModel,
     install_python_package,
+    resolve_thinking_effort,
     sdk_turn_watchdog,
 )
 
@@ -515,11 +516,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             options.max_turns = int(sdk_config["max_turns"])
         if sdk_config["fallback_model"]:
             options.fallback_model = sdk_config["fallback_model"]
-        if thinking_effort and hasattr(options, "effort"):
-            # Claude 的 effort 取值 low/medium/high/xhigh/max，极简映射到最低档。
-            options.effort = (
-                "low" if thinking_effort == "minimal" else thinking_effort
-            )
+        effort = resolve_thinking_effort(thinking_effort)
+        if effort and hasattr(options, "effort"):
+            # Claude 的 effort 取值 low/medium/high/xhigh/max：
+            # 极简映射到最低档，其余原样传递。
+            options.effort = "low" if effort == "minimal" else effort
 
         logger.info(
             "ClaudeAgentSDKEngine spawn: binary=%s cwd=%s model=%s options=%s",

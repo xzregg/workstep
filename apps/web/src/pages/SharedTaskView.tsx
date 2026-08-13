@@ -46,6 +46,44 @@ export default function SharedTaskView() {
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
   const selectedStageTaskRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const reunlockAttemptsRef = useRef(0)
+
+  const isAuthError = useCallback((err: unknown) =>
+    /401/i.test(err instanceof Error ? err.message : String(err)), [])
+
+  const loadWithSession = useCallback(async (sessionToken: string) => {
+    if (!token) return
+    setPhase({ kind: 'loading-task' })
+    const [taskData, historyData, artifactsData] = await Promise.all([
+      shareApi.task(token, sessionToken),
+      shareApi.history(token, sessionToken),
+      shareApi.artifacts(token, sessionToken),
+    ])
+    setTask(taskData)
+    setMessages(historyData.messages)
+    setArtifacts(artifactsData.artifacts)
+    setPhase({ kind: 'ready', sessionToken })
+  }, [token])
+
+  const recoverSession = useCallback(async (m: ShareMeta) => {
+    if (!token || !m) return
+    if (m.has_password) {
+      // Requires the visitor to re-enter the password.
+      setPhase({ kind: 'need-password', meta: m })
+      return
+    }
+    if (reunlockAttemptsRef.current >= 2) {
+      setPhase({ kind: 'error', message: t('share.sessionExpired') })
+      return
+    }
+    reunlockAttemptsRef.current += 1
+    try {
+      const { session_token } = await shareApi.unlock(token, '')
+      await loadWithSession(session_token)
+    } catch (err) {
+      setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
+    }
+  }, [token, loadWithSession, t])
 
   // Fetch share meta on mount.
   useEffect(() => {
@@ -63,24 +101,14 @@ export default function SharedTaskView() {
           setPhase({ kind: 'unlocking', meta: m, password: '' })
           shareApi.unlock(token, '').then(({ session_token }) => {
             if (cancelled) return
-            setPhase({ kind: 'loading-task' })
-            Promise.all([
-              shareApi.task(token, session_token),
-              shareApi.history(token, session_token),
-              shareApi.artifacts(token, session_token),
-            ]).then(([taskData, historyData, artifactsData]) => {
-              if (cancelled) return
-              setTask(taskData)
-              setMessages(historyData.messages)
-              setArtifacts(artifactsData.artifacts)
-              setPhase({ kind: 'ready', sessionToken: session_token })
-            }).catch((err: Error) => {
-              if (cancelled) return
-              setPhase({ kind: 'error', message: err.message })
-            })
+            return loadWithSession(session_token)
           }).catch((err: Error) => {
             if (cancelled) return
-            setPhase({ kind: 'error', message: err.message })
+            if (isAuthError(err)) {
+              void recoverSession(m)
+            } else {
+              setPhase({ kind: 'error', message: err.message })
+            }
           })
         } else {
           setPhase({ kind: 'need-password', meta: m })
@@ -93,7 +121,7 @@ export default function SharedTaskView() {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, loadWithSession, recoverSession, isAuthError])
 
   const handleUnlock = useCallback(async () => {
     if (!token || !meta || !password) return
@@ -106,25 +134,21 @@ export default function SharedTaskView() {
     try {
       const { session_token: sessionToken } = await shareApi.unlock(token, password)
       setPhase({ kind: 'loading-task' })
-      const [taskData, historyData, artifactsData] = await Promise.all([
-        shareApi.task(token, sessionToken),
-        shareApi.history(token, sessionToken),
-        shareApi.artifacts(token, sessionToken),
-      ])
-      setTask(taskData)
-      setMessages(historyData.messages)
-      setArtifacts(artifactsData.artifacts)
-      setPhase({ kind: 'ready', sessionToken })
+      await loadWithSession(sessionToken)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (/401/i.test(message)) {
-        setError(t('share.incorrectPassword'))
-        setPhase({ kind: 'need-password', meta })
+        if (meta.has_password) {
+          setError(t('share.incorrectPassword'))
+          setPhase({ kind: 'need-password', meta })
+        } else {
+          void recoverSession(meta)
+        }
       } else {
         setPhase({ kind: 'error', message })
       }
     }
-  }, [token, meta, password, t])
+  }, [token, meta, password, t, loadWithSession, recoverSession])
 
   // Connect WebSocket once unlocked. The message/task setters are captured
   // via closure so the onmessage handler can mutate state directly.
@@ -232,7 +256,9 @@ export default function SharedTaskView() {
         ev?.type === 'CUSTOM' && (
           ev?.name === 'workstep.status' ||
           ev?.name === 'workstep.step_retrying' ||
-          ev?.name === 'workstep.run_recovered'
+          ev?.name === 'workstep.run_recovered' ||
+          ev?.name === 'workstep.review_status' ||
+          ev?.name === 'workstep.review_result'
         )
       ) {
         shareApi
@@ -270,10 +296,16 @@ export default function SharedTaskView() {
           // ignore
         }
       }
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (wsRef.current === ws) wsRef.current = null
         if (closed) return
         setWsStatus('disconnected')
+        // Daemon restarted or the share was revoked: the in-memory session
+        // token is gone, so re-unlock instead of retrying a dead session.
+        if (event.code === 4401) {
+          if (meta) void recoverSession(meta)
+          return
+        }
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null
           connect()
@@ -294,7 +326,7 @@ export default function SharedTaskView() {
         // ignore
       }
     }
-  }, [phase, token])
+  }, [phase, token, recoverSession, meta])
 
   // ── Stage data for TaskDetailView (read-only mode) ──────────────────
   // Prefer the workflow definition as the source of truth for stage order

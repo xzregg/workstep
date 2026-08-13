@@ -19,6 +19,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Protocol
 
 from engines.core.agui import AGUIContext, to_agui_events
@@ -31,6 +32,7 @@ from services.chat_permissions import (
     map_plan_mode_overrides,
     PLAN_MODE_INSTRUCTION,
 )
+from services.config import CODEX_REASONING_EFFORTS, config_store
 from services.intervention import intervention_manager
 from streaming.bus import EventBus
 
@@ -88,6 +90,21 @@ def extract_streaming_reply(raw: str) -> str:
     return "".join(result)
 
 
+def validate_provider_override(provider_id: str, engine_id: str) -> str:
+    """Validate a per-turn/per-session provider override (empty returns '')."""
+    provider_id = (provider_id or "").strip()
+    if not provider_id:
+        return ""
+    if engine_id != "pydantic_ai":
+        raise ValueError("供应商是内置引擎的动态配置，请先选择 Pydantic AI 引擎")
+    provider = config_store.get_provider(provider_id)
+    if provider is None:
+        raise ValueError("供应商不存在")
+    if not provider.get("enabled", True):
+        raise ValueError("所选供应商已停用")
+    return provider_id
+
+
 async def invoke_engine(
     engine_id: str,
     model: str | None,
@@ -106,6 +123,8 @@ async def invoke_engine(
     thinking_effort: str | None = None,
     permission_mode: str | None = None,
     plan_mode: bool | None = None,
+    workstep_tools: bool = False,
+    config_overrides: dict | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
 
@@ -113,7 +132,11 @@ async def invoke_engine(
     task-style assistants may pass a custom spawner (e.g.
     ``spawn_coordinator``, closing over its own images). When
     ``running_engines`` is given, the engine instance is tracked under
-    ``run_key`` so callers can stop it.
+    ``run_key`` so callers can stop it. ``workstep_tools`` asks the engine to
+    load the WorkStep internal tools natively (when it can host them); a
+    custom ``spawner`` receives it as ``spawner(engine, workstep_tools=True)``.
+    ``config_overrides`` merges into the engine's dynamic config (e.g. the
+    built-in Pydantic AI engine's per-assistant provider).
     """
     engine = create_engine(engine_id)
     if engine is None:
@@ -128,6 +151,16 @@ async def invoke_engine(
         if running_engines is not None and run_key is not None:
             running_engines[run_key] = engine
         spawn_kwargs: dict[str, object] = {}
+        load_workstep_tools = bool(
+            workstep_tools
+            and getattr(
+                getattr(engine, "capabilities", None),
+                "supports_workstep_tools",
+                False,
+            )
+        )
+        if load_workstep_tools:
+            spawn_kwargs["workstep_tools"] = True
         if engine.supports_message_history:
             if message_history is not None:
                 spawn_kwargs["message_history"] = message_history
@@ -142,19 +175,15 @@ async def invoke_engine(
             and thinking_effort
         ):
             spawn_kwargs["thinking_effort"] = thinking_effort
+        merged_overrides = dict(config_overrides or {})
         if permission_mode:
-            overrides = map_permission_overrides(engine_id, permission_mode)
-            if overrides:
-                spawn_kwargs["config_overrides"] = overrides
+            merged_overrides.update(
+                map_permission_overrides(engine_id, permission_mode)
+            )
         if plan_mode:
-            overrides = map_plan_mode_overrides(engine_id)
-            if overrides:
-                spawn_kwargs["config_overrides"] = {
-                    **(
-                        spawn_kwargs.get("config_overrides") or {}
-                    ),
-                    **overrides,
-                }
+            merged_overrides.update(map_plan_mode_overrides(engine_id))
+        if merged_overrides:
+            spawn_kwargs["config_overrides"] = merged_overrides
         if spawner is None:
             iterator = engine.spawn(
                 prompt=prompt,
@@ -163,8 +192,14 @@ async def invoke_engine(
                 session_id=session_id if engine.supports_resume else None,
                 **spawn_kwargs,
             )
+        elif workstep_tools:
+            iterator = spawner(
+                engine,
+                workstep_tools=True,
+                config_overrides=merged_overrides or None,
+            )
         else:
-            iterator = spawner(engine)
+            iterator = spawner(engine, config_overrides=merged_overrides or None)
         async for event in iterator:
             normalize_event = getattr(
                 engine,
@@ -477,6 +512,7 @@ def _prune_events(events: list[dict]) -> list[dict]:
 
 def default_history_message(item: dict) -> dict:
     """Normalize one stored message for the history API."""
+    item = repair_message_times(item)
     events = []
     for event in item.get("events") or []:
         if not isinstance(event, dict):
@@ -507,6 +543,62 @@ def default_history_message(item: dict) -> dict:
     }
 
 
+def _event_time_ms(value: Any) -> int | None:
+    """Event/message timestamp → epoch milliseconds (int/float 秒或毫秒、ISO 字符串)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return int(number) if number >= 1_000_000_000_000 else int(number * 1000)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return int(parsed.timestamp() * 1000)
+    return None
+
+
+def _iso_from_ms(value: int) -> str:
+    return datetime.fromtimestamp(value / 1000, timezone.utc).isoformat()
+
+
+def repair_message_times(item: dict) -> dict:
+    """旧数据回补：早期成功回合只写了 ``created_at``（完成时刻）、没有 ``ended_at``。
+
+    只有缺少 ``ended_at`` 且事件带时间戳时才修正：
+    - 若 ``created_at`` 不早于最后一条事件（说明 created_at 记的是完成时刻），
+      起点取最早事件时间、终点取原 ``created_at``；
+    - 否则终点取最后一条事件时间。
+    """
+    created_at = item.get("created_at")
+    if item.get("ended_at") or not created_at:
+        return item
+    event_times = []
+    for event in item.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        event_ms = _event_time_ms(
+            event.get("timestamp") or event.get("created_at")
+        )
+        if event_ms is not None:
+            event_times.append(event_ms)
+    if not event_times:
+        return item
+    created_ms = _event_time_ms(created_at)
+    if created_ms is None:
+        return item
+    if created_ms > min(event_times) and created_ms >= max(event_times):
+        # 旧数据：created_at 是完成时刻 → 起点取最早事件，终点取原 created_at。
+        return {
+            **item,
+            "created_at": _iso_from_ms(min(event_times)),
+            "ended_at": created_at,
+        }
+    # 新数据只缺 ended_at：终点取最后事件时间。
+    return {**item, "ended_at": _iso_from_ms(max(event_times))}
+
+
 @dataclass
 class AssistantConfig:
     """Declarative description of one assistant.
@@ -526,6 +618,12 @@ class AssistantConfig:
     max_sessions: int = MAX_SESSIONS
     session_ttl_seconds: int = SESSION_TTL_SECONDS
     persistence: PersistenceAdapter | None = None
+    # Per-assistant tool loading: when True, this assistant loads the WorkStep
+    # internal tools natively (the engine registers the ``workstep_call``
+    # function tool; its docstring carries the interface docs). Nothing is
+    # injected into the prompt text. Only engines that can host the tool
+    # (``supports_workstep_tools`` capability) actually register it.
+    workstep_tools: bool = False
     # Hooks (defaults are provided by AssistantRuntime).
     session_identity: Callable[[str, str | None, str | None], tuple[tuple, str]] | None = None
     resolve_engine_models: Callable[[], tuple[str, str | None, str | None]] | None = None
@@ -576,6 +674,7 @@ class AssistantRuntime:
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
+        provider_id: str | None = None,
         steps: dict | None = None,
         extra: dict | None = None,
     ) -> AcceptedTurn:
@@ -592,7 +691,15 @@ class AssistantRuntime:
         if not (idempotency_key or "").strip():
             raise ValueError("Idempotency-Key is required")
         normalized_effort = (thinking_effort or "").strip()
-        if normalized_effort not in ("", "minimal", "low", "medium", "high"):
+        if not normalized_effort:
+            # 未显式指定时回退到该助手的默认思考强度。
+            normalized_effort = (
+                config_store.get_assistant_defaults(self._config.name).get(
+                    "thinking_effort", ""
+                )
+                or ""
+            )
+        if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
             raise ValueError(f"Invalid thinking effort: {normalized_effort}")
         normalized_permission = (permission_mode or "").strip()
         if normalized_permission and not is_valid_permission_mode(normalized_permission):
@@ -627,6 +734,7 @@ class AssistantRuntime:
                         f"{self._config.engine_label} is unavailable: {engine}"
                     )
             engine_id = engine
+        normalized_provider = validate_provider_override(provider_id, engine_id)
         model = model or default_model
         fast_model = fast_model or default_fast_model
         session = self._get_or_create_session(
@@ -662,6 +770,7 @@ class AssistantRuntime:
             "thinking_effort": normalized_effort or None,
             "permission_mode": normalized_permission or None,
             "plan_mode": bool(plan_mode),
+            "provider_id": normalized_provider or None,
         }
         background = asyncio.create_task(
             self._run_turn(session, turn_id, assistant_message_id),
@@ -923,11 +1032,12 @@ class AssistantRuntime:
         resolver = self._config.resolve_engine_models
         if resolver is not None:
             return resolver()
-        engine_id = "claude"
+        defaults = config_store.get_assistant_defaults(self._config.name)
+        engine_id = defaults["engine"] or "claude"
         engine = create_engine(engine_id)
         if engine is None:
             raise ValueError(f"{self._config.engine_label} is unavailable: {engine_id}")
-        return engine_id, None, None
+        return engine_id, defaults.get("model") or None, None
 
     def _project_ctx(self, project_id: str):
         """Activate the project DB context for persistence calls."""
@@ -1134,7 +1244,9 @@ class AssistantRuntime:
                         "id": assistant_message_id,
                         "engine": session.engine,
                         "model": session.model,
-                        "created_at": utc_now().isoformat(),
+                        "status": "succeeded",
+                        "created_at": started_at,
+                        "ended_at": utc_now().isoformat(),
                         "prompt": prompt,
                         "events": _prune_events(_events)
                         + [
@@ -1192,7 +1304,8 @@ class AssistantRuntime:
                         "engine": session.engine,
                         "model": session.model,
                         "status": "error",
-                        "created_at": utc_now().isoformat(),
+                        "created_at": started_at,
+                        "ended_at": utc_now().isoformat(),
                         "prompt": prompt,
                         "events": _prune_events(_events),
                     }
@@ -1215,11 +1328,40 @@ class AssistantRuntime:
                 except Exception:
                     pass
                 self._turn_states[turn_id]["status"] = "error"
+                self._turn_states[turn_id]["error"] = str(exc)
             finally:
                 session.last_active = time.monotonic()
                 if self._config.persistence is not None:
                     with self._project_ctx(session.project_id):
                         self._config.persistence.save(session)
+
+    async def await_turn(
+        self,
+        turn_id: str,
+        *,
+        timeout: float | None = None,
+    ) -> dict:
+        """Wait for a queued/running turn to finish and return its final state.
+
+        Headless callers (e.g. scheduled assistant runs) use this to await a
+        turn that was submitted with ``submit_message``. Raises ``RuntimeError``
+        when the turn failed or is no longer tracked; raises ``TimeoutError``
+        when ``timeout`` elapses (the background turn keeps running).
+        """
+        task = self._turn_tasks.get(turn_id)
+        if task is None:
+            raise RuntimeError(f"Assistant turn is no longer tracked: {turn_id}")
+        if timeout is not None:
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+        else:
+            await asyncio.shield(task)
+        state = dict(self._turn_states.get(turn_id, {}))
+        status = state.get("status")
+        if status != "completed":
+            raise RuntimeError(
+                state.get("error") or f"Assistant turn did not complete: {status}"
+            )
+        return state
 
     async def _parse_response(
         self,
@@ -1280,6 +1422,21 @@ class AssistantRuntime:
             if run_key
             else None
         )
+        turn_provider = (
+            self._turn_states.get(run_key, {}).get("provider_id")
+            if run_key
+            else None
+        )
+        provider_id = turn_provider or (
+            config_store.get_assistant_defaults(self._config.name).get(
+                "provider_id", ""
+            )
+            if engine_id == "pydantic_ai"
+            else ""
+        )
+        config_overrides = (
+            {"provider_id": provider_id} if provider_id else None
+        )
         return await invoke_engine(
             engine_id,
             model,
@@ -1295,6 +1452,8 @@ class AssistantRuntime:
             thinking_effort=thinking_effort,
             permission_mode=permission_mode,
             plan_mode=plan_mode,
+            workstep_tools=self._config.workstep_tools,
+            config_overrides=config_overrides,
         )
 
     async def _publish(

@@ -19,6 +19,13 @@ class ScheduleValidationError(ValueError):
     """A schedule rule cannot be normalized or executed."""
 
 
+# task_template.mode: "static" (default, backward compatible) or "agent".
+AGENT_MODE = "agent"
+DEFAULT_AGENT_RETRY_COUNT = 2
+# Bounded wall-clock budget for one agent-mode run attempt.
+SCHEDULE_AGENT_TIMEOUT_SECONDS = 10 * 60
+
+
 def _zone(name: str | None) -> ZoneInfo:
     try:
         return ZoneInfo(name or datetime.now().astimezone().tzinfo.key)
@@ -200,10 +207,17 @@ def _as_utc(value: str | None) -> datetime | None:
 class ScheduleModule:
     """Deep project schedule interface shared by HTTP, CLI and agent tools."""
 
-    def __init__(self, project_manager, task_service, workflow_runtime):
+    def __init__(
+        self,
+        project_manager,
+        task_service,
+        workflow_runtime,
+        task_agent=None,
+    ):
         self._projects = project_manager
         self._tasks = task_service
         self._runtime = workflow_runtime
+        self._task_agent = task_agent
         self._stop = asyncio.Event()
         self._loop_task: asyncio.Task | None = None
         self._workers: set[asyncio.Task] = set()
@@ -276,11 +290,40 @@ class ScheduleModule:
         return workflow
 
     @staticmethod
-    def _validate_template(workflow: dict, task_template: dict) -> None:
+    def _template_mode(task_template: dict) -> str:
+        return str(task_template.get("mode") or "static")
+
+    def _validate_template(
+        self,
+        project,
+        task_template: dict,
+        workflow: dict | None = None,
+    ) -> None:
+        if self._template_mode(task_template) == AGENT_MODE:
+            if not str(task_template.get("instruction") or "").strip():
+                raise ScheduleValidationError(
+                    "task_template.instruction is required in agent mode"
+                )
+            candidates = task_template.get("candidate_workflow_ids") or []
+            if candidates:
+                active_ids = {
+                    wf["id"]
+                    for wf in project.workflows
+                    if not wf.get("deleted")
+                }
+                missing = next(
+                    (wid for wid in candidates if wid not in active_ids),
+                    None,
+                )
+                if missing is not None:
+                    raise ScheduleValidationError(
+                        f"candidate workflow not found: {missing}"
+                    )
+            return
         if not str(task_template.get("title") or "").strip():
             raise ScheduleValidationError("task_template.title is required")
         start_key = task_template.get("start_step_key")
-        if not start_key:
+        if not start_key or workflow is None:
             return
         from services.workflow_definition import WorkflowDefinition
         keys = {
@@ -315,8 +358,12 @@ class ScheduleModule:
         if next_run_at is None:
             raise ScheduleValidationError("The schedule has no future occurrence")
         with self._projects.activate_project_by_id(project_id) as project:
-            workflow = self._workflow(project, workflow_id)
-            self._validate_template(workflow, task_template)
+            if self._template_mode(task_template) == AGENT_MODE:
+                workflow_id = str(workflow_id or "").strip()
+                self._validate_template(project, task_template)
+            else:
+                workflow = self._workflow(project, workflow_id)
+                self._validate_template(project, task_template, workflow)
             now = utc_now()
             row = Schedule.create(
                 id=str(uuid.uuid4()),
@@ -355,11 +402,15 @@ class ScheduleModule:
             if row is None:
                 raise ValueError(f"Schedule not found: {schedule_id}")
             workflow_id = changes.get("workflow_id", row.workflow_id)
-            workflow = self._workflow(project, workflow_id)
             task_template = changes.get(
                 "task_template", json.loads(row.task_template_json)
             )
-            self._validate_template(workflow, task_template)
+            if self._template_mode(task_template) == AGENT_MODE:
+                workflow_id = str(workflow_id or "").strip()
+                self._validate_template(project, task_template)
+            else:
+                workflow = self._workflow(project, workflow_id)
+                self._validate_template(project, task_template, workflow)
             rule = changes.get("rule", json.loads(row.rule_json))
             preview = preview_rule(rule)
             next_run = _as_utc(preview["next_runs"][0] if preview["next_runs"] else None)
@@ -560,50 +611,25 @@ class ScheduleModule:
                 workflow_id = schedule.workflow_id
                 execution_mode = schedule.execution_mode
             from services.task_creation import create_project_task
-            result = await create_project_task(
-                project_manager=self._projects,
-                task_service=self._tasks,
-                workflow_runtime=self._runtime,
-                project_id=project_id,
-                title=str(template["title"]),
-                description=template.get("description"),
-                engine=(
-                    template.get("engine")
-                    or config_store.get_execution_default_engine()
-                    or DEFAULT_EXECUTION_ENGINE
-                ),
-                workflow_id=workflow_id,
-                start_step_key=template.get("start_step_key"),
-                review_overrides=template.get("review_overrides"),
-                execution_mode=execution_mode,
-            )
-            task = result.task
-            with self._projects.activate_project_by_id(project_id):
-                run = ScheduleRun.get_by_id(run_id)
-                run.task_id = task["id"]
-                if result.run_handle is None:
-                    run.status = "created"
-                    run.ended_at = utc_now()
-                    run.save()
-                    return
-            handle = result.run_handle
-            with self._projects.activate_project_by_id(project_id):
-                run = ScheduleRun.get_by_id(run_id)
-                run.workflow_run_id = handle.id
-                run.save()
-            # Stopping the scheduler must not propagate cancellation into the
-            # workflow runtime, which owns and recovers the actual execution.
-            await asyncio.shield(self._runtime.wait(handle))
-            with self._projects.activate_project_by_id(project_id):
-                from models import WorkflowRun
-                run = ScheduleRun.get_by_id(run_id)
-                workflow_run = WorkflowRun.get_by_id(handle.id)
-                run.status = (
-                    "succeeded" if workflow_run.status == "succeeded" else "failed"
+            if self._template_mode(template) == AGENT_MODE:
+                result = await self._run_agent_attempts(
+                    project_id, template, execution_mode
                 )
-                run.reason = None if run.status == "succeeded" else workflow_run.status
-                run.ended_at = workflow_run.ended_at or utc_now()
-                run.save()
+            else:
+                result = await create_project_task(
+                    project_manager=self._projects,
+                    task_service=self._tasks,
+                    workflow_runtime=self._runtime,
+                    project_id=project_id,
+                    title=str(template["title"]),
+                    description=template.get("description"),
+                    engine=self._resolve_engine(template),
+                    workflow_id=workflow_id,
+                    start_step_key=template.get("start_step_key"),
+                    review_overrides=template.get("review_overrides"),
+                    execution_mode=execution_mode,
+                )
+            await self._attach_task_result(project_id, run_id, result)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -625,6 +651,103 @@ class ScheduleModule:
         finally:
             if schedule_id:
                 await self._drain_queue(project_id, schedule_id)
+
+    @staticmethod
+    def _resolve_engine(template: dict) -> str:
+        return str(
+            template.get("engine")
+            or config_store.get_execution_default_engine()
+            or DEFAULT_EXECUTION_ENGINE
+        )
+
+    async def _run_agent_attempts(
+        self,
+        project_id: str,
+        template: dict,
+        execution_mode: str,
+    ) -> object:
+        """Run the task agent (with retries), then create the task from its result."""
+        from services.task_creation import create_project_task
+
+        if self._task_agent is None:
+            raise RuntimeError("Task agent is not initialized")
+        instruction = str(template.get("instruction") or "").strip()
+        if not instruction:
+            raise ScheduleValidationError(
+                "task_template.instruction is required in agent mode"
+            )
+        candidates = list(template.get("candidate_workflow_ids") or [])
+        try:
+            retry_count = int(
+                template.get("retry_count") or DEFAULT_AGENT_RETRY_COUNT
+            )
+        except (TypeError, ValueError):
+            retry_count = DEFAULT_AGENT_RETRY_COUNT
+        retry_count = max(0, retry_count)
+        last_error: str | None = None
+        for attempt in range(retry_count + 1):
+            try:
+                result = await self._task_agent.run_schedule(
+                    project_id,
+                    instruction=instruction,
+                    title=template.get("title"),
+                    description=template.get("description"),
+                    candidate_workflow_ids=candidates,
+                    retry_feedback=last_error,
+                    timeout=SCHEDULE_AGENT_TIMEOUT_SECONDS,
+                )
+                break
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = f"attempt {attempt + 1}: {exc}"
+        else:
+            raise RuntimeError(
+                "Scheduled task agent failed after "
+                f"{retry_count + 1} attempts: {last_error}"
+            )
+        return await create_project_task(
+            project_manager=self._projects,
+            task_service=self._tasks,
+            workflow_runtime=self._runtime,
+            project_id=project_id,
+            title=str(result["title"]),
+            description=result.get("description"),
+            engine=self._resolve_engine(template),
+            workflow_id=result["workflow_id"],
+            start_step_key=result.get("start_step_key"),
+            review_overrides=None,
+            execution_mode=execution_mode,
+        )
+
+    async def _attach_task_result(self, project_id, run_id, result) -> None:
+        task = result.task
+        with self._projects.activate_project_by_id(project_id):
+            run = ScheduleRun.get_by_id(run_id)
+            run.task_id = task["id"]
+            if result.run_handle is None:
+                run.status = "created"
+                run.ended_at = utc_now()
+                run.save()
+                return
+        handle = result.run_handle
+        with self._projects.activate_project_by_id(project_id):
+            run = ScheduleRun.get_by_id(run_id)
+            run.workflow_run_id = handle.id
+            run.save()
+        # Stopping the scheduler must not propagate cancellation into the
+        # workflow runtime, which owns and recovers the actual execution.
+        await asyncio.shield(self._runtime.wait(handle))
+        with self._projects.activate_project_by_id(project_id):
+            from models import WorkflowRun
+            run = ScheduleRun.get_by_id(run_id)
+            workflow_run = WorkflowRun.get_by_id(handle.id)
+            run.status = (
+                "succeeded" if workflow_run.status == "succeeded" else "failed"
+            )
+            run.reason = None if run.status == "succeeded" else workflow_run.status
+            run.ended_at = workflow_run.ended_at or utc_now()
+            run.save()
 
     def _get_row(self, project_id: str, schedule_id: str) -> Schedule:
         with self._projects.activate_project_by_id(project_id):
@@ -649,7 +772,9 @@ class ScheduleModule:
             row = Schedule.get_or_none(Schedule.id == schedule_id)
             if row is None:
                 raise ValueError(f"Schedule not found: {schedule_id}")
-            self._workflow(project, row.workflow_id)
+            template = json.loads(row.task_template_json)
+            if self._template_mode(template) != AGENT_MODE:
+                self._workflow(project, row.workflow_id)
             rule = json.loads(row.rule_json)
             preview = preview_rule(rule)
             next_run = _as_utc(preview["next_runs"][0] if preview["next_runs"] else None)

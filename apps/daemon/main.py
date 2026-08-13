@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
@@ -29,6 +31,7 @@ from api.schedule import router as schedule_router
 from api.chat_session import router as chat_session_router
 from api.statistics import router as statistics_router
 from api.share import router as share_router
+from api.assistant import router as assistant_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
@@ -39,6 +42,7 @@ from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
 from agent_assistants.chat_session import ChatSessionModule
+from engines.core.agui import is_status_event
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +82,12 @@ async def lifespan(app: FastAPI):
     )
     workflow_gen_module = WorkflowGenModule(event_bus, project_manager)
     task_draft_module = TaskDraftModule(event_bus, project_manager)
-    schedule_module = ScheduleModule(project_manager, task_service, workflow_runtime)
+    schedule_module = ScheduleModule(
+        project_manager,
+        task_service,
+        workflow_runtime,
+        task_agent=task_draft_module,
+    )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
     await schedule_module.start()
     try:
@@ -118,6 +127,7 @@ app.include_router(schedule_router)
 app.include_router(chat_session_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
+app.include_router(assistant_router)
 
 
 # --- REST API ---
@@ -132,15 +142,84 @@ async def health():
 # --- WebSocket ---
 
 
+_SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
+
+
+@dataclass
+class WsSubscription:
+    """单个 WebSocket 连接的订阅状态。
+
+    首次 ``subscribe`` 消息之前保持"全量"（向后兼容）；收到 subscribe 后
+    事件满足任一维度即推送：
+    - ``task_ids`` — 订阅任务的全量事件流（任务详情页）；
+    - ``status_only_task_ids`` — 仅订阅这些任务的状态类事件（任务列表）；
+    - ``session_ids`` — 按助手会话订阅（``session_chat`` / ``flow_gen`` 等）；
+    - ``channels`` — 按 channel 订阅。
+    """
+
+    task_ids: set[str] = field(default_factory=set)
+    status_only_task_ids: set[str] = field(default_factory=set)
+    session_ids: set[str] = field(default_factory=set)
+    channels: set[str] = field(default_factory=set)
+    active: bool = False
+
+
+def parse_subscription(msg: dict[str, Any]) -> WsSubscription:
+    """把 subscribe 消息解析为订阅状态；不含任何订阅键时重置为全量。"""
+    if not any(key in msg for key in _SUBSCRIBE_KEYS):
+        return WsSubscription()
+    sub = WsSubscription(active=True)
+    for key in _SUBSCRIBE_KEYS:
+        values = msg.get(key)
+        if isinstance(values, (list, set, tuple)):
+            setattr(sub, key, {str(v) for v in values if v})
+    return sub
+
+
+def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
+    """判断事件是否命中订阅；未激活订阅（全量模式）恒为 True。"""
+    if not sub.active:
+        return True
+    task_id = event.get("task_id")
+    if task_id:
+        if task_id in sub.task_ids:
+            return True
+        if task_id in sub.status_only_task_ids:
+            if is_status_event(event):
+                return True
+    session_id = event.get("session_id")
+    if session_id and session_id in sub.session_ids:
+        return True
+    channel = event.get("channel")
+    if channel and channel in sub.channels:
+        return True
+    return False
+
+
+def _make_subscription_predicate(sub: WsSubscription):
+    """返回基于当前订阅状态的过滤谓词（供 EventBus 使用）。"""
+
+    def predicate(event: dict[str, Any]) -> bool:
+        return matches_subscription(event, sub)
+
+    return predicate
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     """WebSocket endpoint for real-time event streaming.
 
     - Server → Client: task events, status updates
     - Client → Server: respond, cancel commands
+
+    Events are fanned out globally by the EventBus; each connection may
+    send ``{"type":"subscribe", ...}`` to narrow what it receives (see
+    ``WsSubscription``). Before the first subscribe message the connection
+    receives everything (backward compatible).
     """
     await ws.accept()
     queue = event_bus.subscribe()
+    subscription = WsSubscription()
     try:
         while True:
             bus_task = asyncio.create_task(queue.get())
@@ -161,7 +240,7 @@ async def ws_endpoint(ws: WebSocket):
 
             if ws_task in done:
                 raw = ws_task.result()
-                await _handle_client_message(raw)
+                await _handle_client_message(raw, subscription, queue)
 
     except WebSocketDisconnect:
         logger.debug("WebSocket client disconnected")
@@ -169,13 +248,36 @@ async def ws_endpoint(ws: WebSocket):
         event_bus.unsubscribe(queue)
 
 
-async def _handle_client_message(raw: str):
+async def _handle_client_message(
+    raw: str,
+    subscription: WsSubscription | None = None,
+    queue: asyncio.Queue | None = None,
+):
     """Process incoming WebSocket messages from client."""
     try:
         msg = json.loads(raw)
         msg_type = msg.get("type")
 
-        if msg_type == "respond":
+        if msg_type == "subscribe":
+            if subscription is None or queue is None:
+                logger.warning("WS subscribe ignored (no connection context)")
+                return
+            new_sub = parse_subscription(msg)
+            subscription.task_ids = new_sub.task_ids
+            subscription.status_only_task_ids = new_sub.status_only_task_ids
+            subscription.session_ids = new_sub.session_ids
+            subscription.channels = new_sub.channels
+            subscription.active = new_sub.active
+            event_bus.set_filter(queue, _make_subscription_predicate(subscription))
+            logger.info(
+                "WS subscribe: tasks=%d status_only=%d sessions=%d channels=%d",
+                len(subscription.task_ids),
+                len(subscription.status_only_task_ids),
+                len(subscription.session_ids),
+                len(subscription.channels),
+            )
+
+        elif msg_type == "respond":
             intervention_id = msg.get("intervention_id")
             data = msg.get("data", {})
             if intervention_id:
@@ -226,7 +328,20 @@ async def ws_share_endpoint(ws: WebSocket, session: str = ""):
 
     task_id = ctx["task_id"]
     await ws.accept()
-    queue = event_bus.subscribe()
+
+    def share_predicate(event: dict[str, Any]) -> bool:
+        if event.get("task_id") != task_id:
+            return False
+        channel = event.get("channel")
+        # Only forward execution events; drop coordinator and
+        # assistant traffic, which is private.
+        if channel is not None and channel != "execution":
+            return False
+        if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
+            return False
+        return True
+
+    queue = event_bus.subscribe(share_predicate)
     try:
         while True:
             bus_task = asyncio.create_task(queue.get())
@@ -247,15 +362,6 @@ async def ws_share_endpoint(ws: WebSocket, session: str = ""):
                 event = bus_task.result()
                 if event is None:  # shutdown sentinel
                     break
-                if event.get("task_id") != task_id:
-                    continue
-                channel = event.get("channel")
-                # Only forward execution events; drop coordinator and
-                # assistant traffic, which is private.
-                if channel is not None and channel != "execution":
-                    continue
-                if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
-                    continue
                 await ws.send_json(jsonable_encoder(event))
     except WebSocketDisconnect:
         logger.debug("Share WS disconnected for task %s", task_id)

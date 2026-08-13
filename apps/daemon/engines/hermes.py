@@ -103,6 +103,7 @@ class HermesEngine(AcpEngineBase):
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
         config_overrides: dict | None = None,
+        thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
         async for event in super().spawn(
             prompt=prompt,
@@ -112,6 +113,7 @@ class HermesEngine(AcpEngineBase):
             session_id=session_id,
             images=images,
             config_overrides=config_overrides,
+            thinking_effort=thinking_effort,
         ):
             yield event
 
@@ -338,6 +340,11 @@ class HermesEngine(AcpEngineBase):
 
     @property
     def supports_resume(self) -> bool:
+        return True
+
+    @property
+    def supports_thinking_effort(self) -> bool:
+        """Best-effort via ACP ``reasoning_effort`` config option."""
         return True
 
     @property

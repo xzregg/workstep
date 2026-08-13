@@ -19,6 +19,8 @@ interface EngineSelectProps {
   onChange: (engineId: string) => void
   disabled?: boolean
   requireCoordinator?: boolean
+  /** 内置引擎（Pydantic AI）无需全局配置/测试即可选择，供应商在调用处单独设置。 */
+  allowUnconfiguredBuiltin?: boolean
   defaultOption?: { value: string; label: string }
   title?: string
   ariaLabel?: string
@@ -28,7 +30,11 @@ interface EngineSelectProps {
 export function isEngineSelectable(
   engine: EngineSelectOption,
   requireCoordinator = false,
+  allowUnconfiguredBuiltin = false,
 ) {
+  if (allowUnconfiguredBuiltin && engine.built_in) {
+    return engine.installed
+  }
   return engine.installed
     && engine.configured
     && engine.verified
@@ -39,7 +45,9 @@ function availabilityLabel(
   engine: EngineSelectOption,
   requireCoordinator: boolean,
   t: TFunction,
+  allowUnconfiguredBuiltin = false,
 ) {
+  if (allowUnconfiguredBuiltin && engine.built_in) return ''
   if (!engine.installed) return t('engine.notInstalled')
   if (!engine.configured) return t('engine.needsConfig')
   if (!engine.verified) return t('engine.needsTest')
@@ -51,8 +59,14 @@ function optionLabel(
   engine: EngineSelectOption,
   requireCoordinator: boolean,
   t: TFunction,
+  allowUnconfiguredBuiltin = false,
 ) {
-  const availability = availabilityLabel(engine, requireCoordinator, t)
+  const availability = availabilityLabel(
+    engine,
+    requireCoordinator,
+    t,
+    allowUnconfiguredBuiltin,
+  )
   const mode = engine.mode ? ` · ${engine.mode.toUpperCase()}` : ''
   const builtin = engine.built_in ? t('engine.builtinPrefix') : ''
   const availabilitySuffix = availability ? t('engine.availabilitySuffix', { availability }) : ''
@@ -65,6 +79,7 @@ export default function EngineSelect({
   onChange,
   disabled = false,
   requireCoordinator = false,
+  allowUnconfiguredBuiltin = false,
   defaultOption,
   title,
   ariaLabel,
@@ -86,9 +101,9 @@ export default function EngineSelect({
     <option
       key={engine.id}
       value={engine.id}
-      disabled={!isEngineSelectable(engine, requireCoordinator)}
+      disabled={!isEngineSelectable(engine, requireCoordinator, allowUnconfiguredBuiltin)}
     >
-      {optionLabel(engine, requireCoordinator, t)}
+      {optionLabel(engine, requireCoordinator, t, allowUnconfiguredBuiltin)}
     </option>
   )
 

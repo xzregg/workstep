@@ -11,10 +11,11 @@ import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.base import EngineModel
+from engines.core.base import EngineModel, resolve_thinking_effort
 from engines.core.schema import EngineImage
 from engines.core.events import (
     InternalEvent,
+    compacted_event,
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
@@ -68,6 +69,29 @@ class PydanticAIEngine(AcpEngineBase):
             return {"ok": False, "error": message}
         return message
 
+    @classmethod
+    async def run_simple(cls, prompt: str) -> str:
+        """One-shot, context-free completion via the configured provider.
+
+        无工具、无项目上下文、无会话记忆：仅用于轻量单轮改写等快速场景。
+        """
+        if not cls.is_installed():
+            raise RuntimeError("Pydantic AI 未安装")
+        get_config = getattr(config_store, "get_pydantic_ai_engine_config", None)
+        if get_config is None:
+            raise RuntimeError("Pydantic AI 尚未配置")
+        config = get_config()
+        model_name = str(config.get("model") or "")
+        provider = config_store.get_provider(config.get("provider_id") or "")
+        if provider is None or not provider.get("base_url") or not model_name:
+            raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
+        loaded_model = cls.build_model(provider=provider, model_name=model_name)
+        from pydantic_ai import Agent
+
+        agent = Agent(loaded_model)
+        result = await agent.run(prompt)
+        return str(getattr(result, "output", "") or "").strip()
+
     @staticmethod
     def is_installed() -> bool:
         return util.find_spec("pydantic_ai") is not None
@@ -112,28 +136,12 @@ class PydanticAIEngine(AcpEngineBase):
                 required=True,
                 help="在设置 → 供应商中管理 API 地址与密钥；本引擎复用所选供应商的凭据。",
             ),
-            EngineConfigField(
-                key="mcp_servers",
-                label="MCP 服务器（JSON）",
-                type="textarea",
-                placeholder=(
-                    '[{"name": "filesystem", "command": "npx", '
-                    '"args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"], '
-                    '"env": {}}]'
-                ),
-                help="可选的 stdio MCP 服务器列表；当前环境缺少 fastmcp 依赖时不会加载。",
-            ),
         ]
 
     def get_config_values(self) -> dict:
         config = config_store.get_pydantic_ai_engine_config()
-        mcp_servers = config.get("mcp_servers") or []
         return {
             "provider_id": config["provider_id"],
-            "mcp_servers": (
-                json.dumps(mcp_servers, ensure_ascii=False, indent=2)
-                if mcp_servers else ""
-            ),
         }
 
     def get_config_secrets(self) -> dict[str, bool]:
@@ -155,44 +163,11 @@ class PydanticAIEngine(AcpEngineBase):
         config_store.set_pydantic_ai_engine_config(
             provider_id=provider_id,
             model=str(current["model"]),
-            mcp_servers=self._validate_mcp_servers(
-                str(values.get("mcp_servers") or "")
-            ),
+            mcp_servers=current["mcp_servers"],
+            # harness 扩展始终自动：已安装 pydantic-ai-harness 时挂载
+            # 压缩与会话持久化，否则回退 message_history，不由用户选择。
+            harness="auto",
         )
-
-    @staticmethod
-    def _validate_mcp_servers(raw: str) -> list[dict]:
-        """Parse the mcp_servers JSON textarea into normalized server dicts."""
-        raw = raw.strip()
-        if not raw:
-            return []
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"MCP 服务器 JSON 格式错误：{exc}") from exc
-        if not isinstance(parsed, list):
-            raise ValueError("MCP 服务器配置必须是 JSON 数组")
-        servers: list[dict] = []
-        for index, item in enumerate(parsed):
-            if not isinstance(item, dict):
-                raise ValueError(f"MCP 服务器第 {index + 1} 项必须是对象")
-            name = str(item.get("name") or "").strip()
-            command = str(item.get("command") or "").strip()
-            if not name or not command:
-                raise ValueError(f"MCP 服务器第 {index + 1} 项缺少 name 或 command")
-            args = item.get("args") or []
-            env = item.get("env") or {}
-            if not isinstance(args, list):
-                raise ValueError(f"MCP 服务器 {name} 的 args 必须是数组")
-            if not isinstance(env, dict):
-                raise ValueError(f"MCP 服务器 {name} 的 env 必须是对象")
-            servers.append({
-                "name": name,
-                "command": command,
-                "args": [str(arg) for arg in args],
-                "env": {str(key): str(value) for key, value in env.items()},
-            })
-        return servers
 
     async def inspect_capabilities(
         self,
@@ -230,7 +205,19 @@ class PydanticAIEngine(AcpEngineBase):
             "mcp_servers": mcp_servers,
             "mcp_supported": mcp_supported,
             "mcp_error": mcp_error,
+            "harness_enabled": self._harness_enabled(),
+            "harness_version": self._harness_version(),
         }
+
+    @staticmethod
+    def _harness_version() -> str | None:
+        """pydantic-ai-harness version when installed, else None."""
+        try:
+            from importlib import metadata
+
+            return metadata.version("pydantic-ai-harness")
+        except Exception:
+            return None
 
     @staticmethod
     def _mcp_support_status() -> tuple[bool, str | None]:
@@ -248,12 +235,26 @@ class PydanticAIEngine(AcpEngineBase):
     def reveal_config_value(self, key: str) -> str | None:
         return None
 
-    async def list_models(self, cwd: str) -> list[EngineModel]:
+    async def list_models(
+        self,
+        cwd: str,
+        provider_id: str | None = None,
+        refresh: bool = False,
+    ) -> list[EngineModel]:
+        """List models for a provider; ``provider_id`` overrides the global
+        config so assistant-level dynamic config can drive the dropdown.
+
+        Defaults to the locally saved copy; ``refresh=True`` re-fetches from
+        the provider address and saves the result.
+        """
         config = config_store.get_pydantic_ai_engine_config()
-        provider = config_store.get_provider(config["provider_id"])
+        provider = config_store.get_provider(provider_id or config["provider_id"])
         if provider is None:
             return []
-        return await provider_service.fetch_models(provider)
+        entry = config_store.get_provider_models(provider["id"])
+        if not refresh and entry:
+            return provider_service.saved_models(provider["id"])
+        return await provider_service.fetch_and_save_models(provider)
 
     @staticmethod
     def build_model(*, provider: dict, model_name: str):
@@ -292,6 +293,7 @@ class PydanticAIEngine(AcpEngineBase):
         on_event: Callable[[InternalEvent], Awaitable[None]],
         message_history: list | None = None,
         model_settings: dict[str, Any] | None = None,
+        conversation_id: str | None = None,
     ):
         """Run one agent round and forward mapped internal events."""
         kwargs = {}
@@ -299,6 +301,8 @@ class PydanticAIEngine(AcpEngineBase):
             kwargs["message_history"] = message_history
         if model_settings:
             kwargs["model_settings"] = model_settings
+        if conversation_id:
+            kwargs["conversation_id"] = conversation_id
         async with agent.run_stream_events(prompt, **kwargs) as stream:
             result = None
             async for event in stream:
@@ -459,6 +463,8 @@ class PydanticAIEngine(AcpEngineBase):
         images: list[EngineImage] | None = None,
         message_history: list | None = None,
         thinking_effort: str | None = None,
+        workstep_tools: bool = False,
+        session_id: str | None = None,
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
@@ -475,9 +481,11 @@ class PydanticAIEngine(AcpEngineBase):
         file_system = FileSystem(allowed_roots)
         skills = Skills(project_root=root)
 
+        harness_capabilities = self._harness_capabilities(root, session_id)
         agent = Agent(
             model,
             instructions=self._compose_instructions(root),
+            capabilities=harness_capabilities or [],
         )
 
         def guard_plain(return_type):
@@ -578,15 +586,16 @@ class PydanticAIEngine(AcpEngineBase):
             """Load a skill's full instructions (SKILL.md body) by name."""
             return skills.load(name)
 
-        async def workstep_call(
-            operation: str,
-            arguments: dict[str, Any],
-        ) -> dict[str, Any]:
-            """WorkStep daemon tool wrapper."""
-            return await WorkstepClient().call(operation, arguments)
+        if workstep_tools:
+            async def workstep_call(
+                operation: str,
+                arguments: dict[str, Any],
+            ) -> dict[str, Any]:
+                """WorkStep daemon tool wrapper."""
+                return await WorkstepClient().call(operation, arguments)
 
-        workstep_call.__doc__ = workstep_tools_instruction()
-        agent.tool_plain(guard_async(dict[str, Any])(workstep_call))
+            workstep_call.__doc__ = workstep_tools_instruction()
+            agent.tool_plain(guard_async(dict[str, Any])(workstep_call))
 
         async def ask_user(
             question: str,
@@ -627,47 +636,65 @@ class PydanticAIEngine(AcpEngineBase):
         agent.tool_plain(update_plan)
 
         total_usage = None
-        async with agent:
-            stream_kwargs: dict[str, Any] = {}
-            if message_history is not None:
-                stream_kwargs["message_history"] = message_history
-            if thinking_effort:
-                stream_kwargs["model_settings"] = {"thinking": thinking_effort}
-            result = await self._stream_agent_run(
-                agent,
-                prompt=self._build_user_content(prompt, images),
-                on_event=on_event,
-                **stream_kwargs,
-            )
-            total_usage = self._accumulate_usage(total_usage, result)
-            while live_message_queue is not None:
-                live_items = self._take_live_items(live_message_queue)
-                if not live_items:
-                    # 插入队列已空：回复即收尾，不等待插入窗口。
-                    break
-                injected = "\n\n".join(content for _, content in live_items)
-                # 先确认送达再跑插入轮：runner 收到 delivered 后封口插入前的
-                # 输出段并开启新的响应段，本轮响应事件归入新段。
-                for message_id, _ in live_items:
-                    await on_event(InternalEvent(type="live_message", data={
-                        "message_id": message_id,
-                        "status": "delivered",
-                        "detail": "",
-                    }))
+        receipt_scope = self._open_receipt_scope(harness_capabilities)
+        try:
+            async with agent:
+                stream_kwargs: dict[str, Any] = {}
+                seeded_history = (
+                    await self._harness_continue_history(root, session_id)
+                    if harness_capabilities
+                    else None
+                )
+                if seeded_history is None and message_history is not None:
+                    seeded_history = message_history
+                if seeded_history is not None:
+                    stream_kwargs["message_history"] = seeded_history
+                effort = resolve_thinking_effort(thinking_effort)
+                if effort:
+                    stream_kwargs["model_settings"] = {"thinking": effort}
                 result = await self._stream_agent_run(
                     agent,
-                    prompt=injected,
+                    prompt=self._build_user_content(prompt, images),
                     on_event=on_event,
-                    **{
-                        **({"message_history": result.all_messages()}),
-                        **(
-                            {"model_settings": {"thinking": thinking_effort}}
-                            if thinking_effort
-                            else {}
-                        ),
-                    },
+                    conversation_id=(
+                        session_id if harness_capabilities else None
+                    ),
+                    **stream_kwargs,
                 )
                 total_usage = self._accumulate_usage(total_usage, result)
+                while live_message_queue is not None:
+                    live_items = self._take_live_items(live_message_queue)
+                    if not live_items:
+                        # 插入队列已空：回复即收尾，不等待插入窗口。
+                        break
+                    injected = "\n\n".join(content for _, content in live_items)
+                    # 先确认送达再跑插入轮：runner 收到 delivered 后封口插入前的
+                    # 输出段并开启新的响应段，本轮响应事件归入新段。
+                    for message_id, _ in live_items:
+                        await on_event(InternalEvent(type="live_message", data={
+                            "message_id": message_id,
+                            "status": "delivered",
+                            "detail": "",
+                        }))
+                    result = await self._stream_agent_run(
+                        agent,
+                        prompt=injected,
+                        on_event=on_event,
+                        conversation_id=(
+                            session_id if harness_capabilities else None
+                        ),
+                        **{
+                            **({"message_history": result.all_messages()}),
+                            **(
+                                {"model_settings": {"thinking": effort}}
+                                if effort
+                                else {}
+                            ),
+                        },
+                    )
+                    total_usage = self._accumulate_usage(total_usage, result)
+        finally:
+            await self._drain_compaction_receipts(receipt_scope, on_event)
         return result, total_usage
 
     @staticmethod
@@ -799,6 +826,129 @@ class PydanticAIEngine(AcpEngineBase):
 
         return None
 
+    # --- pydantic-ai-harness 扩展（上下文压缩 / 会话持久化） ---
+
+    @staticmethod
+    def _harness_enabled() -> bool:
+        """Whether the harness extension is on (config auto + installed)."""
+        config = config_store.get_pydantic_ai_engine_config()
+        if str(config.get("harness") or "auto") == "off":
+            return False
+        try:
+            import pydantic_ai_harness  # noqa: F401
+
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def _harness_store(root: Path):
+        """SQLite StepPersistence store under the project .workstep dir."""
+        from pydantic_ai_harness.step_persistence import SqliteStepStore
+
+        workstep_dir = root / ".workstep"
+        workstep_dir.mkdir(parents=True, exist_ok=True)
+        return SqliteStepStore(database=workstep_dir / "harness_runs.db")
+
+    @classmethod
+    def _harness_capabilities(
+        cls,
+        root: Path,
+        session_id: str | None,
+    ) -> list | None:
+        """Harness capabilities for this run, or None when disabled."""
+        if not cls._harness_enabled() or root is None or not root.is_dir():
+            return None
+        try:
+            from pydantic_ai_harness.compaction import (
+                ClearToolResults,
+                SummarizingCompaction,
+                TieredCompaction,
+                WarnNearLimits,
+            )
+            from pydantic_ai_harness.step_persistence import StepPersistence
+        except Exception:
+            return None
+        return [
+            TieredCompaction(
+                target_fraction=0.9,
+                tiers=[
+                    ClearToolResults(max_messages=200, keep_pairs=10),
+                    SummarizingCompaction(
+                        max_messages=120,
+                        keep_messages=30,
+                        receipts=True,
+                    ),
+                ],
+            ),
+            WarnNearLimits(max_context_fraction=0.85),
+            StepPersistence(
+                store=cls._harness_store(root),
+                agent_name="workstep",
+            ),
+        ]
+
+    @classmethod
+    async def _harness_continue_history(
+        cls,
+        root: Path,
+        session_id: str | None,
+    ) -> list | None:
+        """Load the persisted snapshot for this session, when available."""
+        if (
+            not session_id
+            or not cls._harness_enabled()
+            or root is None
+            or not root.is_dir()
+        ):
+            return None
+        try:
+            from pydantic_ai_harness.step_persistence import continue_run
+
+            store = cls._harness_store(root)
+            runs = await store.list_runs(conversation_id=session_id)
+            if not runs:
+                return None
+            return list(await continue_run(store, run_id=runs[-1].run_id))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _open_receipt_scope(enabled: bool):
+        """Open a compaction-receipt scope for the run (None when disabled)."""
+        if not enabled:
+            return None
+        try:
+            from pydantic_ai_harness.compaction._receipts import open_receipt_scope
+
+            return open_receipt_scope()
+        except Exception:
+            return None
+
+    @staticmethod
+    async def _drain_compaction_receipts(scope, on_event) -> None:
+        """Emit ``compacted`` events for receipts recorded during the run."""
+        if scope is None:
+            return
+        try:
+            from pydantic_ai_harness.compaction._receipts import (
+                drain_receipts,
+                reset_receipt_scope,
+            )
+
+            receipts = []
+            try:
+                receipts = drain_receipts()
+            finally:
+                reset_receipt_scope(scope)
+            for receipt in receipts:
+                await on_event(compacted_event(summary=(
+                    f"{receipt.strategy} 压缩：丢弃 {receipt.dropped_messages} "
+                    f"条消息、约 {receipt.dropped_tokens} tokens"
+                )))
+        except Exception:
+            logger.exception("Failed to drain compaction receipts")
+
     async def spawn(
         self,
         prompt: str,
@@ -812,6 +962,7 @@ class PydanticAIEngine(AcpEngineBase):
         report_engine_state: bool = False,
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
+        workstep_tools: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         config = self.merge_config_overrides(
             config_store.get_pydantic_ai_engine_config(), config_overrides
@@ -862,9 +1013,12 @@ class PydanticAIEngine(AcpEngineBase):
                 "on_event": event_queue.put,
                 "live_message_queue": live_message_queue,
                 "images": images,
+                "session_id": session_uuid,
             }
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
+            if workstep_tools:
+                run_kwargs["workstep_tools"] = True
             if seeded_history is not None:
                 run_kwargs["message_history"] = seeded_history
             agent_task = asyncio.create_task(
@@ -996,6 +1150,7 @@ class PydanticAIEngine(AcpEngineBase):
         "status",
         "session_started",
         "engine_state",
+        "compacted",
         "error",
     })
 

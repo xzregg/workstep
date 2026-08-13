@@ -14,9 +14,11 @@ import { useProjectStore } from '../stores/projectStore'
 import {
   fsApi,
   projectApi,
+  providerApi,
   taskApi,
   type ActionProposal,
   type CoordinatorConfig,
+  type ProviderInfo,
   type ReviewRun,
   type TaskArtifact,
   type TaskStepState,
@@ -40,6 +42,7 @@ import {
 import {
   type DateTimeValue,
 } from '../utils/datetime'
+import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
 
 const EMPTY_EVENTS: any[] = []
@@ -236,13 +239,27 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return step?.session_id || null
   }
   const reviewEventSignal = useMemo(() => {
-    const event = [...events].reverse().find((item) =>
-      ['review_status', 'review_result', 'step_retrying'].includes(item.type)
+    // 实时链路是 AG-UI 事件：审核生命周期信号以 CUSTOM workstep.* 出现，
+    // 审核消息内容由后端在持久化后以 channel=review 的消息事件推送。
+    const customEvent = [...events].reverse().find((item) =>
+      item.type === 'CUSTOM' && (
+        item.name === CUSTOM.reviewStatus
+        || item.name === CUSTOM.reviewResult
+        || item.name === CUSTOM.stepRetrying
+      )
     )
-    return event
-      ? `${event.type}:${event.data?.review_run_id || ''}:${event.data?.status || event.data?.attempt || ''}`
+    if (customEvent) {
+      const value = customEvent.value ?? customEvent.data ?? {}
+      return `custom:${customEvent.name}:${value.review_run_id || ''}:${value.status || ''}:${value.attempt || ''}`
+    }
+    const liveReview = Object.values(liveMessages).find(
+      (message) => message.channel === 'review'
+        && ['completed', 'succeeded', 'failed', 'cancelled'].includes(message.status),
+    )
+    return liveReview
+      ? `review-message:${liveReview.id}:${liveReview.status}`
       : ''
-  }, [events])
+  }, [events, liveMessages])
   const [prompt, setPrompt] = useState('')
   const [running, setRunning] = useState(false)
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
@@ -262,6 +279,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [coordinatorConfigNotice, setCoordinatorConfigNotice] = useState('')
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [proposalOverrides, setProposalOverrides] = useState<Record<string, ActionProposal>>({})
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [livePromptOverrides, setLivePromptOverrides] = useState<Record<string, string>>({})
@@ -410,6 +428,61 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     )
   }
 
+  const beginPanelMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button, input, textarea, select, a')) {
+      return
+    }
+    event.preventDefault()
+    const startPointer = { x: event.clientX, y: event.clientY }
+    const startBounds = panelBounds
+    const previousCursor = document.body.style.cursor
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.cursor = 'move'
+    document.body.style.userSelect = 'none'
+
+    const handleMove = (moveEvent: PointerEvent) => {
+      setPanelBounds(clampPanelBounds({
+        ...startBounds,
+        x: startBounds.x + moveEvent.clientX - startPointer.x,
+        y: startBounds.y + moveEvent.clientY - startPointer.y,
+      }))
+    }
+    const cleanup = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousUserSelect
+      interactionCleanupRef.current = null
+    }
+    interactionCleanupRef.current?.()
+    interactionCleanupRef.current = cleanup
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', cleanup)
+    window.addEventListener('pointercancel', cleanup)
+  }
+
+  const moveWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 40 : 12
+    const deltaX = event.key === 'ArrowLeft'
+      ? -step
+      : event.key === 'ArrowRight'
+        ? step
+        : 0
+    const deltaY = event.key === 'ArrowUp'
+      ? -step
+      : event.key === 'ArrowDown'
+        ? step
+        : 0
+    if (deltaX === 0 && deltaY === 0) return
+    event.preventDefault()
+    setPanelBounds((current) => clampPanelBounds({
+      ...current,
+      x: current.x + deltaX,
+      y: current.y + deltaY,
+    }))
+  }
+
   // Load historical messages when panel opens (or task changes)
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -462,6 +535,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         reason instanceof Error ? reason.message : t('taskDetail.coordinatorEngineLoadFailed'),
       ))
   }, [taskId, projectId, t])
+
+  useEffect(() => {
+    let active = true
+    providerApi.list()
+      .then((result) => {
+        if (active) setProviders(result.providers.filter((item) => item.enabled))
+      })
+      .catch(() => { /* provider list is optional for the engine picker */ })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -688,20 +771,23 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     return stages.filter((stage) => runningKeys.has(stage.key))
   }, [stages, stageProgress])
 
-  const stoppedStages = useMemo(() => {
-    const stoppedKeys = new Set(
+  const resumableStages = useMemo(() => {
+    const resumableKeys = new Set(
       stageProgress
-        .filter((progress) => progress.status === 'cancelled')
+        .filter((progress) => (
+          progress.status !== undefined
+          && ['cancelled', 'failed', 'rejected'].includes(progress.status)
+        ))
         .map((progress) => progress.step_key),
     )
-    return stages.filter((stage) => stoppedKeys.has(stage.key))
+    return stages.filter((stage) => resumableKeys.has(stage.key))
   }, [stages, stageProgress])
 
   const chatTargetStageKey = chatTarget === 'coordinator' ? null : chatTarget
   const chatTargetStage = chatTargetStageKey !== null
   const targetStage = chatTargetStageKey
     ? (runningStages.find((stage) => stage.key === chatTargetStageKey)
-      ?? stoppedStages.find((stage) => stage.key === chatTargetStageKey)
+      ?? resumableStages.find((stage) => stage.key === chatTargetStageKey)
       ?? null)
     : null
   const activeStageRunning = targetStage !== null
@@ -709,23 +795,23 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
 
   // When a stage engine starts, the input switches to the matching stage tab
-  // for direct insert-into-execution messages; after a manual stop the tab
-  // stays on the stopped stage so a message can re-run it; otherwise it
-  // returns to the coordinator Agent. Manual user selection is preserved.
+  // for direct insert-into-execution messages; when no stage is running the
+  // tab stays on a stopped/failed stage so a message can re-run it; otherwise
+  // it returns to the coordinator Agent. Manual user selection is preserved.
   useEffect(() => {
     setChatTarget((current) => {
       if (runningStages.length === 0) {
-        if (current !== 'coordinator' && stoppedStages.some((stage) => stage.key === current)) {
+        if (current !== 'coordinator' && resumableStages.some((stage) => stage.key === current)) {
           return current
         }
-        return stoppedStages[0]?.key ?? 'coordinator'
+        return resumableStages[0]?.key ?? 'coordinator'
       }
       if (current !== 'coordinator' && runningStages.some((stage) => stage.key === current)) {
         return current
       }
       return runningStages[0].key
     })
-  }, [runningStages, stoppedStages])
+  }, [runningStages, resumableStages])
 
   const handleRun = async () => {
     if (!taskId || !projectId) return
@@ -1011,6 +1097,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         null,
         null,
         coordinatorConfig?.configured.thinking_effort || null,
+        engineId === 'pydantic_ai'
+          ? coordinatorConfig?.configured.provider_id || null
+          : null,
+      )
+      setCoordinatorConfig((current) => current
+        ? { ...current, ...selection }
+        : current
+      )
+      setCoordinatorConfigNotice(t('taskDetail.coordinatorSaved'))
+    } catch (reason) {
+      setCoordinatorConfigError(
+        reason instanceof Error ? reason.message : t('taskDetail.engineSwitchFailed'),
+      )
+    } finally {
+      setCoordinatorConfigSaving(false)
+    }
+  }
+
+  const handleCoordinatorProviderChange = async (providerId: string) => {
+    if (!taskId || !projectId || !coordinatorConfig) return
+    setCoordinatorConfigSaving(true)
+    setCoordinatorConfigError('')
+    setCoordinatorConfigNotice('')
+    try {
+      const selection = await taskApi.updateCoordinatorConfig(
+        taskId,
+        projectId,
+        coordinatorConfig.configured.engine || coordinatorConfig.resolved.engine,
+        null,
+        null,
+        null,
+        coordinatorConfig.configured.thinking_effort,
+        providerId || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1040,6 +1159,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.fast_model,
         coordinatorConfig.configured.vision_model,
         coordinatorConfig.configured.thinking_effort,
+        coordinatorConfig.configured.provider_id || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1069,6 +1189,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         fastModel || null,
         coordinatorConfig.configured.vision_model,
         coordinatorConfig.configured.thinking_effort,
+        coordinatorConfig.configured.provider_id || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1098,6 +1219,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.fast_model,
         visionModel || null,
         coordinatorConfig.configured.thinking_effort,
+        coordinatorConfig.configured.provider_id || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1127,6 +1249,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorConfig.configured.fast_model,
         coordinatorConfig.configured.vision_model,
         thinkingEffort || null,
+        coordinatorConfig.configured.provider_id || null,
       )
       setCoordinatorConfig((current) => current
         ? { ...current, ...selection }
@@ -1457,6 +1580,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onSendAllInserts={handleSendAllInserts}
         onClearInserts={() => setStageInserts([])}
         onCoordinatorEngineChange={handleCoordinatorEngineChange}
+        onCoordinatorProviderChange={handleCoordinatorProviderChange}
+        providers={providers}
         onCoordinatorModelChange={handleCoordinatorModelChange}
         onCoordinatorFastModelChange={handleCoordinatorFastModelChange}
         onCoordinatorVisionModelChange={handleCoordinatorVisionModelChange}
@@ -1538,6 +1663,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </Button>
           </>
         }
+        onHeaderPointerDown={beginPanelMove}
+        onHeaderKeyDown={moveWithKeyboard}
+        onHeaderDoubleClick={() => setPanelBounds(initialPanelBounds())}
         locale={locale}
         durationNowMs={durationNowMs}
         currentStage={currentStage}

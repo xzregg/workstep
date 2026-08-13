@@ -4,6 +4,7 @@ import asyncio
 import json
 import uuid
 from contextlib import AsyncExitStack
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -51,6 +52,20 @@ class MemoryConfigStore:
 
     def is_engine_verified(self, engine_id):
         return True
+
+    def get_provider(self, provider_id):
+        for item in self.values.get("providers", []):
+            if item.get("id") == provider_id:
+                return dict(item)
+        return None
+
+    def get_pydantic_ai_engine_config(self):
+        return {
+            "provider_id": "",
+            "model": "",
+            "mcp_servers": [],
+            "harness": "auto",
+        }
 
 
 @pytest.fixture
@@ -479,6 +494,90 @@ def test_assemble_context_includes_review_mode(tmp_path):
         db.close()
 
 
+def test_coordinator_root_defaults_to_workflow_artifacts_dir(tmp_path):
+    """协调 Agent 根目录默认解析到任务所属工作流的产物目录。"""
+    workstep_dir = tmp_path / ".workstep"
+    project = SimpleNamespace(workstep_dir=workstep_dir)
+    task = SimpleNamespace(workflow_id="f0e8bc06", cwd=str(tmp_path))
+    root = CoordinatorModule._coordinator_root(project, task)
+    assert root == str(workstep_dir / "artifacts" / "f0e8bc06")
+    assert Path(root).is_dir()
+
+
+def test_coordinator_root_falls_back_to_task_cwd(tmp_path):
+    """无工作流的任务回退到任务 cwd。"""
+    project = SimpleNamespace(workstep_dir=tmp_path / ".workstep")
+    task = SimpleNamespace(workflow_id=None, cwd=str(tmp_path))
+    root = CoordinatorModule._coordinator_root(project, task)
+    assert root == str(tmp_path)
+
+
+def test_assemble_context_includes_coordinator_root_dir(tmp_path):
+    """协调上下文必须带上根目录，让 agent 知道从哪读任务产物。"""
+    from models import CoordinatorTurn, Message, Task, init_db
+
+    db = init_db(str(tmp_path / "root-ctx.db"))
+    task = Task.create(
+        id="ctx-root-task",
+        title="t",
+        cwd=str(tmp_path),
+        workflow_id="wf-1",
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    user_message = Message.create(
+        id="root-user",
+        task=task,
+        channel="coordinator",
+        step_key="req",
+        role="user",
+        content="看下产物",
+        run_id="root-user",
+        run_status="completed",
+        position=0,
+        created_at=1,
+    )
+    assistant_message = Message.create(
+        id="root-assistant",
+        task=task,
+        channel="coordinator",
+        step_key="req",
+        role="assistant",
+        content="",
+        run_id="root-assistant",
+        run_status="running",
+        position=1,
+        created_at=1,
+    )
+    turn = CoordinatorTurn.create(
+        id="ctx-root-turn",
+        task=task,
+        user_message=user_message,
+        assistant_message=assistant_message,
+        idempotency_key="root-ik",
+        status="running",
+        created_at=1,
+    )
+
+    class StubProject:
+        steps = {"steps": []}
+        workstep_dir = tmp_path / ".workstep"
+
+        def workflow_by_id(self, workflow_id):
+            return None
+
+    module = CoordinatorModule(EventBus(), None, None)
+    prompt, _ = module._assemble_context(StubProject(), task, turn)
+    try:
+        context = json.loads(prompt.split("Context:\n", 1)[1])
+        assert context["coordinator_root_dir"] == str(
+            tmp_path / ".workstep" / "artifacts" / "wf-1"
+        )
+    finally:
+        db.close()
+
+
 def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, monkeypatch):
     """resume 引擎不再拼接历史（只带当前用户消息），无状态引擎保留。"""
     from models import (
@@ -883,6 +982,7 @@ async def test_coordinator_routes_reasoning_and_repair_to_separate_models(
         "fast_model": "fast-model",
         "vision_model": "vision-model",
         "thinking_effort": "",
+        "provider_id": "",
     }
     assert updated.json()["resolved"]["vision_model"] == "vision-model"
 
@@ -1541,3 +1641,52 @@ async def test_coordinator_stop_marks_turn_stopped(
         assert accepted2.status_code == 200
     finally:
         main.coordinator_module._event_bus.unsubscribe(event_queue)
+
+
+@pytest.mark.anyio
+async def test_coordinator_provider_override_saved_and_validated(api_context):
+    """任务级协调供应商：仅 Pydantic AI 引擎可配；保存后参与解析。"""
+    import agent_assistants.coordinator as coordinator_service
+
+    client, tmp_path = api_context
+    coordinator_service.config_store.set("providers", [
+        {
+            "id": "prov_test",
+            "name": "Test Provider",
+            "type": "deepseek",
+            "base_url": "https://api.test/v1",
+            "api_key": "k",
+            "enabled": True,
+        },
+    ])
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    # 非 Pydantic AI 引擎不能带供应商。
+    rejected = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "claude", "provider_id": "prov_test"},
+    )
+    assert rejected.status_code == 400
+
+    # 供应商不存在。
+    missing = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "pydantic_ai", "provider_id": "prov_missing"},
+    )
+    assert missing.status_code == 400
+
+    updated = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "pydantic_ai", "provider_id": "prov_test"},
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["configured"]["provider_id"] == "prov_test"
+    assert body["resolved"]["provider_id"] == "prov_test"
+    assert body["resolved"]["engine"] == "pydantic_ai"
+
+    loaded = await client.get(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}"
+    )
+    assert loaded.status_code == 200
+    assert loaded.json()["configured"]["provider_id"] == "prov_test"

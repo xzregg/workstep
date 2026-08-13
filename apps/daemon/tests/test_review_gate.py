@@ -205,6 +205,79 @@ async def test_manual_review_waits_for_user(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_review_message_published_to_bus(tmp_path):
+    """审核消息持久化后必须实时推送 channel=review 的消息事件（前端据此刷新）。"""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="review-publish-task",
+        title="Review publish",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-review-publish",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    event_queue = bus.subscribe()
+    try:
+        await TaskRunner(bus).run_pipeline(
+            task,
+            {
+                "steps": [{
+                    "key": "build",
+                    "label": "构建",
+                    "engine": "review-test",
+                    "dependsOn": [],
+                    "review": {"auto": False, "maxRetries": 0},
+                }]
+            },
+            tmp_path / "artifacts",
+            workflow_run=workflow_run,
+        )
+        published = []
+        while not event_queue.empty():
+            published.append(event_queue.get_nowait())
+        review_events = [
+            event for event in published
+            if event.get("channel") == "review"
+        ]
+        started = [
+            event for event in review_events
+            if event.get("type") == "TEXT_MESSAGE_START"
+        ]
+        completed = [
+            event for event in review_events
+            if event.get("type") == "TEXT_MESSAGE_END"
+        ]
+        assert len(started) == 1
+        assert len(completed) == 1
+        assert started[0].get("messageId")
+        assert started[0]["messageId"] == completed[0]["messageId"]
+        assert completed[0].get("status") == "completed"
+        assert completed[0].get("content") == "等待你审核"
+        assert completed[0]["messageId"] == str(
+            Message.get(
+                (Message.task == task) & (Message.channel == "review")
+            ).id
+        )
+    finally:
+        bus.unsubscribe(event_queue)
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_task_review_override_disables_auto_review(tmp_path):
     """Task-level review_overrides with auto=false must not spawn the review agent."""
     db = init_db(str(tmp_path / "workstep.db"))

@@ -145,16 +145,19 @@ api/ → services/ → models/ + engines/
 ```python
 # streaming/bus.py
 class EventBus:
-    def emit(self, project: str, task_id: str, step: str, event: InternalEvent):
-        """
-        1. UPDATE messages（SQLite）
-        2. 追加 events.jsonl（磁盘日志）
-        3. 推送 SSE（所有客户端）
-        """
+    def subscribe(self, predicate=None) -> asyncio.Queue:
+        """每个连接一个队列；predicate 非空时只入队命中事件。"""
 
-    def subscribe(self) -> AsyncIterator[SSEMessage]:
-        """SSE 端点调用，yield 所有项目所有任务的事件"""
+    def set_filter(self, q, predicate):
+        """连接发送 subscribe 消息后热更新过滤谓词。"""
+
+    async def publish(self, event):
+        """广播到所有订阅队列（谓词拒绝的事件直接跳过）。"""
 ```
+
+`/ws` 连接默认全量接收（向后兼容）；客户端可发送
+`{"type":"subscribe","task_ids":[...],"status_only_task_ids":[...],"session_ids":[...],"channels":[...]}`
+收窄事件范围，谓词在入队前过滤，慢客户端不再收到无关事件。
 
 ## SSE 推送格式（全局单流）
 

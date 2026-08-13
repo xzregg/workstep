@@ -12,8 +12,10 @@ import MarkdownEditor from '../components/MarkdownEditor'
 import {
   chatSessionApi,
   engineApi,
+  providerApi,
   type ChatQuickButton,
   type CoordinatorDefaultConfig,
+  type ProviderInfo,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
@@ -101,13 +103,16 @@ export default function ChatPage() {
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
+  const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
   const [enhancePhase, setEnhancePhase] = useState<'idle' | 'enhancing' | 'enhanced'>('idle')
   const enhancedValueRef = useRef('')
+  const originalDraftRef = useRef('')
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const running = session?.running ?? false
@@ -153,6 +158,16 @@ export default function ChatPage() {
   }, [t])
 
   useEffect(() => {
+    let active = true
+    providerApi.list()
+      .then((result) => {
+        if (active) setProviders(result.providers.filter((item) => item.enabled))
+      })
+      .catch(() => { /* provider list is optional for the engine picker */ })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
     if (!activeProject?.id) return
     void useChatListStore.getState().fetchQuickButtons(activeProject.id)
   }, [activeProject?.id])
@@ -177,11 +192,13 @@ export default function ChatPage() {
       setPermissionMode('')
       setEnhancePhase('idle')
       enhancedValueRef.current = ''
+      originalDraftRef.current = ''
       return
     }
     if (!activeProject?.id) return
     setEnhancePhase('idle')
     enhancedValueRef.current = ''
+    originalDraftRef.current = ''
     let active = true
     const store = useChatSessionStore.getState()
     store.newSession(sessionParam)
@@ -244,9 +261,11 @@ export default function ChatPage() {
     setInput('')
     setEnhancePhase('idle')
     enhancedValueRef.current = ''
+    originalDraftRef.current = ''
     try {
       const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomId(), {
         engine: selectedEngine || undefined,
+        provider_id: selectedProvider || undefined,
         model: selectedModel || undefined,
         fast_model: selectedFastModel || undefined,
         thinking_effort: selectedThinkingEffort || undefined,
@@ -285,6 +304,7 @@ export default function ChatPage() {
     const draft = input.trim()
     if (!draft) return
     setEnhancePhase('enhancing')
+    originalDraftRef.current = draft
     try {
       const result = await chatSessionApi.enhancePrompt(activeProject.id, draft)
       enhancedValueRef.current = result.prompt
@@ -297,10 +317,9 @@ export default function ChatPage() {
   }, [activeProject?.id, sessionId, enhancePhase, input, t])
 
   const revertEnhance = useCallback(() => {
-    if (enhancedValueRef.current) {
-      setInput(enhancedValueRef.current)
-    }
+    setInput(originalDraftRef.current || enhancedValueRef.current)
     enhancedValueRef.current = ''
+    originalDraftRef.current = ''
     setEnhancePhase('idle')
   }, [])
 
@@ -308,6 +327,7 @@ export default function ChatPage() {
     if (enhancePhase === 'enhanced' && value !== enhancedValueRef.current) {
       setEnhancePhase('idle')
       enhancedValueRef.current = ''
+      originalDraftRef.current = ''
     }
     setInput(value)
     setSendError('')
@@ -339,6 +359,7 @@ export default function ChatPage() {
       const detail = await chatSessionApi.create({
         project_id: activeProject.id,
         engine: selectedEngine || undefined,
+        provider_id: selectedProvider || undefined,
         model: selectedModel || undefined,
         fast_model: selectedFastModel || undefined,
       })
@@ -569,6 +590,8 @@ export default function ChatPage() {
         config={{
           engines: coordinatorConfig?.available_engines || [],
           engine: selectedEngine,
+          providers,
+          providerId: selectedProvider,
           defaultEngine: coordinatorConfig?.engine || 'claude',
           model: selectedModel,
           fastModel: selectedFastModel,
@@ -579,6 +602,13 @@ export default function ChatPage() {
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
             setSelectedEngine(engineId)
+            setSelectedProvider('')
+            setSelectedModel('')
+            setSelectedFastModel('')
+            setSelectedThinkingEffort('')
+          },
+          onProviderChange: (providerId) => {
+            setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
             setSelectedThinkingEffort('')
@@ -588,6 +618,7 @@ export default function ChatPage() {
           onThinkingEffortChange: setSelectedThinkingEffort,
           onReset: () => {
             setSelectedEngine('')
+            setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
             setSelectedThinkingEffort('')
@@ -654,10 +685,11 @@ export default function ChatPage() {
         title={t('chatSession.manageQuickButtonsTitle')}
         confirmText={t('chatSession.saveButtons')}
         loading={quickSaving}
+        width={820}
         onConfirm={() => void saveQuickButtons()}
         onCancel={() => setQuickEditOpen(false)}
       >
-        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '55vh', overflowY: 'auto' }}>
+        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '65vh', overflowY: 'auto' }}>
           {quickDraft.map((button, index) => (
             <div key={button.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
@@ -716,6 +748,7 @@ export default function ChatPage() {
         title={t('chatSession.manageSystemPromptTitle')}
         confirmText={t('common.save')}
         loading={promptSaving}
+        width={820}
         onConfirm={() => void saveSystemPrompt()}
         onCancel={() => setPromptEditOpen(false)}
       >
@@ -727,7 +760,8 @@ export default function ChatPage() {
             projectId={activeProject?.id}
             imagePrefix="system-prompt"
             placeholder={t('chatSession.systemPromptPlaceholder')}
-            minHeight={280}
+            minHeight={420}
+            maxHeight="55vh"
           />
           <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
           {promptError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{promptError}</div>}

@@ -2,6 +2,16 @@
 
 const BASE = '/api'
 
+export class ApiError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -12,7 +22,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(detail.detail || `HTTP ${res.status}`)
+    throw new ApiError(detail.detail || `HTTP ${res.status}`, res.status)
   }
   return res.json()
 }
@@ -309,7 +319,7 @@ export const workflowGenApi = {
     content: string,
     sessionId: string | null,
     idempotencyKey: string,
-    options: { engine?: string; model?: string; fastModel?: string; thinkingEffort?: string; steps?: any; workflowName?: string; contextMode?: 'initial' | 'canvas_updated' | 'none'; workflowId?: string } = {},
+    options: { engine?: string; model?: string; fastModel?: string; providerId?: string; thinkingEffort?: string; steps?: any; workflowName?: string; contextMode?: 'initial' | 'canvas_updated' | 'none'; workflowId?: string } = {},
   ) =>
     request<WorkflowGenAccepted>(`/workflow/generate/chat`, {
       method: 'POST',
@@ -321,6 +331,7 @@ export const workflowGenApi = {
         engine: options.engine || undefined,
         model: options.model || undefined,
         fast_model: options.fastModel || undefined,
+        provider_id: options.providerId || undefined,
         thinking_effort: options.thinkingEffort || undefined,
         steps: options.steps || undefined,
         workflow_name: options.workflowName || undefined,
@@ -360,7 +371,11 @@ export interface TaskDraftChatOptions {
   engine?: string
   model?: string
   fastModel?: string
+  providerId?: string
   thinkingEffort?: string
+  instruction?: string
+  candidateWorkflowIds?: string[]
+  allowGenerateTitle?: boolean
 }
 
 export const taskDraftApi = {
@@ -384,7 +399,11 @@ export const taskDraftApi = {
       engine: options.engine || undefined,
       model: options.model || undefined,
       fast_model: options.fastModel || undefined,
+      provider_id: options.providerId || undefined,
       thinking_effort: options.thinkingEffort || undefined,
+      instruction: options.instruction || undefined,
+      candidate_workflow_ids: options.candidateWorkflowIds || undefined,
+      allow_generate_title: options.allowGenerateTitle || false,
     }),
   }),
   stop: (sessionId: string) =>
@@ -434,6 +453,7 @@ export interface ChatSessionCreateInput {
   engine?: string
   model?: string
   fast_model?: string
+  provider_id?: string
   permission_mode?: string
 }
 
@@ -441,6 +461,7 @@ export interface ChatMessageOptions {
   engine?: string
   model?: string
   fast_model?: string
+  provider_id?: string
   thinking_effort?: string
   permission_mode?: string
   plan_mode?: boolean
@@ -489,6 +510,7 @@ export const chatSessionApi = {
         engine: options.engine || undefined,
         model: options.model || undefined,
         fast_model: options.fast_model || undefined,
+        provider_id: options.provider_id || undefined,
         thinking_effort: options.thinking_effort || undefined,
         permission_mode: options.permission_mode || undefined,
         plan_mode: options.plan_mode || undefined,
@@ -623,6 +645,10 @@ export interface Task {
   review_overrides?: Record<string, any> | null
   created_at: string
   updated_at: string
+  first_message_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  total_tokens?: number | null
   steps: TaskStepState[]
 }
 
@@ -701,6 +727,7 @@ export interface CoordinatorSelection {
     fast_model: string | null
     vision_model: string | null
     thinking_effort: string | null
+    provider_id: string | null
   }
   resolved: {
     engine: string
@@ -708,6 +735,7 @@ export interface CoordinatorSelection {
     fast_model: string | null
     vision_model: string | null
     thinking_effort: string | null
+    provider_id: string | null
   }
 }
 
@@ -809,6 +837,7 @@ export const taskApi = {
     fastModel: string | null,
     visionModel: string | null,
     thinkingEffort: string | null,
+    providerId: string | null,
   ) => request<CoordinatorSelection>(
     `/task/${taskId}/coordinator-config?project_id=${encodeURIComponent(projectId)}`,
     {
@@ -819,6 +848,7 @@ export const taskApi = {
         fast_model: fastModel,
         vision_model: visionModel,
         thinking_effort: thinkingEffort,
+        provider_id: providerId,
       }),
     },
   ),
@@ -1018,10 +1048,14 @@ export interface ProjectSchedule {
   name: string
   workflow_id: string
   task_template: {
-    title: string
+    mode?: 'static' | 'agent'
+    title?: string
     description?: string
     start_step_key?: string
     review_overrides?: Record<string, unknown>
+    instruction?: string
+    candidate_workflow_ids?: string[]
+    retry_count?: number
   }
   rule: ScheduleRule
   summary: string
@@ -1142,6 +1176,30 @@ export interface CoordinatorDefaultConfig {
   available_engines: CoordinatorEngineSummary[]
 }
 
+export interface AssistantConfiguredDefaults {
+  engine: string
+  model: string
+  fast_model: string
+  vision_model: string
+  thinking_effort: string
+  provider_id: string
+}
+
+export interface AssistantConfigInfo {
+  name: string
+  channel: string
+  scope: string
+  engine_label: string
+  fields: string[]
+  configured: AssistantConfiguredDefaults
+  available_engines: CoordinatorEngineSummary[]
+}
+
+export interface AssistantSaveResult {
+  saved: boolean
+  configured: Partial<AssistantConfiguredDefaults>
+}
+
 export interface EngineModel {
   id: string
   label: string
@@ -1152,6 +1210,7 @@ export interface EngineModelsResult {
   engine_id: string
   models: EngineModel[]
   default_model: string
+  fetched_at?: string | null
   error: string | null
 }
 
@@ -1227,6 +1286,8 @@ export interface ProviderInfo {
   enabled: boolean
   verified: boolean
   created_at: string
+  model_count: number
+  models_fetched_at: string | null
 }
 
 export interface ProviderTypeMeta {
@@ -1234,7 +1295,6 @@ export interface ProviderTypeMeta {
   label: string
   default_base_url: string
   auth: string
-  supports_balance: boolean
   help: string
 }
 
@@ -1270,14 +1330,8 @@ export interface ProviderTestResult {
 export interface ProviderModelsResult {
   provider_id: string
   models: EngineModel[]
+  fetched_at?: string | null
   error: string | null
-}
-
-export interface ProviderBalanceResult {
-  provider_id: string
-  supported: boolean
-  balance: unknown
-  message: string
 }
 
 export interface ProviderImportCandidate {
@@ -1325,10 +1379,12 @@ export const providerApi = {
       method: 'POST',
       body: JSON.stringify({ timeout_seconds: 15 }),
     }),
-  models: (providerId: string) =>
-    request<ProviderModelsResult>(`/provider/${encodeURIComponent(providerId)}/models`),
-  balance: (providerId: string) =>
-    request<ProviderBalanceResult>(`/provider/${encodeURIComponent(providerId)}/balance`),
+  models: (providerId: string, refresh = false) =>
+    request<ProviderModelsResult>(
+      `/provider/${encodeURIComponent(providerId)}/models${
+        refresh ? '?refresh=1' : ''
+      }`,
+    ),
   reveal: (providerId: string) =>
     request<{ key: string; value: string | null }>(
       `/provider/${encodeURIComponent(providerId)}/reveal`,
@@ -1351,31 +1407,36 @@ export const providerApi = {
 
 const engineModelsCache = new Map<string, EngineModelsResult>()
 
-// pydantic_ai 的模型列表直接绑定供应商（base_url/key）。供应商在设置页随时可改，
-// 缓存必然过期，因此该引擎一律绕过缓存，每次都走 /api/engine/{id}/models，
-// 由后端实时调用对应供应商的 /models 接口。
-const UNCACHED_ENGINE_IDS = new Set(['pydantic_ai'])
+function modelsCacheKey(engineId: string, providerId: string): string {
+  return `${engineId}::${providerId}`
+}
 
-export function getCachedEngineModels(engineId: string): EngineModelsResult | null {
-  if (UNCACHED_ENGINE_IDS.has(engineId)) return null
-  return engineModelsCache.get(engineId) ?? null
+export function getCachedEngineModels(
+  engineId: string,
+  providerId = '',
+): EngineModelsResult | null {
+  return engineModelsCache.get(modelsCacheKey(engineId, providerId)) ?? null
 }
 
 export async function fetchEngineModels(
   engineId: string,
   force = false,
+  providerId = '',
 ): Promise<EngineModelsResult> {
-  const cached = UNCACHED_ENGINE_IDS.has(engineId)
-    ? null
-    : engineModelsCache.get(engineId)
+  const cacheKey = modelsCacheKey(engineId, providerId)
+  const cached = engineModelsCache.get(cacheKey)
   if (cached && !force) return cached
-  const result = await engineApi.models(engineId)
-  engineModelsCache.set(engineId, result)
+  const result = await engineApi.models(engineId, providerId, force)
+  engineModelsCache.set(cacheKey, result)
   return result
 }
 
 export function invalidateEngineModels(engineId: string): void {
-  engineModelsCache.delete(engineId)
+  for (const key of Array.from(engineModelsCache.keys())) {
+    if (key.startsWith(`${engineId}::`)) {
+      engineModelsCache.delete(key)
+    }
+  }
 }
 
 export const engineApi = {
@@ -1414,8 +1475,12 @@ export const engineApi = {
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {
       method: 'POST',
     }),
-  models: (engineId: string) =>
-    request<EngineModelsResult>(`/engine/${encodeURIComponent(engineId)}/models`),
+  models: (engineId: string, providerId = '', refresh = false) =>
+    request<EngineModelsResult>(
+      `/engine/${encodeURIComponent(engineId)}/models${
+        providerId ? `?provider_id=${encodeURIComponent(providerId)}` : ''
+      }${refresh ? `${providerId ? '&' : '?'}refresh=1` : ''}`,
+    ),
   setDefaultModel: (engineId: string, model: string) =>
     request<{ engine_id: string; default_model: string; saved: boolean }>(
       `/engine/${encodeURIComponent(engineId)}/default-model`,
@@ -1458,6 +1523,61 @@ export const engineApi = {
       `/engine/${encodeURIComponent(engineId)}/inspect${query ? `?${query}` : ''}`,
     )
   },
+}
+
+// --- Assistant API ---
+
+export interface EnhanceConfigResult {
+  provider_id: string
+  model: string
+  providers: {
+    id: string
+    name: string
+    type: string
+    base_url: string
+    enabled: boolean
+  }[]
+}
+
+export const assistantApi = {
+  list: () => request<{ assistants: AssistantConfigInfo[] }>('/assistant/list'),
+  enhanceConfig: () => request<EnhanceConfigResult>('/assistant/enhance-config'),
+  setEnhanceConfig: (config: { providerId: string; model: string }) =>
+    request<{ saved: boolean; provider_id: string; model: string }>(
+      '/assistant/enhance-config',
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider_id: config.providerId,
+          model: config.model,
+        }),
+      },
+    ),
+  setConfig: (
+    name: string,
+    config: {
+      engine: string
+      model?: string
+      fastModel?: string
+      visionModel?: string
+      thinkingEffort?: string
+      providerId?: string
+    },
+  ) =>
+    request<AssistantSaveResult>(
+      `/assistant/${encodeURIComponent(name)}/config`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          engine: config.engine,
+          model: config.model ?? '',
+          fast_model: config.fastModel ?? '',
+          vision_model: config.visionModel ?? '',
+          thinking_effort: config.thinkingEffort ?? '',
+          provider_id: config.providerId ?? '',
+        }),
+      },
+    ),
 }
 
 // --- File System API ---
@@ -1530,7 +1650,12 @@ export const fsApi = {
         ? `/fs/browse?path=${encodeURIComponent(path)}`
         : '/fs/browse'
     ),
-  fileUrl: (path: string) => `${BASE}/fs/file?path=${encodeURIComponent(path)}`,
+  fileUrl: (path: string) =>
+    `${BASE}/fs/raw/${path
+      .replace(/^\/+/, '')
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`,
   directoryOpeners: () =>
     request<{ platform: string; openers: DirectoryOpener[] }>('/fs/directory-openers'),
   openDirectory: (path: string, opener = 'file_manager') =>

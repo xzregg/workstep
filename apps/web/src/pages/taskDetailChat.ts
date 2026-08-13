@@ -230,6 +230,7 @@ export function liveExecutionStatus(
     toolCallName?: string
   }>,
   t: TFunction = zhCNT,
+  hasPendingInserts = false,
 ): string {
   const latest = [...events].reverse().find((event) => [
     'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started', 'subagent',
@@ -274,7 +275,9 @@ export function liveExecutionStatus(
   }
   if ((latest?.type === 'status' || latest?.type === 'RUN_FINISHED')
     && statusValue === 'done') {
-    return t('chat.waitingInjection')
+    // 只有「插入消息」面板有待发送消息时才提示等待插入；
+    // 否则本轮回复已完成，阶段正在收尾，直接显示处理中。
+    return hasPendingInserts ? t('chat.waitingInjection') : t('chat.processing')
   }
   return t('chat.processing')
 }

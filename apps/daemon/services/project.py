@@ -413,6 +413,7 @@ class ProjectManager:
             # coordinator data) before removing the workflow row itself.
             self._delete_workflow_data(workflow_id)
             self._invalidate_workflow_schedules(workflow_id)
+            self._prune_schedule_candidates(workflow_id)
             row.delete_instance()
             self._sync_project_workflows(proj)
             return {"deleted": True, "soft": False}
@@ -427,8 +428,35 @@ class ProjectManager:
         row.updated_at = utc_now()
         row.save()
         self._invalidate_workflow_schedules(workflow_id)
+        self._prune_schedule_candidates(workflow_id)
         self._sync_project_workflows(proj)
         return {"deleted": True, "soft": True}
+
+    def _prune_schedule_candidates(self, workflow_id: str) -> None:
+        """Drop a deleted workflow from agent-mode schedule candidates."""
+        for schedule in Schedule.select().where(
+            Schedule.status.in_(("active", "paused"))
+        ):
+            try:
+                template = json.loads(schedule.task_template_json)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if str(template.get("mode") or "static") != "agent":
+                continue
+            original = list(template.get("candidate_workflow_ids") or [])
+            candidates = [wid for wid in original if wid != workflow_id]
+            if candidates == original:
+                continue
+            template["candidate_workflow_ids"] = candidates
+            schedule.task_template_json = json.dumps(template, ensure_ascii=False)
+            schedule.updated_at = utc_now()
+            if not candidates:
+                schedule.status = "invalid"
+                schedule.invalid_reason = (
+                    f"Candidate workflow was deleted: {workflow_id}"
+                )
+                schedule.next_run_at = None
+            schedule.save()
 
     def _invalidate_workflow_schedules(self, workflow_id: str) -> None:
         """Permanently stop schedules whose target workflow is unavailable."""

@@ -49,6 +49,26 @@ _CUSTOM_NAMES: dict[str, str] = {
     "a2ui": "a2ui.surface",
 }
 
+# 订阅过滤用的"状态类"事件：任务列表只需要这些事件即可保持运行状态
+# 刷新（对应前端 isStatusEvent / runRecovered 的判定集合）。
+_STATUS_EVENT_TYPES = {"RUN_STARTED", "RUN_FINISHED", "RUN_ERROR"}
+_STATUS_CUSTOM_NAMES = {
+    "workstep.status",
+    "workstep.step_retrying",
+    "workstep.step_rework",
+    "workstep.run_recovered",
+}
+
+
+def is_status_event(event: Mapping[str, Any]) -> bool:
+    """判断 AG-UI 事件是否属于"状态类"（低流量，列表页订阅用）。"""
+    if event.get("type") in _STATUS_EVENT_TYPES:
+        return True
+    return (
+        event.get("type") == "CUSTOM"
+        and event.get("name") in _STATUS_CUSTOM_NAMES
+    )
+
 
 @dataclass
 class AGUIContext:

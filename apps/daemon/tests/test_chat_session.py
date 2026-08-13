@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -39,6 +40,25 @@ class MemoryConfigStore:
     def get_engine_default_model(self, engine_id):
         return self.values.get("engine_default_models", {}).get(engine_id, "")
 
+    def get_pydantic_ai_engine_config(self):
+        return self.values.get("pydantic_ai_engine", {})
+
+    def get_prompt_enhance_config(self):
+        raw = self.values.get("prompt_enhance", {})
+        return {
+            "provider_id": raw.get("provider_id", ""),
+            "model": raw.get("model", ""),
+        }
+
+    def set_prompt_enhance_config(self, *, provider_id, model):
+        self.values["prompt_enhance"] = {"provider_id": provider_id, "model": model}
+
+    def get_provider(self, provider_id):
+        for item in self.values.get("providers", []):
+            if item.get("id") == provider_id:
+                return item
+        return None
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)
@@ -50,7 +70,7 @@ def test_init_db_records_latest_schema_version(tmp_path):
     """Fresh databases create the chat tables and record the latest schema version."""
     db = init_db(str(tmp_path / "workstep.db"))
     try:
-        assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION == 34
+        assert SchemaVersion.get_by_id(1).version == LATEST_SCHEMA_VERSION == 0
         tables = {
             row[0]
             for row in db.execute_sql(
@@ -204,24 +224,116 @@ async def test_permission_mode_persists_on_session_and_submit(chat_module):
 
 
 @pytest.mark.anyio
-async def test_enhance_prompt_rewrites_via_default_engine(chat_module, monkeypatch):
-    """Prompt enhancement routes through the default chat engine."""
-    module, bus, manager, project, _ = chat_module
+async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypatch):
+    """Without Pydantic AI config, prompt enhancement falls back to the default chat engine."""
+    module, bus, manager, project, config_store = chat_module
     calls: list[tuple] = []
 
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event, **kwargs):
-        calls.append((engine_id, model, prompt))
+        calls.append((engine_id, model, prompt, kwargs))
         return "改写后的清晰提示词。", [], None
 
+    def kwargs_of(call):
+        return call[3]
+
+    config_store.set("coordinator_default_model", "slow-model")
+    config_store.set("coordinator_default_fast_model", "fast-model")
     monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
     result = await module.enhance_prompt(project.id, "帮我写个函数")
     assert result == "改写后的清晰提示词。"
     assert calls
     assert calls[0][0] in ("codex", "claude", "claude_agent_sdk")
+    assert calls[0][1] == "fast-model"
     assert "帮我写个函数" in calls[0][2]
+    assert kwargs_of(calls[0])["thinking_effort"] == "minimal"
+    assert kwargs_of(calls[0])["permission_mode"] == "auto"
 
     with pytest.raises(ValueError):
         await module.enhance_prompt(project.id, "   ")
+
+
+@pytest.mark.anyio
+async def test_enhance_prompt_uses_configured_provider_direct_chat_completions(chat_module, monkeypatch):
+    """With an enhance provider + model configured, the rewrite goes through direct chat/completions."""
+    module, bus, manager, project, config_store = chat_module
+    config_store.set_prompt_enhance_config(
+        provider_id="p-1",
+        model="fast-model-x",
+    )
+    config_store.values["providers"] = [
+        {"id": "p-1", "base_url": "http://localhost:1/v1", "api_key": "k", "enabled": True}
+    ]
+    calls: list[dict] = []
+    pydantic_calls: list = []
+    invoke_calls: list = []
+
+    async def fake_chat_completion(provider, model, messages, **kwargs):
+        calls.append({"provider": provider["id"], "model": model, "messages": messages})
+        return "改写后的清晰提示词。"
+
+    async def fake_simple(prompt):
+        pydantic_calls.append(prompt)
+        return "回退后的提示词。"
+
+    async def fake_invoke(*args, **kwargs):
+        invoke_calls.append(args)
+        return "", [], None
+
+    monkeypatch.setattr(
+        "services.providers.chat_completion",
+        fake_chat_completion,
+    )
+    monkeypatch.setattr(
+        "engines.pydantic_ai.engine.PydanticAIEngine.run_simple",
+        fake_simple,
+    )
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
+
+    result = await module.enhance_prompt(project.id, "帮我写个函数")
+    assert result == "改写后的清晰提示词。"
+    assert calls and calls[0]["model"] == "fast-model-x"
+    assert calls[0]["messages"][-1]["content"] == "帮我写个函数"
+    assert calls[0]["messages"][0]["role"] == "system"
+    assert not pydantic_calls and not invoke_calls
+
+    # 清空配置后回退 Pydantic AI 路径
+    config_store.set_prompt_enhance_config(provider_id="", model="")
+    await module.enhance_prompt(project.id, "帮我写个函数")
+    assert pydantic_calls and not invoke_calls
+
+
+@pytest.mark.anyio
+async def test_enhance_prompt_uses_pydantic_ai_without_context(chat_module, monkeypatch):
+    """Prompt enhancement prefers the built-in Pydantic AI one-shot (no context)."""
+    module, bus, manager, project, config_store = chat_module
+    config_store.values["pydantic_ai_engine"] = {
+        "provider_id": "p-1",
+        "model": "fast-model-x",
+    }
+    config_store.values["providers"] = [
+        {"id": "p-1", "base_url": "http://localhost:1/v1", "api_key": "k", "enabled": True}
+    ]
+    prompts: list[str] = []
+    invoke_calls: list = []
+
+    async def fake_simple(prompt):
+        prompts.append(prompt)
+        return "改写后的清晰提示词。"
+
+    async def fake_invoke(*args, **kwargs):
+        invoke_calls.append(args)
+        return "", [], None
+
+    monkeypatch.setattr(
+        "engines.pydantic_ai.engine.PydanticAIEngine.run_simple",
+        fake_simple,
+    )
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
+
+    result = await module.enhance_prompt(project.id, "帮我写个函数")
+    assert result == "改写后的清晰提示词。"
+    assert prompts and "帮我写个函数" in prompts[0]
+    assert not invoke_calls  # 不经过协调引擎
 
 
 async def test_session_auto_titles_from_first_sentence(chat_module, monkeypatch):
@@ -269,6 +381,8 @@ async def test_chat_messages_go_to_new_tables_not_task_tables(chat_module, monke
     assert [row.role for row in rows] == ["user", "assistant"]
     assert rows[0].content == "帮我解释一下项目结构"
     assert rows[1].content == "这是一段会话回复"
+    assert rows[1].ended_at is not None
+    assert rows[1].ended_at >= rows[1].created_at
 
     from models.message import Message
     from models.task import Task
@@ -286,7 +400,44 @@ async def test_chat_messages_go_to_new_tables_not_task_tables(chat_module, monke
     assert history is not None
     assert [item["role"] for item in history["messages"]] == ["user", "assistant"]
     assert history["messages"][-1]["content"] == "这是一段会话回复"
+    assert history["messages"][-1]["ended_at"]
+    assert history["messages"][-1]["created_at"] <= history["messages"][-1]["ended_at"]
     await reloaded.shutdown()
+
+
+@pytest.mark.anyio
+async def test_legacy_messages_without_ended_at_are_repaired_on_read(chat_module):
+    """旧数据回补：成功回合没有 ended_at、created_at 为完成时刻时，读取历史补全起止时间。"""
+    module, bus, manager, project, _ = chat_module
+    session = module.create_session(project.id, "wf-legacy")
+    session_id = session["id"]
+    with manager.activate_project(project.path):
+        row = ChatSession.get_by_id(session_id)
+        ChatMessage.create(
+            id="legacy-msg-1",
+            session=row,
+            role="assistant",
+            content="ok",
+            status="succeeded",
+            created_at=datetime.fromisoformat("2026-08-12T09:16:25.231045+00:00"),
+            events_json=json.dumps([
+                {"type": "session_started", "data": {}, "timestamp": 1786526183803},
+                {
+                    "type": "usage_update",
+                    "data": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+                    "timestamp": 1786526185230,
+                },
+            ]),
+        )
+
+    detail = module.get_session(project.id, session_id)
+    message = detail["messages"][0]
+    assert message["role"] == "assistant"
+    # 起点取最早事件时间、终点取原 created_at（完成时刻）。
+    assert message["created_at"] == "2026-08-12T09:16:23.803000+00:00"
+    assert message["ended_at"] == "2026-08-12T09:16:25.231045+00:00"
+    # usage_update 事件保留，前端据此展示 Token 统计。
+    assert any(event["type"] == "usage_update" for event in message["events"])
 
 
 @pytest.mark.anyio

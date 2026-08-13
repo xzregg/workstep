@@ -34,6 +34,23 @@ class MemoryConfigStore:
     def get_engine_default_model(self, engine_id):
         return self.values.get("engine_default_models", {}).get(engine_id, "")
 
+    def get_assistant_defaults(self, name):
+        merged = {
+            "engine": self.get_coordinator_default_engine(),
+            "model": self.get_coordinator_default_model(),
+            "fast_model": self.get_coordinator_default_fast_model(),
+            "vision_model": "",
+            "thinking_effort": "",
+        }
+        overrides = self.get("assistant_defaults", {})
+        overlay = overrides.get(name) if isinstance(overrides, dict) else None
+        if isinstance(overlay, dict):
+            for key in merged:
+                value = overlay.get(key)
+                if isinstance(value, str) and value.strip():
+                    merged[key] = value.strip()
+        return merged
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)
@@ -251,7 +268,173 @@ async def test_task_draft_http_contract(tmp_path, monkeypatch):
                 headers={"Idempotency-Key": "idem-invalid"},
             )
             assert invalid.status_code == 400
+            workflow = project.default_workflow()
+            agent_req = await client.post(
+                "/api/task-draft/chat",
+                json={
+                    "project_id": project.id,
+                    "content": "生成定时任务",
+                    "title": "",
+                    "allow_generate_title": True,
+                    "candidate_workflow_ids": [workflow["id"]],
+                    "instruction": "每日生成日报",
+                },
+                headers={"Idempotency-Key": "idem-agent"},
+            )
+            assert agent_req.status_code == 200
+            bad_candidate = await client.post(
+                "/api/task-draft/chat",
+                json={
+                    "project_id": project.id,
+                    "content": "生成定时任务",
+                    "title": "",
+                    "allow_generate_title": True,
+                    "candidate_workflow_ids": ["missing"],
+                },
+                headers={"Idempotency-Key": "idem-bad-candidate"},
+            )
+            assert bad_candidate.status_code == 400
     finally:
         await module.shutdown()
         await bus.close()
         manager.close_all()
+
+
+# ── scheduled (headless) mode ──────────────────────────────────────────
+
+
+def _first_stage_key(project) -> str:
+    from services.workflow_definition import WorkflowDefinition
+
+    workflow = project.default_workflow()
+    return WorkflowDefinition.load(workflow["steps"]).compile().steps[0]["key"]
+
+
+@pytest.mark.anyio
+async def test_run_schedule_returns_validated_result_without_creating_task(
+    draft_module, monkeypatch
+):
+    module, bus, _, project, _ = draft_module
+    workflow = project.default_workflow()
+    first_key = _first_stage_key(project)
+    prompts = []
+
+    async def fake_invoke(*args, **kwargs):
+        prompts.append(args[3])
+        return json.dumps({
+            "reply": "已生成。",
+            "task_draft": {
+                "title": "生成的标题",
+                "description": "## 内容\n\n任务说明。",
+                "workflow_id": workflow["id"],
+                "start_step_key": first_key,
+            },
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    result = await module.run_schedule(
+        project.id,
+        instruction="生成日报任务",
+        candidate_workflow_ids=[workflow["id"]],
+    )
+
+    assert result == {
+        "title": "生成的标题",
+        "description": "## 内容\n\n任务说明。",
+        "workflow_id": workflow["id"],
+        "start_step_key": first_key,
+    }
+    assert "生成日报任务" in prompts[0]
+    assert "定时模式" in prompts[0]
+    with project.db.bind_ctx([Task]):
+        assert Task.select().count() == 0
+
+
+@pytest.mark.anyio
+async def test_run_schedule_rejects_workflow_outside_candidates(
+    draft_module, monkeypatch
+):
+    module, bus, _, project, _ = draft_module
+
+    async def fake_invoke(*args, **kwargs):
+        return json.dumps({
+            "reply": "完成",
+            "task_draft": {
+                "title": "标题",
+                "description": "内容",
+                "workflow_id": "not-a-candidate",
+            },
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    with pytest.raises(RuntimeError, match="outside the candidates"):
+        await module.run_schedule(
+            project.id,
+            instruction="生成任务",
+            candidate_workflow_ids=[project.default_workflow()["id"]],
+        )
+
+
+@pytest.mark.anyio
+async def test_run_schedule_includes_retry_feedback_in_prompt(
+    draft_module, monkeypatch
+):
+    module, bus, _, project, _ = draft_module
+    workflow = project.default_workflow()
+    prompts = []
+
+    async def fake_invoke(*args, **kwargs):
+        prompts.append(args[3])
+        return json.dumps({
+            "reply": "完成",
+            "task_draft": {
+                "title": "标题",
+                "description": "内容",
+                "workflow_id": workflow["id"],
+            },
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    await module.run_schedule(
+        project.id,
+        instruction="生成任务",
+        retry_feedback="attempt 1: 返回了非法 JSON",
+    )
+
+    assert "attempt 1: 返回了非法 JSON" in prompts[0]
+
+
+@pytest.mark.anyio
+async def test_await_turn_raises_on_engine_error(draft_module, monkeypatch):
+    module, bus, _, project, _ = draft_module
+
+    async def fake_invoke(*args, **kwargs):
+        raise RuntimeError("engine down")
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id, None, "完善", "idem-error", title="测试"
+    )
+    with pytest.raises(RuntimeError, match="engine down"):
+        await module.await_turn(accepted.turn_id)
+    assert module._turn_states[accepted.turn_id]["status"] == "error"
+
+
+@pytest.mark.anyio
+async def test_await_turn_times_out_without_cancelling_background(
+    draft_module, monkeypatch
+):
+    module, bus, _, project, _ = draft_module
+
+    async def fake_invoke(*args, **kwargs):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id, None, "完善", "idem-timeout", title="测试"
+    )
+    with pytest.raises(TimeoutError):
+        await module.await_turn(accepted.turn_id, timeout=0.05)
+    assert module._turn_states[accepted.turn_id]["status"] == "running"
+    assert await module.stop_current(accepted.session_id) is True
+    assert await _wait_turn(module, accepted.turn_id) == "stopped"

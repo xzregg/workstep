@@ -4,12 +4,15 @@ import {
   useState,
   useMemo,
   useCallback,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
 import {
   type ActionProposal,
   type CoordinatorConfig,
+  type ProviderInfo,
   type ReviewRun,
   type TaskArtifact,
   type TaskStepState,
@@ -219,6 +222,8 @@ export interface TaskDetailViewProps {
 
   // ── Coordinator config (edit mode only) ──
   onCoordinatorEngineChange?: (engineId: string) => void
+  onCoordinatorProviderChange?: (providerId: string) => void
+  providers?: ProviderInfo[]
   onCoordinatorModelChange?: (model: string) => void
   onCoordinatorFastModelChange?: (fastModel: string) => void
   onCoordinatorVisionModelChange?: (visionModel: string) => void
@@ -267,6 +272,9 @@ export interface TaskDetailViewProps {
   headerActions?: React.ReactNode
   taskHeaderExtra?: React.ReactNode
   onClose?: () => void
+  onHeaderPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onHeaderKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void
+  onHeaderDoubleClick?: () => void
 
   // ── Scroll refs (conversation) ──
   chatScrollRef?: React.RefObject<HTMLDivElement | null>
@@ -347,6 +355,8 @@ export default function TaskDetailView({
   onClearInserts,
   // Coordinator
   onCoordinatorEngineChange,
+  onCoordinatorProviderChange,
+  providers = [],
   onCoordinatorModelChange,
   onCoordinatorFastModelChange,
   onCoordinatorVisionModelChange,
@@ -386,6 +396,9 @@ export default function TaskDetailView({
   headerActions,
   taskHeaderExtra,
   onClose,
+  onHeaderPointerDown,
+  onHeaderKeyDown,
+  onHeaderDoubleClick,
   // Scroll
   chatScrollRef,
   chatEndRef,
@@ -413,16 +426,42 @@ export default function TaskDetailView({
 }: TaskDetailViewProps) {
   const { t } = useI18n()
 
-  // Stages manually stopped (人工停止)：仍保留在「发给谁」选择中，
+  // 未在运行的阶段（手动停止 / 失败 / 审核驳回）仍保留在「发给谁」选择中，
   // 选中后输入消息可带提示重新执行该阶段。
-  const stoppedStages = stages.filter((stage) => (
+  const resumableStatuses = ['cancelled', 'failed', 'rejected']
+  const resumableStages = stages.filter((stage) => (
     stageProgress.some((progress) => (
-      progress.step_key === stage.key && progress.status === 'cancelled'
+      progress.step_key === stage.key
+      && progress.status !== undefined
+      && resumableStatuses.includes(progress.status)
     ))
   ))
-  const stoppedTarget = chatTarget !== 'coordinator'
-    ? stoppedStages.find((stage) => stage.key === chatTarget) ?? null
+  const resumableStatusOf = (stageKey: string): string | null => {
+    const progress = stageProgress.find((item) => item.step_key === stageKey)
+    const status = progress?.status
+    return status !== undefined && resumableStatuses.includes(status)
+      ? status
+      : null
+  }
+  const resumableTarget = chatTarget !== 'coordinator'
+    ? resumableStages.find((stage) => stage.key === chatTarget) ?? null
     : null
+
+  // 「发给谁」阶段 tab 样式：背景色与对应阶段颜色一致（选中加深并加描边）。
+  const stageTabStyle = (stageColor: string, selected: boolean) => ({
+    padding: '4px 10px',
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    border: selected ? `1px solid ${stageColor}` : '1px solid transparent',
+    cursor: 'pointer',
+    background: `color-mix(in oklab, ${stageColor}, transparent ${selected ? 82 : 93}%)`,
+    color: stageColor,
+    maxWidth: 140,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  })
 
   // Local refs for conversation scroll when not provided by parent
   const localChatScrollRef = useRef<HTMLDivElement>(null)
@@ -634,9 +673,17 @@ export default function TaskDetailView({
   const renderHeader = () => {
     if (!task) return null
     const time = new Date(task.created_at).toLocaleString(locale)
+    const draggable = Boolean(onHeaderPointerDown)
 
     return (
       <div
+        role={draggable ? 'group' : undefined}
+        tabIndex={draggable ? 0 : undefined}
+        aria-label={draggable ? t('taskDetail.dragWindowAria') : undefined}
+        title={draggable ? t('taskDetail.dragWindowTitle') : undefined}
+        onPointerDown={onHeaderPointerDown}
+        onKeyDown={onHeaderKeyDown}
+        onDoubleClick={onHeaderDoubleClick}
         style={{
           padding: '10px',
           borderBottom: '1px solid var(--border-soft)',
@@ -644,8 +691,17 @@ export default function TaskDetailView({
           alignItems: 'center',
           gap: 16,
           flexShrink: 0,
+          ...(draggable ? { cursor: 'move', userSelect: 'none' } : {}),
         }}
       >
+        {draggable && (
+          <span
+            aria-hidden="true"
+            style={{ cursor: 'move', userSelect: 'none', lineHeight: 1 }}
+          >
+            ⠿
+          </span>
+        )}
         {!readOnly && onClose && (
           <Button variant="icon" onClick={onClose}>
             ←
@@ -2382,6 +2438,10 @@ export default function TaskDetailView({
                                   events={
                                     processEvents
                                   }
+                                  pendingInserts={
+                                    (stageInserts ?? [])
+                                      .length > 0
+                                  }
                                   prompt={
                                     msg.prompt
                                   }
@@ -2441,6 +2501,8 @@ export default function TaskDetailView({
                                       {liveExecutionStatus(
                                         processEvents,
                                         t,
+                                        (stageInserts ?? [])
+                                          .length > 0,
                                       )}
                                     </span>
                                     <span
@@ -3569,31 +3631,15 @@ export default function TaskDetailView({
                         stage: stage.label,
                       },
                     )}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background:
-                        chatTarget === stage.key
-                          ? 'var(--accent)'
-                          : 'transparent',
-                      color:
-                        chatTarget === stage.key
-                          ? 'var(--accent-fg)'
-                          : 'var(--meta)',
-                      maxWidth: 140,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
+                    style={stageTabStyle(
+                      stage.color || 'var(--accent)',
+                      chatTarget === stage.key,
+                    )}
                   >
                     {stage.label}
                   </button>
                 ))}
-                {stoppedStages.map((stage) => (
+                {resumableStages.map((stage) => (
                   <button
                     key={stage.key}
                     type="button"
@@ -3606,65 +3652,39 @@ export default function TaskDetailView({
                       chatTarget === stage.key
                     }
                     title={t(
-                      'taskDetail.stoppedStageTabTitle',
+                      resumableStatusOf(stage.key) === 'failed'
+                        || resumableStatusOf(stage.key) === 'rejected'
+                        ? 'taskDetail.failedStageTabTitle'
+                        : 'taskDetail.stoppedStageTabTitle',
                       {
                         stage: stage.label,
                       },
                     )}
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background:
-                        chatTarget === stage.key
-                          ? 'var(--accent)'
-                          : 'transparent',
-                      color:
-                        chatTarget === stage.key
-                          ? 'var(--accent-fg)'
-                          : 'var(--meta)',
-                      maxWidth: 140,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
+                    style={stageTabStyle(
+                      stage.color || 'var(--accent)',
+                      chatTarget === stage.key,
+                    )}
                   >
                     {stage.label}
                   </button>
                 ))}
               </div>
-              {stoppedTarget && (
+              {resumableTarget && (
                 <span
                   style={{
                     fontSize: 11,
                     color: 'var(--warn)',
                   }}
                 >
-                  {t('taskDetail.stoppedStageHint', {
-                    stage: stoppedTarget.label,
+                  {t(resumableStatusOf(resumableTarget.key) === 'failed'
+                    || resumableStatusOf(resumableTarget.key) === 'rejected'
+                    ? 'taskDetail.failedStageHint'
+                    : 'taskDetail.stoppedStageHint', {
+                    stage: resumableTarget.label,
                   })}
                 </span>
               )}
-              {!stoppedTarget &&
-                chatTarget !== 'coordinator' &&
-                runningStages.length > 0 && (
-                  <span
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--meta)',
-                    }}
-                  >
-                    {t('taskDetail.enterHint', {
-                      stage:
-                        runningStages[0]
-                          ?.label ?? '',
-                    })}
-                  </span>
-                )}
-              {!stoppedTarget &&
+              {!resumableTarget &&
                 chatTarget !== 'coordinator' &&
                 runningStages.length === 0 && (
                   <span
@@ -3732,6 +3752,10 @@ export default function TaskDetailView({
                   engine:
                     coordinatorConfig
                       ?.configured.engine || '',
+                  providers,
+                  providerId:
+                    coordinatorConfig
+                      ?.configured.provider_id || '',
                   defaultEngine:
                     coordinatorConfig?.resolved
                       .engine ||
@@ -3774,6 +3798,9 @@ export default function TaskDetailView({
                   onEngineChange:
                     onCoordinatorEngineChange ??
                     (() => {}),
+                  onProviderChange:
+                    onCoordinatorProviderChange ??
+                    (() => {}),
                   onModelChange:
                     onCoordinatorModelChange ??
                     (() => {}),
@@ -3794,7 +3821,7 @@ export default function TaskDetailView({
               }
               disabled={
                 chatTarget !== 'coordinator'
-                  ? (stoppedTarget
+                  ? (resumableTarget
                       ? (stageResuming ?? false)
                       : false)
                   : (coordinatorRunning ??
@@ -3805,7 +3832,7 @@ export default function TaskDetailView({
                   runningStages.length > 0 &&
                   (prompt ?? '').trim()
                     .length === 0) ||
-                (stoppedTarget &&
+                (resumableTarget &&
                   (stageResuming ?? false)) ||
                 (chatTarget === 'coordinator' &&
                   (coordinatorRunning ??
@@ -3829,9 +3856,9 @@ export default function TaskDetailView({
                   : onStop ?? (() => {})
               }
               placeholder={
-                stoppedTarget
+                resumableTarget
                   ? t('taskDetail.resumeStagePlaceholder', {
-                      stage: stoppedTarget.label,
+                      stage: resumableTarget.label,
                     })
                   : chatTarget !== 'coordinator' &&
                       runningStages[0]
@@ -3847,9 +3874,9 @@ export default function TaskDetailView({
                         )
               }
               title={
-                stoppedTarget
+                resumableTarget
                   ? t('taskDetail.resumeStageTitle', {
-                      stage: stoppedTarget.label,
+                      stage: resumableTarget.label,
                     })
                   : chatTarget !== 'coordinator'
                     ? t(

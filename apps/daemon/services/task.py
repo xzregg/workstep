@@ -479,6 +479,47 @@ class TaskService:
                     current = parent
                     depth += 1
                 run_round = depth
+        first_message = (
+            Message.select(Message.created_at)
+            .where(Message.task == task)
+            .order_by(Message.created_at, Message.sequence)
+            .limit(1)
+            .scalar()
+        )
+        last_step_end = (
+            TaskStep.select(TaskStep.ended_at)
+            .where((TaskStep.task == task) & (TaskStep.ended_at.is_null(False)))
+            .order_by(TaskStep.ended_at.desc())
+            .limit(1)
+            .scalar()
+        )
+        duration_ms = None
+        if first_message is not None and last_step_end is not None:
+            delta = (last_step_end - first_message).total_seconds() * 1000
+            if delta > 0:
+                duration_ms = int(delta)
+
+        total_tokens = 0
+        for msg in Message.select(Message.usage_json).where(Message.task == task):
+            if not msg.usage_json:
+                continue
+            try:
+                usage = json.loads(msg.usage_json)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(usage, dict):
+                continue
+            total = usage.get("total_tokens", usage.get("tokens"))
+            if isinstance(total, (int, float)) and not isinstance(total, bool):
+                total_tokens += max(0, int(total))
+            else:
+                input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
+                output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
+                if isinstance(input_tokens, (int, float)) and not isinstance(input_tokens, bool):
+                    total_tokens += max(0, int(input_tokens))
+                if isinstance(output_tokens, (int, float)) and not isinstance(output_tokens, bool):
+                    total_tokens += max(0, int(output_tokens))
+
         return {
             "id": task.id,
             "title": task.title,
@@ -500,6 +541,10 @@ class TaskService:
             "recovered_count": recovered_count,
             "state_version": task.state_version,
             "workflow_id": task.workflow_id,
+            "first_message_at": first_message,
+            "completed_at": last_step_end,
+            "duration_ms": duration_ms,
+            "total_tokens": total_tokens if total_tokens > 0 else None,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,

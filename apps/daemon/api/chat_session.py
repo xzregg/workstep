@@ -19,6 +19,7 @@ class ChatSessionCreateRequest(BaseSchema):
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
+    provider_id: str | None = None
     permission_mode: str | None = None
 
 
@@ -33,6 +34,7 @@ class ChatMessageRequest(BaseSchema):
     engine: str | None = None
     model: str | None = None
     fast_model: str | None = None
+    provider_id: str | None = None
     thinking_effort: str | None = None
     permission_mode: str | None = None
     plan_mode: bool | None = None
@@ -148,6 +150,7 @@ async def create_session(req: ChatSessionCreateRequest):
             engine=req.engine,
             model=req.model,
             fast_model=req.fast_model,
+            provider_id=req.provider_id,
             permission_mode=req.permission_mode,
         )
     except ValueError as exc:
@@ -213,6 +216,7 @@ async def chat_message(
             engine=req.engine,
             model=req.model,
             fast_model=req.fast_model,
+            provider_id=req.provider_id,
             thinking_effort=req.thinking_effort,
             permission_mode=req.permission_mode,
             plan_mode=req.plan_mode,
