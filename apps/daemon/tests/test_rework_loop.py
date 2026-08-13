@@ -23,7 +23,7 @@ class ReworkProducerEngine:
 
     async def spawn(self, prompt, cwd, **kwargs):
         self.calls.append(prompt)
-        yield InternalEvent(type="text_delta", data={"delta": "构建产物完成"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "构建产物完成"}})
 
     async def stop(self):
         return None
@@ -63,7 +63,7 @@ class ReworkVerifierEngine:
             }, ensure_ascii=False)
         else:
             text = "测试执行完成"
-        yield InternalEvent(type="text_delta", data={"delta": text})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": text}})
 
     async def stop(self):
         return None
@@ -81,12 +81,12 @@ class ReworkAlwaysRejectEngine:
 
     async def spawn(self, prompt, cwd, **kwargs):
         self.calls.append(prompt)
-        yield InternalEvent(type="text_delta", data={"delta": json.dumps({
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": json.dumps({
             "passed": False,
             "score": 10,
             "summary": "仍不合格",
             "issues": [],
-        }, ensure_ascii=False)})
+        }, ensure_ascii=False)}})
 
     async def stop(self):
         return None

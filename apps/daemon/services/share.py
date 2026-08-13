@@ -277,15 +277,25 @@ def load_shared_history(task_id: str, limit: int = 200, offset: int = 0) -> list
     )
     result = []
     import json as _json
+    from services.history import translate_events
     for msg in reversed(messages):
-        events: list[dict] = []
+        raw_events: list[dict] = []
         if msg.events_json:
             try:
-                events = _json.loads(msg.events_json)
+                raw_events = _json.loads(msg.events_json)
             except Exception:
-                events = []
-        # Filter out any events that might carry sensitive server-side data.
-        events = _scrub_events(events)
+                raw_events = []
+        # 与实时推送共用 AG-UI 翻译层（旧词汇经兼容映射），
+        # 再按 CUSTOM name 脱敏。
+        events = _scrub_events(translate_events(
+            raw_events,
+            task_id=task_id,
+            step_key=msg.step_key,
+            message_id=msg.id,
+            channel=msg.channel,
+            engine=msg.engine,
+            model=msg.model,
+        ))
         result.append({
             "id": msg.id,
             "role": msg.role,
@@ -306,12 +316,27 @@ def load_shared_history(task_id: str, limit: int = 200, offset: int = 0) -> list
     return result
 
 
-_SCRUBBED_EVENT_TYPES = {"interaction_request", "interaction_response", "engine_state"}
+_SCRUBBED_CUSTOM_NAMES = {
+    "workstep.interaction_request",
+    "workstep.interaction_response",
+    "workstep.engine_state",
+}
 
 
 def _scrub_events(events: list[dict]) -> list[dict]:
-    """Drop event types that shouldn't be visible to external share viewers."""
-    return [e for e in events if e.get("type") not in _SCRUBBED_EVENT_TYPES]
+    """Drop events that shouldn't be visible to external share viewers.
+
+    AG-UI 统一词汇下按 ``CUSTOM name`` 脱敏（``workstep.interaction_*``、
+    ``workstep.engine_state``）。
+    """
+    return [
+        event
+        for event in events
+        if not (
+            event.get("type") == "CUSTOM"
+            and event.get("name") in _SCRUBBED_CUSTOM_NAMES
+        )
+    ]
 
 
 def _share_to_dict(

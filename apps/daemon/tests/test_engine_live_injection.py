@@ -133,9 +133,9 @@ async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
     ]
     assert second.args[4:7] == ["resume", "thread-1", "注入内容"]
     deltas = "".join(
-        event.data.get("delta", "")
+        (event.data.get("content") or {}).get("text", "")
         for event in events
-        if event.type == "text_delta"
+        if event.type == "agent_message_chunk"
     )
     assert deltas == "resumed answer"
 
@@ -616,8 +616,11 @@ async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
     ):
         events.append(event)
 
-    deltas = [event for event in events if event.type == "text_delta"]
-    assert [event.data["delta"] for event in deltas] == ["第一段输出", "插入后的响应"]
+    deltas = [event for event in events if event.type == "agent_message_chunk"]
+    assert [
+        (event.data.get("content") or {}).get("text", "")
+        for event in deltas
+    ] == ["第一段输出", "插入后的响应"]
     acks = [event for event in events if event.type == "live_message"]
     assert len(acks) == 1
     assert acks[0].data["message_id"] == "mid-1"

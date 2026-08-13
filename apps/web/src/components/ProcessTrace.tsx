@@ -14,6 +14,7 @@ import {
   characterCount,
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
+import { isToolEvent } from '../utils/agui.ts'
 
 type ProcessEvent = {
   type: string
@@ -119,7 +120,9 @@ export default function ProcessTrace({
     (item): item is Exclude<MessageTimelineItem, { type: 'text' }> => item.type !== 'text',
   )
   const lastProcessItem = processItems[processItems.length - 1]
-  const commandCount = events.filter((event) => event.type === 'tool_use').length
+  const commandCount = events.filter((event) => (
+    event.type === 'tool_use' || isToolEvent(event)
+  )).length
   const eventTimes = events
     .map((event) => toMilliseconds(event.timestamp))
     .filter((timestamp): timestamp is number => timestamp !== null)

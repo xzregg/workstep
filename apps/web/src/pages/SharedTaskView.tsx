@@ -141,8 +141,11 @@ export default function SharedTaskView() {
 
     const applyEvent = (ev: any) => {
       const evType = ev?.type
-      if (evType === 'text_delta' || evType === 'thinking_delta') {
-        const messageId = ev.message_id
+      const mid = ev?.messageId ?? ev?.message_id
+      const isTextChunk = evType === 'text_delta' || evType === 'TEXT_MESSAGE_CHUNK'
+      const isReasoning = evType === 'thinking_delta' || evType === 'REASONING_MESSAGE_CHUNK'
+      if (isTextChunk || isReasoning) {
+        const messageId = mid
         if (!messageId) return
         setMessages((prev) => {
           const idx = prev.findIndex((m) => m.id === messageId)
@@ -150,11 +153,11 @@ export default function SharedTaskView() {
             const created = {
               id: messageId,
               role: 'assistant',
-              content: evType === 'text_delta' ? (ev.delta ?? ev.text ?? '') : '',
+              content: isTextChunk ? (ev.delta ?? ev.text ?? '') : '',
               step_key: ev.step_key,
               channel: 'execution',
               run_status: 'running',
-              events: evType === 'thinking_delta' ? [ev] : [],
+              events: isReasoning ? [ev] : [],
               started_at: ev.created_at ?? new Date().toISOString(),
               ended_at: null,
               created_at: ev.created_at ?? new Date().toISOString(),
@@ -163,7 +166,7 @@ export default function SharedTaskView() {
           }
           const existing = prev[idx]
           const next = { ...existing }
-          if (evType === 'text_delta') {
+          if (isTextChunk) {
             next.content = (next.content ?? '') + (ev.delta ?? ev.text ?? '')
           } else {
             next.events = [...(next.events ?? []), ev]
@@ -175,9 +178,13 @@ export default function SharedTaskView() {
       } else if (
         evType === 'tool_use' ||
         evType === 'tool_input_delta' ||
-        evType === 'tool_result'
+        evType === 'tool_result' ||
+        evType === 'TOOL_CALL_START' ||
+        evType === 'TOOL_CALL_ARGS' ||
+        evType === 'TOOL_CALL_CHUNK' ||
+        evType === 'TOOL_CALL_RESULT'
       ) {
-        const messageId = ev.message_id
+        const messageId = mid
         if (!messageId) return
         setMessages((prev) => {
           const idx = prev.findIndex((m) => m.id === messageId)
@@ -188,8 +195,14 @@ export default function SharedTaskView() {
           copy[idx] = next
           return copy
         })
-      } else if (evType === 'status' || evType === 'done') {
-        const messageId = ev.message_id
+      } else if (
+        evType === 'status' ||
+        evType === 'done' ||
+        evType === 'RUN_STARTED' ||
+        evType === 'RUN_FINISHED' ||
+        evType === 'RUN_ERROR'
+      ) {
+        const messageId = mid
         if (messageId) {
           setMessages((prev) => {
             const idx = prev.findIndex((m) => m.id === messageId)
@@ -210,9 +223,17 @@ export default function SharedTaskView() {
       // panel in sync with the conversation.
       if (
         evType === 'status' ||
+        evType === 'RUN_STARTED' ||
+        evType === 'RUN_FINISHED' ||
+        evType === 'RUN_ERROR' ||
         evType === 'review_status' ||
         evType === 'review_result' ||
-        evType === 'step_retrying'
+        evType === 'step_retrying' ||
+        ev?.type === 'CUSTOM' && (
+          ev?.name === 'workstep.status' ||
+          ev?.name === 'workstep.step_retrying' ||
+          ev?.name === 'workstep.run_recovered'
+        )
       ) {
         shareApi
           .task(currentToken, sessionToken)

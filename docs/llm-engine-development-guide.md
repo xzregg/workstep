@@ -4,163 +4,194 @@
 
 相关代码：
 
-- 引擎抽象：`apps/daemon/engines/core/base.py`
+- 自定义函数基类：`apps/daemon/engines/core/base.py`（`BaseLLMEngine`）
+- ACP 协议基类：`apps/daemon/engines/core/acp_base.py`（`AcpEngineBase`）
 - 统一事件：`apps/daemon/engines/core/events.py`
+- 交互与计划：`apps/daemon/engines/core/interactions.py`、`apps/daemon/engines/core/plans.py`
 - 配置模板：`apps/daemon/engines/core/schema.py`
 - 引擎注册：`apps/daemon/engines/core/registry.py`
-- ACP 基类：`apps/daemon/engines/core/acp_base.py`
-- Claude Agent SDK 适配器：`apps/daemon/engines/claude_agent_sdk.py`
+- 对外事件翻译：`apps/daemon/engines/core/agui.py`（AG-UI）
+- 参考实现：`apps/daemon/engines/hermes.py`（ACP 原生）、`apps/daemon/engines/codex.py`（CLI）、`apps/daemon/engines/claude_agent_sdk.py`（SDK）、`apps/daemon/engines/pydantic_ai/engine.py`（进程内 Agent）
 - 工作流消费端：`apps/daemon/services/task_runner.py`
 - 引擎管理 API：`apps/daemon/api/engine.py`
 - 前端引擎元数据：`apps/web/src/engineMeta.ts`
 
+## 0. 基类层次（先读）
+
+**所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。
+
+```text
+BaseLLMEngine(ABC)                        # 我方系统扩展：WorkStep 特有自定义函数（与协议无关）
+├── 发现：is_installed / get_version / resolve_binary（抽象，必须实现）
+├── 安装：install_command / install / inspect_capabilities
+├── 配置：config_schema / stage_config_schema / merge_config_overrides /
+│         get_config_values / get_config_secrets / save_config_values / reveal_config_value
+├── 能力声明：capabilities / supports_message_history / supports_thinking_effort /
+│         supports_workstep_tools / supports_vision
+└── list_models
+
+AcpEngineBase(BaseLLMEngine)              # 通用 ACP 协议调用（所有引擎继承）
+├── 执行：spawn / stop / test_connection / spawn_coordinator / inject_response
+├── 会话：supports_sessions / create_session / load_session / list_sessions /
+│         resume_session / close_session / cancel_session / set_config_option / reset_options
+├── 审批：supports_tool_approval / approve_tool / approve_tool_option
+├── 交互：request_interaction / respond_interaction / handle_tool_permission /
+│         normalize_event / normalize_interaction_event / send_live_stage_message
+├── 恢复：supports_resume / supports_interactive / supports_live_stage_message /
+│         build_resume_params
+└── 能力元数据：acp_events（声明本引擎实际产出的 ACP 词汇事件集合）
+```
+
+- **ACP 原生引擎**（如 Hermes）：声明 `COMMAND` / `ENGINE_ID`，`get_command()` 非空（`_is_acp_native = True`），基类直接提供全部协议实现（ACP 客户端、会话、审批、elicitation）。
+- **非 ACP 引擎**（Codex / CodexSDK / Claude Code / ClaudeAgentSDK / QoderSDK / PydanticAI / OpenClaw）：继承 `AcpEngineBase`，用自己的传输覆盖 `spawn`，并**完整实现等价会话 / 审批方法**（无原生入口的如实声明能力并安全降级），事件统一产出 ACP 词汇。
+- 新引擎 = 新增一个文件：继承 `AcpEngineBase`，实现 `BaseLLMEngine` 的抽象自定义函数，声明 `acp_events`，按第 2、3 节覆盖协议方法。
+
 ## 1. 引擎在系统中的位置
 
 ```text
-WorkflowRuntime / CoordinatorModule
+WorkflowRuntime / CoordinatorModule / AssistantRuntime
                 │
                 ▼
-          BaseLLMEngine
+          AcpEngineBase（统一协议接口）
                 │
                 ▼
  CLI / ACP / HTTP API / Agent SDK
                 │
                 ▼
-          InternalEvent 流
+      InternalEvent 流（ACP 词汇）
                 │
        ┌────────┴────────┐
        ▼                 ▼
-  SQLite 消息记录     WebSocket 实时消息
+  SQLite 消息记录     AG-UI 翻译（engines/core/agui.py）→ WebSocket 实时消息
 ```
 
 引擎适配器只负责四件事：
 
-1. 检测和描述引擎是否可用。
-2. 接收标准执行参数并启动一次 LLM 回合。
-3. 将下游协议转换成 `InternalEvent`。
+1. 检测和描述引擎是否可用（`BaseLLMEngine` 自定义函数）。
+2. 接收标准执行参数并启动一次 LLM 回合（`spawn`）。
+3. 将下游协议转换成 ACP 词汇 `InternalEvent`。
 4. 在取消、错误或退出时正确释放资源。
 
 引擎不应自行修改任务、阶段、消息或审核状态，这些由 `TaskRunner`、`ReviewGate` 和协调模块统一处理。
 
 ## 2. 选择实现方式
 
-### 2.1 直接 CLI
+### 2.1 ACP 原生 Agent（JSON-RPC）
 
-继承 `BaseLLMEngine`。适用于 `claude -p`、`codex exec` 等命令行程序。
+继承 `AcpEngineBase`，提供命令、引擎 ID 和权限模式即可——事件、会话、审批、elicitation 全部由基类提供：
+
+```python
+class MyAcpEngine(AcpEngineBase):
+    ENGINE_ID = "my_acp"
+    COMMAND = ["my-agent", "--stdio"]          # ACP 网关启动命令
+    REQUIRES_PERMISSION_MODE = False
+```
+
+基类已经处理：
+
+- Agent 初始化（`initialize` / `new_session` / `load_session`）。
+- 会话生命周期（`session/new`、`session/load`、`session/resume`、`session/list`、`session/close`、`session/cancel`）。
+- 模型配置（`set_config_option`）。
+- 文本、思考、工具调用、计划、用量、MCP、elicitation 等全部 session update 的事件映射。
+- 权限审批（`request_permission` → `interaction_request`）与表单询问（`create_elicitation` → `elicitation_request`）。
+- 进程退出与异常转换。
+
+参考：`apps/daemon/engines/hermes.py`。仓库内 `claude_acp` / `codex_acp` / `qoder_acp` 三个 ACP 引擎已移除，不再注册。
+
+### 2.2 直接 CLI
+
+继承 `AcpEngineBase`，用自己的传输实现 `spawn`。适用于 `claude -p`、`codex exec` 等命令行程序。
 
 必须自行实现：
 
-- 二进制定位和版本检测。
-- `asyncio.create_subprocess_exec` 生命周期。
-- stdin 输入协议。
-- stdout/stderr 流解析。
+- 二进制定位和版本检测（`resolve_binary` / `get_version`）。
+- `asyncio.create_subprocess_exec` 生命周期与 `stop`。
+- stdin 输入协议与 stdout/stderr 流解析 → ACP 词汇事件。
 - 取消和进程回收。
-- 会话 ID 提取与恢复参数。
+- 会话 ID 提取（`session_started`）与恢复（`spawn(session_id=...)`）。
+- 审批语义（如 Codex 沙箱拒绝 → 弹窗 → 批准后提权重试）。
+- 声明 `acp_events` 实际子集。
 
 参考：`apps/daemon/engines/claude_code.py`、`apps/daemon/engines/codex.py`。
 
-### 2.2 ACP / JSON-RPC Agent
+### 2.3 HTTP API 或进程内 Agent
 
-复用 `AcpEngineBase`（`apps/daemon/engines/core/acp_base.py`）的场景：继承后提供命令、引擎 ID 和权限模式。
-
-ACP 基类已经处理：
-
-- Agent 初始化。
-- 新建/恢复 Session。
-- 模型配置。
-- 文本、思考、工具调用和 Token 事件映射。
-- 进程退出与异常转换。
-
-参考：`apps/daemon/engines/hermes.py`（JSON-RPC 子类）。仓库内 `claude_acp` / `codex_acp` / `qoder_acp` 三个 ACP 引擎已移除，不再注册。
-
-### 2.3 HTTP API 或 SDK
-
-继承 `BaseLLMEngine`，`is_installed()` 通常返回 `True`，并通过 `is_configured()` 判断 URL、模型和密钥是否齐全。
+继承 `AcpEngineBase`，`is_installed()` 通常返回 `True`，并通过 `is_configured()` 判断 URL、模型和密钥是否齐全；`spawn` 在进程内驱动 Agent 并映射事件。
 
 参考：`apps/daemon/engines/pydantic_ai/engine.py`（内置 Pydantic AI 引擎，绑定供应商 base_url/key，配置由后端模板驱动）。
 
-### 2.4 Agent SDK
+### 2.4 Agent SDK（Claude / Qoder / Codex）
 
-继承 `BaseLLMEngine`，在进程内用官方 SDK 驱动 Agent（例如 Claude Code 的 `claude-agent-sdk`）。
+继承 `AcpEngineBase`，在进程内用官方 SDK 驱动 Agent（例如 Claude Code 的 `claude-agent-sdk`、Qoder 的 `qoder-agent-sdk`、Codex 的 `openai-codex`）。
 
-SDK 的 `local` 传输仍会以子进程方式启动 `claude` 二进制，但进程生命周期、JSONL 流协议和取消都由 SDK 管理，适配器不直接操作子进程，也不经过 ACP 桥。适配器只消费 SDK 的异步消息流并映射为 `InternalEvent`。
+SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程生命周期、JSONL 流协议和取消都由 SDK 管理，适配器不直接操作子进程，也不经过 ACP 桥。适配器只消费 SDK 的异步消息流并映射为 ACP 词汇 `InternalEvent`。
 
-`is_installed()` 需要 SDK 可导入且二进制存在；`resolve_binary()` 的优先级为配置覆盖 → `CLAUDE_AGENT_CLAUDE_BIN` 环境变量 → SDK 捆绑二进制（`_bundled/claude`，wheel 自带）→ PATH。
-
-参考：`apps/daemon/engines/claude_agent_sdk.py`。
-
-### 2.5 Codex Agent SDK
-
-Codex 使用官方 `openai-codex` Python SDK（PyPI，`pip install openai-codex`），运行时由配套的 `openai-codex-cli-bin` 提供捆绑二进制（`bin/codex`），无需本机单独安装 codex CLI。
-
-`AsyncCodex` 惰性启动 SDK 客户端，`thread_start` / `thread_resume` 建线程，`thread.turn()` 返回 `AsyncTurnHandle`，`turn.stream()` 产出通知流（`item/agentMessage/delta`、`item/reasoning/*`、`item/completed`、`thread/tokenUsage/updated`、`turn/completed`）。适配器在进程内驱动，无 shell、无 ACP 桥。
-
-与 Claude Agent SDK 版相比，Codex SDK 版额外支持原生会话恢复（`thread_resume`，`supports_resume = True`）、`Sandbox.read_only` 只读沙箱（协调模式使用）和 `models()` 实时模型列表。
-
-`resolve_binary()` 的优先级为配置覆盖 → SDK 自带二进制（`codex_cli_bin.bundled_codex_path()`）。
-
-参考：`apps/daemon/engines/codex_sdk.py`。
-
-### 2.6 Qoder Agent SDK
-
-Qoder 使用官方 `qoder-agent-sdk` Python 包（PyPI，`pip install qoder-agent-sdk`），SDK 以子进程方式启动 `qodercli`。SDK wheel **内置捆绑平台对应的 `qodercli` 二进制**（`qoder_agent_sdk/_bundled/qodercli`），无需单独安装；查找顺序与 SDK 一致：`QoderAgentOptions.cli_path`（我们的 `resolve_binary()` 传捆绑路径）→ `QODERCLI_PATH` 环境变量 → SDK 捆绑 → PATH。
-
-认证优先级：设置里保存的 PAT → 环境变量 `QODER_PERSONAL_ACCESS_TOKEN`（`access_token_from_env()`）→ 本机 `qodercli` 登录（`qodercli_auth()`）。PAT 在 `qoder.com/account/integrations` 生成，作为 `password` 类型敏感字段写入引擎配置，支持显示 / 清除。
-
-适配器使用 `query(prompt=..., options=...)` 一次性流式调用，`include_partial_messages=True` 时把 `StreamEvent` 的 `text_delta` / `thinking_delta` 实时映射为 `text_delta` / `thinking_delta`，并用 `state` 去重，避免最终的 `AssistantMessage` 重复输出；`ResultMessage` 的 `usage`（camelCase `ModelUsage`：`inputTokens` / `outputTokens` / `cacheReadInputTokens` / `cacheCreationInputTokens` / `costUSD`）归一化为标准 `usage` 事件，`total_cost_usd` / `total_credits` 附加到成本与额度字段。
-
-`is_installed()` 只要 SDK 可导入即为真（捆绑 CLI 随 wheel 提供）；`resolve_binary()` 的优先级为配置覆盖 → `QODERCLI_PATH` 环境变量 → SDK 捆绑二进制 → PATH。
-
-参考：`apps/daemon/engines/qoder_sdk.py`。
+- `is_installed()` 需要 SDK 可导入且二进制存在；`resolve_binary()` 按各 SDK 的查找顺序实现（配置覆盖 → 环境变量 → SDK 捆绑二进制 → PATH）。
+- 会话恢复：Claude SDK `resume` 选项、Qoder SDK `options.resume`、Codex SDK `thread_resume`。
+- 审批：Claude/Qoder 的 `can_use_tool` 回调、Codex SDK 的 `approval_handler` 都桥接到 `handle_tool_permission` / `request_interaction`（ACP `session/request_permission` 语义）。
+- 表单询问：Qoder `on_elicitation` 桥接到 ACP `elicitation/create`。
+- 参考：`apps/daemon/engines/claude_agent_sdk.py`、`apps/daemon/engines/qoder_sdk.py`、`apps/daemon/engines/codex_sdk.py`。
 
 ## 3. 必须实现的接口
 
-所有引擎必须继承 `BaseLLMEngine`。
+### 3.1 `BaseLLMEngine` 自定义函数（抽象，必须实现）
 
 | 接口 | 必须 | 说明 |
 |---|---:|---|
 | `is_installed()` | 是 | 本机是否具备运行条件。CLI 检查二进制，内置 API Adapter 通常返回 `True`。 |
 | `get_version()` | 是 | 返回版本字符串；无法获取时返回 `None`。不得无限等待。 |
 | `resolve_binary()` | 是 | 返回实际命令路径或 Adapter 标识；不可用时返回 `None`。 |
-| `spawn(...)` | 是 | 启动一次执行并异步产出 `InternalEvent`。 |
-| `stop()` | 是 | 停止当前执行。必须可重复调用，并在无运行任务时安全返回。 |
-| `inject_response(...)` | 是 | 中途注入用户响应；不支持时记录日志并安全返回。 |
-| `respond_interaction(...)` | 否 | 将统一的 ACP 响应送回引擎；基类已处理进程内等待、权限选项及表单输入，只有原生协议需要覆盖。 |
 | `install_command()` | 否 | 返回该引擎可执行的安装命令字符串；不支持自动安装时返回 `None`。 |
 | `install()` | 否 | 安装该引擎所需运行时（CLI 二进制或 Python SDK）。基类默认返回「无需安装」。 |
-| `supports_resume` | 是 | 是否支持恢复原生会话。 |
-| `supports_interactive` | 是 | 是否支持执行中交互或权限响应。 |
-| `build_resume_params(...)` | 是 | 将 Session ID 转换为恢复参数；不支持时返回空字典。 |
+| `config_schema()` / `get_config_values()` / `save_config_values()` 等 | 否 | 有专属配置时声明（见 4.6）。 |
+| `supports_vision` / `supports_workstep_tools` / `supports_thinking_effort` 等 | 否 | 如实声明能力，不夸大。 |
 
-### 3.1 `spawn` 签名
+### 3.2 `AcpEngineBase` 协议方法（按引擎类型覆盖）
+
+| 接口 | ACP 原生 | 非 ACP | 说明 |
+|---|---|---|---|
+| `spawn(...)` | 基类实现 | **必须覆盖** | 启动一次执行并异步产出 ACP 词汇 `InternalEvent`。 |
+| `stop()` | 基类实现 | 必须覆盖 | 停止当前执行。必须可重复调用，并在无运行任务时安全返回。 |
+| `inject_response(...)` | 基类实现 | 按需覆盖 | 中途注入用户响应；不支持时记录日志并安全返回。 |
+| `send_live_stage_message(content)` | 基类实现 | 按需覆盖 | 执行中注入普通用户消息；返回是否被接受，并同步 `supports_live_stage_message`。 |
+| `supports_sessions` / `create_session` / `resume_session` / `close_session` / `cancel_session` / `set_config_option` / `reset_options` | 基类实现（ACP 客户端） | **按能力覆盖** | 见 3.3。 |
+| `supports_tool_approval` / `approve_tool` / `approve_tool_option` | 基类实现 | 基类统一解析 + 按能力声明 | 见 3.4。 |
+| `respond_interaction(...)` | 基类实现 | 基类实现 | 将统一的 ACP 响应送回引擎；只有原生协议需要覆盖。 |
+| `supports_resume` / `supports_interactive` / `supports_live_stage_message` / `build_resume_params(...)` | 基类实现 | 按能力覆盖 | 如实声明。 |
+| `acp_events` | 继承全集 | **必须声明实际子集** | 见 3.5。 |
+
+### 3.3 会话方法（非 ACP 引擎）
+
+非 ACP 引擎用自己的传输实现 ACP `session/*` 的等价语义，**无原生入口的如实声明能力并安全降级**：
+
+- `supports_sessions`：是否按会话 ID 恢复（Codex `exec resume`、Codex SDK `thread_resume`、Claude `--resume`、Claude/Qoder SDK `resume` 为 `True`；Pydantic AI、OpenClaw 为 `False`）。
+- `create_session(cwd)`：有原生空会话创建则返回真实 ID；无法脱离提示词创建空会话时返回 `None` 并记录日志（会话在首次 `spawn` 的 `session_started` 时建立）。
+- `resume_session(session_id, cwd)`：支持恢复的引擎返回 `bool(session_id)`（`spawn(session_id=...)` 时实际恢复）；无会话能力的引擎返回 `False`。
+- `close_session` / `cancel_session`：等价结束当前运行中的进程 / client；无运行任务时安全返回。
+- `set_config_option` / `reset_options`：配置在 `spawn` 时从 `config_store` 读取，运行中修改无原生入口时安全 no-op。
+- `load_session` / `list_sessions`：无原生实现时保持基类默认（`False` / `[]`）。
+
+### 3.4 审批方法（非 ACP 引擎）
+
+非 ACP 引擎的 `request_permission` 在 `request_interaction` 中自动登记到基类 pending 审批注册表（`tool_call_id → interaction_request`）；上层调用 `approve_tool(tool_use_id, approved)` 或 `approve_tool_option(tool_use_id, option_id)` 时，基类把决定（`allow_once` / `reject_once` / 指定 `option_id`）写回挂起的交互。
+
+- `supports_tool_approval`：有审批弹窗能力的引擎（Codex / CodexSDK / Claude / ClaudeAgentSDK / QoderSDK / PydanticAI）为 `True`，并确保 `interaction_request` 在 `acp_events` 中；无审批能力的引擎（OpenClaw）保持 `False`。
+- 引擎的权限回调（`can_use_tool` / `approval_handler` / 沙箱拒绝路径）只需调用 `request_interaction` / `handle_tool_permission`，不要自己实现第二套审批通道。
+
+### 3.5 `acp_events` 能力声明
+
+**声明 = 实际**：每个引擎声明自己实际产出的 ACP 词汇事件集合（`frozenset[str]`），有原生等价就映射，无来源不发、不合成默认值。契约测试（`tests/test_engine_base_hierarchy.py`）保证：
+
+- `acp_events ⊆ ACP_EVENTS`（`engines/core/acp_base.py` 定义完整词汇，25 种）。
+- ACP 原生引擎继承即声明全集。
+- 非 ACP 引擎声明**实际子集**（如 Claude/Qoder SDK 无 plan 事件源，不声明 `plan`），且映射路径实际产出的事件类型都被声明。
 
 ```python
-async def spawn(
-    self,
-    prompt: str,
-    cwd: str,
-    model: str | None = None,
-    add_dirs: list[str] | None = None,
-    session_id: str | None = None,
-) -> AsyncIterator[InternalEvent]:
-    ...
+acp_events: frozenset[str] = frozenset({
+    "agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update",
+    "usage_update", "status", "session_started", "error",
+})
 ```
-
-参数语义：
-
-- `prompt`：本阶段组装后的完整提示词，不是只有用户最后一句话。
-- `cwd`：任务工作目录。所有本地工具操作必须以此为主目录。
-- `model`：阶段显式模型；为空时使用引擎自身默认模型。
-- `add_dirs`：允许访问的附加目录。协议不支持时可以忽略，但不能扩大权限范围。
-- `session_id`：需要恢复的原生引擎会话 ID。
-
-实现要求：
-
-- 必须尽早产出 `status: initializing` 或 `status: running`。
-- 下游有增量输出时立即 `yield`，禁止等进程结束后一次性返回。
-- 保持事件顺序，文本增量不得重复。
-- 预期内错误优先转换成 `error` 事件，而不是让整个 Daemon 崩溃。
-- `finally` 中必须清理 `_running`、进程、连接和临时资源。
 
 ## 4. 可选接口与能力声明
 
@@ -205,149 +236,86 @@ SDK 与 CLI 引擎不在项目内预装依赖，而是在设置页检测到未�
   - `install_with_command(cmd, display=...)`：运行任意安装命令（npm 等）并归纳结果。
   - `install_python_package(package)`：安装 Python SDK 包；优先 `uv pip install --python <当前解释器>`（uv 虚拟环境通常没有 pip），回退 `python -m pip install`，保证装进 Daemon 运行环境、无需重启即可被 `is_installed()` 识别。
 - 已实现：Claude Code CLI / Codex CLI 走 `npm install -g`；Claude Agent SDK / Codex Agent SDK / Qoder Agent SDK 走 Python 包安装（SDK wheel 自带捆绑 CLI，无需单独装 CLI）。
-- 安装接口：`POST /api/engine/{engine_id}/install`。安装成功后自动 `refresh_registry()` 重新扫描，使该引擎立即进入可用列表；引擎列表字段 `installable` / `install_command` 由设置页驱动按钮渲染。
+- 安装接口：`POST /api/engine/{engine_id}/install`。安装成功后自动 `refresh_registry()` 重新扫描，使该引擎立即进入列表。
 
-### 4.5 `capabilities`
+### 4.5 `spawn_coordinator` / `coordinator_guard`
 
-返回 `EngineCapabilities`：
-
-| 字段 | 含义 |
-|---|---|
-| `supports_coordinator` | 可用于用户对话和协调 Agent。 |
-| `supports_resume` | 可恢复原生 Session。 |
-| `supports_tool_disable` | 协调模式能否可靠禁止工具。 |
-| `supports_native_schema` | 是否支持原生结构化输出 Schema。 |
-| `supports_live_stage_message` | 是否支持执行中向同一阶段持续追加消息。 |
-| `supports_workstep_tools` | 是否可按需加载 WorkStep 内部工具（`workstep_call`，映射 daemon REST 接口）。内置 PydanticAI 引擎开启；开启后协调 Agent 会注入工具文档与使用约束（创建类必须 `confirm='yes'`）。 |
-
-默认能力定义在 `BaseLLMEngine.capabilities`。只有确认真实支持时才能声明为 `True`。
-
-### 4.6 `spawn_coordinator(...)`
-
-协调模式用于理解任务上下文、回答用户并提出动作，不应修改文件。
-
-基类实现会追加只读约束并复用 `spawn()`。如果引擎支持原生禁用工具或结构化 Schema，应覆盖此方法，使用协议级限制，而不是只依赖提示词。
+协调 Agent 使用只读 turn：基类 `spawn_coordinator` 自动加读保护指令并透传 `spawn`；支持 `message_history`（Pydantic AI）的引擎通过 `report_engine_state` 上报可序列化状态。一般无需覆盖。
 
 ### 4.6 配置模板
 
-有专属配置的引擎通过声明式模板驱动设置页表单，前端根据模板渲染下拉、输入、密码框等控件，不需要为每个引擎编写专用页面或接口。
+引擎有专属配置时，在实现类上声明 `config_schema()` 并实现 `get_config_values()`、`get_config_secrets()`、`save_config_values()`、`reveal_config_value()`。设置页从 `/api/engine/list` 内嵌的模板自动渲染表单，保存走通用 `PUT /api/engine/{id}/config`，不需要为引擎编写专有配置接口。
 
-字段定义 `EngineConfigField`（`apps/daemon/engines/core/schema.py`）：
+不要复用其他引擎的 API Key、Base URL、权限模式或模型配置键；每个引擎的配置键只在自己的 schema 中声明。
 
-| 字段 | 含义 |
-|---|---|
-| `key` / `label` | 配置键与显示名。 |
-| `type` | `text` / `password` / `select` / `textarea` / `number` / `checkbox`。 |
-| `placeholder` / `help` / `default` | 占位提示、帮助文案、默认值。 |
-| `options` | `select` 的可选值（`EngineConfigOption(value, label)`）。 |
-| `required` | 是否必填。 |
-| `sensitive` | 是否敏感；读取时掩码为空串。 |
-| `confirm_values` | 选择这些值时必须由用户显式确认（如 Claude 的 `bypassPermissions`）。 |
+引擎级配置与阶段级覆盖关系（`merge_config_overrides`）：
 
-引擎需要实现：
-
-- `config_schema()`：返回 `list[EngineConfigField]`；返回空列表表示无专属配置。
-- `get_config_values()`：当前值，敏感字段返回空字符串。
-- `get_config_secrets()`：哪些敏感字段当前已有存储值（`{key: bool}`）。
-- `save_config_values(values, clear, confirmed)`：校验并保存；敏感字段在未提供新值且未列入 `clear` 时保留原值，非法输入抛 `ValueError` 返回可展示错误。
-- `reveal_config_value(key)`：显式「显示」操作时返回真实密钥；未存储时返回 `None`。
-
-示例（`apps/daemon/engines/api.py`）：
-
-```python
-EngineConfigField(
-    key="provider",
-    label="接口类型",
-    type="select",
-    options=(
-        EngineConfigOption("openai", "OpenAI-compatible"),
-        EngineConfigOption("anthropic", "Anthropic Messages"),
-    ),
-    required=True,
-),
-EngineConfigField(
-    key="api_key",
-    label="API Key",
-    type="password",
-    placeholder="可选，本地无鉴权接口可留空",
-    sensitive=True,
-),
-```
-
-#### 通用配置接口
-
-- `GET /api/engine/list`：每项内嵌 `config: {fields, values, secrets}`，设置页打开只发一次列表请求即可渲染所有表单；密钥始终以掩码形式返回。
-- `GET /api/engine/{id}/config`：单独读取某引擎的模板与当前值。
-- `PUT /api/engine/{id}/config`：保存；请求体为 `{values, clear, confirmed}`。
-- `POST /api/engine/{id}/config/reveal`：显式返回某个密钥（响应带 `Cache-Control: no-store`）。
-
-URL 中的引擎 ID 会把 `-` 归一为 `_`（如 `pydantic-ai` → `pydantic_ai`），便于前端路由。旧的 `/api/config`、`/api/key`、`/api/models`、`/pydantic-ai/*`、`/claude/permission-mode` 等专有端点已被上述通用端点取代。
-
-密钥校验可复用 `schema.validate_api_base_url()`：远程地址强制 HTTPS，仅允许 localhost/127.0.0.1 等回环地址使用 HTTP。
-
-#### 各引擎模板
-
-| 引擎 | 模板字段 | 透传方式 |
+| 引擎 | 配置键 | 写入目标 |
 |---|---|---|
-| Codex CLI（`engines/codex.py`） | `sandbox_mode`（沙箱模式）、`model_reasoning_effort`（推理强度）、`approval_policy`（审批策略） | 新会话：`--sandbox <mode>`、`-C <cwd>`、`-c model_reasoning_effort=<effort>`、`-c approval_policy=<policy>`；带 `session_id` 时改用 `codex exec resume <id> <prompt>`（沿用会话记录的 cwd）。插入消息无法实时注入进程，改为「终止当前进程 + `codex exec resume <id> <新消息>` 重启同一会话」延续上下文（`supports_live_stage_message=True`） |
-| Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`（与 Claude Code CLI 共用 `claude_permission_mode`）、`max_turns`（最大轮数）、`fallback_model`（备用模型） | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
+| Claude Code（`engines/claude_code.py`） | `permission_mode`（`acceptEdits` / `bypassPermissions` 等，需确认） | CLI `--permission-mode` |
+| Codex（`engines/codex.py`） | `sandbox_mode`、`model_reasoning_effort`、`approval_policy` | CLI `--sandbox` / `-c model_reasoning_effort=...` / `-c approval_policy=...` |
+| Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`、`max_turns`、`fallback_model` | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
+| Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id`、`model`、`mcp_servers`、`thinking_effort` | 供应商 base_url/key 构建模型，`model_settings.thinking` 映射推理强度 |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
 
-## 5. `InternalEvent` 协议
+## 5. `InternalEvent` 协议（ACP 词汇）
 
-所有下游协议必须转换成以下统一事件：
+所有下游协议必须转换成以下统一事件。**引擎内容事件直接采用 ACP session update 词汇**（见 `engines/core/events.py` 的 `ACP_CONTENT_EVENT_TYPES`），编排事件（`status` / `session_started` / `live_message` / `error` 等）与非 ACP 词汇共存于 `InternalEvent`；对外由 `agui.py` 统一翻译为 AG-UI。
+
+### 5.1 引擎内容事件（ACP 词汇）
 
 | 事件 | 必要字段 | 用途 |
 |---|---|---|
-| `status` | `status` | `initializing`、`running`、`done` 等生命周期状态。 |
-| `text_delta` | `delta` | 助手正文增量，会拼接到最终消息。 |
-| `thinking_delta` | `delta` | 思考或推理过程，显示在可折叠执行记录中。 |
-| `tool_use` | `id`、`name`、`input` | 完整工具调用。 |
-| `tool_input_delta` | `id`、`name`、`delta` | 工具参数增量，仅用于实时状态。 |
-| `tool_result` | `tool_use_id`、`content`、`is_error` | 工具执行结果。 |
+| `agent_message_chunk` | `content.text` | 助手正文增量，会拼接到最终消息。 |
+| `agent_thought_chunk` | `content.text` | 思考或推理过程，显示在可折叠执行记录中。 |
+| `user_message_chunk` | `content.text` | 用户消息分片（ACP 原生回显；非 ACP 引擎无来源可不产出）。 |
+| `tool_call` | `tool_call_id`、`title`、`raw_input` | 工具调用开始（完整快照）；`kind`（`read`/`edit`/`execute`/`other`）可选。 |
+| `tool_call_update` | `tool_call_id`、`status` | 工具进度 / 结果：`status` ∈ `pending` / `in_progress` / `completed` / `failed`；`raw_input` 为参数增量（实时专用，不持久化），`raw_output` 为结果。 |
+| `plan` | `entries` | ACP v1 stable 执行计划完整快照；每项为 `content`、`priority`、`status`。 |
+| `plan_update` / `plan_removed` | `id` 等 | 计划增量 / 删除（ACP 原生）；非 ACP 引擎无来源可不产出。 |
+| `usage_update` | token 字段 | 上下文用量 + Token 统计 + 可选 `cost`（见 5.2）。 |
+| `session_info_update` / `available_commands_update` / `config_option_update` / `current_mode_update` / `mcp_message` / `elicitation_completed` | 视字段 | ACP 原生会话 / 命令 / 配置 / 模式 / MCP / elicitation 完成通知；非 ACP 引擎无来源不产出。 |
+| `acp_raw` | 原样 | 未知 ACP update 透传，禁止静默丢弃（`_map_notification` 兜底）。 |
+
+### 5.2 编排事件（所有引擎）
+
+| 事件 | 必要字段 | 用途 |
+|---|---|---|
+| `status` | `status` | `initializing`、`running`、`done`、`cancelled` 等生命周期状态。 |
+| `session_started` | `session_id` | 本次运行的会话标识。**所有引擎必须产出**（真实会话 ID，或本次运行生成的 UUID）；支持恢复的引擎用它做 Session 复用。 |
+| `live_message` | `message_id`、`status` | 执行中补充消息的送达状态（`delivered` / `error`）。 |
 | `interaction_request` | `interaction_id`、`method` | 暂停执行并请求用户确认或输入；载荷采用 ACP `session/request_permission` 或 `elicitation/create` 形状。 |
 | `interaction_response` | `interaction_id`、`method`、`response` | 用户响应已送回引擎；与请求一起持久化，供消息历史恢复交互状态。 |
-| `plan` | `entries` | ACP v1 stable 执行计划完整快照；每项为 `content`、`priority`、`status`。 |
 | `subagent` | `task_id`、`status`、`stage` | 子代理 / 后台任务生命周期（Claude/Qoder SDK `task_started`/`task_progress`/`task_updated`/`task_notification`）；`status` 为语义状态（`running`/`paused`/`completed`/`failed`/`stopped`/`killed`），`stage` 保留原始帧类型，可选 `description`、`summary`、`usage`、`tool_use_id`。同时并入 `plan` 快照条目。 |
-| `usage` | Token 字段 | 消息完成后的 Token 统计。 |
 | `compacted` | `summary`（可选） | 引擎上下文已自动压缩（Claude `compacted`/`compact_boundary`、Codex `thread/compacted`、Qoder `compact_boundary`）；`summary` 为压缩摘要。 |
-| `session_started` | `session_id` | 本次运行的会话标识。所有引擎必须产出（真实会话 ID，或本次运行生成的 UUID），无状态引擎（Codex exec、Pydantic AI 等）也须生成 UUID 供前端展示与任务记录；支持恢复的引擎用它做 Session 复用。 |
-| `live_message` | `message_id`、`status` | 执行中补充消息的送达状态。 |
-| `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出。 |
+| `engine_state` | `state` | 进程内引擎可序列化的恢复状态；仅支持该能力的引擎产出（Pydantic AI `report_engine_state`）。 |
 | `error` | `message` | 可展示的错误；可附加 `detail`、`stderr`。 |
+| `a2ui` | `payload` | A2UI 结构化载荷（前端按 messageId 追加）。 |
 
 这是所有 LLM 引擎适配器的强制协议，不是可选增强：
 
-- 下游提供正文增量时，必须映射为 `text_delta`。
-- 下游提供 reasoning、thinking、analysis 或 thought 内容时，必须映射为 `thinking_delta`，禁止混入正文或静默丢弃。
-- 下游发起工具调用时，必须在工具开始执行前映射为 `tool_use`；参数分片可额外映射为 `tool_input_delta`。
-- 适配器或 Agent 实际执行工具时，必须在执行结束后映射为 `tool_result`，并保持相同的调用 ID。
+- 下游提供正文增量时，必须映射为 `agent_message_chunk`。
+- 下游提供 reasoning、thinking、analysis 或 thought 内容时，必须映射为 `agent_thought_chunk`，禁止混入正文或静默丢弃。
+- 下游发起工具调用时，必须在工具开始执行前映射为 `tool_call`；参数分片可额外映射为 `tool_call_update(status=in_progress, raw_input=...)`。
+- 适配器或 Agent 实际执行工具时，必须在执行结束后映射为 `tool_call_update`（`completed` / `failed`），并保持相同的 `tool_call_id`。
 - 引擎发布执行计划时必须映射为 `plan`；这是当前 LLM run 的展示状态，不得修改 WorkStep 工作流 DAG。
 - 引擎产生子代理 / 后台任务生命周期事件（如 Claude/Qoder 的 `task_started` / `task_progress` / `task_updated` / `task_notification`）时必须映射为 `subagent`，并同步进 `plan` 快照（`NativePlanTracker` 自动消费，适配器无需自建快照逻辑）。
-- 协议没有独立子代理事件（ACP、Codex）时，委托类工具调用（`Task` / `spawnAgent` / input 含 `prompt` 且非命令类）由 `NativePlanTracker` 统一兜底并入 `plan`：`tool_use` 时置 `pending`，对应 `tool_result` 时置 `completed`；适配器只需如实映射 `tool_use` / `tool_result`，不要伪造 `subagent` 事件。
+- 协议没有独立子代理事件（ACP、Codex）时，委托类工具调用（`Task` / `spawnAgent` / input 含 `prompt` 且非命令类）由 `NativePlanTracker` 统一兜底并入 `plan`：`tool_call` 时置 `pending`，对应 `tool_call_update` 时置 `completed`；适配器只需如实映射 `tool_call` / `tool_call_update`，不要伪造 `subagent` 事件。
 - Provider 没有返回思考内容，或当前模式没有工具能力时，可以不产生对应事件，但不得伪造思考、工具调用或工具结果。
-- 只提供最终完整消息的协议也必须完成相同映射，只是无法承诺增量实时性；引擎说明和测试中必须明确该降级。
+- 只提供最终完整消息的协议也必须完成相同映射，只是无法承诺增量实时性；引擎说明和测试中必须明确该降级（如 OpenClaw 一次性信封只产出单个 `agent_message_chunk`）。
 
-示例：
+推荐使用 `engines/core/events.py` 的构建辅助函数，保证字段形状统一：
 
 ```python
 yield InternalEvent("status", {"status": "running"})
-yield InternalEvent("thinking_delta", {"delta": "正在分析任务"})
-yield InternalEvent("tool_use", {
-    "id": "tool-1",
-    "name": "Read",
-    "input": {"file_path": "README.md"},
-})
-yield InternalEvent("tool_result", {
-    "tool_use_id": "tool-1",
-    "content": "...",
-    "is_error": False,
-})
-yield InternalEvent("text_delta", {"delta": "任务已完成"})
-yield InternalEvent("usage", {
+yield agent_thought_chunk("正在分析任务")            # → {"type":"agent_thought_chunk","data":{"content":{"text":"..."}}}
+yield tool_call_event("tool-1", "Read", kind="read", raw_input={"file_path": "README.md"})
+yield tool_call_update_event("tool-1", "completed", raw_output="...")
+yield agent_message_chunk("任务已完成")
+yield usage_update_event({
     "input_tokens": 100,
     "output_tokens": 20,
     "cache_creation_input_tokens": 0,
@@ -357,7 +325,7 @@ yield InternalEvent("usage", {
 yield InternalEvent("status", {"status": "done"})
 ```
 
-### 5.1 Token 规范化
+### 5.3 Token 规范化
 
 优先使用 `normalize_token_usage()`，统一 Provider 的不同字段名称。至少提供：
 
@@ -367,17 +335,19 @@ yield InternalEvent("status", {"status": "done"})
 - `cache_read_input_tokens`
 - `total_tokens`
 
-没有真实数据时填 `0`，禁止伪造估算值。`usage` 应在消息完成前产出，前端只在完成后展示统计。
+没有真实数据时填 `0`，禁止伪造估算值。`usage_update` 应在消息完成前产出，前端只在完成后展示统计。
 
-### 5.2 实时流要求
+金额（`usage_update.data.cost`，`{amount, currency}`）来自各引擎提供方的账单字段：Claude Agent SDK / Claude Code CLI 的 `total_cost_usd`、Pydantic AI 的 `RunUsage.cost`（内置模型定价）、ACP/Hermes 的 cost 字段；Codex CLI / Codex SDK / OpenAI 风格 API 的 usage 不含金额，需要按模型定价表自行计算。`used` / `size`（上下文窗口用量）仅在引擎原生提供时写入，不合成默认值。
+
+### 5.4 实时流要求
 
 - CLI 支持 partial/delta 协议时必须开启。
 - 如果同时收到增量事件和完整消息事件，只能选择一种作为正文来源，避免重复文本。
-- 工具参数可能分片到达，应累计到 `content_block_stop` 后再产出完整 `tool_use`。
+- 工具参数可能分片到达，应累计到完整后再产出 `tool_call`，或经 `tool_call_update(status=in_progress, raw_input=...)` 增量上报。
 - 长时间只有思考或工具调用时，仍应持续产出对应事件，保证界面不是空白。
 - 事件 `data` 应保持 JSON 可编码，不要放进程对象、异常实例或文件句柄。
 
-### 5.3 Agent 事件流要求
+### 5.5 Agent 事件流要求
 
 使用 Agent SDK 时，禁止为了方便只消费最终正文流。如果 SDK 同时提供正文、思考、工具调用和工具结果事件，适配器必须使用完整事件流接口。
 
@@ -385,34 +355,33 @@ yield InternalEvent("status", {"status": "done"})
 
 | Pydantic AI 事件 | WorkStep 事件 |
 |---|---|
-| `PartStartEvent(TextPart)` / `PartDeltaEvent(TextPartDelta)` | `text_delta` |
-| `PartStartEvent(ThinkingPart)` / `PartDeltaEvent(ThinkingPartDelta)` | `thinking_delta` |
-| `FunctionToolCallEvent` | `tool_use` |
-| `FunctionToolResultEvent` | `tool_result` |
-| `AgentRunResultEvent.result.usage()` | `usage` |
+| `PartStartEvent(TextPart)` / `PartDeltaEvent(TextPartDelta)` | `agent_message_chunk` |
+| `PartStartEvent(ThinkingPart)` / `PartDeltaEvent(ThinkingPartDelta)` | `agent_thought_chunk` |
+| `FunctionToolCallEvent` | `tool_call` |
+| `FunctionToolResultEvent` | `tool_call_update` |
+| `AgentRunResultEvent.result.usage()` | `usage_update` |
 
 Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...))` 驱动，`options.cli_path` 指定 `claude` 二进制，逐条产出消息，映射关系：
 
 | Claude Agent SDK 消息 | WorkStep 事件 |
 |---|---|
-| `system`（`subtype=init`） | `status: initializing` |
+| `system`（`subtype=init`） | `status: initializing` + `session_started` |
 | `system`（`subtype=error`） | `error` |
-| `StreamEvent.content_block_delta.text_delta` | `text_delta` |
-| `StreamEvent.content_block_delta.thinking_delta` | `thinking_delta` |
-| `StreamEvent.content_block_delta.input_json_delta` | `tool_input_delta` |
-| `assistant` 的 `text` block | `text_delta` |
-| `assistant` 的 `thinking` block | `thinking_delta` |
-| `assistant` 的 `tool_use` block | `tool_use` |
-| `user` 的 `tool_result` block | `tool_result` |
-| `result` | `usage`，随后 `status: done` 或 `error` |
+| `system`（`compact*`） | `compacted` |
+| `StreamEvent.content_block_delta.text_delta` | `agent_message_chunk` |
+| `StreamEvent.content_block_delta.thinking_delta` | `agent_thought_chunk` |
+| `StreamEvent.content_block_delta.input_json_delta` | `tool_call_update(status=in_progress, raw_input=...)` |
+| `assistant` 的 `text` block | `agent_message_chunk` |
+| `assistant` 的 `thinking` block | `agent_thought_chunk` |
+| `assistant` 的 `tool_use` block | `tool_call` |
+| `user` 的 `tool_result` block | `tool_call_update` |
+| `result` | `usage_update`，随后 `status: done` 或 `error` |
 
-适配器必须设置 `include_partial_messages=True`。`result` 消息只在流式消息未产出正文时回退到 `result.output`，最终 `AssistantMessage` 也不得重复已经由 `StreamEvent` 发送的正文或思考；`result.usage` 经 `normalize_token_usage()` 规范化，`total_cost_usd` 附加为 `usage.data.cost`，`session_id` 附加为 `usage.data.session_id`。
-
-金额（`usage.data.cost`，`{amount, currency}`）来自各引擎提供方的账单字段：Claude Agent SDK / Claude Code CLI 的 `total_cost_usd`、Pydantic AI 的 `RunUsage.cost`（内置模型定价）、ACP/Hermes 的 cost 字段；Codex CLI / Codex SDK / OpenAI 风格 API 的 usage 不含金额，需要按模型定价表自行计算。
+适配器必须设置 `include_partial_messages=True`。`result` 消息只在流式消息未产出正文时回退到 `result.output`，最终 `AssistantMessage` 也不得重复已经由 `StreamEvent` 发送的正文或思考；`result.usage` 经 `normalize_token_usage()` 规范化，`total_cost_usd` 附加为 `usage_update.data.cost`，`session_id` 附加为 `usage_update.data.session_id`。
 
 `PartEndEvent` 中的完整内容不得在已经发送增量后再次发送，否则会造成正文或思考内容重复。工具参数和工具结果必须经过 JSON 安全转换后再写入事件总线。
 
-### 5.4 执行计划快照
+### 5.6 执行计划快照
 
 所有 Adapter 通过 Base 的 `normalize_event()` seam 暴露 ACP stable Plan：
 
@@ -444,10 +413,10 @@ Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...)
 配置验证
   → initializing
   → 创建进程/连接
-  → session_started（可选）
+  → session_started（所有引擎必须产出）
   → running
-  → text/thinking/tool events
-  → usage（可选）
+  → agent_message_chunk / agent_thought_chunk / tool_call / tool_call_update
+  → usage_update（可选）
   → done
   → 清理资源
 ```
@@ -475,19 +444,19 @@ Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...)
 
 - 有原生会话的引擎上报真实会话 ID（如 Codex `thread.started.thread_id`、ACP `session_id`、Claude JSONL `session_id`）。
 - 无状态引擎（Pydantic AI）生成本次运行 UUID；OpenClaw 优先采用 `agent exec --json` 信封的 `sessionId`，缺失时生成 UUID。
-- OpenClaw 使用官方稳定的 `agent exec --json` 一次性信封，不提供 Token delta，也不声明恢复能力；适配器在信封完成后产出单个 `text_delta`，这是明确的协议降级。
-- Codex CLI 上报 `thread.started.thread_id`（真实会话 ID），支持经 `codex exec resume <id> <prompt>` 恢复，因此 `supports_resume = True`。
+- OpenClaw 使用官方稳定的 `agent exec --json` 一次性信封，不提供 Token delta，也不声明恢复能力；适配器在信封完成后产出单个 `agent_message_chunk`，这是明确的协议降级。
+- Codex CLI 上报 `thread.started.thread_id`（真实会话 ID），支持经 `codex exec resume <id> <prompt>` 恢复，因此 `supports_resume = True`、`supports_sessions = True`。
 
 Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，而是由引擎在 `spawn` 内终止当前 `codex exec` 进程，再用插入消息作为提示词 `codex exec resume <thread_id> <消息>` 重启同一会话：`thread.started` 之后插入的每条消息都会开启新的响应段，并沿用原会话上下文，因此 `supports_live_stage_message = True`（`send_live_stage_message` 仍返回 `False`，直接注入不可用）。
 
 支持恢复时：
 
 1. 首次建立会话后产出 `session_started`。
-2. `supports_resume` 返回 `True`。
+2. `supports_resume` 返回 `True`；有原生会话存储的引擎同时 `supports_sessions = True` 并实现 3.3 的会话方法。
 3. `build_resume_params(session_id)` 返回调用 `spawn()` 所需参数。
 4. 收到 `session_id` 时使用原生恢复协议，不能悄悄新建无上下文会话。
 5. 恢复失败时产出明确错误，不应无提示降级为新会话。
-6. `usage` 事件可携带 `session_id` 复述会话标识（Claude Agent SDK、Qoder SDK），供错过 `session_started` 的场景兜底。
+6. `usage_update` 事件可携带 `session_id` 复述会话标识（Claude Agent SDK、Qoder SDK），供错过 `session_started` 的场景兜底。
 
 助手只在引擎 ID 发生变化时清除引擎 Session；同一引擎切换模型、快速模型或视觉模型时保留 Session ID，并从下一轮开始使用新模型。
 
@@ -499,22 +468,14 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 - 询问用户使用 ACP `elicitation/create` form：`requested_schema` 为 JSON Schema object，支持单选、多选、文本、数字和布尔输入；响应使用 `accept` / `decline` / `cancel`。
 - Claude Code / Claude Agent SDK 的 `AskUserQuestion`、Qoder 的 elicitation 及其它 `ask_user` 别名，由 Base 层转换为上述 form。
 - 进程内 Agent 调用 `request_interaction(event, publish)` 后必须停在原工具协程，直到 `respond_interaction(...)` 解析同一个 `interaction_id`。Pydantic AI 的 `ask_user`、`write_file`、`edit_file` 都走该通道。
+- 非 ACP 引擎的 `request_permission` 会在 `request_interaction` 中登记到基类 pending 审批注册表，上层 `approve_tool` / `approve_tool_option` 可直接写回决定；引擎只需调用 `request_interaction`，不要重复实现审批通道。
 - 工作流层先注册等待项，再发布请求，并在等待期间持久化请求；响应后追加 `interaction_response`，刷新页面仍能显示同一张交互卡片。
-- `AssistantRuntime` 和任务协调器也复用同一 intervention broker 与消息卡片；新增助手不得另建确认协议或前端实现。
+- `AssistantRuntime` 和任务协程在等待交互时不阻塞其他阶段执行；交互响应与工具结果一样走统一事件流。
 
-只有真正支持双向协议或进程内等待时，`supports_interactive` 才能返回 `True`。
+## 8. 资源与安全
 
-`inject_response(tool_use_id, content)` 必须把响应发送给对应工具请求，不能发送到错误的 Session 或阶段。直接 CLI stdin 已关闭时通常不支持交互。
-
-## 8. 权限与安全要求
-
-- 使用参数数组调用子进程，禁止拼接后通过 shell 执行。
-- 日志可以打印命令，但必须隐藏 API Key、Token 和敏感 Header。
-- 必须使用传入的 `cwd`，不得默认在 WorkStep 仓库根目录执行用户任务。
-- `add_dirs` 只能扩大到显式传入目录。
-- 引擎具备危险权限模式时，必须要求用户先确认并持久化选择。
-- 协调模式默认只读，不能因为执行引擎支持工具就自动开放写权限。
-- stderr、HTTP Body 和模型错误应限制长度，避免把大量敏感内容写入日志或消息。
+- `stop()` 必须幂等且可重复调用；`spawn()` 的 `finally` 必须关闭子进程 / SDK client / 连接。
+- 不得把 API Key、PAT、权限令牌等敏感内容写入日志或消息。
 
 ### 8.1 空闲超时保护
 
@@ -534,11 +495,13 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 ### 9.1 后端注册
 
-`apps/daemon/engines/` 根目录只放引擎：每个引擎一个模块（单文件或包），模块内定义 `BaseLLMEngine` 子类并声明 `ENGINE_ID`。启动时由 `engines/core/registry.py` 自动发现并注册，**无需改动任何其他代码**。
+`apps/daemon/engines/` 根目录只放引擎：每个引擎一个模块（单文件或包），模块内定义 `AcpEngineBase` 子类并声明 `ENGINE_ID`。启动时由 `engines/core/registry.py` 自动发现并注册，**无需改动任何其他代码**。
 
 1. 新建 `apps/daemon/engines/my_engine.py`。
-2. 定义 `class MyEngine(BaseLLMEngine)` 并声明 `ENGINE_ID = "my_engine"`。
+2. 定义 `class MyEngine(AcpEngineBase)` 并声明 `ENGINE_ID = "my_engine"`（ACP 原生引擎同时声明 `COMMAND`）。
 3. 实现 `is_installed()`、`get_version()`、`resolve_binary()`（进程类引擎）与 `spawn()` 等接口。
+4. 声明 `acp_events` 实际子集；非 ACP 引擎按 3.3 / 3.4 实现会话与审批方法。
+5. `__init__` 必须调用 `super().__init__()`（基类维护 pending 审批注册表与运行状态）。
 
 约定：
 
@@ -548,7 +511,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 `get_available_engines()` 的结果会在内存中缓存：只有手动「重新扫描」（`refresh_registry()`）或二进制路径、引擎配置变更时才重新扫描；版本探测（`binary --version` 子进程）并行执行并带 300s TTL，避免每次打开设置页都启动一堆子进程。
 
-引擎列表的 `mode` 字段由 `get_available_engines()` 推断：继承 `AcpEngineBase` 为 `acp`、`pydantic_ai` 为 `agent`、`claude_agent_sdk` / `codex_sdk` / `qoder_sdk` 为 `sdk`、其余为 `cli`。新增 SDK 类型引擎时需在 `core/registry.py` 同步扩展该推断；协调 Agent 回退顺序 `COORDINATOR_FALLBACK_ORDER` 会自动把新引擎追加到末尾。
+引擎列表的 `mode` 字段由 `get_available_engines()` 推断：`issubclass(..., AcpEngineBase) and instance._is_acp_native` 为 `acp`、`pydantic_ai` 为 `agent`、`claude_agent_sdk` / `codex_sdk` / `qoder_sdk` 为 `sdk`、其余为 `cli`。新增 SDK 类型引擎时需在 `core/registry.py` 同步扩展该推断；协调 Agent 回退顺序 `COORDINATOR_FALLBACK_ORDER` 会自动把新引擎追加到末尾。
 
 ### 9.2 配置模板
 
@@ -566,19 +529,39 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 配置表单由 `apps/web/src/components/EngineConfigForm.tsx` 按后端模板自动渲染，无需新增专用表单；仅当需要新控件类型时才需要同步扩展该组件。
 
-## 10. 最小实现模板
+## 10. 最小实现模板（非 ACP CLI 引擎）
 
 ```python
 import asyncio
 import shutil
 from typing import AsyncIterator
 
-from engines.core.base import BaseLLMEngine
-from engines.core.events import InternalEvent
+from engines.core.acp_base import AcpEngineBase
+from engines.core.events import (
+    InternalEvent,
+    agent_message_chunk,
+    tool_call_event,
+    tool_call_update_event,
+    usage_update_event,
+)
 
 
-class MyEngine(BaseLLMEngine):
+class MyEngine(AcpEngineBase):
+    ENGINE_ID = "my_engine"
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "tool_call",
+        "tool_call_update",
+        "usage_update",
+        "status",
+        "session_started",
+        "error",
+    })
+
     def __init__(self):
+        super().__init__()
         self._process: asyncio.subprocess.Process | None = None
 
     @staticmethod
@@ -593,6 +576,36 @@ class MyEngine(BaseLLMEngine):
     def resolve_binary() -> str | None:
         return MyEngine.get_binary_override() or shutil.which("my-engine")
 
+    @property
+    def supports_sessions(self) -> bool:
+        # 有原生会话恢复能力才声明 True（如 resume 子命令）。
+        return False
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        return False
+
+    async def create_session(self, cwd, add_dirs=None, mcp_servers=None) -> str | None:
+        """无法脱离提示词创建空会话时返回 None，会话在首次 spawn 时建立。"""
+        return None
+
+    async def resume_session(self, session_id, cwd, add_dirs=None, mcp_servers=None) -> bool:
+        return bool(session_id) if self.supports_sessions else False
+
+    async def close_session(self, session_id, cwd=None) -> None:
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id, cwd=None) -> None:
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(self, config_id, value, session_id=None) -> None:
+        return None
+
+    async def reset_options(self, session_id=None) -> None:
+        return None
+
     async def spawn(
         self,
         prompt: str,
@@ -600,6 +613,9 @@ class MyEngine(BaseLLMEngine):
         model: str | None = None,
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
+        images: list | None = None,
+        live_message_queue: asyncio.Queue | None = None,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         binary = self.resolve_binary()
         if not binary:
@@ -619,7 +635,14 @@ class MyEngine(BaseLLMEngine):
                 stderr=asyncio.subprocess.PIPE,
             )
             yield InternalEvent("status", {"status": "running"})
-            # 写入 prompt，逐行解析 stdout，并立即 yield InternalEvent。
+            yield InternalEvent(
+                "session_started", {"session_id": "session-1"}
+            )
+            # 逐行解析 stdout，把正文 / 工具 / 用量映射为 ACP 词汇事件并立即 yield。
+            yield agent_message_chunk("任务已完成")
+            yield usage_update_event({
+                "input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+            })
             exit_code = await self._process.wait()
             if exit_code != 0:
                 yield InternalEvent("error", {
@@ -640,6 +663,7 @@ class MyEngine(BaseLLMEngine):
             except asyncio.TimeoutError:
                 self._process.kill()
                 await self._process.wait()
+        self._running = False
 
     async def inject_response(self, tool_use_id: str, content: str) -> None:
         return None
@@ -666,7 +690,7 @@ class MyEngine(BaseLLMEngine):
 
 - 二进制解析优先级和自定义路径。
 - 命令参数构造，包括模型、工作目录、附加目录、权限模式和 Session。
-- 每种下游事件到 `InternalEvent` 的映射。
+- 每种下游事件到 ACP 词汇 `InternalEvent` 的映射。
 - 多内容块和分片事件不会丢失或重复。
 - Token 字段规范化。
 - 非零退出、协议错误、认证错误和超时。
@@ -674,7 +698,16 @@ class MyEngine(BaseLLMEngine):
 - Session 新建、保存和恢复。
 - 协调模式禁止工具。
 
-### 11.2 通用连接测试
+### 11.2 ACP 契约测试（必测）
+
+引擎接入后必须满足 `tests/test_engine_base_hierarchy.py` 的契约（新引擎会自动进入 `_ALL_ENGINES` 参与断言）：
+
+- `acp_events ⊆ ACP_EVENTS` 且非空。
+- 非 ACP 引擎的 `acp_events` 是全集真子集，且映射路径实际产出的事件类型都被声明。
+- 无运行进程时，`create_session` / `resume_session` / `close_session` / `cancel_session` / `set_config_option` / `reset_options` / `approve_tool` / `approve_tool_option` 不抛异常并返回合理值。
+- 能力声明与行为一致：声明 `supports_tool_approval` 的引擎必须产出 `interaction_request`。
+
+### 11.3 通用连接测试
 
 设置页的“测试引擎”会调用：
 
@@ -684,7 +717,7 @@ POST /api/engine/test
 
 只有真实对话成功并返回文本后，引擎才会被标记为已验证。执行和协调配置都会检查该验证状态。
 
-### 11.3 工作流集成测试
+### 11.4 工作流集成测试
 
 至少使用 Fake Engine 跑通：
 
@@ -705,7 +738,7 @@ cd apps/daemon
 .venv/bin/pytest tests/test_coordinator.py tests/test_review_gate.py -q
 ```
 
-### 11.4 配置模板测试
+### 11.5 配置模板测试
 
 引擎声明 `config_schema()` 后至少覆盖：
 
@@ -725,12 +758,15 @@ npm run build
 
 ## 12. 提交前验收清单
 
-- [ ] 实现 `BaseLLMEngine` 所有抽象接口。
+- [ ] 继承 `AcpEngineBase`（不是直接继承 `BaseLLMEngine`），`__init__` 调用 `super().__init__()`。
+- [ ] 实现 `BaseLLMEngine` 抽象自定义函数（`is_installed` / `get_version` / `resolve_binary`）。
+- [ ] 声明 `acp_events` 实际子集且 `acp_events ⊆ ACP_EVENTS`；映射路径产出的事件都被声明。
+- [ ] 非 ACP 引擎实现等价会话 / 审批方法（无原生入口时安全降级并如实声明能力）。
 - [ ] 引擎不可用时不会导致 Daemon 启动失败。
-- [ ] `spawn()` 开始后立即产生状态事件。
-- [ ] 文本、思考和工具事件实时输出，不在结束时批量补发。
-- [ ] 下游提供的 thinking/reasoning 事件没有被静默丢弃。
-- [ ] 每个工具调用都有稳定 `id`，工具结果使用相同 `tool_use_id`。
+- [ ] `spawn()` 开始后立即产生状态事件，并产出 `session_started`。
+- [ ] 正文 / 思考 / 工具事件实时输出，不在结束时批量补发。
+- [ ] 下游提供的 thinking/reasoning 事件没有被静默丢弃（映射为 `agent_thought_chunk`）。
+- [ ] 每个工具调用都有稳定 `tool_call_id`，工具结果使用相同的 ID。
 - [ ] Agent SDK 使用完整事件流接口，而不是只消费最终正文流。
 - [ ] Provider 不支持思考或工具时有明确降级说明，且不伪造事件。
 - [ ] 增量正文不重复、不丢失。
@@ -745,4 +781,4 @@ npm run build
 - [ ] 协调模式不能修改文件。
 - [ ] 已加入 Registry、配置和前端元数据。
 - [ ] 设置页连接测试通过。
-- [ ] 单元测试、三阶段工作流测试和前端构建通过。
+- [ ] 单元测试、ACP 契约测试、三阶段工作流测试和前端构建通过。

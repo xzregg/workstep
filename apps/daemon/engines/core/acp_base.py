@@ -1,21 +1,76 @@
 """AcpEngineBase — base class for ACP-protocol engines using Python SDK."""
 
 import asyncio
+import json
 import logging
 import os
+import time
 import uuid
-from typing import AsyncIterator
+from inspect import isawaitable
+from contextlib import suppress
+from typing import Any, AsyncIterator
 
 import acp
 from acp import schema
 
-from engines.core.base import BaseLLMEngine, EngineModel
+from engines.core.base import (
+    BaseLLMEngine,
+    EngineModel,
+    EngineTestResult,
+)
 from engines.core.schema import EngineImage
-from engines.core.events import InternalEvent, normalize_token_usage
-from engines.core.interactions import elicitation_request, permission_request
-from engines.core.plans import plan_event
+from engines.core.events import (
+    InternalEvent,
+    acp_raw_event,
+    agent_message_chunk,
+    agent_thought_chunk,
+    normalize_token_usage,
+    tool_call_event,
+    tool_call_update_event,
+    usage_update_event,
+    user_message_chunk,
+)
+from engines.core.interactions import (
+    claude_ask_user_request,
+    elicitation_request,
+    interaction_from_tool_use,
+    permission_request,
+    permission_signature,
+)
+from engines.core.plans import NativePlanTracker, plan_event
 
 logger = logging.getLogger(__name__)
+
+
+#: 完整 ACP 事件词汇：所有引擎（ACP 原生或非 ACP 适配）对外统一产出的内部事件。
+#: 非 ACP 引擎声明自己的 ``acp_events`` 子集；未知来源事件不合成。
+ACP_EVENTS: frozenset[str] = frozenset({
+    "agent_message_chunk",
+    "agent_thought_chunk",
+    "user_message_chunk",
+    "tool_call",
+    "tool_call_update",
+    "plan",
+    "plan_update",
+    "plan_removed",
+    "usage_update",
+    "session_info_update",
+    "available_commands_update",
+    "config_option_update",
+    "current_mode_update",
+    "mcp_message",
+    "elicitation_completed",
+    "interaction_request",
+    "interaction_response",
+    "status",
+    "session_started",
+    "live_message",
+    "engine_state",
+    "compacted",
+    "subagent",
+    "error",
+    "acp_raw",
+})
 
 
 class _StreamingClient:
@@ -210,13 +265,49 @@ class _StreamingClient:
     async def read_text_file(self, session_id, path, line=None, limit=None, **kwargs):
         raise acp.RequestError.method_not_found("fs/read_text_file")
 
+    async def complete_elicitation(self, elicitation_id: str, **kwargs):
+        """Agent 通知 elicitation 已完成（独立于 session/update 通道）。
+
+        进入 session update 队列，由 ``_map_notification`` 翻译为
+        ``elicitation_completed`` 事件。
+        """
+        await self.updates.put(schema.CompleteElicitationNotification(
+            elicitation_id=elicitation_id,
+        ))
+
+    async def create_terminal(self, session_id, command, **kwargs):
+        raise acp.RequestError.method_not_found("terminal/create")
+
+    async def kill_terminal(self, session_id, terminal_id, **kwargs):
+        raise acp.RequestError.method_not_found("terminal/kill")
+
+    async def release_terminal(self, session_id, terminal_id, **kwargs):
+        raise acp.RequestError.method_not_found("terminal/release")
+
+    async def terminal_output(self, session_id, terminal_id, **kwargs):
+        raise acp.RequestError.method_not_found("terminal/output")
+
+    async def wait_for_terminal_exit(self, session_id, terminal_id, **kwargs):
+        raise acp.RequestError.method_not_found("terminal/wait_for_exit")
+
+    async def ext_method(self, method: str, params: dict) -> dict:
+        raise acp.RequestError.method_not_found(f"_{method}")
+
+    async def ext_notification(self, method: str, params: dict) -> None:
+        return None
+
+    def on_connect(self, conn) -> None:
+        return None
+
 
 class AcpEngineBase(BaseLLMEngine):
     _live_message_wait_seconds: float = 1.5
-    """Base class for engines that communicate via ACP protocol.
+    """ACP 协议基类 — 所有引擎统一继承。
 
-    Subclasses define the command to spawn the ACP agent process.
-    The base class handles the ACP session lifecycle and event translation.
+    协议侧（spawn / stop / session / interaction / approval / 协调器）在本类实现：
+    ACP 原生引擎（提供 ``get_command()``，如 Hermes）直接使用 ACP 客户端实现；
+    非 ACP 引擎用自己的传输覆盖 ``spawn``，仍产出 ACP 词汇事件。自定义函数
+    （安装 / 版本 / 配置 / 能力声明）来自 ``BaseLLMEngine``。
     """
 
     # Subclasses must override these
@@ -229,6 +320,10 @@ class AcpEngineBase(BaseLLMEngine):
         self._running = False
         self._handler: _StreamingClient | None = None
         self._last_cwd: str | None = None
+        # tool_call_id → 待审批的 interaction_request 事件（非 ACP 引擎的
+        # request_permission 在 request_interaction 中登记，approve_tool*
+        # 据此把决定写回挂起的 Future）。
+        self._pending_approvals: dict[str, InternalEvent] = {}
 
     def get_command(self) -> list[str]:
         """Return the command to spawn the ACP agent process."""
@@ -237,11 +332,30 @@ class AcpEngineBase(BaseLLMEngine):
     def get_permission_mode(self) -> str | None:
         return None
 
+    @property
+    def _is_acp_native(self) -> bool:
+        """Whether this engine drives an ACP agent process (has a command).
+
+        非 ACP 引擎继承 AcpEngineBase 但用自己的传输实现 ``spawn``，
+        不声明会话 / 审批 / 直播消息能力，会话方法保持安全默认。
+        """
+        return bool(self.get_command())
+
+    def _pending_approvals_dict(self) -> dict[str, InternalEvent]:
+        """Lazily create the pending-approval registry (subclasses may skip
+        ``super().__init__``)."""
+        pending = getattr(self, "_pending_approvals", None)
+        if pending is None:
+            pending = {}
+            self._pending_approvals = pending
+        return pending
+
     @staticmethod
     def _client_capabilities():
         return schema.ClientCapabilities(
             elicitation=schema.ElicitationCapabilities(
                 form=schema.ElicitationFormCapabilities(),
+                url=schema.ElicitationUrlCapabilities(),
             ),
         )
 
@@ -330,11 +444,13 @@ class AcpEngineBase(BaseLLMEngine):
 
     @property
     def supports_sessions(self) -> bool:
-        return True
+        """Whether this engine exposes ACP-style sessions (ACP native only)."""
+        return self._is_acp_native
 
     @property
     def supports_tool_approval(self) -> bool:
-        return True
+        """Whether pending tool calls can be approved (ACP native only)."""
+        return self._is_acp_native
 
     async def create_session(
         self,
@@ -343,6 +459,8 @@ class AcpEngineBase(BaseLLMEngine):
         mcp_servers: list | None = None,
     ) -> str | None:
         """session/new — create a fresh session, return its session id."""
+        if not self._is_acp_native:
+            return None
 
         async def action(client):
             session = await client.new_session(
@@ -362,6 +480,8 @@ class AcpEngineBase(BaseLLMEngine):
         mcp_servers: list | None = None,
     ) -> bool:
         """session/load — restore a persisted session's context/memory/config."""
+        if not self._is_acp_native:
+            return False
 
         async def action(client):
             response = await client.load_session(
@@ -376,6 +496,8 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def list_sessions(self, cwd: str | None = None) -> list[str]:
         """session/list — list local archived session ids."""
+        if not self._is_acp_native:
+            return []
         if not cwd:
             return []
 
@@ -393,6 +515,8 @@ class AcpEngineBase(BaseLLMEngine):
         mcp_servers: list | None = None,
     ) -> bool:
         """session/resume — restore a session and replay its history."""
+        if not self._is_acp_native:
+            return False
 
         async def action(client):
             response = await client.resume_session(
@@ -407,6 +531,8 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def close_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/close — close a session and release its resources."""
+        if not self._is_acp_native:
+            return None
         cwd = cwd or self._last_cwd or "."
 
         async def action(client):
@@ -416,6 +542,8 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/cancel — force-stop current reasoning / tool execution."""
+        if not self._is_acp_native:
+            return None
         cwd = cwd or self._last_cwd or "."
 
         async def action(client):
@@ -430,6 +558,8 @@ class AcpEngineBase(BaseLLMEngine):
         session_id: str | None = None,
     ) -> None:
         """session/set_config_option — change model / cwd / max turns / permission mode."""
+        if not self._is_acp_native:
+            return None
         if not session_id:
             logger.warning(
                 "ACP set_config_option(%s) requires session_id; ignored", config_id
@@ -451,6 +581,8 @@ class AcpEngineBase(BaseLLMEngine):
         ACP has no native reset primitive; agents start from process-global
         defaults with a fresh session (session/new), so this is a no-op.
         """
+        if not self._is_acp_native:
+            return None
         logger.info(
             "ACP reset_options: not supported natively (start a new session instead)"
         )
@@ -458,6 +590,23 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def approve_tool(self, tool_use_id: str, approved: bool = True) -> None:
         """tool_approve — accept or reject a pending tool_call (request_permission)."""
+        event = self._pending_approvals_dict().get(tool_use_id)
+        if event is not None:
+            # 非 ACP 引擎：审批请求经 request_interaction 挂起，
+            # 按选项 kind 选择 allow/reject 语义后写回 Future。
+            kind_prefix = "allow" if approved else "reject"
+            option_id = next(
+                (
+                    str(option.get("option_id") or "")
+                    for option in (event.data.get("options") or [])
+                    if str(option.get("kind") or "").startswith(kind_prefix)
+                ),
+                None,
+            )
+            await self.approve_tool_option(tool_use_id, option_id)
+            return None
+        if not self._is_acp_native:
+            return None
         handler = self._handler
         if handler is None:
             logger.warning("ACP approve_tool: no active session to approve")
@@ -471,6 +620,22 @@ class AcpEngineBase(BaseLLMEngine):
         tool_use_id: str,
         option_id: str | None,
     ) -> None:
+        event = self._pending_approvals_dict().get(tool_use_id)
+        if event is not None:
+            interaction_id = str(event.data.get("interaction_id") or "")
+            pending = getattr(self, "_pending_interaction_responses", {})
+            future = pending.get(interaction_id)
+            if future is not None and not future.done():
+                future.set_result({
+                    "outcome": {"outcome": "selected", "option_id": option_id},
+                })
+                return None
+            logger.warning(
+                "approve_tool_option: no pending interaction for %s", tool_use_id
+            )
+            return None
+        if not self._is_acp_native:
+            return None
         handler = self._handler
         if handler is None:
             logger.warning("ACP approve_tool_option: no active session")
@@ -479,12 +644,70 @@ class AcpEngineBase(BaseLLMEngine):
             logger.warning("ACP approve_tool_option: no pending request for %s", tool_use_id)
         return None
 
-    async def respond_interaction(self, request: dict, response: dict) -> bool:
-        if request.get("method") == "elicitation/create" and self._handler:
-            interaction_id = str(request.get("interaction_id") or "")
-            if self._handler.resolve_elicitation(interaction_id, response):
-                return True
-        return await super().respond_interaction(request, response)
+    async def respond_interaction(
+        self,
+        request: dict[str, Any],
+        response: dict[str, Any],
+    ) -> bool:
+        """Return a UI response to the adapter using ACP response semantics."""
+        if request.get("method") == "elicitation/create":
+            handler = getattr(self, "_handler", None)
+            if handler is not None:
+                interaction_id = str(request.get("interaction_id") or "")
+                if handler.resolve_elicitation(interaction_id, response):
+                    return True
+        interaction_id = str(request.get("interaction_id") or "")
+        pending = getattr(self, "_pending_interaction_responses", {})
+        future = pending.get(interaction_id)
+        if future is not None and not future.done():
+            future.set_result(response)
+            return True
+
+        method = str(request.get("method") or "")
+        if method == "session/request_permission":
+            tool_call = request.get("tool_call") or {}
+            tool_use_id = str(
+                tool_call.get("tool_call_id")
+                or tool_call.get("id")
+                or request.get("interaction_id")
+                or ""
+            )
+            outcome = response.get("outcome") or {}
+            option_id = (
+                str(outcome.get("option_id"))
+                if outcome.get("outcome") == "selected" and outcome.get("option_id")
+                else None
+            )
+            selected_option = next(
+                (
+                    option for option in (request.get("options") or [])
+                    if str(option.get("option_id") or "") == option_id
+                ),
+                None,
+            )
+            if selected_option and str(selected_option.get("kind") or "").startswith(
+                "reject"
+            ):
+                option_id = None
+            await self.approve_tool_option(tool_use_id, option_id)
+            return True
+
+        if method == "elicitation/create":
+            tool_use_id = str(
+                request.get("tool_call_id")
+                or request.get("interaction_id")
+                or ""
+            )
+            if response.get("action") == "accept":
+                content = response.get("content") or {}
+            else:
+                content = {"action": response.get("action") or "cancel"}
+            await self.inject_response(
+                tool_use_id,
+                json.dumps(content, ensure_ascii=False),
+            )
+            return True
+        return False
 
     async def spawn(
         self,
@@ -653,23 +876,339 @@ class AcpEngineBase(BaseLLMEngine):
             self._process = None
             self._handler = None
 
+    #: 完整 ACP 事件词汇（capability 元数据）。ACP 原生引擎继承即声明全集；
+    #: 非 ACP 引擎在自己的适配器中覆盖声明实际产出的事件集合（有原生来源才产出）。
+    acp_events: set[str] = ACP_EVENTS
+
+    # --- 连接测试（协议验证工具） ---
+
+    async def test_connection(
+        self,
+        cwd: str,
+        timeout_seconds: float = 30,
+    ) -> EngineTestResult:
+        """Run a harmless minimal conversation through this engine.
+
+        Adapters with a cheaper native health check may override this method.
+        """
+        started = time.monotonic()
+        text_parts: list[str] = []
+        errors: list[str] = []
+
+        async def collect_events():
+            async for event in self.spawn(
+                prompt=(
+                    "Reply with WORKSTEP_ENGINE_OK only. "
+                    "Do not use tools and do not modify files."
+                ),
+                cwd=cwd,
+            ):
+                if event.type == "agent_message_chunk":
+                    content = event.data.get("content") or {}
+                    text_parts.append(str(content.get("text", "")))
+                elif event.type == "error":
+                    errors.append(
+                        str(
+                            event.data.get("message")
+                            or event.data.get("error")
+                            or "引擎返回错误"
+                        )
+                    )
+
+        try:
+            await asyncio.wait_for(collect_events(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            with suppress(Exception):
+                await self.stop()
+            return EngineTestResult(
+                success=False,
+                message=f"测试超时（{timeout_seconds:g} 秒）",
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+        except Exception as exc:
+            with suppress(Exception):
+                await self.stop()
+            return EngineTestResult(
+                success=False,
+                message=str(exc) or "引擎启动失败",
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+
+        duration_ms = round((time.monotonic() - started) * 1000)
+        if errors:
+            return EngineTestResult(False, errors[0], duration_ms)
+        if not "".join(text_parts).strip():
+            return EngineTestResult(False, "引擎未返回文本", duration_ms)
+        return EngineTestResult(True, "连接和对话测试通过", duration_ms)
+
+    # --- 协调器（只读 turn 的 ACP 风格入口） ---
+
+    def _coordinator_prompt(self, prompt: str) -> str:
+        """Apply the read-only coordinator guard plus capability-gated tools."""
+        from services.tool_registry import workstep_tools_instruction
+
+        guarded = self.coordinator_guard(prompt)
+        if (
+            self.capabilities.supports_workstep_tools
+            and "WorkStep internal tools" not in guarded
+        ):
+            guarded = f"{guarded}\n\n{workstep_tools_instruction()}"
+        return guarded
+
+    async def spawn_coordinator(
+        self,
+        prompt: str,
+        cwd: str,
+        model: str | None = None,
+        session_id: str | None = None,
+        images: list[EngineImage] | None = None,
+        message_history: list | None = None,
+        report_engine_state: bool = False,
+        thinking_effort: str | None = None,
+    ) -> AsyncIterator[InternalEvent]:
+        """Run a no-tools coordinator turn through this adapter seam."""
+        guarded_prompt = self._coordinator_prompt(prompt)
+        if images and not self.capabilities.supports_vision:
+            guarded_prompt = self.render_image_prompt(guarded_prompt, images)
+        spawn_kwargs: dict[str, Any] = {}
+        if self.supports_message_history:
+            if message_history is not None:
+                spawn_kwargs["message_history"] = message_history
+            if report_engine_state:
+                spawn_kwargs["report_engine_state"] = True
+        if self.capabilities.supports_thinking_effort and thinking_effort:
+            spawn_kwargs["thinking_effort"] = thinking_effort
+        async for event in self.spawn(
+            prompt=guarded_prompt,
+            cwd=cwd,
+            model=model,
+            session_id=session_id,
+            images=images,
+            **spawn_kwargs,
+        ):
+            yield event
+
+    @staticmethod
+    def coordinator_guard(prompt: str) -> str:
+        """Wrap a user prompt with the read-only coordinator instruction."""
+        return (
+            "You are a read-only task coordinator. Do not call tools, execute "
+            "commands, or modify files. Return only the requested JSON.\n\n"
+            f"{prompt}"
+        )
+
+    @staticmethod
+    def render_image_prompt(
+        prompt: str,
+        images: list[EngineImage] | None,
+    ) -> str:
+        """Append attached images as markdown references to a text prompt.
+
+        Vision-capable engines embed the references natively; engines without
+        vision keep the paths visible to the model as a best-effort fallback.
+        """
+        if not images:
+            return prompt
+        lines = [prompt, "", "Attached image(s); analyze them if possible:"]
+        for image in images:
+            alt = image.description or "attached image"
+            lines.append(f"![{alt}]({image.reference})")
+        return "\n".join(lines)
+
+    # --- Interaction（ACP 语义） ---
+
+    def normalize_event(self, event: InternalEvent) -> InternalEvent | None:
+        """Normalize provider-native interaction and plan events at the ACP seam."""
+        interaction = self.normalize_interaction_event(event)
+        if interaction is not event:
+            return interaction
+        tracker = getattr(self, "_native_plan_tracker", None)
+        if tracker is None:
+            tracker = NativePlanTracker()
+            setattr(self, "_native_plan_tracker", tracker)
+        if event.type == "subagent":
+            # 子代理生命周期事件透传给前端；同时把状态并入 plan 快照，
+            # 供后续 plan 工具事件（TaskCreate/TaskUpdate/TaskList）携带。
+            tracker.observe(event)
+            return event
+        return tracker.observe(event) or event
+
+    def normalize_interaction_event(self, event: InternalEvent) -> InternalEvent:
+        """Map native ask-user tool aliases to ACP form elicitation."""
+        if event.type != "tool_use":
+            return event
+        interaction = interaction_from_tool_use(
+            str(event.data.get("id") or event.data.get("tool_use_id") or ""),
+            str(event.data.get("name") or ""),
+            event.data.get("input") if isinstance(event.data.get("input"), dict) else {},
+        )
+        return interaction or event
+
+    async def request_interaction(self, event: InternalEvent, publish) -> dict[str, Any]:
+        """Publish and await an interaction from an in-process engine tool.
+
+        CLI/SDK adapters can expose their native pause. In-process engines use
+        this broker so their tool coroutine blocks until ``respond_interaction``.
+        """
+        interaction_id = str(event.data.get("interaction_id") or "")
+        if not interaction_id:
+            raise ValueError("interaction_request 缺少 interaction_id")
+        pending = getattr(self, "_pending_interaction_responses", None)
+        if pending is None:
+            pending = {}
+            setattr(self, "_pending_interaction_responses", pending)
+        if interaction_id in pending:
+            raise RuntimeError(f"交互请求重复：{interaction_id}")
+        future = asyncio.get_running_loop().create_future()
+        pending[interaction_id] = future
+        approval_key = ""
+        if (
+            event.type == "interaction_request"
+            and event.data.get("method") == "session/request_permission"
+        ):
+            tool_call = event.data.get("tool_call") or {}
+            approval_key = str(
+                tool_call.get("tool_call_id")
+                or tool_call.get("id")
+                or interaction_id
+            )
+            self._pending_approvals_dict()[approval_key] = event
+        try:
+            published = publish(event)
+            if isawaitable(published):
+                await published
+            return await future
+        finally:
+            pending.pop(interaction_id, None)
+            if approval_key:
+                self._pending_approvals_dict().pop(approval_key, None)
+
+    async def handle_tool_permission(
+        self,
+        publish,
+        *,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        tool_use_id: str,
+        title: str = "",
+        session_id: str = "",
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Bridge SDK permission callbacks to ACP interaction semantics."""
+        if "".join(character for character in tool_name.lower() if character.isalnum()) in {
+            "askuser", "askuserquestion", "requestuserinput", "userinput",
+        }:
+            event = claude_ask_user_request(tool_use_id, tool_input)
+            response = await self.request_interaction(event, publish)
+            if response.get("action") != "accept":
+                return False, None
+            content = response.get("content")
+            answers: dict[str, Any] = {}
+            if isinstance(content, dict):
+                for index, question in enumerate(tool_input.get("questions") or []):
+                    if not isinstance(question, dict):
+                        continue
+                    question_text = str(question.get("question") or f"question_{index}")
+                    if f"question_{index}" in content:
+                        answers[question_text] = content[f"question_{index}"]
+            return True, {
+                "questions": tool_input.get("questions") or [],
+                "answers": answers,
+            }
+
+        signature = permission_signature(tool_name, tool_input)
+        session_allow = getattr(self, "_permission_session_allow", None)
+        if session_allow is None:
+            session_allow = set()
+            self._permission_session_allow = session_allow
+        session_reject = getattr(self, "_permission_session_reject", None)
+        if session_reject is None:
+            session_reject = set()
+            self._permission_session_reject = session_reject
+        if signature and signature in session_allow:
+            return True, tool_input
+        if signature and signature in session_reject:
+            return False, tool_input
+
+        event = permission_request(
+            interaction_id=tool_use_id,
+            session_id=session_id,
+            tool_call={
+                "tool_call_id": tool_use_id,
+                "title": title or tool_name,
+                "name": tool_name,
+                "raw_input": tool_input,
+            },
+            options=[
+                {"option_id": "allow_once", "name": "允许一次", "kind": "allow_once"},
+                {"option_id": "allow_for_session", "name": "允许本次运行", "kind": "allow_for_session"},
+                {"option_id": "reject_once", "name": "拒绝", "kind": "reject_once"},
+                {"option_id": "reject_for_session", "name": "拒绝本次运行", "kind": "reject_for_session"},
+            ],
+        )
+        response = await self.request_interaction(event, publish)
+        outcome = response.get("outcome") or {}
+        option_id = str(outcome.get("option_id") or "")
+        if option_id == "allow_for_session" and signature:
+            session_allow.add(signature)
+        elif option_id == "reject_for_session" and signature:
+            session_reject.add(signature)
+        return option_id in {"allow_once", "allow_for_session"}, tool_input
+
+    async def send_live_stage_message(self, content: str) -> bool:
+        """Send a plain user message into a running stage execution.
+
+        Return True when the message was accepted by the engine, False when the
+        adapter cannot deliver ordinary messages mid-run (permission responses
+        go through inject_response instead). Adapters that implement this must
+        also advertise ``supports_live_stage_message`` in their capabilities.
+        """
+        return False
+
     def _map_notification(self, update) -> InternalEvent | None:
-        """Map one ACP session update to the internal event vocabulary."""
+        """Map one ACP session update to the internal (ACP-vocabulary) event.
+
+        13 种 session update 全量映射；未知 update 透传 ``acp_raw`` 不再静默丢弃。
+        """
         if isinstance(update, InternalEvent):
             return update
         if isinstance(update, schema.AgentMessageChunk):
-            if isinstance(update.content, schema.TextContentBlock):
-                return InternalEvent(
-                    type="text_delta",
-                    data={"delta": update.content.text},
-                )
+            text = self._content_text(update.content)
+            if text is not None:
+                return agent_message_chunk(text)
         if isinstance(update, schema.AgentThoughtChunk):
-            if isinstance(update.content, schema.TextContentBlock):
-                return InternalEvent(
-                    type="thinking_delta",
-                    data={"delta": update.content.text},
-                )
-        if isinstance(update, schema.Plan):
+            text = self._content_text(update.content)
+            if text is not None:
+                return agent_thought_chunk(text)
+        if isinstance(update, schema.UserMessageChunk):
+            text = self._content_text(update.content)
+            if text is not None:
+                return user_message_chunk(text)
+        if isinstance(update, schema.ToolCallStart):
+            data = {
+                "tool_call_id": update.tool_call_id,
+                "title": update.title or "tool",
+            }
+            if update.kind:
+                data["kind"] = update.kind
+            if update.raw_input is not None:
+                data["raw_input"] = update.raw_input
+            if self.get_permission_mode() == "ask":
+                data["needs_approval"] = True
+            return InternalEvent(type="tool_call", data=data)
+        if isinstance(update, schema.ToolCallProgress):
+            data = {"tool_call_id": update.tool_call_id}
+            if update.status:
+                data["status"] = update.status
+            if update.title:
+                data["title"] = update.title
+            if update.kind:
+                data["kind"] = update.kind
+            if update.raw_input is not None:
+                data["raw_input"] = update.raw_input
+            if update.raw_output is not None:
+                data["raw_output"] = update.raw_output
+            return InternalEvent(type="tool_call_update", data=data)
+        if isinstance(update, (schema.AgentPlanUpdate, schema.Plan)):
             return plan_event([
                 {
                     "content": entry.content,
@@ -678,47 +1217,111 @@ class AcpEngineBase(BaseLLMEngine):
                 }
                 for entry in update.entries
             ])
-        if isinstance(update, schema.ToolCallStart):
-            data = {
-                "id": update.tool_call_id,
-                "name": update.title or "",
-                "input": update.raw_input or {},
-            }
-            if self.get_permission_mode() == "ask":
-                data["needs_approval"] = True
-            return InternalEvent(type="tool_use", data=data)
-        if isinstance(update, schema.ToolCallProgress):
-            if update.status in ("completed", "failed"):
-                return InternalEvent(
-                    type="tool_result",
-                    data={
-                        "tool_use_id": update.tool_call_id,
-                        "content": str(update.raw_output or ""),
-                        "is_error": update.status == "failed",
-                    },
-                )
+        if isinstance(update, schema.AgentPlanContentUpdate):
+            return self._map_plan_update(update)
+        if isinstance(update, schema.AgentPlanRemovedUpdate):
+            return InternalEvent(type="plan_removed", data={"id": update.id})
         if isinstance(update, schema.UsageUpdate):
-            data = {
-                "usage_kind": "context_window",
+            data: dict[str, Any] = {
                 "used": update.used,
                 "size": update.size,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "cache_read_input_tokens": 0,
-                "total_tokens": update.used,
-                "context_window": update.size,
             }
             if update.cost is not None:
                 data["cost"] = {
                     "amount": update.cost.amount,
                     "currency": update.cost.currency,
                 }
+            data["total_tokens"] = update.used
+            data["input_tokens"] = 0
+            data["output_tokens"] = 0
+            data["cache_creation_input_tokens"] = 0
+            data["cache_read_input_tokens"] = 0
+            data["context_window"] = update.size
+            return InternalEvent(type="usage_update", data=data)
+        if isinstance(update, schema.SessionInfoUpdate):
+            data: dict[str, Any] = {}
+            if update.title is not None:
+                data["title"] = update.title
+            if update.updatedAt is not None:
+                data["updated_at"] = update.updatedAt
+            return InternalEvent(type="session_info_update", data=data)
+        if isinstance(update, schema.AvailableCommandsUpdate):
             return InternalEvent(
-                type="usage",
-                data=data,
+                type="available_commands_update",
+                data={"available_commands": [
+                    self._json_value(command)
+                    for command in (update.availableCommands or [])
+                ]},
             )
+        if isinstance(update, schema.ConfigOptionUpdate):
+            return InternalEvent(
+                type="config_option_update",
+                data={"config_options": [
+                    self._json_value(option)
+                    for option in (update.configOptions or [])
+                ]},
+            )
+        if isinstance(update, schema.CurrentModeUpdate):
+            return InternalEvent(
+                type="current_mode_update",
+                data={"current_mode_id": update.currentModeId},
+            )
+        if isinstance(update, schema.MessageMcpNotification):
+            data: dict[str, Any] = {
+                "connection_id": update.connectionId,
+                "method": update.method,
+            }
+            if update.params is not None:
+                data["params"] = update.params
+            return InternalEvent(type="mcp_message", data=data)
+        if isinstance(update, schema.CompleteElicitationNotification):
+            return InternalEvent(
+                type="elicitation_completed",
+                data={"elicitation_id": update.elicitationId},
+            )
+        # 未知 update：透传 acp_raw，不再静默丢弃。
+        return acp_raw_event(update)
+
+    @staticmethod
+    def _content_text(content) -> str | None:
+        if isinstance(content, schema.TextContentBlock):
+            return content.text
         return None
+
+    @staticmethod
+    def _json_value(value):
+        dump = getattr(value, "model_dump", None)
+        if callable(dump):
+            return dump(by_alias=False, exclude_none=True)
+        if isinstance(value, (list, tuple)):
+            return [AcpEngineBase._json_value(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): AcpEngineBase._json_value(item) for key, item in value.items()}
+        return value
+
+    @staticmethod
+    def _map_plan_update(update) -> InternalEvent:
+        plan = update.plan
+        data: dict[str, Any] = {"id": getattr(plan, "id", "")}
+        update_type = getattr(plan, "type", None)
+        if update_type:
+            data["type"] = update_type
+        if update_type == "markdown" and getattr(plan, "content", None) is not None:
+            data["content"] = plan.content
+        elif update_type == "file" and getattr(plan, "uri", None) is not None:
+            data["uri"] = plan.uri
+        else:
+            entries = getattr(plan, "entries", None)
+            if entries is not None:
+                data["entries"] = [
+                    {
+                        "content": entry.content,
+                        "priority": entry.priority,
+                        "status": entry.status,
+                    }
+                    for entry in entries
+                ]
+        return InternalEvent(type="plan_update", data=data)
 
     @staticmethod
     def _map_prompt_response_usage(response) -> InternalEvent | None:
@@ -734,7 +1337,7 @@ class AcpEngineBase(BaseLLMEngine):
         })
         if usage.thought_tokens is not None:
             data["thought_tokens"] = usage.thought_tokens
-        return InternalEvent(type="usage", data=data)
+        return InternalEvent(type="usage_update", data=data)
 
     async def stop(self) -> None:
         if self._process:
@@ -754,7 +1357,8 @@ class AcpEngineBase(BaseLLMEngine):
 
     @property
     def supports_live_stage_message(self) -> bool:
-        return True
+        """Whether ordinary messages can be injected mid-run (ACP native only)."""
+        return self._is_acp_native
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

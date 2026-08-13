@@ -25,35 +25,34 @@ test('chat message store only accepts session_chat events', () => {
   useChatSessionStore.setState({ sessions: {} })
   useChatSessionStore.getState().newSession('chat-1')
   useChatSessionStore.getState().handleWsEvent({
-    type: 'message_started',
+    type: 'TEXT_MESSAGE_START',
     channel: 'flow_gen',
     session_id: 'chat-1',
-    message_id: 'm-1',
-    data: {},
+    messageId: 'm-1',
   })
   // Wrong channel: nothing is created.
   assert.equal(useChatSessionStore.getState().sessions['chat-1'].messages.length, 0)
 
   useChatSessionStore.getState().handleWsEvent({
-    type: 'message_started',
+    type: 'TEXT_MESSAGE_START',
     channel: 'session_chat',
     session_id: 'chat-1',
-    message_id: 'm-1',
-    data: {},
+    messageId: 'm-1',
   })
   useChatSessionStore.getState().handleWsEvent({
-    type: 'text_delta',
+    type: 'TEXT_MESSAGE_CHUNK',
     channel: 'session_chat',
     session_id: 'chat-1',
-    message_id: 'm-1',
-    data: { delta: '你好' },
+    messageId: 'm-1',
+    delta: '你好',
   })
   useChatSessionStore.getState().handleWsEvent({
-    type: 'message_completed',
+    type: 'TEXT_MESSAGE_END',
     channel: 'session_chat',
     session_id: 'chat-1',
-    message_id: 'm-1',
-    data: { status: 'succeeded', content: '你好' },
+    messageId: 'm-1',
+    status: 'succeeded',
+    content: '你好',
   })
 
   const session = useChatSessionStore.getState().sessions['chat-1']

@@ -76,6 +76,8 @@ export interface InteractionForm {
 export interface InteractionEvent {
   type?: string
   data?: Record<string, unknown>
+  name?: string
+  value?: Record<string, unknown>
 }
 
 export interface InteractionItem {
@@ -89,14 +91,34 @@ export function mergeInteractionEvents(
 ): InteractionEvent[] {
   if (live.length === 0) return persisted
   const liveKeys = new Set(live.flatMap((event) => {
-    if (event.type !== 'interaction_request' && event.type !== 'interaction_response') return []
-    const id = String(event.data?.interaction_id || '')
-    return id ? [`${event.type}:${id}`] : []
+    const eventKey = event.type === 'CUSTOM' ? event.name : event.type
+    const data = isCustom(event, CUSTOM.interactionRequest)
+      || isCustom(event, CUSTOM.interactionResponse)
+      ? customValue(event)
+      : event.data
+    if (
+      event.type !== 'interaction_request'
+      && event.type !== 'interaction_response'
+      && !isCustom(event, CUSTOM.interactionRequest)
+      && !isCustom(event, CUSTOM.interactionResponse)
+    ) return []
+    const id = String(data?.interaction_id || '')
+    return id ? [`${eventKey}:${id}`] : []
   }))
   const preserved = persisted.filter((event) => {
-    if (event.type !== 'interaction_request' && event.type !== 'interaction_response') return false
-    const id = String(event.data?.interaction_id || '')
-    return Boolean(id) && !liveKeys.has(`${event.type}:${id}`)
+    const eventKey = event.type === 'CUSTOM' ? event.name : event.type
+    const data = isCustom(event, CUSTOM.interactionRequest)
+      || isCustom(event, CUSTOM.interactionResponse)
+      ? customValue(event)
+      : event.data
+    if (
+      event.type !== 'interaction_request'
+      && event.type !== 'interaction_response'
+      && !isCustom(event, CUSTOM.interactionRequest)
+      && !isCustom(event, CUSTOM.interactionResponse)
+    ) return false
+    const id = String(data?.interaction_id || '')
+    return Boolean(id) && !liveKeys.has(`${eventKey}:${id}`)
   })
   return [...preserved, ...live]
 }
@@ -106,16 +128,28 @@ export function interactionItemsFromEvents(
 ): InteractionItem[] {
   const responses = new Map<string, Record<string, unknown>>()
   for (const event of events) {
-    if (event.type !== 'interaction_response') continue
-    const id = String(event.data?.interaction_id || '')
-    const response = event.data?.response
+    const isResponse = event.type === 'interaction_response'
+      || isCustom(event, CUSTOM.interactionResponse)
+    if (!isResponse) continue
+    const data = isCustom(event, CUSTOM.interactionResponse)
+      ? customValue(event)
+      : event.data
+    const id = String(data?.interaction_id || '')
+    const response = data?.response
     if (id && response && typeof response === 'object') {
       responses.set(id, response as Record<string, unknown>)
     }
   }
   return events.flatMap((event) => {
-    if (event.type !== 'interaction_request') return []
-    const data = event.data as unknown as InteractionRequestData
+    if (
+      event.type !== 'interaction_request'
+      && !isCustom(event, CUSTOM.interactionRequest)
+    ) return []
+    const data = (
+      isCustom(event, CUSTOM.interactionRequest)
+        ? customValue(event)
+        : event.data
+    ) as unknown as InteractionRequestData
     if (!data?.interaction_id || !data.method) return []
     return [{ request: data, response: responses.get(data.interaction_id) }]
   })
@@ -268,3 +302,4 @@ export function interactionValuesValid(
     return value !== undefined && value !== null
   })
 }
+import { CUSTOM, customValue, isCustom } from './agui.ts'

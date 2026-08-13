@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from models import StepRun, Task, TaskStep, WorkflowRun
 from models.fields import utc_now
@@ -19,7 +19,7 @@ from services.workflow_runtime import WorkflowRuntime
 from streaming.bus import EventBus
 
 
-class RecoveryFakeEngine(BaseLLMEngine):
+class RecoveryFakeEngine(AcpEngineBase):
     """Fake engine recording the prompts it executes."""
 
     delay = 0.0
@@ -41,7 +41,7 @@ class RecoveryFakeEngine(BaseLLMEngine):
         RecoveryFakeEngine.prompts.append(prompt)
         if RecoveryFakeEngine.delay:
             await asyncio.sleep(RecoveryFakeEngine.delay)
-        yield InternalEvent(type="text_delta", data={"delta": "ok"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "ok"}})
         yield InternalEvent(type="status", data={"status": "done"})
 
     async def stop(self):
@@ -346,7 +346,7 @@ async def test_e2e_three_stage_run_resumes_after_crash(tmp_path):
                     await asyncio.Event().wait()
                     if False:
                         yield InternalEvent(type="status", data={"status": "done"})
-            yield InternalEvent(type="text_delta", data={"delta": f"{key} output"})
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": f"{key} output"}})
             yield InternalEvent(type="status", data={"status": "done"})
 
     original = ENGINE_REGISTRY.copy()
@@ -453,7 +453,11 @@ async def test_e2e_three_stage_run_resumes_after_crash(tmp_path):
         events = []
         while not recovered_queue.empty():
             events.append(await recovered_queue.get())
-        assert any(event.get("type") == "run_recovered" for event in events)
+        assert any(
+            event.get("type") == "CUSTOM"
+            and event.get("name") == "workstep.run_recovered"
+            for event in events
+        )
         # Stage a never re-ran; b ran once more after recovery; c ran once.
         assert CrashStageEngine.invocation_count == 2
     finally:

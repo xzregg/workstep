@@ -63,9 +63,9 @@ class TestOpenClawEngine:
         })
 
         assert [event.type for event in events] == [
-            "session_started", "text_delta", "usage"
+            "session_started", "agent_message_chunk", "usage_update"
         ]
-        assert events[1].data["delta"] == "完成"
+        assert events[1].data["content"]["text"] == "完成"
         assert events[2].data["total_tokens"] == 15
         assert events[2].data["cost"] == {"amount": 0.02, "currency": "USD"}
 
@@ -95,6 +95,6 @@ class TestOpenClawEngine:
             "output": "完成",
         })
 
-        assert thinking is not None and thinking.type == "thinking_delta"
-        assert result is not None and result.type == "tool_result"
-        assert result.data["is_error"] is False
+        assert thinking is not None and thinking.type == "agent_thought_chunk"
+        assert result is not None and result.type == "tool_call_update"
+        assert result.data["status"] == "completed"

@@ -10,9 +10,15 @@ from pathlib import Path
 import uuid
 from typing import Any, AsyncIterator, Awaitable, Callable
 
-from engines.core.base import BaseLLMEngine, EngineModel
+from engines.core.acp_base import AcpEngineBase
+from engines.core.base import EngineModel
 from engines.core.schema import EngineImage
-from engines.core.events import InternalEvent, normalize_token_usage
+from engines.core.events import (
+    InternalEvent,
+    normalize_token_usage,
+    tool_call_event,
+    tool_call_update_event,
+)
 from engines.core.interactions import elicitation_request, permission_request
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption
@@ -24,12 +30,13 @@ from services.tool_registry import WorkstepClient, workstep_tools_instruction
 logger = logging.getLogger(__name__)
 
 
-class PydanticAIEngine(BaseLLMEngine):
+class PydanticAIEngine(AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
 
     """Built-in agent that lets Pydantic AI load the configured provider."""
 
     def __init__(self):
+        super().__init__()
         self._running = False
         self._run_task: asyncio.Task | None = None
         self._interaction_permission_grants: set[str] = set()
@@ -731,52 +738,64 @@ class PydanticAIEngine(BaseLLMEngine):
             part_kind = getattr(part, "part_kind", "")
             content = getattr(part, "content", "")
             if part_kind == "text" and content:
-                return InternalEvent(type="text_delta", data={"delta": content})
+                return InternalEvent(
+                    type="agent_message_chunk",
+                    data={"content": {"text": content}},
+                )
             if part_kind == "thinking" and content:
-                return InternalEvent(type="thinking_delta", data={"delta": content})
+                return InternalEvent(
+                    type="agent_thought_chunk",
+                    data={"content": {"text": content}},
+                )
             if part_kind == "builtin-tool-call":
-                return InternalEvent(type="tool_use", data={
-                    "id": getattr(part, "tool_call_id", ""),
-                    "name": getattr(part, "tool_name", ""),
-                    "input": cls._json_safe(getattr(part, "args", {})),
-                })
+                return tool_call_event(
+                    tool_call_id=str(getattr(part, "tool_call_id", "")),
+                    title=str(getattr(part, "tool_name", "")),
+                    raw_input=cls._json_safe(getattr(part, "args", {})),
+                )
             if part_kind == "builtin-tool-return":
-                return InternalEvent(type="tool_result", data={
-                    "tool_use_id": getattr(part, "tool_call_id", ""),
-                    "content": cls._json_safe(content),
-                    "is_error": getattr(part, "outcome", "success") != "success",
-                })
+                return tool_call_update_event(
+                    tool_call_id=str(getattr(part, "tool_call_id", "")),
+                    status="failed" if getattr(part, "outcome", "success") != "success" else "completed",
+                    raw_output=cls._json_safe(content),
+                )
 
         if event_kind == "part_delta":
             delta = event.delta
             delta_kind = getattr(delta, "part_delta_kind", "")
             content = getattr(delta, "content_delta", "")
             if delta_kind == "text" and content:
-                return InternalEvent(type="text_delta", data={"delta": content})
+                return InternalEvent(
+                    type="agent_message_chunk",
+                    data={"content": {"text": content}},
+                )
             if delta_kind == "thinking" and content:
-                return InternalEvent(type="thinking_delta", data={"delta": content})
+                return InternalEvent(
+                    type="agent_thought_chunk",
+                    data={"content": {"text": content}},
+                )
 
         if event_kind in {"function_tool_call", "output_tool_call"}:
             part = event.part
-            return InternalEvent(type="tool_use", data={
-                "id": getattr(part, "tool_call_id", ""),
-                "name": getattr(part, "tool_name", ""),
-                "input": cls._json_safe(getattr(part, "args", {})),
-            })
+            return tool_call_event(
+                tool_call_id=str(getattr(part, "tool_call_id", "")),
+                title=str(getattr(part, "tool_name", "")),
+                raw_input=cls._json_safe(getattr(part, "args", {})),
+            )
 
         if event_kind in {"function_tool_result", "output_tool_result"}:
             part = event.part
             content = getattr(event, "content", None)
             if content is None:
                 content = getattr(part, "content", "")
-            return InternalEvent(type="tool_result", data={
-                "tool_use_id": getattr(part, "tool_call_id", ""),
-                "content": cls._json_safe(content),
-                "is_error": (
+            return tool_call_update_event(
+                tool_call_id=str(getattr(part, "tool_call_id", "")),
+                status="failed" if (
                     getattr(part, "part_kind", "") == "retry-prompt"
                     or getattr(part, "outcome", "success") != "success"
-                ),
-            })
+                ) else "completed",
+                raw_output=cls._json_safe(content),
+            )
 
         return None
 
@@ -861,7 +880,7 @@ class PydanticAIEngine(BaseLLMEngine):
                     )
                 except asyncio.TimeoutError:
                     continue
-                if event.type == "text_delta":
+                if event.type == "agent_message_chunk":
                     emitted_text = True
                 yield event
 
@@ -869,7 +888,10 @@ class PydanticAIEngine(BaseLLMEngine):
             if not emitted_text:
                 output = str(getattr(result, "output", ""))
                 if output:
-                    yield InternalEvent(type="text_delta", data={"delta": output})
+                    yield InternalEvent(
+                        type="agent_message_chunk",
+                        data={"content": {"text": output}},
+                    )
 
             if report_engine_state:
                 state = None
@@ -911,7 +933,7 @@ class PydanticAIEngine(BaseLLMEngine):
                             "currency": "USD",
                         }
                 usage_data["session_id"] = session_uuid
-                yield InternalEvent(type="usage", data=usage_data)
+                yield InternalEvent(type="usage_update", data=usage_data)
             yield InternalEvent(type="status", data={"status": "done"})
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})
@@ -958,6 +980,73 @@ class PydanticAIEngine(BaseLLMEngine):
     @property
     def supports_interactive(self) -> bool:
         return True
+
+    # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "plan",
+        "usage_update",
+        "interaction_request",
+        "live_message",
+        "status",
+        "session_started",
+        "engine_state",
+        "error",
+    })
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """进程内写文件等工具经 _request_permission 弹窗，原生审批语义。"""
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """进程内 Agent 无 CLI 会话；会话标识在首次 spawn 时生成。"""
+        logger.info("PydanticAI create_session: not supported (in-process agent)")
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """跨轮上下文由 message_history 承载，不依赖 CLI 会话存储。"""
+        return False
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """关闭会话 = 结束当前运行中的 agent 任务。"""
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """取消会话 = 结束当前运行中的 agent 任务。"""
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """配置在 spawn 时从 config_store 读取（provider / model）；
+        运行中修改无原生入口。"""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """无原生 reset；新会话从全局配置重新读取。"""
+        return None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

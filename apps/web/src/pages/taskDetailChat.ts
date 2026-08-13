@@ -1,6 +1,12 @@
 import { toMilliseconds } from '../utils/datetime'
 import { mergeInteractionEvents } from '../utils/interaction'
 import { mergePlanEvents } from '../utils/plan'
+import {
+  CUSTOM,
+  customValue,
+  isCustom,
+  toolName,
+} from '../utils/agui.ts'
 import { zhCNT, type TFunction } from '../i18n'
 
 export interface OptimisticUserMessage {
@@ -215,31 +221,59 @@ export function orderConversationMessages(
 }
 
 export function liveExecutionStatus(
-  events: Array<{ type?: string; data?: Record<string, unknown> }>,
+  events: Array<{
+    type?: string
+    data?: Record<string, unknown>
+    name?: string
+    value?: Record<string, unknown>
+    status?: string
+    toolCallName?: string
+  }>,
   t: TFunction = zhCNT,
 ): string {
   const latest = [...events].reverse().find((event) => [
     'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started', 'subagent',
-  ].includes(event.type || ''))
-  if (latest?.type === 'subagent') {
-    const status = String(latest.data?.status || '')
+    'TOOL_CALL_START', 'TOOL_CALL_RESULT', 'REASONING_MESSAGE_CHUNK',
+    'RUN_STARTED', 'TEXT_MESSAGE_START',
+  ].includes(event.type || '')
+    || isCustom(event, CUSTOM.subagent)
+    || isCustom(event, CUSTOM.status))
+  if (latest && (latest.type === 'subagent' || isCustom(latest, CUSTOM.subagent))) {
+    const value = isCustom(latest, CUSTOM.subagent)
+      ? customValue(latest)
+      : latest.data
+    const status = String(value?.status || '')
     if (['running', 'pending', 'paused', 'in_progress'].includes(status)) {
       return t('chat.subagentRunning')
     }
   }
-  if (latest?.type === 'tool_use') {
-    const name = String(latest.data?.name || t('chat.tool'))
+  if (latest?.type === 'tool_use' || latest?.type === 'TOOL_CALL_START') {
+    const name = latest.type === 'TOOL_CALL_START'
+      ? String(toolName(latest) || t('chat.tool'))
+      : String(latest.data?.name || t('chat.tool'))
     return t('chat.toolRunning', { name })
   }
-  if (latest?.type === 'tool_result') return t('chat.toolDone')
-  if (latest?.type === 'thinking_delta') return t('chat.thinking')
-  if (latest?.type === 'status' && latest.data?.status === 'initializing') {
+  if (latest?.type === 'tool_result' || latest?.type === 'TOOL_CALL_RESULT') {
+    return t('chat.toolDone')
+  }
+  if (latest?.type === 'thinking_delta' || latest?.type === 'REASONING_MESSAGE_CHUNK') {
+    return t('chat.thinking')
+  }
+  const statusValue = latest?.type === 'RUN_STARTED'
+    || latest?.type === 'RUN_FINISHED'
+    || latest?.type === 'RUN_ERROR'
+    ? latest.status
+    : isCustom(latest ?? {}, CUSTOM.status)
+      ? customValue(latest ?? {}).status
+      : latest?.data?.status
+  if (latest?.type === 'status' && statusValue === 'initializing') {
     return t('chat.engineInitializing')
   }
-  if (latest?.type === 'status' && latest.data?.status === 'idle_timeout') {
+  if (latest?.type === 'status' && statusValue === 'idle_timeout') {
     return t('chat.idleTimeout')
   }
-  if (latest?.type === 'status' && latest.data?.status === 'done') {
+  if ((latest?.type === 'status' || latest?.type === 'RUN_FINISHED')
+    && statusValue === 'done') {
     return t('chat.waitingInjection')
   }
   return t('chat.processing')

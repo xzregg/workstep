@@ -152,7 +152,7 @@ def test_get_step_history(db_with_history):
     _, task_id = db_with_history
     history = get_step_history(task_id, "req")
     assert len(history) == 1
-    assert history[0]["events"][0]["type"] == "text_delta"
+    assert history[0]["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
 
 
 def test_replay_events(db_with_history):

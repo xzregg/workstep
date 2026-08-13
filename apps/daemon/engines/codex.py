@@ -12,12 +12,13 @@ from typing import AsyncIterator
 
 import re
 
+from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
-    BaseLLMEngine,
     EngineInstallResult,
     install_with_command,
 )
-from engines.core.events import InternalEvent, normalize_cost
+
+from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
 from engines.core.interactions import permission_request, permission_signature
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
@@ -54,7 +55,7 @@ def _escalate_sandbox(mode: str) -> str:
     return _SANDBOX_ESCALATION.get(mode, mode)
 
 
-class CodexEngine(BaseLLMEngine):
+class CodexEngine(AcpEngineBase):
     ENGINE_ID = "codex"
 
     """Codex CLI engine using direct subprocess.
@@ -63,6 +64,7 @@ class CodexEngine(BaseLLMEngine):
     """
 
     def __init__(self):
+        super().__init__()
         self._process: asyncio.subprocess.Process | None = None
         self._running = False
         self._stderr: list[bytes] = []
@@ -484,16 +486,19 @@ class CodexEngine(BaseLLMEngine):
                 status = ""
                 if agents_states and isinstance(agents_states[-1], dict):
                     status = str(agents_states[-1].get("status") or "")
-                return InternalEvent(type="tool_result", data={
-                    "tool_use_id": item.get("id", ""),
-                    "content": content or "",
-                    "is_error": status in {"failed", "error", "declined"},
-                })
+                return tool_call_update_event(
+                    tool_call_id=str(item.get("id") or ""),
+                    status="failed" if status in {"failed", "error", "declined"} else "completed",
+                    raw_output=content or "",
+                )
 
             if item_type == "agent_message":
                 text = item.get("text") or item.get("message") or ""
                 if text:
-                    return InternalEvent(type="text_delta", data={"delta": text})
+                    return InternalEvent(
+                        type="agent_message_chunk",
+                        data={"content": {"text": text}},
+                    )
 
             elif item_type in {"reasoning", "analysis"}:
                 thinking = item.get("text") or item.get("summary") or ""
@@ -501,8 +506,8 @@ class CodexEngine(BaseLLMEngine):
                     thinking = "\n".join(str(part) for part in thinking)
                 if thinking:
                     return InternalEvent(
-                        type="thinking_delta",
-                        data={"delta": str(thinking)},
+                        type="agent_thought_chunk",
+                        data={"content": {"text": str(thinking)}},
                     )
 
             elif item_type == "command_execution":
@@ -529,30 +534,32 @@ class CodexEngine(BaseLLMEngine):
                             {"option_id": "reject_for_session", "name": "拒绝本次运行", "kind": "reject_for_session"},
                         ],
                     )
-                return InternalEvent(type="tool_result", data={
-                    "tool_use_id": item.get("id", ""),
-                    "content": output,
-                    "is_error": is_error,
-                })
+                return tool_call_update_event(
+                    tool_call_id=str(item.get("id") or ""),
+                    status="failed" if is_error else "completed",
+                    raw_output=output,
+                )
 
         if event_type == "item.started":
             item = obj.get("item", {})
             if item.get("type") == "collab_agent_tool_call":
-                return InternalEvent(type="tool_use", data={
-                    "id": item.get("id", ""),
-                    "name": item.get("tool") or "spawnAgent",
-                    "input": {
+                return tool_call_event(
+                    tool_call_id=str(item.get("id") or ""),
+                    title=item.get("tool") or "spawnAgent",
+                    kind="other",
+                    raw_input={
                         "prompt": item.get("prompt"),
                         "model": item.get("model"),
                         "receiver_thread_ids": item.get("receiver_thread_ids") or [],
                     },
-                })
+                )
             if item.get("type") == "command_execution":
-                return InternalEvent(type="tool_use", data={
-                    "id": item.get("id", ""),
-                    "name": "Bash",
-                    "input": {"command": item.get("command", "")},
-                })
+                return tool_call_event(
+                    tool_call_id=str(item.get("id") or ""),
+                    title="Bash",
+                    kind="execute",
+                    raw_input={"command": item.get("command", "")},
+                )
 
         if event_type == "turn.completed":
             usage = obj.get("usage", {})
@@ -578,7 +585,7 @@ class CodexEngine(BaseLLMEngine):
             cost = normalize_cost(usage)
             if cost is not None:
                 data["cost"] = cost
-            return InternalEvent(type="usage", data=data)
+            return InternalEvent(type="usage_update", data=data)
 
         if event_type in ("error", "turn.failed"):
             return InternalEvent(type="error", data={
@@ -616,6 +623,76 @@ class CodexEngine(BaseLLMEngine):
     def supports_thinking_effort(self) -> bool:
         """``-c model_reasoning_effort=...`` supports a per-turn override."""
         return True
+
+    # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "plan",
+        "usage_update",
+        "interaction_request",
+        "live_message",
+        "status",
+        "session_started",
+        "error",
+    })
+
+    @property
+    def supports_sessions(self) -> bool:
+        """codex exec 按 thread_id 原生支持 resume，会话随首次 spawn 建立。"""
+        return True
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """沙箱拒绝 → permission 弹窗 → 批准后提权重试，原生审批语义。"""
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """无法脱离提示词创建空会话；会话在首次 spawn（thread.started）时建立。"""
+        logger.info("Codex create_session: not supported without a prompt")
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """codex exec resume <thread_id> 原生恢复；spawn(session_id=...) 时实际恢复。"""
+        return bool(session_id)
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """关闭会话 = 结束当前运行中的 codex 进程。"""
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """取消会话 = 终止当前运行中的 codex 进程。"""
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """配置在 spawn 时从 config_store 读取（-c / --sandbox）；运行中修改无原生入口。"""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """无原生 reset；新会话从全局配置重新读取。"""
+        return None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

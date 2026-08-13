@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from engines.core.acp_base import AcpEngineBase
 from engines.core.base import BaseLLMEngine, EngineCapabilities
 from engines.core.events import InternalEvent
 from models import CoordinatorTurn, Message, Task, init_db
@@ -41,7 +42,7 @@ def test_engines_advertise_workstep_tools_capability():
         assert cls().capabilities.supports_workstep_tools is False
 
 
-class PromptCapturingEngine(BaseLLMEngine):
+class PromptCapturingEngine(AcpEngineBase):
     calls: list[str] = []
 
     @staticmethod
@@ -229,8 +230,8 @@ def _plain_engine():
 def test_assemble_context_injects_workstep_docs_when_engine_capable(
     monkeypatch, tmp_path
 ):
-    from services import coordinator as coordinator_module
-    from services.coordinator import CoordinatorModule
+    from agent_assistants import coordinator as coordinator_module
+    from agent_assistants.coordinator import CoordinatorModule
 
     monkeypatch.setattr(coordinator_module, "create_engine", lambda _id: _capable_engine())
     coordinator = CoordinatorModule(EventBus(), None, None)
@@ -248,8 +249,8 @@ def test_assemble_context_injects_workstep_docs_when_engine_capable(
 def test_assemble_context_omits_workstep_docs_without_capability(
     monkeypatch, tmp_path
 ):
-    from services import coordinator as coordinator_module
-    from services.coordinator import CoordinatorModule
+    from agent_assistants import coordinator as coordinator_module
+    from agent_assistants.coordinator import CoordinatorModule
 
     monkeypatch.setattr(coordinator_module, "create_engine", lambda _id: _plain_engine())
     coordinator = CoordinatorModule(EventBus(), None, None)

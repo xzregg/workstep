@@ -11,14 +11,15 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
+from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
-    BaseLLMEngine,
     EngineInstallResult,
     EngineModel,
     install_with_command,
 )
+
 from engines.core.plans import subagent_event_from_message
-from engines.core.events import InternalEvent, normalize_cost
+from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
 from engines.core.interactions import (
     interaction_from_tool_use,
     permission_request,
@@ -122,7 +123,7 @@ _APPROVAL_DENIAL_PATTERN = re.compile(
 )
 
 
-class ClaudeCodeEngine(BaseLLMEngine):
+class ClaudeCodeEngine(AcpEngineBase):
     ENGINE_ID = "claude"
 
     """Claude Code CLI engine using direct subprocess.
@@ -131,6 +132,7 @@ class ClaudeCodeEngine(BaseLLMEngine):
     """
 
     def __init__(self):
+        super().__init__()
         self._process: asyncio.subprocess.Process | None = None
         self._running = False
         self._live_mode = False
@@ -526,19 +528,22 @@ class ClaudeCodeEngine(BaseLLMEngine):
             if delta_type == "text_delta" and delta.get("text"):
                 state["streamed_text"] = True
                 events.append(InternalEvent(
-                    type="text_delta", data={"delta": str(delta["text"])}
+                    type="agent_message_chunk",
+                    data={"content": {"text": str(delta["text"])}},
                 ))
             elif delta_type in {"thinking_delta", "signature_delta"}:
                 thinking = delta.get("thinking") or delta.get("text")
                 if thinking:
                     state["streamed_thinking"] = True
                     events.append(InternalEvent(
-                        type="thinking_delta", data={"delta": str(thinking)}
+                        type="agent_thought_chunk",
+                        data={"content": {"text": str(thinking)}},
                     ))
             elif delta_type == "input_json_delta" and delta.get("partial_json"):
-                events.append(InternalEvent(
-                    type="tool_input_delta",
-                    data={"delta": str(delta["partial_json"])},
+                events.append(tool_call_update_event(
+                    tool_call_id=str(stream_event.get("index") or ""),
+                    status="in_progress",
+                    raw_input=str(delta["partial_json"]),
                 ))
             return events
 
@@ -549,13 +554,15 @@ class ClaudeCodeEngine(BaseLLMEngine):
                     text = block.get("text", "")
                     if text:
                         events.append(InternalEvent(
-                            type="text_delta", data={"delta": text}
+                            type="agent_message_chunk",
+                            data={"content": {"text": text}},
                         ))
                 elif block_type == "thinking" and not state["streamed_thinking"]:
                     thinking = block.get("thinking", "")
                     if thinking:
                         events.append(InternalEvent(
-                            type="thinking_delta", data={"delta": thinking}
+                            type="agent_thought_chunk",
+                            data={"content": {"text": thinking}},
                         ))
                 elif block_type == "tool_use":
                     tool_use_id = str(block.get("id", ""))
@@ -573,11 +580,11 @@ class ClaudeCodeEngine(BaseLLMEngine):
                     if interaction is not None:
                         events.append(interaction)
                     else:
-                        events.append(InternalEvent(type="tool_use", data={
-                            "id": tool_use_id,
-                            "name": tool_name,
-                            "input": block.get("input", {}),
-                        }))
+                        events.append(tool_call_event(
+                            tool_call_id=tool_use_id,
+                            title=tool_name,
+                            raw_input=block.get("input", {}),
+                        ))
             return events
 
         if event_type == "result":
@@ -601,7 +608,7 @@ class ClaudeCodeEngine(BaseLLMEngine):
                 cost = normalize_cost(obj)
             if cost is not None:
                 data["cost"] = cost
-            events.append(InternalEvent(type="usage", data=data))
+            events.append(InternalEvent(type="usage_update", data=data))
             session_id = obj.get("session_id")
             if session_id and not state["session_started"]:
                 state["session_started"] = True
@@ -649,11 +656,11 @@ class ClaudeCodeEngine(BaseLLMEngine):
                         ],
                     ))
                 else:
-                    events.append(InternalEvent(type="tool_result", data={
-                        "tool_use_id": tool_use_id,
-                        "content": content,
-                        "is_error": is_error,
-                    }))
+                    events.append(tool_call_update_event(
+                        tool_call_id=tool_use_id,
+                        status="failed" if is_error else "completed",
+                        raw_output=content,
+                    ))
             return events
 
         return events
@@ -754,6 +761,77 @@ class ClaudeCodeEngine(BaseLLMEngine):
     def supports_vision(self) -> bool:
         """Claude models accept markdown image references in prompts."""
         return True
+
+    # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "usage_update",
+        "interaction_request",
+        "live_message",
+        "status",
+        "session_started",
+        "subagent",
+        "error",
+    })
+
+    @property
+    def supports_sessions(self) -> bool:
+        """claude -p --resume <session_id> 原生支持恢复会话。"""
+        return True
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """权限拒绝 → permission 弹窗 → 决定作为 tool_result 注入 CLI，原生审批语义。"""
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """无法脱离提示词创建空会话；会话在首次 spawn（system/init）时建立。"""
+        logger.info("ClaudeCode create_session: not supported without a prompt")
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """--resume 原生恢复；spawn(session_id=...) 时实际恢复。"""
+        return bool(session_id)
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """关闭会话 = 结束当前运行中的 claude 进程。"""
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """取消会话 = 终止当前运行中的 claude 进程。"""
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """配置在 spawn 时从 config_store 读取（permission_mode / model）；
+        运行中修改无原生入口。"""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """无原生 reset；新会话从全局配置重新读取。"""
+        return None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

@@ -23,6 +23,7 @@ from services.task_runner import TaskRunner
 from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message, new_message_id
 from services.pipeline import DAGScheduler, Step
+from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -500,7 +501,7 @@ class WorkflowRuntime:
                     task.id,
                 )
                 continue
-            await self._event_bus.publish({
+            recovered_event = {
                 "task_id": task.id,
                 "step_key": next(iter(stale_keys), None),
                 "type": "run_recovered",
@@ -510,7 +511,10 @@ class WorkflowRuntime:
                     "recovered_at": now,
                     "recovered_count": workflow_run.recovered_count,
                 },
-            })
+            }
+            ctx = AGUIContext.from_event(recovered_event)
+            for agui_event in to_agui_events(recovered_event, ctx):
+                await self._event_bus.publish(agui_event)
             recovered += 1
         return recovered
 

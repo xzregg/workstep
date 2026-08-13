@@ -1,11 +1,11 @@
 """Public ACP plan protocol shared by every engine adapter."""
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from engines.core.plans import plan_event
 
 
-class PlanEngine(BaseLLMEngine):
+class PlanEngine(AcpEngineBase):
     @staticmethod
     def is_installed(): return True
 
@@ -49,14 +49,14 @@ def test_plan_event_uses_acp_stable_snapshot_shape():
 
 
 def test_base_engine_normalizes_claude_todo_snapshot_to_acp_plan():
-    event = PlanEngine().normalize_event(InternalEvent(type="tool_use", data={
-        "id": "todo-1",
-        "name": "TodoWrite",
-        "input": {"todos": [
+    event = PlanEngine().normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "todo-1",
+		"title": "TodoWrite",
+		"raw_input": {"todos": [
             {"content": "分析代码", "status": "completed"},
             {"content": "实现功能", "status": "in_progress"},
         ]},
-    }))
+	}))
 
     assert event is not None
     assert event.type == "plan"
@@ -69,21 +69,22 @@ def test_base_engine_normalizes_claude_todo_snapshot_to_acp_plan():
 def test_base_engine_reduces_claude_task_tools_to_full_plan_snapshots():
     engine = PlanEngine()
 
-    created = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "create-call-1",
-        "name": "TaskCreate",
-        "input": {"subject": "实现后端", "description": "接入 Plan"},
-    }))
-    assigned = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "create-call-1",
-        "content": '{"task":{"id":"task-7","subject":"实现后端"}}',
+    created = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "create-call-1",
+		"title": "TaskCreate",
+		"raw_input": {"subject": "实现后端", "description": "接入 Plan"},
+	}))
+    assigned = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "create-call-1",
+		"status": "completed",
+		"raw_output": '{"task":{"id":"task-7","subject":"实现后端"}}',
         "is_error": False,
-    }))
-    updated = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "update-call-1",
-        "name": "TaskUpdate",
-        "input": {"taskId": "task-7", "status": "in_progress"},
-    }))
+	}))
+    updated = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "update-call-1",
+		"title": "TaskUpdate",
+		"raw_input": {"taskId": "task-7", "status": "in_progress"},
+	}))
 
     assert created is not None and created.type == "plan"
     assert assigned is not None and assigned.type == "plan"
@@ -97,18 +98,18 @@ def test_base_engine_reduces_claude_task_tools_to_full_plan_snapshots():
 
 def test_base_engine_replaces_plan_from_claude_task_list_result():
     engine = PlanEngine()
-    started = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "list-call-1", "name": "TaskList", "input": {},
+    started = engine.normalize_event(InternalEvent(type="tool_call", data={
+        "tool_call_id": "list-call-1", "title": "TaskList", "raw_input": {},
     }))
-    listed = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "list-call-1",
-        "content": '{"tasks":['
+    listed = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "list-call-1",
+		"status": "completed",
+		"raw_output": '{"tasks":['
         '{"id":"1","subject":"后端","status":"completed"},'
-        '{"id":"2","subject":"前端","status":"in_progress"}]}' ,
-        "is_error": False,
-    }))
+        '{"id":"2","subject":"前端","status":"in_progress"}]}',
+	}))
 
-    assert started is not None and started.type == "tool_use"
+    assert started is not None and started.type == "tool_call"
     assert listed is not None and listed.type == "plan"
     assert listed.data["entries"] == [
         {"content": "后端", "priority": "medium", "status": "completed"},
@@ -119,20 +120,20 @@ def test_base_engine_replaces_plan_from_claude_task_list_result():
 def test_base_engine_uses_description_fallback_for_claude_task_tools():
     engine = PlanEngine()
 
-    created = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "create-call-2",
-        "name": "TaskCreate",
-        "input": {"description": "实现后端", "prompt": "详细提示"},
+    created = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "create-call-2",
+		"title": "TaskCreate",
+		"raw_input": {"description": "实现后端", "prompt": "详细提示"},
+	}))
+    engine.normalize_event(InternalEvent(type="tool_call", data={
+        "tool_call_id": "list-call-2", "title": "TaskList", "raw_input": {},
     }))
-    engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "list-call-2", "name": "TaskList", "input": {},
-    }))
-    listed = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "list-call-2",
-        "content": '{"tasks":[{"id":"1","description":"后端","status":"completed"},'
+    listed = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "list-call-2",
+		"status": "completed",
+		"raw_output": '{"tasks":[{"id":"1","description":"后端","status":"completed"},'
         '{"id":"2","description":"前端","status":"running"}]}',
-        "is_error": False,
-    }))
+	}))
 
     assert created is not None and created.type == "plan"
     assert created.data["entries"][0]["content"] == "实现后端"
@@ -145,16 +146,16 @@ def test_base_engine_uses_description_fallback_for_claude_task_tools():
 
 def test_base_engine_maps_running_and_paused_status_to_in_progress():
     engine = PlanEngine()
-    engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "create-call-3",
-        "name": "TaskCreate",
-        "input": {"description": "实现前端"},
-    }))
-    updated = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "update-call-3",
-        "name": "TaskUpdate",
-        "input": {"taskId": "pending:create-call-3", "status": "running"},
-    }))
+    engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "create-call-3",
+		"title": "TaskCreate",
+		"raw_input": {"description": "实现前端"},
+	}))
+    updated = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "update-call-3",
+		"title": "TaskUpdate",
+		"raw_input": {"taskId": "pending:create-call-3", "status": "running"},
+	}))
 
     assert updated is not None and updated.type == "plan"
     assert updated.data["entries"] == [{
@@ -186,11 +187,11 @@ def test_base_engine_tracks_subagent_lifecycle_into_plan_snapshots():
         "status": "completed",
         "stage": "notification",
     }))
-    snapshot = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "update-call-7",
-        "name": "TaskUpdate",
-        "input": {"taskId": "task-7", "status": "completed"},
-    }))
+    snapshot = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "update-call-7",
+		"title": "TaskUpdate",
+		"raw_input": {"taskId": "task-7", "status": "completed"},
+	}))
 
     # 子代理生命周期事件本身透传，plan 快照由后续 plan 工具事件携带最新状态。
     assert started is not None and started.type == "subagent"
@@ -207,11 +208,11 @@ def test_base_engine_tracks_subagent_lifecycle_into_plan_snapshots():
 def test_base_engine_merges_task_tool_result_into_subagent_plan_entry():
     engine = PlanEngine()
 
-    engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "task-call-9",
-        "name": "Task",
-        "input": {"description": "调研 ACP 协议", "prompt": "查文档"},
-    }))
+    engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "task-call-9",
+		"title": "Task",
+		"raw_input": {"description": "调研 ACP 协议", "prompt": "查文档"},
+	}))
     engine.normalize_event(InternalEvent(type="subagent", data={
         "task_id": "task-9",
         "description": "调研 ACP 协议",
@@ -226,11 +227,12 @@ def test_base_engine_merges_task_tool_result_into_subagent_plan_entry():
         "stage": "notification",
         "summary": "结论：ACP stable plan 是整表快照",
     }))
-    result = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "task-call-9",
-        "content": '{"task":{"id":"task-9"}}',
+    result = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "task-call-9",
+		"status": "completed",
+		"raw_output": '{"task":{"id":"task-9"}}',
         "is_error": False,
-    }))
+	}))
 
     assert finished is not None and finished.type == "subagent"
     assert result is not None and result.type == "plan"
@@ -256,11 +258,11 @@ def test_base_engine_marks_failed_subagent_terminal_in_plan():
         "stage": "notification",
         "summary": "工具执行错误",
     }))
-    snapshot = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "update-call-11",
-        "name": "TaskUpdate",
-        "input": {"taskId": "task-11", "status": "completed"},
-    }))
+    snapshot = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "update-call-11",
+		"title": "TaskUpdate",
+		"raw_input": {"taskId": "task-11", "status": "completed"},
+	}))
 
     assert failed is not None and failed.type == "subagent"
     assert snapshot is not None and snapshot.type == "plan"
@@ -274,16 +276,17 @@ def test_base_engine_marks_failed_subagent_terminal_in_plan():
 def test_base_engine_tracks_codex_spawn_agent_in_plan():
     engine = PlanEngine()
 
-    started = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "agent-1",
-        "name": "spawnAgent",
-        "input": {"prompt": "分析 provider 代码", "model": "gpt-5.6"},
-    }))
-    finished = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "agent-1",
-        "content": '{"agents_states":[{"message":"已完成","status":"completed"}]}',
+    started = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "agent-1",
+		"title": "spawnAgent",
+		"raw_input": {"prompt": "分析 provider 代码", "model": "gpt-5.6"},
+	}))
+    finished = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "agent-1",
+		"status": "completed",
+		"raw_output": '{"agents_states":[{"message":"已完成","status":"completed"}]}',
         "is_error": False,
-    }))
+	}))
 
     assert started is not None and started.type == "plan"
     assert started.data["entries"] == [{
@@ -303,21 +306,22 @@ def test_base_engine_folds_acp_style_subagent_tool_into_plan():
     """ACP 工具调用的 name 是人类可读标题；input 含 prompt 即视为子代理兜底。"""
     engine = PlanEngine()
 
-    started = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "call-1",
-        "name": "调用子代理分析依赖",
-        "input": {"prompt": "分析 provider 代码并给出结论", "model": "auto"},
-    }))
-    progressed = engine.normalize_event(InternalEvent(type="tool_use", data={
-        "id": "call-2",
-        "name": "Bash",
-        "input": {"command": "ls -la"},
-    }))
-    finished = engine.normalize_event(InternalEvent(type="tool_result", data={
-        "tool_use_id": "call-1",
-        "content": '{"status":"completed"}',
+    started = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "call-1",
+		"title": "调用子代理分析依赖",
+		"raw_input": {"prompt": "分析 provider 代码并给出结论", "model": "auto"},
+	}))
+    progressed = engine.normalize_event(InternalEvent(type="tool_call", data={
+		"tool_call_id": "call-2",
+		"title": "Bash",
+		"raw_input": {"command": "ls -la"},
+	}))
+    finished = engine.normalize_event(InternalEvent(type="tool_call_update", data={
+		"tool_call_id": "call-1",
+		"status": "completed",
+		"raw_output": '{"status":"completed"}',
         "is_error": False,
-    }))
+	}))
 
     assert started is not None and started.type == "plan"
     assert started.data["entries"] == [{
@@ -326,7 +330,7 @@ def test_base_engine_folds_acp_style_subagent_tool_into_plan():
         "status": "pending",
     }]
     # 普通命令工具不进入 plan。
-    assert progressed is not None and progressed.type == "tool_use"
+    assert progressed is not None and progressed.type == "tool_call"
     assert finished is not None and finished.type == "plan"
     assert finished.data["entries"] == [{
         "content": "分析 provider 代码并给出结论",
@@ -348,7 +352,7 @@ def test_acp_engine_folds_tool_call_start_into_plan_snapshot():
         kind="other",
         raw_input={"prompt": "实现后端接口", "model": "auto"},
     ))
-    assert started is not None and started.type == "tool_use"
+    assert started is not None and started.type == "tool_call"
 
     normalized = engine.normalize_event(started)
     assert normalized is not None and normalized.type == "plan"

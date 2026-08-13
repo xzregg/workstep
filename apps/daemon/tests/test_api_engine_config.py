@@ -796,8 +796,14 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
     ):
         assert prompt == "do work"
         assert cwd == "/tmp/project"
-        await on_event(InternalEvent(type="text_delta", data={"delta": "agent "}))
-        await on_event(InternalEvent(type="text_delta", data={"delta": "result"}))
+        await on_event(InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "agent "}},
+        ))
+        await on_event(InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "result"}},
+        ))
         return FakeResult(), FakeUsage()
 
     monkeypatch.setattr(PydanticAIEngine, "build_model", staticmethod(fake_build_model))
@@ -816,9 +822,9 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
     assert [event.type for event in events] == [
         "session_started",
         "status",
-        "text_delta",
-        "text_delta",
-        "usage",
+        "agent_message_chunk",
+        "agent_message_chunk",
+        "usage_update",
         "status",
     ]
     assert events[4].data["cost"] == {"amount": 0.123, "currency": "USD"}
@@ -860,22 +866,22 @@ def test_pydantic_ai_maps_text_thinking_and_tool_events():
     ]
 
     assert [event.type for event in mapped if event is not None] == [
-        "text_delta",
-        "text_delta",
-        "thinking_delta",
-        "thinking_delta",
-        "tool_use",
-        "tool_result",
+        "agent_message_chunk",
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
     ]
     assert mapped[4].data == {
-        "id": "tool-1",
-        "name": "read_file",
-        "input": {"path": "README.md"},
+        "tool_call_id": "tool-1",
+        "title": "read_file",
+        "raw_input": {"path": "README.md"},
     }
     assert mapped[5].data == {
-        "tool_use_id": "tool-1",
-        "content": "文件内容",
-        "is_error": False,
+        "tool_call_id": "tool-1",
+        "status": "completed",
+        "raw_output": "文件内容",
     }
 
 
@@ -1037,7 +1043,7 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
     assert [event.type for event in events] == [
         "session_started",
         "status",
-        "text_delta",
+        "agent_message_chunk",
         "status",
     ]
 
@@ -1102,7 +1108,7 @@ async def test_pydantic_ai_spawn_seeds_history_and_reports_engine_state(monkeypa
     assert [event.type for event in events] == [
         "session_started",
         "status",
-        "text_delta",
+        "agent_message_chunk",
         "engine_state",
         "status",
     ]

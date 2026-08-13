@@ -20,6 +20,13 @@ export function usageFromEvents(events: any[]): MessageUsage {
     if (event?.type === 'usage' && event.data && typeof event.data === 'object') {
       return event.data as Record<string, unknown>
     }
+    if (
+      event?.type === 'CUSTOM'
+      && event?.name === 'workstep.usage'
+      && event?.value && typeof event.value === 'object'
+    ) {
+      return event.value as Record<string, unknown>
+    }
   }
   return null
 }

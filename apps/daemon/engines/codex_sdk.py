@@ -7,13 +7,20 @@ import os
 import uuid
 from typing import Any, AsyncIterator
 
+from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
-    BaseLLMEngine,
     EngineInstallResult,
     EngineModel,
     install_python_package,
 )
-from engines.core.events import InternalEvent, compacted_event, normalize_token_usage
+
+from engines.core.events import (
+    InternalEvent,
+    compacted_event,
+    normalize_token_usage,
+    tool_call_event,
+    tool_call_update_event,
+)
 from engines.core.interactions import permission_request, permission_signature
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
@@ -27,7 +34,7 @@ from services.config import (
 logger = logging.getLogger(__name__)
 
 
-class CodexSDKEngine(BaseLLMEngine):
+class CodexSDKEngine(AcpEngineBase):
     """Codex driven by the official ``openai-codex`` Python SDK.
 
     The SDK launches a ``codex`` CLI binary in-process (stream-json protocol)
@@ -40,6 +47,7 @@ class CodexSDKEngine(BaseLLMEngine):
     ENGINE_ID = "codex_sdk"
 
     def __init__(self):
+        super().__init__()
         self._running = False
         self._stream_task: asyncio.Task | None = None
         self._client: Any | None = None
@@ -224,11 +232,12 @@ class CodexSDKEngine(BaseLLMEngine):
         else:
             name = getattr(root, "tool", "") or ""
             tool_input = cls._plain(getattr(root, "arguments", {}) or {})
-        return InternalEvent(type="tool_use", data={
-            "id": getattr(root, "id", "") or "",
-            "name": name,
-            "input": tool_input,
-        })
+        return tool_call_event(
+            tool_call_id=str(getattr(root, "id", "") or ""),
+            title=name,
+            kind="other",
+            raw_input=tool_input,
+        )
 
     @classmethod
     def _tool_result_event(cls, root: Any) -> InternalEvent:
@@ -264,11 +273,11 @@ class CodexSDKEngine(BaseLLMEngine):
             or getattr(root, "error", None) is not None
             or (isinstance(exit_code, int) and exit_code != 0)
         )
-        return InternalEvent(type="tool_result", data={
-            "tool_use_id": getattr(root, "id", "") or "",
-            "content": "\n".join(content_parts),
-            "is_error": bool(is_error),
-        })
+        return tool_call_update_event(
+            tool_call_id=str(getattr(root, "id", "") or ""),
+            status="failed" if bool(is_error) else "completed",
+            raw_output="\n".join(content_parts),
+        )
 
     def _map_notification(
         self,
@@ -293,7 +302,10 @@ class CodexSDKEngine(BaseLLMEngine):
             if delta:
                 state["emitted_text"] = True
                 events.append(
-                    InternalEvent(type="text_delta", data={"delta": str(delta)})
+                    InternalEvent(
+                        type="agent_message_chunk",
+                        data={"content": {"text": str(delta)}},
+                    )
                 )
 
         elif method in ("item/reasoning/textDelta", "item/reasoning/summaryTextDelta"):
@@ -301,7 +313,10 @@ class CodexSDKEngine(BaseLLMEngine):
             if delta:
                 state["emitted_thinking"] = True
                 events.append(
-                    InternalEvent(type="thinking_delta", data={"delta": str(delta)})
+                    InternalEvent(
+                        type="agent_thought_chunk",
+                        data={"content": {"text": str(delta)}},
+                    )
                 )
 
         elif method == "item/started":
@@ -327,7 +342,10 @@ class CodexSDKEngine(BaseLLMEngine):
                 if text and not state["emitted_text"]:
                     state["emitted_text"] = True
                     events.append(
-                        InternalEvent(type="text_delta", data={"delta": str(text)})
+                        InternalEvent(
+                            type="agent_message_chunk",
+                            data={"content": {"text": str(text)}},
+                        )
                     )
             elif rtype == "reasoning":
                 content = getattr(root, "content", None)
@@ -338,7 +356,10 @@ class CodexSDKEngine(BaseLLMEngine):
                 if text and not state.get("emitted_thinking", False):
                     state["emitted_thinking"] = True
                     events.append(
-                        InternalEvent(type="thinking_delta", data={"delta": str(text)})
+                        InternalEvent(
+                            type="agent_thought_chunk",
+                            data={"content": {"text": str(text)}},
+                        )
                     )
             elif rtype in {
                 "commandExecution", "fileChange", "mcpToolCall",
@@ -369,7 +390,7 @@ class CodexSDKEngine(BaseLLMEngine):
                 reasoning = getattr(source, "reasoning_output_tokens", None)
                 if isinstance(reasoning, (int, float)):
                     usage_data["reasoning_output_tokens"] = int(reasoning)
-                events.append(InternalEvent(type="usage", data=usage_data))
+                events.append(InternalEvent(type="usage_update", data=usage_data))
 
         elif method == "thread/compacted":
             events.append(compacted_event())
@@ -754,6 +775,78 @@ class CodexSDKEngine(BaseLLMEngine):
     def supports_thinking_effort(self) -> bool:
         """``config.model_reasoning_effort`` supports a per-turn override."""
         return True
+
+    # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "plan",
+        "usage_update",
+        "interaction_request",
+        "live_message",
+        "status",
+        "session_started",
+        "compacted",
+        "error",
+    })
+
+    @property
+    def supports_sessions(self) -> bool:
+        """SDK 的 thread_resume 原生支持按 thread_id 恢复会话。"""
+        return True
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """SDK approval_handler 桥接审批回调到 interaction_request，原生审批语义。"""
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """无法脱离提示词创建空会话；会话在首次 spawn（thread_start）时建立。"""
+        logger.info("CodexSDK create_session: not supported without a prompt")
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """SDK thread_resume 原生恢复；spawn(session_id=...) 时实际恢复。"""
+        return bool(session_id)
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """关闭会话 = 结束当前运行中的 client / 流任务。"""
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """取消会话 = 终止当前运行中的 client / 流任务。"""
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """配置在 spawn 时从 config_store 读取（sandbox / approval_mode / reasoning）；
+        运行中修改无原生入口。"""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """无原生 reset；新会话从全局配置重新读取。"""
+        return None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

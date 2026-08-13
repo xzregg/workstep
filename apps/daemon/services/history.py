@@ -3,10 +3,51 @@
 import json
 import logging
 
+from engines.core.agui import AGUIContext, to_agui_events
+from engines.core.events import map_legacy_event
 from models.message import Message
 from models.task import Task
 
 logger = logging.getLogger(__name__)
+
+
+def translate_events(
+    events: list[dict],
+    *,
+    task_id: str | None = None,
+    step_key: str | None = None,
+    message_id: str | None = None,
+    channel: str | None = None,
+    engine: str | None = None,
+    model: str | None = None,
+) -> list[dict]:
+    """历史回放统一读路径：旧词汇 → 新词汇 → AG-UI 翻译。
+
+    与实时 WebSocket 推送共用 ``engines/core/agui.py`` 翻译层，保证前端
+    store 只消费 AG-UI。
+    """
+    ctx = AGUIContext(
+        task_id=task_id,
+        step_key=step_key,
+        message_id=message_id,
+        channel=channel,
+        engine=engine,
+        model=model,
+    )
+    result: list[dict] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        mapped = map_legacy_event(event)
+        ctx.event_sequence = (
+            event.get("event_sequence")
+            if event.get("event_sequence") is not None
+            else event.get("sequence")
+        )
+        ctx.timestamp = event.get("timestamp")
+        ctx.created_at = event.get("created_at")
+        result.extend(to_agui_events(mapped, ctx))
+    return result
 
 
 def get_task_history(task_id: str) -> list[dict]:
@@ -39,12 +80,22 @@ def get_task_history(task_id: str) -> list[dict]:
             "usage": None,
         }
 
-        # Parse events_json
+        # Parse events_json → AG-UI（旧词汇经兼容映射）
+        raw_events: list[dict] = []
         if msg.events_json:
             try:
-                entry["events"] = json.loads(msg.events_json)
+                raw_events = json.loads(msg.events_json)
             except json.JSONDecodeError:
                 logger.warning("Invalid events_json for message %s", msg.id)
+        entry["events"] = translate_events(
+            raw_events,
+            task_id=task_id,
+            step_key=msg.step_key,
+            message_id=msg.id,
+            channel=msg.channel,
+            engine=msg.engine,
+            model=msg.model,
+        )
 
         # Parse usage_json
         if msg.usage_json:
@@ -88,9 +139,18 @@ def get_step_history(task_id: str, step_key: str) -> list[dict]:
         }
         if msg.events_json:
             try:
-                entry["events"] = json.loads(msg.events_json)
+                raw_events = json.loads(msg.events_json)
             except json.JSONDecodeError:
-                pass
+                raw_events = []
+            entry["events"] = translate_events(
+                raw_events,
+                task_id=task_id,
+                step_key=step_key,
+                message_id=msg.id,
+                channel=msg.channel,
+                engine=msg.engine,
+                model=msg.model,
+            )
         if msg.prompt_json:
             try:
                 entry["prompt"] = json.loads(msg.prompt_json).get("prompt")

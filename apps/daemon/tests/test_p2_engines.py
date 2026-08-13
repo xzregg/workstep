@@ -81,8 +81,8 @@ def test_codex_map_agent_message():
         "item": {"type": "agent_message", "message": "Hello from Codex"},
     })
     assert event is not None
-    assert event.type == "text_delta"
-    assert event.data["delta"] == "Hello from Codex"
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == "Hello from Codex"
 
 
 def test_codex_map_agent_message_text_field():
@@ -93,8 +93,8 @@ def test_codex_map_agent_message_text_field():
         "item": {"type": "agent_message", "text": "你好！我是 Codex"},
     })
     assert event is not None
-    assert event.type == "text_delta"
-    assert event.data["delta"] == "你好！我是 Codex"
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == "你好！我是 Codex"
 
 
 def test_codex_map_command_execution():
@@ -105,8 +105,8 @@ def test_codex_map_command_execution():
         "item": {"type": "command_execution", "id": "cmd1", "command": "ls -la"},
     })
     assert event is not None
-    assert event.type == "tool_use"
-    assert event.data["name"] == "Bash"
+    assert event.type == "tool_call"
+    assert event.data["title"] == "Bash"
 
     # tool_result (completed)
     event = engine._map_event({
@@ -114,8 +114,8 @@ def test_codex_map_command_execution():
         "item": {"type": "command_execution", "id": "cmd1", "output": "file1\nfile2", "exit_code": 0},
     })
     assert event is not None
-    assert event.type == "tool_result"
-    assert not event.data["is_error"]
+    assert event.type == "tool_call_update"
+    assert event.data["status"] == "completed"
 
 
 def test_codex_map_sandbox_denial_to_interaction_request():
@@ -152,8 +152,8 @@ def test_codex_map_sandbox_denial_to_interaction_request():
         },
     })
     assert event is not None
-    assert event.type == "tool_result"
-    assert event.data["is_error"] is True
+    assert event.type == "tool_call_update"
+    assert event.data["status"] == "failed"
 
     # 成功命令照常透传
     event = engine._map_event({
@@ -166,8 +166,8 @@ def test_codex_map_sandbox_denial_to_interaction_request():
             "exit_code": 0,
         },
     })
-    assert event.type == "tool_result"
-    assert event.data["is_error"] is False
+    assert event.type == "tool_call_update"
+    assert event.data["status"] == "completed"
 
 
 @pytest.mark.anyio
@@ -541,13 +541,13 @@ def test_codex_maps_collab_agent_tool_call_items():
         },
     })
 
-    assert started is not None and started.type == "tool_use"
-    assert started.data["name"] == "spawnAgent"
-    assert started.data["input"]["prompt"] == "分析 provider 代码"
-    assert completed is not None and completed.type == "tool_result"
-    assert completed.data["tool_use_id"] == "agent-1"
-    assert "已完成" in completed.data["content"]
-    assert completed.data["is_error"] is False
+    assert started is not None and started.type == "tool_call"
+    assert started.data["title"] == "spawnAgent"
+    assert started.data["raw_input"]["prompt"] == "分析 provider 代码"
+    assert completed is not None and completed.type == "tool_call_update"
+    assert completed.data["tool_call_id"] == "agent-1"
+    assert "已完成" in completed.data["raw_output"]
+    assert completed.data["status"] == "completed"
 
 def test_claude_code_denial_maps_to_interaction_request():
     """live 模式下「requires approval」tool_result 转成 interaction_request。"""
@@ -563,7 +563,7 @@ def test_claude_code_denial_maps_to_interaction_request():
             "is_error": True,
         }]},
     })
-    assert [e.type for e in events] == ["tool_result"]
+    assert [e.type for e in events] == ["tool_call_update"]
 
     engine._live_mode = True
     # 需先记录 tool_use 名称
@@ -607,8 +607,8 @@ def test_claude_code_denial_maps_to_interaction_request():
             "is_error": True,
         }]},
     })
-    assert [e.type for e in events] == ["tool_result"]
-    assert events[0].data["is_error"] is True
+    assert [e.type for e in events] == ["tool_call_update"]
+    assert events[0].data["status"] == "failed"
 
 
 def test_claude_code_permission_signature():
@@ -990,7 +990,7 @@ def test_codex_map_turn_completed():
         "usage": {"input_tokens": 200, "output_tokens": 100},
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["input_tokens"] == 200
 
 
@@ -1025,7 +1025,7 @@ def test_codex_map_turn_completed_with_cache():
         },
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["input_tokens"] == 300
     assert event.data["output_tokens"] == 100
     assert event.data["cache_creation_input_tokens"] == 150
@@ -1045,7 +1045,7 @@ def test_codex_map_turn_completed_with_cost():
         },
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["cost"] == {"amount": 0.0123, "currency": "USD"}
 
 
@@ -1190,8 +1190,8 @@ async def test_codex_spawn_ignores_stderr_when_output_present(monkeypatch):
         async for event in CodexEngine().spawn(prompt="hello", cwd="/tmp")
     ]
 
-    assert [event.type for event in events] == ["status", "text_delta", "status"]
-    assert events[1].data["delta"] == "WORKSTEP_ENGINE_OK"
+    assert [event.type for event in events] == ["status", "agent_message_chunk", "status"]
+    assert events[1].data["content"]["text"] == "WORKSTEP_ENGINE_OK"
 
 
 @pytest.mark.anyio
@@ -1249,8 +1249,8 @@ def test_hermes_map_update_text():
         "content": {"type": "text", "text": "Hello"},
     })
     assert event is not None
-    assert event.type == "text_delta"
-    assert event.data["delta"] == "Hello"
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == "Hello"
 
 def test_hermes_map_update_thinking():
     engine = HermesEngine()
@@ -1259,7 +1259,7 @@ def test_hermes_map_update_thinking():
         "content": {"type": "text", "text": "thinking..."},
     })
     assert event is not None
-    assert event.type == "thinking_delta"
+    assert event.type == "agent_thought_chunk"
 
 
 def test_hermes_map_update_tool_call():
@@ -1271,8 +1271,8 @@ def test_hermes_map_update_tool_call():
         "input": {"file_path": "/a.py"},
     })
     assert event is not None
-    assert event.type == "tool_use"
-    assert event.data["name"] == "Edit"
+    assert event.type == "tool_call"
+    assert event.data["title"] == "Edit"
 
 
 def test_hermes_map_update_tool_result():
@@ -1284,8 +1284,8 @@ def test_hermes_map_update_tool_result():
         "status": "completed",
     })
     assert event is not None
-    assert event.type == "tool_result"
-    assert not event.data["is_error"]
+    assert event.type == "tool_call_update"
+    assert event.data["status"] == "completed"
 
 
 def test_hermes_map_usage_update_with_cache():
@@ -1299,7 +1299,7 @@ def test_hermes_map_usage_update_with_cache():
         "cache_read_input_tokens": 120,
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["input_tokens"] == 300
     assert event.data["output_tokens"] == 100
     assert event.data["cache_creation_input_tokens"] == 150
@@ -1316,7 +1316,7 @@ def test_hermes_map_usage_update_with_cost():
         "cost": {"amount": 1.5, "currency": "CNY"},
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["cost"] == {"amount": 1.5, "currency": "CNY"}
 
 
@@ -1357,7 +1357,7 @@ def test_acp_usage_update_includes_canonical_token_fields():
     ))
 
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["total_tokens"] == 320
     assert event.data["context_window"] == 200000
 
@@ -1711,8 +1711,8 @@ def test_claude_agent_sdk_maps_partial_stream_without_final_text_duplicate():
         content=[TextBlock(text="增量")], model="sonnet"
     ), state)
 
-    assert [event.type for event in partial] == ["session_started", "text_delta"]
-    assert partial[1].data["delta"] == "增量"
+    assert [event.type for event in partial] == ["session_started", "agent_message_chunk"]
+    assert partial[1].data["content"]["text"] == "增量"
     assert completed == []
 
 
@@ -1722,8 +1722,8 @@ def test_claude_agent_sdk_maps_assistant_text():
     message = _SdkFake(content=[block])
     msg = _SdkFake(type="assistant", message=message)
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["text_delta"]
-    assert events[0].data["delta"] == "你好，Claude！"
+    assert [event.type for event in events] == ["agent_message_chunk"]
+    assert events[0].data["content"]["text"] == "你好，Claude！"
 
 
 def test_claude_agent_sdk_maps_thinking_and_tool_use():
@@ -1734,11 +1734,11 @@ def test_claude_agent_sdk_maps_thinking_and_tool_use():
     ])
     msg = _SdkFake(type="assistant", message=message)
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["thinking_delta", "tool_use"]
-    assert events[0].data["delta"] == "让我想想"
-    assert events[1].data["id"] == "tool-1"
-    assert events[1].data["name"] == "Read"
-    assert events[1].data["input"] == {"path": "a.py"}
+    assert [event.type for event in events] == ["agent_thought_chunk", "tool_call"]
+    assert events[0].data["content"]["text"] == "让我想想"
+    assert events[1].data["tool_call_id"] == "tool-1"
+    assert events[1].data["title"] == "Read"
+    assert events[1].data["raw_input"] == {"path": "a.py"}
 
 
 def test_claude_agent_sdk_maps_tool_result():
@@ -1748,10 +1748,10 @@ def test_claude_agent_sdk_maps_tool_result():
     ])
     msg = _SdkFake(type="user", message=message)
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["tool_result"]
-    assert events[0].data["tool_use_id"] == "tool-1"
-    assert events[0].data["content"] == "file content"
-    assert events[0].data["is_error"] is False
+    assert [event.type for event in events] == ["tool_call_update"]
+    assert events[0].data["tool_call_id"] == "tool-1"
+    assert events[0].data["raw_output"] == "file content"
+    assert events[0].data["status"] == "completed"
 
 
 def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
@@ -1770,7 +1770,7 @@ def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
     )
     msg = _SdkFake(type="result", result=result)
     events = engine._map_message(msg, state={"emitted_text": False})
-    assert [event.type for event in events] == ["usage", "status"]
+    assert [event.type for event in events] == ["usage_update", "status"]
     usage = events[0].data
     assert usage["input_tokens"] == 100
     assert usage["output_tokens"] == 30
@@ -1786,8 +1786,8 @@ def test_claude_agent_sdk_result_falls_back_to_output():
     result = _SdkFake(is_error=False, output="最终答案", subtype="success", usage=None)
     msg = _SdkFake(type="result", result=result)
     events = engine._map_message(msg, state={"emitted_text": False})
-    assert [event.type for event in events] == ["text_delta", "status"]
-    assert events[0].data["delta"] == "最终答案"
+    assert [event.type for event in events] == ["agent_message_chunk", "status"]
+    assert events[0].data["content"]["text"] == "最终答案"
 
 
 def test_claude_agent_sdk_result_error():
@@ -1930,14 +1930,14 @@ def test_claude_agent_sdk_maps_modern_typed_messages():
     )
     events = engine._map_message(assistant)
     assert [event.type for event in events] == [
-        "thinking_delta",
-        "text_delta",
-        "tool_use",
+        "agent_thought_chunk",
+        "agent_message_chunk",
+        "tool_call",
     ]
     assert events[2].data == {
-        "id": "tool-1",
-        "name": "Read",
-        "input": {"path": "a.py"},
+        "tool_call_id": "tool-1",
+        "title": "Read",
+        "raw_input": {"path": "a.py"},
     }
 
     user = UserMessage(
@@ -1951,11 +1951,11 @@ def test_claude_agent_sdk_maps_modern_typed_messages():
         tool_use_result=None,
     )
     events = engine._map_message(user)
-    assert [event.type for event in events] == ["tool_result"]
+    assert [event.type for event in events] == ["tool_call_update"]
     assert events[0].data == {
-        "tool_use_id": "tool-1",
-        "content": "file content",
-        "is_error": False,
+        "tool_call_id": "tool-1",
+        "status": "completed",
+        "raw_output": "file content",
     }
 
     result = ResultMessage(
@@ -1975,8 +1975,8 @@ def test_claude_agent_sdk_maps_modern_typed_messages():
         result="最终答案",
     )
     events = engine._map_message(result, state={"emitted_text": False})
-    assert [event.type for event in events] == ["text_delta", "usage", "status"]
-    assert events[0].data["delta"] == "最终答案"
+    assert [event.type for event in events] == ["agent_message_chunk", "usage_update", "status"]
+    assert events[0].data["content"]["text"] == "最终答案"
     usage = events[1].data
     assert usage["input_tokens"] == 100
     assert usage["output_tokens"] == 30
@@ -2237,8 +2237,8 @@ def test_codex_sdk_maps_started_and_text_delta():
     )
     state = {"emitted_text": False, "tool_emitted": set()}
     events = engine._map_notification(notification, state)
-    assert [event.type for event in events] == ["text_delta"]
-    assert events[0].data["delta"] == "你好，Codex！"
+    assert [event.type for event in events] == ["agent_message_chunk"]
+    assert events[0].data["content"]["text"] == "你好，Codex！"
     assert state["emitted_text"] is True
 
 
@@ -2252,8 +2252,8 @@ def test_codex_sdk_maps_reasoning_deltas():
         ),
         state,
     )
-    assert [event.type for event in events] == ["thinking_delta"]
-    assert events[0].data["delta"] == "正在推理"
+    assert [event.type for event in events] == ["agent_thought_chunk"]
+    assert events[0].data["content"]["text"] == "正在推理"
 
     completed = engine._map_notification(
         _SdkFake(
@@ -2323,10 +2323,10 @@ def test_codex_sdk_maps_supported_tool_item_families(
         state,
     )
 
-    assert [event.type for event in started] == ["tool_use"]
-    assert started[0].data["name"] == expected_name
-    assert started[0].data["input"] == expected_input
-    assert [event.type for event in completed] == ["tool_result"]
+    assert [event.type for event in started] == ["tool_call"]
+    assert started[0].data["title"] == expected_name
+    assert started[0].data["raw_input"] == expected_input
+    assert [event.type for event in completed] == ["tool_call_update"]
 
 
 def test_codex_sdk_maps_tool_use_and_result():
@@ -2344,10 +2344,10 @@ def test_codex_sdk_maps_tool_use_and_result():
         ),
         state,
     )
-    assert [event.type for event in started] == ["tool_use"]
-    assert started[0].data["id"] == "tool-1"
-    assert started[0].data["name"] == "Read"
-    assert started[0].data["input"] == {"path": "a.py"}
+    assert [event.type for event in started] == ["tool_call"]
+    assert started[0].data["tool_call_id"] == "tool-1"
+    assert started[0].data["title"] == "Read"
+    assert started[0].data["raw_input"] == {"path": "a.py"}
     assert "tool-1" in state["tool_emitted"]
 
     completed = engine._map_notification(
@@ -2364,10 +2364,10 @@ def test_codex_sdk_maps_tool_use_and_result():
         ),
         state,
     )
-    assert [event.type for event in completed] == ["tool_result"]
-    assert completed[0].data["tool_use_id"] == "tool-1"
-    assert completed[0].data["content"] == "file content"
-    assert completed[0].data["is_error"] is False
+    assert [event.type for event in completed] == ["tool_call_update"]
+    assert completed[0].data["tool_call_id"] == "tool-1"
+    assert completed[0].data["raw_output"] == "file content"
+    assert completed[0].data["status"] == "completed"
 
 
 def test_codex_sdk_completed_text_falls_back_only_when_no_delta():
@@ -2383,8 +2383,8 @@ def test_codex_sdk_completed_text_falls_back_only_when_no_delta():
         ),
         state,
     )
-    assert [event.type for event in events] == ["text_delta"]
-    assert events[0].data["delta"] == "最终答案"
+    assert [event.type for event in events] == ["agent_message_chunk"]
+    assert events[0].data["content"]["text"] == "最终答案"
 
     # Deltas already emitted → completed text must not duplicate.
     state["emitted_text"] = True
@@ -2419,7 +2419,7 @@ def test_codex_sdk_maps_usage_with_cache():
     events = engine._map_notification(
         notification, {"emitted_text": False, "tool_emitted": set()}
     )
-    assert [event.type for event in events] == ["usage"]
+    assert [event.type for event in events] == ["usage_update"]
     usage = events[0].data
     assert usage["input_tokens"] == 100
     assert usage["output_tokens"] == 30
@@ -3049,11 +3049,11 @@ def test_qoder_sdk_maps_assistant_blocks():
     msg = _QoderAssistantMessage(content=[text, thinking, tool], session_id="s1")
     events = engine._map_message(msg)
     assert [event.type for event in events] == [
-        "text_delta", "thinking_delta", "tool_use",
+        "agent_message_chunk", "agent_thought_chunk", "tool_call",
     ]
-    assert events[0].data["delta"] == "你好，Qoder！"
-    assert events[2].data["id"] == "tool-1"
-    assert events[2].data["name"] == "Read"
+    assert events[0].data["content"]["text"] == "你好，Qoder！"
+    assert events[2].data["tool_call_id"] == "tool-1"
+    assert events[2].data["title"] == "Read"
 
 
 def test_qoder_sdk_assistant_text_skipped_when_streamed():
@@ -3067,7 +3067,7 @@ def test_qoder_sdk_assistant_text_skipped_when_streamed():
     state = {"emitted_text": False, "emitted_thinking": False}
     stream_events = engine._map_message(stream, state)
     final_events = engine._map_message(msg, state)
-    assert [e.data["delta"] for e in stream_events] == ["增量"]
+    assert [e.data["content"]["text"] for e in stream_events] == ["增量"]
     assert final_events == []
 
 
@@ -3080,7 +3080,7 @@ def test_qoder_sdk_preserves_multiple_complete_text_blocks_without_partial_strea
 
     events = engine._map_message(msg)
 
-    assert [event.data["delta"] for event in events] == ["A", "B"]
+    assert [event.data["content"]["text"] for event in events] == ["A", "B"]
 
 
 @pytest.mark.anyio
@@ -3256,22 +3256,22 @@ def test_qoder_sdk_maps_real_sdk_blocks_without_type_field():
         ToolUseBlock(id="tool-1", name="Read", input={"path": "a.py"}),
     ], model="auto")
     events = engine._map_message(assistant)
-    assert [event.type for event in events] == ["text_delta", "tool_use"]
+    assert [event.type for event in events] == ["agent_message_chunk", "tool_call"]
     assert events[1].data == {
-        "id": "tool-1",
-        "name": "Read",
-        "input": {"path": "a.py"},
+        "tool_call_id": "tool-1",
+        "title": "Read",
+        "raw_input": {"path": "a.py"},
     }
 
     user = UserMessage(content=[
         ToolResultBlock(tool_use_id="tool-1", content="file content", is_error=False),
     ], uuid="u")
     events = engine._map_message(user)
-    assert [event.type for event in events] == ["tool_result"]
+    assert [event.type for event in events] == ["tool_call_update"]
     assert events[0].data == {
-        "tool_use_id": "tool-1",
-        "content": "file content",
-        "is_error": False,
+        "tool_call_id": "tool-1",
+        "status": "completed",
+        "raw_output": "file content",
     }
 
 
@@ -3335,10 +3335,10 @@ def test_qoder_sdk_maps_tool_result():
                        content="file content", is_error=False)
     msg = _QoderUserMessage(content=[block])
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["tool_result"]
-    assert events[0].data["tool_use_id"] == "tool-1"
-    assert events[0].data["content"] == "file content"
-    assert events[0].data["is_error"] is False
+    assert [event.type for event in events] == ["tool_call_update"]
+    assert events[0].data["tool_call_id"] == "tool-1"
+    assert events[0].data["raw_output"] == "file content"
+    assert events[0].data["status"] == "completed"
 
 
 def test_qoder_sdk_maps_result_usage_with_cost_and_credits():
@@ -3359,7 +3359,7 @@ def test_qoder_sdk_maps_result_usage_with_cost_and_credits():
         },
     )
     events = engine._map_message(msg)
-    usage_event = next(event for event in events if event.type == "usage")
+    usage_event = next(event for event in events if event.type == "usage_update")
     assert usage_event.data == {
         "input_tokens": 300,
         "output_tokens": 100,
@@ -3378,7 +3378,7 @@ def test_qoder_sdk_result_falls_back_to_result_text():
     engine = QoderSDKEngine()
     msg = _QoderResultMessage(subtype="success", is_error=False, result="完成")
     events = engine._map_message(msg)
-    assert [event.type for event in events] == ["text_delta", "status"]
+    assert [event.type for event in events] == ["agent_message_chunk", "status"]
 
 
 def test_qoder_sdk_result_error():
@@ -3455,7 +3455,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     assert events[0].type == "session_started"
     session_id = events[0].data["session_id"]
     assert isinstance(session_id, str) and session_id
-    usage_event = next(event for event in events if event.type == "usage")
+    usage_event = next(event for event in events if event.type == "usage_update")
     assert usage_event.data["session_id"] == session_id
     assert events[-1].type == "status"
     assert events[-1].data["status"] == "done"
@@ -3580,7 +3580,7 @@ async def test_claude_agent_sdk_turn_without_injection_ends_immediately(monkeypa
     assert client.disconnected is True
     assert client.queries == ["开始任务"]
     assert any(
-        event.type == "text_delta" and event.data["delta"] == "回复 1"
+        event.type == "agent_message_chunk" and event.data["content"]["text"] == "回复 1"
         for event in events
     )
     assert any(
@@ -3655,9 +3655,9 @@ async def test_claude_agent_sdk_injection_keeps_session_alive(monkeypatch):
     assert client.disconnected is True
     assert client.queries == ["开始任务", "继续"]
     deltas = [
-        event.data["delta"]
+        event.data["content"]["text"]
         for event in events
-        if event.type == "text_delta"
+        if event.type == "agent_message_chunk"
     ]
     assert "回复 2" in deltas
     delivered = [

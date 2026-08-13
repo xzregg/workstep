@@ -160,10 +160,9 @@ export default function AiFlowChat({
             ended_at: m.ended_at,
             prompt: m.prompt,
             events: (m.events || []).map((e) => ({
+              ...e,
               type: e.type || '',
               data: e.data || {},
-              timestamp: e.timestamp,
-              created_at: e.created_at,
             })),
           })),
         )
@@ -310,6 +309,7 @@ export default function AiFlowChat({
         onClose={onClose}
         onA2uiAction={handleA2uiAction}
         quickPromptsLabel={t('aiFlow.quickPromptsLabel')}
+        a2uiMessages={session?.a2uiMessages}
         quickPrompts={[
           { label: t('aiFlow.quickGenerate'), prompt: t('aiFlow.quickGeneratePrompt') },
           { label: t('aiFlow.quickOptimize'), prompt: t('aiFlow.quickOptimizePrompt') },

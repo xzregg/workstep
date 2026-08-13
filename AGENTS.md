@@ -35,6 +35,7 @@ WorkStep 本地后台服务，使用 Python 3.11+、FastAPI、Peewee 构建，�
 - `api/` — API 路由与接口
 - `services/` — 业务逻辑、DAG 调度与任务执行
 - `engines/` — LLM 引擎及 ACP、CLI、API 适配
+- `agent_assistants/` — 助手模块（每个助手一个文件，通用层在 `base.py`）
 - `models/` — Peewee 数据模型与迁移
 - `schemas/` — Pydantic 请求、响应模型
 - `streaming/` — 实时事件总线
@@ -76,7 +77,7 @@ npm run build
 - **交互与校验**：禁用原生 `alert/confirm`。必填项为空时提交类按钮禁用；触发类按钮（如「AI 创建」）可点击，但须在弹框固定高度区域提示、聚焦缺失字段。侧边面板有改动时，关闭前用 `ConfirmDialog` 确认；无改动时遮罩点击直接关闭。
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
 - **流程与模板**：新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。
-- **助手架构**：所有新助手和后续助手能力扩展必须建立在同一套基础设施上，禁止复制会话、流式事件、停止、引擎配置或聊天 UI 实现。后端通过 `assistant_base.py` 的 `AssistantConfig` 注册并复用 `AssistantRuntime`，仅提供助手自己的 system prompt、上下文构建、结构化结果解析/校验和发布逻辑；创建态会话默认仅内存，需要跨重启恢复时才增加持久化适配器。前端通过 `createAssistantStore(config)` 创建配置实例，统一使用 `AssistantChatPanel`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter` 和 `ChatInput`；助手特有 UI 只通过组合插槽或薄包装组件扩展。每个助手必须使用独立 WebSocket `channel` 并按 channel 分流，结构化结果通过通用 store 的 `resultEvent` / `proposalEvent` 配置接入，不得让其它助手 store 接收。AI 流程助手统一用 `AiFlowChat`；方案选择必须呈现可点击的提案卡片（标题、步数、摘要、应用态）。新增助手必须覆盖会话隔离、结构化结果、停止、错误、无意外落库及既有助手回归测试。
+- **助手架构**：所有新助手和后续助手能力扩展必须建立在同一套基础设施上，禁止复制会话、流式事件、停止、引擎配置或聊天 UI 实现。后端通过 `agent_assistants/base.py` 的 `AssistantConfig` 注册并复用 `AssistantRuntime`，仅提供助手自己的 system prompt、上下文构建、结构化结果解析/校验和发布逻辑；创建态会话默认仅内存，需要跨重启恢复时才增加持久化适配器。前端通过 `createAssistantStore(config)` 创建配置实例，统一使用 `AssistantChatPanel`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter` 和 `ChatInput`；助手特有 UI 只通过组合插槽或薄包装组件扩展。每个助手必须使用独立 WebSocket `channel` 并按 channel 分流，结构化结果通过通用 store 的 `resultEvent` / `proposalEvent` 配置接入，不得让其它助手 store 接收。AI 流程助手统一用 `AiFlowChat`；方案选择必须呈现可点击的提案卡片（标题、步数、摘要、应用态）。新增助手必须覆盖会话隔离、结构化结果、停止、错误、无意外落库及既有助手回归测试。
 - **聊天与 Markdown**：任务对话和 AI 流程助手共用上述聊天组件，不得覆盖 `ChatInput` 的统一高度或重复实现上传/粘贴。Markdown 图片上传至项目 `.workstep/uploads/`，正文保存项目相对路径，并由 `MarkdownMessage` 映射预览地址。
 - **布局与样式**：复杂弹框顶部放表单，主区域占满余高、支持分隔拖动和弹框缩放；避免写死过矮高度。公共组件放入 modal 后须检查全局表单样式污染，必要时提高选择器特异性并人工核对。
 - **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
@@ -91,25 +92,47 @@ npm run build
 | ORM | **Peewee** | SQLite 友好，轻量 |
 | 子进程 | **asyncio.subprocess** | 流式读取 LLM CLI stdout |
 | SSE | **sse-starlette** | 全局单流推送 |
-| 前端 | **待定** | 画布编辑器是核心约束 |
+| 内部事件 | **ACP 词汇** | 各引擎统一产出 ACP session update 对齐事件，`events.py` 定义（内部=ACP） |
+| 对外事件 | **AG-UI** | WebSocket 实时推送与历史回放共用 `engines/core/agui.py` 翻译层（对外=AG-UI） |
+| 前端 | React + TypeScript + Vite | 画布编辑器是核心约束；store 只消费 AG-UI 事件 |
 | 数据 | **per-project SQLite** | 每个项目独立 `.workstep/workstep.db` |
 
 ## 多引擎支持
 
-所有引擎实现 `BaseLLMEngine` 接口，新增引擎 = 新增一个文件：
+`BaseLLMEngine` = **我方系统扩展**：安装、版本、二进制解析、配置表单、能力声明等 WorkStep 特有自定义函数。
+`AcpEngineBase` = **通用 ACP 协议调用**：spawn / session / interaction / approval 等协议方法，所有引擎继承它。
+新增引擎 = 新增一个文件：继承 `AcpEngineBase` 并实现 `BaseLLMEngine` 的抽象自定义函数
+（`is_installed` / `get_version` / `resolve_binary`）。ACP 原生引擎（如 Hermes）声明 `COMMAND` 即可，
+基类直接提供全部协议实现；非 ACP 引擎用自己的传输实现 `spawn`，并**完整实现等价会话 / 审批方法**
+（`create_session` / `resume_session` / `close_session` / `cancel_session` / `approve_tool` / `approve_tool_option`
+等，无原生入口的如实声明能力并安全降级），上层调用只依赖 `AcpEngineBase`：
 
-| 引擎 | stdin | stdout | 会话恢复 | 状态 |
-|------|-------|--------|---------|------|
-| Codex | JSONL 流（保持打开） | JSONL | `--resume` | P1 实现 |
-| Codex CLI | 纯文本（写完关闭） | JSONL | 无 | P2 实现 |
-| Hermes | JSON-RPC 双向 | JSON-RPC | 无 | P2 实现 |
-| Claude / Codex / Qoder Agent SDK | 官方 SDK 进程内驱动 | 消息流 | 视 SDK | 已实现 |
-| OpenClaw | 待调研 | 待调研 | 待定 | P5 实现 |
-| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无 | 已实现 |
+| 引擎 | stdin | stdout | 会话恢复 | ACP 事件 | 状态 |
+|------|-------|--------|---------|---------|------|
+| Codex | JSONL 流（保持打开） | JSONL | `exec resume <thread_id>` | 实际子集 | P1 实现 |
+| Codex SDK | 官方 SDK 进程内驱动 | 消息流 | `thread_resume` | 实际子集 | 已实现 |
+| Claude Code | 纯文本（写完关闭）/ stream-json 双向 | JSONL | `--resume <session_id>` | 实际子集 | P2 实现 |
+| Hermes | JSON-RPC 双向 | JSON-RPC | 原生 ACP session | 全集 | P2 实现 |
+| Claude / Qoder Agent SDK | 官方 SDK 进程内驱动 | 消息流 | SDK `resume` | 实际子集 | 已实现 |
+| OpenClaw | 一次性 exec | JSON 信封 | 无 | 信封实际子集 | P5 实现 |
+| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无（message_history） | 实际子集 | 已实现 |
 
-统一内部事件（`apps/daemon/engines/core/events.py`）：
-- 执行流：`status`、`text_delta`、`thinking_delta`、`tool_use`、`tool_input_delta`（实时专用，不持久化）、`tool_result`、`usage`、`compacted`（上下文已自动压缩）、`error`
-- 会话与交互：`session_started`（可复用引擎会话标识）、`live_message`（阶段中途插入消息）、`interaction_request`（权限申请 / 提问弹窗，ACP 语义）、`interaction_response`（弹窗用户回复）、`plan`（ACP 执行计划快照）、`subagent`（子代理 / 后台任务生命周期事件）、`engine_state`（进程内引擎状态快照）
+各引擎声明 `acp_events` capability 元数据（**声明 = 实际**：有原生等价就映射，无来源不发、不合成默认值；
+`tests/test_engine_base_hierarchy.py` 保证 `acp_events ⊆ ACP_EVENTS` 且映射路径产出的事件都被声明）；
+非 ACP 引擎的 `request_permission` 在 `request_interaction` 中登记到基类 pending 审批注册表，
+`approve_tool` / `approve_tool_option` 统一把决定写回挂起交互；Hermes 由 `AcpEngineBase` 直接产出并补全缺失 update 类型。
+
+统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
+- 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`
+- 编排事件（保留非 ACP 词汇）：`status`、`session_started`（可复用引擎会话标识）、`live_message`（阶段中途插入消息）、`interaction_request`（权限申请 / 提问弹窗，ACP 语义）、`interaction_response`（弹窗用户回复）、`subagent`（子代理 / 后台任务生命周期事件）、`compacted`（上下文已自动压缩）、`engine_state`（进程内引擎状态快照）、`error`、`a2ui`（A2UI 载荷）、`acp_raw`（未知 ACP update 透传）
+- 旧 `events_json` 兼容：历史回放经 `map_legacy_event` 将旧词汇映射到新词汇后再翻译
+
+对外事件（AG-UI，`apps/daemon/engines/core/agui.py` 统一翻译，WebSocket 实时推送与历史回放共用）：
+- 消息：`TEXT_MESSAGE_START / TEXT_MESSAGE_CHUNK / TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END`、`REASONING_MESSAGE_CHUNK`
+- 工具：`TOOL_CALL_START / TOOL_CALL_ARGS / TOOL_CALL_CHUNK / TOOL_CALL_RESULT`（`toolCallId/toolCallName/args/output/isError`）
+- 运行：`RUN_STARTED / RUN_FINISHED / RUN_ERROR`（`threadId=task_id`、`runId=task_id::step_key`）
+- 自定义：`CUSTOM{name:"workstep.*"}`（plan / usage / interaction / subagent / task_draft / flow_proposals / status 等）与 `CUSTOM{name:"a2ui.surface"}`（A2UI 载荷，按 messageId 追加；` ```a2ui ` fence 仅作旧消息回退）
+- 前端 `apps/web` 所有 store（`taskStore` / `assistantStore` 及其配置实例）只消费 AG-UI，统一入口 `src/utils/agui.ts`
 
 ## 数据模型
 

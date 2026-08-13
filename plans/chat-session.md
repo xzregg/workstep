@@ -18,7 +18,7 @@
 - 新模型注册进 `ALL_MODELS`。
 
 ### 后端
-- `services/chat_session.py`：注册 `AssistantConfig`（`channel="session_chat"`，`scope="chat"`），实现 `ChatRowPersistence`（消息逐行写入 `chat_messages`，会话行写 `chat_sessions`，标题自动取首条用户消息前 20 字），`session_identity = (chat, project_id, session_id)`。
+- `agent_assistants/chat_session.py`：注册 `AssistantConfig`（`channel="session_chat"`，`scope="chat"`），实现 `ChatRowPersistence`（消息逐行写入 `chat_messages`，会话行写 `chat_sessions`，标题自动取首条用户消息前 20 字），`session_identity = (chat, project_id, session_id)`。
 - 模块方法：`list/create/rename/delete/reorder/get_history/submit/stop` 会话 + `get/set_quick_buttons(project_id)`（校验：标签/提示词非空、长度上限、最多 20 个、id 唯一；未配置时返回内置默认按钮）。列表按 `sort_order` 排序，新会话置顶（`min-1`），`reorder` 重排并落库。
 - `api/chat_session.py` 已注册到 `main.py`：`GET/POST /api/chat-sessions`、`GET/PATCH/DELETE /api/chat-sessions/{session_id}`、`POST .../{id}/chat`（`Idempotency-Key` 幂等）、`POST .../{id}/stop`、`POST /api/chat-sessions/reorder`（拖拽排序）、`GET/PUT /api/chat-sessions/quick-buttons`；会话不存在 404、生成中删除 409、校验失败 400。
 - 引擎默认跟随全局配置（复用协调引擎 fallback 链），会话内可切换并持久化到会话行；WebSocket 无需改动（全局总线按 `channel` 分流）。

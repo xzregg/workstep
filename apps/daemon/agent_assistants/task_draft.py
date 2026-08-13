@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
-from services.assistant_base import (
+from agent_assistants.base import (
     AssistantConfig,
     AssistantRuntime,
     SCOPE_EPHEMERAL,

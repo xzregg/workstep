@@ -272,8 +272,9 @@ class TaskService:
                 events_collected.append(event.to_dict())
 
                 # Collect text content
-                if event.type == "text_delta":
-                    content_parts.append(event.data.get("delta", ""))
+                if event.type == "agent_message_chunk":
+                    content = event.data.get("content") or {}
+                    content_parts.append(content.get("text", ""))
                 elif event.type == "error" and reported_error is None:
                     reported_error = str(
                         event.data.get("message") or "Engine reported an error"
@@ -433,12 +434,17 @@ class TaskService:
             return None
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
-        """Publish event with task/step routing info."""
-        await self._event_bus.publish({
+        """发布出口：内部事件 → AG-UI 标准事件后推送。"""
+        from engines.core.agui import AGUIContext, to_agui_events
+
+        payload = {
             "task_id": task_id,
             "step_key": step_key,
             **event,
-        })
+        }
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)
 
     def _task_to_dict(self, task: Task) -> dict:
         steps = list(TaskStep.select().where(TaskStep.task == task))

@@ -1,8 +1,8 @@
 """Generic assistant conversation layer.
 
 An "assistant" is an LLM-backed multi-turn chat — e.g. the task coordinator
-(``services/coordinator.py``) or the AI flow designer
-(``services/workflow_gen.py``). Everything about running such a conversation
+(``agent_assistants/coordinator.py``) or the AI flow designer
+(``agent_assistants/workflow_gen.py``). Everything about running such a conversation
 is shared here: session identity & lifecycle, idempotency, engine invocation
 with resume support, streaming event publishing, history and pruning.
 
@@ -21,12 +21,15 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 
+from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent
 from engines.core.registry import create_engine
 from models.fields import utc_now
 from services.chat_permissions import (
     is_valid_permission_mode,
     map_permission_overrides,
+    map_plan_mode_overrides,
+    PLAN_MODE_INSTRUCTION,
 )
 from services.intervention import intervention_manager
 from streaming.bus import EventBus
@@ -102,6 +105,7 @@ async def invoke_engine(
     report_engine_state: bool = False,
     thinking_effort: str | None = None,
     permission_mode: str | None = None,
+    plan_mode: bool | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
 
@@ -114,6 +118,8 @@ async def invoke_engine(
     engine = create_engine(engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    if plan_mode:
+        prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []
     events: list[dict] = []
     resolved_session_id = session_id
@@ -140,6 +146,15 @@ async def invoke_engine(
             overrides = map_permission_overrides(engine_id, permission_mode)
             if overrides:
                 spawn_kwargs["config_overrides"] = overrides
+        if plan_mode:
+            overrides = map_plan_mode_overrides(engine_id)
+            if overrides:
+                spawn_kwargs["config_overrides"] = {
+                    **(
+                        spawn_kwargs.get("config_overrides") or {}
+                    ),
+                    **overrides,
+                }
         if spawner is None:
             iterator = engine.spawn(
                 prompt=prompt,
@@ -179,13 +194,14 @@ async def invoke_engine(
             events.append(event.to_dict())
             if on_event is not None:
                 await on_event(event)
-            if event.type == "text_delta":
-                content.append(str(event.data.get("delta", "")))
+            if event.type == "agent_message_chunk":
+                content_block = event.data.get("content") or {}
+                content.append(str(content_block.get("text", "")))
             elif event.type == "session_started":
                 resolved_session_id = (
                     str(event.data.get("session_id") or "") or None
                 )
-            elif event.type == "usage" and event.data.get("session_id"):
+            elif event.type == "usage_update" and event.data.get("session_id"):
                 resolved_session_id = str(event.data["session_id"])
             elif event.type == "error" and error is None:
                 error = str(event.data.get("message") or f"{error_prefix} failed")
@@ -430,18 +446,23 @@ def _restore_messages(raw: str | None) -> list[dict]:
 
 _PERSISTED_EVENT_TYPES = frozenset({
     "status",
-    "thinking_delta",
-    "tool_use",
-    "tool_result",
+    "agent_thought_chunk",
+    "tool_call",
+    "tool_call_update",
     "interaction_request",
     "interaction_response",
     "plan",
+    "plan_update",
+    "plan_removed",
     "subagent",
     "compacted",
-    "usage",
+    "usage_update",
     "session_started",
     "error",
     "engine_state",
+    "a2ui",
+    "acp_raw",
+    "elicitation_completed",
 })
 
 
@@ -554,6 +575,7 @@ class AssistantRuntime:
         fast_model: str | None = None,
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
+        plan_mode: bool | None = None,
         steps: dict | None = None,
         extra: dict | None = None,
     ) -> AcceptedTurn:
@@ -639,6 +661,7 @@ class AssistantRuntime:
             "session_id": session.session_id,
             "thinking_effort": normalized_effort or None,
             "permission_mode": normalized_permission or None,
+            "plan_mode": bool(plan_mode),
         }
         background = asyncio.create_task(
             self._run_turn(session, turn_id, assistant_message_id),
@@ -991,8 +1014,9 @@ class AssistantRuntime:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply
-                        if event.type == "text_delta":
-                            raw_content += str(event.data.get("delta", ""))
+                        if event.type == "agent_message_chunk":
+                            content_block = event.data.get("content") or {}
+                            raw_content += str(content_block.get("text", ""))
                             partial_reply = extract_text(raw_content)
                             if not partial_reply.startswith(streamed_reply):
                                 return
@@ -1003,17 +1027,19 @@ class AssistantRuntime:
                             await self._publish(
                                 session,
                                 assistant_message_id,
-                                "text_delta",
-                                {"delta": delta},
+                                "agent_message_chunk",
+                                {"content": {"text": delta}},
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
-                        elif event.type == "thinking_delta":
+                        elif event.type == "agent_thought_chunk":
                             await self._publish(
                                 session,
                                 assistant_message_id,
-                                "thinking_delta",
-                                {"delta": str(event.data.get("delta", ""))},
+                                "agent_thought_chunk",
+                                {"content": {"text": str(
+                                    (event.data.get("content") or {}).get("text", "")
+                                )}},
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
@@ -1021,6 +1047,12 @@ class AssistantRuntime:
                             "interaction_request",
                             "interaction_response",
                             "plan",
+                            "plan_update",
+                            "plan_removed",
+                            "tool_call",
+                            "tool_call_update",
+                            "subagent",
+                            "session_started",
                         }:
                             await self._publish(
                                 session,
@@ -1030,11 +1062,11 @@ class AssistantRuntime:
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
-                        elif event.type == "usage":
+                        elif event.type == "usage_update":
                             await self._publish(
                                 session,
                                 assistant_message_id,
-                                "usage",
+                                "usage_update",
                                 dict(event.data),
                                 seq_holder[0],
                             )
@@ -1104,7 +1136,14 @@ class AssistantRuntime:
                         "model": session.model,
                         "created_at": utc_now().isoformat(),
                         "prompt": prompt,
-                        "events": _prune_events(_events),
+                        "events": _prune_events(_events)
+                        + [
+                            event
+                            for event in repair_events
+                            if isinstance(event, dict)
+                            and event.get("type")
+                            in _PERSISTED_EVENT_TYPES
+                        ],
                     }
                 )
                 self._turn_states[turn_id]["status"] = "completed"
@@ -1236,6 +1275,11 @@ class AssistantRuntime:
             if run_key
             else None
         )
+        plan_mode = (
+            self._turn_states.get(run_key, {}).get("plan_mode")
+            if run_key
+            else None
+        )
         return await invoke_engine(
             engine_id,
             model,
@@ -1250,6 +1294,7 @@ class AssistantRuntime:
             running_engines=self._running_engines,
             thinking_effort=thinking_effort,
             permission_mode=permission_mode,
+            plan_mode=plan_mode,
         )
 
     async def _publish(
@@ -1260,20 +1305,22 @@ class AssistantRuntime:
         data: dict,
         event_sequence: int,
     ) -> int:
-        await self._event_bus.publish(
-            {
-                "event_id": str(uuid.uuid4()),
-                "session_id": session.session_id,
-                "channel": self._config.channel,
-                "message_id": assistant_message_id,
-                "engine": session.engine,
-                "model": session.model,
-                "event_sequence": event_sequence,
-                "type": event_type,
-                "data": data,
-                "created_at": utc_now().isoformat(),
-            }
-        )
+        """发布出口：内部事件 → AG-UI 标准事件后推送。"""
+        payload = {
+            "event_id": str(uuid.uuid4()),
+            "session_id": session.session_id,
+            "channel": self._config.channel,
+            "message_id": assistant_message_id,
+            "engine": session.engine,
+            "model": session.model,
+            "event_sequence": event_sequence,
+            "type": event_type,
+            "data": data,
+            "created_at": utc_now().isoformat(),
+        }
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)
         return event_sequence + 1
 
     def _consume_background(self, task: asyncio.Task, turn_id: str) -> None:

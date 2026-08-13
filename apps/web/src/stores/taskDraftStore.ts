@@ -1,6 +1,7 @@
 /** Store for the ephemeral task-creation assistant. */
 
 import { createAssistantStore } from './assistantStore.ts'
+import { CUSTOM } from '../utils/agui.ts'
 
 
 export interface TaskDraftResult extends Record<string, unknown> {
@@ -10,7 +11,7 @@ export interface TaskDraftResult extends Record<string, unknown> {
 
 export const useTaskDraftStore = createAssistantStore({
   channel: 'task_create',
-  resultEvent: 'task_draft',
+  resultEvent: CUSTOM.taskDraft,
   resultExtractor: (data) => {
     const description = data.description
     const startStepKey = data.start_step_key

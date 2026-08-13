@@ -8,6 +8,7 @@ import {
   isHiddenA2uiActionMessage,
   stripAssistantPayloadsForDisplay,
 } from '../utils/a2ui'
+import { isToolEvent } from '../utils/agui.ts'
 import Icon from './Icon'
 import InteractionPrompt from './InteractionPrompt'
 import PlanChecklist from './PlanChecklist'
@@ -62,6 +63,8 @@ export interface ChatMessageBubbleProps {
   onA2uiAction?: (action: A2uiClientAction) => void
   /** Engine interaction requests persisted in this message's event stream. */
   events?: InteractionEvent[]
+  /** Store 累积的 A2UI 载荷，按 messageId 渲染（fence 仅作回退）。 */
+  a2uiMessages?: Record<string, unknown>[]
   /** Submit an ACP permission or elicitation response. */
   onInteractionRespond?: (
     interactionId: string,
@@ -91,6 +94,7 @@ export default function ChatMessageBubble({
   onEdit,
   onA2uiAction,
   events = [],
+  a2uiMessages,
   onInteractionRespond,
   variant = 'surface',
   rootProps,
@@ -101,6 +105,7 @@ export default function ChatMessageBubble({
   const plan = latestPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
     event.type === 'tool_use' || event.type === 'tool_result'
+    || isToolEvent(event)
   ))
   if (isUser && isHiddenA2uiActionMessage(content)) return null
   const rootStyle: CSSProperties = {
@@ -188,9 +193,10 @@ export default function ChatMessageBubble({
                     streaming={streaming}
                     projectId={projectId}
                   />
-                  {hasA2uiBlocks(content) && (
+                  {(hasA2uiBlocks(content) || (a2uiMessages && a2uiMessages.length > 0)) && (
                     <A2uiMessage
                       content={content}
+                      messages={a2uiMessages}
                       projectId={projectId}
                       onAction={onA2uiAction}
                     />

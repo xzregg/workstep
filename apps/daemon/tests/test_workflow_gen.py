@@ -9,8 +9,8 @@ import pytest
 
 from services.project import ProjectManager
 from services.workflow_definition import WorkflowDefinition
-from services.workflow_gen import WorkflowGenModule
-from services.assistant_base import AssistantConfig, AssistantRuntime
+from agent_assistants.workflow_gen import WorkflowGenModule
+from agent_assistants.base import AssistantConfig, AssistantRuntime
 from streaming.bus import EventBus
 
 
@@ -81,8 +81,8 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 
 @pytest.mark.anyio
 async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
-    import services.assistant_base as assistant_base
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.base as assistant_base
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, _, project, _ = gen_module
     started = asyncio.Event()
@@ -140,10 +140,10 @@ async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
     completed = None
     while completed is None:
         event = await asyncio.wait_for(queue.get(), timeout=2)
-        if event["type"] == "message_completed":
+        if event["type"] == "TEXT_MESSAGE_END":
             completed = event
     assert completed["session_id"] == accepted.session_id
-    assert completed["data"]["status"] == "stopped"
+    assert completed["status"] == "stopped"
 
     session = module._sessions[(project.id, accepted.session_id)]
     stopped_message = session.messages[-1]
@@ -158,7 +158,7 @@ async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
 async def gen_module(tmp_path, monkeypatch):
     import services.config as config_service
     import services.project as project_service
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     config_store = MemoryConfigStore()
     monkeypatch.setattr(config_service, "config_store", config_store)
@@ -208,8 +208,8 @@ async def test_thinking_effort_reaches_workflow_generation_engine(
     gen_module,
     monkeypatch,
 ):
-    import services.assistant_base as assistant_base
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.base as assistant_base
+    import agent_assistants.workflow_gen as wfgen_service
     from engines.core.events import InternalEvent
 
     module, _, _, project, _ = gen_module
@@ -226,11 +226,13 @@ async def test_thinking_effort_reaches_workflow_generation_engine(
         async def spawn(self, **kwargs):
             calls.append(kwargs)
             yield InternalEvent(
-                type="text_delta",
+                type="agent_message_chunk",
                 data={
-                    "delta": json.dumps(
-                        {"reply": "ok", "flow_proposals": []}
-                    )
+                    "content": {
+                        "text": json.dumps(
+                            {"reply": "ok", "flow_proposals": []}
+                        )
+                    }
                 },
                 timestamp=time.time(),
             )
@@ -295,8 +297,8 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
             for char in chunk:
                 await on_event(
                     InternalEvent(
-                        type="text_delta",
-                        data={"delta": char},
+                        type="agent_message_chunk",
+                        data={"content": {"text": char}},
                         timestamp=time.time(),
                     )
                 )
@@ -311,22 +313,25 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
     stop.set()
     await asyncio.wait_for(collector_task, timeout=2)
 
-    proposal_events = [e for e in collected if e["type"] == "flow_proposals"]
+    proposal_events = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals"
+    ]
     assert proposal_events, "expected a flow_proposals event"
     event = proposal_events[0]
     assert "task_id" not in event
     assert event["session_id"] == accepted.session_id
     assert event["channel"] == "flow_gen"
-    cards = event["data"]["proposals"]
+    cards = event["value"]["proposals"]
     assert len(cards) == 1
     assert cards[0]["title"] == "标准版"
     assert cards[0]["nodeCount"] == 2
     steps = cards[0]["steps"]
     WorkflowDefinition.load(steps).validate()
 
-    deltas = [e for e in collected if e["type"] == "text_delta"]
+    deltas = [e for e in collected if e["type"] == "TEXT_MESSAGE_CHUNK"]
     assert deltas
-    streamed = "".join(e["data"]["delta"] for e in deltas)
+    streamed = "".join(e["delta"] for e in deltas)
     assert streamed == "这是完整流程"
 
     # No rows written to the project DB
@@ -402,7 +407,7 @@ async def test_invalid_proposal_is_repaired(gen_module, monkeypatch):
     session = module._sessions[(project.id, accepted.session_id)]
     # The repaired reply also carries the auto-generated a2ui choice UI.
     assert session.messages[-1]["content"].startswith("已修复")
-    assert "```a2ui" in session.messages[-1]["content"]
+    assert "```a2ui" not in session.messages[-1]["content"]
 
 
 @pytest.mark.anyio
@@ -462,9 +467,12 @@ async def test_multiple_proposals_filter_invalid(gen_module, monkeypatch):
 
     stop.set()
     await asyncio.wait_for(collector_task, timeout=2)
-    proposal_events = [e for e in collected if e["type"] == "flow_proposals"]
+    proposal_events = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals"
+    ]
     assert proposal_events
-    cards = proposal_events[0]["data"]["proposals"]
+    cards = proposal_events[0]["value"]["proposals"]
     assert [card["title"] for card in cards] == ["简洁版"]
 
 
@@ -504,7 +512,7 @@ async def test_unrepairable_proposal_drops_proposal(gen_module, monkeypatch):
 
 @pytest.mark.anyio
 async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_module, monkeypatch):
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, config_store = gen_module
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
@@ -537,7 +545,7 @@ async def test_resolve_engine_models_falls_back_when_default_unavailable(gen_mod
 
 @pytest.mark.anyio
 async def test_history_survives_unavailable_coordinator_engine(gen_module, monkeypatch):
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, config_store = gen_module
     config_store.values["coordinator_default_engine"] = "pydantic_ai"
@@ -568,7 +576,7 @@ async def test_history_survives_unavailable_coordinator_engine(gen_module, monke
 
 
 async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monkeypatch):
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, config_store = gen_module
     monkeypatch.setattr(
@@ -591,7 +599,7 @@ async def test_resolve_engine_models_uses_coordinator_defaults(gen_module, monke
 async def test_chat_http_contract(tmp_path, monkeypatch):
     import main
     import services.project as project_service
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
     from httpx import ASGITransport, AsyncClient
     from services.project import ProjectManager
 
@@ -733,11 +741,17 @@ async def test_all_invalid_proposals_repaired_by_fast_model(gen_module, monkeypa
 
     stop.set()
     await asyncio.wait_for(collector_task, timeout=2)
-    proposal_events = [e for e in collected if e["type"] == "flow_proposals"]
+    proposal_events = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals"
+    ]
     assert proposal_events, "expected a flow_proposals event after repair"
-    cards = proposal_events[0]["data"]["proposals"]
+    cards = proposal_events[0]["value"]["proposals"]
     assert [card["title"] for card in cards] == ["A"]
-    rejected = [e for e in collected if e["type"] == "flow_proposals_rejected"]
+    rejected = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals_rejected"
+    ]
     assert not rejected
 
 
@@ -793,18 +807,24 @@ async def test_unrepairable_multi_proposals_emit_rejected_event(gen_module, monk
 
     stop.set()
     await asyncio.wait_for(collector_task, timeout=2)
-    proposal_events = [e for e in collected if e["type"] == "flow_proposals"]
+    proposal_events = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals"
+    ]
     assert not proposal_events
-    rejected = [e for e in collected if e["type"] == "flow_proposals_rejected"]
+    rejected = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals_rejected"
+    ]
     assert rejected, "expected a flow_proposals_rejected event"
-    assert "校验" in rejected[0]["data"]["message"]
+    assert "校验" in rejected[0]["value"]["message"]
 
 
 @pytest.mark.anyio
 async def test_engine_model_overrides_are_session_scoped(gen_module, monkeypatch):
     """engine/model/fast_model overrides apply to the generation session
     (not persisted to global coordinator config) and bad engines are rejected."""
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, config_store = gen_module
     config_store.values["coordinator_default_engine"] = "claude"
@@ -1024,8 +1044,8 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
         assert on_event is not None
         await on_event(
             InternalEvent(
-                type="thinking_delta",
-                data={"delta": "先分析用户需求"},
+                type="agent_thought_chunk",
+                data={"content": {"text": "先分析用户需求"}},
                 timestamp=time.time(),
             )
         )
@@ -1033,14 +1053,14 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
         for char in chunk:
             await on_event(
                 InternalEvent(
-                    type="text_delta",
-                    data={"delta": char},
+                    type="agent_message_chunk",
+                    data={"content": {"text": char}},
                     timestamp=time.time(),
                 )
             )
         await on_event(
             InternalEvent(
-                type="usage",
+                type="usage_update",
                 data={
                     "input_tokens": 100,
                     "output_tokens": 50,
@@ -1061,15 +1081,18 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
     stop.set()
     await asyncio.wait_for(collector_task, timeout=2)
 
-    thinking = [e for e in collected if e["type"] == "thinking_delta"]
-    usage = [e for e in collected if e["type"] == "usage"]
+    thinking = [e for e in collected if e["type"] == "REASONING_MESSAGE_CHUNK"]
+    usage = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "workstep.usage"
+    ]
     assert thinking, "expected thinking_delta events on the bus"
-    assert "".join(e["data"]["delta"] for e in thinking) == "先分析用户需求"
+    assert "".join(e["delta"] for e in thinking) == "先分析用户需求"
     assert usage, "expected usage events on the bus"
-    assert usage[-1]["data"]["total_tokens"] == 150
+    assert usage[-1]["value"]["total_tokens"] == 150
     for event in (*thinking, *usage):
         assert event["session_id"] == accepted.session_id
-        assert event["message_id"]
+        assert event["messageId"]
         assert "task_id" not in event
 
 
@@ -1266,12 +1289,12 @@ async def test_workflow_history_persists_prompt_events_and_session_id(
                 "timestamp": 1001,
             },
             {
-                "type": "text_delta",
-                "data": {"delta": "partial"},
+                "type": "agent_message_chunk",
+                "data": {"content": {"text": "partial"}},
                 "timestamp": 1002,
             },
             {
-                "type": "usage",
+                "type": "usage_update",
                 "data": {
                     "input_tokens": 10,
                     "output_tokens": 5,
@@ -1307,15 +1330,15 @@ async def test_workflow_history_persists_prompt_events_and_session_id(
     msg = assistants[0]
     assert msg["prompt"] and "设计一个流程" in msg["prompt"]
     event_types = [e["type"] for e in msg["events"]]
-    # text_delta is not persisted (content is already in the message).
-    assert "text_delta" not in event_types
+    # agent_message_chunk is not persisted (content is already in the message).
+    assert "agent_message_chunk" not in event_types
     assert set(event_types) == {
         "session_started",
         "status",
-        "usage",
+        "usage_update",
         "engine_state",
     }
-    usage = next(e for e in msg["events"] if e["type"] == "usage")
+    usage = next(e for e in msg["events"] if e["type"] == "usage_update")
     assert usage["data"]["input_tokens"] == 10
     assert usage["data"]["session_id"] == "engine-sid-123"
     assert msg["events"][0]["timestamp"] == 1000
@@ -1410,19 +1433,21 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     assert status == "completed"
 
     snapshot = next(
-        (e for e in collected if e.get("type") == "message_snapshot"),
+        (e for e in collected if e.get("type") == "TEXT_MESSAGE_CONTENT"),
         None,
     )
     assert snapshot is not None
-    content = snapshot["data"]["content"]
-    assert "```a2ui" in content
-    assert '"name": "apply_flow"' in content
-    assert '"proposal": 1' in content
-    assert '"proposal": 2' in content
-    update_line = next(
-        line for line in content.splitlines() if '"updateComponents"' in line
-    )
-    update = json.loads(update_line)
+    assert "```a2ui" not in snapshot["content"]
+    assert snapshot["content"] == "我准备了两个方案，请选择"
+
+    a2ui_events = [
+        e for e in collected
+        if e["type"] == "CUSTOM" and e["name"] == "a2ui.surface"
+    ]
+    assert len(a2ui_events) == 2
+    create = next(e["value"] for e in a2ui_events if "createSurface" in e["value"])
+    update = next(e["value"] for e in a2ui_events if "updateComponents" in e["value"])
+    assert create["createSurface"]["surfaceId"] == "flow-choice"
     buttons = [
         component
         for component in update["updateComponents"]["components"]
@@ -1434,11 +1459,12 @@ async def test_proposals_reply_gets_a2ui_choice_ui(gen_module, monkeypatch):
     )["nodes"][0]["title"] == "需求"
     # The structured flow_proposals event is still emitted for the canvas.
     proposals_event = next(
-        (e for e in collected if e.get("type") == "flow_proposals"),
+        (e for e in collected
+         if e["type"] == "CUSTOM" and e["name"] == "workstep.flow_proposals"),
         None,
     )
     assert proposals_event is not None
-    assert len(proposals_event["data"]["proposals"]) == 2
+    assert len(proposals_event["value"]["proposals"]) == 2
 
     stop.set()
     await collector_task
@@ -1534,7 +1560,9 @@ async def test_canvas_json_in_reply_becomes_hidden_auto_apply_proposal(
         "steps": canvas,
         "autoApply": True,
     }]
-    assert events == []
+    assert [event["type"] for event in events] == ["a2ui", "a2ui"]
+    assert all("updateComponents" in event["data"] or "createSurface" in event["data"]
+               for event in events)
 
 
 class ResumeFakeEngine:
@@ -1545,7 +1573,7 @@ class ResumeFakeEngine:
 @pytest.mark.anyio
 async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeypatch):
     """Resume-capable engines keep context engine-side: no spliced history."""
-    import services.workflow_gen as wfgen_service
+    import agent_assistants.workflow_gen as wfgen_service
 
     module, bus, manager, project, _ = gen_module
     seen: list[str] = []
@@ -1652,7 +1680,7 @@ async def test_invoke_engine_forwards_message_history_only_to_capable_engines(
     monkeypatch,
 ):
     """invoke_engine 只向支持 message_history 的引擎透传引擎状态。"""
-    import services.assistant_base as assistant_base
+    import agent_assistants.base as assistant_base
     from engines.core.events import InternalEvent
 
     calls: list[dict] = []
@@ -1710,7 +1738,7 @@ async def test_invoke_engine_forwards_message_history_only_to_capable_engines(
 @pytest.mark.anyio
 async def test_invoke_engine_pauses_and_routes_assistant_interactions(monkeypatch):
     """共享助手调用层也必须把交互注册到统一 intervention broker。"""
-    import services.assistant_base as assistant_base
+    import agent_assistants.base as assistant_base
     from engines.core.interactions import elicitation_request
     from services.intervention import intervention_manager
 
@@ -1737,7 +1765,8 @@ async def test_invoke_engine_pauses_and_routes_assistant_interactions(monkeypatc
             )
             await responded.wait()
             yield assistant_base.InternalEvent(
-                type="text_delta", data={"delta": "继续执行"}
+                type="agent_message_chunk",
+                data={"content": {"text": "继续执行"}},
             )
 
         def normalize_interaction_event(self, event):
@@ -1773,11 +1802,11 @@ async def test_invoke_engine_pauses_and_routes_assistant_interactions(monkeypatc
         text, events, _ = await asyncio.wait_for(invocation, timeout=1)
         assert text == "继续执行"
         assert [event["type"] for event in events] == [
-            "interaction_request", "interaction_response", "text_delta",
+            "interaction_request", "interaction_response", "agent_message_chunk",
         ]
         assert received[0][1] == response
         assert [event.type for event in published] == [
-            "interaction_request", "interaction_response", "text_delta",
+            "interaction_request", "interaction_response", "agent_message_chunk",
         ]
     finally:
         if not invocation.done():
@@ -1792,8 +1821,8 @@ async def test_default_assistant_prompt_omits_history_for_resume_engines(
     monkeypatch,
 ):
     """共享层默认 prompt 构建：resume 引擎不拼历史，无状态引擎保留拼接。"""
-    import services.assistant_base as assistant_base
-    from services.assistant_base import (
+    import agent_assistants.base as assistant_base
+    from agent_assistants.base import (
         AssistantConfig,
         AssistantRuntime,
         AssistantSession,

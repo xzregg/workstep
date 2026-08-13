@@ -13,10 +13,10 @@ from models import init_db
 from streaming.bus import EventBus
 from services.task import TaskService
 from engines.core.events import InternalEvent
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 
 
-class MockEngine(BaseLLMEngine):
+class MockEngine(AcpEngineBase):
     """Mock engine that yields predefined events."""
 
     def __init__(self, events=None, fail=False):
@@ -362,9 +362,9 @@ async def test_run_task_success(subscriber):
     from engines import registry
     original = registry.ENGINE_REGISTRY.copy()
     registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: MockEngine(events=[
-        InternalEvent(type="text_delta", data={"delta": "Hello"}),
-        InternalEvent(type="text_delta", data={"delta": " world"}),
-        InternalEvent(type="usage", data={
+        InternalEvent(type="agent_message_chunk", data={"content": {"text": "Hello"}}),
+        InternalEvent(type="agent_message_chunk", data={"content": {"text": " world"}}),
+        InternalEvent(type="usage_update", data={
             "input_tokens": 10,
             "output_tokens": 5,
             "cache_creation_input_tokens": 6,
@@ -383,8 +383,8 @@ async def test_run_task_success(subscriber):
 
         # Should have status:running, text_deltas, usage, status:passed
         types = [e["type"] for e in events]
-        assert "status" in types
-        assert "text_delta" in types
+        assert "RUN_STARTED" in types
+        assert "TEXT_MESSAGE_CHUNK" in types
 
         # Task should be back to ready (single stage completed)
         updated = service.get_task(task["id"])
@@ -470,8 +470,8 @@ async def test_run_task_error_event_is_a_failed_run(subscriber):
         assert step.status == "failed"
         assert step.error == "binary not found"
         assert message.run_status == "failed"
-        assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "failed"
+        assert events[-1]["type"] == "RUN_ERROR"
+        assert events[-1]["status"] == "failed"
 
     finally:
         registry.ENGINE_REGISTRY.clear()
@@ -550,8 +550,8 @@ async def test_cancel_task_finalizes_running_records(subscriber):
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"
         assert task["id"] not in service._running_engines
-        assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "cancelled"
+        assert events[-1]["type"] == "RUN_ERROR"
+        assert events[-1]["status"] == "cancelled"
 
     finally:
         registry.ENGINE_REGISTRY.clear()

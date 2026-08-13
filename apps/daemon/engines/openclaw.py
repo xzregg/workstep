@@ -8,19 +8,25 @@ import shutil
 import uuid
 from typing import AsyncIterator
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.schema import EngineImage
-from engines.core.events import InternalEvent, normalize_token_usage
+from engines.core.events import (
+    InternalEvent,
+    normalize_token_usage,
+    tool_call_event,
+    tool_call_update_event,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class OpenClawEngine(BaseLLMEngine):
+class OpenClawEngine(AcpEngineBase):
     ENGINE_ID = "openclaw"
 
     """OpenClaw's stable one-shot ``agent exec --json`` integration."""
 
     def __init__(self):
+        super().__init__()
         self._process: asyncio.subprocess.Process | None = None
         self._running = False
 
@@ -160,7 +166,8 @@ class OpenClawEngine(BaseLLMEngine):
             )
         if final:
             events.append(InternalEvent(
-                type="text_delta", data={"delta": str(final)}
+                type="agent_message_chunk",
+                data={"content": {"text": str(final)}},
             ))
         usage = obj.get("usage")
         if isinstance(usage, dict):
@@ -172,7 +179,7 @@ class OpenClawEngine(BaseLLMEngine):
             })
             if session_id:
                 usage_data["session_id"] = str(session_id)
-            events.append(InternalEvent(type="usage", data=usage_data))
+            events.append(InternalEvent(type="usage_update", data=usage_data))
         return events
 
     def _map_event(self, obj: dict) -> InternalEvent | None:
@@ -184,37 +191,40 @@ class OpenClawEngine(BaseLLMEngine):
             return InternalEvent(type="status", data={"status": obj.get("value", "running")})
 
         if event_type == "output":
-            return InternalEvent(type="text_delta", data={"delta": obj.get("text", "")})
+            return InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": obj.get("text", "")}},
+            )
 
         if event_type in {"thinking", "reasoning"}:
             return InternalEvent(
-                type="thinking_delta",
-                data={"delta": obj.get("text", obj.get("content", ""))},
+                type="agent_thought_chunk",
+                data={"content": {"text": obj.get("text", obj.get("content", ""))}},
             )
 
         if event_type == "tool":
             if obj.get("status") in {"completed", "failed", "error"}:
-                return InternalEvent(type="tool_result", data={
-                    "tool_use_id": obj.get("id", obj.get("tool_use_id", "")),
-                    "content": obj.get("output", obj.get("result", "")),
-                    "is_error": obj.get("status") in {"failed", "error"},
-                })
-            return InternalEvent(type="tool_use", data={
-                "id": obj.get("id", obj.get("tool_use_id", "")),
-                "name": obj.get("tool", ""),
-                "input": obj.get("input", {}),
-            })
+                return tool_call_update_event(
+                    tool_call_id=str(obj.get("id", obj.get("tool_use_id", ""))),
+                    status="failed" if obj.get("status") in {"failed", "error"} else "completed",
+                    raw_output=obj.get("output", obj.get("result", "")),
+                )
+            return tool_call_event(
+                tool_call_id=str(obj.get("id", obj.get("tool_use_id", ""))),
+                title=obj.get("tool", ""),
+                raw_input=obj.get("input", {}),
+            )
 
         if event_type == "tool_result":
-            return InternalEvent(type="tool_result", data={
-                "tool_use_id": obj.get("tool_use_id", obj.get("id", "")),
-                "content": obj.get("content", obj.get("output", "")),
-                "is_error": bool(obj.get("is_error", False)),
-            })
+            return tool_call_update_event(
+                tool_call_id=str(obj.get("tool_use_id", obj.get("id", ""))),
+                status="failed" if bool(obj.get("is_error", False)) else "completed",
+                raw_output=obj.get("content", obj.get("output", "")),
+            )
 
         if event_type == "usage":
             usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else obj
-            return InternalEvent(type="usage", data=normalize_token_usage(usage))
+            return InternalEvent(type="usage_update", data=normalize_token_usage(usage))
 
         return None
 
@@ -244,6 +254,18 @@ class OpenClawEngine(BaseLLMEngine):
     @property
     def supports_interactive(self) -> bool:
         return False
+
+    # --- ACP 事件契约（非 ACP 引擎：声明 = 实际，无原生来源不合成） ---
+
+    #: spawn（agent exec --json 信封）实际产出的 ACP 词汇事件；
+    #: 无会话 / 审批 / 直播消息能力（一次性 exec，supports_resume=False）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "usage_update",
+        "session_started",
+        "status",
+        "error",
+    })
 
     def build_resume_params(self, session_id: str) -> dict:
         return {}

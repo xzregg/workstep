@@ -1,7 +1,8 @@
 """LLM engine abstraction layer.
 
 ``engines/`` 根目录只放引擎文件：每个引擎一个模块（文件或包），模块内
-定义 ``BaseLLMEngine`` 子类并声明 ``ENGINE_ID``，启动时自动注册，
+定义 ``AcpEngineBase`` 子类（ACP 协议基类，继承 ``BaseLLMEngine`` 的
+自定义函数：安装 / 版本 / 配置）并声明 ``ENGINE_ID``，启动时自动注册，
 无需改动任何其他代码。
 """
 

@@ -17,15 +17,19 @@ export interface PlanSnapshot {
 export interface PlanStreamEvent {
   type?: string
   data?: Record<string, unknown>
+  name?: string
+  value?: Record<string, unknown>
 }
 
 export function mergePlanEvents(
   persisted: PlanStreamEvent[] = [],
   live: PlanStreamEvent[] = [],
 ): PlanStreamEvent[] {
-  if (live.some((event) => event.type === 'plan')) return live
+  if (live.some((event) => event.type === 'plan' || isCustom(event, CUSTOM.plan))) {
+    return live
+  }
   const latestPersistedPlan = [...persisted].reverse().find(
-    (event) => event.type === 'plan',
+    (event) => event.type === 'plan' || isCustom(event, CUSTOM.plan),
   )
   return latestPersistedPlan ? [latestPersistedPlan, ...live] : live
 }
@@ -33,9 +37,12 @@ export function mergePlanEvents(
 export function latestPlanFromEvents(
   events: PlanStreamEvent[],
 ): PlanSnapshot | undefined {
-  const event = [...events].reverse().find((candidate) => candidate.type === 'plan')
+  const event = [...events].reverse().find(
+    (candidate) => candidate.type === 'plan' || isCustom(candidate, CUSTOM.plan),
+  )
   if (!event) return undefined
-  const rawEntries = event.data?.entries
+  const data = isCustom(event, CUSTOM.plan) ? customValue(event) : event.data
+  const rawEntries = data?.entries
   if (!Array.isArray(rawEntries)) return undefined
   const entries = rawEntries.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return []
@@ -50,7 +57,7 @@ export function latestPlanFromEvents(
       : 'pending'
     return [{ content, priority, status }]
   })
-  const explanation = String(event.data?.explanation || '').trim() || undefined
+  const explanation = String(data?.explanation || '').trim() || undefined
   return {
     ...(explanation ? { explanation } : {}),
     entries,
@@ -58,3 +65,4 @@ export function latestPlanFromEvents(
     total: entries.length,
   }
 }
+import { CUSTOM, customValue, isCustom } from './agui.ts'

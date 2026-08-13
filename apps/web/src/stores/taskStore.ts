@@ -1,9 +1,16 @@
 import { create } from 'zustand'
-import { taskApi, type Task, type TaskStepState } from '../api/client'
+import { taskApi, type Task, type TaskStepState } from '../api/client.ts'
+import {
+  CUSTOM,
+  customValue,
+  isCustom,
+  isRunEvent,
+  messageId,
+} from '../utils/agui.ts'
 
 export interface TaskEvent {
   type: string
-  data: Record<string, unknown>
+  data?: Record<string, unknown>
   task_id?: string
   step_key?: string
   channel?: 'coordinator' | 'execution' | 'review'
@@ -13,6 +20,23 @@ export interface TaskEvent {
   event_sequence?: number
   created_at?: string
   timestamp?: number
+  /** AG-UI 标准字段 */
+  messageId?: string
+  name?: string
+  value?: Record<string, unknown>
+  role?: string
+  delta?: string
+  content?: string
+  prompt?: string
+  status?: string
+  error?: string
+  ended_at?: string
+  toolCallId?: string
+  toolCallName?: string
+  args?: unknown
+  output?: unknown
+  isError?: boolean
+  sequence?: number
 }
 
 export interface LiveMessage {
@@ -26,6 +50,7 @@ export interface LiveMessage {
   model?: string
   prompt?: string
   created_at?: string
+  role?: 'user' | 'assistant'
   proposals: Array<Record<string, unknown>>
 }
 
@@ -171,29 +196,30 @@ export const useTaskStore = create<TaskState>((set) => ({
     const timedEvent = event.timestamp
       ? event
       : { ...event, timestamp: Date.now() }
-    const isStatusEvent = [
-      'status', 'review_status', 'review_result', 'step_retrying',
-    ].includes(event.type)
+    const mid = messageId(event)
+    const isStatusEvent = isRunEvent(event)
+      || isCustom(event, CUSTOM.status)
+      || isCustom(event, CUSTOM.stepRetrying)
     if (isStatusEvent) {
       // Bump the counter so the sidebar can refresh flow running state.
       useTaskStore.setState((st) => ({ taskStatusEvents: st.taskStatusEvents + 1 }))
     }
-    const isRecoveredEvent = event.type === 'run_recovered'
+    const isRecoveredEvent = isCustom(event, CUSTOM.runRecovered)
     if (isRecoveredEvent) {
       // Daemon restart resumed the run from its last completed stage.
       useTaskStore.setState((st) => ({ taskStatusEvents: st.taskStatusEvents + 1 }))
     }
 
     set((s) => {
-      if (event.message_id) {
+      if (mid) {
         const taskMessages = s.liveMessages[taskId] || {}
-        const current = taskMessages[event.message_id] || {
-          id: event.message_id,
+        const current = taskMessages[mid] || {
+          id: mid,
           channel: event.channel || 'execution',
           step_key: event.step_key,
-          role: event.type === 'message_started'
-            ? event.data.role
-            : event.type === 'live_message'
+          role: event.type === 'TEXT_MESSAGE_START'
+            ? event.role
+            : event.type === 'TEXT_MESSAGE_CHUNK' && event.role === 'user'
               ? 'user'
               : undefined,
           content: '',
@@ -201,36 +227,42 @@ export const useTaskStore = create<TaskState>((set) => ({
           status: 'running',
           engine: event.engine,
           model: event.model,
-          prompt: event.type === 'message_started'
-            ? String(event.data.prompt || '')
+          prompt: event.type === 'TEXT_MESSAGE_START'
+            ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
             : undefined,
           created_at: event.created_at,
           proposals: [],
         }
-        const nextContent = event.type === 'text_delta'
-          ? current.content + String(event.data.delta || '')
-          : event.type === 'message_snapshot'
-            ? String(event.data.content || '')
+        const nextContent = event.type === 'TEXT_MESSAGE_CHUNK'
+          ? current.content + String(event.delta ?? '')
+          : event.type === 'TEXT_MESSAGE_CONTENT'
+            ? (typeof event.content === 'string'
+              ? event.content
+              : String(event.delta ?? current.content))
             : current.content
-        const nextStatus = event.type === 'message_completed'
-          ? String(event.data.status || 'succeeded')
+        const nextStatus = event.type === 'TEXT_MESSAGE_END'
+          ? String(event.status ?? 'succeeded')
           : current.status
-        const nextProposals = event.type === 'action_proposal'
-          ? [...current.proposals, event.data]
+        const nextProposals = isCustom(event, CUSTOM.actionProposal)
+          ? [...current.proposals, customValue(event)]
           : current.proposals
         return {
           liveMessages: {
             ...s.liveMessages,
             [taskId]: {
               ...taskMessages,
-              [event.message_id]: {
+              [mid]: {
                 ...current,
                 content: nextContent,
                 status: nextStatus,
+                role: current.role
+                  ?? (event.type === 'TEXT_MESSAGE_CHUNK' && event.role === 'user'
+                    ? 'user'
+                    : undefined),
                 engine: event.engine || current.engine,
                 model: event.model || current.model,
-                prompt: event.type === 'message_started'
-                  ? String(event.data.prompt || '')
+                prompt: event.type === 'TEXT_MESSAGE_START'
+                  ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
                   : current.prompt,
                 created_at: current.created_at || event.created_at,
                 proposals: nextProposals,
@@ -244,14 +276,15 @@ export const useTaskStore = create<TaskState>((set) => ({
       const prevContent = s.content[taskId] || ''
 
       let newContent = prevContent
-      if (event.type === 'text_delta') {
-        newContent = prevContent + (event.data.delta as string || '')
+      if (event.type === 'TEXT_MESSAGE_CHUNK') {
+        newContent = prevContent + String(event.delta ?? '')
       }
 
       let newTasks = s.tasks
       if (isRecoveredEvent) {
-        const recoveredAt = event.data?.recovered_at as string | undefined
-        const recoveredCount = Number(event.data?.recovered_count ?? 1)
+        const value = customValue(event)
+        const recoveredAt = value.recovered_at as string | undefined
+        const recoveredCount = Number(value.recovered_count ?? 1)
         newTasks = s.tasks.map((t) =>
           t.id === taskId
             ? {
@@ -264,10 +297,13 @@ export const useTaskStore = create<TaskState>((set) => ({
         )
       }
       if (isStatusEvent) {
+        const value = customValue(event)
         const status = (
-          event.type === 'step_retrying' ? 'retrying' : event.data.status
+          isCustom(event, CUSTOM.stepRetrying)
+            ? 'retrying'
+            : event.status ?? value.status
         ) as string
-        const stepKey = event.step_key || event.data.step_key as string | undefined
+        const stepKey = event.step_key || value.step_key as string | undefined
         const isStepStatus = [
           'pending', 'running', 'reviewing', 'awaiting_review', 'retrying',
           'passed', 'rejected', 'failed', 'cancelled', 'skipped',

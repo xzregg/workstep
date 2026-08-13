@@ -7,14 +7,14 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from models import StepRun, Task, TaskStep, WorkflowRun, init_db
 from models.fields import utc_now
 from streaming.bus import EventBus
 
 
-class RuntimeFakeEngine(BaseLLMEngine):
+class RuntimeFakeEngine(AcpEngineBase):
     @staticmethod
     def is_installed():
         return True
@@ -28,7 +28,7 @@ class RuntimeFakeEngine(BaseLLMEngine):
         return "fake"
 
     async def spawn(self, prompt, cwd, **kwargs):
-        yield InternalEvent(type="text_delta", data={"delta": "done"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "done"}})
         yield InternalEvent(type="status", data={"status": "done"})
 
     async def stop(self):
@@ -140,7 +140,7 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
             published_events.append(event_queue.get_nowait())
         started_events = [
             event for event in published_events
-            if event.get("type") == "message_started"
+            if event.get("type") == "TEXT_MESSAGE_START"
         ]
         assert len(started_events) == 2
         assert all(event.get("created_at") for event in started_events)

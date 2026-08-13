@@ -146,8 +146,9 @@ class ReviewGate:
                     if event is None:
                         continue
                     events_collected.append(event.to_dict())
-                    if event.type == "text_delta":
-                        response_parts.append(str(event.data.get("delta", "")))
+                    if event.type == "agent_message_chunk":
+                        content = event.data.get("content") or {}
+                        response_parts.append(str(content.get("text", "")))
                     elif event.type == "error" and error is None:
                         error = str(event.data.get("message") or "Review engine failed")
                     elif event.type == "session_started":
@@ -155,7 +156,7 @@ class ReviewGate:
                             str(event.data.get("session_id") or "") or None
                         )
                     elif (
-                        event.type == "usage"
+                        event.type == "usage_update"
                         and event.data.get("session_id")
                     ):
                         review_session_id = str(event.data["session_id"])

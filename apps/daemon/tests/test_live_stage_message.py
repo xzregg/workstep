@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.claude_code import ClaudeCodeEngine
 from engines.core.events import InternalEvent
 from models import CoordinatorTurn, Message, StageSupplement, Task, TaskStep, init_db
@@ -167,7 +167,7 @@ def test_claude_build_command_opt_in_live_mode():
 # --- TaskRunner live delivery ---
 
 
-class LiveFakeEngine(BaseLLMEngine):
+class LiveFakeEngine(AcpEngineBase):
     received: list[str] = []
 
     @staticmethod
@@ -194,7 +194,7 @@ class LiveFakeEngine(BaseLLMEngine):
                     "message_id": message_id,
                     "status": "delivered" if delivered else "error",
                 })
-        yield InternalEvent(type="text_delta", data={"delta": "working"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "working"}})
         await asyncio.sleep(0.3)
         yield InternalEvent(type="status", data={"status": "done"})
 
@@ -245,7 +245,7 @@ class SplitLiveFakeEngine(LiveFakeEngine):
     async def spawn(self, prompt, cwd, **kwargs):
         queue = kwargs.get("live_message_queue")
         yield InternalEvent(type="status", data={"status": "running"})
-        yield InternalEvent(type="text_delta", data={"delta": "第一段输出"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "第一段输出"}})
         await asyncio.sleep(0.05)
         if queue is not None:
             while not queue.empty():
@@ -256,7 +256,7 @@ class SplitLiveFakeEngine(LiveFakeEngine):
                     "status": "delivered" if delivered else "error",
                 })
         await asyncio.sleep(0.05)
-        yield InternalEvent(type="text_delta", data={"delta": "第二段输出"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "第二段输出"}})
         yield InternalEvent(type="status", data={"status": "done"})
 
 
@@ -542,7 +542,7 @@ def test_stage_prompt_never_contains_coordinator_messages(tmp_path):
 
 
 def test_coordinator_context_only_uses_coordinator_messages(tmp_path):
-    from services.coordinator import CoordinatorModule
+    from agent_assistants.coordinator import CoordinatorModule
     from services.workflow_runtime import WorkflowRuntime
 
     db = init_db(str(tmp_path / "coordinator-context.db"))

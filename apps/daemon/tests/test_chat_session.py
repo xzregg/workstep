@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from models import LATEST_SCHEMA_VERSION, SchemaVersion, init_db
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
-from services.chat_session import DEFAULT_QUICK_BUTTONS, SYSTEM_PROMPT, ChatSessionModule
+from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS, SYSTEM_PROMPT, ChatSessionModule
 from services.project import ProjectManager
 from streaming.bus import EventBus
 
@@ -80,7 +80,7 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 
 @pytest.fixture
 async def chat_module(tmp_path, monkeypatch):
-    import services.chat_session as chat_service
+    import agent_assistants.chat_session as chat_service
     import services.config as config_service
     import services.project as project_service
 
@@ -213,7 +213,7 @@ async def test_enhance_prompt_rewrites_via_default_engine(chat_module, monkeypat
         calls.append((engine_id, model, prompt))
         return "改写后的清晰提示词。", [], None
 
-    monkeypatch.setattr("services.assistant_base.invoke_engine", fake_invoke)
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke)
     result = await module.enhance_prompt(project.id, "帮我写个函数")
     assert result == "改写后的清晰提示词。"
     assert calls
@@ -306,12 +306,15 @@ async def test_submit_is_idempotent_and_events_are_channel_scoped(chat_module, m
             except asyncio.TimeoutError:
                 continue
             collected.append(event)
-            if event.get("type") == "message_completed":
+            if event.get("type") == "TEXT_MESSAGE_END":
                 stop.set()
 
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
         if on_event is not None:
-            await on_event(InternalEvent(type="text_delta", data={"delta": "流式回复"}))
+            await on_event(InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "流式回复"}},
+            ))
         return "流式回复", [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -330,7 +333,7 @@ async def test_submit_is_idempotent_and_events_are_channel_scoped(chat_module, m
     assert channels == {"session_chat"}
     for event in collected:
         assert event.get("session_id") == session_id
-    assert any(event["type"] == "message_completed" for event in collected)
+    assert any(event["type"] == "TEXT_MESSAGE_END" for event in collected)
 
     replayed = module.submit_message(project.id, session_id, "第一轮", "idem-http-1")
     assert replayed.turn_id == accepted.turn_id
@@ -430,7 +433,7 @@ async def test_system_prompt_defaults_validation_and_restore(chat_module):
 async def test_chat_http_contract(tmp_path, monkeypatch):
     """Full HTTP contract: create/list/get/rename/chat/stop/quick-buttons."""
     import main
-    import services.chat_session as chat_service
+    import agent_assistants.chat_session as chat_service
     import services.config as config_service
     import services.project as project_service
 
@@ -516,6 +519,19 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             accepted = resp.json()
             assert accepted["session_id"] == session_id
             assert await _wait_turn(module, accepted["turn_id"]) == "completed"
+
+            # plan mode is accepted and forwarded to the turn
+            resp = await client.post(
+                f"/api/chat-sessions/{session_id}/chat",
+                json={"project_id": project.id, "content": "规划一下", "plan_mode": True},
+                headers={"Idempotency-Key": "idem-plan-1"},
+            )
+            assert resp.status_code == 200
+            plan_accepted = resp.json()
+            assert await _wait_turn(module, plan_accepted["turn_id"]) == "completed"
+            turn_key = (project.id, session_id, "idem-plan-1")
+            plan_state = module._turn_states[module._turn_keys[turn_key]]
+            assert plan_state["plan_mode"] is True
 
             resp = await client.get(
                 "/api/chat-sessions/" + session_id,

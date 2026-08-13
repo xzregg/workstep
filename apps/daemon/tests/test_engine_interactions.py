@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
 from engines.core.interactions import (
     claude_ask_user_request,
@@ -13,7 +13,7 @@ from engines.core.interactions import (
 )
 
 
-class InteractionEngine(BaseLLMEngine):
+class InteractionEngine(AcpEngineBase):
     def __init__(self):
         self.approvals: list[tuple[str, str | None]] = []
         self.answers: list[tuple[str, str]] = []

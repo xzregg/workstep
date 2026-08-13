@@ -81,6 +81,13 @@ export interface ChatContextUsage {
   percent: number
 }
 
+/** Codex-style plan mode (lightbulb pill, left side; also reachable from the + menu). */
+export interface ChatInputPlan {
+  active: boolean
+  onChange: (active: boolean) => void
+  disabled?: boolean
+}
+
 export interface ChatInputProps {
   value: string
   onChange: (value: string) => void
@@ -104,6 +111,8 @@ export interface ChatInputProps {
   enhance?: ChatInputEnhance
   /** Context-window usage indicator (Codex-style percent + tooltip). */
   context?: ChatContextUsage | null
+  /** Plan-mode toggle (Codex-style lightbulb, left side). */
+  plan?: ChatInputPlan
   /** Enable image attach: paste-to-upload + the image button. */
   imageAttach?: ChatInputImageAttach
   /** Optional extra slot rendered at the bottom-left (before the image button). */
@@ -133,6 +142,7 @@ export default function ChatInput({
   permission,
   enhance,
   context,
+  plan,
   imageAttach,
   left,
   onPaste,
@@ -173,6 +183,7 @@ export default function ChatInput({
   const permissionLabel =
     permissionOptions.find((option) => option.value === permission?.value)?.label
     ?? t('chatSession.permissionDefault')
+  const planActive = plan?.active ?? false
 
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
@@ -265,6 +276,23 @@ export default function ChatInput({
           }}
         />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 6px' }}>
+          {plan && (
+            <button
+              type="button"
+              className="chat-input-pill"
+              data-active={planActive}
+              disabled={plan.disabled}
+              onClick={() => plan.onChange(!planActive)}
+              aria-pressed={planActive}
+              title={t('chatInput.planModeTitle')}
+              style={{ opacity: plan.disabled ? 0.55 : 1, cursor: plan.disabled ? 'not-allowed' : 'pointer' }}
+            >
+              <Icon name="lightbulb" size={12} strokeWidth={1.8} color={planActive ? '#f5a623' : 'var(--meta)'} />
+              <span style={{ color: planActive ? '#f5a623' : 'var(--fg)', fontWeight: planActive ? 600 : 500 }}>
+                {t('chatInput.planMode')}
+              </span>
+            </button>
+          )}
           {left}
           {imageAttach && (
             <>
@@ -350,6 +378,25 @@ export default function ChatInput({
                         </span>
                         <span className="chat-input-menu-name">{t('chatInput.attachImage')}</span>
                       </button>
+                      {plan && (
+                        <button
+                          type="button"
+                          className="chat-input-menu-item"
+                          data-selected={planActive}
+                          onClick={() => {
+                            setAttachMenuOpen(false)
+                            plan.onChange(!planActive)
+                          }}
+                        >
+                          <span className="chat-input-menu-icon">
+                            <Icon name="lightbulb" size={14} strokeWidth={1.8} />
+                          </span>
+                          <span className="chat-input-menu-name">{t('chatInput.attachPlanMode')}</span>
+                          {planActive && (
+                            <Icon name="check" size={13} strokeWidth={2.2} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                          )}
+                        </button>
+                      )}
                     </div>
                   </>
                 )}

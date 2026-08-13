@@ -15,7 +15,7 @@ from engines.core.registry import ENGINE_REGISTRY
 from services.project import ProjectManager
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
-from services.coordinator import CoordinatorModule
+from agent_assistants.coordinator import CoordinatorModule
 from streaming.bus import EventBus
 
 
@@ -1620,8 +1620,8 @@ class ScriptedStageEngine:
 
     async def spawn(self, prompt, cwd, **kwargs):
         self.prompts.append(prompt)
-        yield InternalEvent(type="text_delta", data={"delta": "阶段执行完成"})
-        yield InternalEvent(type="usage", data={
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "阶段执行完成"}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0,
         })
 
@@ -1655,8 +1655,8 @@ class ScriptedReviewEngine:
                 "suggestion": "补充验收内容后重试",
             }],
         }, ensure_ascii=False)
-        yield InternalEvent(type="text_delta", data={"delta": text})
-        yield InternalEvent(type="usage", data={
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": text}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 20, "output_tokens": 10, "cache_read_input_tokens": 0,
         })
 

@@ -31,6 +31,13 @@
     zod "^3.25.76"
     zod-to-json-schema "^3.25.2"
 
+"@ag-ui/core@^0.0.57":
+  version "0.0.57"
+  resolved "https://registry.npmjs.org/@ag-ui/core/-/core-0.0.57.tgz"
+  integrity sha512-gho1OWjNE6E3Rl7ZEZ1wr2CEpUHjLFU0FqzCZZk439TicLu+BfLCMkMokB07bMGlRmbJ60hM6LW60iOVauCx+Q==
+  dependencies:
+    zod "^3.22.4"
+
 "@oxc-project/types@=0.139.0":
   version "0.139.0"
   resolved "https://registry.npmjs.org/@oxc-project/types/-/types-0.139.0.tgz"
@@ -1332,7 +1339,7 @@ zod-to-json-schema@^3.25.2:
   resolved "https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.2.tgz"
   integrity sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==
 
-"zod@^3.25.28 || ^4", zod@^3.25.76:
+zod@^3.22.4, "zod@^3.25.28 || ^4", zod@^3.25.76:
   version "3.25.76"
   resolved "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz"
   integrity sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==

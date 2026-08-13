@@ -23,8 +23,9 @@ from services.review_gate import ReviewGate
 from services.config import config_store
 from services.messages import create_task_message, new_message_id
 from services.intervention import intervention_manager
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
+from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent
 from streaming.bus import EventBus
 
@@ -37,7 +38,7 @@ def extract_usage_json(events_collected: list[dict]) -> str | None:
     Returns None when no usage event was collected.
     """
     for event in reversed(events_collected):
-        if event.get("type") == "usage":
+        if event.get("type") in {"usage", "usage_update"}:
             return json.dumps(event.get("data", {}))
     return None
 
@@ -50,7 +51,7 @@ def _effective_review_mode(config: dict) -> str:
 
 
 async def _with_engine_idle_timeout(
-    engine: BaseLLMEngine,
+    engine: AcpEngineBase,
     spawn_iter: AsyncIterator[InternalEvent],
     timeout_seconds: float,
 ) -> AsyncIterator[InternalEvent]:
@@ -458,13 +459,14 @@ class TaskRunner:
                     # race the in-memory intervention broker.
                     await asyncio.sleep(0)
                 events_collected.append(event.to_dict())
-                if event.type == "text_delta":
-                    content_parts.append(event.data.get("delta", ""))
+                if event.type == "agent_message_chunk":
+                    content = event.data.get("content") or {}
+                    content_parts.append(content.get("text", ""))
                 elif event.type == "session_started":
                     captured_session_id = (
                         str(event.data.get("session_id") or "") or None
                     )
-                elif event.type == "usage" and event.data.get("session_id"):
+                elif event.type == "usage_update" and event.data.get("session_id"):
                     captured_session_id = str(event.data["session_id"])
                 elif event.type == "error" and reported_error is None:
                     reported_error = str(
@@ -1098,8 +1100,8 @@ class TaskRunner:
         self._running_engines.clear()
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
-        await self._event_bus.publish({
-            "task_id": task_id,
-            "step_key": step_key,
-            **event,
-        })
+        """发布出口：内部事件 → AG-UI 标准事件后推送。"""
+        payload = {"task_id": task_id, "step_key": step_key, **event}
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)

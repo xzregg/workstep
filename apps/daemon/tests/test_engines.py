@@ -5,13 +5,13 @@ from typing import get_args, get_type_hints
 
 import pytest
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent, normalize_cost, normalize_token_usage
 from engines.core.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
 
 
-class StubEngine(BaseLLMEngine):
+class StubEngine(AcpEngineBase):
     def __init__(self, events):
         self.events = events
         self.last_prompt = ""
@@ -53,9 +53,12 @@ class StubEngine(BaseLLMEngine):
 
 def test_internal_event_creation():
     """InternalEvent can be created with type and data."""
-    event = InternalEvent(type="text_delta", data={"delta": "hello"})
-    assert event.type == "text_delta"
-    assert event.data["delta"] == "hello"
+    event = InternalEvent(
+        type="agent_message_chunk",
+        data={"content": {"text": "hello"}},
+    )
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == "hello"
     assert event.timestamp > 0
 
 
@@ -111,7 +114,7 @@ def test_normalize_token_usage_appends_cost():
 @pytest.mark.anyio
 async def test_base_engine_connection_test_uses_the_execution_interface(tmp_path):
     engine = StubEngine([
-        InternalEvent("text_delta", {"delta": "WORKSTEP_ENGINE_OK"}),
+        InternalEvent("agent_message_chunk", {"content": {"text": "WORKSTEP_ENGINE_OK"}}),
     ])
 
     result = await engine.test_connection(str(tmp_path))
@@ -265,10 +268,10 @@ def test_claude_maps_partial_stream_and_all_completed_blocks_without_duplicates(
         ]},
     }, state)
 
-    assert [(event.type, event.data.get("delta")) for event in partial] == [
-        ("text_delta", "增量")
+    assert [(event.type, (event.data.get("content") or {}).get("text")) for event in partial] == [
+        ("agent_message_chunk", "增量")
     ]
-    assert [event.type for event in completed] == ["thinking_delta", "tool_use"]
+    assert [event.type for event in completed] == ["agent_thought_chunk", "tool_call"]
 
 
 def test_claude_maps_all_completed_blocks_when_partial_stream_is_absent():
@@ -280,7 +283,7 @@ def test_claude_maps_all_completed_blocks_when_partial_stream_is_absent():
         ]},
     })
 
-    assert [event.data["delta"] for event in events] == ["A", "B"]
+    assert [event.data["content"]["text"] for event in events] == ["A", "B"]
 
 
 def test_claude_result_error_is_not_reported_as_successful_usage_only():
@@ -331,8 +334,8 @@ def test_claude_map_event_text_delta():
     }
     event = engine._map_event(obj)
     assert event is not None
-    assert event.type == "text_delta"
-    assert event.data["delta"] == "Hello world"
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == "Hello world"
 
 
 def test_claude_map_event_tool_use():
@@ -351,9 +354,9 @@ def test_claude_map_event_tool_use():
     }
     event = engine._map_event(obj)
     assert event is not None
-    assert event.type == "tool_use"
-    assert event.data["name"] == "Read"
-    assert event.data["id"] == "tool_123"
+    assert event.type == "tool_call"
+    assert event.data["title"] == "Read"
+    assert event.data["tool_call_id"] == "tool_123"
 
 
 def test_claude_maps_ask_user_question_to_form_elicitation():
@@ -390,8 +393,8 @@ def test_codex_map_reasoning_item():
     })
 
     assert event is not None
-    assert event.type == "thinking_delta"
-    assert event.data["delta"] == "分析任务"
+    assert event.type == "agent_thought_chunk"
+    assert event.data["content"]["text"] == "分析任务"
 
 
 def test_claude_map_event_usage():
@@ -405,7 +408,7 @@ def test_claude_map_event_usage():
     }
     event = engine._map_event(obj)
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["input_tokens"] == 100
     assert event.data["session_id"] == "sess_abc"
 
@@ -422,7 +425,7 @@ def test_claude_map_event_usage_with_cache():
     }
     event = engine._map_event(obj)
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["input_tokens"] == 300
     assert event.data["output_tokens"] == 50
     assert event.data["cache_creation_input_tokens"] == 150
@@ -446,7 +449,7 @@ def test_claude_map_event_usage_from_nested_result_payload():
     event = engine._map_event(obj)
 
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data == {
         "input_tokens": 300,
         "output_tokens": 50,
@@ -468,7 +471,7 @@ def test_claude_map_event_usage_with_cost():
         },
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["cost"] == {"amount": 0.045, "currency": "USD"}
 
 
@@ -487,7 +490,7 @@ def test_claude_map_event_result_top_level_cost():
         "total_cost_usd": 0.456,
     })
     assert event is not None
-    assert event.type == "usage"
+    assert event.type == "usage_update"
     assert event.data["cost"] == {"amount": 0.456, "currency": "USD"}
 
 

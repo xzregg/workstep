@@ -1,7 +1,7 @@
 """AI flow-design assistant (workflow generation chat).
 
 This module is one *assistant* registered in the shared assistant layer
-(``services/assistant_base.py``): it only declares an ``AssistantConfig``
+(``agent_assistants/base.py``): it only declares an ``AssistantConfig``
 (system prompt, response parser, workflow-scoped persistence) plus the
 flow-specific parsing/validation hooks. Session lifecycle, idempotency,
 engine invocation with resume and streaming events all live in the generic
@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
-from services.assistant_base import (
+from agent_assistants.base import (
     AssistantConfig,
     AssistantRuntime,
     JsonRowPersistence,
@@ -337,7 +337,9 @@ class WorkflowGenModule(AssistantRuntime):
                     "data": {"message": f"画布 JSON 未通过校验，已丢弃：{exc}"},
                 })
         if proposals:
-            reply = self._ensure_a2ui_choice_ui(reply, proposals)
+            reply, a2ui_payloads = self._ensure_a2ui_choice_ui(reply, proposals)
+            for payload in a2ui_payloads:
+                events.append({"type": "a2ui", "data": payload})
         return reply, proposals, events
 
     @staticmethod
@@ -376,16 +378,17 @@ class WorkflowGenModule(AssistantRuntime):
         ) is not None
 
     @staticmethod
-    def _ensure_a2ui_choice_ui(reply: str, proposals: list[dict]) -> str:
-        """Append an A2UI v0.9.1 button list when the reply has none.
+    def _ensure_a2ui_choice_ui(reply: str, proposals: list[dict]) -> tuple[str, list[dict]]:
+        """保证方案选择界面：返回 (reply, a2ui 事件载荷列表)。
 
-        Keeps the model's own a2ui fence when present; otherwise generates a
-        generic "choose a plan" surface so users always get clickable UI.
+        模型自带 `````a2ui```` fence 时保留 fence（并注入 stepsJson），UI 走
+        fence 渲染、不发事件；否则自动生成 createSurface + updateComponents
+        作为 ``a2ui`` 事件推送，reply 只留文本摘要。
         """
         if not proposals:
-            return reply
+            return reply, []
         if WorkflowGenModule._has_a2ui_fence(reply):
-            return WorkflowGenModule._inject_a2ui_flow_steps(reply, proposals)
+            return WorkflowGenModule._inject_a2ui_flow_steps(reply, proposals), []
         components: list[dict] = [
             {
                 "component": "Text",
@@ -447,30 +450,25 @@ class WorkflowGenModule(AssistantRuntime):
                 "children": root_children,
             },
         )
-        lines = [
-            json.dumps(
-                {
-                    "version": "v0.9.1",
-                    "createSurface": {
-                        "surfaceId": "flow-choice",
-                        "catalogId": "basic",
-                    },
+        payloads = [
+            {
+                "version": "v0.9.1",
+                "createSurface": {
+                    "surfaceId": "flow-choice",
+                    "catalogId": "basic",
                 },
-                ensure_ascii=False,
-            ),
-            json.dumps(
-                {
-                    "version": "v0.9.1",
-                    "updateComponents": {
-                        "surfaceId": "flow-choice",
-                        "components": components,
-                    },
+            },
+            {
+                "version": "v0.9.1",
+                "updateComponents": {
+                    "surfaceId": "flow-choice",
+                    "components": components,
                 },
-                ensure_ascii=False,
-            ),
+            },
         ]
-        fence = "\n".join(lines)
-        return f"{reply.rstrip()}\n\n```a2ui\n{fence}\n```\n"
+        # reply 只留文本摘要；UI 以 a2ui 事件推送（前端 store 渲染）。
+        return reply.rstrip(), payloads
+
 
     @staticmethod
     def _inject_a2ui_flow_steps(reply: str, proposals: list[dict]) -> str:
@@ -691,7 +689,7 @@ class WorkflowGenModule(AssistantRuntime):
 
     @staticmethod
     def _history_message(item: dict) -> dict:
-        from services.assistant_base import default_history_message
+        from agent_assistants.base import default_history_message
 
         return default_history_message(item)
 

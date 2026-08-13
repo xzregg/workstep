@@ -54,7 +54,7 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 async def draft_module(tmp_path, monkeypatch):
     import services.config as config_service
     import services.project as project_service
-    import services.task_draft as task_draft_service
+    import agent_assistants.task_draft as task_draft_service
 
     store = MemoryConfigStore()
     monkeypatch.setattr(config_service, "config_store", store)
@@ -115,12 +115,12 @@ async def test_task_draft_publishes_description_without_creating_task(
     draft_event = None
     while draft_event is None:
         event = await asyncio.wait_for(queue.get(), timeout=2)
-        if event["type"] == "task_draft":
+        if event["type"] == "CUSTOM" and event["name"] == "workstep.task_draft":
             draft_event = event
 
     assert draft_event["channel"] == "task_create"
     assert draft_event["session_id"] == accepted.session_id
-    assert draft_event["data"] == {
+    assert draft_event["value"] == {
         "description": "## 目标\n\n完成任务创建。",
         "start_step_key": "test",
     }
@@ -152,9 +152,12 @@ async def test_task_draft_clarification_does_not_publish_draft(
     assert await _wait_turn(module, accepted.turn_id) == "completed"
 
     events = []
-    while not any(event["type"] == "message_completed" for event in events):
+    while not any(event["type"] == "TEXT_MESSAGE_END" for event in events):
         events.append(await asyncio.wait_for(queue.get(), timeout=2))
-    assert not any(event["type"] == "task_draft" for event in events)
+    assert not any(
+        event["type"] == "CUSTOM" and event["name"] == "workstep.task_draft"
+        for event in events
+    )
 
 
 @pytest.mark.anyio
@@ -190,8 +193,8 @@ async def test_task_draft_repairs_unknown_start_stage(draft_module, monkeypatch)
     draft = None
     while draft is None:
         event = await asyncio.wait_for(queue.get(), timeout=2)
-        if event["type"] == "task_draft":
-            draft = event["data"]
+        if event["type"] == "CUSTOM" and event["name"] == "workstep.task_draft":
+            draft = event["value"]
     assert draft["start_step_key"] == "test"
 
 
@@ -199,7 +202,7 @@ async def test_task_draft_repairs_unknown_start_stage(draft_module, monkeypatch)
 async def test_task_draft_http_contract(tmp_path, monkeypatch):
     import main
     import services.project as project_service
-    import services.task_draft as task_draft_service
+    import agent_assistants.task_draft as task_draft_service
     from httpx import ASGITransport, AsyncClient
 
     store = MemoryConfigStore()

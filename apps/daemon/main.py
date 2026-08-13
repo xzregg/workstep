@@ -34,11 +34,11 @@ from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
 from services.config import config_store
-from services.coordinator import CoordinatorModule
-from services.workflow_gen import WorkflowGenModule
-from services.task_draft import TaskDraftModule
+from agent_assistants.coordinator import CoordinatorModule
+from agent_assistants.workflow_gen import WorkflowGenModule
+from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
-from services.chat_session import ChatSessionModule
+from agent_assistants.chat_session import ChatSessionModule
 
 logger = logging.getLogger(__name__)
 

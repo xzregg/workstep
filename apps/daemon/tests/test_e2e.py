@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import patch
 
 from engines.core.events import InternalEvent
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 
 
 class MemoryConfigStore:
@@ -20,7 +20,7 @@ class MemoryConfigStore:
         self.values[key] = value
 
 
-class FakeEngine(BaseLLMEngine):
+class FakeEngine(AcpEngineBase):
     """Simulates a Claude-like engine yielding events."""
 
     @staticmethod
@@ -38,15 +38,23 @@ class FakeEngine(BaseLLMEngine):
     async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None, **kwargs):
         yield InternalEvent(type="status", data={"status": "initializing"})
         await asyncio.sleep(0.01)
-        yield InternalEvent(type="text_delta", data={"delta": "Hello"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "Hello"}})
         await asyncio.sleep(0.01)
-        yield InternalEvent(type="text_delta", data={"delta": " world"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": " world"}})
         await asyncio.sleep(0.01)
-        yield InternalEvent(type="tool_use", data={"id": "t1", "name": "Read", "input": {"path": "/a.py"}})
+        yield InternalEvent(type="tool_call", data={
+            "tool_call_id": "t1",
+            "title": "Read",
+            "raw_input": {"path": "/a.py"},
+        })
         await asyncio.sleep(0.01)
-        yield InternalEvent(type="tool_result", data={"tool_use_id": "t1", "content": "file contents"})
+        yield InternalEvent(type="tool_call_update", data={
+            "tool_call_id": "t1",
+            "status": "completed",
+            "raw_output": "file contents",
+        })
         await asyncio.sleep(0.01)
-        yield InternalEvent(type="usage", data={"input_tokens": 100, "output_tokens": 50})
+        yield InternalEvent(type="usage_update", data={"input_tokens": 100, "output_tokens": 50})
         yield InternalEvent(type="status", data={"status": "done"})
 
     async def stop(self):
@@ -114,16 +122,17 @@ async def test_e2e_task_run_publishes_events(tmp_path, monkeypatch):
         assert len(events) > 0
 
         types = [e["type"] for e in events]
-        assert "status" in types        # running + done
-        assert "text_delta" in types     # "Hello" + " world"
-        assert "tool_use" in types       # Read tool
-        assert "tool_result" in types    # file contents
-        assert "usage" in types          # token counts
+        assert "RUN_STARTED" in types    # running
+        assert "RUN_FINISHED" in types   # done
+        assert "TEXT_MESSAGE_CHUNK" in types  # "Hello" + " world"
+        assert "TOOL_CALL_START" in types     # Read tool
+        assert "TOOL_CALL_RESULT" in types    # file contents
+        assert "CUSTOM" in types              # usage → workstep.usage
 
         # Verify text accumulation
-        text_events = [e for e in events if e["type"] == "text_delta"]
-        assert text_events[0]["data"]["delta"] == "Hello"
-        assert text_events[1]["data"]["delta"] == " world"
+        text_events = [e for e in events if e["type"] == "TEXT_MESSAGE_CHUNK"]
+        assert text_events[0]["delta"] == "Hello"
+        assert text_events[1]["delta"] == " world"
 
         # Verify task status updated
         updated = ts.get_task(task["id"])

@@ -8,6 +8,7 @@
  */
 
 import { zhCNT } from '../i18n'
+import { CUSTOM } from '../utils/agui.ts'
 import {
   createAssistantStore,
   type AssistantChatEvent,
@@ -23,8 +24,8 @@ export type GenSessionState = AssistantSessionState
 
 export const useWorkflowGenStore = createAssistantStore({
   channel: 'flow_gen',
-  proposalEvent: 'flow_proposals',
-  rejectionEvent: 'flow_proposals_rejected',
+  proposalEvent: CUSTOM.flowProposals,
+  rejectionEvent: CUSTOM.flowProposalsRejected,
   proposalRejectedText: () => zhCNT('aiFlow.proposalRejected'),
   generateFailedText: () => zhCNT('aiFlow.generateFailed'),
   proposalExtractor: (data) => {

@@ -9,15 +9,22 @@ import shutil
 import uuid
 from typing import Any, AsyncIterator, Mapping
 
+from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
-    BaseLLMEngine,
     EngineInstallResult,
     EngineModel,
     install_python_package,
     sdk_turn_watchdog,
 )
+
 from engines.core.plans import subagent_event_from_message
-from engines.core.events import InternalEvent, compacted_event, normalize_token_usage
+from engines.core.events import (
+    InternalEvent,
+    compacted_event,
+    normalize_token_usage,
+    tool_call_event,
+    tool_call_update_event,
+)
 from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
 from services.config import CLAUDE_PERMISSION_MODES, config_store
@@ -25,7 +32,7 @@ from services.config import CLAUDE_PERMISSION_MODES, config_store
 logger = logging.getLogger(__name__)
 
 
-class ClaudeAgentSDKEngine(BaseLLMEngine):
+class ClaudeAgentSDKEngine(AcpEngineBase):
     """Claude Code driven by the official ``claude-agent-sdk`` Python package.
 
     The SDK's ``local`` transport still starts the ``claude`` binary as a child
@@ -37,6 +44,7 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
     ENGINE_ID = "claude_agent_sdk"
 
     def __init__(self):
+        super().__init__()
         self._running = False
         self._receive_task: asyncio.Task | None = None
         self._client = None
@@ -325,19 +333,22 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                 state["emitted_text"] = True
                 state["streamed_text"] = True
                 events.append(InternalEvent(
-                    type="text_delta", data={"delta": str(delta["text"])}
+                    type="agent_message_chunk",
+                    data={"content": {"text": str(delta["text"])}},
                 ))
             elif delta_type == "thinking_delta":
                 thinking = delta.get("thinking") or delta.get("text")
                 if thinking:
                     state["streamed_thinking"] = True
                     events.append(InternalEvent(
-                        type="thinking_delta", data={"delta": str(thinking)}
+                        type="agent_thought_chunk",
+                        data={"content": {"text": str(thinking)}},
                     ))
             elif delta_type == "input_json_delta" and delta.get("partial_json"):
-                events.append(InternalEvent(
-                    type="tool_input_delta",
-                    data={"delta": str(delta["partial_json"])},
+                events.append(tool_call_update_event(
+                    tool_call_id=str(stream_event.get("index") or ""),
+                    status="in_progress",
+                    raw_input=str(delta["partial_json"]),
                 ))
             return events
 
@@ -349,24 +360,26 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                     if delta:
                         state["emitted_text"] = True
                         events.append(
-                            InternalEvent(type="text_delta", data={"delta": delta})
+                            InternalEvent(
+                                type="agent_message_chunk",
+                                data={"content": {"text": delta}},
+                            )
                         )
                 elif block_type == "thinking" and not state["streamed_thinking"]:
                     thinking = getattr(block, "thinking", "") or ""
                     if thinking:
                         events.append(
                             InternalEvent(
-                                type="thinking_delta", data={"delta": thinking}
+                                type="agent_thought_chunk",
+                                data={"content": {"text": thinking}},
                             )
                         )
                 elif block_type == "tool_use":
-                    events.append(
-                        InternalEvent(type="tool_use", data={
-                            "id": getattr(block, "id", "") or "",
-                            "name": getattr(block, "name", "") or "",
-                            "input": getattr(block, "input", {}) or {},
-                        })
-                    )
+                    events.append(tool_call_event(
+                        tool_call_id=str(getattr(block, "id", "") or ""),
+                        title=str(getattr(block, "name", "") or "tool"),
+                        raw_input=getattr(block, "input", {}) or {},
+                    ))
             return events
 
         if mtype == "user":
@@ -377,13 +390,11 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                         content = "\n".join(
                             str(part) for part in content if part
                         )
-                    events.append(
-                        InternalEvent(type="tool_result", data={
-                            "tool_use_id": getattr(block, "tool_use_id", "") or "",
-                            "content": content,
-                            "is_error": bool(getattr(block, "is_error", False)),
-                        })
-                    )
+                    events.append(tool_call_update_event(
+                        tool_call_id=str(getattr(block, "tool_use_id", "") or ""),
+                        status="failed" if bool(getattr(block, "is_error", False)) else "completed",
+                        raw_output=content,
+                    ))
             return events
 
         if mtype == "result":
@@ -394,7 +405,10 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                 if str(output).strip():
                     state["emitted_text"] = True
                     events.append(
-                        InternalEvent(type="text_delta", data={"delta": str(output)})
+                        InternalEvent(
+                            type="agent_message_chunk",
+                            data={"content": {"text": str(output)}},
+                        )
                     )
             usage = getattr(msg, "usage", None)
             if usage is None and result is not msg:
@@ -417,7 +431,7 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
                 if not session_id and result is not msg:
                     session_id = getattr(result, "session_id", None)
                 usage_data["session_id"] = session_id or ""
-                events.append(InternalEvent(type="usage", data=usage_data))
+                events.append(InternalEvent(type="usage_update", data=usage_data))
             if is_error:
                 message = (
                     getattr(msg, "error", None)
@@ -715,6 +729,78 @@ class ClaudeAgentSDKEngine(BaseLLMEngine):
     def supports_thinking_effort(self) -> bool:
         """ClaudeAgentOptions.effort maps to a per-turn thinking effort."""
         return True
+
+    # --- ACP 会话 / 审批契约（非 ACP 引擎：用自己的传输实现等价语义） ---
+
+    #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
+    acp_events: frozenset[str] = frozenset({
+        "agent_message_chunk",
+        "agent_thought_chunk",
+        "tool_call",
+        "tool_call_update",
+        "usage_update",
+        "interaction_request",
+        "live_message",
+        "status",
+        "session_started",
+        "subagent",
+        "compacted",
+        "error",
+    })
+
+    @property
+    def supports_sessions(self) -> bool:
+        """ClaudeAgentOptions.resume 原生支持按 session_id 恢复会话。"""
+        return True
+
+    @property
+    def supports_tool_approval(self) -> bool:
+        """can_use_tool 回调桥接审批到 interaction_request，原生审批语义。"""
+        return True
+
+    async def create_session(
+        self,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> str | None:
+        """无法脱离提示词创建空会话；会话在首次 spawn（system/init）时建立。"""
+        logger.info("ClaudeAgentSDK create_session: not supported without a prompt")
+        return None
+
+    async def resume_session(
+        self,
+        session_id: str,
+        cwd: str,
+        add_dirs: list[str] | None = None,
+        mcp_servers: list | None = None,
+    ) -> bool:
+        """SDK resume 原生恢复；spawn(session_id=...) 时实际恢复。"""
+        return bool(session_id)
+
+    async def close_session(self, session_id: str, cwd: str | None = None) -> None:
+        """关闭会话 = 断开当前 client 并结束运行中的任务。"""
+        if self._running:
+            await self.stop()
+
+    async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
+        """取消会话 = 断开当前 client 并结束运行中的任务。"""
+        if self._running:
+            await self.stop()
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        session_id: str | None = None,
+    ) -> None:
+        """配置在 spawn 时从 config_store 读取（permission_mode / model / effort）；
+        运行中修改无原生入口。"""
+        return None
+
+    async def reset_options(self, session_id: str | None = None) -> None:
+        """无原生 reset；新会话从全局配置重新读取。"""
+        return None
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}

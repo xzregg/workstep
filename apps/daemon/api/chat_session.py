@@ -35,6 +35,7 @@ class ChatMessageRequest(BaseSchema):
     fast_model: str | None = None
     thinking_effort: str | None = None
     permission_mode: str | None = None
+    plan_mode: bool | None = None
 
 
 class SystemPromptRequest(BaseSchema):
@@ -214,6 +215,7 @@ async def chat_message(
             fast_model=req.fast_model,
             thinking_effort=req.thinking_effort,
             permission_mode=req.permission_mode,
+            plan_mode=req.plan_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc

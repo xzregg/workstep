@@ -1,7 +1,7 @@
 """Codex-style session chat assistant (per project, multiple sessions).
 
 One assistant registered in the shared assistant layer
-(``services/assistant_base.py``): it only declares an ``AssistantConfig``
+(``agent_assistants/base.py``): it only declares an ``AssistantConfig``
 plus a persistence adapter that stores each conversation row in the new
 ``chat_sessions`` / ``chat_messages`` tables. Session lifecycle, idempotency,
 engine invocation with resume and streaming events all live in the generic
@@ -25,7 +25,7 @@ from typing import Any
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
-from services.assistant_base import (
+from agent_assistants.base import (
     AssistantConfig,
     AssistantRuntime,
     PersistenceAdapter,
@@ -472,6 +472,7 @@ class ChatSessionModule(AssistantRuntime):
         fast_model: str | None = None,
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
+        plan_mode: bool | None = None,
     ) -> ChatAccepted:
         if not session_id:
             raise ValueError("Chat session id is required")
@@ -499,6 +500,7 @@ class ChatSessionModule(AssistantRuntime):
             fast_model=fast_model,
             thinking_effort=thinking_effort,
             permission_mode=permission_mode or None,
+            plan_mode=plan_mode,
         )
         return ChatAccepted(
             session_id=accepted.session_id,
@@ -579,7 +581,7 @@ class ChatSessionModule(AssistantRuntime):
 
     async def enhance_prompt(self, project_id: str, prompt: str) -> str:
         """Rewrite a draft prompt into a clearer version via the default engine."""
-        from services.assistant_base import invoke_engine
+        from agent_assistants.base import invoke_engine
 
         prompt = (prompt or "").strip()
         if not prompt:

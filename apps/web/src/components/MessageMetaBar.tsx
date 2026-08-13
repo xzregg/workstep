@@ -18,18 +18,26 @@ import { useI18n } from '../i18n'
    ══════════════════════════════════════════ */
 
 function hasCompactedEvent(events?: any[]): boolean {
-  return (events || []).some((event) => event?.type === 'compacted')
+  return (events || []).some((event) => (
+    event?.type === 'compacted'
+    || (event?.type === 'CUSTOM' && event?.name === 'workstep.compacted')
+  ))
 }
 
 function hasIdleTimeoutEvent(events?: any[]): boolean {
   return (events || []).some((event) => (
     event?.type === 'status' && event?.data?.status === 'idle_timeout'
+    || event?.type === 'CUSTOM' && event?.name === 'workstep.status'
+      && event?.value?.status === 'idle_timeout'
+    || (event?.type === 'RUN_STARTED' || event?.type === 'RUN_ERROR')
+      && event?.status === 'idle_timeout'
   ))
 }
 
 function hasTurnDoneEvent(events?: any[]): boolean {
   return (events || []).some((event) => (
     event?.type === 'status' && event?.data?.status === 'done'
+    || event?.type === 'RUN_FINISHED' && event?.status === 'done'
   ))
 }
 
@@ -75,7 +83,9 @@ export default function MessageMetaBar({
   const displayStartedAt = startedAt || createdAt || eventStartedAt
   const eventSessionId = (events || []).reduce<string | null>((found, event) => {
     if (found) return found
-    const sid = event?.data?.session_id
+    const sid = event?.session_id
+      ?? event?.data?.session_id
+      ?? (event?.type === 'CUSTOM' ? event?.value?.session_id : undefined)
     return typeof sid === 'string' && sid.trim() ? sid : null
   }, null)
   const displaySessionId = sessionId || eventSessionId

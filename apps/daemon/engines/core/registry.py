@@ -19,9 +19,9 @@ from services.config import config_store
 logger = logging.getLogger(__name__)
 
 
-def _discover_engine_classes() -> dict[str, type[BaseLLMEngine]]:
+def _discover_engine_classes() -> dict[str, type[AcpEngineBase]]:
     """扫描 ``engines/`` 一级模块，收集声明了 ``ENGINE_ID`` 的引擎类。"""
-    found: dict[str, type[BaseLLMEngine]] = {}
+    found: dict[str, type[AcpEngineBase]] = {}
     module_names = sorted(
         module.name
         for module in pkgutil.iter_modules(_engines_pkg.__path__)
@@ -45,7 +45,7 @@ def _discover_engine_classes() -> dict[str, type[BaseLLMEngine]]:
 
 
 # All engine classes indexed by ENGINE_ID (auto-discovered from engines/)
-_ALL_ENGINES: dict[str, type[BaseLLMEngine]] = _discover_engine_classes()
+_ALL_ENGINES: dict[str, type[AcpEngineBase]] = _discover_engine_classes()
 
 # 协调 Agent 默认引擎未配置/不可用时，按此优先级回退；新引擎自动追加到末尾。
 _COORDINATOR_BASE_ORDER = [
@@ -64,7 +64,7 @@ COORDINATOR_FALLBACK_ORDER = _COORDINATOR_BASE_ORDER + [
 ]
 
 # Public registry: backend name → resolved engine class
-ENGINE_REGISTRY: dict[str, type[BaseLLMEngine]] = {}
+ENGINE_REGISTRY: dict[str, type[AcpEngineBase]] = {}
 
 
 def _apply_binary_overrides():
@@ -106,7 +106,7 @@ _SCAN_CACHE: list[dict] | None = None
 _SCAN_GENERATION = 0
 
 
-def _engine_version(cls: type[BaseLLMEngine]) -> str | None:
+def _engine_version(cls: type[AcpEngineBase]) -> str | None:
     """Version probe with a short TTL so repeated scans skip subprocesses.
 
     Version checks for CLI engines run ``binary --version``, which is slow;
@@ -145,8 +145,8 @@ def get_available_engines() -> list[dict]:
         return list(_SCAN_CACHE)
 
     backends = list(_ALL_ENGINES.items())
-    resolved_map: dict[str, type[BaseLLMEngine] | None] = {}
-    targets: dict[str, type[BaseLLMEngine] | None] = {}
+    resolved_map: dict[str, type[AcpEngineBase] | None] = {}
+    targets: dict[str, type[AcpEngineBase] | None] = {}
     for backend, cls in backends:
         resolved = cls if cls.is_installed() else None
         resolved_map[backend] = resolved
@@ -174,7 +174,7 @@ def get_available_engines() -> list[dict]:
         configured_path = config_store.get_engine_binary_path(backend)
         if resolved:
             instance = resolved()
-            if issubclass(resolved, AcpEngineBase):
+            if issubclass(resolved, AcpEngineBase) and instance._is_acp_native:
                 mode = "acp"
             elif backend == "pydantic_ai":
                 mode = "agent"
@@ -236,7 +236,7 @@ def get_available_engines() -> list[dict]:
     return list(result)
 
 
-def _engine_config_payload(cls: type[BaseLLMEngine]) -> dict | None:
+def _engine_config_payload(cls: type[AcpEngineBase]) -> dict | None:
     """Embed the engine's config schema and masked values into the engine list.
 
     Lets the settings page render every engine's config form from the single
@@ -255,14 +255,17 @@ def _engine_config_payload(cls: type[BaseLLMEngine]) -> dict | None:
         "secrets": instance.get_config_secrets(),
     }
 
-def create_engine(backend: str) -> BaseLLMEngine | None:
-    """Create an engine instance by backend name."""
+def create_engine(backend: str) -> AcpEngineBase | None:
+    """Create an engine instance by backend name.
+
+    上层只依赖 ``AcpEngineBase``（ACP 协议接口）；自定义函数经基类继承获得。
+    """
     cls = ENGINE_REGISTRY.get(backend)
     if not cls:
         return None
     return cls()
 
 
-def list_all_engines() -> dict[str, type[BaseLLMEngine]]:
+def list_all_engines() -> dict[str, type[AcpEngineBase]]:
     """Return all engine classes (including uninstalled ones)."""
     return dict(_ALL_ENGINES)

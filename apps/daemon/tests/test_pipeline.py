@@ -10,7 +10,7 @@ from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_prompt, SYSTEM_PROMPT
 from services.task_runner import TaskRunner
 from engines.core.events import InternalEvent
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.interactions import elicitation_request
 from streaming.bus import EventBus
 
@@ -388,7 +388,7 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
 
 # --- TaskRunner integration ---
 
-class PipelineFakeEngine(BaseLLMEngine):
+class PipelineFakeEngine(AcpEngineBase):
     @staticmethod
     def is_installed(): return True
     @staticmethod
@@ -400,7 +400,7 @@ class PipelineFakeEngine(BaseLLMEngine):
         self._text = text
 
     async def spawn(self, prompt, cwd, **kwargs):
-        yield InternalEvent(type="text_delta", data={"delta": self._text})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": self._text}})
         yield InternalEvent(type="status", data={"status": "done"})
 
     async def stop(self): pass
@@ -416,8 +416,8 @@ class PipelineUsageEngine(PipelineFakeEngine):
     """Fake engine that also emits a usage event with cache fields."""
 
     async def spawn(self, prompt, cwd, **kwargs):
-        yield InternalEvent(type="text_delta", data={"delta": self._text})
-        yield InternalEvent(type="usage", data={
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": self._text}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 300,
             "output_tokens": 100,
             "cache_creation_input_tokens": 150,
@@ -441,7 +441,7 @@ class PipelineResumeEngine(PipelineFakeEngine):
         self.seen.append(session_id)
         active = session_id or f"sess-{len(self.seen)}"
         yield InternalEvent(type="session_started", data={"session_id": active})
-        yield InternalEvent(type="text_delta", data={"delta": self._text})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": self._text}})
         yield InternalEvent(type="status", data={"status": "done"})
 
 
@@ -461,7 +461,7 @@ class PipelineInteractionEngine(PipelineFakeEngine):
             },
             tool_call_id="ask-pipeline",
         )
-        yield InternalEvent(type="text_delta", data={"delta": "answered"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "answered"}})
         yield InternalEvent(type="status", data={"status": "done"})
 
     async def respond_interaction(self, request, response):
@@ -471,15 +471,15 @@ class PipelineInteractionEngine(PipelineFakeEngine):
 
 class PipelinePlanEngine(PipelineFakeEngine):
     async def spawn(self, prompt, cwd, **kwargs):
-        yield InternalEvent(type="tool_use", data={
-            "id": "todo-1",
-            "name": "TodoWrite",
-            "input": {"todos": [
+        yield InternalEvent(type="tool_call", data={
+            "tool_call_id": "todo-1",
+            "title": "TodoWrite",
+            "raw_input": {"todos": [
                 {"content": "实现功能", "status": "in_progress"},
                 {"content": "运行测试", "status": "pending"},
             ]},
         })
-        yield InternalEvent(type="text_delta", data={"delta": "done"})
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "done"}})
 
 
 @pytest.mark.anyio
@@ -556,7 +556,7 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
         assert [event["type"] for event in persisted] == [
             "interaction_request",
             "interaction_response",
-            "text_delta",
+            "agent_message_chunk",
             "status",
         ]
         assert persisted[1]["data"]["response"] == response
@@ -593,7 +593,7 @@ async def test_task_runner_persists_base_normalized_plan_snapshots(tmp_path):
 
         message = Message.get((Message.task == task) & (Message.step_key == "a"))
         events = json.loads(message.events_json)
-        assert [event["type"] for event in events] == ["plan", "text_delta"]
+        assert [event["type"] for event in events] == ["plan", "agent_message_chunk"]
         assert events[0]["data"]["entries"][0]["status"] == "in_progress"
     finally:
         ENGINE_REGISTRY.clear()
@@ -937,8 +937,8 @@ async def test_task_runner_error_event_fails_step_and_blocks_downstream(tmp_path
         assert steps["a"].error == "engine unavailable"
         assert steps["b"].status == "pending"
         assert message.run_status == "failed"
-        assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "failed"
+        assert events[-1]["type"] == "RUN_ERROR"
+        assert events[-1]["status"] == "failed"
 
     finally:
         ENGINE_REGISTRY.clear()
@@ -1014,8 +1014,8 @@ async def test_task_runner_cancel_step_finalizes_pipeline_records(tmp_path):
         assert step.error == "手动停止"
         assert message.run_status == "cancelled"
         assert f"{task.id}:a" not in runner._running_engines
-        assert events[-1]["type"] == "status"
-        assert events[-1]["data"]["status"] == "cancelled"
+        assert events[-1]["type"] == "RUN_ERROR"
+        assert events[-1]["status"] == "cancelled"
 
     finally:
         ENGINE_REGISTRY.clear()

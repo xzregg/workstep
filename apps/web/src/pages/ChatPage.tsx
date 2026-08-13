@@ -105,6 +105,7 @@ export default function ChatPage() {
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const [permissionMode, setPermissionMode] = useState('')
+  const [planMode, setPlanMode] = useState(false)
   const [enhancePhase, setEnhancePhase] = useState<'idle' | 'enhancing' | 'enhanced'>('idle')
   const enhancedValueRef = useRef('')
 
@@ -203,10 +204,9 @@ export default function ChatPage() {
             ended_at: m.ended_at,
             prompt: m.prompt,
             events: (m.events || []).map((e) => ({
+              ...e,
               type: e.type || '',
               data: e.data || {},
-              timestamp: e.timestamp,
-              created_at: e.created_at,
             })),
           })),
         )
@@ -251,6 +251,7 @@ export default function ChatPage() {
         fast_model: selectedFastModel || undefined,
         thinking_effort: selectedThinkingEffort || undefined,
         permission_mode: permissionMode || undefined,
+        plan_mode: planMode || undefined,
       })
       if (accepted.session_id && accepted.session_id !== sessionId) {
         const store = useChatSessionStore.getState()
@@ -277,7 +278,7 @@ export default function ChatPage() {
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
     }
-  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, permissionMode, t])
+  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, permissionMode, planMode, t])
 
   const enhancePrompt = useCallback(async () => {
     if (!activeProject?.id || !sessionId || enhancePhase === 'enhancing') return
@@ -595,6 +596,11 @@ export default function ChatPage() {
         permission={{
           value: permissionMode,
           onChange: setPermissionMode,
+          disabled: running,
+        }}
+        plan={{
+          active: planMode,
+          onChange: setPlanMode,
           disabled: running,
         }}
         enhance={{

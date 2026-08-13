@@ -64,3 +64,27 @@ def map_permission_overrides(engine_id: str, mode: str) -> dict:
         return {"permission_mode": _QODER_PERMISSION[mode]}
     # hermes / openclaw / pydantic_ai: no unified permission override.
     return {}
+
+
+# ── Plan mode (Codex-style lightbulb) ──────────────────────────────────
+
+PLAN_MODE_INSTRUCTION = (
+    "【计划模式】当前为计划模式：只进行研究、分析和制定方案，"
+    "不要修改、创建或删除任何文件，不要执行任何写操作；"
+    "输出清晰的实施计划并等待用户确认。"
+)
+
+
+def map_plan_mode_overrides(engine_id: str) -> dict:
+    """Engine-specific ``config_overrides`` for Codex-style plan mode.
+
+    Engines without a native "plan-only" mode return an empty dict; the
+    prompt-level instruction still applies to every engine.
+    """
+    if engine_id == "codex":
+        return {"sandbox_mode": "read-only"}
+    if engine_id == "codex_sdk":
+        return {"sandbox": "read-only"}
+    if engine_id in ("claude", "claude_agent_sdk", "qoder_sdk"):
+        return {"permission_mode": "plan"}
+    return {}

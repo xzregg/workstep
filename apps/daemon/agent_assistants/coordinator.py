@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent
 from engines.core.registry import (
     COORDINATOR_FALLBACK_ORDER,
@@ -17,7 +18,7 @@ from engines.core.registry import (
     get_available_engines,
 )
 from engines.core.schema import EngineImage
-from services.assistant_base import (
+from agent_assistants.base import (
     AssistantConfig,
     SCOPE_TASK,
     assistant_registry,
@@ -508,8 +509,9 @@ class CoordinatorModule:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply, live_event_sequence
-                        if event.type == "text_delta":
-                            raw_content += str(event.data.get("delta", ""))
+                        if event.type == "agent_message_chunk":
+                            content = event.data.get("content") or {}
+                            raw_content += str(content.get("text", ""))
                             partial_reply = extract_streaming_reply(raw_content)
                             if not partial_reply.startswith(streamed_reply):
                                 return
@@ -520,21 +522,24 @@ class CoordinatorModule:
                             await self._publish_message_event(
                                 task_id,
                                 assistant,
-                                "text_delta",
-                                {"delta": delta},
+                                "agent_message_chunk",
+                                {"content": {"text": delta}},
                                 live_event_sequence,
                             )
                             live_event_sequence += 1
                         elif event.type in {
                             "status",
-                            "thinking_delta",
-                            "tool_use",
-                            "tool_input_delta",
-                            "tool_result",
+                            "agent_thought_chunk",
+                            "tool_call",
+                            "tool_call_update",
                             "interaction_request",
                             "interaction_response",
                             "plan",
+                            "plan_update",
+                            "plan_removed",
                             "subagent",
+                            "usage_update",
+                            "session_started",
                         }:
                             await self._publish_message_event(
                                 task_id,
@@ -673,7 +678,7 @@ class CoordinatorModule:
                 usage_event = next(
                     (
                         event for event in reversed(events)
-                        if event.get("type") == "usage"
+                        if event.get("type") in {"usage", "usage_update"}
                     ),
                     None,
                 )
@@ -1373,21 +1378,23 @@ class CoordinatorModule:
         data: dict,
         event_sequence: int,
     ) -> None:
-        await self._event_bus.publish(
-            {
-                "event_id": str(uuid.uuid4()),
-                "task_id": task_id,
-                "channel": message.channel,
-                "message_id": message.id,
-                "engine": message.engine,
-                "model": message.model,
-                "step_key": message.context_step_key,
-                "event_sequence": event_sequence,
-                "type": event_type,
-                "data": data,
-                "created_at": utc_now().isoformat(),
-            }
-        )
+        """发布出口：内部事件 → AG-UI 标准事件后推送。"""
+        payload = {
+            "event_id": str(uuid.uuid4()),
+            "task_id": task_id,
+            "channel": message.channel,
+            "message_id": message.id,
+            "engine": message.engine,
+            "model": message.model,
+            "step_key": message.context_step_key,
+            "event_sequence": event_sequence,
+            "type": event_type,
+            "data": data,
+            "created_at": utc_now().isoformat(),
+        }
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)
 
     async def stop_current(self, project_id: str, task_id: str) -> bool:
         """Stop the newest queued/running coordinator turn for a task."""

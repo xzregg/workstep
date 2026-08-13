@@ -72,13 +72,17 @@ class NativePlanTracker:
         return plan_event(self._tasks.values())
 
     def observe(self, event: InternalEvent) -> InternalEvent | None:
-        if event.type == "tool_use":
+        if event.type == "tool_call":
             name = "".join(
                 character
-                for character in str(event.data.get("name") or "").lower()
+                for character in str(
+                    event.data.get("title") or event.data.get("name") or ""
+                ).lower()
                 if character.isalnum()
             )
-            tool_input = event.data.get("input")
+            tool_input = event.data.get("raw_input")
+            if tool_input is None:
+                tool_input = event.data.get("input")
             if not isinstance(tool_input, Mapping):
                 return None
             if name == "todowrite":
@@ -98,7 +102,11 @@ class NativePlanTracker:
                 and bool(prompt_text)
             )
             if name in ("taskcreate", "task", "spawnagent") or looks_like_subagent:
-                call_id = str(event.data.get("id") or "")
+                call_id = str(
+                    event.data.get("tool_call_id")
+                    or event.data.get("id")
+                    or ""
+                )
                 key = f"pending:{call_id}"
                 content = (
                     tool_input.get("subject")
@@ -145,17 +153,26 @@ class NativePlanTracker:
                     current["status"] = tool_input["status"]
                 return self._snapshot()
             if name == "tasklist":
-                call_id = str(event.data.get("id") or "")
+                call_id = str(
+                    event.data.get("tool_call_id")
+                    or event.data.get("id")
+                    or ""
+                )
                 if call_id:
                     self._list_calls.add(call_id)
             return None
 
-        if event.type == "tool_result":
-            call_id = str(event.data.get("tool_use_id") or "")
+        if event.type == "tool_call_update":
+            call_id = str(
+                event.data.get("tool_call_id") or event.data.get("tool_use_id") or ""
+            )
+            raw_output = event.data.get("raw_output")
+            if raw_output is None:
+                raw_output = event.data.get("content")
             if call_id in self._list_calls:
                 self._list_calls.discard(call_id)
                 try:
-                    listed = json.loads(str(event.data.get("content") or ""))
+                    listed = json.loads(str(raw_output or ""))
                 except (json.JSONDecodeError, TypeError):
                     return None
                 tasks = listed.get("tasks") if isinstance(listed, Mapping) else None
@@ -167,6 +184,8 @@ class NativePlanTracker:
                     if isinstance(task, Mapping)
                 }
                 return self._snapshot()
+            if str(event.data.get("status") or "") != "completed":
+                return None
             provisional = self._create_calls.pop(call_id, None)
             if provisional is None:
                 return None
@@ -175,7 +194,7 @@ class NativePlanTracker:
             self._subagent_calls.discard(call_id)
             current = self._tasks.pop(provisional, None) or {}
             try:
-                parsed = json.loads(str(event.data.get("content") or ""))
+                parsed = json.loads(str(raw_output or ""))
             except (json.JSONDecodeError, TypeError):
                 parsed = {}
             task = parsed.get("task") if isinstance(parsed, Mapping) else None

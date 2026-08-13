@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import {
   Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis,
   ExternalLink, FileText, Folder, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, List,
-  Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
+  Lightbulb, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
 } from 'lucide-react'
 
@@ -27,6 +27,7 @@ const glyphs = {
   image: ImageIcon,
   layers: Layers,
   'layout-grid': LayoutGrid,
+  lightbulb: Lightbulb,
   list: List,
   pencil: Pencil,
   plus: Plus,

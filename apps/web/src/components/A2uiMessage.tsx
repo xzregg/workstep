@@ -4,6 +4,7 @@ import {
   ComponentModel,
   MessageProcessor,
   type A2uiClientAction,
+  type A2uiMessage as A2uiMessagePayload,
 } from '@a2ui/web_core/v0_9'
 import { A2uiSurface, MarkdownContext, basicCatalog } from '@a2ui/react/v0_9'
 import type { z } from 'zod'
@@ -52,22 +53,27 @@ const TOLERANT_CATALOG = new Catalog(
 
 export default function A2uiMessage({
   content,
+  messages,
   projectId,
   onAction,
 }: {
   content: string
+  /** Store 累积的 A2UI 载荷（``CUSTOM a2ui.surface`` 事件），优先于 fence 解析。 */
+  messages?: Record<string, unknown>[]
   projectId?: string
   /** Receives user-initiated component actions (e.g. proposal buttons). */
   onAction?: (action: A2uiClientAction) => void
 }) {
   const surfaces = useMemo(() => {
-    if (!hasA2uiBlocks(content)) return []
-    const messages = ensureA2uiRoots(
+    const payloads = (messages && messages.length > 0)
+      ? messages as unknown as A2uiMessagePayload[]
+      : hasA2uiBlocks(content)
+        ? extractA2uiMessages(content)
+        : []
+    if (payloads.length === 0) return []
+    const normalized = ensureA2uiRoots(
       normalizeA2uiInteractiveComponents(
-        normalizeA2uiMessages(
-          extractA2uiMessages(content),
-          projectId,
-        ),
+        normalizeA2uiMessages(payloads, projectId),
       ).map((message) => (
         // Best-effort rendering: force the basic catalog so any catalogId works.
         'createSurface' in message
@@ -81,7 +87,7 @@ export default function A2uiMessage({
           : message
       )),
     )
-    if (messages.length === 0) return []
+    if (normalized.length === 0) return []
     const processor = new MessageProcessor(
       [TOLERANT_CATALOG],
       onAction,
@@ -92,7 +98,7 @@ export default function A2uiMessage({
     // Remaining irrecoverable messages (missing required props, unknown
     // surface, duplicate surface) are skipped so one malformed payload never
     // crashes the whole conversation.
-    for (const message of splitA2uiUpdateComponents(messages)) {
+    for (const message of splitA2uiUpdateComponents(normalized)) {
       try {
         processor.processMessages([message])
       } catch {
@@ -143,7 +149,7 @@ export default function A2uiMessage({
         for (const _ of surface.componentsModel.entries) return true
         return false
       })
-  }, [content, projectId, onAction])
+  }, [content, messages, projectId, onAction])
 
   if (surfaces.length === 0) return null
 

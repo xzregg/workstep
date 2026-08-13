@@ -9,9 +9,9 @@ from types import SimpleNamespace
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from engines.core.base import BaseLLMEngine
+from engines.core.acp_base import AcpEngineBase
 from engines.core.events import InternalEvent
-from services.coordinator import CoordinatorModule
+from agent_assistants.coordinator import CoordinatorModule
 from services.project import ProjectManager
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
@@ -63,7 +63,7 @@ async def api_context(tmp_path, monkeypatch):
     import api.workflow as workflow_api
     import main
     import services.project as project_service
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     config_store = MemoryConfigStore()
     # 默认执行引擎固定为 claude：协调器按 task.engine 回退时会命中
@@ -100,7 +100,7 @@ async def api_context(tmp_path, monkeypatch):
     manager.close_all()
 
 
-class CoordinatorFakeEngine(BaseLLMEngine):
+class CoordinatorFakeEngine(AcpEngineBase):
     calls: list[dict] = []
     reply = {
         "version": 1,
@@ -131,11 +131,11 @@ class CoordinatorFakeEngine(BaseLLMEngine):
             "session_id": session_id,
         })
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
         )
         yield InternalEvent(
-            type="usage",
+            type="usage_update",
             data={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
         )
 
@@ -170,11 +170,11 @@ class ImageRoutingCoordinatorFakeEngine(CoordinatorFakeEngine):
             "images": kwargs.get("images"),
         })
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
         )
         yield InternalEvent(
-            type="usage",
+            type="usage_update",
             data={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         )
 
@@ -184,17 +184,17 @@ class StreamingCoordinatorFakeEngine(CoordinatorFakeEngine):
 
     async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": '{"version":1,"reply":"实时'},
+            type="agent_message_chunk",
+            data={"content": {"text": '{"version":1,"reply":"实时'}},
         )
         await type(self).release.wait()
         yield InternalEvent(
-            type="text_delta",
+            type="agent_message_chunk",
             data={
-                "delta": (
+                "content": {"text": (
                     '回复","intent":"answer","target_step_key":null,'
                     '"artifact_requests":[],"proposal":null}'
-                )
+                )}
             },
         )
 
@@ -210,11 +210,11 @@ class RoutedCoordinatorFakeEngine(CoordinatorFakeEngine):
             "session_id": session_id,
         })
         if model == "reasoning-model":
-            yield InternalEvent(type="text_delta", data={"delta": "invalid json"})
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "invalid json"}})
             return
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
         )
 
 
@@ -234,8 +234,8 @@ class ThinkingEffortCoordinatorFakeEngine(CoordinatorFakeEngine):
             "thinking_effort": kwargs.get("thinking_effort"),
         })
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
         )
 
 
@@ -264,15 +264,15 @@ class ResumeCoordinatorFakeEngine(CoordinatorFakeEngine):
             data={"session_id": "engine-session-1"},
         )
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": json.dumps(type(self).reply, ensure_ascii=False)},
+            type="agent_message_chunk",
+            data={"content": {"text": json.dumps(type(self).reply, ensure_ascii=False)}},
         )
         yield InternalEvent(
             type="engine_state",
             data={"state": {"round": len(type(self).calls)}},
         )
         yield InternalEvent(
-            type="usage",
+            type="usage_update",
             data={"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
         )
 
@@ -370,7 +370,7 @@ def test_assemble_context_includes_review_mode(tmp_path):
         WorkflowRun,
         init_db,
     )
-    from services.coordinator import CoordinatorModule
+    from agent_assistants.coordinator import CoordinatorModule
     from streaming.bus import EventBus
 
     db = init_db(str(tmp_path / "workstep.db"))
@@ -488,8 +488,8 @@ def test_assemble_context_history_handling_depends_on_engine_resume(tmp_path, mo
         Task,
         init_db,
     )
-    from services.coordinator import CoordinatorModule
-    import services.coordinator as coordinator_service
+    from agent_assistants.coordinator import CoordinatorModule
+    import agent_assistants.coordinator as coordinator_service
     from streaming.bus import EventBus
 
     class StubProject:
@@ -693,17 +693,17 @@ async def test_chat_calls_selected_engine_without_starting_workflow(
             published.append(event_queue.get_nowait())
         assistant_events = [
             event for event in published
-            if event.get("message_id") == accepted.json()["assistant_message_id"]
+            if event.get("messageId") == accepted.json()["assistant_message_id"]
         ]
         assert [
-            event["data"].get("delta")
+            event.get("delta")
             for event in assistant_events
-            if event["type"] == "text_delta"
+            if event["type"] == "TEXT_MESSAGE_CHUNK"
         ] == ["协调回复"]
         assert next(
             event for event in assistant_events
-            if event["type"] == "message_snapshot"
-        )["data"]["content"] == "协调回复"
+            if event["type"] == "TEXT_MESSAGE_CONTENT"
+        )["content"] == "协调回复"
         assert CoordinatorFakeEngine.calls
         with main.project_manager.activate_project_by_id(project_id):
             assert WorkflowRun.select().count() == 0
@@ -748,12 +748,12 @@ async def test_coordinator_pushes_reply_before_engine_turn_finishes(
         while True:
             event = await asyncio.wait_for(event_queue.get(), timeout=1)
             if (
-                event.get("message_id") == assistant_id
-                and event.get("type") == "text_delta"
+                event.get("messageId") == assistant_id
+                and event.get("type") == "TEXT_MESSAGE_CHUNK"
             ):
                 break
 
-        assert event["data"]["delta"] == "实时"
+        assert event["delta"] == "实时"
         history = await client.get(
             f"/api/task/{task_id}/history?project_id={project_id}"
         )
@@ -911,7 +911,7 @@ async def test_coordinator_vision_model_global_default_and_task_override(
     monkeypatch,
 ):
     from engines.core.registry import ENGINE_REGISTRY
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     RoutedCoordinatorFakeEngine.calls.clear()
@@ -992,7 +992,7 @@ async def test_coordinator_inherits_global_thinking_effort(
     monkeypatch,
 ):
     from engines.core.registry import ENGINE_REGISTRY
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     ThinkingEffortCoordinatorFakeEngine.calls.clear()
@@ -1104,7 +1104,7 @@ async def test_global_defaults_apply_without_overriding_task_selection(
     monkeypatch,
 ):
     from engines.core.registry import ENGINE_REGISTRY
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     CoordinatorFakeEngine.calls.clear()
@@ -1152,7 +1152,7 @@ async def test_global_defaults_apply_without_overriding_task_selection(
 
 @pytest.mark.anyio
 async def test_new_task_uses_global_execution_default(api_context):
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     coordinator_service.config_store.set("execution_default_engine", "codex")
@@ -1170,7 +1170,7 @@ async def test_coordinator_config_lists_unconfigured_builtin_and_api_engines(
     monkeypatch,
 ):
     from engines.core.registry import ENGINE_REGISTRY
-    import services.coordinator as coordinator_service
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
@@ -1441,17 +1441,17 @@ class StoppableStreamingEngine(StreamingCoordinatorFakeEngine):
             "session_id": session_id,
         })
         yield InternalEvent(
-            type="text_delta",
-            data={"delta": '{"version":1,"reply":"实时'},
+            type="agent_message_chunk",
+            data={"content": {"text": '{"version":1,"reply":"实时'}},
         )
         await type(self).release.wait()
         yield InternalEvent(
-            type="text_delta",
+            type="agent_message_chunk",
             data={
-                "delta": (
+                "content": {"text": (
                     '回复","intent":"answer","target_step_key":null,'
                     '"artifact_requests":[],"proposal":null}'
-                )
+                )}
             },
         )
 
@@ -1491,8 +1491,8 @@ async def test_coordinator_stop_marks_turn_stopped(
         while True:
             event = await asyncio.wait_for(event_queue.get(), timeout=1)
             if (
-                event.get("message_id") == assistant_id
-                and event.get("type") == "text_delta"
+                event.get("messageId") == assistant_id
+                and event.get("type") == "TEXT_MESSAGE_CHUNK"
             ):
                 break
 
@@ -1521,10 +1521,10 @@ async def test_coordinator_stop_marks_turn_stopped(
             published.append(event_queue.get_nowait())
         completed = next(
             event for event in published
-            if event.get("message_id") == assistant_id
-            and event.get("type") == "message_completed"
+            if event.get("messageId") == assistant_id
+            and event.get("type") == "TEXT_MESSAGE_END"
         )
-        assert completed["data"] == {"status": "stopped"}
+        assert completed["status"] == "stopped"
 
         # 已结束的 turn 再次停止返回 False，且不会改变状态
         again = await client.post(

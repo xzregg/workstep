@@ -443,6 +443,7 @@ export interface ChatMessageOptions {
   fast_model?: string
   thinking_effort?: string
   permission_mode?: string
+  plan_mode?: boolean
 }
 
 export const chatSessionApi = {
@@ -490,6 +491,7 @@ export const chatSessionApi = {
         fast_model: options.fast_model || undefined,
         thinking_effort: options.thinking_effort || undefined,
         permission_mode: options.permission_mode || undefined,
+        plan_mode: options.plan_mode || undefined,
       }),
     }),
   stop: (sessionId: string) =>

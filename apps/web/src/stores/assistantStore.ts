@@ -12,11 +12,19 @@
  */
 
 import { create } from 'zustand'
+import {
+  CUSTOM,
+  customValue,
+  isCustom,
+  isReasoningEvent,
+  isToolEvent,
+  messageId,
+} from '../utils/agui.ts'
 
-/** A session-scoped WS event (no task_id — keyed by session_id). */
+/** A session-scoped WS event — AG-UI 标准事件（无 task_id，按 session_id 分流）。 */
 export interface AssistantChatEvent {
   type: string
-  data: Record<string, unknown>
+  data?: Record<string, unknown>
   session_id?: string
   message_id?: string
   channel?: string
@@ -25,6 +33,25 @@ export interface AssistantChatEvent {
   event_sequence?: number
   created_at?: string
   timestamp?: number
+  /** AG-UI 标准字段 */
+  messageId?: string
+  name?: string
+  value?: Record<string, unknown>
+  role?: string
+  delta?: string
+  content?: string
+  prompt?: string
+  status?: string
+  error?: string
+  ended_at?: string
+  toolCallId?: string
+  toolCallName?: string
+  args?: unknown
+  output?: unknown
+  isError?: boolean
+  task_id?: string
+  step_key?: string
+  sequence?: number
 }
 
 export interface AssistantChatMessage {
@@ -61,6 +88,8 @@ export interface AssistantSessionState {
   rejectionMessage?: string
   /** Latest assistant-specific structured result (e.g. a generated task draft). */
   latestResult?: Record<string, unknown>
+  /** A2UI 载荷（``CUSTOM a2ui.surface``），按 messageId 追加。 */
+  a2uiMessages?: Record<string, Record<string, unknown>[]>
 }
 
 export interface AssistantStore {
@@ -107,7 +136,13 @@ export interface AssistantStoreConfig {
 const DEFAULT_MAX_SESSIONS = 30
 
 function emptySession(): AssistantSessionState {
-  return { messages: [], running: false, latestProposals: [], rejectionMessage: '' }
+  return {
+    messages: [],
+    running: false,
+    latestProposals: [],
+    rejectionMessage: '',
+    a2uiMessages: {},
+  }
 }
 
 function upsertSession(
@@ -172,11 +207,24 @@ export function createAssistantStore(
           ...messages.filter((m) => !existingIds.has(m.id)),
           ...session.messages,
         ]
+        // 从历史事件的 a2ui.surface 载荷重建 A2UI 界面（fence 仅作旧数据回退）。
+        const a2uiMessages = { ...(session.a2uiMessages ?? {}) }
+        for (const message of messages) {
+          const payloads = (message.events ?? []).filter((event) => (
+            event.type === 'CUSTOM'
+            && event.name === CUSTOM.a2ui
+            && event.value && typeof event.value === 'object'
+          )).map((event) => event.value as Record<string, unknown>)
+          if (payloads.length > 0) {
+            a2uiMessages[message.id] = payloads
+          }
+        }
         return {
           sessions: upsertSession(s.sessions, sessionId, {
             ...session,
             messages: merged,
             running: running || session.running,
+            a2uiMessages,
           }, maxSessions),
         }
       }),
@@ -184,6 +232,7 @@ export function createAssistantStore(
     handleWsEvent: (event) => {
       const sessionId = event.session_id
       if (!sessionId || (config.channel && event.channel !== config.channel)) return
+      const mid = messageId(event)
       set((s) => {
         const session = s.sessions[sessionId] || emptySession()
         const messages = [...session.messages]
@@ -191,114 +240,187 @@ export function createAssistantStore(
         let latestProposals = session.latestProposals
         let rejectionMessage = session.rejectionMessage
         let latestResult = session.latestResult
+        let a2uiMessages = session.a2uiMessages
 
         const findIndex = (id?: string) =>
           id ? messages.findIndex((m) => m.id === id) : -1
 
-        if (event.type === 'message_started' && event.message_id) {
-          const index = findIndex(event.message_id)
+        const pushEvent = (id?: string) => {
+          if (!id) return
+          const index = findIndex(id)
+          if (index !== -1) {
+            messages[index] = {
+              ...messages[index],
+              events: [...(messages[index].events || []), event],
+            }
+          }
+        }
+
+        if (event.type === 'TEXT_MESSAGE_START' && mid) {
+          const index = findIndex(mid)
+          const prompt = String(
+            event.prompt
+            ?? (event.data as Record<string, unknown> | undefined)?.prompt
+            ?? '',
+          )
           if (index === -1) {
             messages.push({
-              id: event.message_id,
-              role: 'assistant',
+              id: mid,
+              role: event.role === 'user' ? 'user' : 'assistant',
               content: '',
               status: 'running',
               engine: event.engine,
               model: event.model,
-              prompt: String(event.data.prompt || ''),
+              prompt,
               created_at: event.created_at,
               events: [],
             })
+          } else {
+            messages[index] = {
+              ...messages[index],
+              role: event.role === 'user' ? 'user' : messages[index].role,
+              status: 'running',
+              prompt: prompt || messages[index].prompt,
+            }
           }
           running = true
-        } else if (event.type === 'text_delta' && event.message_id) {
-          const index = findIndex(event.message_id)
-          if (index !== -1) {
+        } else if (event.type === 'TEXT_MESSAGE_CHUNK' && mid) {
+          const index = findIndex(mid)
+          const delta = String(event.delta ?? '')
+          if (index === -1) {
+            messages.push({
+              id: mid,
+              role: event.role === 'user' ? 'user' : 'assistant',
+              content: delta,
+              status: 'running',
+              engine: event.engine,
+              model: event.model,
+              created_at: event.created_at,
+              events: [],
+            })
+          } else {
             const current = messages[index]
             messages[index] = {
               ...current,
-              content: current.content + String(event.data.delta || ''),
+              role: event.role === 'user' ? 'user' : current.role,
+              content: current.content + delta,
               events: [...(current.events || []), event],
             }
           }
-        } else if (event.type === 'message_snapshot' && event.message_id) {
-          const index = findIndex(event.message_id)
+        } else if (event.type === 'TEXT_MESSAGE_CONTENT' && mid) {
+          const index = findIndex(mid)
           if (index !== -1) {
             messages[index] = {
               ...messages[index],
-              content: String(event.data.content || messages[index].content),
+              content: typeof event.content === 'string'
+                ? event.content
+                : String(event.delta ?? messages[index].content),
             }
           }
-        } else if (event.type === config.proposalEvent && config.proposalExtractor) {
-          const items = config.proposalExtractor(event.data)
-          if (items.length > 0 || event.data.proposals !== undefined) {
+        } else if (
+          isCustom(event, config.proposalEvent ?? '')
+          && config.proposalExtractor
+        ) {
+          const value = customValue(event)
+          const items = config.proposalExtractor(value)
+          if (items.length > 0 || value.proposals !== undefined) {
             latestProposals = items
           }
           rejectionMessage = ''
-        } else if (event.type === config.rejectionEvent) {
+        } else if (isCustom(event, config.rejectionEvent ?? '')) {
           latestProposals = []
           rejectionMessage = config.rejectionMessageExtractor
-            ? config.rejectionMessageExtractor(event.data)
+            ? config.rejectionMessageExtractor(customValue(event))
             : fallbackRejected()
-        } else if (event.type === config.resultEvent && config.resultExtractor) {
-          latestResult = config.resultExtractor(event.data)
-        } else if (event.type === 'error') {
+        } else if (
+          isCustom(event, config.resultEvent ?? '')
+          && config.resultExtractor
+        ) {
+          latestResult = config.resultExtractor(customValue(event))
+        } else if (isCustom(event, CUSTOM.error) || event.type === 'error') {
           running = false
-          if (event.message_id) {
-            const index = findIndex(event.message_id)
+          if (mid) {
+            const index = findIndex(mid)
             if (index !== -1) {
               messages[index] = {
                 ...messages[index],
                 status: 'error',
                 error: String(
-                  event.data.message || fallbackFailed(),
+                  isCustom(event, CUSTOM.error)
+                    ? customValue(event).message
+                    : (event.data as Record<string, unknown> | undefined)?.message
+                  || fallbackFailed(),
                 ),
               }
             }
           }
-        } else if (event.type === 'message_completed') {
+        } else if (event.type === 'TEXT_MESSAGE_END' && mid) {
           running = false
-          if (event.message_id) {
-            const index = findIndex(event.message_id)
-            const status = event.data.status === 'error'
-              ? 'error'
-              : event.data.status === 'stopped'
-                ? 'stopped'
-                : 'succeeded'
-            const content = event.data.content
-              ? String(event.data.content)
-              : index !== -1
-                ? messages[index].content
-                : ''
-            if (index === -1) {
-              messages.push({
-                id: event.message_id,
-                role: 'assistant',
-                content,
-                status,
-                engine: event.engine,
-                model: event.model,
-                error: status === 'error' ? content : undefined,
-                created_at: event.created_at,
-                ended_at: typeof event.data.ended_at === 'string'
-                  ? event.data.ended_at
-                  : event.created_at,
-                events: [],
-              })
-            } else {
-              messages[index] = {
-                ...messages[index],
-                content,
-                status,
-                error: status === 'error' ? content : messages[index].error,
-                ended_at: typeof event.data.ended_at === 'string'
-                  ? event.data.ended_at
-                  : event.created_at,
-              }
+          const index = findIndex(mid)
+          const status = event.status === 'error'
+            ? 'error'
+            : event.status === 'stopped'
+              ? 'stopped'
+              : 'succeeded'
+          const content = typeof event.content === 'string'
+            ? event.content
+            : index !== -1
+              ? messages[index].content
+              : ''
+          if (index === -1) {
+            messages.push({
+              id: mid,
+              role: 'assistant',
+              content,
+              status,
+              engine: event.engine,
+              model: event.model,
+              error: status === 'error' ? event.error ?? content : undefined,
+              created_at: event.created_at,
+              ended_at: event.ended_at ?? event.created_at,
+              events: [],
+            })
+          } else {
+            messages[index] = {
+              ...messages[index],
+              content,
+              status,
+              error: status === 'error' ? event.error ?? content : messages[index].error,
+              ended_at: event.ended_at ?? event.created_at,
             }
           }
+        } else if (isCustom(event, CUSTOM.a2ui) && mid) {
+          a2uiMessages = {
+            ...(a2uiMessages ?? {}),
+            [mid]: [...(a2uiMessages?.[mid] ?? []), customValue(event)],
+          }
+        } else if ((isReasoningEvent(event) || isToolEvent(event)) && mid) {
+          // Preserve process events so the message can render text and tools in sequence.
+          pushEvent(mid)
         } else if (
-          (
+          mid && (
+            isCustom(event, CUSTOM.usage)
+            || isCustom(event, CUSTOM.plan)
+            || isCustom(event, CUSTOM.planUpdate)
+            || isCustom(event, CUSTOM.planRemoved)
+            || isCustom(event, CUSTOM.interactionRequest)
+            || isCustom(event, CUSTOM.interactionResponse)
+            || isCustom(event, CUSTOM.subagent)
+            || isCustom(event, CUSTOM.compacted)
+            || isCustom(event, CUSTOM.sessionStarted)
+            || isCustom(event, CUSTOM.engineState)
+            || isCustom(event, CUSTOM.sessionInfoUpdate)
+            || isCustom(event, CUSTOM.availableCommandsUpdate)
+            || isCustom(event, CUSTOM.configOptionUpdate)
+            || isCustom(event, CUSTOM.currentModeUpdate)
+            || isCustom(event, CUSTOM.mcpMessage)
+            || isCustom(event, CUSTOM.elicitationCompleted)
+            || isCustom(event, CUSTOM.acpRaw)
+          )
+        ) {
+          pushEvent(mid)
+        } else if (
+          mid && (
             event.type === 'thinking_delta'
             || event.type === 'tool_use'
             || event.type === 'tool_input_delta'
@@ -309,17 +431,8 @@ export function createAssistantStore(
             || event.type === 'plan'
             || event.type === 'subagent'
           )
-          && event.message_id
         ) {
-          // Preserve process events so the message can render text and tools in sequence.
-          const index = findIndex(event.message_id)
-          if (index !== -1) {
-            const current = messages[index]
-            messages[index] = {
-              ...current,
-              events: [...(current.events || []), event],
-            }
-          }
+          pushEvent(mid)
         }
 
         return {
@@ -330,6 +443,7 @@ export function createAssistantStore(
             latestProposals,
             rejectionMessage,
             latestResult,
+            a2uiMessages,
           }, maxSessions),
         }
       })

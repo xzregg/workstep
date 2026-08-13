@@ -43,8 +43,8 @@ class SequencedReviewEngine:
             }, ensure_ascii=False)
         else:
             text = "阶段执行完成"
-        yield InternalEvent(type="text_delta", data={"delta": text})
-        yield InternalEvent(type="usage", data={
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": text}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 100 + call_number,
             "output_tokens": 20,
             "cache_read_input_tokens": 40,
@@ -477,8 +477,8 @@ class RecordingReviewEngine:
 
     async def spawn(self, prompt, cwd, **kwargs):
         self.calls.append({**kwargs, "prompt": prompt, "cwd": cwd})
-        yield InternalEvent(type="text_delta", data={"delta": "完成"})
-        yield InternalEvent(type="usage", data={
+        yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "完成"}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 10,
             "output_tokens": 5,
         })
@@ -578,19 +578,19 @@ class ResumableSessionEngine:
             yield InternalEvent(type="session_started", data={
                 "session_id": kwargs.get("session_id") or "review-session",
             })
-            yield InternalEvent(type="text_delta", data={"delta": json.dumps({
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": json.dumps({
                 "passed": passed,
                 "score": 100 if passed else 60,
                 "summary": "审核通过" if passed else "缺少验收内容",
                 "issues": [],
-            }, ensure_ascii=False)})
+            }, ensure_ascii=False)}})
         else:
             self.stage_sessions.append(kwargs.get("session_id"))
             yield InternalEvent(type="session_started", data={
                 "session_id": kwargs.get("session_id") or "exec-session",
             })
-            yield InternalEvent(type="text_delta", data={"delta": "完成"})
-        yield InternalEvent(type="usage", data={
+            yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "完成"}})
+        yield InternalEvent(type="usage_update", data={
             "input_tokens": 10,
             "output_tokens": 5,
         })

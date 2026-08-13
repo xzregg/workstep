@@ -1,6 +1,19 @@
+import {
+  CUSTOM,
+  customValue,
+  isCustom,
+  isReasoningEvent,
+  toolArgs,
+  toolCallId,
+  toolName,
+  toolOutput,
+} from './agui.ts'
+
 export type MessageTimelineEvent = {
   type?: string
   data?: Record<string, unknown>
+  delta?: string
+  isError?: boolean
 }
 
 export type ToolActivity = {
@@ -59,6 +72,18 @@ export function buildMessageTimeline(
 
   events.forEach((event, index) => {
     const data = event.data || {}
+    if (isReasoningEvent(event)) {
+      const delta = eventText(event.delta ?? data.delta ?? data.text)
+      if (!delta) return
+      const previous = timeline[timeline.length - 1]
+      if (previous?.type === 'thinking') {
+        previous.content += delta
+      } else {
+        timeline.push({ type: 'thinking', id: `thinking-${index}`, content: delta })
+      }
+      return
+    }
+
     if (event.type === 'thinking_delta') {
       const delta = eventText(data.delta ?? data.text)
       if (!delta) return
@@ -67,6 +92,18 @@ export function buildMessageTimeline(
         previous.content += delta
       } else {
         timeline.push({ type: 'thinking', id: `thinking-${index}`, content: delta })
+      }
+      return
+    }
+
+    if (event.type === 'TEXT_MESSAGE_CHUNK') {
+      const delta = eventText(event.delta ?? data.delta ?? data.text)
+      if (!delta) return
+      const previous = timeline[timeline.length - 1]
+      if (previous?.type === 'text') {
+        previous.content += delta
+      } else {
+        timeline.push({ type: 'text', id: `text-${index}`, content: delta })
       }
       return
     }
@@ -80,6 +117,24 @@ export function buildMessageTimeline(
       } else {
         timeline.push({ type: 'text', id: `text-${index}`, content: delta })
       }
+      return
+    }
+
+    if (event.type === 'TOOL_CALL_START') {
+      const id = toolCallId(event)
+      const existing = toolsById.get(id)
+      if (existing) {
+        existing.name = toolName(event) || existing.name
+        return
+      }
+      const activity: ToolActivity = {
+        id,
+        name: toolName(event),
+        hasResult: false,
+        isError: false,
+      }
+      toolsById.set(id, activity)
+      appendTool(activity)
       return
     }
 
@@ -103,7 +158,14 @@ export function buildMessageTimeline(
       return
     }
 
-    if (event.type === 'tool_input_delta') {
+    if (event.type === 'TOOL_CALL_ARGS' || event.type === 'tool_input_delta') {
+      if (event.type === 'TOOL_CALL_ARGS') {
+        const id = toolCallId(event)
+        const activity = toolsById.get(id)
+        if (!activity) return
+        activity.input = toolArgs(event)
+        return
+      }
       const id = String(data.tool_use_id || data.id || '')
       const activity = toolsById.get(id)
       if (!activity) return
@@ -115,7 +177,37 @@ export function buildMessageTimeline(
       return
     }
 
-    if (event.type === 'tool_result') {
+    if (event.type === 'TOOL_CALL_CHUNK') {
+      const id = toolCallId(event)
+      const activity = toolsById.get(id)
+      if (!activity) return
+      const delta = eventText(toolArgs(event) ?? '')
+      if (!delta) return
+      activity.input = typeof activity.input === 'string'
+        ? activity.input + delta
+        : delta
+      return
+    }
+
+    if (event.type === 'TOOL_CALL_RESULT' || event.type === 'tool_result') {
+      if (event.type === 'TOOL_CALL_RESULT') {
+        const id = toolCallId(event)
+        let activity = toolsById.get(id)
+        if (!activity) {
+          activity = {
+            id,
+            name: toolName(event),
+            hasResult: true,
+            isError: Boolean(event.isError),
+          }
+          toolsById.set(id, activity)
+          appendTool(activity)
+        }
+        activity.result = toolOutput(event)
+        activity.hasResult = true
+        activity.isError = Boolean(event.isError)
+        return
+      }
       const id = String(data.tool_use_id || data.id || `result-${index}`)
       let activity = toolsById.get(id)
       if (!activity) {
@@ -131,6 +223,30 @@ export function buildMessageTimeline(
       activity.result = data.content ?? data.result
       activity.hasResult = true
       activity.isError = Boolean(data.is_error)
+    }
+
+    if (isCustom(event, CUSTOM.subagent)) {
+      const value = customValue(event)
+      const taskId = String(value.task_id || value.id || `subagent-${index}`)
+      const existing = subagentsById.get(taskId)
+      const status = String(value.status || 'running')
+      const description = eventText(value.description ?? value.subject ?? taskId)
+      if (existing) {
+        existing.status = status
+        if (description && description !== taskId) existing.description = description
+        const summary = eventText(value.summary ?? '')
+        if (summary) existing.summary = summary
+        return
+      }
+      const activity: SubagentActivity = {
+        taskId,
+        description,
+        status,
+        ...(eventText(value.summary ?? '') ? { summary: eventText(value.summary) } : {}),
+      }
+      subagentsById.set(taskId, activity)
+      timeline.push({ type: 'subagent', id: `subagent-${taskId}`, activity })
+      return
     }
 
     if (event.type === 'subagent') {

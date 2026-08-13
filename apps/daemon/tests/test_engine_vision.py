@@ -4,7 +4,8 @@ import base64
 
 import pytest
 
-from engines.core.base import BaseLLMEngine, EngineCapabilities
+from engines.core.acp_base import AcpEngineBase
+from engines.core.base import EngineCapabilities
 from engines.core.events import InternalEvent
 from engines.core.schema import EngineImage
 
@@ -40,7 +41,7 @@ def test_capabilities_default_vision_false():
     assert caps.supports_vision is False
 
 
-class PromptCapturingEngine(BaseLLMEngine):
+class PromptCapturingEngine(AcpEngineBase):
     """Records the prompt it receives from spawn_coordinator."""
 
     calls: list[str] = []
