@@ -529,9 +529,6 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             assert resp.status_code == 200
             plan_accepted = resp.json()
             assert await _wait_turn(module, plan_accepted["turn_id"]) == "completed"
-            turn_key = (project.id, session_id, "idem-plan-1")
-            plan_state = module._turn_states[module._turn_keys[turn_key]]
-            assert plan_state["plan_mode"] is True
 
             resp = await client.get(
                 "/api/chat-sessions/" + session_id,
@@ -539,7 +536,9 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             body = resp.json()
             assert body["title"] == "HTTP 会话"
-            assert [item["role"] for item in body["messages"]] == ["user", "assistant"]
+            assert [item["role"] for item in body["messages"]] == [
+                "user", "assistant", "user", "assistant",
+            ]
             assert body["messages"][-1]["content"] == "HTTP 回复"
 
             # empty content rejected
@@ -632,3 +631,47 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
         await module.shutdown()
         await bus.close()
         manager.close_all()
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
+    """Plan mode appends the plan instruction and engine read-only overrides."""
+    import agent_assistants.base as base
+
+    captured: dict = {}
+
+    class PlanEngine:
+        capabilities = SimpleNamespace(supports_thinking_effort=False)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            captured["prompt"] = prompt
+            captured["config_overrides"] = kwargs.get("config_overrides")
+            if False:
+                yield None
+
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: PlanEngine())
+    await base.invoke_engine(
+        "codex",
+        None,
+        "/tmp",
+        "请分析这段代码",
+        None,
+        plan_mode=True,
+    )
+    assert "计划模式" in captured["prompt"]
+    assert captured["config_overrides"] == {"sandbox_mode": "read-only"}
+
+    # Without plan mode the prompt stays untouched and no overrides are added.
+    captured.clear()
+    await base.invoke_engine(
+        "codex",
+        None,
+        "/tmp",
+        "请分析这段代码",
+        None,
+        plan_mode=False,
+    )
+    assert "计划模式" not in captured["prompt"]
+    assert captured["config_overrides"] is None
