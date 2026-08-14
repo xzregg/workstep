@@ -2312,6 +2312,7 @@ export default function TaskDetailView({
                                     : 'assistant'
                             }
                             sender={sender}
+                            senderTitle={isUser && msg.author_device_name ? `${sender} · ${msg.author_device_name}` : undefined}
                             initials={initials}
                             color={senderColor}
                             content={messageContent}

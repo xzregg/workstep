@@ -9,3 +9,8 @@ test('remote projects use a text badge instead of a status dot', () => {
   assert.match(source, /color: 'var\(--meta\)'/)
   assert.doesNotMatch(source, /p\.connection_status === 'connected' \? '●' : '○'/)
 })
+
+test('project rows show a running spinner when any workflow is running', () => {
+  assert.match(source, /p\.workflows\?\.some\(\(workflow\) => workflow\.running\)/)
+  assert.match(source, /title=\{t\('layout\.flowRunning'\)\}/)
+})

@@ -185,6 +185,7 @@ export default function AssistantChatPanel({
             key={message.id}
             role={message.role}
             sender={message.role === 'user' ? userSender : copy.agent}
+            senderTitle={message.role === 'user' && message.author_device_name ? `${userSender} · ${message.author_device_name}` : undefined}
             initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
             color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
             content={message.content}

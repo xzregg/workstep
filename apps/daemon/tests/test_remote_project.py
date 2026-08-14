@@ -21,8 +21,10 @@ from services.remote_project import (
     RemoteHttpResponse,
     serve_remote_project_socket,
     get_current_actor,
+    current_actor_event_fields,
     _select_network_ipv4,
 )
+from services.messages import current_actor_message_fields
 from streaming.bus import EventBus
 import api.remote_project as remote_project_api
 
@@ -87,6 +89,39 @@ class MemoryConfig:
 
     def set(self, key, value):
         self.values[key] = value
+
+
+def test_local_user_identity_is_attached_to_messages_and_live_events(monkeypatch):
+    class LocalIdentityConfig:
+        @staticmethod
+        def get_user_name():
+            return "电脑 A 使用者"
+
+        @staticmethod
+        def get_device_identity():
+            return {
+                "device_id": "device-a",
+                "device_name": "电脑 A",
+            }
+
+    import services.config as config_module
+
+    monkeypatch.setattr(config_module, "config_store", LocalIdentityConfig())
+
+    assert current_actor_message_fields() == {
+        "author_id": "device-a",
+        "author_name": "电脑 A 使用者",
+        "author_device_id": "device-a",
+        "author_device_name": "电脑 A",
+    }
+    assert current_actor_event_fields() == {
+        "actor": {
+            "id": "device-a",
+            "name": "电脑 A 使用者",
+            "device_id": "device-a",
+            "device_name": "电脑 A",
+        }
+    }
 
 
 def test_external_share_invite_is_one_time_and_issues_device_credential():
@@ -322,6 +357,112 @@ def test_remote_websocket_authenticates_and_dispatches_requests_concurrently():
     assert access.list_devices("owner-project")[0]["connected"] is False
 
 
+def test_remote_status_event_sends_refreshed_project_summary():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://127.0.0.1:8765",
+        external_base_url="",
+    )
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    parsed = access.parse_share_string(shared["share_string"])
+    running = False
+    app = FastAPI()
+    bus = EventBus()
+
+    @app.post("/api/start")
+    async def start(project_id: str):
+        nonlocal running
+        running = True
+        await bus.publish(
+            {
+                "type": "CUSTOM",
+                "name": "workstep.status",
+                "project_id": project_id,
+                "task_id": "task-1",
+                "value": {"status": "running"},
+            }
+        )
+        return {"task_id": "task-1"}
+
+    def project_summary(project_id: str):
+        return {
+            "id": project_id,
+            "name": "demo",
+            "steps": {},
+            "workflows": [
+                {
+                    "id": "workflow-1",
+                    "name": "开发流程",
+                    "is_default": True,
+                    "nodeCount": 2,
+                    "running": running,
+                }
+            ],
+        }
+
+    @app.websocket("/ws/remote-project")
+    async def remote_socket(ws: WebSocket):
+        dispatcher = RemoteRouteDispatcher(app)
+        try:
+            await serve_remote_project_socket(
+                ws,
+                dispatcher=dispatcher,
+                access_service=access,
+                event_bus=bus,
+                project_summary=project_summary,
+            )
+        finally:
+            await dispatcher.aclose()
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/remote-project") as ws:
+            ws.send_json(
+                {
+                    "type": "auth",
+                    "project_id": "owner-project",
+                    "invite_token": parsed["invite_token"],
+                    "actor": {
+                        "actor_id": "device-b",
+                        "user_name": "张三",
+                        "device_id": "device-b",
+                        "device_name": "MacBook",
+                    },
+                }
+            )
+            assert ws.receive_json()["type"] == "auth_ok"
+            ws.send_json(
+                {
+                    "type": "subscribe",
+                    "status_only_task_ids": ["task-1"],
+                }
+            )
+            ws.send_json(
+                {
+                    "type": "http.request",
+                    "request_id": "start",
+                    "method": "POST",
+                    "path": "/api/start",
+                    "query": {},
+                    "headers": {},
+                    "body_b64": "",
+                }
+            )
+
+            messages = [ws.receive_json(), ws.receive_json()]
+            refreshed = next(
+                (message for message in messages if message["type"] == "project.updated"),
+                None,
+            )
+            assert refreshed is not None
+            assert refreshed["project"]["workflows"][0]["running"] is True
+
+
 def test_revoked_device_can_no_longer_authorize_requests():
     config = MemoryConfig()
     access = RemoteAccessService(config)
@@ -532,6 +673,125 @@ async def test_client_manager_reuses_authenticated_socket_for_rpc():
     await manager.close()
 
 
+async def test_client_applies_remote_project_updates_and_forwards_status_events():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    parsed = access.parse_share_string(shared["share_string"])
+
+    class FakeSocket:
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+
+        async def send(self, raw):
+            message = json.loads(raw)
+            if message["type"] == "auth":
+                await self.incoming.put(
+                    json.dumps(
+                        {
+                            "type": "auth_ok",
+                            "credential": "issued-secret",
+                            "host_id": parsed["fingerprint"],
+                            "project": {
+                                "name": "demo",
+                                "steps": {},
+                                "workflows": [
+                                    {
+                                        "id": "workflow-1",
+                                        "name": "开发流程",
+                                        "is_default": True,
+                                        "nodeCount": 2,
+                                        "running": False,
+                                    }
+                                ],
+                            },
+                        }
+                    )
+                )
+
+        async def recv(self):
+            return await self.incoming.get()
+
+        async def close(self):
+            return None
+
+    socket = FakeSocket()
+    events = []
+    registry = RemoteProjectRegistry(config)
+    manager = RemoteProjectClientManager(
+        registry=registry,
+        actor_provider=lambda: ActorSnapshot(
+            "device-b", "张三", "device-b", "MacBook", "local"
+        ),
+        event_sink=events.append,
+        connect_factory=lambda endpoint, **kwargs: asyncio.sleep(0, result=socket),
+    )
+    project = await manager.add_share(shared["share_string"])
+    await socket.incoming.put(
+        json.dumps(
+            {
+                "type": "project.updated",
+                "project": {
+                    "name": "demo",
+                    "steps": {},
+                    "workflows": [
+                        {
+                            "id": "workflow-1",
+                            "name": "开发流程",
+                            "is_default": True,
+                            "nodeCount": 2,
+                            "running": True,
+                        }
+                    ],
+                },
+            }
+        )
+    )
+    await socket.incoming.put(
+        json.dumps(
+            {
+                "type": "event",
+                "event": {
+                    "type": "CUSTOM",
+                    "name": "workstep.status",
+                    "project_id": "owner-project",
+                    "task_id": "task-1",
+                    "value": {"status": "running"},
+                },
+            }
+        )
+    )
+    for _ in range(100):
+        if (
+            events
+            and registry.list_public()[0]["workflows"][0]["running"] is True
+        ):
+            break
+        await asyncio.sleep(0.001)
+
+    assert registry.list_public()[0]["workflows"][0]["running"] is True
+    status_event = next(
+        event for event in events if event.get("name") == "workstep.status"
+    )
+    assert status_event == {
+        "type": "CUSTOM",
+        "name": "workstep.status",
+        "project_id": project["id"],
+        "task_id": "task-1",
+        "value": {"status": "running"},
+    }
+    await manager.close()
+
+
 async def test_remote_project_settings_and_add_api(monkeypatch):
     config = MemoryConfig()
     access = RemoteAccessService(config)
@@ -592,3 +852,108 @@ async def test_remote_project_settings_and_add_api(monkeypatch):
         )
         assert added.status_code == 200
         assert added.json()["type"] == "remote"
+
+
+async def test_socket_cancellation_does_not_leave_child_tasks_running():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://127.0.0.1:8765",
+        external_base_url="",
+    )
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    parsed = access.parse_share_string(shared["share_string"])
+    request_started = asyncio.Event()
+    request_cancelled = asyncio.Event()
+    never = asyncio.Event()
+
+    class CancellationResistantDispatcher:
+        async def dispatch(self, request, principal):
+            request_started.set()
+            try:
+                await never.wait()
+            except asyncio.CancelledError:
+                request_cancelled.set()
+                await never.wait()
+
+    class MemoryWebSocket:
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+            self.sent = []
+
+        async def accept(self):
+            return None
+
+        async def receive_json(self):
+            return await self.incoming.get()
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+        async def close(self, **_kwargs):
+            return None
+
+    ws = MemoryWebSocket()
+    await ws.incoming.put(
+        {
+            "type": "auth",
+            "project_id": "owner-project",
+            "invite_token": parsed["invite_token"],
+            "actor": {
+                "actor_id": "device-b",
+                "user_name": "张三",
+                "device_id": "device-b",
+                "device_name": "MacBook",
+            },
+        }
+    )
+    await ws.incoming.put(
+        {
+            "type": "http.request",
+            "request_id": "slow",
+            "method": "GET",
+            "path": "/api/sessions",
+            "query": {},
+            "headers": {},
+            "body_b64": "",
+        }
+    )
+    socket_task = asyncio.create_task(
+        serve_remote_project_socket(
+            ws,
+            dispatcher=CancellationResistantDispatcher(),
+            access_service=access,
+            event_bus=EventBus(),
+            project_summary=lambda project_id: {
+                "id": project_id,
+                "name": "demo",
+                "steps": {},
+                "workflows": [],
+            },
+        )
+    )
+    await asyncio.wait_for(request_started.wait(), timeout=1)
+
+    socket_task.cancel()
+    await asyncio.wait_for(request_cancelled.wait(), timeout=1)
+    socket_task.cancel()
+    await asyncio.gather(socket_task, return_exceptions=True)
+    await asyncio.sleep(0)
+
+    leaked = [
+        task
+        for task in asyncio.all_tasks()
+        if task is not asyncio.current_task()
+        and not task.done()
+        and "serve_remote_project_socket.<locals>" in task.get_coro().__qualname__
+    ]
+    for task in leaked:
+        task.cancel()
+    await asyncio.gather(*leaked, return_exceptions=True)
+
+    assert leaked == []

@@ -86,8 +86,29 @@ def get_current_actor() -> ActorSnapshot | None:
     return _current_actor.get()
 
 
-def current_actor_event_fields() -> dict[str, Any]:
+def get_effective_actor() -> ActorSnapshot | None:
+    """Return the remote caller, or this installation's configured user."""
     actor = get_current_actor()
+    if actor is not None:
+        return actor
+
+    from services.config import config_store
+
+    user_name = config_store.get_user_name()
+    if not user_name:
+        return None
+    device = config_store.get_device_identity()
+    return ActorSnapshot(
+        actor_id=device["device_id"],
+        user_name=user_name,
+        device_id=device["device_id"],
+        device_name=device["device_name"],
+        source="local",
+    )
+
+
+def current_actor_event_fields() -> dict[str, Any]:
+    actor = get_effective_actor()
     if actor is None:
         return {}
     return {
@@ -842,9 +863,20 @@ class _RemoteProjectConnection:
                             )
                         )
                 elif message.get("type") == "event" and isinstance(message.get("event"), dict):
-                    result = self._event_sink(message["event"])
+                    event = {**message["event"], "project_id": self.local_project_id}
+                    result = self._event_sink(event)
                     if inspect.isawaitable(result):
                         await result
+                elif message.get("type") == "project.updated" and isinstance(
+                    message.get("project"), dict
+                ):
+                    project = message["project"]
+                    self._registry.update(
+                        self.local_project_id,
+                        name=str(project.get("name") or ""),
+                        steps=project.get("steps") or {},
+                        workflows=project.get("workflows") or [],
+                    )
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -1164,6 +1196,16 @@ async def serve_remote_project_socket(
                 and any(subscription.values())
                 and _subscription_matches(event, subscription)
             ):
+                from engines.core.agui import is_status_event
+
+                if is_status_event(event):
+                    summary = project_summary(principal.project_id)
+                    if inspect.isawaitable(summary):
+                        summary = await summary
+                    if isinstance(summary, dict):
+                        await outgoing.put(
+                            {"type": "project.updated", "project": summary}
+                        )
                 await outgoing.put({"type": "event", "event": event})
 
     async def run_request(message: dict[str, Any]) -> None:
@@ -1255,12 +1297,11 @@ async def serve_remote_project_socket(
         tasks = list(request_tasks.values())
         for task in tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
         event_task.cancel()
-        await asyncio.gather(event_task, return_exceptions=True)
-        if not writer_task.done():
-            try:
-                outgoing.put_nowait(None)
-            except asyncio.QueueFull:
-                writer_task.cancel()
-        await asyncio.gather(writer_task, return_exceptions=True)
+        writer_task.cancel()
+        await asyncio.gather(
+            *tasks,
+            event_task,
+            writer_task,
+            return_exceptions=True,
+        )

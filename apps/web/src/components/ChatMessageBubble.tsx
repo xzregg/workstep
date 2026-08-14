@@ -35,6 +35,8 @@ export interface ChatMessageBubbleProps {
   role: 'user' | 'assistant' | 'system' | 'review'
   /** Display name / avatar title. */
   sender: string
+  /** Optional richer avatar tooltip, such as sender and device name. */
+  senderTitle?: string
   /** Avatar text (initials). */
   initials: string
   /** Avatar background color. */
@@ -79,6 +81,7 @@ export interface ChatMessageBubbleProps {
 export default function ChatMessageBubble({
   role,
   sender,
+  senderTitle,
   initials,
   color,
   content,
@@ -136,7 +139,7 @@ export default function ChatMessageBubble({
         alignSelf: isUser ? 'flex-end' : undefined,
       }}>
         <div
-          title={sender}
+          title={senderTitle || sender}
           aria-label={sender}
           style={{
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,

@@ -10,10 +10,10 @@ from models.base import db_proxy
 
 
 def current_actor_message_fields() -> dict[str, str]:
-    """Snapshot the authenticated remote actor for durable message history."""
-    from services.remote_project import get_current_actor
+    """Snapshot the effective local or remote actor for durable history."""
+    from services.remote_project import get_effective_actor
 
-    actor = get_current_actor()
+    actor = get_effective_actor()
     if actor is None:
         return {}
     return {

@@ -675,6 +675,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}
                   </span>
                 )}
+                {p.workflows?.some((workflow) => workflow.running) && (
+                  <span
+                    className="task-status-spinner"
+                    style={{ color: 'var(--accent)', flexShrink: 0 }}
+                    title={t('layout.flowRunning')}
+                    aria-hidden="true"
+                  />
+                )}
                 <Button
                   variant="icon"
                   className="ws-more-btn"

@@ -15,7 +15,7 @@ test('project and workflow rows reveal a "..." more button only on hover', () =>
 })
 
 test('clicking the more button opens an edit/delete menu for projects and workflows', () => {
-  assert.match(source, /openMoreMenu\(e, 'project', p\.path\)/)
+  assert.match(source, /openMoreMenu\(e, 'project', p\.id\)/)
   assert.match(source, /openMoreMenu\(e, 'workflow', wf\.id\)/)
   assert.match(source, /setRenameId\(menuTarget\.path\)/)
   assert.match(source, /setDeleteProjectTarget\(menuTarget\)/)
