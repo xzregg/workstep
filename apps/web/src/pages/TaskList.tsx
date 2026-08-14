@@ -15,6 +15,7 @@ import Input from '../components/Input'
 import MarkdownEditor from '../components/MarkdownEditor'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
+import ProjectShareDialog from '../components/ProjectShareDialog'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
 import { formatDuration } from '../utils/datetime'
@@ -190,6 +191,7 @@ export default function TaskList() {
   }, [selectedTaskId])
   const [scheduleCount, setScheduleCount] = useState(0)
   const [showScheduleDialog, setShowScheduleDialog] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
   const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
@@ -275,6 +277,7 @@ export default function TaskList() {
     setTaskAiOpen(false)
     setTaskAiBusy(false)
     setShowScheduleDialog(false)
+    setShowShareDialog(false)
     setCreateStartStepKey(null)
     setShowArchived(false)
   }, [activeProject?.path])
@@ -720,6 +723,17 @@ export default function TaskList() {
           >
             {directoryNotice}
           </span>
+        )}
+        {activeProject && activeProject.type !== 'remote' && (
+          <Button
+            variant="ghost"
+            onClick={() => setShowShareDialog(true)}
+            title={t('layout.remoteShareTitle')}
+            style={{ fontSize: 13, gap: 5 }}
+          >
+            <Icon name="share" size={13} strokeWidth={2} />
+            {t('layout.remoteShareTitle')}
+          </Button>
         )}
         <Button
           variant="ghost"
@@ -1247,6 +1261,11 @@ export default function TaskList() {
           </div>
         </div>
       )}
+
+      <ProjectShareDialog
+        project={showShareDialog ? activeProject : null}
+        onClose={() => setShowShareDialog(false)}
+      />
 
       {/* ── Task detail slide-in panel from right ── */}
       {selectedTaskId && (

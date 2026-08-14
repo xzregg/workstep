@@ -15,14 +15,13 @@ import SettingsPage from '../pages/SettingsPage'
 import RemoteProjectsPage from '../pages/RemoteProjectsPage'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
+import ProjectShareDialog from './ProjectShareDialog'
 import AiFlowChat from './AiFlowChat'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
 import {
   fetchTemplates,
-  remoteProjectApi,
   templateApi,
   chatSessionApi,
-  type RemoteDevice,
   type TemplateInfo,
   type Project,
 } from '../api/client'
@@ -130,11 +129,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
   const [shareProject, setShareProject] = useState<Project | null>(null)
-  const [shareAccess, setShareAccess] = useState<'internal' | 'external'>('internal')
-  const [shareValue, setShareValue] = useState('')
-  const [shareError, setShareError] = useState('')
-  const [shareLoading, setShareLoading] = useState(false)
-  const [shareDevices, setShareDevices] = useState<RemoteDevice[]>([])
   const [projectContextMenu, setProjectContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
   const sessions = useChatListStore((s) => s.sessions)
@@ -215,19 +209,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     const timer = window.setInterval(() => { void fetchProjects() }, 3000)
     return () => window.clearInterval(timer)
   }, [projects, fetchProjects])
-
-  useEffect(() => {
-    if (!shareProject) return
-    let active = true
-    const refresh = () => {
-      void remoteProjectApi.devices(shareProject.id).then((result) => {
-        if (active) setShareDevices(result.devices)
-      }).catch(() => undefined)
-    }
-    refresh()
-    const timer = window.setInterval(refresh, 2000)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [shareProject])
 
   // Re-focus inputs each time they open (autoFocus only fires on first mount)
   useEffect(() => {
@@ -487,33 +468,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       setError(reason instanceof Error ? reason.message : t('layout.remoteAddFailed'))
     } finally {
       setAddingRemote(false)
-    }
-  }
-
-  const openProjectShare = async (project: Project) => {
-    setShareProject(project)
-    setShareValue('')
-    setShareError('')
-    setShareAccess('internal')
-    try {
-      const result = await remoteProjectApi.devices(project.id)
-      setShareDevices(result.devices)
-    } catch {
-      setShareDevices([])
-    }
-  }
-
-  const createProjectShare = async () => {
-    if (!shareProject || shareLoading) return
-    setShareLoading(true)
-    setShareError('')
-    try {
-      const result = await remoteProjectApi.createShare(shareProject.id, shareAccess)
-      setShareValue(result.share_string)
-    } catch (reason) {
-      setShareError(reason instanceof Error ? reason.message : t('layout.remoteShareFailed'))
-    } finally {
-      setShareLoading(false)
     }
   }
 
@@ -1095,7 +1049,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           {projectContextMenu.project.type !== 'remote' && (
             <div
               onClick={() => {
-                void openProjectShare(projectContextMenu.project)
+                setShareProject(projectContextMenu.project)
                 setProjectContextMenu(null)
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
@@ -1169,7 +1123,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               </div>
               {menuTarget.type !== 'remote' && (
                 <div
-                  onClick={() => { void openProjectShare(menuTarget); setMoreMenu(null) }}
+                  onClick={() => { setShareProject(menuTarget); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
@@ -1383,54 +1337,7 @@ export default function Layout({ onSelectProject, children }: Props) {
         </div>
       )}
 
-      {shareProject && (
-        <div className="modal-overlay" onClick={() => setShareProject(null)}>
-          <div className="modal" style={{ width: 560 }} onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('layout.remoteShareTitle')} · {shareProject.name}</span>
-              <Button variant="icon" onClick={() => setShareProject(null)}>✕</Button>
-            </div>
-            <div className="modal-body">
-              <Field label={t('layout.accessType')}>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <Button variant={shareAccess === 'internal' ? 'primary' : 'ghost'} onClick={() => { setShareAccess('internal'); setShareValue(''); setShareError('') }}>
-                    {t('layout.internalAccess')}
-                  </Button>
-                  <Button variant={shareAccess === 'external' ? 'primary' : 'ghost'} onClick={() => { setShareAccess('external'); setShareValue(''); setShareError('') }}>
-                    {t('layout.externalAccess')}
-                  </Button>
-                </div>
-              </Field>
-              <p style={{ margin: '8px 0 12px', color: 'var(--muted)', fontSize: 11 }}>
-                {shareAccess === 'external' ? t('layout.externalAccessHint') : t('layout.internalAccessHint')}
-              </p>
-              {shareValue && (
-                <Field label={t('layout.remoteShareString')}>
-                  <textarea readOnly value={shareValue} rows={6} style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 11 }} />
-                </Field>
-              )}
-              {shareError && <div role="status" style={{ color: 'var(--danger)', fontSize: 12 }}>{shareError}</div>}
-              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-soft)' }}>
-                <div style={{ fontSize: 12, fontWeight: 650, marginBottom: 7 }}>
-                  {t('layout.remoteDevices', { count: shareDevices.filter((device) => device.connected && !device.revoked).length })}
-                </div>
-                {shareDevices.filter((device) => !device.revoked).map((device) => (
-                  <div key={`${device.project_id}:${device.device_id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 11, color: 'var(--muted)' }}>
-                    <span style={{ color: device.connected ? 'var(--success)' : 'var(--meta)' }}>{device.connected ? '●' : '○'}</span>
-                    <span style={{ color: 'var(--fg)' }}>{device.user_name || t('common.unknown')}</span>
-                    <span>{device.device_name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={() => setShareProject(null)}>{t('common.close')}</Button>
-              {shareValue && <Button variant="ghost" onClick={() => void navigator.clipboard.writeText(shareValue)}>{t('common.copy')}</Button>}
-              <Button variant="primary" loading={shareLoading} onClick={() => void createProjectShare()}>{t('layout.generateShare')}</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectShareDialog project={shareProject} onClose={() => setShareProject(null)} />
 
       {/* Add workflow modal */}
       {addWfProjectId && (
