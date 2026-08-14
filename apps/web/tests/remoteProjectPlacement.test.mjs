@@ -4,18 +4,20 @@ import { readFile } from 'node:fs/promises'
 
 const layoutSource = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
-const remoteProjectsSource = await readFile(new URL('../src/pages/RemoteProjectsPage.tsx', import.meta.url), 'utf8')
+const remoteProjectsSource = await readFile(new URL('../src/pages/RemoteProjectSettings.tsx', import.meta.url), 'utf8')
 
-test('remote projects has its own top-level sidebar entry and page', () => {
-  assert.match(layoutSource, /import RemoteProjectsPage from '\.\.\/pages\/RemoteProjectsPage'/)
-  assert.match(layoutSource, /setShowRemoteProjects\(true\)/)
-  assert.match(layoutSource, /t\('nav\.remoteProjects'\)/)
-  assert.match(layoutSource, /<RemoteProjectsPage onClose=/)
+test('remote projects is a dedicated category inside settings', () => {
+  assert.doesNotMatch(layoutSource, /RemoteProjectsPage/)
+  assert.doesNotMatch(layoutSource, /showRemoteProjects/)
+  assert.match(settingsSource, /import RemoteProjectSettings from '\.\/RemoteProjectSettings'/)
+  assert.match(settingsSource, /activeSection === 'remote'/)
+  assert.match(settingsSource, /setActiveSection\('remote'\)/)
+  assert.match(settingsSource, /t\('nav\.remoteProjects'\)/)
+  assert.match(settingsSource, /<RemoteProjectSettings \/>/)
 })
 
-test('remote access controls live outside system settings', () => {
+test('remote access controls stay separate from the system category', () => {
   assert.doesNotMatch(settingsSource, /remoteProjectApi/)
-  assert.doesNotMatch(settingsSource, /settings\.remoteAccessTitle/)
   assert.match(remoteProjectsSource, /remoteProjectApi\.settings\(\)/)
   assert.match(remoteProjectsSource, /remoteProjectApi\.updateSettings/)
   assert.match(remoteProjectsSource, /remoteProjectApi\.devices\(\)/)

@@ -23,6 +23,7 @@ import EngineSelect from '../components/EngineSelect'
 import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
+import RemoteProjectSettings from './RemoteProjectSettings'
 import {
   ENGINE_COLORS,
   engineLabel,
@@ -723,7 +724,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [inspecting, setInspecting] = useState(false)
   const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
   const [inspectError, setInspectError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'system'>('providers')
+  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'remote' | 'system'>('providers')
 
   useEffect(() => {
     setUserNameDraft(userName)
@@ -1095,6 +1096,19 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         >
           <Icon name="layout-grid" size={16} strokeWidth={2} />
           {t('settings.templatesNav')}
+        </button>
+        <button
+          aria-current={activeSection === 'remote' ? 'page' : undefined}
+          onClick={() => setActiveSection('remote')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'remote' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'remote' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <Icon name="share" size={16} strokeWidth={2} />
+          {t('nav.remoteProjects')}
         </button>
         <button
           aria-current={activeSection === 'system' ? 'page' : undefined}
@@ -1550,6 +1564,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
+        ) : activeSection === 'remote' ? (
+          <RemoteProjectSettings />
         ) : activeSection === 'system' ? (
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
             <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>
