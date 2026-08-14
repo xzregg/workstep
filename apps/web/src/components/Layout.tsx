@@ -656,8 +656,21 @@ export default function Layout({ onSelectProject, children }: Props) {
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}
                     {p.type === 'remote' && (
-                      <span title={p.endpoint} style={{ marginLeft: 6, fontSize: 10, color: p.connection_status === 'connected' ? 'var(--success)' : 'var(--meta)' }}>
-                        {p.connection_status === 'connected' ? '●' : '○'}
+                      <span
+                        title={p.endpoint}
+                        style={{
+                          display: 'inline-block',
+                          marginLeft: 6,
+                          padding: '0 4px',
+                          borderRadius: 3,
+                          background: 'var(--surface)',
+                          color: 'var(--meta)',
+                          fontSize: 10,
+                          lineHeight: '16px',
+                          verticalAlign: 1,
+                        }}
+                      >
+                        {t('layout.remoteLabel')}
                       </span>
                     )}
                   </span>

@@ -556,6 +556,7 @@ export const jaJP: Messages = {
   layout: {
     localProject: 'ローカルプロジェクト',
     remoteProject: 'リモートプロジェクト',
+    remoteLabel: 'リモート',
     remoteShareString: 'プロジェクト共有文字列',
     remoteShareHint: '別の WorkStep で生成した共有文字列を貼り付けます。初回接続で一回限りの招待を使用し、端末資格情報を保存します。',
     connectRemote: 'リモートプロジェクトに接続',

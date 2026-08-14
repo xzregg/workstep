@@ -554,6 +554,7 @@ export const zhCN = {
   layout: {
     localProject: '本地项目',
     remoteProject: '远程项目',
+    remoteLabel: '远程',
     remoteShareString: '项目分享字符串',
     remoteShareHint: '粘贴另一台 WorkStep 生成的分享字符串。首次连接会消耗一次性邀请并保存此设备凭证。',
     connectRemote: '连接远程项目',

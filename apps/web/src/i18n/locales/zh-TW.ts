@@ -556,6 +556,7 @@ export const zhTW: Messages = {
   layout: {
     localProject: '本機專案',
     remoteProject: '遠端專案',
+    remoteLabel: '遠端',
     remoteShareString: '專案分享字串',
     remoteShareHint: '貼上另一台 WorkStep 產生的分享字串。首次連線會使用一次性邀請並儲存此裝置憑證。',
     connectRemote: '連線遠端專案',
