@@ -133,6 +133,7 @@ from engines.core.registry import _ALL_ENGINES
 _NON_ACP_ENGINE_IDS = {
     "codex",
     "codex_sdk",
+    "deepseek_harness",
     "claude",
     "claude_agent_sdk",
     "qoder_sdk",

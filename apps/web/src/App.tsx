@@ -10,6 +10,7 @@ import ChatPage from './pages/ChatPage'
 import SharedTaskView from './pages/SharedTaskView'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
+import FirstUseDialog from './components/FirstUseDialog'
 
 function AppRoutes() {
   const navigate = useNavigate()
@@ -72,6 +73,7 @@ function App() {
   return (
     <BrowserRouter>
       <AppRoutes />
+      <FirstUseDialog />
     </BrowserRouter>
   )
 }

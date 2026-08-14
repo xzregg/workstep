@@ -139,6 +139,32 @@ test('assistant store ignores events from other channels', () => {
   assert.equal(store.getState().sessions['other'], undefined)
 })
 
+test('assistant store replaces session commands without a message id', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().newSession('session-commands')
+  const update = (name: string) => store.getState().handleWsEvent({
+    type: 'CUSTOM',
+    name: CUSTOM.availableCommandsUpdate,
+    channel: 'session_chat',
+    session_id: 'session-commands',
+    value: {
+      available_commands: [{ name, description: `${name} command`, input: { hint: 'argument' } }],
+    },
+  })
+
+  update('test')
+  update('review')
+
+  assert.deepEqual(store.getState().sessions['session-commands'].availableCommands, [{
+    kind: 'command',
+    name: 'review',
+    description: 'review command',
+    input_hint: 'argument',
+    insert_text: '/review ',
+    action: 'prompt',
+  }])
+})
+
 test('task store consumes AG-UI text and run events for live messages', () => {
   useTaskStore.setState({
     tasks: [],
@@ -169,6 +195,33 @@ test('task store consumes AG-UI text and run events for live messages', () => {
   assert.ok(useTaskStore.getState().taskStatusEvents > 0)
 })
 
+test('task store keeps latest commands per task conversation target', () => {
+  useTaskStore.setState({ availableCommands: {} })
+  const update = (commands: Array<Record<string, unknown>>) =>
+    useTaskStore.getState().handleWsEvent({
+      type: 'CUSTOM',
+      name: CUSTOM.availableCommandsUpdate,
+      task_id: 'task-commands',
+      channel: 'execution',
+      step_key: 'test',
+      value: { available_commands: commands },
+    })
+
+  update([{ name: 'test', description: 'Run tests' }])
+  update([{ name: 'review', description: 'Review changes' }])
+
+  assert.deepEqual(
+    useTaskStore.getState().availableCommands['task-commands']['execution:test'],
+    [{
+      kind: 'command',
+      name: 'review',
+      description: 'Review changes',
+      insert_text: '/review ',
+      action: 'prompt',
+    }],
+  )
+})
+
 test('task store updates task status from workstep.status CUSTOM events', () => {
   useTaskStore.setState({
     tasks: [{
@@ -196,4 +249,54 @@ test('task store updates task status from workstep.status CUSTOM events', () => 
     value: { status: 'passed', step_key: 's1' },
   })
   assert.equal(useTaskStore.getState().tasks[0].status, 'ready')
+})
+
+test('task detail can refresh a stale created-task snapshot from the server', async () => {
+  useTaskStore.setState({
+    tasks: [{
+      id: 'task-created-running',
+      title: '立即执行任务',
+      description: null,
+      cwd: '/tmp',
+      status: 'running',
+      engine: 'claude',
+      created_at: '2026-08-14T00:00:00Z',
+      updated_at: '2026-08-14T00:00:00Z',
+      steps: [{
+        step_key: 'requirement',
+        status: 'pending',
+        engine: 'claude',
+        started_at: null,
+        ended_at: null,
+        error: null,
+      }],
+    }],
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      '/api/task/task-created-running?project_id=project-1',
+    )
+    return new Response(JSON.stringify({
+      ...useTaskStore.getState().tasks[0],
+      steps: [{
+        step_key: 'requirement',
+        status: 'running',
+        engine: 'claude',
+        started_at: '2026-08-14T00:00:01Z',
+        ended_at: null,
+        error: null,
+      }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  try {
+    await useTaskStore.getState().refreshTask(
+      'task-created-running',
+      'project-1',
+    )
+    assert.equal(useTaskStore.getState().tasks[0].steps[0].status, 'running')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

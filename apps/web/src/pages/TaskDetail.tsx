@@ -37,6 +37,7 @@ import {
   isUnpersistedLiveMessage,
   isTaskCompleted,
   isTaskNotStarted,
+  isStageResumableWithMessage,
   conversationBottomScrollTop,
 } from './taskDetailChat'
 import {
@@ -224,9 +225,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const liveMessages = useTaskStore((s) => (
     taskId ? s.liveMessages[taskId] : undefined
   ) ?? EMPTY_LIVE_MESSAGES)
+  const availableCommands = useTaskStore((s) => (
+    taskId ? s.availableCommands[taskId] : undefined
+  ))
   const runTask = useTaskStore((s) => s.runTask)
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
+  const refreshTask = useTaskStore((s) => s.refreshTask)
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
@@ -261,6 +266,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       : ''
   }, [events, liveMessages])
   const [prompt, setPrompt] = useState('')
+
+  useEffect(() => {
+    if (!taskId || !projectId) return
+    void refreshTask(taskId, projectId).catch(() => undefined)
+  }, [projectId, refreshTask, taskId])
   const [running, setRunning] = useState(false)
   const [coordinatorRunning, setCoordinatorRunning] = useState(false)
   const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
@@ -775,8 +785,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const resumableKeys = new Set(
       stageProgress
         .filter((progress) => (
-          progress.status !== undefined
-          && ['cancelled', 'failed', 'rejected'].includes(progress.status)
+          isStageResumableWithMessage(progress.status)
         ))
         .map((progress) => progress.step_key),
     )
@@ -1544,6 +1553,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onStageClick={handleStageClick}
         historyMessages={historyMessages}
         liveMessages={liveMessages}
+        availableCommands={availableCommands}
         events={events}
         content={content}
         reviews={reviews}

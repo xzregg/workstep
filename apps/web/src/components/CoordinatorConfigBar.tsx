@@ -58,6 +58,8 @@ export interface CoordinatorConfigBarProps {
   engineTitle?: string
   /** bar = right-aligned horizontal row; menu = vertical stack inside a popover. */
   variant?: 'bar' | 'menu'
+  /** Open one nested selector when invoked from a slash command. */
+  autoOpenField?: 'model' | 'reasoning' | null
 }
 
 const selectStyle: CSSProperties = {
@@ -83,6 +85,7 @@ interface MenuFieldProps {
   options: MenuOption[]
   onChange: (value: string) => void
   icon: 'terminal' | 'sparkles' | 'sliders-horizontal' | 'image'
+  autoOpen?: boolean
 }
 
 /** Codex-style field: a compact row that opens an option menu to the right on click. */
@@ -95,10 +98,23 @@ function MenuField({
   options,
   onChange,
   icon,
+  autoOpen = false,
 }: MenuFieldProps) {
   const rowRef = useRef<HTMLDivElement>(null)
+  const autoOpenedRef = useRef(false)
   const { anchor, openFrom, close } = useFloatingMenu()
   const current = options.find((option) => option.value === value)
+
+  useEffect(() => {
+    if (!autoOpen) {
+      autoOpenedRef.current = false
+      return
+    }
+    if (!disabled && !autoOpenedRef.current) {
+      autoOpenedRef.current = true
+      openFrom(rowRef.current)
+    }
+  }, [autoOpen, disabled])
 
   const handleRowToggle = () => {
     if (disabled) return
@@ -173,6 +189,7 @@ export default function CoordinatorConfigBar({
   showVision = false,
   engineTitle,
   variant = 'bar',
+  autoOpenField = null,
 }: CoordinatorConfigBarProps) {
   const { t } = useI18n()
   const [models, setModels] = useState<EngineModel[]>([])
@@ -266,6 +283,7 @@ export default function CoordinatorConfigBar({
             />
           )}
           <MenuField
+            autoOpen={autoOpenField === 'model'}
             label={t('coord.reasoning')}
             title={t('coord.reasoningTitle')}
             value={model}
@@ -308,6 +326,7 @@ export default function CoordinatorConfigBar({
           )}
           {onThinkingEffortChange && (
             <MenuField
+              autoOpen={autoOpenField === 'reasoning'}
               label={t('coord.thinkingEffort')}
               title={t('coord.thinkingEffortTitle')}
               value={thinkingEffort}

@@ -11,6 +11,7 @@ export const ENGINE_LABELS: Record<string, TKey> = {
   pydantic_ai: 'engine.label.pydantic_ai',
   claude_agent_sdk: 'engine.label.claude_agent_sdk',
   codex_sdk: 'engine.label.codex_sdk',
+  deepseek_harness: 'engine.label.deepseek_harness',
 }
 
 export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
@@ -22,6 +23,7 @@ export const ENGINE_DESCRIPTIONS: Record<string, TKey> = {
   pydantic_ai: 'engine.description.pydantic_ai',
   claude_agent_sdk: 'engine.description.claude_agent_sdk',
   codex_sdk: 'engine.description.codex_sdk',
+  deepseek_harness: 'engine.description.deepseek_harness',
 }
 
 export const ENGINE_COLORS: Record<string, string> = {
@@ -33,6 +35,7 @@ export const ENGINE_COLORS: Record<string, string> = {
   pydantic_ai: '#db2777',
   claude_agent_sdk: '#ea580c',
   codex_sdk: '#2563eb',
+  deepseek_harness: '#4d6bfe',
 }
 
 export function engineLabel(id: string, t: TFunction = zhCNT) {

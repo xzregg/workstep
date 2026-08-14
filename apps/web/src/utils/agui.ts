@@ -15,6 +15,7 @@
  */
 
 import type { AGUIEvent as CoreAGUIEvent } from '@ag-ui/core'
+import type { EngineInputItem } from '../api/client.ts'
 
 /** AG-UI 标准事件 + WorkStep passthrough 扩展字段（宽松形状）。 */
 export interface AGUIEvent {
@@ -128,6 +129,36 @@ export function isCustom(event: EventLike, name: string): boolean {
 /** CUSTOM 事件载荷（缺省为空对象）。 */
 export function customValue(event: EventLike): Record<string, unknown> {
   return event.value ?? {}
+}
+
+/** Convert an ACP available_commands_update payload into chat input items. */
+export function availableCommandInputItems(
+  value: Record<string, unknown>,
+): EngineInputItem[] {
+  const commands = value.available_commands ?? value.availableCommands
+  if (!Array.isArray(commands)) return []
+  return commands.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return []
+    const command = raw as Record<string, unknown>
+    const name = typeof command.name === 'string' ? command.name.trim() : ''
+    if (!name) return []
+    const input = command.input && typeof command.input === 'object'
+      ? command.input as Record<string, unknown>
+      : undefined
+    const hint = typeof input?.hint === 'string'
+      ? input.hint
+      : typeof command.input_hint === 'string'
+        ? command.input_hint
+        : undefined
+    return [{
+      kind: 'command',
+      name,
+      description: typeof command.description === 'string' ? command.description : '',
+      ...(hint ? { input_hint: hint } : {}),
+      insert_text: `/${name} `,
+      action: 'prompt',
+    } satisfies EngineInputItem]
+  })
 }
 
 /** 事件关联的消息 id（AG-UI 标准字段 messageId，兼容旧 snake_case）。 */

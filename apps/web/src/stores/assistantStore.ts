@@ -12,8 +12,10 @@
  */
 
 import { create } from 'zustand'
+import type { EngineInputItem } from '../api/client.ts'
 import {
   CUSTOM,
+  availableCommandInputItems,
   customValue,
   isCustom,
   isReasoningEvent,
@@ -90,6 +92,8 @@ export interface AssistantSessionState {
   latestResult?: Record<string, unknown>
   /** A2UI 载荷（``CUSTOM a2ui.surface``），按 messageId 追加。 */
   a2uiMessages?: Record<string, Record<string, unknown>[]>
+  /** Latest full command catalog advertised by this engine session. */
+  availableCommands?: EngineInputItem[]
 }
 
 export interface AssistantStore {
@@ -241,6 +245,7 @@ export function createAssistantStore(
         let rejectionMessage = session.rejectionMessage
         let latestResult = session.latestResult
         let a2uiMessages = session.a2uiMessages
+        let availableCommands = session.availableCommands
 
         const findIndex = (id?: string) =>
           id ? messages.findIndex((m) => m.id === id) : -1
@@ -256,7 +261,10 @@ export function createAssistantStore(
           }
         }
 
-        if (event.type === 'TEXT_MESSAGE_START' && mid) {
+        if (isCustom(event, CUSTOM.availableCommandsUpdate)) {
+          availableCommands = availableCommandInputItems(customValue(event))
+          pushEvent(mid)
+        } else if (event.type === 'TEXT_MESSAGE_START' && mid) {
           const index = findIndex(mid)
           const prompt = String(
             event.prompt
@@ -444,6 +452,7 @@ export function createAssistantStore(
             rejectionMessage,
             latestResult,
             a2uiMessages,
+            availableCommands,
           }, maxSessions),
         }
       })

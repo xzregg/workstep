@@ -21,6 +21,7 @@ from engines.core.base import (
 
 from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
 from engines.core.interactions import permission_request, permission_signature
+from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services.config import (
@@ -699,3 +700,9 @@ class CodexEngine(AcpEngineBase):
 
     def build_resume_params(self, session_id: str) -> dict:
         return {"session_id": session_id}
+    @property
+    def skill_invocation_prefix(self) -> str:
+        return "$"
+
+    def input_commands(self) -> list[dict[str, str]]:
+        return workstep_input_commands()

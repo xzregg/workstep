@@ -178,7 +178,12 @@ def get_available_engines() -> list[dict]:
                 mode = "acp"
             elif backend == "pydantic_ai":
                 mode = "agent"
-            elif backend in {"claude_agent_sdk", "codex_sdk", "qoder_sdk"}:
+            elif backend in {
+                "claude_agent_sdk",
+                "codex_sdk",
+                "deepseek_harness",
+                "qoder_sdk",
+            }:
                 mode = "sdk"
             else:
                 mode = "cli"

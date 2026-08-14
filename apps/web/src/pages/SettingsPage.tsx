@@ -30,6 +30,7 @@ import {
 } from '../engineMeta'
 import { useI18n, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
+import { useUserSettingsStore } from '../stores/userSettingsStore'
 
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
@@ -691,6 +692,12 @@ interface SettingsPageProps {
 
 export default function SettingsPage({ onClose }: SettingsPageProps) {
   const { t, locale, setLocale } = useI18n()
+  const userName = useUserSettingsStore((state) => state.userName)
+  const userSettingsLoading = useUserSettingsStore((state) => state.loading)
+  const userSettingsError = useUserSettingsStore((state) => state.error)
+  const saveUserName = useUserSettingsStore((state) => state.saveUserName)
+  const [userNameDraft, setUserNameDraft] = useState(userName)
+  const [userNameSaved, setUserNameSaved] = useState(false)
   const initialized = useRef(false)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -716,7 +723,17 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [inspecting, setInspecting] = useState(false)
   const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
   const [inspectError, setInspectError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'language'>('providers')
+  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'system'>('providers')
+
+  useEffect(() => {
+    setUserNameDraft(userName)
+  }, [userName])
+
+  const handleSaveUserName = async () => {
+    if (!await saveUserName(userNameDraft)) return
+    setUserNameDraft(userNameDraft.trim())
+    setUserNameSaved(true)
+  }
 
   const loadEngineModels = async (engineId: string, force = false) => {
     if ((models[engineId] || modelsLoading[engineId]) && !force) return
@@ -1080,17 +1097,17 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           {t('settings.templatesNav')}
         </button>
         <button
-          aria-current={activeSection === 'language' ? 'page' : undefined}
-          onClick={() => setActiveSection('language')}
+          aria-current={activeSection === 'system' ? 'page' : undefined}
+          onClick={() => setActiveSection('system')}
           style={{
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-            gap: 9, borderRadius: 8, background: activeSection === 'language' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'language' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            gap: 9, borderRadius: 8, background: activeSection === 'system' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'system' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
           }}
         >
           <span aria-hidden="true" style={{ fontSize: 15 }}>文</span>
-          {t('nav.language')}
+          {t('settings.systemNav')}
         </button>
       </aside>
 
@@ -1533,10 +1550,54 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
-        ) : activeSection === 'language' ? (
+        ) : activeSection === 'system' ? (
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
-            <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('nav.language')}</h1>
-            <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16 }}>
+            <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>
+            <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 22 }}>
+              {t('settings.systemIntro')}
+            </p>
+            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
+              <h2 style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>{t('settings.userName')}</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 10 }}>
+                {t('settings.userNameIntro')}
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}>
+                <Input
+                  value={userNameDraft}
+                  onChange={(event) => {
+                    setUserNameDraft(event.target.value)
+                    setUserNameSaved(false)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && userNameDraft.trim() && !userSettingsLoading) void handleSaveUserName()
+                  }}
+                  placeholder={t('settings.userNamePlaceholder')}
+                  aria-label={t('settings.userName')}
+                  maxLength={80}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  variant="primary"
+                  loading={userSettingsLoading}
+                  disabled={!userNameDraft.trim()}
+                  onClick={() => void handleSaveUserName()}
+                >
+                  {t('common.save')}
+                </Button>
+              </div>
+              {userNameSaved && (
+                <div role="status" style={{ marginTop: 7, color: 'var(--success)', fontSize: 11 }}>
+                  {t('settings.userNameSaved')}
+                </div>
+              )}
+              {userSettingsError && (
+                <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 11 }}>
+                  {userSettingsError}
+                </div>
+              )}
+            </div>
+            <h2 style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>{t('nav.language')}</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
               {t('settings.languageIntro')}
             </p>
             <div

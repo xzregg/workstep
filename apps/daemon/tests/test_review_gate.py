@@ -1,12 +1,22 @@
 """Stage review gate and automatic retry behavior."""
 
+import asyncio
 import json
 
 import pytest
 
 from engines.core.events import InternalEvent
 from engines.core.registry import ENGINE_REGISTRY
-from models import Message, ReviewRun, StepRun, Task, TaskStep, WorkflowRun, init_db
+from models import (
+    Message,
+    ReviewRun,
+    StageSupplement,
+    StepRun,
+    Task,
+    TaskStep,
+    WorkflowRun,
+    init_db,
+)
 from services.task_runner import TaskRunner
 from streaming.bus import EventBus
 
@@ -533,6 +543,150 @@ async def test_manual_reject_injects_feedback_into_next_attempt(tmp_path):
         assert reviews[0].decision_comment == "缺少需求文档"
         assert reviews[1].status == "pending"
     finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_message_skips_pending_manual_review_and_reruns_stage(tmp_path):
+    """等待人工审核时继续发消息，会跳过旧审核并完善同一阶段。"""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="manual-review-message-task",
+        title="Continue manual review stage",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-manual-review-message",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [{
+                "id": 1,
+                "type": "build",
+                "key": "build",
+                "title": "构建",
+                "engine": "review-test",
+                "prompt": "完成构建",
+                "review": {"mode": "manual", "auto": False, "maxRetries": 1},
+            }],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    bus = EventBus()
+    event_queue = bus.subscribe()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first_handle = await runtime.start(project.id, task.id, "")
+        await runtime.wait(first_handle)
+        old_review = ReviewRun.get(ReviewRun.task == task)
+        assert old_review.status == "pending"
+
+        accepted = await runtime.resume_stage_with_message(
+            project.id,
+            task.id,
+            "build",
+            "请补充边界场景后再给我审核",
+        )
+        for _ in range(200):
+            if WorkflowRun.get_by_id(accepted["run_id"]).status != "running":
+                break
+            await asyncio.sleep(0.01)
+        assert WorkflowRun.get_by_id(accepted["run_id"]).status == "paused"
+
+        old_review = ReviewRun.get_by_id(old_review.id)
+        assert old_review.status == "skipped"
+        assert old_review.ended_at is not None
+        old_message = Message.get(
+            (Message.task == task)
+            & (Message.channel == "review")
+            & (Message.started_at == old_review.started_at)
+        )
+        assert json.loads(old_message.events_json) == [{
+            "type": "review_context",
+            "data": {"review_run_id": old_review.id, "status": "skipped"},
+        }]
+
+        supplement = StageSupplement.get(
+            (StageSupplement.task == task)
+            & (StageSupplement.step_key == "build")
+        )
+        assert supplement.content == "请补充边界场景后再给我审核"
+        assert len(calls) == 2
+        assert "请补充边界场景后再给我审核" in calls[1]
+
+        reviews = list(
+            ReviewRun.select()
+            .where(ReviewRun.task == task)
+            .order_by(ReviewRun.started_at, ReviewRun.id)
+        )
+        assert [review.status for review in reviews] == ["skipped", "pending"]
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "build")
+        ).status == "awaiting_review"
+
+        second_review = reviews[1]
+        accepted_again = await runtime.resume_stage_with_message(
+            project.id,
+            task.id,
+            "build",
+            "再补充异常恢复场景",
+        )
+        for _ in range(200):
+            if WorkflowRun.get_by_id(accepted_again["run_id"]).status != "running":
+                break
+            await asyncio.sleep(0.01)
+        assert WorkflowRun.get_by_id(accepted_again["run_id"]).status == "paused"
+        assert ReviewRun.get_by_id(second_review.id).status == "skipped"
+        assert [
+            review.status
+            for review in (
+                ReviewRun.select()
+                .where(ReviewRun.task == task)
+                .order_by(ReviewRun.started_at, ReviewRun.id)
+            )
+        ] == ["skipped", "skipped", "pending"]
+        assert len(calls) == 3
+        assert "再补充异常恢复场景" in calls[2]
+
+        published = []
+        while not event_queue.empty():
+            published.append(event_queue.get_nowait())
+        assert any(
+            event.get("type") == "CUSTOM"
+            and event.get("name") == "workstep.review_status"
+            and event.get("value", {}).get("status") == "skipped"
+            for event in published
+        )
+
+        with pytest.raises(RuntimeError, match="skipped"):
+            await runtime.decide_review(
+                project.id,
+                task.id,
+                "build",
+                old_review.id,
+                "approve",
+            )
+    finally:
+        await runtime.shutdown()
+        await bus.close()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()

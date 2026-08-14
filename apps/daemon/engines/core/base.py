@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from contextlib import suppress
 from dataclasses import dataclass
 import importlib.util
+from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator, ClassVar
 
@@ -312,7 +313,53 @@ class BaseLLMEngine(ABC):
         Returns ``None`` when the engine has nothing to inspect. The settings
         page uses this to show loaded skills and MCP servers per engine.
         """
-        return None
+        from engines.pydantic_ai.skills import Skills, project_skill_directories
+
+        resolved_root = Path(project_root).expanduser().resolve() if project_root else None
+        skills = []
+        if resolved_root is not None:
+            registry = Skills(
+                directories=project_skill_directories(resolved_root, self.ENGINE_ID),
+            )
+            skills = [
+                {
+                    "name": skill.name,
+                    "description": skill.description,
+                    "source_dir": str(skill.skill_dir),
+                }
+                for skill in registry.list_skills()
+            ]
+        input_items = [dict(item) for item in self.input_commands()]
+        known_names = {str(item.get("name") or "") for item in input_items}
+        for skill in skills:
+            if skill["name"] in known_names:
+                continue
+            input_items.append({
+                "kind": "skill",
+                "name": skill["name"],
+                "description": skill["description"],
+                "insert_text": f"{self.skill_invocation_prefix}{skill['name']} ",
+                "action": "prompt",
+            })
+        return {
+            "engine_id": self.ENGINE_ID,
+            "project_root": str(resolved_root) if resolved_root else None,
+            "skills": skills,
+            "input_items": input_items,
+            "mcp_servers": [],
+            "mcp_supported": False,
+            "mcp_error": None,
+        }
+
+    @property
+    def skill_invocation_prefix(self) -> str:
+        return "/"
+
+    def input_commands(self) -> list[dict[str, str]]:
+        """Return executable input commands owned by this adapter."""
+        from engines.core.input_items import workstep_input_commands
+
+        return workstep_input_commands()
 
     # --- Execution ---
 

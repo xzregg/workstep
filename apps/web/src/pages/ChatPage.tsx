@@ -513,6 +513,7 @@ export default function ChatPage() {
         projectId={activeProject.id}
         title={sessionTitle || t('chatSession.title')}
         messages={messages}
+        availableCommands={session?.availableCommands}
         running={running}
         stopping={stopping}
         input={input}

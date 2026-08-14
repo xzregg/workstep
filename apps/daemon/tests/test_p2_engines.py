@@ -2779,7 +2779,7 @@ async def test_claude_permission_mode_save_requires_confirmation(monkeypatch):
 
 def test_all_engines_registered():
     """All engines are in the full list."""
-    assert len(_ALL_ENGINES) == 8
+    assert len(_ALL_ENGINES) == 9
     assert "claude" in _ALL_ENGINES
     assert "codex" in _ALL_ENGINES
     assert "hermes" in _ALL_ENGINES

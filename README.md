@@ -225,6 +225,7 @@ flowchart LR
 | claude_agent_sdk | 官方 Agent SDK 内嵌驱动 Claude Code | ✅ | ✅ |
 | codex_sdk | 官方 Codex SDK 内嵌驱动 Codex | ✅ | ✅ |
 | qoder_sdk | 官方 Qoder Agent SDK 内嵌驱动 qodercli | ✅ | ✅ |
+| deepseek_harness | DeepSeek 官方 Harness SDK，本地完整编码 Agent | ✅ | ❌（SDK 暂无审批通道） |
 
 引擎的 stdout（无论 JSONL、JSON-RPC 还是 SSE）都被解析器归一化为统一的**内部事件**（`apps/daemon/engines/core/events.py`）：
 

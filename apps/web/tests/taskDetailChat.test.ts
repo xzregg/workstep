@@ -12,6 +12,7 @@ import {
   conversationBottomScrollTop,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isStageResumableWithMessage,
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
@@ -110,6 +111,13 @@ test('shows only stage execution replies in the main task conversation', () => {
   assert.equal(isVisibleHistoryMessage({
     channel: 'review', role: 'assistant', content: '审核结果', run_status: 'succeeded',
   }), true)
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'review', role: 'assistant', content: '等待你审核', run_status: 'completed',
+    events: [{
+      type: 'review_context',
+      data: { review_run_id: 'review-skipped', status: 'skipped' },
+    }],
+  }), false)
   // 已停止/失败但无内容的执行消息仍保留展示（附带失败徽标）。
   assert.equal(isVisibleHistoryMessage({
     channel: 'execution', role: 'assistant', content: '', run_status: 'failed',
@@ -120,6 +128,15 @@ test('shows only stage execution replies in the main task conversation', () => {
   assert.equal(isVisibleHistoryMessage({
     channel: 'coordinator', role: 'assistant', content: '协调回复', run_status: 'succeeded',
   }), true)
+})
+
+test('allows a message to rerun stopped, failed, rejected, or review-waiting stages', () => {
+  for (const status of ['cancelled', 'failed', 'rejected', 'awaiting_review']) {
+    assert.equal(isStageResumableWithMessage(status), true)
+  }
+  for (const status of ['pending', 'running', 'reviewing', 'retrying', 'passed', 'skipped']) {
+    assert.equal(isStageResumableWithMessage(status), false)
+  }
 })
 
 test('keeps a running stage visible and uses the stage as its avatar', () => {

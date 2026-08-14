@@ -1,5 +1,6 @@
 import Icon from './Icon'
 import {
+  useEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -8,9 +9,18 @@ import {
 } from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
-import { fsApi, type CoordinatorEngineSummary, type ProviderInfo } from '../api/client'
+import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
+import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
+
+const inputItemIcon = (item: EngineInputItem) => {
+  if (item.kind === 'skill') return 'sparkles' as const
+  if (item.action === 'toggle_plan') return 'lightbulb' as const
+  if (item.action === 'open_reasoning') return 'sparkles' as const
+  if (item.action === 'show_status') return 'bar-chart' as const
+  return 'terminal' as const
+}
 
 /* ══════════════════════════════════════════
    ChatInput — shared chat composer (Codex style).
@@ -97,6 +107,12 @@ export interface ChatInputProps {
   value: string
   onChange: (value: string) => void
   onSend: () => void
+  /** Active project used to discover skills for the selected engine. */
+  projectId?: string
+  /** Engine that will receive this message; overrides the coordinator picker. */
+  skillEngine?: string
+  /** Latest command catalog advertised by the active ACP session. */
+  availableCommands?: EngineInputItem[]
   placeholder?: string
   /** Disable the textarea (e.g. while an LLM turn is running). */
   disabled?: boolean
@@ -137,6 +153,9 @@ export default function ChatInput({
   value,
   onChange,
   onSend,
+  projectId,
+  skillEngine,
+  availableCommands,
   placeholder,
   disabled = false,
   running = false,
@@ -160,11 +179,19 @@ export default function ChatInput({
   const { t, locale } = useI18n()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
+  const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
+  const [statusOpen, setStatusOpen] = useState(false)
   const permissionMenu = useFloatingMenu()
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [slashCursor, setSlashCursor] = useState(value.length)
+  const [slashDismissedValue, setSlashDismissedValue] = useState<string | null>(null)
+  const [inspectedItems, setInspectedItems] = useState<EngineInputItem[]>([])
+  const [skillsLoading, setSkillsLoading] = useState(false)
+  const [skillsError, setSkillsError] = useState(false)
+  const [skillIndex, setSkillIndex] = useState(0)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const canSend = !disabled && !running && !stopping && value.trim().length > 0
   const stopped = Boolean(running && onStop)
@@ -189,6 +216,53 @@ export default function ChatInput({
     permissionOptions.find((option) => option.value === permission?.value)?.label
     ?? t('chatSession.permissionDefault')
   const planActive = plan?.active ?? false
+  const effectiveEngine = skillEngine || config?.engine || config?.defaultEngine || ''
+  const inputItems = availableCommands === undefined
+    ? inspectedItems
+    : [
+        ...availableCommands,
+        ...inspectedItems.filter((item) => item.kind === 'skill'),
+      ]
+  const inputQuery = slashInputQuery(value, slashCursor)
+  const slashActive = inputQuery !== null
+  const filteredItems = inputItems.filter((item) => {
+    const query = (inputQuery ?? '').toLocaleLowerCase()
+    return !query
+      || item.name.toLocaleLowerCase().includes(query)
+      || item.description.toLocaleLowerCase().includes(query)
+  })
+  const skillMenuVisible = slashActive
+    && slashDismissedValue !== value
+    && Boolean(projectId && effectiveEngine)
+
+  useEffect(() => {
+    if (!slashActive || !projectId || !effectiveEngine) return
+    let cancelled = false
+    setSkillsLoading(true)
+    setSkillsError(false)
+    void engineApi.inspect(effectiveEngine, projectId)
+      .then((result) => {
+        if (!cancelled) {
+          setInspectedItems(result.input_items ?? result.skills.map((skill) => ({
+            kind: 'skill',
+            name: skill.name,
+            description: skill.description,
+            insert_text: `/${skill.name} `,
+            action: 'prompt',
+          })))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInspectedItems([])
+          setSkillsError(true)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSkillsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [effectiveEngine, projectId, slashActive])
 
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
@@ -201,6 +275,29 @@ export default function ChatInput({
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (skillMenuVisible) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setSkillIndex((index) => Math.min(index + 1, Math.max(0, filteredItems.length - 1)))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setSkillIndex((index) => Math.max(0, index - 1))
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setSlashDismissedValue(value)
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault()
+        const item = filteredItems[skillIndex] ?? filteredItems[0]
+        if (item) selectInputItem(item)
+        return
+      }
+    }
     if (event.key === 'Enter' && !event.shiftKey && canSend) {
       event.preventDefault()
       onSend()
@@ -214,6 +311,56 @@ export default function ChatInput({
 
   const buttonDisabled = stopped ? stopping : !canSend
   const engineId = config?.engine || config?.defaultEngine || 'claude'
+
+  const applySelection = (item: Pick<EngineInputItem, 'insert_text'>) => {
+    const selection = applySlashInputItem(value, slashCursor, item)
+    onChange(selection.value)
+    setSlashCursor(selection.cursor)
+    setSlashDismissedValue(selection.value)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(selection.cursor, selection.cursor)
+    })
+  }
+
+  const selectInputItem = (item: EngineInputItem) => {
+    setStatusOpen(false)
+    switch (item.action) {
+      case 'toggle_plan':
+        if (!plan) {
+          applySelection(item)
+          return
+        }
+        applySelection({ insert_text: '' })
+        plan.onChange(!planActive)
+        return
+      case 'open_model':
+        if (!config) {
+          applySelection(item)
+          return
+        }
+        applySelection({ insert_text: '' })
+        setConfigFocus('model')
+        setConfigOpen(true)
+        return
+      case 'open_reasoning':
+        if (!config) {
+          applySelection(item)
+          return
+        }
+        applySelection({ insert_text: '' })
+        setConfigFocus('reasoning')
+        setConfigOpen(true)
+        return
+      case 'show_status':
+        applySelection({ insert_text: '' })
+        setStatusOpen(true)
+        return
+      case 'prompt':
+      default:
+        applySelection(item)
+    }
+  }
 
   // ── Image attach (single implementation shared by every chat) ──────────
   const handleAttachImage = async (file: File) => {
@@ -242,7 +389,63 @@ export default function ChatInput({
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div className="chat-input-root" style={{ position: 'relative' }}>
+      {statusOpen && !skillMenuVisible && (
+        <div className="chat-command-status" role="status">
+          <div className="chat-command-status-header">
+            <strong>{t('chatInput.statusTitle')}</strong>
+            <button type="button" onClick={() => setStatusOpen(false)} aria-label={t('common.close')}>×</button>
+          </div>
+          <div>{t('chatInput.statusEngine')}: {engineLabel(engineId)}</div>
+          <div>{t('chatInput.statusModel')}: {config?.model || t('chatInput.defaultModel')}</div>
+          <div>{t('chatInput.statusReasoning')}: {config?.thinkingEffort || t('coord.thinkingEffortDefault')}</div>
+          <div>{t('chatInput.statusPermission')}: {permissionLabel}</div>
+          <div>{t('chatInput.statusPlan')}: {planActive ? t('chatInput.statusEnabled') : t('chatInput.statusDisabled')}</div>
+          {context && <div>{t('chatInput.statusContext')}: {Math.round(context.percent)}%</div>}
+        </div>
+      )}
+      {skillMenuVisible && (
+        <div
+          className="chat-skill-menu"
+          role="listbox"
+          aria-label={t('chatInput.skillMenu')}
+        >
+          {skillsLoading ? (
+            <div className="chat-skill-menu-status" role="status">
+              <span className="task-status-spinner" aria-hidden="true" />
+              {t('chatInput.skillsLoading')}
+            </div>
+          ) : skillsError ? (
+            <div className="chat-skill-menu-status" role="status">
+              {t('chatInput.skillsLoadFailed')}
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div className="chat-skill-menu-status">{t('chatInput.skillsEmpty')}</div>
+          ) : filteredItems.map((item, index) => (
+            <button
+              key={`${item.kind}:${item.name}`}
+              type="button"
+              role="option"
+              aria-selected={index === skillIndex}
+              className="chat-skill-menu-item"
+              data-selected={index === skillIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectInputItem(item)}
+            >
+              <span className="chat-skill-menu-icon" aria-hidden="true">
+                <Icon name={inputItemIcon(item)} size={14} strokeWidth={1.7} />
+              </span>
+              <span className="chat-skill-menu-name">/{item.name}</span>
+              <span className="chat-skill-menu-copy">
+                {item.description && (
+                  <span className="chat-skill-menu-description">{item.description}</span>
+                )}
+                {item.input_hint && <span className="chat-skill-menu-hint">{item.input_hint}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <div
         data-focused={focused}
         style={{
@@ -264,6 +467,10 @@ export default function ChatInput({
           value={value}
           onChange={(e) => {
             onChange(e.target.value)
+            setSlashCursor(e.currentTarget.selectionStart)
+            setSlashDismissedValue(null)
+            setSkillIndex(0)
+            setStatusOpen(false)
             resize()
           }}
           onPaste={imageAttach ? handleImagePaste : onPaste}
@@ -273,6 +480,8 @@ export default function ChatInput({
           rows={rows}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onClick={(event) => setSlashCursor(event.currentTarget.selectionStart)}
+          onSelect={(event) => setSlashCursor(event.currentTarget.selectionStart)}
           style={{
             width: '100%', border: 'none', outline: 'none', resize: 'none',
             background: 'transparent', color: 'var(--fg)',
@@ -470,7 +679,7 @@ export default function ChatInput({
                 className="chat-input-pill"
                 data-open={configOpen}
                 disabled={config.disabled}
-                onClick={() => setConfigOpen((open) => !open)}
+                onClick={() => { setConfigFocus(null); setConfigOpen((open) => !open) }}
                 aria-expanded={configOpen}
                 title={t('chatInput.engineModelTitle')}
                 style={{ opacity: config.disabled ? 0.55 : 1, cursor: config.disabled ? 'not-allowed' : 'pointer' }}
@@ -520,6 +729,7 @@ export default function ChatInput({
                     )}
                     <CoordinatorConfigBar
                       variant="menu"
+                      autoOpenField={configFocus}
                       engines={config.engines}
                       engine={config.engine}
                       defaultEngine={config.defaultEngine}

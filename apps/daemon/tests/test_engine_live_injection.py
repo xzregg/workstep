@@ -149,11 +149,11 @@ async def test_codex_send_live_stage_message_not_supported(monkeypatch):
     assert delivered is False
 
 
-def test_all_registered_engines_advertise_live_support_except_placeholder():
-    """除 openclaw（占位引擎）外均支持 live 注入（codex 以 resume 重启方式支持）。"""
+def test_registered_engines_advertise_live_support_honestly():
+    """OpenClaw 与 DeepSeek Harness 无运行中注入入口，其余引擎支持。"""
     for engine_id, engine_cls in _ALL_ENGINES.items():
         engine = engine_cls()
-        if engine_id == "openclaw":
+        if engine_id in {"openclaw", "deepseek_harness"}:
             assert engine.supports_live_stage_message is False, engine_id
         else:
             assert engine.supports_live_stage_message is True, engine_id

@@ -45,7 +45,11 @@ class FileSystem:
         iterator = directory.rglob("*") if recursive else directory.iterdir()
         files = []
         for item in iterator:
-            if item.is_file():
+            try:
+                resolved_item = self.resolve(str(item))
+            except ValueError:
+                continue
+            if resolved_item.is_file():
                 files.append(self._display(item))
             if len(files) >= 500:
                 break
@@ -100,6 +104,10 @@ class FileSystem:
             raise ValueError(f"目录不存在: {path}")
         matches = []
         for file_path in directory.rglob("*"):
+            try:
+                file_path = self.resolve(str(file_path))
+            except ValueError:
+                continue
             if not file_path.is_file() or file_path.stat().st_size > MAX_SEARCH_BYTES:
                 continue
             try:

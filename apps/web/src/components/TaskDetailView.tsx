@@ -12,6 +12,7 @@ import type { LiveMessage } from '../stores/taskStore'
 import {
   type ActionProposal,
   type CoordinatorConfig,
+  type EngineInputItem,
   type ProviderInfo,
   type ReviewRun,
   type TaskArtifact,
@@ -37,6 +38,7 @@ import {
   isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isStageResumableWithMessage,
   isNearConversationBottom,
   conversationBottomScrollTop,
   liveExecutionStatus,
@@ -176,6 +178,7 @@ export interface TaskDetailViewProps {
   liveMessages: Record<string, LiveMessage>
   events: any[]
   content: string
+  availableCommands?: Record<string, EngineInputItem[]>
 
   // ── Reviews ──
   reviews: ReviewRun[]
@@ -320,6 +323,7 @@ export default function TaskDetailView({
   liveMessages,
   events,
   content,
+  availableCommands,
   reviews,
   reviewActionPending,
   reviewComment,
@@ -426,21 +430,19 @@ export default function TaskDetailView({
 }: TaskDetailViewProps) {
   const { t } = useI18n()
 
-  // 未在运行的阶段（手动停止 / 失败 / 审核驳回）仍保留在「发给谁」选择中，
+  // 未在运行的阶段（等待审核 / 手动停止 / 失败 / 审核驳回）仍保留在「发给谁」选择中，
   // 选中后输入消息可带提示重新执行该阶段。
-  const resumableStatuses = ['cancelled', 'failed', 'rejected']
   const resumableStages = stages.filter((stage) => (
     stageProgress.some((progress) => (
       progress.step_key === stage.key
-      && progress.status !== undefined
-      && resumableStatuses.includes(progress.status)
+      && isStageResumableWithMessage(progress.status)
     ))
   ))
   const resumableStatusOf = (stageKey: string): string | null => {
     const progress = stageProgress.find((item) => item.step_key === stageKey)
     const status = progress?.status
-    return status !== undefined && resumableStatuses.includes(status)
-      ? status
+    return isStageResumableWithMessage(status)
+      ? (status ?? null)
       : null
   }
   const resumableTarget = chatTarget !== 'coordinator'
@@ -2068,6 +2070,7 @@ export default function TaskDetailView({
           }}
         >
           <div
+            className="chat-history-scroll task-chat-history-scroll"
             ref={scrollRef}
             onScroll={(event) => {
               const container = event.currentTarget
@@ -2099,7 +2102,7 @@ export default function TaskDetailView({
               minWidth: 0,
               overflowY: 'auto',
               overflowX: 'hidden',
-              padding: 20,
+              paddingBlock: 20,
               display: 'flex',
               flexDirection: 'column',
               gap: 16,
@@ -3655,7 +3658,9 @@ export default function TaskDetailView({
                       resumableStatusOf(stage.key) === 'failed'
                         || resumableStatusOf(stage.key) === 'rejected'
                         ? 'taskDetail.failedStageTabTitle'
-                        : 'taskDetail.stoppedStageTabTitle',
+                        : resumableStatusOf(stage.key) === 'awaiting_review'
+                          ? 'taskDetail.reviewWaitingStageTabTitle'
+                          : 'taskDetail.stoppedStageTabTitle',
                       {
                         stage: stage.label,
                       },
@@ -3679,7 +3684,9 @@ export default function TaskDetailView({
                   {t(resumableStatusOf(resumableTarget.key) === 'failed'
                     || resumableStatusOf(resumableTarget.key) === 'rejected'
                     ? 'taskDetail.failedStageHint'
-                    : 'taskDetail.stoppedStageHint', {
+                    : resumableStatusOf(resumableTarget.key) === 'awaiting_review'
+                      ? 'taskDetail.reviewWaitingStageHint'
+                      : 'taskDetail.stoppedStageHint', {
                     stage: resumableTarget.label,
                   })}
                 </span>
@@ -3719,6 +3726,17 @@ export default function TaskDetailView({
             )}
 
             <ChatInput
+              projectId={projectId}
+              availableCommands={availableCommands?.[
+                chatTarget === 'coordinator'
+                  ? 'coordinator:'
+                  : `execution:${chatTarget}`
+              ]}
+              skillEngine={chatTarget === 'coordinator'
+                ? coordinatorConfig?.resolved.engine
+                : stages.find((stage) => stage.key === chatTarget)?.engine
+                  || task?.engine
+                  || coordinatorConfig?.resolved.engine}
               value={prompt ?? ''}
               onChange={
                 onPromptChange ?? (() => {})

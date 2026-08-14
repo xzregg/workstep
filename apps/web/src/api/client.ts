@@ -27,6 +27,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
+export interface SystemSettings {
+  user_name: string
+}
+
+export const systemSettingsApi = {
+  get: () => request<SystemSettings>('/system-settings'),
+  updateUserName: (userName: string) => request<SystemSettings>('/system-settings', {
+    method: 'PUT',
+    body: JSON.stringify({ user_name: userName }),
+  }),
+}
+
 // --- Project API ---
 
 export interface WorkflowSummary {
@@ -668,7 +680,7 @@ export interface ReviewRun {
   step_run_id: string
   step_key: string
   mode: 'auto' | 'manual'
-  status: 'pending' | 'running' | 'passed' | 'rejected' | 'failed'
+  status: 'pending' | 'running' | 'passed' | 'rejected' | 'failed' | 'skipped'
   engine: string | null
   model: string | null
   report: {
@@ -1222,6 +1234,7 @@ export interface EngineInspectResult {
     description: string
     source_dir: string
   }>
+  input_items: EngineInputItem[]
   mcp_servers: Array<{
     name: string
     command: string
@@ -1229,6 +1242,15 @@ export interface EngineInspectResult {
   }>
   mcp_supported: boolean
   mcp_error: string | null
+}
+
+export interface EngineInputItem {
+  kind: 'skill' | 'command'
+  name: string
+  description: string
+  input_hint?: string
+  insert_text: string
+  action: 'prompt' | 'toggle_plan' | 'open_model' | 'open_reasoning' | 'show_status'
 }
 
 export interface EngineConfigOption {

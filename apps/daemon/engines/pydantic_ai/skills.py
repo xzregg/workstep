@@ -5,6 +5,20 @@ from pathlib import Path
 
 PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".workstep/skills"]
 
+ENGINE_PROJECT_SKILL_DIRS = {
+    "codex": [".agents/skills", ".codex/skills", ".workstep/skills"],
+    "codex_sdk": [".agents/skills", ".codex/skills", ".workstep/skills"],
+    "claude": [".claude/skills", ".workstep/skills"],
+    "claude_agent_sdk": [".claude/skills", ".workstep/skills"],
+}
+
+
+def project_skill_directories(project_root: str | Path, engine_id: str) -> list[Path]:
+    """Return project skill roots visible to one engine adapter."""
+    root = Path(project_root).expanduser()
+    subdirs = ENGINE_PROJECT_SKILL_DIRS.get(engine_id, [".workstep/skills"])
+    return [root / subdir for subdir in subdirs]
+
 
 def _parse_frontmatter(content: str) -> dict:
     """Minimal YAML-ish frontmatter parser for name/description.

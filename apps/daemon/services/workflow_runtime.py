@@ -238,11 +238,13 @@ class WorkflowRuntime:
         step_key: str,
         content: str,
     ) -> dict:
-        """Persist a user message for a stopped stage and re-run that stage.
+        """Persist a user message for a stopped or review-waiting stage.
 
         The message is stored in the stage's execution history (and as active
         stage guidance) so the next attempt carries it into the stage LLM,
-        then the stage plus its downstream is restarted from ``step_key``.
+        then the stage plus its downstream is restarted from ``step_key``. A
+        pending manual review is skipped because the new message supersedes
+        the output that review was asking the user to accept.
         """
         normalized = content.strip()
         if not normalized:
@@ -256,10 +258,32 @@ class WorkflowRuntime:
             )
             if step is None:
                 raise ValueError(f"Stage does not exist: {step_key}")
-            if step.status not in ("cancelled", "failed", "rejected"):
+            if step.status not in (
+                "cancelled",
+                "failed",
+                "rejected",
+                "awaiting_review",
+            ):
                 raise ValueError(
                     f"阶段未停止: {step_key}（当前状态 {step.status}）"
                 )
+            pending_review = None
+            if step.status == "awaiting_review":
+                pending_review = (
+                    ReviewRun.select()
+                    .where(
+                        (ReviewRun.task == task)
+                        & (ReviewRun.step_key == step_key)
+                    )
+                    .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
+                    .first()
+                )
+                if (
+                    pending_review is None
+                    or pending_review.mode != "manual"
+                    or pending_review.status != "pending"
+                ):
+                    raise ValueError("阶段没有可跳过的人工审核")
             now = utc_now()
             message_id = new_message_id()
             create_task_message(
@@ -292,6 +316,13 @@ class WorkflowRuntime:
             task.state_version += 1
             task.save()
         handle = await self.restart_from_stage(project_id, task_id, step_key)
+        if pending_review is not None:
+            await self._skip_manual_review(
+                project_id,
+                task_id,
+                step_key,
+                pending_review.id,
+            )
         message = Message.get_by_id(message_id)
         return {
             "message_id": message_id,
@@ -301,6 +332,69 @@ class WorkflowRuntime:
             "sequence": message.sequence,
             "created_at": message.created_at.isoformat(),
         }
+
+    async def _skip_manual_review(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        review_run_id: str,
+    ) -> None:
+        """Close one superseded manual review and hide its prompt message."""
+        now = utc_now()
+        with self._project_manager.activate_project_by_id(project_id):
+            review = ReviewRun.get_or_none(
+                (ReviewRun.id == review_run_id)
+                & (ReviewRun.task == task_id)
+                & (ReviewRun.step_key == step_key)
+            )
+            if review is None or review.status != "pending":
+                raise RuntimeError("Manual review is no longer pending")
+            review.status = "skipped"
+            review.ended_at = now
+            review.save()
+
+            review_messages = Message.select().where(
+                (Message.task == task_id)
+                & (Message.channel == "review")
+                & (Message.step_key == step_key)
+            )
+            for review_message in review_messages:
+                try:
+                    events = json.loads(review_message.events_json or "[]")
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                matched = False
+                for event in events:
+                    data = event.get("data") if isinstance(event, dict) else None
+                    if (
+                        isinstance(data, dict)
+                        and event.get("type") == "review_context"
+                        and data.get("review_run_id") == review.id
+                    ):
+                        data["status"] = "skipped"
+                        matched = True
+                if matched:
+                    review_message.events_json = json.dumps(events, ensure_ascii=False)
+                    review_message.ended_at = now
+                    review_message.run_status = "completed"
+                    review_message.save()
+                    break
+
+        event = {
+            "task_id": task_id,
+            "step_key": step_key,
+            "type": "review_status",
+            "data": {
+                "task_id": task_id,
+                "step_key": step_key,
+                "review_run_id": review_run_id,
+                "status": "skipped",
+            },
+        }
+        ctx = AGUIContext.from_event(event)
+        for agui_event in to_agui_events(event, ctx):
+            await self._event_bus.publish(agui_event)
 
     async def decide_review(
         self,
@@ -320,6 +414,8 @@ class WorkflowRuntime:
                 or review.step_key != step_key
             ):
                 raise ValueError("Review not found for the requested task step")
+            if review.status == "skipped":
+                raise RuntimeError("Review has been skipped by a newer stage message")
             latest = (
                 ReviewRun.select()
                 .where(

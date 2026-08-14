@@ -310,6 +310,7 @@ export default function AiFlowChat({
         projectId={projectId}
         title={title ?? t('aiFlow.title')}
         messages={messages}
+        availableCommands={session?.availableCommands}
         running={running}
         stopping={stopping}
         input={input}

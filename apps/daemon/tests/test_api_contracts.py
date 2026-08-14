@@ -794,8 +794,9 @@ async def test_engine_list_matches_the_frontend_contract(api_context):
         "openclaw",
         "pydantic_ai",
         "claude_agent_sdk",
-        "codex_sdk",
-    }
+            "codex_sdk",
+            "deepseek_harness",
+        }
     assert all("installed" in engine for engine in engines)
 
 

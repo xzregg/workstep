@@ -20,6 +20,13 @@
 
 **所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。
 
+接入任何 CLI、HTTP Agent 或 Agent SDK，本质上只做两件事：
+
+1. **实现我方系统的 ACP 适配**：把下游的执行、会话、恢复、停止、审批、交互和事件流适配为 `AcpEngineBase` 定义的统一语义。
+2. **实现 Base 引擎方法**：补齐 WorkStep 管理引擎所需的安装、发现、版本、配置、模型列表和能力声明。
+
+Agent SDK 只是下游实现来源，不是第三套上层接口，也不得绕过 `AcpEngineBase` 新建一套 SDK 专用调用链。
+
 ```text
 BaseLLMEngine(ABC)                        # 我方系统扩展：WorkStep 特有自定义函数（与协议无关）
 ├── 发现：is_installed / get_version / resolve_binary（抽象，必须实现）
@@ -43,8 +50,14 @@ AcpEngineBase(BaseLLMEngine)              # 通用 ACP 协议调用（所有引�
 ```
 
 - **ACP 原生引擎**（如 Hermes）：声明 `COMMAND` / `ENGINE_ID`，`get_command()` 非空（`_is_acp_native = True`），基类直接提供全部协议实现（ACP 客户端、会话、审批、elicitation）。
-- **非 ACP 引擎**（Codex / CodexSDK / Claude Code / ClaudeAgentSDK / QoderSDK / PydanticAI / OpenClaw）：继承 `AcpEngineBase`，用自己的传输覆盖 `spawn`，并**完整实现等价会话 / 审批方法**（无原生入口的如实声明能力并安全降级），事件统一产出 ACP 词汇。
+- **非 ACP 原生传输适配器**（Codex / CodexSDK / Claude Code / ClaudeAgentSDK / QoderSDK / DeepSeek Harness / PydanticAI / OpenClaw）：继承 `AcpEngineBase`，用下游传输覆盖 `spawn`，并**实现我方 ACP 接口的等价会话 / 审批语义**（无原生入口的如实声明能力并安全降级），事件统一产出 ACP 词汇。
 - 新引擎 = 新增一个文件：继承 `AcpEngineBase`，实现 `BaseLLMEngine` 的抽象自定义函数，声明 `acp_events`，按第 2、3 节覆盖协议方法。
+
+> **统一接口不等于底层必须使用 ACP 传输。** `AcpEngineBase` 是 WorkStep
+> 面向上层的通用协议接口和事件语义；CLI、HTTP、厂商 SDK、JSONL、JSON-RPC
+> 都可以作为底层传输。非 ACP 原生传输适配器必须把真实能力映射到这套接口，
+> 上层与前端不得根据底层传输类型分叉。`_is_acp_native` 只说明是否直接连接
+> ACP 服务端，不决定该引擎能否用于执行阶段、Agent 助手或聊天协调器。
 
 ## 1. 引擎在系统中的位置
 
@@ -65,12 +78,10 @@ WorkflowRuntime / CoordinatorModule / AssistantRuntime
   SQLite 消息记录     AG-UI 翻译（engines/core/agui.py）→ WebSocket 实时消息
 ```
 
-引擎适配器只负责四件事：
+引擎适配器的职责归入两组：
 
-1. 检测和描述引擎是否可用（`BaseLLMEngine` 自定义函数）。
-2. 接收标准执行参数并启动一次 LLM 回合（`spawn`）。
-3. 将下游协议转换成 ACP 词汇 `InternalEvent`。
-4. 在取消、错误或退出时正确释放资源。
+1. `BaseLLMEngine`：检测和描述引擎是否可用，提供安装、配置、模型与能力元数据。
+2. `AcpEngineBase`：接收标准参数执行 LLM 回合，把下游协议转换成 ACP 词汇 `InternalEvent`，并实现会话、恢复、审批、交互、取消与资源释放语义。
 
 引擎不应自行修改任务、阶段、消息或审核状态，这些由 `TaskRunner`、`ReviewGate` 和协调模块统一处理。
 
@@ -120,17 +131,18 @@ class MyAcpEngine(AcpEngineBase):
 
 参考：`apps/daemon/engines/pydantic_ai/engine.py`（内置 Pydantic AI 引擎，绑定供应商 base_url/key，配置由后端模板驱动）。
 
-### 2.4 Agent SDK（Claude / Qoder / Codex）
+### 2.4 Agent SDK（Claude / Qoder / Codex / DeepSeek Harness）
 
-继承 `AcpEngineBase`，在进程内用官方 SDK 驱动 Agent（例如 Claude Code 的 `claude-agent-sdk`、Qoder 的 `qoder-agent-sdk`、Codex 的 `openai-codex`）。
+Agent SDK 的接入仍然是“我方 ACP 适配 + Base 引擎方法”，没有 SDK 专用的上层接口。适配器继承 `AcpEngineBase`，在进程内调用官方 SDK 驱动 Agent（例如 Claude Code 的 `claude-agent-sdk`、Qoder 的 `qoder-agent-sdk`、Codex 的 `openai-codex`、DeepSeek 的 `deepseek-harness-sdk`）。
 
-SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程生命周期、JSONL 流协议和取消都由 SDK 管理，适配器不直接操作子进程，也不经过 ACP 桥。适配器只消费 SDK 的异步消息流并映射为 ACP 词汇 `InternalEvent`。
+SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都是适配器内部细节。适配器消费 SDK 的完整事件流，映射为 ACP 词汇 `InternalEvent`，并通过 `AcpEngineBase` 的统一会话和交互方法向上提供能力。上层不得直接依赖厂商 SDK 类型或消息对象。
 
 - `is_installed()` 需要 SDK 可导入且二进制存在；`resolve_binary()` 按各 SDK 的查找顺序实现（配置覆盖 → 环境变量 → SDK 捆绑二进制 → PATH）。
 - 会话恢复：Claude SDK `resume` 选项、Qoder SDK `options.resume`、Codex SDK `thread_resume`。
+- DeepSeek Harness SDK 用 `session_id` + 项目 `.workstep/deepseek-harness/sessions/` 原生恢复；同步 JSON-RPC 通知必须桥接为异步事件流。它通过统一 `spawn_coordinator` 入口支持 Agent 助手和聊天协调器，因此按配置状态声明 `supports_coordinator`；当前 SDK 不提供审批回调，独立声明 `supports_tool_approval=False`。
 - 审批：Claude/Qoder 的 `can_use_tool` 回调、Codex SDK 的 `approval_handler` 都桥接到 `handle_tool_permission` / `request_interaction`（ACP `session/request_permission` 语义）。
 - 表单询问：Qoder `on_elicitation` 桥接到 ACP `elicitation/create`。
-- 参考：`apps/daemon/engines/claude_agent_sdk.py`、`apps/daemon/engines/qoder_sdk.py`、`apps/daemon/engines/codex_sdk.py`。
+- 参考：`apps/daemon/engines/claude_agent_sdk.py`、`apps/daemon/engines/qoder_sdk.py`、`apps/daemon/engines/codex_sdk.py`、`apps/daemon/engines/deepseek_harness.py`。
 
 ## 3. 必须实现的接口
 
@@ -146,9 +158,9 @@ SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程�
 | `config_schema()` / `get_config_values()` / `save_config_values()` 等 | 否 | 有专属配置时声明（见 4.6）。 |
 | `supports_vision` / `supports_workstep_tools` / `supports_thinking_effort` 等 | 否 | 如实声明能力，不夸大。`supports_workstep_tools` 只表示引擎能承载原生 `workstep_call` 工具（机制）；哪个助手加载它由助手配置决定。 |
 
-### 3.2 `AcpEngineBase` 协议方法（按引擎类型覆盖）
+### 3.2 `AcpEngineBase` 协议方法（按传输类型适配）
 
-| 接口 | ACP 原生 | 非 ACP | 说明 |
+| 接口 | ACP 原生传输 | 其他传输适配器 | 说明 |
 |---|---|---|---|
 | `spawn(...)` | 基类实现 | **必须覆盖** | 启动一次执行并异步产出 ACP 词汇 `InternalEvent`。 |
 | `stop()` | 基类实现 | 必须覆盖 | 停止当前执行。必须可重复调用，并在无运行任务时安全返回。 |
@@ -160,9 +172,9 @@ SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程�
 | `supports_resume` / `supports_interactive` / `supports_live_stage_message` / `build_resume_params(...)` | 基类实现 | 按能力覆盖 | 如实声明。 |
 | `acp_events` | 继承全集 | **必须声明实际子集** | 见 3.5。 |
 
-### 3.3 会话方法（非 ACP 引擎）
+### 3.3 会话方法（非 ACP 原生传输适配器）
 
-非 ACP 引擎用自己的传输实现 ACP `session/*` 的等价语义，**无原生入口的如实声明能力并安全降级**：
+非 ACP 原生传输适配器用自己的传输实现我方 ACP `session/*` 的等价语义，**无原生入口的如实声明能力并安全降级**：
 
 - `supports_sessions`：是否按会话 ID 恢复（Codex `exec resume`、Codex SDK `thread_resume`、Claude `--resume`、Claude/Qoder SDK `resume` 为 `True`；Pydantic AI、OpenClaw 为 `False`）。
 - `create_session(cwd)`：有原生空会话创建则返回真实 ID；无法脱离提示词创建空会话时返回 `None` 并记录日志（会话在首次 `spawn` 的 `session_started` 时建立）。
@@ -171,9 +183,9 @@ SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程�
 - `set_config_option` / `reset_options`：配置在 `spawn` 时从 `config_store` 读取，运行中修改无原生入口时安全 no-op。
 - `load_session` / `list_sessions`：无原生实现时保持基类默认（`False` / `[]`）。
 
-### 3.4 审批方法（非 ACP 引擎）
+### 3.4 审批方法（非 ACP 原生传输适配器）
 
-非 ACP 引擎的 `request_permission` 在 `request_interaction` 中自动登记到基类 pending 审批注册表（`tool_call_id → interaction_request`）；上层调用 `approve_tool(tool_use_id, approved)` 或 `approve_tool_option(tool_use_id, option_id)` 时，基类把决定（`allow_once` / `reject_once` / 指定 `option_id`）写回挂起的交互。
+非 ACP 原生传输适配器的 `request_permission` 在 `request_interaction` 中自动登记到基类 pending 审批注册表（`tool_call_id → interaction_request`）；上层调用 `approve_tool(tool_use_id, approved)` 或 `approve_tool_option(tool_use_id, option_id)` 时，基类把决定（`allow_once` / `reject_once` / 指定 `option_id`）写回挂起的交互。
 
 - `supports_tool_approval`：有审批弹窗能力的引擎（Codex / CodexSDK / Claude / ClaudeAgentSDK / QoderSDK / PydanticAI）为 `True`，并确保 `interaction_request` 在 `acp_events` 中；无审批能力的引擎（OpenClaw）保持 `False`。
 - 引擎的权限回调（`can_use_tool` / `approval_handler` / 沙箱拒绝路径）只需调用 `request_interaction` / `handle_tool_permission`，不要自己实现第二套审批通道。
@@ -184,7 +196,7 @@ SDK 的 `local` 传输仍会以子进程方式启动 CLI 二进制，但进程�
 
 - `acp_events ⊆ ACP_EVENTS`（`engines/core/acp_base.py` 定义完整词汇，25 种）。
 - ACP 原生引擎继承即声明全集。
-- 非 ACP 引擎声明**实际子集**（如 Claude/Qoder SDK 无 plan 事件源，不声明 `plan`），且映射路径实际产出的事件类型都被声明。
+- 非 ACP 原生传输适配器声明**实际子集**（如 Claude/Qoder SDK 无 plan 事件源，不声明 `plan`），且映射路径实际产出的事件类型都被声明。
 
 ```python
 acp_events: frozenset[str] = frozenset({
@@ -248,6 +260,30 @@ WorkStep 内部工具（`workstep_call`）不是引擎层能力：由助手在
 PydanticAI 引擎在 `spawn(..., workstep_tools=True)` 时注册该工具；其他引擎
 如实声明 `supports_workstep_tools=False`，不注册、提示词不变。
 
+#### 4.5.1 `supports_coordinator` 的判定
+
+`supports_coordinator` 表示引擎能否通过统一的 `spawn_coordinator(...)` 入口完成
+Agent 助手和聊天协调器回合。它与以下能力互相独立：
+
+- 是否为 ACP 原生引擎（`_is_acp_native`）；
+- 是否支持工具审批（`supports_tool_approval`）；
+- 是否支持 WorkStep 内部工具（`supports_workstep_tools`）；
+- 是否支持运行中消息注入（`supports_live_stage_message`）。
+
+只要适配器能接收协调器标准参数、通过 `spawn` 产出统一事件，并遵守
+`spawn_coordinator` 加入的协调器约束，就应声明支持。通常沿用基类默认语义，
+即 `supports_coordinator=self.is_configured()`。
+
+不得因为引擎不是 ACP 原生传输，或因为它没有审批回调，就把
+`supports_coordinator` 设为 `False`。例如 DeepSeek Harness 使用官方 SDK 的
+JSON-RPC 通知，并且暂不支持工具审批，但它实现了统一协调器入口，因此声明
+`supports_coordinator=self.is_configured()`、`supports_tool_approval=False`。
+
+前端的「设置 → Agent 助手」和聊天框协调器选择器都要求
+`supports_coordinator=True`；同时仍执行通用可用性检查：`installed`、
+`configured`、`verified`。接入完成后必须覆盖这两个入口的选择器回归测试，
+避免能力声明错误导致引擎被隐藏。
+
 ### 4.6 配置模板
 
 引擎有专属配置时，在实现类上声明 `config_schema()` 并实现 `get_config_values()`、`get_config_secrets()`、`save_config_values()`、`reveal_config_value()`。设置页从 `/api/engine/list` 内嵌的模板自动渲染表单，保存走通用 `PUT /api/engine/{id}/config`，不需要为引擎编写专有配置接口。
@@ -263,6 +299,7 @@ PydanticAI 引擎在 `spawn(..., workstep_tools=True)` 时注册该工具；其�
 | Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`、`max_turns`、`fallback_model` | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
+| DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens` | 复用 DeepSeek 类型供应商的 `base_url` / `api_key`，写入官方 `DeepSeekHarness`；模型沿用通用引擎默认模型 |
 | Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；harness 扩展不暴露配置、固定 `auto`：已安装 `pydantic-ai-harness` 时挂载压缩与持久化能力，否则回退 `message_history`（见 4.7） |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
@@ -301,13 +338,13 @@ harness 能力，其余协议行为（spawn / interaction / AG-UI 翻译）保�
 |---|---|---|
 | `agent_message_chunk` | `content.text` | 助手正文增量，会拼接到最终消息。 |
 | `agent_thought_chunk` | `content.text` | 思考或推理过程，显示在可折叠执行记录中。 |
-| `user_message_chunk` | `content.text` | 用户消息分片（ACP 原生回显；非 ACP 引擎无来源可不产出）。 |
+| `user_message_chunk` | `content.text` | 用户消息分片（ACP 原生回显；其他传输无来源可不产出）。 |
 | `tool_call` | `tool_call_id`、`title`、`raw_input` | 工具调用开始（完整快照）；`kind`（`read`/`edit`/`execute`/`other`）可选。 |
 | `tool_call_update` | `tool_call_id`、`status` | 工具进度 / 结果：`status` ∈ `pending` / `in_progress` / `completed` / `failed`；`raw_input` 为参数增量（实时专用，不持久化），`raw_output` 为结果。 |
 | `plan` | `entries` | ACP v1 stable 执行计划完整快照；每项为 `content`、`priority`、`status`。 |
-| `plan_update` / `plan_removed` | `id` 等 | 计划增量 / 删除（ACP 原生）；非 ACP 引擎无来源可不产出。 |
+| `plan_update` / `plan_removed` | `id` 等 | 计划增量 / 删除（ACP 原生）；其他传输无来源可不产出。 |
 | `usage_update` | token 字段 | 上下文用量 + Token 统计 + 可选 `cost`（见 5.2）。 |
-| `session_info_update` / `available_commands_update` / `config_option_update` / `current_mode_update` / `mcp_message` / `elicitation_completed` | 视字段 | ACP 原生会话 / 命令 / 配置 / 模式 / MCP / elicitation 完成通知；非 ACP 引擎无来源不产出。 |
+| `session_info_update` / `available_commands_update` / `config_option_update` / `current_mode_update` / `mcp_message` / `elicitation_completed` | 视字段 | ACP 原生会话 / 命令 / 配置 / 模式 / MCP / elicitation 完成通知；其他传输无来源不产出。 |
 | `acp_raw` | 原样 | 未知 ACP update 透传，禁止静默丢弃（`_map_notification` 兜底）。 |
 
 ### 5.2 编排事件（所有引擎）
@@ -502,7 +539,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 - 询问用户使用 ACP `elicitation/create` form：`requested_schema` 为 JSON Schema object，支持单选、多选、文本、数字和布尔输入；响应使用 `accept` / `decline` / `cancel`。
 - Claude Code / Claude Agent SDK 的 `AskUserQuestion`、Qoder 的 elicitation 及其它 `ask_user` 别名，由 Base 层转换为上述 form。
 - 进程内 Agent 调用 `request_interaction(event, publish)` 后必须停在原工具协程，直到 `respond_interaction(...)` 解析同一个 `interaction_id`。Pydantic AI 的 `ask_user`、`write_file`、`edit_file` 都走该通道。
-- 非 ACP 引擎的 `request_permission` 会在 `request_interaction` 中登记到基类 pending 审批注册表，上层 `approve_tool` / `approve_tool_option` 可直接写回决定；引擎只需调用 `request_interaction`，不要重复实现审批通道。
+- 非 ACP 原生传输适配器的 `request_permission` 会在 `request_interaction` 中登记到基类 pending 审批注册表，上层 `approve_tool` / `approve_tool_option` 可直接写回决定；引擎只需调用 `request_interaction`，不要重复实现审批通道。
 - 工作流层先注册等待项，再发布请求，并在等待期间持久化请求；响应后追加 `interaction_response`，刷新页面仍能显示同一张交互卡片。
 - `AssistantRuntime` 和任务协程在等待交互时不阻塞其他阶段执行；交互响应与工具结果一样走统一事件流。
 
@@ -534,7 +571,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 1. 新建 `apps/daemon/engines/my_engine.py`。
 2. 定义 `class MyEngine(AcpEngineBase)` 并声明 `ENGINE_ID = "my_engine"`（ACP 原生引擎同时声明 `COMMAND`）。
 3. 实现 `is_installed()`、`get_version()`、`resolve_binary()`（进程类引擎）与 `spawn()` 等接口。
-4. 声明 `acp_events` 实际子集；非 ACP 引擎按 3.3 / 3.4 实现会话与审批方法。
+4. 声明 `acp_events` 实际子集；非 ACP 原生传输适配器按 3.3 / 3.4 实现会话与审批方法。
 5. `__init__` 必须调用 `super().__init__()`（基类维护 pending 审批注册表与运行状态）。
 
 约定：
@@ -545,7 +582,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 `get_available_engines()` 的结果会在内存中缓存：只有手动「重新扫描」（`refresh_registry()`）或二进制路径、引擎配置变更时才重新扫描；版本探测（`binary --version` 子进程）并行执行并带 300s TTL，避免每次打开设置页都启动一堆子进程。
 
-引擎列表的 `mode` 字段由 `get_available_engines()` 推断：`issubclass(..., AcpEngineBase) and instance._is_acp_native` 为 `acp`、`pydantic_ai` 为 `agent`、`claude_agent_sdk` / `codex_sdk` / `qoder_sdk` 为 `sdk`、其余为 `cli`。新增 SDK 类型引擎时需在 `core/registry.py` 同步扩展该推断；协调 Agent 回退顺序 `COORDINATOR_FALLBACK_ORDER` 会自动把新引擎追加到末尾。
+引擎列表的 `mode` 字段由 `get_available_engines()` 推断：`issubclass(..., AcpEngineBase) and instance._is_acp_native` 为 `acp`、`pydantic_ai` 为 `agent`、`claude_agent_sdk` / `codex_sdk` / `qoder_sdk` / `deepseek_harness` 为 `sdk`、其余为 `cli`。新增 SDK 类型引擎时需在 `core/registry.py` 同步扩展该推断；协调 Agent 回退顺序 `COORDINATOR_FALLBACK_ORDER` 会自动把新引擎追加到末尾。
 
 ### 9.2 配置模板
 
@@ -563,7 +600,7 @@ Codex CLI 的执行中插入消息（`live_message_queue`）不写入进程，�
 
 配置表单由 `apps/web/src/components/EngineConfigForm.tsx` 按后端模板自动渲染，无需新增专用表单；仅当需要新控件类型时才需要同步扩展该组件。
 
-## 10. 最小实现模板（非 ACP CLI 引擎）
+## 10. 最小实现模板（CLI → 我方 ACP 适配）
 
 ```python
 import asyncio
@@ -737,7 +774,7 @@ class MyEngine(AcpEngineBase):
 引擎接入后必须满足 `tests/test_engine_base_hierarchy.py` 的契约（新引擎会自动进入 `_ALL_ENGINES` 参与断言）：
 
 - `acp_events ⊆ ACP_EVENTS` 且非空。
-- 非 ACP 引擎的 `acp_events` 是全集真子集，且映射路径实际产出的事件类型都被声明。
+- 非 ACP 原生传输适配器的 `acp_events` 是全集真子集，且映射路径实际产出的事件类型都被声明。
 - 无运行进程时，`create_session` / `resume_session` / `close_session` / `cancel_session` / `set_config_option` / `reset_options` / `approve_tool` / `approve_tool_option` 不抛异常并返回合理值。
 - 能力声明与行为一致：声明 `supports_tool_approval` 的引擎必须产出 `interaction_request`。
 
@@ -795,7 +832,7 @@ npm run build
 - [ ] 继承 `AcpEngineBase`（不是直接继承 `BaseLLMEngine`），`__init__` 调用 `super().__init__()`。
 - [ ] 实现 `BaseLLMEngine` 抽象自定义函数（`is_installed` / `get_version` / `resolve_binary`）。
 - [ ] 声明 `acp_events` 实际子集且 `acp_events ⊆ ACP_EVENTS`；映射路径产出的事件都被声明。
-- [ ] 非 ACP 引擎实现等价会话 / 审批方法（无原生入口时安全降级并如实声明能力）。
+- [ ] 非 ACP 原生传输适配器已实现我方 ACP 等价会话 / 审批方法（无原生入口时安全降级并如实声明能力）。
 - [ ] 引擎不可用时不会导致 Daemon 启动失败。
 - [ ] `spawn()` 开始后立即产生状态事件，并产出 `session_started`。
 - [ ] 正文 / 思考 / 工具事件实时输出，不在结束时批量补发。
@@ -812,6 +849,8 @@ npm run build
 - [ ] 危险配置值（如 `bypassPermissions`）保存前要求显式确认。
 - [ ] SDK 引擎使用完整事件流（正文、思考、工具、用量），不重复文本。
 - [ ] Session 能力声明与实际行为一致。
+- [ ] `supports_coordinator` 按统一协调器接口能力声明，不与 ACP 原生性或审批能力混淆。
+- [ ] 支持协调器时，已验证「设置 → Agent 助手」与聊天框引擎选择器可见且可选。
 - [ ] 协调模式不能修改文件。
 - [ ] 已加入 Registry、配置和前端元数据。
 - [ ] 设置页连接测试通过。

@@ -32,6 +32,7 @@ from api.chat_session import router as chat_session_router
 from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
+from api.system_settings import router as system_settings_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
@@ -128,6 +129,7 @@ app.include_router(chat_session_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
+app.include_router(system_settings_router)
 
 
 # --- REST API ---

@@ -118,6 +118,21 @@ class ConfigStore:
     def set_execution_default_engine(self, engine: str) -> None:
         self.set("execution_default_engine", engine)
 
+    def get_user_name(self) -> str:
+        user = self.get("user", {})
+        if not isinstance(user, dict):
+            return ""
+        name = user.get("name", "")
+        return name.strip() if isinstance(name, str) else ""
+
+    def set_user_name(self, name: str) -> None:
+        user = self.get("user", {})
+        if not isinstance(user, dict):
+            user = {}
+        user = dict(user)
+        user["name"] = name.strip()
+        self.set("user", user)
+
     def is_engine_verified(self, engine_id: str) -> bool:
         verified = self.get("verified_engines", {})
         return isinstance(verified, dict) and verified.get(engine_id) is True
@@ -326,6 +341,41 @@ class ConfigStore:
             },
         )
         self.set_engine_default_model("pydantic_ai", model)
+
+    def get_deepseek_harness_config(self) -> dict[str, Any]:
+        """Return the official DeepSeek Harness SDK adapter configuration."""
+        raw = self.get("deepseek_harness_engine", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        return {
+            "provider_id": str(raw.get("provider_id") or ""),
+            "model": str(
+                raw.get("model")
+                or self.get_engine_default_model("deepseek_harness")
+                or "deepseek-v4-flash"
+            ),
+            "max_tokens": str(raw.get("max_tokens") or ""),
+        }
+
+    def set_deepseek_harness_config(
+        self,
+        *,
+        provider_id: str,
+        model: str,
+        max_tokens: str = "",
+    ) -> None:
+        self.set(
+            "deepseek_harness_engine",
+            {
+                "provider_id": str(provider_id or "").strip(),
+                "model": str(model or "").strip() or "deepseek-v4-flash",
+                "max_tokens": str(max_tokens or "").strip(),
+            },
+        )
+        self.set_engine_default_model(
+            "deepseek_harness",
+            str(model or "").strip() or "deepseek-v4-flash",
+        )
 
     def get_claude_permission_mode(self) -> str:
         mode = self.get("claude_permission_mode", "")
@@ -566,13 +616,16 @@ class ConfigStore:
         return True
 
     def is_provider_in_use(self, provider_id: str) -> bool:
-        """Whether an API-driven engine (Pydantic AI) currently uses this provider."""
-        raw = self.get("pydantic_ai_engine", {})
-        return (
-            isinstance(raw, dict)
-            and bool(raw.get("provider_id"))
-            and raw.get("provider_id") == provider_id
-        )
+        """Whether an API-driven engine currently uses this provider."""
+        for section in ("pydantic_ai_engine", "deepseek_harness_engine"):
+            raw = self.get(section, {})
+            if (
+                isinstance(raw, dict)
+                and bool(raw.get("provider_id"))
+                and raw.get("provider_id") == provider_id
+            ):
+                return True
+        return False
 
     # --- Provider model list cache (global config, not per-project DB) ---
 

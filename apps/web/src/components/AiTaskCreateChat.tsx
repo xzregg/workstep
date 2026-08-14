@@ -208,6 +208,7 @@ export default function AiTaskCreateChat({
       projectId={projectId}
       title={t('taskList.aiTaskAgent')}
       messages={messages}
+      availableCommands={session?.availableCommands}
       running={running}
       stopping={stopping}
       input={input}

@@ -53,6 +53,16 @@ function hasMessageContent(content: unknown): boolean {
 }
 
 const TERMINAL_EXECUTION_STATUSES = ['cancelled', 'stopped', 'failed']
+const MESSAGE_RESUMABLE_STAGE_STATUSES = [
+  'cancelled',
+  'failed',
+  'rejected',
+  'awaiting_review',
+]
+
+export function isStageResumableWithMessage(status?: string): boolean {
+  return status !== undefined && MESSAGE_RESUMABLE_STAGE_STATUSES.includes(status)
+}
 
 export function resolveMessageReview<T extends MessageReview>(
   message: ConversationMessage,
@@ -110,6 +120,14 @@ export function isManualReviewMessage<T extends MessageReview>(
 }
 
 export function isVisibleHistoryMessage(message: ConversationMessage): boolean {
+  if (
+    (message.channel === 'review' || message.role === 'review')
+    && message.events?.some((event) => (
+      event.type === 'review_context' && event.data?.status === 'skipped'
+    ))
+  ) {
+    return false
+  }
   if (message.channel === 'review') return hasMessageContent(message.content)
   if (message.channel === 'coordinator') return true
   if (message.role === 'user' || message.role === 'system') return true

@@ -256,7 +256,7 @@ async def delete_provider(provider_id: str):
     if config_store.is_provider_in_use(provider_id):
         raise HTTPException(
             status_code=400,
-            detail="该供应商正被 Pydantic AI 引擎使用，请先切换其它供应商",
+            detail="该供应商正被 Pydantic AI 或 DeepSeek Harness 引擎使用，请先切换其它供应商",
         )
     config_store.delete_provider(provider_id)
     config_store.clear_provider_models(provider_id)

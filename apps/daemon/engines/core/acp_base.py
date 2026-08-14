@@ -303,6 +303,9 @@ class _StreamingClient:
 
 class AcpEngineBase(BaseLLMEngine):
     _live_message_wait_seconds: float = 1.5
+    ACP_COMMAND_DISCOVERY_TIMEOUT = 0.5
+    ACP_COMMAND_CACHE_TTL = 30.0
+    _acp_command_cache: dict[tuple[str, str], tuple[float, list[dict[str, str]]]] = {}
     """ACP 协议基类 — 所有引擎统一继承。
 
     协议侧（spawn / stop / session / interaction / approval / 协调器）在本类实现：
@@ -332,6 +335,98 @@ class AcpEngineBase(BaseLLMEngine):
 
     def get_permission_mode(self) -> str | None:
         return None
+
+    async def inspect_capabilities(
+        self,
+        project_root: str | None = None,
+    ) -> dict | None:
+        result = await super().inspect_capabilities(project_root)
+        if result is None or not self._is_acp_native or not project_root:
+            return result
+        commands = await self._inspect_acp_commands(str(project_root))
+        existing_names = {item["name"] for item in result["input_items"]}
+        result["input_items"] = result["input_items"] + [
+            item
+            for item in commands
+            if item["name"] not in existing_names
+        ]
+        return result
+
+    async def _inspect_acp_commands(self, cwd: str) -> list[dict[str, str]]:
+        cache_key = (self.ENGINE_ID, str(os.path.realpath(cwd)))
+        cached = self._acp_command_cache.get(cache_key)
+        now = time.monotonic()
+        if cached is not None and now - cached[0] < self.ACP_COMMAND_CACHE_TTL:
+            return [dict(item) for item in cached[1]]
+
+        commands: list[dict[str, str]] = []
+        session_id: str | None = None
+        handler = _StreamingClient(self.get_permission_mode())
+        cmd = self.get_command()
+        try:
+            async with acp.spawn_agent_process(
+                handler,
+                cmd[0],
+                *cmd[1:],
+                cwd=cwd,
+                env=os.environ,
+            ) as (client, process):
+                self._process = process
+                self._running = True
+                await client.initialize(
+                    protocol_version=acp.PROTOCOL_VERSION,
+                    client_capabilities=self._client_capabilities(),
+                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                )
+                session = await client.new_session(
+                    cwd=cwd,
+                    additional_directories=[],
+                    mcp_servers=[],
+                )
+                session_id = session.session_id
+                deadline = time.monotonic() + self.ACP_COMMAND_DISCOVERY_TIMEOUT
+                while time.monotonic() < deadline:
+                    remaining = deadline - time.monotonic()
+                    try:
+                        update = await asyncio.wait_for(
+                            handler.updates.get(),
+                            timeout=remaining,
+                        )
+                    except asyncio.TimeoutError:
+                        break
+                    if isinstance(update, schema.AvailableCommandsUpdate):
+                        commands = [
+                            self._acp_command_input_item(command)
+                            for command in update.available_commands
+                        ]
+                        break
+                if session_id:
+                    with suppress(Exception):
+                        await client.close_session(session_id=session_id)
+        except Exception as exc:
+            logger.info("ACP command discovery failed for %s: %s", self.ENGINE_ID, exc)
+        finally:
+            self._running = False
+            self._process = None
+
+        self._acp_command_cache[cache_key] = (now, commands)
+        return [dict(item) for item in commands]
+
+    @staticmethod
+    def _acp_command_input_item(command) -> dict[str, str]:
+        item = {
+            "kind": "command",
+            "name": command.name,
+            "description": command.description,
+            "insert_text": f"/{command.name} ",
+            "action": "prompt",
+        }
+        command_input = getattr(command, "input", None)
+        command_input = getattr(command_input, "root", command_input)
+        hint = getattr(command_input, "hint", None)
+        if hint:
+            item["input_hint"] = hint
+        return item
 
     @property
     def _is_acp_native(self) -> bool:

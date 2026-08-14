@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import type { AssistantChatMessage } from '../stores/assistantStore'
-import { taskApi } from '../api/client'
+import { taskApi, type EngineInputItem } from '../api/client'
 import { stripA2uiBlocks } from '../utils/a2ui'
 import { formatConversationDateTime } from '../utils/datetime'
 import { isNearConversationBottom, conversationBottomScrollTop } from '../pages/taskDetailChat'
@@ -53,6 +53,7 @@ export interface AssistantChatPanelProps {
   enhance?: ChatInputEnhance
   context?: ChatContextUsage | null
   plan?: ChatInputPlan
+  availableCommands?: EngineInputItem[]
   attachmentPrefix: string
   onInputChange: (value: string) => void
   onSend: () => void
@@ -75,7 +76,7 @@ export interface AssistantChatPanelProps {
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
   projectId, title, messages, running, stopping, input, sendError, copy,
-  locale, config, permission, enhance, context, plan, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
+  locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
 }: AssistantChatPanelProps) {
@@ -138,6 +139,7 @@ export default function AssistantChatPanel({
       </div>
 
       <div
+        className="chat-history-scroll"
         ref={listRef}
         onScroll={(event) => {
           const list = event.currentTarget
@@ -163,7 +165,7 @@ export default function AssistantChatPanel({
           lastScrollTopRef.current = list.scrollTop
         }}
         style={{
-          flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 12px',
+          flex: 1, minHeight: 0, overflowY: 'auto', paddingBlock: 10,
           display: 'flex', flexDirection: 'column', gap: 8,
           background: 'var(--bg)',
         }}
@@ -237,6 +239,7 @@ export default function AssistantChatPanel({
       }}>
         {quickPrompts && quickPrompts.length > 0 && (
           <div
+            className="chat-quick-prompts"
             role="group"
             aria-label={quickPromptsLabel}
             style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
@@ -259,6 +262,8 @@ export default function AssistantChatPanel({
           </div>
         )}
         <ChatInput
+          projectId={projectId}
+          availableCommands={availableCommands}
           inputRef={inputRef}
           value={input}
           onChange={onInputChange}

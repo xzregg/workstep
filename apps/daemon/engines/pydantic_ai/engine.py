@@ -23,7 +23,7 @@ from engines.core.events import (
 from engines.core.interactions import elicitation_request, permission_request
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption
-from engines.pydantic_ai.skills import Skills
+from engines.pydantic_ai.skills import Skills, project_skill_directories
 from services import providers as provider_service
 from services.config import config_store
 from services.tool_registry import WorkstepClient, workstep_tools_instruction
@@ -178,7 +178,9 @@ class PydanticAIEngine(AcpEngineBase):
         resolved_root: Path | None = None
         if project_root:
             resolved_root = Path(project_root).expanduser().resolve()
-            registry = Skills(project_root=resolved_root)
+            registry = Skills(
+                directories=project_skill_directories(resolved_root, "pydantic_ai"),
+            )
             skills = [
                 {
                     "name": skill.name,
@@ -187,6 +189,19 @@ class PydanticAIEngine(AcpEngineBase):
                 }
                 for skill in registry.list_skills()
             ]
+        input_items = [dict(item) for item in self.input_commands()]
+        known_names = {item["name"] for item in input_items}
+        input_items.extend(
+            {
+                "kind": "skill",
+                "name": skill["name"],
+                "description": skill["description"],
+                "insert_text": f"/{skill['name']} ",
+                "action": "prompt",
+            }
+            for skill in skills
+            if skill["name"] not in known_names
+        )
         config = config_store.get_pydantic_ai_engine_config()
         mcp_servers = [
             {
@@ -202,6 +217,7 @@ class PydanticAIEngine(AcpEngineBase):
             "engine_id": "pydantic_ai",
             "project_root": str(resolved_root) if resolved_root else None,
             "skills": skills,
+            "input_items": input_items,
             "mcp_servers": mcp_servers,
             "mcp_supported": mcp_supported,
             "mcp_error": mcp_error,

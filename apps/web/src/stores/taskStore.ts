@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { taskApi, type Task, type TaskStepState } from '../api/client.ts'
+import { taskApi, type EngineInputItem, type Task, type TaskStepState } from '../api/client.ts'
 import {
   CUSTOM,
+  availableCommandInputItems,
   customValue,
   isCustom,
   isRunEvent,
@@ -60,11 +61,13 @@ interface TaskState {
   events: Record<string, TaskEvent[]> // task_id → events
   content: Record<string, string>     // task_id → accumulated text
   liveMessages: Record<string, Record<string, LiveMessage>>
+  availableCommands: Record<string, Record<string, EngineInputItem[]>>
   loading: boolean
   /** Incremented on every task status WS event, so the sidebar can refresh flow running state. */
   taskStatusEvents: number
 
   fetchTasks: (projectId: string, workflowId?: string | null, archived?: boolean) => Promise<void>
+  refreshTask: (taskId: string, projectId: string) => Promise<Task>
   setActiveTask: (id: string | null) => void
   createTask: (
     title: string,
@@ -98,6 +101,7 @@ export const useTaskStore = create<TaskState>((set) => ({
   events: {},
   content: {},
   liveMessages: {},
+  availableCommands: {},
   loading: false,
   taskStatusEvents: 0,
 
@@ -109,6 +113,14 @@ export const useTaskStore = create<TaskState>((set) => ({
     } catch {
       set({ loading: false })
     }
+  },
+
+  refreshTask: async (taskId, projectId) => {
+    const task = await taskApi.get(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.map((item) => item.id === taskId ? task : item),
+    }))
+    return task
   },
 
   setActiveTask: (id) => set({ activeTaskId: id }),
@@ -211,6 +223,18 @@ export const useTaskStore = create<TaskState>((set) => ({
     }
 
     set((s) => {
+      if (isCustom(event, CUSTOM.availableCommandsUpdate)) {
+        const scope = `${event.channel || 'execution'}:${event.step_key || ''}`
+        return {
+          availableCommands: {
+            ...s.availableCommands,
+            [taskId]: {
+              ...(s.availableCommands[taskId] || {}),
+              [scope]: availableCommandInputItems(customValue(event)),
+            },
+          },
+        }
+      }
       if (mid) {
         const taskMessages = s.liveMessages[taskId] || {}
         const current = taskMessages[mid] || {

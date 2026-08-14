@@ -269,18 +269,22 @@ async def list_engine_models(
     fetched_at = None
     try:
         models_kwargs: dict = {"cwd": str(Path.cwd())}
-        if engine_id == "pydantic_ai" and provider_id.strip():
+        if engine_id in {"pydantic_ai", "deepseek_harness"} and provider_id.strip():
             models_kwargs["provider_id"] = provider_id.strip()
-        if engine_id == "pydantic_ai" and refresh:
+        if engine_id in {"pydantic_ai", "deepseek_harness"} and refresh:
             models_kwargs["refresh"] = True
         models = await asyncio.wait_for(
             engine.list_models(**models_kwargs),
             timeout=15,
         )
-        if engine_id == "pydantic_ai":
+        if engine_id in {"pydantic_ai", "deepseek_harness"}:
             effective_provider = (
                 provider_id.strip()
-                or config_store.get_pydantic_ai_engine_config().get("provider_id", "")
+                or (
+                    config_store.get_pydantic_ai_engine_config()
+                    if engine_id == "pydantic_ai"
+                    else config_store.get_deepseek_harness_config()
+                ).get("provider_id", "")
             )
             fetched_at = config_store.get_provider_models(effective_provider).get("fetched_at")
         error = None

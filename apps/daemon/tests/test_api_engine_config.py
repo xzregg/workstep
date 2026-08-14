@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 import api.engine as engine_api
 import api.provider as provider_api
+import engines.deepseek_harness as deepseek_harness_engine_module
 import engines.pydantic_ai.engine as pydantic_ai_engine_module
 import engines.core.registry as engine_registry
 import main
@@ -28,6 +29,11 @@ class MemoryEngineConfigStore:
         self.providers: list[dict] = []
         self.provider_models: dict[str, dict] = {}
         self.pydantic_ai_config = {"provider_id": "", "model": "", "mcp_servers": []}
+        self.deepseek_harness_config = {
+            "provider_id": "",
+            "model": "deepseek-v4-flash",
+            "max_tokens": "",
+        }
         self.default_models = {}
         self.execution_default_engine = ""
         self.coordinator_default_engine = ""
@@ -76,8 +82,8 @@ class MemoryEngineConfigStore:
 
     def is_provider_in_use(self, provider_id):
         return (
-            bool(self.pydantic_ai_config.get("provider_id"))
-            and self.pydantic_ai_config["provider_id"] == provider_id
+            self.pydantic_ai_config.get("provider_id") == provider_id
+            or self.deepseek_harness_config.get("provider_id") == provider_id
         )
 
     # --- Pydantic AI engine ---
@@ -97,6 +103,19 @@ class MemoryEngineConfigStore:
             "harness": harness,
         }
         self.default_models["pydantic_ai"] = model
+
+    # --- DeepSeek Harness engine ---
+
+    def get_deepseek_harness_config(self):
+        return dict(self.deepseek_harness_config)
+
+    def set_deepseek_harness_config(self, *, provider_id, model, max_tokens=""):
+        self.deepseek_harness_config = {
+            "provider_id": provider_id,
+            "model": model,
+            "max_tokens": max_tokens,
+        }
+        self.default_models["deepseek_harness"] = model
 
     # --- engine defaults ---
 
@@ -156,6 +175,7 @@ async def engine_client(monkeypatch):
     monkeypatch.setattr(provider_api, "config_store", store)
     monkeypatch.setattr(provider_service, "config_store", store)
     monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+    monkeypatch.setattr(deepseek_harness_engine_module, "config_store", store)
     monkeypatch.setattr(engine_registry, "config_store", store)
     engine_registry.refresh_registry()
     transport = ASGITransport(app=main.app)
@@ -502,6 +522,49 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
     assert calls["count"] == 1
     refreshed = await client.get("/api/engine/pydantic_ai/models?refresh=1")
     assert refreshed.json()["models"] != []
+    assert calls["count"] == 2
+
+
+@pytest.mark.anyio
+async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
+    engine_client,
+    monkeypatch,
+):
+    """DeepSeek Harness 复用绑定供应商的模型缓存与刷新接口。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+    store.set_deepseek_harness_config(
+        provider_id=provider["id"],
+        model="deepseek-v4-flash",
+    )
+    calls = {"count": 0}
+
+    async def fake_models(provider, transport=None):
+        calls["count"] += 1
+        return [EngineModel(id="deepseek-v4-flash", label="DeepSeek V4 Flash")]
+
+    monkeypatch.setattr(
+        deepseek_harness_engine_module.provider_service,
+        "fetch_models",
+        fake_models,
+    )
+    engine = deepseek_harness_engine_module.DeepSeekHarnessEngine()
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kwargs: None)
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: (
+        engine if engine_id == "deepseek_harness" else None
+    ))
+
+    first = await client.get("/api/engine/deepseek_harness/models")
+    refreshed = await client.get("/api/engine/deepseek_harness/models?refresh=1")
+
+    assert first.status_code == 200
+    assert first.json()["models"] == [{
+        "id": "deepseek-v4-flash",
+        "label": "DeepSeek V4 Flash",
+        "description": None,
+    }]
+    assert first.json()["fetched_at"] is not None
+    assert refreshed.status_code == 200
     assert calls["count"] == 2
 
 
@@ -1479,6 +1542,12 @@ async def test_pydantic_ai_inspect_capabilities(engine_client, tmp_path):
         "---\nname: deploy\ndescription: 部署到服务器\n---\n# 部署步骤\n",
         encoding="utf-8",
     )
+    shared_skill = tmp_path / ".workstep" / "skills" / "shared"
+    shared_skill.mkdir(parents=True)
+    (shared_skill / "SKILL.md").write_text(
+        "---\nname: shared\ndescription: WorkStep 共享技能\n---\n# 共享规则\n",
+        encoding="utf-8",
+    )
     store.set_pydantic_ai_engine_config(
         provider_id="",
         model="",
@@ -1500,7 +1569,10 @@ async def test_pydantic_ai_inspect_capabilities(engine_client, tmp_path):
     body = response.json()
     assert body["engine_id"] == "pydantic_ai"
     assert body["project_root"] == str(tmp_path.resolve())
-    assert {skill["name"] for skill in body["skills"]} == {"code-review", "deploy"}
+    assert {skill["name"] for skill in body["skills"]} == {"shared"}
+    assert [item["name"] for item in body["input_items"]] == [
+        "goal", "plan", "reasoning", "status", "shared",
+    ]
     assert all("description" in skill and "source_dir" in skill for skill in body["skills"])
     assert body["mcp_servers"] == [{
         "name": "filesystem",
