@@ -673,6 +673,7 @@ export const jaJP: Messages = {
     remoteAccessIntro: 'この WorkStep がプロジェクトを共有する際の内部・外部アドレスを設定します。',
     remoteAccessEnabled: '他の WorkStep から共有したローカルプロジェクトへの接続を許可',
     internalAddress: '内部アクセスアドレス',
+    internalAddressHint: '既定ではプライマリネットワークアドレスと WorkStep の起動ポートを使用します。手動変更も可能です。',
     externalAddress: '外部アクセスアドレス',
     externalAddressHint: '外部アドレスは HTTPS/WSS が必須です。WorkStep に公開リレーは含まれません。',
     remoteSaved: 'リモートアクセス設定を保存しました',

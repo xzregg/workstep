@@ -11,14 +11,16 @@ import asyncio
 import base64
 import hashlib
 import inspect
+import ipaddress
 import json
 import logging
 import secrets
+import socket
 import time
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -30,6 +32,11 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import compile_path
 
 logger = logging.getLogger(__name__)
+
+_LAN_IPV4_NETWORKS = tuple(
+    ipaddress.ip_network(value)
+    for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
 
 
 @dataclass(frozen=True)
@@ -108,12 +115,94 @@ def _websocket_endpoint(base_url: str, *, external: bool) -> str:
     return urlunparse((scheme, parsed.netloc, path, "", "", ""))
 
 
+def _select_network_ipv4(candidates: list[str]) -> str:
+    usable: list[ipaddress.IPv4Address] = []
+    for candidate in candidates:
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if (
+            isinstance(address, ipaddress.IPv4Address)
+            and not address.is_unspecified
+            and not address.is_loopback
+            and not address.is_link_local
+        ):
+            usable.append(address)
+    if not usable:
+        return "127.0.0.1"
+    usable.sort(
+        key=lambda address: (
+            0 if any(address in network for network in _LAN_IPV4_NETWORKS)
+            else 1 if address.is_private
+            else 2
+        )
+    )
+    return str(usable[0])
+
+
+def _primary_network_ipv4() -> str:
+    """Return the IPv4 address used by the primary network route."""
+    candidates: list[str] = []
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.settimeout(0.1)
+            probe.connect(("192.0.2.1", 9))
+            candidates.append(str(probe.getsockname()[0]))
+    except OSError:
+        pass
+
+    try:
+        candidates.extend(
+            str(item[4][0])
+            for item in socket.getaddrinfo(
+                socket.gethostname(),
+                None,
+                family=socket.AF_INET,
+                type=socket.SOCK_STREAM,
+            )
+        )
+    except OSError:
+        pass
+    return _select_network_ipv4(candidates)
+
+
 class RemoteAccessService:
     """Persist remote-access settings, invitations, and authorized devices."""
 
-    def __init__(self, config_store):
+    def __init__(
+        self,
+        config_store,
+        *,
+        daemon_host: str | None = None,
+        daemon_port: int | None = None,
+        network_address_resolver: Callable[[], str] | None = None,
+    ):
+        if daemon_host is None or daemon_port is None:
+            from settings import settings as daemon_settings
+
+            daemon_host = daemon_settings.host if daemon_host is None else daemon_host
+            daemon_port = daemon_settings.port if daemon_port is None else daemon_port
         self._config = config_store
+        self._daemon_host = daemon_host
+        self._daemon_port = daemon_port
+        self._network_address_resolver = network_address_resolver or _primary_network_ipv4
         self._live_connections: dict[tuple[str, str], int] = {}
+
+    def set_runtime_port(self, port: int) -> None:
+        """Use the actual ASGI listener port when it differs from configuration."""
+        if 1 <= int(port) <= 65535:
+            self._daemon_port = int(port)
+
+    def _default_internal_base_url(self) -> str:
+        host = self._daemon_host.strip()
+        if host in {"", "0.0.0.0", "::"}:
+            host = self._network_address_resolver()
+        elif host == "localhost":
+            host = "127.0.0.1"
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self._daemon_port}"
 
     def _load(self) -> dict[str, Any]:
         raw = self._config.get("remote_access", {})
@@ -126,7 +215,9 @@ class RemoteAccessService:
         raw = self._load()
         return {
             "enabled": bool(raw.get("enabled", False)),
-            "internal_base_url": str(raw.get("internal_base_url") or ""),
+            "internal_base_url": str(
+                raw.get("internal_base_url") or self._default_internal_base_url()
+            ),
             "external_base_url": str(raw.get("external_base_url") or ""),
             "host_id": str(raw.get("host_id") or ""),
         }
@@ -143,9 +234,12 @@ class RemoteAccessService:
         if external_base_url.strip():
             _websocket_endpoint(external_base_url, external=True)
         raw = self._load()
+        normalized_internal = internal_base_url.strip().rstrip("/")
+        if normalized_internal == self._default_internal_base_url():
+            normalized_internal = ""
         raw.update(
             enabled=bool(enabled),
-            internal_base_url=internal_base_url.strip().rstrip("/"),
+            internal_base_url=normalized_internal,
             external_base_url=external_base_url.strip().rstrip("/"),
             host_id=str(raw.get("host_id") or uuid.uuid4()),
         )
@@ -163,7 +257,7 @@ class RemoteAccessService:
         if not raw.get("enabled"):
             raise ValueError("Remote project access is disabled")
         base_key = "external_base_url" if access == "external" else "internal_base_url"
-        base_url = str(raw.get(base_key) or "")
+        base_url = str(self.settings().get(base_key) or "")
         if not base_url:
             raise ValueError(f"{access} access address is not configured")
         endpoint = _websocket_endpoint(base_url, external=access == "external")

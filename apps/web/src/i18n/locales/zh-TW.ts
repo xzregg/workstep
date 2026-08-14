@@ -673,6 +673,7 @@ export const zhTW: Messages = {
     remoteAccessIntro: '設定這台 WorkStep 對外提供專案存取時使用的內部和外部位址。',
     remoteAccessEnabled: '允許其他 WorkStep 連線本機分享的專案',
     internalAddress: '內部存取位址',
+    internalAddressHint: '預設使用目前主要網卡位址和 WorkStep 啟動連接埠，也可以手動修改。',
     externalAddress: '外部存取位址',
     externalAddressHint: '外部位址必須是 HTTPS/WSS；WorkStep 不內建公網中繼。',
     remoteSaved: '遠端存取設定已儲存',

@@ -673,6 +673,7 @@ export const enUS: Messages = {
     remoteAccessIntro: 'Configure the internal and external addresses used when this WorkStep shares projects.',
     remoteAccessEnabled: 'Allow other WorkStep devices to connect to shared local projects',
     internalAddress: 'Internal access address',
+    internalAddressHint: 'Defaults to the primary network address and WorkStep listener port; you can override it.',
     externalAddress: 'External access address',
     externalAddressHint: 'External addresses must use HTTPS/WSS. WorkStep does not include a public relay.',
     remoteSaved: 'Remote access settings saved',

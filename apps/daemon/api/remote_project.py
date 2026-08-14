@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from services.config import config_store
@@ -13,6 +13,15 @@ router = APIRouter(prefix="/api/remote-project")
 remote_access_service = RemoteAccessService(config_store)
 remote_project_registry = RemoteProjectRegistry(config_store)
 client_manager = None
+
+
+def _observe_runtime_port(request: Request) -> None:
+    server = request.scope.get("server")
+    if isinstance(server, (tuple, list)) and len(server) > 1:
+        try:
+            remote_access_service.set_runtime_port(int(server[1]))
+        except (TypeError, ValueError):
+            pass
 
 
 class RemoteAccessSettingsRequest(BaseModel):
@@ -36,12 +45,14 @@ class RevokeDeviceRequest(BaseModel):
 
 
 @router.get("/settings")
-async def get_remote_access_settings():
+async def get_remote_access_settings(request: Request):
+    _observe_runtime_port(request)
     return remote_access_service.settings()
 
 
 @router.put("/settings")
-async def update_remote_access_settings(req: RemoteAccessSettingsRequest):
+async def update_remote_access_settings(req: RemoteAccessSettingsRequest, request: Request):
+    _observe_runtime_port(request)
     try:
         return remote_access_service.update_settings(
             enabled=req.enabled,
@@ -53,9 +64,10 @@ async def update_remote_access_settings(req: RemoteAccessSettingsRequest):
 
 
 @router.post("/share")
-async def create_remote_project_share(req: CreateShareRequest):
+async def create_remote_project_share(req: CreateShareRequest, request: Request):
     from main import project_manager
 
+    _observe_runtime_port(request)
     project = project_manager.get_project_by_id(req.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")

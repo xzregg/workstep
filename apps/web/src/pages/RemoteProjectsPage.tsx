@@ -140,7 +140,7 @@ export default function RemoteProjectsPage({ onClose }: RemoteProjectsPageProps)
               />
               {t('settings.remoteAccessEnabled')}
             </label>
-            <Field label={t('settings.internalAddress')}>
+            <Field label={t('settings.internalAddress')} help={t('settings.internalAddressHint')}>
               <Input
                 value={settings.internal_base_url}
                 disabled={loading}

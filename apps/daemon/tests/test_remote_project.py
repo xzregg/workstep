@@ -21,9 +21,16 @@ from services.remote_project import (
     RemoteHttpResponse,
     serve_remote_project_socket,
     get_current_actor,
+    _select_network_ipv4,
 )
 from streaming.bus import EventBus
 import api.remote_project as remote_project_api
+
+
+def test_network_address_selection_prefers_lan_card_over_vpn_adapter():
+    assert _select_network_ipv4(
+        ["198.18.0.1", "127.0.0.1", "192.168.52.147"]
+    ) == "192.168.52.147"
 
 
 async def test_dispatcher_runs_existing_fastapi_route_with_bound_project_and_actor():
@@ -337,6 +344,53 @@ def test_revoked_device_can_no_longer_authorize_requests():
     assert access.is_principal_authorized(principal) is True
     assert access.revoke_device("owner-project", "device-b") is True
     assert access.is_principal_authorized(principal) is False
+
+
+def test_internal_access_address_defaults_to_primary_network_card_and_daemon_port():
+    config = MemoryConfig()
+    access = RemoteAccessService(
+        config,
+        daemon_host="0.0.0.0",
+        daemon_port=18765,
+        network_address_resolver=lambda: "192.168.50.24",
+    )
+
+    assert access.settings()["internal_base_url"] == "http://192.168.50.24:18765"
+
+    access.set_runtime_port(18766)
+    assert access.settings()["internal_base_url"] == "http://192.168.50.24:18766"
+
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://192.168.50.24:18766",
+        external_base_url="",
+    )
+    assert config.get("remote_access")["internal_base_url"] == ""
+
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    assert shared["endpoint"] == "ws://192.168.50.24:18766/ws/remote-project"
+
+
+def test_manual_internal_access_address_overrides_generated_default():
+    config = MemoryConfig()
+    access = RemoteAccessService(
+        config,
+        daemon_host="0.0.0.0",
+        daemon_port=8765,
+        network_address_resolver=lambda: "192.168.50.24",
+    )
+
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://workstep.lan:9000",
+        external_base_url="",
+    )
+
+    assert access.settings()["internal_base_url"] == "http://workstep.lan:9000"
 
 
 async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():

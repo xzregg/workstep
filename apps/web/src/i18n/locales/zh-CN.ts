@@ -671,6 +671,7 @@ export const zhCN = {
     remoteAccessIntro: '配置这台 WorkStep 对外提供项目访问时使用的内部和外部地址。',
     remoteAccessEnabled: '允许其他 WorkStep 连接本机分享的项目',
     internalAddress: '内部访问地址',
+    internalAddressHint: '默认使用当前主网卡地址和 WorkStep 启动端口，也可以手动修改。',
     externalAddress: '外部访问地址',
     externalAddressHint: '外部地址必须是 HTTPS/WSS；WorkStep 不内置公网中继。',
     remoteSaved: '远程访问设置已保存',
