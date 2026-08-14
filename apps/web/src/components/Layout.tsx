@@ -12,6 +12,7 @@ import DirectoryBrowser from './DirectoryBrowser'
 import Field from './Field'
 import Input from './Input'
 import SettingsPage from '../pages/SettingsPage'
+import RemoteProjectsPage from '../pages/RemoteProjectsPage'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import AiFlowChat from './AiFlowChat'
@@ -106,6 +107,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameName, setRenameName] = useState('')
   const [renameError, setRenameError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [showRemoteProjects, setShowRemoteProjects] = useState(false)
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [addWfTemplateId, setAddWfTemplateId] = useState('')
@@ -1049,7 +1051,22 @@ export default function Layout({ onSelectProject, children }: Props) {
         </Button>
         <Button
           variant="ghost"
-          onClick={() => setShowSettings(true)}
+          onClick={() => { setShowSettings(false); setShowRemoteProjects(true) }}
+          aria-current={showRemoteProjects ? 'page' : undefined}
+          style={{
+            margin: '0 12px 6px', width: 'calc(100% - 24px)', height: 36,
+            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
+            borderRadius: 9, fontSize: 13,
+            color: showRemoteProjects ? 'var(--fg)' : 'var(--fg-2)',
+            background: showRemoteProjects ? 'var(--surface)' : 'transparent',
+          }}
+        >
+          <Icon name="share" size={17} strokeWidth={2} />
+          {t('nav.remoteProjects')}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => { setShowRemoteProjects(false); setShowSettings(true) }}
           aria-current={showSettings ? 'page' : undefined}
           style={{
             margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
@@ -1289,6 +1306,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       </main>
 
       {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+      {showRemoteProjects && <RemoteProjectsPage onClose={() => setShowRemoteProjects(false)} />}
 
       {/* Init project modal */}
       {showInitModal && (

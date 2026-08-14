@@ -2,7 +2,6 @@ import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Button from '../components/Button'
 import Input from '../components/Input'
-import Field from '../components/Field'
 import Select from '../components/Select'
 import {
   assistantApi,
@@ -11,7 +10,6 @@ import {
   getCachedEngineModels,
   invalidateEngineModels,
   providerApi,
-  remoteProjectApi,
   type AssistantConfigInfo,
   type EngineInfo,
   type EngineInspectResult,
@@ -19,8 +17,6 @@ import {
   type EngineModel,
   type EngineTestResult,
   type ProviderInfo,
-  type RemoteAccessSettings,
-  type RemoteDevice,
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
@@ -702,11 +698,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const saveUserName = useUserSettingsStore((state) => state.saveUserName)
   const [userNameDraft, setUserNameDraft] = useState(userName)
   const [userNameSaved, setUserNameSaved] = useState(false)
-  const [remoteSettings, setRemoteSettings] = useState<RemoteAccessSettings>({ enabled: false, internal_base_url: '', external_base_url: '', host_id: '' })
-  const [remoteDevices, setRemoteDevices] = useState<RemoteDevice[]>([])
-  const [remoteSaving, setRemoteSaving] = useState(false)
-  const [remoteError, setRemoteError] = useState('')
-  const [remoteSaved, setRemoteSaved] = useState(false)
   const initialized = useRef(false)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -738,47 +729,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     setUserNameDraft(userName)
   }, [userName])
 
-  useEffect(() => {
-    void Promise.all([remoteProjectApi.settings(), remoteProjectApi.devices()])
-      .then(([settings, devices]) => {
-        setRemoteSettings(settings)
-        setRemoteDevices(devices.devices)
-      })
-      .catch((reason) => setRemoteError(reason instanceof Error ? reason.message : t('settings.remoteLoadFailed')))
-  }, [t])
-
   const handleSaveUserName = async () => {
     if (!await saveUserName(userNameDraft)) return
     setUserNameDraft(userNameDraft.trim())
     setUserNameSaved(true)
-  }
-
-  const handleSaveRemoteSettings = async () => {
-    setRemoteSaving(true)
-    setRemoteError('')
-    setRemoteSaved(false)
-    try {
-      const result = await remoteProjectApi.updateSettings({
-        enabled: remoteSettings.enabled,
-        internal_base_url: remoteSettings.internal_base_url,
-        external_base_url: remoteSettings.external_base_url,
-      })
-      setRemoteSettings(result)
-      setRemoteSaved(true)
-    } catch (reason) {
-      setRemoteError(reason instanceof Error ? reason.message : t('settings.remoteSaveFailed'))
-    } finally {
-      setRemoteSaving(false)
-    }
-  }
-
-  const handleRevokeRemoteDevice = async (device: RemoteDevice) => {
-    try {
-      await remoteProjectApi.revokeDevice(device.project_id, device.device_id)
-      setRemoteDevices((current) => current.map((item) => item.project_id === device.project_id && item.device_id === device.device_id ? { ...item, revoked: true, connected: false } : item))
-    } catch (reason) {
-      setRemoteError(reason instanceof Error ? reason.message : t('settings.remoteRevokeFailed'))
-    }
   }
 
   const loadEngineModels = async (engineId: string, force = false) => {
@@ -1639,45 +1593,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               {userSettingsError && (
                 <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 11 }}>
                   {userSettingsError}
-                </div>
-              )}
-            </div>
-            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>{t('settings.remoteAccessTitle')}</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>{t('settings.remoteAccessIntro')}</p>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 12 }}>
-                <input type="checkbox" checked={remoteSettings.enabled} onChange={(event) => { setRemoteSettings((current) => ({ ...current, enabled: event.target.checked })); setRemoteSaved(false) }} />
-                {t('settings.remoteAccessEnabled')}
-              </label>
-              <Field label={t('settings.internalAddress')}>
-                <Input
-                  value={remoteSettings.internal_base_url}
-                  onChange={(event) => { setRemoteSettings((current) => ({ ...current, internal_base_url: event.target.value })); setRemoteSaved(false) }}
-                  placeholder="http://192.168.1.20:8765"
-                />
-              </Field>
-              <Field label={t('settings.externalAddress')}>
-                <Input
-                  value={remoteSettings.external_base_url}
-                  onChange={(event) => { setRemoteSettings((current) => ({ ...current, external_base_url: event.target.value })); setRemoteSaved(false) }}
-                  placeholder="https://workstep.example.com"
-                />
-              </Field>
-              <p style={{ color: 'var(--muted)', fontSize: 11, margin: '4px 0 10px' }}>{t('settings.externalAddressHint')}</p>
-              <Button variant="primary" loading={remoteSaving} onClick={() => void handleSaveRemoteSettings()}>{t('common.save')}</Button>
-              {remoteSaved && <span role="status" style={{ marginLeft: 8, color: 'var(--success)', fontSize: 11 }}>{t('settings.remoteSaved')}</span>}
-              {remoteError && <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 11 }}>{remoteError}</div>}
-              {remoteDevices.filter((device) => !device.revoked).length > 0 && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 650, marginBottom: 6 }}>{t('settings.authorizedDevices')}</div>
-                  {remoteDevices.filter((device) => !device.revoked).map((device) => (
-                    <div key={`${device.project_id}:${device.device_id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32, borderTop: '1px solid var(--border-soft)', fontSize: 11 }}>
-                      <span style={{ color: device.connected ? 'var(--success)' : 'var(--meta)' }}>{device.connected ? '●' : '○'}</span>
-                      <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{device.user_name}</span>
-                      <span style={{ flex: 1, color: 'var(--muted)' }}>{device.device_name}</span>
-                      <Button variant="ghost" size="sm" onClick={() => void handleRevokeRemoteDevice(device)}>{t('settings.revokeDevice')}</Button>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
