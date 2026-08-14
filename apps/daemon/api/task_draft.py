@@ -1,6 +1,6 @@
 """HTTP API for the ephemeral task-creation assistant."""
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from schemas.base import BaseSchema
 
@@ -60,7 +60,7 @@ async def task_draft_chat(
 
 
 @router.post("/{session_id}/stop")
-async def stop_task_draft(session_id: str):
+async def stop_task_draft(session_id: str, project_id: str | None = Query(None)):
     from main import task_draft_module
 
     if not task_draft_module:

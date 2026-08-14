@@ -33,7 +33,7 @@ async def step_history(
 
 
 @router.post("/intervention/respond")
-async def respond_to_intervention(req: RespondRequest):
+async def respond_to_intervention(req: RespondRequest, project_id: str | None = Query(None)):
     """Respond to a pending intervention request."""
     delivered = intervention_manager.deliver_response(req.intervention_id, req.data)
     if not delivered:

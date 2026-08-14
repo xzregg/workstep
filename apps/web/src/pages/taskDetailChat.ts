@@ -38,6 +38,10 @@ interface ConversationMessage {
   started_at?: string | null
   review_run_id?: string | null
   engine?: string | null
+  author_id?: string | null
+  author_name?: string | null
+  author_device_id?: string | null
+  author_device_name?: string | null
 }
 
 interface MessageReview {

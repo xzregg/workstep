@@ -2096,6 +2096,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "qoder-agent-sdk" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -2123,6 +2124,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "qoder-agent-sdk", specifier = ">=1.0.11" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
+    { name = "websockets", specifier = ">=15.0" },
 ]
 
 [package.metadata.requires-dev]

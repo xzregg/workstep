@@ -173,6 +173,10 @@ export default function AiFlowChat({
             created_at: m.created_at,
             ended_at: m.ended_at,
             prompt: m.prompt,
+            author_id: m.author_id,
+            author_name: m.author_name,
+            author_device_id: m.author_device_id,
+            author_device_name: m.author_device_name,
             events: (m.events || []).map((e) => ({
               ...e,
               type: e.type || '',
@@ -290,7 +294,7 @@ export default function AiFlowChat({
     setStopping(true)
     setSendError('')
     try {
-      const result = await workflowGenApi.stop(sessionId)
+      const result = await workflowGenApi.stop(sessionId, projectId)
       if (!result.stopped) {
         setStopping(false)
         setSendError(t('aiFlow.stopFailed'))
@@ -302,7 +306,7 @@ export default function AiFlowChat({
       setStopping(false)
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.stopFailed'))
     }
-  }, [sessionId, stopping, t])
+  }, [sessionId, stopping, projectId, t])
 
   return (
     <>

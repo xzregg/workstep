@@ -54,6 +54,7 @@ export interface AssistantChatEvent {
   task_id?: string
   step_key?: string
   sequence?: number
+  actor?: { id?: string; name?: string; device_id?: string; device_name?: string }
 }
 
 export interface AssistantChatMessage {
@@ -67,6 +68,10 @@ export interface AssistantChatMessage {
   error?: string
   created_at?: string
   ended_at?: string
+  author_id?: string
+  author_name?: string
+  author_device_id?: string
+  author_device_name?: string
   /** Process events (thinking/usage/…), consumed by ProcessTrace + footer. */
   events?: AssistantChatEvent[]
 }
@@ -281,6 +286,10 @@ export function createAssistantStore(
               model: event.model,
               prompt,
               created_at: event.created_at,
+              author_id: event.actor?.id,
+              author_name: event.actor?.name,
+              author_device_id: event.actor?.device_id,
+              author_device_name: event.actor?.device_name,
               events: [],
             })
           } else {
@@ -304,6 +313,10 @@ export function createAssistantStore(
               engine: event.engine,
               model: event.model,
               created_at: event.created_at,
+              author_id: event.actor?.id,
+              author_name: event.actor?.name,
+              author_device_id: event.actor?.device_id,
+              author_device_name: event.actor?.device_name,
               events: [],
             })
           } else {

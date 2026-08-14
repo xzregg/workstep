@@ -48,12 +48,27 @@ async def rename_project(req: RenameRequest):
 @router.get("/list")
 async def list_projects():
     """List all registered projects."""
-    return {"projects": project_manager.list_projects()}
+    from api.remote_project import remote_project_registry
+
+    local = [
+        {**project, "type": "local", "connection_status": "local"}
+        for project in project_manager.list_projects()
+    ]
+    return {"projects": [*local, *remote_project_registry.list_public()]}
 
 
 @router.delete("/{project_id}")
 async def delete_project(project_id: str):
     """Unregister a project without deleting its files."""
+    from api.remote_project import client_manager, remote_project_registry
+
+    if remote_project_registry.get(project_id) is not None:
+        removed = (
+            await client_manager.remove(project_id)
+            if client_manager is not None
+            else remote_project_registry.remove(project_id)
+        )
+        return {"deleted": removed}
     if project_manager.unregister(project_id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"deleted": True}

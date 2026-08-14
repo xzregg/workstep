@@ -285,13 +285,28 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
     return _serve_upload_file(project, filename)
 
 
+def _assert_project_path(path: Path, project_id: str | None) -> None:
+    if not project_id:
+        return
+    from main import project_manager
+
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        path.relative_to(project.path.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Path is outside the project") from exc
+
+
 @router.get("/browse")
-async def browse_directory(path: str | None = None):
+async def browse_directory(path: str | None = None, project_id: str | None = Query(None)):
     """List directory contents for the file picker."""
     if path is None:
         target = Path.home()
     else:
         target = Path(path).expanduser().resolve()
+    _assert_project_path(target, project_id)
 
     if not target.exists():
         raise HTTPException(status_code=404, detail=f"Directory not found: {target}")
@@ -320,9 +335,10 @@ async def browse_directory(path: str | None = None):
 
 
 @router.get("/file")
-async def serve_file(path: str):
+async def serve_file(path: str, project_id: str | None = Query(None)):
     """Serve a raw file over HTTP (used for HTML preview links / downloads)."""
     file_path = Path(path).expanduser().resolve()
+    _assert_project_path(file_path, project_id)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
     if not file_path.is_file():
@@ -332,10 +348,11 @@ async def serve_file(path: str):
 
 
 @router.get("/raw/{full_path:path}")
-async def serve_raw_file(full_path: str):
+async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
     """Serve a file at a URL mirroring its filesystem path so relative assets
     inside HTML resolve correctly (e.g. /api/fs/raw/Users/me/proj/index.html)."""
     file_path = Path("/" + full_path).expanduser().resolve()
+    _assert_project_path(file_path, project_id)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
     if not file_path.is_file():
@@ -345,9 +362,10 @@ async def serve_raw_file(full_path: str):
 
 
 @router.get("/preview")
-async def preview_file(path: str):
+async def preview_file(path: str, project_id: str | None = Query(None)):
     """Preview a file content for display."""
     file_path = Path(path).expanduser().resolve()
+    _assert_project_path(file_path, project_id)
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")

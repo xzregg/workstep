@@ -467,7 +467,7 @@ export default function TaskList() {
   }
 
   const openProjectDirectory = async (openerId = selectedOpener) => {
-    if (!activeProject) return
+    if (!activeProject || activeProject.type === 'remote') return
     try {
       const result = await fsApi.openDirectory(activeProject.path, openerId)
       setDirectoryNotice(t('taskList.opened', { path: result.path }))
@@ -755,8 +755,10 @@ export default function TaskList() {
           <Button
             variant="ghost"
             onClick={() => void openProjectDirectory()}
-            disabled={!activeProject}
-            title={activeProject
+            disabled={!activeProject || activeProject.type === 'remote'}
+            title={activeProject?.type === 'remote'
+              ? t('taskList.remoteNoLocalDirectory')
+              : activeProject
               ? t('taskList.openWithTitle', {
                   opener: openerDisplayLabel(
                     directoryOpeners.find((item) => item.id === selectedOpener)
@@ -778,7 +780,7 @@ export default function TaskList() {
             aria-label={t('taskList.chooseOpener')}
             aria-expanded={showOpenerMenu}
             onClick={() => setShowOpenerMenu((value) => !value)}
-            disabled={!activeProject}
+            disabled={!activeProject || activeProject.type === 'remote'}
             style={{
               width: 30, padding: 0, justifyContent: 'center',
               borderLeft: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0,

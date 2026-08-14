@@ -158,3 +158,27 @@ def test_migrate_database_bootstraps_an_unbound_database(tmp_path):
         assert "step_runs" in db.get_tables()
     finally:
         db.close()
+
+
+def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(tmp_path):
+    """Existing per-project databases gain author snapshots without data loss."""
+    import peewee as pw
+
+    from models import migrate_database
+
+    db = pw.SqliteDatabase(tmp_path / "legacy-author-columns.db")
+    db.connect()
+    db.execute_sql('CREATE TABLE "message" ("id" TEXT PRIMARY KEY, "started_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "chat_messages" ("id" TEXT PRIMARY KEY)')
+
+    migrate_database(db)
+
+    expected = {
+        "author_id",
+        "author_name",
+        "author_device_id",
+        "author_device_name",
+    }
+    assert expected.issubset({column.name for column in db.get_columns("message")})
+    assert expected.issubset({column.name for column in db.get_columns("chat_messages")})
+    db.close()

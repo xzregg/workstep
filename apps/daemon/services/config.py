@@ -3,6 +3,8 @@
 import json
 import logging
 import os
+import platform
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +134,30 @@ class ConfigStore:
         user = dict(user)
         user["name"] = name.strip()
         self.set("user", user)
+
+    def get_device_identity(self) -> dict[str, str]:
+        """Return the stable identity of this WorkStep installation.
+
+        The user-facing name and the device identity intentionally live in
+        separate config sections: changing the current user's display name
+        must not invalidate credentials previously issued to this device.
+        """
+        device = self.get("device", {})
+        if not isinstance(device, dict):
+            device = {}
+        device_id = device.get("device_id")
+        device_name = device.get("device_name")
+        if not isinstance(device_id, str) or not device_id.strip():
+            device_id = str(uuid.uuid4())
+        if not isinstance(device_name, str) or not device_name.strip():
+            device_name = platform.node().strip() or "WorkStep Device"
+        normalized = {
+            "device_id": device_id.strip(),
+            "device_name": device_name.strip(),
+        }
+        if normalized != device:
+            self.set("device", normalized)
+        return normalized
 
     def is_engine_verified(self, engine_id: str) -> bool:
         verified = self.get("verified_engines", {})

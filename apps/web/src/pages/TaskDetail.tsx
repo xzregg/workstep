@@ -1089,8 +1089,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     interactionId: string,
     response: Record<string, unknown>,
   ) => {
-    await taskApi.respondInteraction(interactionId, response)
-  }, [])
+    await taskApi.respondInteraction(interactionId, response, projectId)
+  }, [projectId])
 
   const handleCoordinatorEngineChange = async (engineId: string) => {
     if (!taskId || !projectId) return
@@ -1504,7 +1504,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const openArtifactDirectory = async () => {
-    if (!previewArtifact) return
+    if (!previewArtifact || activeProject?.type === 'remote') return
     try {
       const result = await fsApi.openDirectory(previewArtifact.path)
       setArtifactNotice(t('taskDetail.directoryOpened', { path: result.path }))
@@ -1857,7 +1857,12 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   {previewArtifact.path}
                 </div>
               </div>
-              <Button variant="ghost" onClick={openArtifactDirectory}>
+              <Button
+                variant="ghost"
+                disabled={activeProject?.type === 'remote'}
+                title={activeProject?.type === 'remote' ? t('taskList.remoteNoLocalDirectory') : undefined}
+                onClick={openArtifactDirectory}
+              >
                 {t('taskDetail.openDirectory')}
               </Button>
               <Button variant="icon" onClick={() => setPreviewArtifact(null)}>✕</Button>
@@ -1866,6 +1871,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               <ArtifactPreview
                 path={previewArtifact.path}
                 isDir={!!previewArtifact.is_dir}
+                projectId={projectId}
                 onClose={() => setPreviewArtifact(null)}
               />
             </div>

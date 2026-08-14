@@ -220,6 +220,10 @@ export default function ChatPage() {
             created_at: m.created_at,
             ended_at: m.ended_at,
             prompt: m.prompt,
+            author_id: m.author_id,
+            author_name: m.author_name,
+            author_device_id: m.author_device_id,
+            author_device_name: m.author_device_name,
             events: (m.events || []).map((e) => ({
               ...e,
               type: e.type || '',
@@ -334,11 +338,11 @@ export default function ChatPage() {
   }, [enhancePhase])
 
   const stop = useCallback(async () => {
-    if (!sessionId || stopping) return
+    if (!sessionId || !activeProject?.id || stopping) return
     setStopping(true)
     setSendError('')
     try {
-      const result = await chatSessionApi.stop(sessionId)
+      const result = await chatSessionApi.stop(sessionId, activeProject.id)
       if (result.stopped) {
         useChatSessionStore.getState().markStopped(sessionId)
       } else {
@@ -349,7 +353,7 @@ export default function ChatPage() {
     } finally {
       setStopping(false)
     }
-  }, [sessionId, stopping, t])
+  }, [sessionId, activeProject?.id, stopping, t])
 
   const createSession = useCallback(async () => {
     if (!activeProject?.id || creating) return

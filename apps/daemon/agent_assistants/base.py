@@ -34,6 +34,7 @@ from services.chat_permissions import (
 )
 from services.config import CODEX_REASONING_EFFORTS, config_store
 from services.intervention import intervention_manager
+from services.remote_project import get_current_actor
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -754,12 +755,23 @@ class AssistantRuntime:
 
         turn_id = str(uuid.uuid4())
         assistant_message_id = str(uuid.uuid4())
+        actor = get_current_actor()
         session.messages.append(
             {
                 "role": "user",
                 "content": normalized,
                 "id": turn_id,
                 "created_at": utc_now().isoformat(),
+                **(
+                    {
+                        "author_id": actor.actor_id,
+                        "author_name": actor.user_name,
+                        "author_device_id": actor.device_id,
+                        "author_device_name": actor.device_name,
+                    }
+                    if actor is not None
+                    else {}
+                ),
             }
         )
         self._turn_keys[key] = turn_id
@@ -1467,6 +1479,7 @@ class AssistantRuntime:
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
         payload = {
             "event_id": str(uuid.uuid4()),
+            "project_id": session.project_id,
             "session_id": session.session_id,
             "channel": self._config.channel,
             "message_id": assistant_message_id,
@@ -1477,6 +1490,14 @@ class AssistantRuntime:
             "data": data,
             "created_at": utc_now().isoformat(),
         }
+        actor = get_current_actor()
+        if actor is not None:
+            payload["actor"] = {
+                "id": actor.actor_id,
+                "name": actor.user_name,
+                "device_id": actor.device_id,
+                "device_name": actor.device_name,
+            }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)

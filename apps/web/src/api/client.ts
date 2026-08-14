@@ -29,6 +29,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export interface SystemSettings {
   user_name: string
+  device_id?: string
+  device_name?: string
 }
 
 export const systemSettingsApi = {
@@ -56,6 +58,10 @@ export interface Project {
   name: string
   steps: any
   workflows: WorkflowSummary[]
+  type?: 'local' | 'remote'
+  connection_status?: 'local' | 'connecting' | 'connected' | 'disconnected' | 'error'
+  endpoint?: string
+  host_project_id?: string
 }
 
 export const projectApi = {
@@ -87,6 +93,52 @@ export const projectApi = {
         body: JSON.stringify({ steps }),
       },
     ),
+}
+
+export interface RemoteAccessSettings {
+  enabled: boolean
+  internal_base_url: string
+  external_base_url: string
+  host_id: string
+}
+
+export interface RemoteDevice {
+  project_id: string
+  device_id: string
+  user_name: string
+  device_name: string
+  revoked: boolean
+  connected: boolean
+  last_seen_at: number
+}
+
+export const remoteProjectApi = {
+  settings: () => request<RemoteAccessSettings>('/remote-project/settings'),
+  updateSettings: (settings: Omit<RemoteAccessSettings, 'host_id'>) =>
+    request<RemoteAccessSettings>('/remote-project/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+  createShare: (projectId: string, access: 'internal' | 'external') =>
+    request<{ share_string: string; endpoint: string; expires_at: number }>('/remote-project/share', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, access }),
+    }),
+  add: (shareString: string) => request<Project>('/remote-project/add', {
+    method: 'POST',
+    body: JSON.stringify({ share_string: shareString }),
+  }),
+  remove: (projectId: string) =>
+    request<{ deleted: boolean }>(`/remote-project/${encodeURIComponent(projectId)}`, { method: 'DELETE' }),
+  devices: (projectId?: string) =>
+    request<{ devices: RemoteDevice[]; connected_count: number }>(
+      `/remote-project/devices/list${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+    ),
+  revokeDevice: (projectId: string, deviceId: string) =>
+    request<{ revoked: boolean }>('/remote-project/devices/revoke', {
+      method: 'POST',
+      body: JSON.stringify({ project_id: projectId, device_id: deviceId }),
+    }),
 }
 
 // --- Statistics API ---
@@ -314,6 +366,10 @@ export interface WorkflowGenHistoryMessage {
   ended_at?: string
   prompt?: string
   events?: WorkflowGenHistoryEvent[]
+  author_id?: string
+  author_name?: string
+  author_device_id?: string
+  author_device_name?: string
 }
 
 export interface WorkflowGenHistory {
@@ -360,9 +416,9 @@ export const workflowGenApi = {
       `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
       { method: 'DELETE' },
     ),
-  stop: (sessionId: string) =>
+  stop: (sessionId: string, projectId: string) =>
     request<{ stopped: boolean }>(
-      `/workflow/generate/${encodeURIComponent(sessionId)}/stop`,
+      `/workflow/generate/${encodeURIComponent(sessionId)}/stop?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
 }
@@ -418,9 +474,9 @@ export const taskDraftApi = {
       allow_generate_title: options.allowGenerateTitle || false,
     }),
   }),
-  stop: (sessionId: string) =>
+  stop: (sessionId: string, projectId: string) =>
     request<{ stopped: boolean }>(
-      `/task-draft/${encodeURIComponent(sessionId)}/stop`,
+      `/task-draft/${encodeURIComponent(sessionId)}/stop?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
 }
@@ -528,9 +584,9 @@ export const chatSessionApi = {
         plan_mode: options.plan_mode || undefined,
       }),
     }),
-  stop: (sessionId: string) =>
+  stop: (sessionId: string, projectId: string) =>
     request<{ stopped: boolean }>(
-      `/chat-sessions/${encodeURIComponent(sessionId)}/stop`,
+      `/chat-sessions/${encodeURIComponent(sessionId)}/stop?project_id=${encodeURIComponent(projectId)}`,
       { method: 'POST' },
     ),
   reorder: (projectId: string, orderedIds: string[]) =>
@@ -795,8 +851,8 @@ export const taskApi = {
     request<{ messages: any[]; limit: number; offset: number }>(
       `/task/${taskId}/history?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`
     ),
-  respondInteraction: (interactionId: string, data: Record<string, unknown>) =>
-    request<{ delivered: boolean }>('/intervention/respond', {
+  respondInteraction: (interactionId: string, data: Record<string, unknown>, projectId?: string) =>
+    request<{ delivered: boolean }>(`/intervention/respond${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`, {
       method: 'POST',
       body: JSON.stringify({ intervention_id: interactionId, data }),
     }),
@@ -906,8 +962,8 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId, prompt }),
     }),
-  cancel: (taskId: string) =>
-    request<{ cancelled: boolean }>('/task/cancel', {
+  cancel: (taskId: string, projectId: string) =>
+    request<{ cancelled: boolean }>(`/task/cancel?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId }),
     }),
@@ -1665,19 +1721,19 @@ export const fsApi = {
     return data as { url: string; filename: string; size: number }
   },
 
-  preview: (path: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}`),
-  browse: (path?: string) =>
+  preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}`),
+  browse: (path?: string, projectId?: string) =>
     request<DirectoryBrowseResult>(
       path
-        ? `/fs/browse?path=${encodeURIComponent(path)}`
-        : '/fs/browse'
+        ? `/fs/browse?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}`
+        : `/fs/browse${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`
     ),
-  fileUrl: (path: string) =>
+  fileUrl: (path: string, projectId?: string) =>
     `${BASE}/fs/raw/${path
       .replace(/^\/+/, '')
       .split('/')
       .map(encodeURIComponent)
-      .join('/')}`,
+      .join('/')}${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
   directoryOpeners: () =>
     request<{ platform: string; openers: DirectoryOpener[] }>('/fs/directory-openers'),
   openDirectory: (path: string, opener = 'file_manager') =>

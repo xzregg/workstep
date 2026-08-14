@@ -444,11 +444,13 @@ class CancelTaskRequest(BaseSchema):
 
 
 @router.post("/cancel")
-async def cancel_task(req: CancelTaskRequest):
+async def cancel_task(req: CancelTaskRequest, pid: str | None = Query(None, alias="project_id")):
     """Cancel a running task."""
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    if pid:
+        _bind(pid)
     cancelled = await workflow_runtime.cancel(req.task_id)
     return {"cancelled": cancelled}
 

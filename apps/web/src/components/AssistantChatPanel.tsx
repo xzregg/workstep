@@ -18,6 +18,7 @@ import ChatMessageBubble from './ChatMessageBubble'
 import MarkdownMessage from './MarkdownMessage'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
+import { useUserSettingsStore } from '../stores/userSettingsStore'
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -80,6 +81,7 @@ export default function AssistantChatPanel({
   onA2uiAction, headerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
 }: AssistantChatPanelProps) {
+  const deviceId = useUserSettingsStore((state) => state.deviceId)
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -91,8 +93,8 @@ export default function AssistantChatPanel({
     interactionId: string,
     response: Record<string, unknown>,
   ) => {
-    await taskApi.respondInteraction(interactionId, response)
-  }, [])
+    await taskApi.respondInteraction(interactionId, response, projectId)
+  }, [projectId])
 
   useEffect(() => {
     if (!followRef.current) return
@@ -175,12 +177,15 @@ export default function AssistantChatPanel({
             {copy.emptyIntro}
           </div>
         )}
-        {messages.map((message) => (
+        {messages.map((message) => {
+          const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
+          const userSender = ownUserMessage ? copy.me : (message.author_name || copy.me)
+          return (
           <ChatMessageBubble
             key={message.id}
             role={message.role}
-            sender={message.role === 'user' ? copy.me : copy.agent}
-            initials={message.role === 'user' ? copy.meInitials : copy.agentInitials}
+            sender={message.role === 'user' ? userSender : copy.agent}
+            initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
             color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
             content={message.content}
             events={message.events}
@@ -228,7 +233,8 @@ export default function AssistantChatPanel({
             ) : undefined}
             onA2uiAction={onA2uiAction}
           />
-        ))}
+          )
+        })}
         {afterMessages}
       </div>
 

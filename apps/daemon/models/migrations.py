@@ -24,6 +24,21 @@ _STATISTICS_INDEXES = (
     "CREATE INDEX IF NOT EXISTS message_started_at ON message(started_at)",
 )
 
+_ADDITIVE_COLUMNS = {
+    "message": {
+        "author_id": "TEXT",
+        "author_name": "TEXT",
+        "author_device_id": "TEXT",
+        "author_device_name": "TEXT",
+    },
+    "chat_messages": {
+        "author_id": "TEXT",
+        "author_name": "TEXT",
+        "author_device_id": "TEXT",
+        "author_device_name": "TEXT",
+    },
+}
+
 
 def migrate_database(db: pw.SqliteDatabase) -> int:
     """Ensure an open database matches the current model schema.
@@ -37,6 +52,16 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
 
     db_proxy.initialize(db)
     db.create_tables(ALL_MODELS, safe=True)
+    tables = set(db.get_tables())
+    for table_name, columns in _ADDITIVE_COLUMNS.items():
+        if table_name not in tables:
+            continue
+        existing = {column.name for column in db.get_columns(table_name)}
+        for column_name, column_type in columns.items():
+            if column_name not in existing:
+                db.execute_sql(
+                    f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
+                )
     for statement in _STATISTICS_INDEXES:
         db.execute_sql(statement)
     (

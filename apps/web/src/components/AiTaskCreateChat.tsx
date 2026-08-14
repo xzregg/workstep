@@ -126,9 +126,9 @@ export default function AiTaskCreateChat({
   useEffect(() => () => {
     const activeSessionId = sessionIdRef.current
     if (!activeSessionId) return
-    if (runningRef.current) void taskDraftApi.stop(activeSessionId).catch(() => undefined)
+    if (runningRef.current) void taskDraftApi.stop(activeSessionId, projectId).catch(() => undefined)
     useTaskDraftStore.getState().resetSession(activeSessionId)
-  }, [])
+  }, [projectId])
 
   const send = useCallback(async (override?: string) => {
     const content = (override ?? input).trim()
@@ -186,7 +186,7 @@ export default function AiTaskCreateChat({
     setStopping(true)
     setSendError('')
     try {
-      const result = await taskDraftApi.stop(sessionId)
+      const result = await taskDraftApi.stop(sessionId, projectId)
       if (!result.stopped) {
         setSendError(t('taskList.aiStopFailed'))
       } else {
@@ -197,7 +197,7 @@ export default function AiTaskCreateChat({
     } finally {
       setStopping(false)
     }
-  }, [sessionId, stopping, t])
+  }, [sessionId, stopping, projectId, t])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
     void send(t('taskDetail.a2uiActionMessage', a2uiActionMessageParams(action)))

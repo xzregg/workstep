@@ -33,6 +33,8 @@ from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
+import api.remote_project as remote_project_api
+from api.remote_project import router as remote_project_router
 from services.project import project_manager
 from services.task import TaskService
 from services.intervention import intervention_manager
@@ -44,11 +46,44 @@ from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
 from agent_assistants.chat_session import ChatSessionModule
 from engines.core.agui import is_status_event
+from services.remote_project import (
+    ActorSnapshot,
+    RemoteAccessService,
+    RemoteProjectClientManager,
+    RemoteProjectProxyMiddleware,
+    RemoteProjectRegistry,
+    RemoteRouteDispatcher,
+    serve_remote_project_socket,
+)
 
 logger = logging.getLogger(__name__)
 
 # Global event bus
 event_bus = EventBus()
+
+
+def _local_actor() -> ActorSnapshot:
+    device = config_store.get_device_identity()
+    user_name = config_store.get_user_name()
+    if not user_name:
+        raise ValueError("请先在系统设置中填写使用者名称")
+    return ActorSnapshot(
+        actor_id=device["device_id"],
+        user_name=user_name,
+        device_id=device["device_id"],
+        device_name=device["device_name"],
+        source="local",
+    )
+
+
+remote_access_service: RemoteAccessService = remote_project_api.remote_access_service
+remote_project_registry: RemoteProjectRegistry = remote_project_api.remote_project_registry
+remote_project_client = RemoteProjectClientManager(
+    registry=remote_project_registry,
+    actor_provider=_local_actor,
+    event_sink=event_bus.publish,
+)
+remote_project_api.client_manager = remote_project_client
 
 # Task service — initialized in lifespan
 task_service: TaskService | None = None
@@ -103,6 +138,7 @@ async def lifespan(app: FastAPI):
             await schedule_module.shutdown()
         if chat_session_module is not None:
             await chat_session_module.shutdown()
+        await remote_project_client.close()
         await coordinator_module.shutdown()
         await workflow_runtime.shutdown()
         await event_bus.close()
@@ -110,6 +146,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan)
+app.add_middleware(
+    RemoteProjectProxyMiddleware,
+    registry=remote_project_registry,
+    client_manager=remote_project_client,
+)
 
 # Register routers
 app.include_router(project_router)
@@ -130,6 +171,7 @@ app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(system_settings_router)
+app.include_router(remote_project_router)
 
 
 # --- REST API ---
@@ -142,6 +184,32 @@ async def health():
 
 
 # --- WebSocket ---
+
+
+def _local_project_summary(project_id: str) -> dict[str, Any] | None:
+    return next(
+        (
+            {**project, "type": "local", "connection_status": "local"}
+            for project in project_manager.list_projects()
+            if project.get("id") == project_id
+        ),
+        None,
+    )
+
+
+@app.websocket("/ws/remote-project")
+async def remote_project_ws_endpoint(ws: WebSocket):
+    dispatcher = RemoteRouteDispatcher(app)
+    try:
+        await serve_remote_project_socket(
+            ws,
+            dispatcher=dispatcher,
+            access_service=remote_access_service,
+            event_bus=event_bus,
+            project_summary=_local_project_summary,
+        )
+    finally:
+        await dispatcher.aclose()
 
 
 _SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
@@ -163,14 +231,16 @@ class WsSubscription:
     status_only_task_ids: set[str] = field(default_factory=set)
     session_ids: set[str] = field(default_factory=set)
     channels: set[str] = field(default_factory=set)
+    project_id: str = ""
     active: bool = False
 
 
 def parse_subscription(msg: dict[str, Any]) -> WsSubscription:
     """把 subscribe 消息解析为订阅状态；不含任何订阅键时重置为全量。"""
-    if not any(key in msg for key in _SUBSCRIBE_KEYS):
+    if not any(key in msg for key in _SUBSCRIBE_KEYS) and not msg.get("project_id"):
         return WsSubscription()
     sub = WsSubscription(active=True)
+    sub.project_id = str(msg.get("project_id") or "")
     for key in _SUBSCRIBE_KEYS:
         values = msg.get(key)
         if isinstance(values, (list, set, tuple)):
@@ -181,6 +251,12 @@ def parse_subscription(msg: dict[str, Any]) -> WsSubscription:
 def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
     """判断事件是否命中订阅；未激活订阅（全量模式）恒为 True。"""
     if not sub.active:
+        return True
+    if (
+        event.get("type") == "CUSTOM"
+        and event.get("name") == "workstep.remote_project_status"
+        and event.get("project_id") == sub.project_id
+    ):
         return True
     task_id = event.get("task_id")
     if task_id:
@@ -269,8 +345,15 @@ async def _handle_client_message(
             subscription.status_only_task_ids = new_sub.status_only_task_ids
             subscription.session_ids = new_sub.session_ids
             subscription.channels = new_sub.channels
+            subscription.project_id = new_sub.project_id
             subscription.active = new_sub.active
             event_bus.set_filter(queue, _make_subscription_predicate(subscription))
+            project_id = str(msg.get("project_id") or "")
+            if remote_project_registry.get(project_id) is not None:
+                try:
+                    await remote_project_client.subscribe(project_id, msg)
+                except Exception as exc:
+                    logger.info("Remote project subscription deferred: %s", exc)
             logger.info(
                 "WS subscribe: tasks=%d status_only=%d sessions=%d channels=%d",
                 len(subscription.task_ids),

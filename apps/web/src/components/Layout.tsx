@@ -18,8 +18,10 @@ import AiFlowChat from './AiFlowChat'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
 import {
   fetchTemplates,
+  remoteProjectApi,
   templateApi,
   chatSessionApi,
+  type RemoteDevice,
   type TemplateInfo,
   type Project,
 } from '../api/client'
@@ -91,8 +93,11 @@ export default function Layout({ onSelectProject, children }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, addRemoteProject, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
+  const [addProjectMode, setAddProjectMode] = useState<'local' | 'remote'>('local')
+  const [remoteShareString, setRemoteShareString] = useState('')
+  const [addingRemote, setAddingRemote] = useState(false)
   const [newPath, setNewPath] = useState('')
   const [newName, setNewName] = useState('')
   const [error, setError] = useState('')
@@ -122,6 +127,12 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
+  const [shareProject, setShareProject] = useState<Project | null>(null)
+  const [shareAccess, setShareAccess] = useState<'internal' | 'external'>('internal')
+  const [shareValue, setShareValue] = useState('')
+  const [shareError, setShareError] = useState('')
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareDevices, setShareDevices] = useState<RemoteDevice[]>([])
   const [projectContextMenu, setProjectContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
   const sessions = useChatListStore((s) => s.sessions)
@@ -196,6 +207,25 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  useEffect(() => {
+    if (!projects.some((project) => project.type === 'remote')) return
+    const timer = window.setInterval(() => { void fetchProjects() }, 3000)
+    return () => window.clearInterval(timer)
+  }, [projects, fetchProjects])
+
+  useEffect(() => {
+    if (!shareProject) return
+    let active = true
+    const refresh = () => {
+      void remoteProjectApi.devices(shareProject.id).then((result) => {
+        if (active) setShareDevices(result.devices)
+      }).catch(() => undefined)
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 2000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [shareProject])
 
   // Re-focus inputs each time they open (autoFocus only fires on first mount)
   useEffect(() => {
@@ -297,7 +327,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   const menuTarget = moreMenu
     ? moreMenu.kind === 'project'
-      ? projects.find((p) => p.path === moreMenu.id)
+      ? projects.find((p) => p.id === moreMenu.id)
       : projects
           .flatMap((p) => (p.workflows || []).map((workflow) => ({ project: p, workflow })))
           .find(({ workflow }) => workflow.id === moreMenu.id)
@@ -441,6 +471,50 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
+  const handleAddRemote = async () => {
+    if (!remoteShareString.trim() || addingRemote) return
+    setAddingRemote(true)
+    setError('')
+    try {
+      const project = await addRemoteProject(remoteShareString)
+      setActiveProject(project)
+      onSelectProject(project)
+      setShowInitModal(false)
+      setRemoteShareString('')
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('layout.remoteAddFailed'))
+    } finally {
+      setAddingRemote(false)
+    }
+  }
+
+  const openProjectShare = async (project: Project) => {
+    setShareProject(project)
+    setShareValue('')
+    setShareError('')
+    setShareAccess('internal')
+    try {
+      const result = await remoteProjectApi.devices(project.id)
+      setShareDevices(result.devices)
+    } catch {
+      setShareDevices([])
+    }
+  }
+
+  const createProjectShare = async () => {
+    if (!shareProject || shareLoading) return
+    setShareLoading(true)
+    setShareError('')
+    try {
+      const result = await remoteProjectApi.createShare(shareProject.id, shareAccess)
+      setShareValue(result.share_string)
+    } catch (reason) {
+      setShareError(reason instanceof Error ? reason.message : t('layout.remoteShareFailed'))
+    } finally {
+      setShareLoading(false)
+    }
+  }
+
   const handleDirSelect = (path: string) => {
     setNewPath(path)
     setShowBrowser(false)
@@ -569,10 +643,13 @@ export default function Layout({ onSelectProject, children }: Props) {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
           {projects.map((p) => (
-            <div key={p.path}>
+            <div key={p.id}>
               <div
                 onClick={() => handleSelectProject(p)}
-                onDoubleClick={(e) => { e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('') }}
+                onDoubleClick={(e) => {
+                  if (p.type === 'remote') return
+                  e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('')
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -585,11 +662,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                   })
                 }}
                 className="ws-row"
-                style={{ ...projectItemStyle(activeProject?.path === p.path), position: 'relative' }}
+                style={{ ...projectItemStyle(activeProject?.id === p.id), position: 'relative' }}
               >
                 <Icon
-                  name={activeProject?.path === p.path ? 'folder-open' : 'folder'} size={15} strokeWidth={2}
-                  style={{ flexShrink: 0, color: activeProject?.path === p.path ? 'var(--accent)' : 'var(--meta)' }}
+                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={15} strokeWidth={2}
+                  style={{ flexShrink: 0, color: activeProject?.id === p.id ? 'var(--accent)' : 'var(--meta)' }}
                 />
                 {renameId === p.path ? (
                   <Input
@@ -624,12 +701,17 @@ export default function Layout({ onSelectProject, children }: Props) {
                 ) : (
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.name}
+                    {p.type === 'remote' && (
+                      <span title={p.endpoint} style={{ marginLeft: 6, fontSize: 10, color: p.connection_status === 'connected' ? 'var(--success)' : 'var(--meta)' }}>
+                        {p.connection_status === 'connected' ? '●' : '○'}
+                      </span>
+                    )}
                   </span>
                 )}
                 <Button
                   variant="icon"
                   className="ws-more-btn"
-                  onClick={(e) => openMoreMenu(e, 'project', p.path)}
+                  onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
                   style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, flexShrink: 0 }}
@@ -641,17 +723,17 @@ export default function Layout({ onSelectProject, children }: Props) {
               )}
 
               {/* Workflow list + sessions under the selected project */}
-              {activeProject?.path === p.path && (
+              {activeProject?.id === p.id && (
                 <>
                   {(() => {
-                    const flowOpen = flowSectionOpen[p.path] !== false
+                    const flowOpen = flowSectionOpen[p.id] !== false
                     return (
                       <>
                         <div
                           style={{ ...nestedSectionLabel, cursor: 'pointer', userSelect: 'none' }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            setFlowSectionOpen((prev) => ({ ...prev, [p.path]: !flowOpen }))
+                            setFlowSectionOpen((prev) => ({ ...prev, [p.id]: !flowOpen }))
                           }}
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -740,10 +822,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
                         fontSize: 13,
-                        color: deleted ? 'var(--meta)' : (activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
+                        color: deleted ? 'var(--meta)' : (activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
                         background: isDropTarget
                           ? 'var(--accent-light)'
-                          : activeProject?.path === p.path && activeWorkflowId === wf.id ? 'var(--accent-light)' : 'transparent',
+                          : activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent-light)' : 'transparent',
                         opacity: isDragSource ? 0.4 : 1,
                         outline: isDropTarget ? '1px solid var(--accent)' : 'none',
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
@@ -800,7 +882,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )
                   })()}
               {(() => {
-                const open = !!sessionSectionOpen[p.path] || (location.pathname === '/chat' && !!activeSessionId)
+                const open = !!sessionSectionOpen[p.id] || (location.pathname === '/chat' && !!activeSessionId)
                 return (
                   <>
                     <div
@@ -813,7 +895,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       }}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSessionSectionOpen((prev) => ({ ...prev, [p.path]: !open }))
+                        setSessionSectionOpen((prev) => ({ ...prev, [p.id]: !open }))
                       }}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -962,7 +1044,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        <Button variant="ghost" style={addButtonStyle} onClick={() => setShowInitModal(true)}>
+        <Button variant="ghost" style={addButtonStyle} onClick={() => { setAddProjectMode('local'); setError(''); setShowInitModal(true) }}>
           + {t('nav.addProject')}
         </Button>
         <Button
@@ -993,6 +1075,20 @@ export default function Layout({ onSelectProject, children }: Props) {
             borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
           }}
         >
+          {projectContextMenu.project.type !== 'remote' && (
+            <div
+              onClick={() => {
+                void openProjectShare(projectContextMenu.project)
+                setProjectContextMenu(null)
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+            >
+              <Icon name="share" size={14} />
+              {t('layout.remoteShareTitle')}
+            </div>
+          )}
           <div
             onClick={() => {
               setDeleteProjectError('')
@@ -1022,15 +1118,17 @@ export default function Layout({ onSelectProject, children }: Props) {
         >
           {moreMenu.kind === 'project' && menuTarget && 'path' in menuTarget && (
             <>
-              <div
-                onClick={() => { setRenameId(menuTarget.path); setRenameName(menuTarget.name); setRenameError(''); setMoreMenu(null) }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
-              >
-                <Icon name="pencil" size={14} />
-                {t('common.edit')}
-              </div>
+              {menuTarget.type !== 'remote' && (
+                <div
+                  onClick={() => { setRenameId(menuTarget.path); setRenameName(menuTarget.name); setRenameError(''); setMoreMenu(null) }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                >
+                  <Icon name="pencil" size={14} />
+                  {t('common.edit')}
+                </div>
+              )}
               <div
                 onClick={() => { openAddWorkflow(menuTarget.id); setMoreMenu(null) }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
@@ -1052,6 +1150,17 @@ export default function Layout({ onSelectProject, children }: Props) {
                 <Icon name="bot" size={14} />
                 {t('chatSession.addSessionTitle')}
               </div>
+              {menuTarget.type !== 'remote' && (
+                <div
+                  onClick={() => { void openProjectShare(menuTarget); setMoreMenu(null) }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                >
+                  <Icon name="share" size={14} />
+                  {t('layout.remoteShareTitle')}
+                </div>
+              )}
               <div
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
@@ -1190,6 +1299,15 @@ export default function Layout({ onSelectProject, children }: Props) {
               <Button variant="icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</Button>
             </div>
             <div className="modal-body">
+              <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                <Button variant={addProjectMode === 'local' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('local'); setError('') }}>
+                  {t('layout.localProject')}
+                </Button>
+                <Button variant={addProjectMode === 'remote' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('remote'); setError(''); setShowBrowser(false) }}>
+                  {t('layout.remoteProject')}
+                </Button>
+              </div>
+              {addProjectMode === 'local' ? <>
               <Field label={t('layout.projectPath')} htmlFor="init-path">
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Input
@@ -1220,10 +1338,77 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onKeyDown={(e) => e.key === 'Enter' && handleInit()}
                 />
               </Field>
+              </> : (
+                <Field label={t('layout.remoteShareString')} htmlFor="remote-share-string" error={error}>
+                  <textarea
+                    id="remote-share-string"
+                    value={remoteShareString}
+                    onChange={(event) => { setRemoteShareString(event.target.value); setError('') }}
+                    placeholder="workstep://remote-project/v1/..."
+                    rows={6}
+                    autoFocus
+                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                  />
+                  <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 11 }}>{t('layout.remoteShareHint')}</div>
+                </Field>
+              )}
             </div>
             <div className="modal-footer">
               <Button variant="ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>{t('common.cancel')}</Button>
-              <Button variant="primary" onClick={handleInit}>{t('layout.init')}</Button>
+              {addProjectMode === 'local' ? (
+                <Button variant="primary" disabled={!newPath.trim()} onClick={handleInit}>{t('layout.init')}</Button>
+              ) : (
+                <Button variant="primary" loading={addingRemote} disabled={!remoteShareString.trim()} onClick={() => void handleAddRemote()}>{t('layout.connectRemote')}</Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {shareProject && (
+        <div className="modal-overlay" onClick={() => setShareProject(null)}>
+          <div className="modal" style={{ width: 560 }} onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">{t('layout.remoteShareTitle')} · {shareProject.name}</span>
+              <Button variant="icon" onClick={() => setShareProject(null)}>✕</Button>
+            </div>
+            <div className="modal-body">
+              <Field label={t('layout.accessType')}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Button variant={shareAccess === 'internal' ? 'primary' : 'ghost'} onClick={() => { setShareAccess('internal'); setShareValue(''); setShareError('') }}>
+                    {t('layout.internalAccess')}
+                  </Button>
+                  <Button variant={shareAccess === 'external' ? 'primary' : 'ghost'} onClick={() => { setShareAccess('external'); setShareValue(''); setShareError('') }}>
+                    {t('layout.externalAccess')}
+                  </Button>
+                </div>
+              </Field>
+              <p style={{ margin: '8px 0 12px', color: 'var(--muted)', fontSize: 11 }}>
+                {shareAccess === 'external' ? t('layout.externalAccessHint') : t('layout.internalAccessHint')}
+              </p>
+              {shareValue && (
+                <Field label={t('layout.remoteShareString')}>
+                  <textarea readOnly value={shareValue} rows={6} style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 11 }} />
+                </Field>
+              )}
+              {shareError && <div role="status" style={{ color: 'var(--danger)', fontSize: 12 }}>{shareError}</div>}
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-soft)' }}>
+                <div style={{ fontSize: 12, fontWeight: 650, marginBottom: 7 }}>
+                  {t('layout.remoteDevices', { count: shareDevices.filter((device) => device.connected && !device.revoked).length })}
+                </div>
+                {shareDevices.filter((device) => !device.revoked).map((device) => (
+                  <div key={`${device.project_id}:${device.device_id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', fontSize: 11, color: 'var(--muted)' }}>
+                    <span style={{ color: device.connected ? 'var(--success)' : 'var(--meta)' }}>{device.connected ? '●' : '○'}</span>
+                    <span style={{ color: 'var(--fg)' }}>{device.user_name || t('common.unknown')}</span>
+                    <span>{device.device_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <Button variant="ghost" onClick={() => setShareProject(null)}>{t('common.close')}</Button>
+              {shareValue && <Button variant="ghost" onClick={() => void navigator.clipboard.writeText(shareValue)}>{t('common.copy')}</Button>}
+              <Button variant="primary" loading={shareLoading} onClick={() => void createProjectShare()}>{t('layout.generateShare')}</Button>
             </div>
           </div>
         </div>

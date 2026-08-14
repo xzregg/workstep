@@ -9,6 +9,7 @@ import {
 } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
+import { useUserSettingsStore } from '../stores/userSettingsStore'
 import {
   type ActionProposal,
   type CoordinatorConfig,
@@ -429,6 +430,7 @@ export default function TaskDetailView({
   projectId,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
+  const localDeviceId = useUserSettingsStore((state) => state.deviceId)
 
   // 未在运行的阶段（等待审核 / 手动停止 / 失败 / 审核驳回）仍保留在「发给谁」选择中，
   // 选中后输入消息可带提示重新执行该阶段。
@@ -2233,8 +2235,9 @@ export default function TaskDetailView({
                             msg,
                             reviews,
                           )
+                        const isOwnUser = isUser && (!msg.author_device_id || msg.author_device_id === localDeviceId)
                         const sender = isUser
-                          ? t('aiFlow.me')
+                          ? (isOwnUser ? t('aiFlow.me') : (msg.author_name || t('aiFlow.me')))
                           : isSystem
                             ? t(
                                 'taskDetail.system',

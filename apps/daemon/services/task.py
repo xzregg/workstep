@@ -147,6 +147,10 @@ class TaskService:
                 "id": msg.id,
                 "role": msg.role,
                 "content": msg.content,
+                "author_id": msg.author_id,
+                "author_name": msg.author_name,
+                "author_device_id": msg.author_device_id,
+                "author_device_name": msg.author_device_name,
                 "step_key": msg.step_key,
                 "context_step_key": msg.context_step_key,
                 "channel": msg.channel,
@@ -442,6 +446,8 @@ class TaskService:
             "step_key": step_key,
             **event,
         }
+        from services.remote_project import current_actor_event_fields
+        payload.update(current_actor_event_fields())
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)

@@ -1128,7 +1128,14 @@ class TaskRunner:
 
     async def _publish(self, task_id: str, step_key: str, event: dict):
         """发布出口：内部事件 → AG-UI 标准事件后推送。"""
-        payload = {"task_id": task_id, "step_key": step_key, **event}
+        from services.remote_project import current_actor_event_fields
+
+        payload = {
+            "task_id": task_id,
+            "step_key": step_key,
+            **event,
+            **current_actor_event_fields(),
+        }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)

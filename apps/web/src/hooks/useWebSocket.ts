@@ -60,6 +60,7 @@ export function useWebSocket() {
   const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
   const chatSessionIds = useChatSessionStore(useShallow((s) => Object.keys(s.sessions)))
+  const activeProjectId = useProjectStore((s) => s.activeProject?.id)
 
   const send = useCallback((msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -69,6 +70,7 @@ export function useWebSocket() {
 
   const buildSubscription = useCallback(() => ({
     type: 'subscribe',
+    project_id: useProjectStore.getState().activeProject?.id,
     task_ids: useWsSubscriptionStore.getState().taskIds,
     status_only_task_ids: useTaskStore.getState().tasks.map((t) => t.id),
     session_ids: [
@@ -94,7 +96,7 @@ export function useWebSocket() {
   // cheap and keeps the subscribe-before-stream race window minimal.
   useEffect(() => {
     flushSubscription()
-  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds])
+  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, activeProjectId])
 
   useEffect(() => {
     let active = true
@@ -125,6 +127,13 @@ export function useWebSocket() {
       ws.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data)
+          if (parsed.type === 'CUSTOM' && parsed.name === 'workstep.remote_project_status') {
+            void useProjectStore.getState().fetchProjects()
+            const activeProjectId = useProjectStore.getState().activeProject?.id
+            if (activeProjectId && activeProjectId === parsed.value?.project_id && parsed.value?.status === 'connected') {
+              void useTaskStore.getState().fetchTasks(activeProjectId)
+            }
+          }
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
           if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
           if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)

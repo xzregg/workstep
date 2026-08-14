@@ -240,6 +240,6 @@ async def reorder_sessions(
 
 
 @router.post("/{session_id}/stop")
-async def stop_session(session_id: str):
+async def stop_session(session_id: str, project_id: str | None = Query(None)):
     """Stop the running turn of one chat session."""
     return {"stopped": await _module().stop_current(session_id)}

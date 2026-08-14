@@ -15,6 +15,7 @@ interface ArtifactPreviewProps {
   path: string
   isDir?: boolean
   onClose?: () => void
+  projectId?: string
 }
 
 type PreviewView =
@@ -75,7 +76,7 @@ function CopyTextButton({ content }: { content: string }) {
   )
 }
 
-export default function ArtifactPreview({ path, isDir = false, onClose }: ArtifactPreviewProps) {
+export default function ArtifactPreview({ path, isDir = false, onClose, projectId }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const [view, setView] = useState<PreviewView>(() =>
     isDir
@@ -102,7 +103,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
     let active = true
     setListingLoading(true)
     setListingError(null)
-    fsApi.browse(view.path)
+    fsApi.browse(view.path, projectId)
       .then((data) => {
         if (active) setListing(data)
       })
@@ -117,7 +118,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
     return () => {
       active = false
     }
-  }, [view, t])
+  }, [view, projectId, t])
 
   // Load the file preview.
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
     let active = true
     setPreviewLoading(true)
     setPreviewError(null)
-    fsApi.preview(view.path)
+    fsApi.preview(view.path, projectId)
       .then((data) => {
         if (active) setPreview(data)
       })
@@ -140,7 +141,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
     return () => {
       active = false
     }
-  }, [view, t])
+  }, [view, projectId, t])
 
   const openEntry = (entry: DirectoryEntry) => {
     if (entry.type === 'directory') {
@@ -335,7 +336,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose }: Artifa
   }
 
   if (isHtml) {
-    const htmlUrl = fsApi.fileUrl(view.path)
+    const htmlUrl = fsApi.fileUrl(view.path, projectId)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.htmlFile'), (

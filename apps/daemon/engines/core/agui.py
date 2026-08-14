@@ -75,6 +75,7 @@ class AGUIContext:
     """AG-UI passthrough 扩展字段；缺省字段从事件 dict 兜底读取。"""
 
     task_id: str | None = None
+    project_id: str | None = None
     step_key: str | None = None
     message_id: str | None = None
     channel: str | None = None
@@ -84,12 +85,14 @@ class AGUIContext:
     event_sequence: int | None = None
     timestamp: int | None = None
     created_at: str | None = None
+    actor: Mapping[str, Any] | None = None
 
     @classmethod
     def from_event(cls, event: Mapping[str, Any], **overrides) -> "AGUIContext":
         """从发布事件 dict 提取上下文，允许显式覆盖（用于翻译层调用点）。"""
         return cls(
             task_id=overrides.get("task_id", event.get("task_id")),
+            project_id=overrides.get("project_id", event.get("project_id")),
             step_key=overrides.get("step_key", event.get("step_key")),
             message_id=overrides.get("message_id", event.get("message_id")),
             channel=overrides.get("channel", event.get("channel")),
@@ -105,6 +108,7 @@ class AGUIContext:
                 event.get("timestamp"),
             ),
             created_at=overrides.get("created_at", event.get("created_at")),
+            actor=overrides.get("actor", event.get("actor")),
         )
 
 
@@ -132,6 +136,7 @@ def _extract_content_text(data: Mapping[str, Any]) -> str:
 def _base_fields(event: Mapping[str, Any], ctx: AGUIContext) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     for key, value in (
+        ("project_id", ctx.project_id),
         ("task_id", ctx.task_id),
         ("step_key", ctx.step_key),
         ("channel", ctx.channel),
@@ -147,6 +152,8 @@ def _base_fields(event: Mapping[str, Any], ctx: AGUIContext) -> dict[str, Any]:
         fields["timestamp"] = ctx.timestamp
     if ctx.created_at:
         fields["created_at"] = ctx.created_at
+    if ctx.actor:
+        fields["actor"] = dict(ctx.actor)
     return fields
 
 

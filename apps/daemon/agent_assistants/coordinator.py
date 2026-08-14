@@ -38,8 +38,13 @@ from models import (
 from models.base import db_proxy
 from models.fields import utc_now
 from services.config import CODEX_REASONING_EFFORTS, config_store
-from services.messages import allocate_message_sequences, new_message_id
+from services.messages import (
+    allocate_message_sequences,
+    current_actor_message_fields,
+    new_message_id,
+)
 from services.task_runner import extract_usage_json
+from services.remote_project import current_actor_event_fields
 from services.tool_registry import workstep_cli_instruction
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
@@ -160,6 +165,7 @@ class CoordinatorModule:
                     started_at=now,
                     ended_at=now,
                     created_at=now,
+                    **current_actor_message_fields(),
                 )
                 Message.create(
                     id=assistant_message_id,
@@ -1499,6 +1505,7 @@ class CoordinatorModule:
             "type": event_type,
             "data": data,
             "created_at": utc_now().isoformat(),
+            **current_actor_event_fields(),
         }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):

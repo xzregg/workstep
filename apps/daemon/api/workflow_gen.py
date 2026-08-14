@@ -99,7 +99,7 @@ async def workflow_gen_chat(
 
 
 @router.post("/{session_id}/stop")
-async def stop_workflow_gen(session_id: str):
+async def stop_workflow_gen(session_id: str, project_id: str | None = Query(None)):
     """Stop the currently running workflow-generation turn."""
     from main import workflow_gen_module
 

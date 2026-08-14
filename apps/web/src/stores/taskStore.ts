@@ -38,6 +38,7 @@ export interface TaskEvent {
   output?: unknown
   isError?: boolean
   sequence?: number
+  actor?: { id?: string; name?: string; device_id?: string; device_name?: string }
 }
 
 export interface LiveMessage {
@@ -52,6 +53,10 @@ export interface LiveMessage {
   prompt?: string
   created_at?: string
   role?: 'user' | 'assistant'
+  author_id?: string
+  author_name?: string
+  author_device_id?: string
+  author_device_name?: string
   proposals: Array<Record<string, unknown>>
 }
 
@@ -80,7 +85,7 @@ interface TaskState {
     autoStart?: boolean,
   ) => Promise<Task>
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
-  cancelTask: (taskId: string) => Promise<void>
+  cancelTask: (taskId: string, projectId: string) => Promise<void>
   pauseTask: (taskId: string, projectId: string) => Promise<void>
   updateTaskDescription: (
     taskId: string,
@@ -149,8 +154,8 @@ export const useTaskStore = create<TaskState>((set) => ({
     }))
   },
 
-  cancelTask: async (taskId) => {
-    await taskApi.cancel(taskId)
+  cancelTask: async (taskId, projectId) => {
+    await taskApi.cancel(taskId, projectId)
   },
 
   pauseTask: async (taskId, projectId) => {
@@ -255,6 +260,10 @@ export const useTaskStore = create<TaskState>((set) => ({
             ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
             : undefined,
           created_at: event.created_at,
+          author_id: event.actor?.id,
+          author_name: event.actor?.name,
+          author_device_id: event.actor?.device_id,
+          author_device_name: event.actor?.device_name,
           proposals: [],
         }
         const nextContent = event.type === 'TEXT_MESSAGE_CHUNK'
@@ -289,6 +298,10 @@ export const useTaskStore = create<TaskState>((set) => ({
                   ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
                   : current.prompt,
                 created_at: current.created_at || event.created_at,
+                author_id: current.author_id || event.actor?.id,
+                author_name: current.author_name || event.actor?.name,
+                author_device_id: current.author_device_id || event.actor?.device_id,
+                author_device_name: current.author_device_name || event.actor?.device_name,
                 proposals: nextProposals,
                 events: [...current.events, timedEvent],
               },

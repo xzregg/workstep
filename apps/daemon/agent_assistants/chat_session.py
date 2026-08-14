@@ -143,6 +143,13 @@ class ChatRowPersistence(PersistenceAdapter):
                 "id": item.id,
                 "created_at": _iso(item.created_at),
             }
+            if item.author_name:
+                message.update(
+                    author_id=item.author_id,
+                    author_name=item.author_name,
+                    author_device_id=item.author_device_id,
+                    author_device_name=item.author_device_name,
+                )
             if item.status:
                 message["status"] = item.status
             if item.engine:
@@ -201,6 +208,10 @@ class ChatRowPersistence(PersistenceAdapter):
                 session=row,
                 role=item.get("role", "assistant"),
                 content=item.get("content", ""),
+                author_id=item.get("author_id"),
+                author_name=item.get("author_name"),
+                author_device_id=item.get("author_device_id"),
+                author_device_name=item.get("author_device_name"),
                 status=item.get("status") or (
                     "succeeded" if item.get("role") == "assistant" else None
                 ),

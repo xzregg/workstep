@@ -3,6 +3,8 @@ import { systemSettingsApi } from '../api/client'
 
 interface UserSettingsState {
   userName: string
+  deviceId: string
+  deviceName: string
   loaded: boolean
   loading: boolean
   error: string
@@ -12,6 +14,8 @@ interface UserSettingsState {
 
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   userName: '',
+  deviceId: '',
+  deviceName: '',
   loaded: false,
   loading: false,
   error: '',
@@ -20,7 +24,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     set({ loading: true, error: '' })
     try {
       const settings = await systemSettingsApi.get()
-      set({ userName: settings.user_name, loaded: true })
+      set({ userName: settings.user_name, deviceId: settings.device_id || '', deviceName: settings.device_name || '', loaded: true })
     } catch (reason) {
       set({
         loaded: true,
@@ -36,7 +40,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     set({ loading: true, error: '' })
     try {
       const settings = await systemSettingsApi.updateUserName(userName)
-      set({ userName: settings.user_name, loaded: true })
+      set({ userName: settings.user_name, deviceId: settings.device_id || '', deviceName: settings.device_name || '', loaded: true })
       return true
     } catch (reason) {
       set({ error: reason instanceof Error ? reason.message : String(reason) })

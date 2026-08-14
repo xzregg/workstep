@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { projectApi, workflowApi, type Project, type WorkflowDetail } from '../api/client'
+import { projectApi, remoteProjectApi, workflowApi, type Project, type WorkflowDetail } from '../api/client'
 import { zhCNT } from '../i18n'
 
 const hasWhitespace = (s: string) => /\s/.test(s)
@@ -16,6 +16,7 @@ interface ProjectState {
   setActiveWorkflow: (id: string | null) => void
   setCanvasDirty: (d: boolean) => void
   initProject: (path: string, name?: string) => Promise<Project>
+  addRemoteProject: (shareString: string) => Promise<Project>
   renameProject: (path: string, name: string) => Promise<void>
   deleteProject: (projectId: string) => Promise<Project | null>
   createWorkflow: (projectId: string, name: string, templateId?: string, steps?: any) => Promise<WorkflowDetail>
@@ -135,6 +136,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const proj = await projectApi.init(path, name)
     set((s) => ({ projects: [...s.projects, proj] }))
     return proj
+  },
+
+  addRemoteProject: async (shareString) => {
+    const project = await remoteProjectApi.add(shareString.trim())
+    set((state) => ({
+      projects: [...state.projects.filter((item) => item.id !== project.id), project],
+    }))
+    return project
   },
 
   renameProject: async (path, name) => {
