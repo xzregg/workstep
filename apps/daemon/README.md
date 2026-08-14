@@ -41,6 +41,9 @@ scripts/      引擎和工作流冒烟脚本
 cd apps/daemon
 uv sync --dev
 uv run uvicorn main:app --reload --port 8765
+
+# 可选：指定 config.json 及全局数据所在目录（默认 ~/.workstep/）
+WORKSTEP_CONFIG_DIR=/path/to/workstep-device-b uv run uvicorn main:app --reload --port 8766
 ```
 
 运行测试：

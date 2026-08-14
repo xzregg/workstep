@@ -74,6 +74,9 @@ cd apps/daemon
 uv sync --dev
 uv run uvicorn main:app --reload --port 8765
 
+# 可选：为当前实例指定独立的程序配置目录（默认 ~/.workstep/）
+WORKSTEP_CONFIG_DIR=/path/to/workstep-device-b uv run uvicorn main:app --reload --port 8766
+
 # 终端 2 — 前端 Web（Vite dev server，代理 /api 与 /ws 到 8765）
 cd apps/web
 npm install

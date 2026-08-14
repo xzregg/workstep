@@ -10,7 +10,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CONFIG_DIR = Path.home() / ".workstep"
+CONFIG_DIR = Path(
+    os.environ.get("WORKSTEP_CONFIG_DIR") or Path.home() / ".workstep"
+).expanduser()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULT_EXECUTION_ENGINE = "pydantic_ai"
 
