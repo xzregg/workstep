@@ -94,7 +94,21 @@ class WorkflowRuntime:
     ) -> WorkflowRunHandle:
         """Start a saved workflow and return its stable background handle."""
         with self._project_manager.activate_project_by_id(project_id) as project:
-            return self._start_in_project(project, task_id, user_input)
+            handle = self._start_in_project(project, task_id, user_input)
+            normalized_input = user_input.strip()
+            if normalized_input:
+                user_message = Message.get(
+                    (Message.task == task_id)
+                    & (Message.role == "user")
+                    & (Message.run_id == handle.id)
+                )
+                await self._publish_user_message(
+                    task_id,
+                    user_message,
+                    "message_started",
+                    {"content": normalized_input, "status": "completed"},
+                )
+            return handle
 
     def _start_in_project(
         self,
@@ -198,6 +212,35 @@ class WorkflowRuntime:
         """Wait for a handle returned by start and return its run id."""
         return await handle._completion
 
+    async def _publish_user_message(
+        self,
+        task_id: str,
+        message: Message,
+        event_type: str,
+        data: dict,
+    ) -> None:
+        """Translate a persisted user message into AG-UI live events."""
+        from services.remote_project import current_actor_event_fields
+
+        data = {**data, "role": "user"}
+        payload = {
+            "task_id": task_id,
+            "channel": message.channel,
+            "message_id": message.id,
+            "step_key": message.step_key,
+            "type": event_type,
+            "data": data,
+            "created_at": (
+                message.created_at.isoformat()
+                if message.created_at is not None
+                else utc_now().isoformat()
+            ),
+            **current_actor_event_fields(),
+        }
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)
+
     async def send_stage_message(
         self,
         project_id: str,
@@ -286,7 +329,7 @@ class WorkflowRuntime:
                     raise ValueError("阶段没有可跳过的人工审核")
             now = utc_now()
             message_id = new_message_id()
-            create_task_message(
+            user_message = create_task_message(
                 id=message_id,
                 task=task,
                 channel="execution",
@@ -316,6 +359,12 @@ class WorkflowRuntime:
             task.state_version += 1
             task.save()
         handle = await self.restart_from_stage(project_id, task_id, step_key)
+        await self._publish_user_message(
+            task_id,
+            user_message,
+            "message_started",
+            {"content": normalized, "status": "completed"},
+        )
         if pending_review is not None:
             await self._skip_manual_review(
                 project_id,

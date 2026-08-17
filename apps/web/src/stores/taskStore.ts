@@ -70,6 +70,8 @@ interface TaskState {
   loading: boolean
   /** Incremented on every task status WS event, so the sidebar can refresh flow running state. */
   taskStatusEvents: number
+  /** task_id → incremented whenever a user chat message arrives over WS. */
+  userMessageEvents: Record<string, number>
 
   fetchTasks: (projectId: string, workflowId?: string | null, archived?: boolean) => Promise<void>
   refreshTask: (taskId: string, projectId: string) => Promise<Task>
@@ -109,6 +111,7 @@ export const useTaskStore = create<TaskState>((set) => ({
   availableCommands: {},
   loading: false,
   taskStatusEvents: 0,
+  userMessageEvents: {},
 
   fetchTasks: async (projectId: string, workflowId?: string | null, archived?: boolean) => {
     set({ loading: true })
@@ -214,6 +217,18 @@ export const useTaskStore = create<TaskState>((set) => ({
       ? event
       : { ...event, timestamp: Date.now() }
     const mid = messageId(event)
+    const isUserMessageEvent = (
+      event.type === 'TEXT_MESSAGE_START'
+      || event.type === 'TEXT_MESSAGE_CHUNK'
+    ) && event.role === 'user'
+    if (isUserMessageEvent) {
+      useTaskStore.setState((st) => ({
+        userMessageEvents: {
+          ...st.userMessageEvents,
+          [taskId]: (st.userMessageEvents[taskId] || 0) + 1,
+        },
+      }))
+    }
     const isStatusEvent = isRunEvent(event)
       || isCustom(event, CUSTOM.status)
       || isCustom(event, CUSTOM.stepRetrying)
@@ -228,6 +243,15 @@ export const useTaskStore = create<TaskState>((set) => ({
     }
 
     set((s) => {
+      if (isUserMessageEvent) {
+        // User messages are rendered from persisted history, not as live
+        // bubbles. Keep the event in the task stream and let the open detail
+        // panel refresh its history when the counter changes.
+        const prevEvents = s.events[taskId] || []
+        return {
+          events: { ...s.events, [taskId]: [...prevEvents, timedEvent] },
+        }
+      }
       if (isCustom(event, CUSTOM.availableCommandsUpdate)) {
         const scope = `${event.channel || 'execution'}:${event.step_key || ''}`
         return {

@@ -225,6 +225,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const liveMessages = useTaskStore((s) => (
     taskId ? s.liveMessages[taskId] : undefined
   ) ?? EMPTY_LIVE_MESSAGES)
+  const userMessageEvents = useTaskStore((s) => (
+    taskId ? (s.userMessageEvents[taskId] ?? 0) : 0
+  ))
   const availableCommands = useTaskStore((s) => (
     taskId ? s.availableCommands[taskId] : undefined
   ))
@@ -508,6 +511,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .catch(() => setHistoryMessages([]))
       .finally(() => setHistoryLoading(false))
   }, [taskId, projectId])
+
+  // A remote peer can send a user message while this detail is open. The
+  // store deliberately does not render user messages as live bubbles (they
+  // come from persisted history), so refresh history as soon as one arrives.
+  useEffect(() => {
+    if (!taskId || !projectId || userMessageEvents === 0) return
+    const timer = window.setTimeout(() => {
+      taskApi.history(taskId, projectId, 50, 0)
+        .then((response) => setHistoryMessages(response.messages || []))
+        .catch(() => undefined)
+    }, 50)
+    return () => window.clearTimeout(timer)
+  }, [projectId, taskId, userMessageEvents])
 
   useEffect(() => {
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return

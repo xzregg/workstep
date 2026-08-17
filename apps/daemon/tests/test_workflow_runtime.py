@@ -142,8 +142,9 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
             event for event in published_events
             if event.get("type") == "TEXT_MESSAGE_START"
         ]
-        assert len(started_events) == 2
+        assert len(started_events) == 3
         assert all(event.get("created_at") for event in started_events)
+        assert sum(1 for event in started_events if event.get("role") == "user") == 1
 
         statuses = {
             step.step_key: step.status
@@ -342,6 +343,69 @@ async def test_runtime_start_with_empty_input_creates_no_user_message(tmp_path, 
         await runtime.wait(handle)
 
         assert Message.select().where(Message.task == task).count() == 0
+    finally:
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_runtime_start_publishes_user_message_live_event(tmp_path, monkeypatch):
+    """远端 B 需要在 A 启动任务时立即看到用户输入，而不是等重新打开详情。"""
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="task-live-start",
+        title="Live start",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-live-start",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [{"id": 1, "type": "req", "title": "需求"}],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    class RecordingEventBus(EventBus):
+        def __init__(self):
+            super().__init__()
+            self.events = []
+
+        async def publish(self, event):
+            self.events.append(event)
+            await super().publish(event)
+
+    bus = RecordingEventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+
+    async def skip_execution(**kwargs):
+        return kwargs["workflow_run"].id
+
+    monkeypatch.setattr(runtime, "_execute", skip_execution)
+    try:
+        handle = await runtime.start(project.id, task.id, "Build it")
+        user_start = next(
+            event for event in bus.events
+            if event.get("type") == "TEXT_MESSAGE_START"
+            and event.get("role") == "user"
+        )
+        assert user_start["messageId"]
+        assert user_start["task_id"] == task.id
+        assert user_start["channel"] == "execution"
+        assert user_start["step_key"] == "req"
+        assert user_start["content"] == "Build it"
+
+        await runtime.wait(handle)
     finally:
         db.close()
 

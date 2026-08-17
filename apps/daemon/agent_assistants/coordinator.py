@@ -150,7 +150,7 @@ class CoordinatorModule:
                 user_sequence = allocate_message_sequences(current.id, count=2)
                 assistant_sequence = user_sequence + 1
                 current.next_message_sequence = assistant_sequence + 1
-                Message.create(
+                user_message = Message.create(
                     id=user_message_id,
                     task=current,
                     step_key=context_step_key or COORDINATOR_CHANNEL,
@@ -167,7 +167,7 @@ class CoordinatorModule:
                     created_at=now,
                     **current_actor_message_fields(),
                 )
-                Message.create(
+                assistant_message = Message.create(
                     id=assistant_message_id,
                     task=current,
                     step_key=context_step_key or COORDINATOR_CHANNEL,
@@ -195,6 +195,14 @@ class CoordinatorModule:
                     model=model,
                     created_at=now,
                 )
+
+            await self._publish_message_event(
+                task_id,
+                user_message,
+                "message_started",
+                {"content": normalized, "status": "completed", "role": "user"},
+                0,
+            )
 
             background = asyncio.create_task(
                 self._run_turn(project_id, task_id, turn_id),

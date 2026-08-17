@@ -373,6 +373,48 @@ async def test_chat_message_ids_are_monotonic_uuid7(api_context, monkeypatch):
     assert message_ids == sorted(message_ids)
 
 
+@pytest.mark.anyio
+async def test_coordinator_publishes_user_message_as_live_event(api_context, monkeypatch):
+    """远端 B 依赖 TEXT_MESSAGE_START 事件刷新对话，而不是等重新打开详情。"""
+    import main
+
+    client, tmp_path = api_context
+    from engines.core.registry import ENGINE_REGISTRY
+
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+
+    class RecordingEventBus:
+        def __init__(self, original):
+            self.original = original
+            self.events = []
+
+        async def publish(self, event):
+            self.events.append(event)
+            await self.original.publish(event)
+
+    recorder = RecordingEventBus(main.coordinator_module._event_bus)
+    monkeypatch.setattr(main.coordinator_module, "_event_bus", recorder)
+
+    project_id, task_id = await _create_task(client, tmp_path)
+    response = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers={"Idempotency-Key": "live-user-1"},
+        json={"content": "请继续推进"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    user_start = next(
+        event for event in recorder.events
+        if event.get("type") == "TEXT_MESSAGE_START"
+        and event.get("messageId") == payload["user_message_id"]
+    )
+    assert user_start["role"] == "user"
+    assert user_start["channel"] == "coordinator"
+    assert user_start["task_id"] == task_id
+    assert user_start["content"] == "请继续推进"
+
+
 def test_assemble_context_includes_review_mode(tmp_path):
     """协调上下文必须带每阶段 review_mode（auto/manual/无）与审核记录 mode，避免协调 agent 猜测。"""
     from models import (
