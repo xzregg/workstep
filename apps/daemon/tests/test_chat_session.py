@@ -59,6 +59,15 @@ class MemoryConfigStore:
                 return item
         return None
 
+    def get_user_name(self):
+        return self.values.get("user_name", "本地用户")
+
+    def get_device_identity(self):
+        return {
+            "device_id": self.values.get("device_id", "device-a"),
+            "device_name": self.values.get("device_name", "电脑 A"),
+        }
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)
@@ -488,6 +497,57 @@ async def test_submit_is_idempotent_and_events_are_channel_scoped(chat_module, m
 
     replayed = module.submit_message(project.id, session_id, "第一轮", "idem-http-1")
     assert replayed.turn_id == accepted.turn_id
+
+
+@pytest.mark.anyio
+async def test_submit_publishes_user_message_live_event_with_actor(chat_module, monkeypatch):
+    """会话聊天：用户消息也发实时事件并带发送者身份，远端可即时看到且头像按人显示。"""
+    module, bus, manager, project, _ = chat_module
+    queue = bus.subscribe()
+    collected: list[dict] = []
+    stop = asyncio.Event()
+
+    async def collector():
+        while not stop.is_set():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+            collected.append(event)
+            if event.get("type") == "TEXT_MESSAGE_END":
+                stop.set()
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return "回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    session = module.create_session(project.id, "wf-live")
+    session_id = session["id"]
+    accepted = module.submit_message(project.id, session_id, "第一轮", "idem-live-1")
+
+    task = asyncio.create_task(collector())
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    await asyncio.wait_for(stop.wait(), timeout=2)
+    await task
+
+    user_start = next(
+        event for event in collected
+        if event.get("type") == "TEXT_MESSAGE_START"
+        and event.get("role") == "user"
+        and event.get("messageId") == accepted.turn_id
+    )
+    assert user_start["content"] == "第一轮"
+    assert user_start["session_id"] == session_id
+    assert user_start["actor"]["name"] == "本地用户"
+    assert user_start["actor"]["device_id"] == "device-a"
+
+    # 历史记录头像：持久化消息带作者身份，前端据此显示发送人的头像。
+    detail = module.get_session(project.id, session_id)
+    user_message = detail["messages"][0]
+    assert user_message["role"] == "user"
+    assert user_message["author_name"] == "本地用户"
+    assert user_message["author_device_id"] == "device-a"
 
 
 @pytest.mark.anyio

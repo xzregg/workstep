@@ -34,7 +34,7 @@ from services.chat_permissions import (
 )
 from services.config import CODEX_REASONING_EFFORTS, config_store
 from services.intervention import intervention_manager
-from services.remote_project import get_current_actor
+from services.remote_project import get_effective_actor
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -541,6 +541,10 @@ def default_history_message(item: dict) -> dict:
         "ended_at": item.get("ended_at"),
         "prompt": item.get("prompt"),
         "events": events,
+        "author_id": item.get("author_id"),
+        "author_name": item.get("author_name"),
+        "author_device_id": item.get("author_device_id"),
+        "author_device_name": item.get("author_device_name"),
     }
 
 
@@ -755,7 +759,7 @@ class AssistantRuntime:
 
         turn_id = str(uuid.uuid4())
         assistant_message_id = str(uuid.uuid4())
-        actor = get_current_actor()
+        actor = get_effective_actor()
         session.messages.append(
             {
                 "role": "user",
@@ -1118,6 +1122,23 @@ class AssistantRuntime:
             try:
                 session.cwd = self._cwd(session.project_id)
                 prompt = self._build_prompt(session)
+                user_messages = [
+                    message
+                    for message in session.messages
+                    if message.get("role") == "user"
+                ]
+                if user_messages:
+                    seq = await self._publish(
+                        session,
+                        turn_id,
+                        "message_started",
+                        {
+                            "content": user_messages[-1].get("content", ""),
+                            "status": "completed",
+                            "role": "user",
+                        },
+                        seq,
+                    )
                 seq = await self._publish(
                     session,
                     assistant_message_id,
@@ -1490,7 +1511,7 @@ class AssistantRuntime:
             "data": data,
             "created_at": utc_now().isoformat(),
         }
-        actor = get_current_actor()
+        actor = get_effective_actor()
         if actor is not None:
             payload["actor"] = {
                 "id": actor.actor_id,

@@ -94,10 +94,14 @@ def get_effective_actor() -> ActorSnapshot | None:
 
     from services.config import config_store
 
-    user_name = config_store.get_user_name()
+    get_user_name = getattr(config_store, "get_user_name", None)
+    get_device_identity = getattr(config_store, "get_device_identity", None)
+    if get_user_name is None or get_device_identity is None:
+        return None
+    user_name = get_user_name()
     if not user_name:
         return None
-    device = config_store.get_device_identity()
+    device = get_device_identity()
     return ActorSnapshot(
         actor_id=device["device_id"],
         user_name=user_name,

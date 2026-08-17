@@ -276,27 +276,59 @@ export function createAssistantStore(
             ?? (event.data as Record<string, unknown> | undefined)?.prompt
             ?? '',
           )
+          const isUserEvent = event.role === 'user'
+          const userStatus: AssistantChatMessage['status'] = 'succeeded'
           if (index === -1) {
-            messages.push({
-              id: mid,
-              role: event.role === 'user' ? 'user' : 'assistant',
-              content: '',
-              status: 'running',
-              engine: event.engine,
-              model: event.model,
-              prompt,
-              created_at: event.created_at,
-              author_id: event.actor?.id,
-              author_name: event.actor?.name,
-              author_device_id: event.actor?.device_id,
-              author_device_name: event.actor?.device_name,
-              events: [],
-            })
+            // 自己的乐观气泡使用 `user-` 前缀的临时 id；后端确认后把该气泡
+            // 换成持久化 messageId，避免 A/B 双方看到重复的用户消息。
+            const optimisticIndex = isUserEvent
+              ? messages.findIndex((m) => (
+                  m.role === 'user'
+                  && String(m.id).startsWith('user-')
+                  && (m.content || '').trim() === String(event.content ?? '').trim()
+                ))
+              : -1
+            if (optimisticIndex !== -1) {
+              messages[optimisticIndex] = {
+                ...messages[optimisticIndex],
+                id: mid,
+                role: 'user',
+                content: String(event.content ?? messages[optimisticIndex].content),
+                status: userStatus,
+                engine: event.engine,
+                model: event.model,
+                prompt,
+                created_at: event.created_at || messages[optimisticIndex].created_at,
+                author_id: event.actor?.id,
+                author_name: event.actor?.name,
+                author_device_id: event.actor?.device_id,
+                author_device_name: event.actor?.device_name,
+              }
+            } else {
+              messages.push({
+                id: mid,
+                role: isUserEvent ? 'user' : 'assistant',
+                content: isUserEvent ? String(event.content ?? '') : '',
+                status: userStatus,
+                engine: event.engine,
+                model: event.model,
+                prompt,
+                created_at: event.created_at,
+                author_id: event.actor?.id,
+                author_name: event.actor?.name,
+                author_device_id: event.actor?.device_id,
+                author_device_name: event.actor?.device_name,
+                events: [],
+              })
+            }
           } else {
             messages[index] = {
               ...messages[index],
-              role: event.role === 'user' ? 'user' : messages[index].role,
-              status: 'running',
+              role: isUserEvent ? 'user' : messages[index].role,
+              content: isUserEvent && event.content != null
+                ? String(event.content)
+                : messages[index].content,
+              status: isUserEvent ? userStatus : 'running',
               prompt: prompt || messages[index].prompt,
             }
           }
