@@ -66,6 +66,7 @@ const STATUS_COLORS: Record<string, string> = {
   running: 'var(--status-running)',
   paused: 'var(--status-paused)',
   stopped: 'var(--status-stopped)',
+  done: 'var(--status-done)',
   passed: 'var(--status-done)',
   failed: 'var(--status-failed)',
   reviewing: 'var(--accent)',
@@ -922,7 +923,7 @@ export default function TaskList() {
                       style={{
                         background: 'var(--bg)', borderRadius: 'var(--radius-sm)',
                         padding: '10px 12px', cursor: 'grab',
-                        borderLeft: `3px solid ${lane.color}`,
+                        borderLeft: `3px solid ${statusColor}`,
                         transition: 'box-shadow var(--motion-fast)',
                       }}
                       onMouseEnter={(e) => {

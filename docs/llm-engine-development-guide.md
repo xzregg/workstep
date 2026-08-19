@@ -139,7 +139,7 @@ SDK 可以封装子进程、JSONL、JSON-RPC 或进程内消息流；这些都�
 
 - `is_installed()` 需要 SDK 可导入且二进制存在；`resolve_binary()` 按各 SDK 的查找顺序实现（配置覆盖 → 环境变量 → SDK 捆绑二进制 → PATH）。
 - 会话恢复：Claude SDK `resume` 选项、Qoder SDK `options.resume`、Codex SDK `thread_resume`。
-- DeepSeek Harness SDK 用 `session_id` + 项目 `.workstep/deepseek-harness/sessions/` 原生恢复；同步 JSON-RPC 通知必须桥接为异步事件流。它通过统一 `spawn_coordinator` 入口支持 Agent 助手和聊天协调器，因此按配置状态声明 `supports_coordinator`；当前 SDK 不提供审批回调，独立声明 `supports_tool_approval=False`。
+- DeepSeek Harness SDK 用 `session_id` + 项目 `.workstep/deepseek-harness/sessions/` 原生恢复；同步 JSON-RPC 通知必须桥接为异步事件流。它通过统一 `spawn_coordinator` 入口支持 Agent 助手和聊天协调器，因此按配置状态声明 `supports_coordinator`；当前 SDK 不提供审批回调，独立声明 `supports_tool_approval=False`。WorkStep 默认固定选择 `standard` preset，并把 `apps/daemon/data/deepseek-harness/standard.cordis.yml` 显式传给 SDK，不能依赖运行环境中不透明的 `DSH_CORDIS_CONFIG`。
 - 审批：Claude/Qoder 的 `can_use_tool` 回调、Codex SDK 的 `approval_handler` 都桥接到 `handle_tool_permission` / `request_interaction`（ACP `session/request_permission` 语义）。
 - 表单询问：Qoder `on_elicitation` 桥接到 ACP `elicitation/create`。
 - 参考：`apps/daemon/engines/claude_agent_sdk.py`、`apps/daemon/engines/qoder_sdk.py`、`apps/daemon/engines/codex_sdk.py`、`apps/daemon/engines/deepseek_harness.py`。
@@ -299,10 +299,30 @@ JSON-RPC 通知，并且暂不支持工具审批，但它实现了统一协调�
 | Claude Agent SDK（`engines/claude_agent_sdk.py`） | `permission_mode`、`max_turns`、`fallback_model` | 写入 `ClaudeAgentOptions`（`permission_mode` / `max_turns` / `fallback_model`） |
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
-| DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens` | 复用 DeepSeek 类型供应商的 `base_url` / `api_key`，写入官方 `DeepSeekHarness`；模型沿用通用引擎默认模型 |
+| DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens`、`preset`（当前为 `standard`） | 复用 DeepSeek 类型供应商的 `base_url` / `api_key`，写入官方 `DeepSeekHarness`；模型沿用通用引擎默认模型；`preset` 解析为我方随版本校验的 Cordis composition |
 | Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；harness 扩展不暴露配置、固定 `auto`：已安装 `pydantic-ai-harness` 时挂载压缩与持久化能力，否则回退 `message_history`（见 4.7） |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
+
+#### DeepSeek Harness preset 与插件组合
+
+Harness 的 Python SDK 接收的是 `cordis` composition 路径，不直接接收 CLI 的 preset 名称。CLI 随产品发布的 `standard`、`minimal`、`code`、`cordis` 是 Agent-plane preset，还依赖 CLI/Web Host composition，不能把对应的 `agent.cordis.yml` 单独传给 SDK。
+
+WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官方 `jsonrpc-agent` standalone composition 装配并固定以下能力：
+
+| 能力 | Cordis 插件 |
+|---|---|
+| JSON-RPC SDK 服务 | `@deepseek-ai/dsh-sdk-jsonrpc-server` |
+| DeepSeek 模型路由 | `@deepseek-ai/dsh-llm-deepseek` |
+| 编码 Agent、工作区指令、Skills、Bash、后台任务 | `@deepseek-ai/dsh-agent-spine-demo` |
+| 本地命令执行 | `@deepseek-ai/dsh-subprocess-local` + `@deepseek-ai/dsh-bash-local` |
+| 文件读写 | `@deepseek-ai/dsh-fs-local` + `@deepseek-ai/dsh-fs-observation-policy` + `@deepseek-ai/dsh-tool-fs` |
+| 子代理 | `@deepseek-ai/dsh-subagent` + `@deepseek-ai/dsh-subagent-spawn-in-process` + `@deepseek-ai/dsh-tool-subagent` |
+| Todo / 计划投影 | `@deepseek-ai/dsh-tool-todo` |
+| 会话恢复 | `@deepseek-ai/dsh-session-persistence-jsonl` + `@deepseek-ai/dsh-session-checkpoint-policy` |
+| Token 计量与压缩 | `@deepseek-ai/dsh-token-meter` + `@deepseek-ai/dsh-compaction-basic` |
+
+新增 preset 时必须提供一份能由 SDK runtime 独立启动的完整 composition，加入 `PRESET_COMPOSITIONS` 白名单并覆盖启动测试；不能仅把 CLI preset 名称透传给 SDK。插件产生的事件仍需按“声明 = 实际”映射为我方 ACP 事件，未知事件走 `acp_raw`，不得让前端直接消费 Cordis/SDK 通知。
 
 ### 4.7 Pydantic AI harness 扩展（上下文压缩与会话持久化）
 

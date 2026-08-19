@@ -33,12 +33,38 @@ export interface SystemSettings {
   device_name?: string
 }
 
+export interface ModelPrice {
+  provider_id: string | null
+  model: string
+  input_price: number
+  output_price: number
+  cache_price: number
+}
+
+export interface ModelPricingSettings {
+  currency: 'USD' | 'CNY'
+  usd_to_cny_rate: number
+  prices: ModelPrice[]
+  providers: {
+    id: string
+    name: string
+    models: { id: string; label: string; description: string }[]
+  }[]
+  standalone_models: string[]
+}
+
 export const systemSettingsApi = {
   get: () => request<SystemSettings>('/system-settings'),
   updateUserName: (userName: string) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
     body: JSON.stringify({ user_name: userName }),
   }),
+  modelPricing: () => request<ModelPricingSettings>('/system-settings/model-pricing'),
+  saveModelPricing: (settings: Omit<ModelPricingSettings, 'providers' | 'standalone_models'>) =>
+    request<ModelPricingSettings>('/system-settings/model-pricing', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
 }
 
 // --- Project API ---
@@ -164,6 +190,7 @@ export interface StatisticsSummary {
   cache_write_tokens: number
   cache_rate: number | null
   total_tokens: number
+  cost: number
   token_coverage: number | null
 }
 
@@ -227,9 +254,11 @@ export interface StatisticsEngineRow {
   cache_read_tokens: number
   cache_write_tokens: number
   total_tokens: number
+  cost: number
 }
 
 export interface StatisticsReport {
+  currency: 'USD' | 'CNY'
   scope: StatisticsScope
   period: {
     range: string
@@ -266,6 +295,7 @@ export interface StatisticsReport {
       failed_runs: number | null
       success_rate: number | null
       total_tokens: number | null
+      cost: number | null
       cache_rate: number | null
       average_duration_ms: number | null
     }

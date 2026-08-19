@@ -1091,6 +1091,7 @@ class PydanticAIEngine(AcpEngineBase):
                     "cache_read_tokens": getattr(total_usage, "cache_read_tokens", 0),
                 })
                 usage_data["requests"] = getattr(total_usage, "requests", 0)
+                usage_data["provider_id"] = config["provider_id"]
                 cost = getattr(total_usage, "cost", None)
                 if cost is not None:
                     try:

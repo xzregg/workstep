@@ -79,6 +79,16 @@ function signedDuration(value: number | null, t: ReturnType<typeof useI18n>['t']
 }
 
 
+function formatCost(value: number, currency: 'USD' | 'CNY', locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  }).format(value)
+}
+
+
 function TrendChart({
   title,
   data,
@@ -345,6 +355,9 @@ export default function StatisticsPage() {
       changeLabel: t('statistics.previousPeriod'),
     },
     {
+      label: t('statistics.totalCost'), value: formatCost(report.summary.cost, report.currency, locale),
+    },
+    {
       label: t('statistics.averageDuration'),
       value: report.summary.average_duration_ms === null
         ? '—'
@@ -476,7 +489,7 @@ export default function StatisticsPage() {
             />
           )}
           {report.scope.level === 'workflow' && <StageTable rows={report.stages} locale={locale} />}
-          <EngineTable rows={report.engines} locale={locale} />
+          <EngineTable rows={report.engines} locale={locale} currency={report.currency} />
 
           <div className="statistics-coverage" title={t('statistics.tokenCoverageHelp')}>
             {t('statistics.tokenCoverage', { rate: formatRate(report.data_quality.token_coverage, locale) })}
@@ -581,7 +594,7 @@ function StageTable({ rows, locale }: { rows: StatisticsStageRow[]; locale: stri
 }
 
 
-function EngineTable({ rows, locale }: { rows: StatisticsEngineRow[]; locale: string }) {
+function EngineTable({ rows, locale, currency }: { rows: StatisticsEngineRow[]; locale: string; currency: 'USD' | 'CNY' }) {
   const { t } = useI18n()
   if (rows.length === 0) return null
   return (
@@ -590,7 +603,7 @@ function EngineTable({ rows, locale }: { rows: StatisticsEngineRow[]; locale: st
         <th>{t('statistics.name')}</th><th>{t('statistics.model')}</th>
         <th>{t('statistics.callCount')}</th><th>{t('statistics.attemptCount')}</th>
         <th>{t('statistics.failureRate')}</th><th>{t('statistics.totalTokens')}</th>
-        <th>{t('statistics.averageDuration')}</th>
+        <th>{t('statistics.totalCost')}</th><th>{t('statistics.averageDuration')}</th>
       </tr></thead><tbody>{rows.map((row) => (
         <tr key={`${row.engine}:${row.model}`}>
           <td className="statistics-name-cell"><Icon name="terminal" size={14} />{row.engine}</td>
@@ -599,6 +612,7 @@ function EngineTable({ rows, locale }: { rows: StatisticsEngineRow[]; locale: st
           <td>{formatCompactMetric(row.attempt_count, locale)}</td>
           <td data-danger={(row.failure_rate || 0) > 0}>{formatRate(row.failure_rate, locale)}</td>
           <td>{formatCompactMetric(row.total_tokens, locale)}</td>
+          <td>{formatCost(row.cost, currency, locale)}</td>
           <td>{row.average_duration_ms === null ? '—' : formatDuration(row.average_duration_ms, t)}</td>
         </tr>
       ))}</tbody></table>

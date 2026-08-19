@@ -41,6 +41,15 @@ class DeepSeekHarnessEngine(AcpEngineBase):
 
     ENGINE_ID = "deepseek_harness"
     SDK_PACKAGE = "deepseek-harness-sdk==0.1.0rc6"
+    DEFAULT_PRESET = "standard"
+    PRESET_COMPOSITIONS = {
+        "standard": (
+            Path(__file__).resolve().parent.parent
+            / "data"
+            / "deepseek-harness"
+            / "standard.cordis.yml"
+        ),
+    }
 
     def __init__(self):
         super().__init__()
@@ -120,6 +129,17 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 type="number",
                 placeholder="留空使用 Harness 默认值",
             ),
+            EngineConfigField(
+                key="preset",
+                label="Agent 预设",
+                type="select",
+                options=(EngineConfigOption("standard", "标准（推荐）"),),
+                required=True,
+                help=(
+                    "SDK 标准组合：命令、文件、技能、后台任务、子代理、Todo、"
+                    "会话恢复与上下文压缩。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -127,6 +147,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         return {
             "provider_id": config["provider_id"],
             "max_tokens": config["max_tokens"],
+            "preset": config.get("preset") or self.DEFAULT_PRESET,
         }
 
     async def save_config_values(
@@ -146,6 +167,11 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         ):
             raise ValueError("所选 DeepSeek 供应商不存在或已停用")
         current = config_store.get_deepseek_harness_config()
+        preset = str(
+            values.get("preset", current.get("preset") or self.DEFAULT_PRESET) or ""
+        ).strip()
+        if preset not in self.PRESET_COMPOSITIONS:
+            raise ValueError("DeepSeek Harness preset 不受支持")
         max_tokens = str(values.get("max_tokens", current["max_tokens"]) or "").strip()
         if max_tokens:
             try:
@@ -157,6 +183,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             provider_id=provider_id,
             model=str(current["model"] or "deepseek-v4-flash"),
             max_tokens=max_tokens,
+            preset=preset,
         )
 
     async def list_models(
@@ -181,8 +208,15 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         provider: dict,
         model: str,
         max_tokens: int | None,
+        preset: str,
     ):
         from deepseek_harness import DeepSeekHarness
+
+        composition = self.PRESET_COMPOSITIONS.get(preset)
+        if composition is None:
+            raise ValueError(f"Unsupported DeepSeek Harness preset: {preset}")
+        if not composition.is_file():
+            raise FileNotFoundError(f"DeepSeek Harness composition not found: {composition}")
 
         project_root = Path(cwd).expanduser().resolve()
         session_root = project_root / ".workstep" / "deepseek-harness" / "sessions"
@@ -196,13 +230,11 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             "session_root": str(session_root),
             "base_url": str(provider.get("base_url") or "").rstrip("/"),
             "api_key": str(provider.get("api_key") or ""),
+            "cordis": str(composition),
         }
         override = self.get_binary_override()
         if override:
-            from deepseek_harness_runtime import bundled_default_config_path
-
             kwargs["runtime_bin"] = override
-            kwargs["cordis"] = str(bundled_default_config_path())
         return DeepSeekHarness(**kwargs)
 
     @staticmethod
@@ -481,6 +513,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 provider=provider,
                 model=selected_model,
                 max_tokens=max_tokens,
+                preset=str(config.get("preset") or self.DEFAULT_PRESET),
             )
             self._harness = harness
             self._running = True

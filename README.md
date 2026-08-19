@@ -33,6 +33,7 @@ WorkStep 是面向独立开发者 / 小团队的本地工作流编排工具。�
 ```
 apps/daemon/   # Python + FastAPI 后台服务（API / 引擎层 / DAG 调度 / 审核门）
 apps/web/      # React + TypeScript + Vite 前端（任务列表 / 详情 / 画布编辑器）
+apps/landing/  # 产品介绍页（独立 Vite 应用：中英双语 + 操作演示播放器）
 ui/            # 静态 HTML 原型（浏览器直接打开）
 docs/          # 产品文档（PRD、引擎协议设计、前端设计规范、LLM 引擎开发指南）
 plans/         # 技术架构文档（按功能拆分）
@@ -103,6 +104,17 @@ open ui/index.html        # 主面板
 open ui/canvas-editor.html
 open ui/card-detail.html
 ```
+
+### 产品介绍页
+
+```bash
+cd apps/landing
+yarn install
+yarn dev        # http://localhost:5174
+```
+
+介绍页是独立应用，与产品 UI 解耦：演示场景用网页时间轴动画重演真实界面（非录屏），
+下载平台链接集中在 `apps/landing/src/config/downloads.ts`，正式安装包地址就绪后填入即可。
 
 ---
 
@@ -228,7 +240,7 @@ flowchart LR
 | claude_agent_sdk | 官方 Agent SDK 内嵌驱动 Claude Code | ✅ | ✅ |
 | codex_sdk | 官方 Codex SDK 内嵌驱动 Codex | ✅ | ✅ |
 | qoder_sdk | 官方 Qoder Agent SDK 内嵌驱动 qodercli | ✅ | ✅ |
-| deepseek_harness | DeepSeek 官方 Harness SDK，本地完整编码 Agent | ✅ | ❌（SDK 暂无审批通道） |
+| deepseek_harness | DeepSeek 官方 Harness SDK，默认 `standard` 多插件编码 Agent | ✅ | ❌（SDK 暂无审批通道） |
 
 引擎的 stdout（无论 JSONL、JSON-RPC 还是 SSE）都被解析器归一化为统一的**内部事件**（`apps/daemon/engines/core/events.py`）：
 

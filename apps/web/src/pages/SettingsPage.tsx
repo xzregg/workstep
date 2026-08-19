@@ -24,6 +24,7 @@ import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
 import RemoteProjectSettings from './RemoteProjectSettings'
+import ModelPricingSettings from './ModelPricingSettings'
 import {
   ENGINE_COLORS,
   engineLabel,
@@ -724,7 +725,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [inspecting, setInspecting] = useState(false)
   const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
   const [inspectError, setInspectError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'assistants' | 'templates' | 'remote' | 'system'>('providers')
+  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'remote' | 'system'>('providers')
 
   useEffect(() => {
     setUserNameDraft(userName)
@@ -1070,6 +1071,19 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         >
           <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
           {t('settings.enginesNav')}
+        </button>
+        <button
+          aria-current={activeSection === 'pricing' ? 'page' : undefined}
+          onClick={() => setActiveSection('pricing')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'pricing' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'pricing' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+          }}
+        >
+          <span aria-hidden="true" style={{ width: 16, textAlign: 'center' }}>$</span>
+          {t('settings.pricingNav')}
         </button>
         <button
           aria-current={activeSection === 'assistants' ? 'page' : undefined}
@@ -1562,6 +1576,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
               void loadEngines(false)
             }}
           />
+        ) : activeSection === 'pricing' ? (
+          <ModelPricingSettings />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
         ) : activeSection === 'remote' ? (

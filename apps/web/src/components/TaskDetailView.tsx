@@ -991,12 +991,12 @@ export default function TaskDetailView({
                   fontWeight: 600,
                   padding: '3px 8px',
                   borderRadius: 999,
-                  color: 'var(--accent)',
+                  color: 'var(--fg-2)',
                   background:
                     'color-mix(in oklab, var(--accent), transparent 90%)',
                 }}
               >
-                {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
+            
               </span>
             )}
           </div>
@@ -1027,8 +1027,7 @@ export default function TaskDetailView({
                 restartIndex >= 0 && i < restartIndex
                   ? Math.max(1, currentRound - 1)
                   : currentRound
-              const stageRoundColor =
-                stageRound >= currentRound ? stageColor : 'var(--meta)'
+              const stageRoundColor = 'var(--accent)'
               const finishedDuration = progress?.ended_at
                 ? formatDurationBetween(
                     progress?.started_at,
@@ -1228,7 +1227,6 @@ export default function TaskDetailView({
                           fontSize: 11,
                           padding: '2px 6px',
                           borderRadius: 999,
-                          color: stageRoundColor,
                           background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
                           fontWeight: 600,
                         }}
@@ -1350,10 +1348,14 @@ export default function TaskDetailView({
             </div>
             <div
               style={{
-                background: 'var(--surface)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '14px 16px',
-                borderLeft: `3px solid ${currentStageColor}`,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border-soft)',
+                fontSize: 13,
+                lineHeight: 1.6,
+                overflowWrap: 'anywhere',
+                maxHeight: '33vh',
+                overflowY: 'auto',
               }}
             >
               {currentStage.prompt ? (
@@ -1459,7 +1461,7 @@ export default function TaskDetailView({
                               width: 6,
                               height: 6,
                               borderRadius: '50%',
-                              background: currentStageColor,
+                              background: 'var(--accent)',
                               flexShrink: 0,
                             }}
                           />
@@ -1475,7 +1477,7 @@ export default function TaskDetailView({
                           <span
                             style={{
                               fontSize: 11,
-                              color: currentStageColor,
+                              color: 'var(--accent)',
                             }}
                           >
                             {t('taskDetail.view')}
@@ -1563,9 +1565,7 @@ export default function TaskDetailView({
                                       width: 6,
                                       height: 6,
                                       borderRadius: '50%',
-                                      background: statusDone
-                                        ? 'var(--success)'
-                                        : currentStageColor,
+                                      background: 'var(--success)',
                                       flexShrink: 0,
                                     }}
                                   />
@@ -1581,7 +1581,7 @@ export default function TaskDetailView({
                                 <span
                                   style={{
                                     fontSize: 11,
-                                    color: currentStageColor,
+                                    color: 'var(--accent)',
                                   }}
                                 >
                                   {t('common.open')}

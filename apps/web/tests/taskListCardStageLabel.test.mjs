@@ -17,6 +17,7 @@ test('limits task card descriptions to a short preview', () => {
   assert.match(source, /overflow: 'hidden'/)
 })
 
-test('uses the stage lane color for the card left border', () => {
-  assert.match(source, /borderLeft: `3px solid \$\{lane\.color\}`/)
+test('uses the task status color for the card left border', () => {
+  assert.match(source, /borderLeft: `3px solid \$\{statusColor\}`/)
+  assert.doesNotMatch(source, /borderLeft: `3px solid \$\{lane\.color\}`/)
 })

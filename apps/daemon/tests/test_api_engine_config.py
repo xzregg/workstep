@@ -33,6 +33,7 @@ class MemoryEngineConfigStore:
             "provider_id": "",
             "model": "deepseek-v4-flash",
             "max_tokens": "",
+            "preset": "standard",
         }
         self.default_models = {}
         self.execution_default_engine = ""
@@ -109,11 +110,19 @@ class MemoryEngineConfigStore:
     def get_deepseek_harness_config(self):
         return dict(self.deepseek_harness_config)
 
-    def set_deepseek_harness_config(self, *, provider_id, model, max_tokens=""):
+    def set_deepseek_harness_config(
+        self,
+        *,
+        provider_id,
+        model,
+        max_tokens="",
+        preset="standard",
+    ):
         self.deepseek_harness_config = {
             "provider_id": provider_id,
             "model": model,
             "max_tokens": max_tokens,
+            "preset": preset,
         }
         self.default_models["deepseek_harness"] = model
 

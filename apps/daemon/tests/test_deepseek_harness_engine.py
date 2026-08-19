@@ -1,6 +1,7 @@
 """DeepSeek Harness SDK 引擎契约。"""
 
 import asyncio
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -56,7 +57,12 @@ def test_deepseek_harness_config_only_accepts_enabled_deepseek_provider(
     )
     monkeypatch.setattr(
         "engines.deepseek_harness.config_store.get_deepseek_harness_config",
-        lambda: {"provider_id": "", "model": "deepseek-v4-flash", "max_tokens": ""},
+        lambda: {
+            "provider_id": "",
+            "model": "deepseek-v4-flash",
+            "max_tokens": "",
+            "preset": "standard",
+        },
     )
     monkeypatch.setattr(
         "engines.deepseek_harness.config_store.set_deepseek_harness_config",
@@ -70,6 +76,7 @@ def test_deepseek_harness_config_only_accepts_enabled_deepseek_provider(
         "provider_id": "deepseek-official",
         "model": "deepseek-v4-flash",
         "max_tokens": "",
+        "preset": "standard",
     }
 
     deepseek_provider["type"] = "openai"
@@ -93,6 +100,52 @@ def test_deepseek_harness_is_configured_requires_provider_credentials(
     assert DeepSeekHarnessEngine.is_configured() is True
     deepseek_provider["api_key"] = ""
     assert DeepSeekHarnessEngine.is_configured() is False
+
+
+def test_deepseek_harness_uses_workstep_standard_composition(
+    monkeypatch,
+    tmp_path,
+    deepseek_provider,
+):
+    captured = {}
+
+    class FakeHarness:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "deepseek_harness",
+        SimpleNamespace(DeepSeekHarness=FakeHarness),
+    )
+
+    engine = DeepSeekHarnessEngine()
+    engine._build_harness(
+        cwd=str(tmp_path),
+        provider=deepseek_provider,
+        model="deepseek-v4-flash",
+        max_tokens=None,
+        preset="standard",
+    )
+
+    composition = captured["cordis"]
+    assert composition.endswith("data/deepseek-harness/standard.cordis.yml")
+    assert captured["provider"] == "deepseek-official"
+    assert captured["cwd"] == str(tmp_path)
+
+
+def test_deepseek_harness_rejects_unknown_preset(
+    tmp_path,
+    deepseek_provider,
+):
+    with pytest.raises(ValueError, match="preset"):
+        DeepSeekHarnessEngine()._build_harness(
+            cwd=str(tmp_path),
+            provider=deepseek_provider,
+            model="deepseek-v4-flash",
+            max_tokens=None,
+            preset="code",
+        )
 
 
 def test_deepseek_harness_maps_stream_tool_usage_plan_and_compaction():
@@ -276,6 +329,7 @@ def test_deepseek_harness_spawn_streams_notifications_and_reuses_session(
         "provider": deepseek_provider,
         "model": "deepseek-v4-flash",
         "max_tokens": 4096,
+        "preset": "standard",
         "prompt": "修复测试",
         "session_id": "session-existing",
         "closed": True,

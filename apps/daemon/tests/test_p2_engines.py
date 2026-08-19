@@ -3458,6 +3458,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     assert isinstance(session_id, str) and session_id
     usage_event = next(event for event in events if event.type == "usage_update")
     assert usage_event.data["session_id"] == session_id
+    assert usage_event.data["provider_id"] == "prov_1"
     assert events[-1].type == "status"
     assert events[-1].data["status"] == "done"
 

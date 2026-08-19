@@ -23,6 +23,13 @@ class MemoryConfigStore:
     def set(self, key, value):
         self.values[key] = value
 
+    def get_model_pricing(self):
+        return self.values.get("model_pricing", {
+            "currency": "USD",
+            "usd_to_cny_rate": 7.2,
+            "prices": [],
+        })
+
 
 @pytest.fixture
 def statistics_fixture(tmp_path, monkeypatch):
@@ -271,6 +278,70 @@ def test_statistics_aggregates_projects_runs_usage_and_quality(statistics_fixtur
     assert engine["model"] == "gpt-5"
     assert engine["call_count"] == 3
     assert engine["total_tokens"] == 215
+
+
+def test_statistics_calculates_model_cost_in_configured_currency(
+    statistics_fixture,
+    monkeypatch,
+):
+    import services.statistics as statistics_service
+
+    manager, _, _, base = statistics_fixture
+    store = MemoryConfigStore()
+    store.set("model_pricing", {
+        "currency": "CNY",
+        "usd_to_cny_rate": 7.18,
+        "prices": [{
+            "provider_id": None,
+            "model": "gpt-5",
+            "input_price": 10,
+            "output_price": 30,
+            "cache_price": 2,
+        }],
+    })
+    monkeypatch.setattr(statistics_service, "config_store", store)
+
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        range_key="custom",
+        start=base,
+        end=base + timedelta(days=1),
+    ))
+
+    assert report["currency"] == "CNY"
+    assert report["summary"]["cost"] == 0.00263
+    assert report["engines"][0]["cost"] == 0.00263
+
+
+def test_statistics_prefers_provider_cost_and_converts_usd_to_cny(
+    statistics_fixture,
+    monkeypatch,
+):
+    import services.statistics as statistics_service
+
+    manager, project, _, base = statistics_fixture
+    store = MemoryConfigStore()
+    store.set("model_pricing", {
+        "currency": "CNY",
+        "usd_to_cny_rate": 7.2,
+        "prices": [],
+    })
+    monkeypatch.setattr(statistics_service, "config_store", store)
+    with manager.activate_project_by_id(project.id):
+        message = Message.get_by_id("message-execution")
+        message.usage_json = json.dumps({
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "cost": {"amount": 1, "currency": "USD"},
+        })
+        message.save()
+
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        range_key="custom",
+        start=base,
+        end=base + timedelta(days=1),
+    ))
+
+    assert report["summary"]["cost"] == 7.2
 
 
 def test_statistics_project_and_workflow_drilldown(statistics_fixture):

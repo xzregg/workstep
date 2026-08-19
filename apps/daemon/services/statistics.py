@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from models import Message, ReviewRun, StepRun, Task, WorkflowRun
 from models.fields import utc_now
+from services.config import config_store
 
 
 RANGE_DAYS = {"7d": 7, "30d": 30, "90d": 90}
@@ -55,6 +56,7 @@ class MetricBucket:
         self.cache_read_tokens = 0
         self.cache_write_tokens = 0
         self.total_tokens = 0
+        self.cost = 0.0
         self.usage_calls = 0
         self.eligible_calls = 0
 
@@ -66,12 +68,13 @@ class MetricBucket:
         if run.status in TERMINAL_RUN_STATUSES and duration is not None:
             self.durations.append(duration)
 
-    def add_usage(self, usage: dict[str, int]) -> None:
+    def add_usage(self, usage: dict[str, Any], cost: float = 0) -> None:
         self.input_tokens += usage["input_tokens"]
         self.output_tokens += usage["output_tokens"]
         self.cache_read_tokens += usage["cache_read_tokens"]
         self.cache_write_tokens += usage["cache_write_tokens"]
         self.total_tokens += usage["total_tokens"]
+        self.cost += cost
         self.usage_calls += 1
 
     def report(self) -> dict[str, Any]:
@@ -98,6 +101,7 @@ class MetricBucket:
             "cache_rate": min(1, _ratio(self.cache_read_tokens, self.input_tokens))
             if self.input_tokens else None,
             "total_tokens": self.total_tokens,
+            "cost": round(self.cost, 6),
             "token_coverage": _ratio(self.usage_calls, self.eligible_calls),
         }
 
@@ -116,6 +120,7 @@ class StatisticsModule:
     ) -> dict[str, Any]:
         projects = self._resolve_projects(query)
         period = self._resolve_period(query)
+        pricing = config_store.get_model_pricing()
 
         global_bucket = MetricBucket()
         project_buckets: dict[str, MetricBucket] = {
@@ -260,16 +265,18 @@ class StatisticsModule:
                     usage = _parse_usage(message.usage_json)
                     if usage is None:
                         continue
-                    global_bucket.add_usage(usage)
-                    project_bucket.add_usage(usage)
-                    workflow_bucket.add_usage(usage)
-                    self._trend_bucket(trend, message.started_at or message.created_at, period).add_usage(usage)
+                    cost = _usage_cost(usage, message.model or "", pricing)
+                    global_bucket.add_usage(usage, cost)
+                    project_bucket.add_usage(usage, cost)
+                    workflow_bucket.add_usage(usage, cost)
+                    self._trend_bucket(trend, message.started_at or message.created_at, period).add_usage(usage, cost)
                     earliest = _earlier(earliest, message.started_at or message.created_at)
 
                     engine_key = (message.engine or "unknown", message.model or "")
                     engine = engine_buckets.setdefault(engine_key, _new_engine_bucket())
                     engine["call_count"] += 1
                     _add_usage_to_dict(engine, usage)
+                    engine["cost"] += cost
 
                     if query.workflow_id is not None and message.channel in {"execution", "review"}:
                         stage = stage_buckets.setdefault(
@@ -310,6 +317,7 @@ class StatisticsModule:
         }
 
         report = {
+            "currency": pricing["currency"],
             "scope": scope,
             "period": self._period_report(period),
             "summary": summary,
@@ -350,7 +358,7 @@ class StatisticsModule:
         change_keys = (
             "task_count", "run_count", "succeeded_runs", "failed_runs",
             "success_rate", "total_tokens", "average_duration_ms",
-            "cache_rate",
+            "cache_rate", "cost",
         )
         changes: dict[str, int | float | None] = {}
         for key in change_keys:
@@ -491,6 +499,7 @@ class StatisticsModule:
             "succeeded_runs": report["succeeded_runs"],
             "failed_runs": report["failed_runs"],
             "total_tokens": report["total_tokens"],
+            "cost": report["cost"],
             "average_duration_ms": report["average_duration_ms"],
         }
 
@@ -580,6 +589,7 @@ class StatisticsModule:
                 "cache_read_tokens": item["cache_read_tokens"],
                 "cache_write_tokens": item["cache_write_tokens"],
                 "total_tokens": item["total_tokens"],
+                "cost": round(item["cost"], 6),
             })
         return sorted(reports, key=lambda row: (-row["total_tokens"], row["engine"], row["model"]))
 
@@ -613,6 +623,7 @@ def _new_engine_bucket() -> dict[str, Any]:
         "cache_read_tokens": 0,
         "cache_write_tokens": 0,
         "total_tokens": 0,
+        "cost": 0.0,
     }
 
 
@@ -624,7 +635,7 @@ def _add_usage_to_dict(target: dict[str, Any], usage: dict[str, int]) -> None:
         target[key] += usage[key]
 
 
-def _parse_usage(raw: str | None) -> dict[str, int] | None:
+def _parse_usage(raw: str | None) -> dict[str, Any] | None:
     if not raw:
         return None
     try:
@@ -646,13 +657,69 @@ def _parse_usage(raw: str | None) -> dict[str, int] | None:
     total_tokens = number("total_tokens", "tokens") or input_tokens + output_tokens
     if not any((input_tokens, output_tokens, total_tokens)):
         return None
-    return {
+    result: dict[str, Any] = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": number("cache_read_input_tokens", "cached_tokens"),
         "cache_write_tokens": number("cache_creation_input_tokens"),
         "total_tokens": total_tokens,
     }
+    provider_id = value.get("provider_id")
+    if isinstance(provider_id, str) and provider_id.strip():
+        result["provider_id"] = provider_id.strip()
+    cost = value.get("cost")
+    if isinstance(cost, dict):
+        amount = cost.get("amount")
+        currency = cost.get("currency")
+        if isinstance(amount, (int, float)) and not isinstance(amount, bool):
+            result["provider_cost"] = {
+                "amount": max(0, float(amount)),
+                "currency": str(currency or "USD").upper(),
+            }
+    return result
+
+
+def _usage_cost(usage: dict[str, Any], model: str, pricing: dict[str, Any]) -> float:
+    target_currency = pricing["currency"]
+    rate = pricing["usd_to_cny_rate"]
+    provider_cost = usage.get("provider_cost")
+    if isinstance(provider_cost, dict):
+        amount = provider_cost["amount"]
+        source_currency = provider_cost["currency"]
+        if source_currency == target_currency:
+            return amount
+        if source_currency == "USD" and target_currency == "CNY":
+            return amount * rate
+        if source_currency == "CNY" and target_currency == "USD":
+            return amount / rate
+
+    provider_id = usage.get("provider_id")
+    prices = pricing.get("prices", [])
+    price = next(
+        (
+            item for item in prices
+            if item.get("model") == model and item.get("provider_id") == provider_id
+        ),
+        None,
+    )
+    if price is None:
+        price = next(
+            (
+                item for item in prices
+                if item.get("model") == model and not item.get("provider_id")
+            ),
+            None,
+        )
+    if price is None:
+        return 0
+
+    cache_tokens = usage["cache_read_tokens"] + usage["cache_write_tokens"]
+    uncached_input_tokens = max(0, usage["input_tokens"] - usage["cache_read_tokens"])
+    return (
+        uncached_input_tokens * float(price["input_price"])
+        + usage["output_tokens"] * float(price["output_price"])
+        + cache_tokens * float(price["cache_price"])
+    ) / 1_000_000
 
 
 def _utc(value: datetime) -> datetime:

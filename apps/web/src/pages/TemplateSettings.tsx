@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '../components/Button'
-import FlowCanvas from '../components/FlowCanvas'
+import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
+import AiFlowEditorPanel from '../components/AiFlowEditorPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Field from '../components/Field'
 import Input from '../components/Input'
@@ -12,6 +13,7 @@ import {
   type TemplateInfo,
 } from '../api/client'
 import { useI18n } from '../i18n'
+import { useProjectStore } from '../stores/projectStore'
 
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 
@@ -25,6 +27,7 @@ const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
 
 export default function TemplateSettings() {
   const { t } = useI18n()
+  const activeProject = useProjectStore((state) => state.activeProject)
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -39,6 +42,11 @@ export default function TemplateSettings() {
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState<TemplateInfo | null>(null)
   const [deletingBusy, setDeletingBusy] = useState(false)
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [aiGenBusy, setAiGenBusy] = useState(false)
+  const [aiConfirmClose, setAiConfirmClose] = useState(false)
+  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
+  const canvasRef = useRef<FlowCanvasHandle>(null)
 
   // Dirty when either the canvas (FlowCanvas) or metadata (name/desc/id) changed
   const editorDirty = canvasDirty || metaDirty
@@ -69,6 +77,9 @@ export default function TemplateSettings() {
       })
       setCanvasDirty(false)
       setMetaDirty(false)
+      setAiPanelOpen(false)
+      setAiConfirmClose(false)
+      setPendingAiSteps(null)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('templateSettings.loadTemplateFailed'))
     }
@@ -78,6 +89,9 @@ export default function TemplateSettings() {
     setEditing(null)
     setCanvasDirty(false)
     setMetaDirty(false)
+    setAiPanelOpen(false)
+    setAiConfirmClose(false)
+    setPendingAiSteps(null)
   }
 
   const metaError = (() => {
@@ -329,18 +343,78 @@ export default function TemplateSettings() {
               {metaError}
             </div>
           )}
-          <FlowCanvas
-            initialSteps={editing.steps || { nodes: [], connections: [] }}
-            onSave={saveTemplate}
-            onDirtyChange={setCanvasDirty}
-            showTemplatePicker={false}
-            title={t('templateSettings.editorTitle')}
-            saveLabel={t('flow.saveTemplate')}
-            hint={null}
-          />
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              <FlowCanvas
+                ref={canvasRef}
+                initialSteps={editing.steps || { nodes: [], connections: [] }}
+                onSave={saveTemplate}
+                onDirtyChange={setCanvasDirty}
+                showTemplatePicker={false}
+                title={t('templateSettings.editorTitle')}
+                saveLabel={t('flow.saveTemplate')}
+                hint={null}
+                toolbarMid={
+                  <Button
+                    variant="ghost"
+                    title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
+                    disabled={!activeProject?.id}
+                    onClick={() => {
+                      if (!activeProject?.id) return
+                      setAiPanelOpen(true)
+                      setAiConfirmClose(false)
+                    }}
+                    style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
+                  >
+                    {t('canvas.aiEdit')}
+                  </Button>
+                }
+              />
+            </div>
+            {aiPanelOpen && (
+              <AiFlowEditorPanel
+                projectId={activeProject?.id || ''}
+                workflowId={`template:${editing.id}`}
+                workflowName={meta.name}
+                getCanvasSteps={() => canvasRef.current?.getSteps()}
+                onProposal={(steps) => {
+                  if (canvasDirty) { setPendingAiSteps(steps); return }
+                  canvasRef.current?.loadSteps(steps)
+                }}
+                onBusyChange={setAiGenBusy}
+                onRequestClose={() => {
+                  if (aiGenBusy) { setAiConfirmClose(true); return }
+                  setAiPanelOpen(false)
+                }}
+                title={t('templateSettings.aiEditTitle')}
+              />
+            )}
+          </div>
         </div>,
         document.body,
       )}
+
+      <ConfirmDialog
+        open={aiConfirmClose}
+        title={t('canvas.aiGeneratingTitle')}
+        message={t('canvas.aiGeneratingMessage')}
+        confirmText={t('common.close')}
+        onConfirm={() => { setAiConfirmClose(false); setAiPanelOpen(false) }}
+        onCancel={() => setAiConfirmClose(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingAiSteps !== null}
+        title={t('canvas.proposalOverwriteTitle')}
+        message={t('canvas.proposalOverwriteMessage')}
+        confirmText={t('canvas.applyProposal')}
+        danger
+        onConfirm={() => {
+          if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
+          setPendingAiSteps(null)
+        }}
+        onCancel={() => setPendingAiSteps(null)}
+      />
 
       {/* Unsaved changes confirm */}
       <ConfirmDialog

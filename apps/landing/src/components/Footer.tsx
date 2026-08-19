@@ -1,0 +1,26 @@
+import { SOURCE_REPO_URL } from '../config/downloads'
+import { useI18n } from '../i18n'
+
+export function Footer() {
+  const { t } = useI18n()
+
+  return (
+    <footer className="footer">
+      <div className="container footer-row">
+        <div className="footer-brand">
+          <span className="brand-mark-sm" />
+          WorkStep
+        </div>
+        <div className="footer-tagline">{t('footer.tagline')}</div>
+        <div className="footer-links">
+          <a href="#features">{t('nav.features')}</a>
+          <a href="#demos">{t('nav.demos')}</a>
+          <a href={SOURCE_REPO_URL} target="_blank" rel="noreferrer">
+            {t('common.source')}
+          </a>
+        </div>
+        <div className="footer-rights">{t('footer.rights')}</div>
+      </div>
+    </footer>
+  )
+}

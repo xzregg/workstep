@@ -111,6 +111,24 @@ class ConfigStore:
             defaults.pop(engine_id, None)
         self.set("engine_default_models", defaults)
 
+    def get_model_pricing(self) -> dict[str, Any]:
+        value = self.get("model_pricing", {})
+        if not isinstance(value, dict):
+            value = {}
+        currency = value.get("currency")
+        rate = value.get("usd_to_cny_rate")
+        prices = value.get("prices")
+        return {
+            "currency": currency if currency in {"USD", "CNY"} else "USD",
+            "usd_to_cny_rate": float(rate)
+            if isinstance(rate, (int, float)) and not isinstance(rate, bool) and rate > 0
+            else 7.2,
+            "prices": prices if isinstance(prices, list) else [],
+        }
+
+    def set_model_pricing(self, pricing: dict[str, Any]) -> None:
+        self.set("model_pricing", pricing)
+
     def get_coordinator_default_engine(self) -> str:
         value = self.get("coordinator_default_engine", "")
         return value if isinstance(value, str) else ""
@@ -375,6 +393,7 @@ class ConfigStore:
         raw = self.get("deepseek_harness_engine", {})
         if not isinstance(raw, dict):
             raw = {}
+        preset = str(raw.get("preset") or "standard")
         return {
             "provider_id": str(raw.get("provider_id") or ""),
             "model": str(
@@ -383,6 +402,7 @@ class ConfigStore:
                 or "deepseek-v4-flash"
             ),
             "max_tokens": str(raw.get("max_tokens") or ""),
+            "preset": preset if preset == "standard" else "standard",
         }
 
     def set_deepseek_harness_config(
@@ -391,6 +411,7 @@ class ConfigStore:
         provider_id: str,
         model: str,
         max_tokens: str = "",
+        preset: str = "standard",
     ) -> None:
         self.set(
             "deepseek_harness_engine",
@@ -398,6 +419,7 @@ class ConfigStore:
                 "provider_id": str(provider_id or "").strip(),
                 "model": str(model or "").strip() or "deepseek-v4-flash",
                 "max_tokens": str(max_tokens or "").strip(),
+                "preset": str(preset or "").strip() or "standard",
             },
         )
         self.set_engine_default_model(
