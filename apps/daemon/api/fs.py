@@ -12,6 +12,8 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from services.config import CONFIG_DIR
+
 router = APIRouter(prefix="/api/fs")
 
 # Root-level router for project-relative upload URLs:
@@ -186,16 +188,23 @@ async def write_memory(
 @router.post("/upload/image")
 async def upload_image(
     req: UploadImageRequest,
-    pid: str = Query(..., alias="project_id"),
+    pid: str = Query("", alias="project_id"),
 ):
-    """Upload an image (as base64 data URL) to the project's uploads directory."""
-    from main import project_manager
-    if not project_manager:
-        raise HTTPException(status_code=503, detail="Service not initialized")
-    try:
-        project = project_manager.bind_project_by_id(pid)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    """Upload an image (as base64 data URL) to an uploads directory.
+
+    Project uploads go to ``<project>/.workstep/uploads/``; an empty
+    ``project_id`` (e.g. flow-template editing) uses the daemon-global
+    ``~/.workstep/data/uploads/`` directory.
+    """
+    project = None
+    if pid:
+        from main import project_manager
+        if not project_manager:
+            raise HTTPException(status_code=503, detail="Service not initialized")
+        try:
+            project = project_manager.bind_project_by_id(pid)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
 
     import base64
     import re as _re
@@ -222,23 +231,25 @@ async def upload_image(
     if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
         raise HTTPException(status_code=400, detail="前缀仅允许字母、数字、下划线和连字符，长度不超过 32")
 
-    upload_dir = Path(project.workstep_dir) / "uploads"
+    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
+    if project is not None:
+        upload_dir = Path(project.workstep_dir) / "uploads"
+        rel_path = f"{project.name}/.workstep/uploads/{filename}"
+    else:
+        upload_dir = CONFIG_DIR / "data" / "uploads"
+        rel_path = f"data/uploads/{filename}"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
     filepath = upload_dir / filename
     filepath.write_bytes(content)
 
-    # Project-relative path (e.g. my_project/.workstep/uploads/abc.png).
-    # Kept in markdown as-is so it stays meaningful for LLM prompts;
-    # the frontend maps it back to /api/fs/serve/... for preview.
-    rel_path = f"{project.name}/.workstep/uploads/{filename}"
+    # Relative path kept in markdown as-is so it stays meaningful for LLM
+    # prompts; the frontend maps it back to /api/fs/serve/... for preview.
     return {"url": rel_path, "filename": filename, "size": len(content)}
 
 
-def _serve_upload_file(project, filename: str) -> FileResponse:
-    """Serve an uploaded file from a project's uploads directory."""
-    upload_dir = Path(project.workstep_dir) / "uploads"
+def _serve_upload_file(upload_dir: Path, filename: str) -> FileResponse:
+    """Serve an uploaded file from an uploads directory."""
     filepath = upload_dir / filename
 
     # Security: prevent traversal
@@ -256,9 +267,11 @@ def _serve_upload_file(project, filename: str) -> FileResponse:
 @router.get("/serve/{filename}")
 async def serve_upload(
     filename: str,
-    pid: str = Query(..., alias="project_id"),
+    pid: str = Query("", alias="project_id"),
 ):
-    """Serve an uploaded file from the project's uploads directory."""
+    """Serve an uploaded file from a project or the global uploads dir."""
+    if not pid:
+        return _serve_upload_file(CONFIG_DIR / "data" / "uploads", filename)
     from main import project_manager
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -266,7 +279,7 @@ async def serve_upload(
         project = project_manager.bind_project_by_id(pid)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return _serve_upload_file(project, filename)
+    return _serve_upload_file(Path(project.workstep_dir) / "uploads", filename)
 
 
 @uploads_router.get("/{project_name}/.workstep/uploads/{filename}")
@@ -282,7 +295,7 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
     project = project_manager.get_project_by_name(project_name)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return _serve_upload_file(project, filename)
+    return _serve_upload_file(Path(project.workstep_dir) / "uploads", filename)
 
 
 def _assert_project_path(path: Path, project_id: str | None) -> None:

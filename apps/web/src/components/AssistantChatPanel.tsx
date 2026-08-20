@@ -70,6 +70,8 @@ export interface AssistantChatPanelProps {
   onQuickPromptSelect?: (prompt: string) => void
   /** Store 累积的 A2UI 载荷（messageId → payload[]），随消息渲染。 */
   a2uiMessages?: Record<string, Record<string, unknown>[]>
+  /** 隐藏消息内重复的方案选择 A2UI（提案卡片可见时由 AiFlowChat 传入）。 */
+  hideApplyFlow?: boolean
   /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
   showUserTag?: boolean
 }
@@ -79,7 +81,7 @@ export default function AssistantChatPanel({
   projectId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
-  onQuickPromptSelect, a2uiMessages, showUserTag = false,
+  onQuickPromptSelect, a2uiMessages, hideApplyFlow, showUserTag = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
@@ -103,7 +105,7 @@ export default function AssistantChatPanel({
     const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
     lastProgrammaticScrollTopRef.current = target
     list.scrollTop = target
-  }, [messages.length, lastContent, scrollKey])
+  }, [messages.length, lastContent, scrollKey, a2uiMessages])
   useEffect(() => {
     followRef.current = true
   }, [scrollKey])
@@ -233,6 +235,7 @@ export default function AssistantChatPanel({
               />
             ) : undefined}
             onA2uiAction={onA2uiAction}
+            hideApplyFlow={hideApplyFlow}
           />
           )
         })}

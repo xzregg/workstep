@@ -2292,3 +2292,36 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .schedule-split-handle:focus-visible {
   box-shadow: var(--focus-ring);
 }
+
+/* ── Task card running progress bar ── */
+.card-progress {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+
+.card-progress-fill {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--status-running), #38bdf8);
+  animation: card-progress 1.8s ease-in-out infinite;
+}
+
+@keyframes card-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(240%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-progress-fill {
+    animation: none;
+  }
+}

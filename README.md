@@ -116,6 +116,11 @@ yarn dev        # http://localhost:5174
 介绍页是独立应用，与产品 UI 解耦：演示场景用网页时间轴动画重演真实界面（非录屏），
 下载平台链接集中在 `apps/landing/src/config/downloads.ts`，正式安装包地址就绪后填入即可。
 
+生产模式下 Daemon 会托管官网与 Web 应用：`./start.sh prod` 会同时构建
+`apps/landing`（→ `http://<host>:8765/landing`，构建时使用
+`LANDING_BASE=/landing/` 使静态资源位于 `/landing` 子路径）与 `apps/web`
+（→ `http://<host>:8765/`，保持 home 不变）。
+
 ---
 
 ## 架构总览

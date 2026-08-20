@@ -1,4 +1,4 @@
-import { Check, Loader2, Play, Table } from 'lucide-react'
+import { Check, Clock, Pencil, Play, Table, X } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { arrive } from './utils'
 
@@ -6,6 +6,13 @@ interface Lane {
   label: string
   color: string
   card?: { title: string; desc: string; tokens: string }
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  ready: 'var(--status-ready)',
+  running: 'var(--status-running)',
+  reviewing: 'var(--accent)',
+  done: 'var(--status-done)',
 }
 
 export function ParallelScene({ time }: { time: number }) {
@@ -77,21 +84,46 @@ export function ParallelScene({ time }: { time: number }) {
               </div>
               <div className="lane-body">
                 {lane.card ? (
-                  <div className={`board-card${isRunning ? ' is-running' : ''}`} style={{ opacity: arrive(time, 200 + index * 140, 420) }}>
+                  <div
+                    className={`board-card${isRunning ? ' is-running' : ''}`}
+                    style={{
+                      opacity: arrive(time, 200 + index * 140, 420),
+                      borderLeft: `3px solid ${STATUS_COLORS[status]}`,
+                    }}
+                  >
                     <div className="card-title-row">
                       <span className="card-title">{lane.card.title}</span>
-                      <span className={`status-badge sb-${status}`}>
-                        {(isRunning || isReviewing) && <Loader2 size={10} className="spin" />}
+                      <span className="status-badge" data-s={status}>
+                        {(isRunning || isReviewing) && <span className="task-status-spinner" aria-hidden="true" />}
                         {statusText(status)}
                       </span>
                     </div>
                     <div className="card-desc">{lane.card.desc}</div>
                     <div className="card-footer">
-                      <span className="card-start">
-                        <Play size={11} />
+                      <div className="card-actions">
+                        {status === 'ready' && (
+                          <span className="card-icon-btn" title={t('scene.board.start')} style={{ color: 'var(--success)' }}>
+                            <Play size={11} />
+                          </span>
+                        )}
+                        <span className="card-icon-btn" title={t('scene.board.edit')}>
+                          <Pencil size={11} />
+                        </span>
+                        {status !== 'running' && (
+                          <span className="card-icon-btn card-icon-danger" title={t('scene.board.delete')}>
+                            <X size={11} />
+                          </span>
+                        )}
+                      </div>
+                      <span className="card-tokens">
+                        {lane.card.tokens} {t('scene.board.tokens')}
                       </span>
-                      <span className="card-tokens">{lane.card.tokens} tokens</span>
-                      {isRunning && <span className="card-duration">{t('scene.board.duration')}</span>}
+                      {isRunning && (
+                        <span className="card-duration">
+                          <Clock size={11} />
+                          {t('scene.board.duration')}
+                        </span>
+                      )}
                     </div>
                     {isRunning && (
                       <div className="card-progress">

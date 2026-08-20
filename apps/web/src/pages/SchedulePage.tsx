@@ -71,7 +71,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
   const [retryCount, setRetryCount] = useState(2)
   const [testOpen, setTestOpen] = useState(false)
   const [asideWidth, setAsideWidth] = useState(280)
-  const [sectionWidth, setSectionWidth] = useState(380)
+  const [sectionWidth, setSectionWidth] = useState(() => Math.round(Math.max(280, Math.min(600, Math.min(1500, window.innerWidth * 0.96) * 2 / 5))))
 
   const [workflowId, setWorkflowId] = useState(defaultWorkflow)
   const [title, setTitle] = useState('')
@@ -316,7 +316,8 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
           {items.map((item) => (
             <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><strong style={{ flex: 1, fontSize: 13 }}>{item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}</strong><span style={{ color: statusColors[item.status], fontSize: 11 }}>{t(`schedules.status_${item.status}` as any)}</span></div>
-              <div style={{ color: 'var(--meta)', fontSize: 11, marginTop: 5 }}>{item.summary} · {formatDate(item.next_run_at)}</div>
+              <div style={{ color: 'var(--meta)', fontSize: 11, marginTop: 5 }}>{formatDate(item.next_run_at)}</div>
+              <div style={{ color: 'var(--meta)', fontSize: 11, marginTop: 2 }}>{item.summary}</div>
               {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 11, marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
           ))}
@@ -331,32 +332,10 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             {selected && selected.status !== 'active' && selected.status !== 'completed' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
             {selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Field label={t('schedules.generation')}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => { setGeneration('static'); closeTest() }}
-                  style={{
-                    padding: '6px 12px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
-                    border: generation === 'static' ? '1px solid var(--accent)' : '1px solid var(--border-soft)',
-                    background: generation === 'static' ? 'var(--accent-light)' : 'transparent',
-                    color: 'var(--fg)',
-                  }}
-                >{t('schedules.generationStatic')}</button>
-                <button
-                  type="button"
-                  onClick={() => { setGeneration('agent'); setTaskConfigTab('content') }}
-                  style={{
-                    padding: '6px 12px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
-                    border: generation === 'agent' ? '1px solid var(--accent)' : '1px solid var(--border-soft)',
-                    background: generation === 'agent' ? 'var(--accent-light)' : 'transparent',
-                    color: 'var(--fg)',
-                  }}
-                >{t('schedules.generationAgent')}</button>
-              </div>
-            </Field>
-            {generation === 'static' && <Field label={t('schedules.workflow')}><Select value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setStartStep(''); setReviewOverrides({}) }}>{workflows.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>}
+          <div className="schedule-frequency-label">{t('schedules.generation')}</div>
+          <div className="schedule-frequency-tabs">
+            <button type="button" className={generation === 'static' ? 'active' : ''} onClick={() => { setGeneration('static'); closeTest() }}>{t('schedules.generationStatic')}</button>
+            <button type="button" className={generation === 'agent' ? 'active' : ''} onClick={() => { setGeneration('agent'); setTaskConfigTab('content') }}>{t('schedules.generationAgent')}</button>
           </div>
           <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', marginTop: 18 }}>
             <button
@@ -417,9 +396,10 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
               ) : (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <Field label={t('schedules.taskTitle')}><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field>
+                    <Field label={t('schedules.workflow')}><Select value={workflowId} onChange={(event) => { setWorkflowId(event.target.value); setStartStep(''); setReviewOverrides({}) }}>{workflows.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
                     <Field label={t('schedules.startStep')}><Select value={startStep} onChange={(event) => setStartStep(event.target.value)}><option value="">{t('schedules.firstStep')}</option>{steps.map((step) => <option key={step.key} value={step.key}>{step.title}</option>)}</Select></Field>
                   </div>
+                  <div style={{ marginTop: 12 }}><Field label={t('schedules.taskTitle')}><Input value={title} onChange={(event) => setTitle(event.target.value)} /></Field></div>
                   <div style={{ marginTop: 12 }}><Field label={t('schedules.description')}><MarkdownEditor value={description} onChange={setDescription} projectId={projectId} /></Field></div>
                 </>
               )}

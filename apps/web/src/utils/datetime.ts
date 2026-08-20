@@ -97,10 +97,19 @@ export function formatConversationDateTime(
   const date = new Date(milliseconds)
   const pad = (part: number) => String(part).padStart(2, '0')
   const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-  const age = nowMilliseconds === null ? null : nowMilliseconds - milliseconds
-  if (age !== null && age >= 0 && age < 7 * 24 * 60 * 60 * 1000) {
+  const sameWeek = nowMilliseconds !== null
+    && startOfWeek(date) === startOfWeek(new Date(nowMilliseconds))
+  if (sameWeek) {
     const weekday = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
     return `${weekday} ${time}`
   }
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`
+}
+
+function startOfWeek(value: Date): number {
+  const daysSinceMonday = (value.getDay() === 0 ? 7 : value.getDay()) - 1
+  const start = new Date(value)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - daysSinceMonday)
+  return start.getTime()
 }

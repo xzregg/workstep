@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/workflow/generate")
 
 
 class WorkflowGenChatRequest(BaseSchema):
-    project_id: str
+    project_id: str = ""
     content: str
     session_id: str | None = None
     engine: str | None = None
@@ -27,7 +27,7 @@ class WorkflowGenChatRequest(BaseSchema):
 
 @router.get("/history")
 async def workflow_gen_history(
-    project_id: str = Query(..., alias="project_id"),
+    project_id: str = Query("", alias="project_id"),
     workflow_id: str = Query(..., alias="workflow_id"),
 ):
     """Return the stable conversation for a workflow (empty when none yet)."""
@@ -43,7 +43,7 @@ async def workflow_gen_history(
 
 @router.delete("/history")
 async def reset_workflow_gen_history(
-    project_id: str = Query(..., alias="project_id"),
+    project_id: str = Query("", alias="project_id"),
     workflow_id: str = Query(..., alias="workflow_id"),
 ):
     """Reset the stable AI editing conversation for a workflow."""

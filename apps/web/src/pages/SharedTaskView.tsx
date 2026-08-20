@@ -17,7 +17,6 @@ import {
 } from '../api/client'
 import { useI18n } from '../i18n'
 import { isTaskCompleted } from './taskDetailChat'
-import { type DateTimeValue } from '../utils/datetime'
 
 type Phase =
   | { kind: 'loading-meta' }
@@ -475,12 +474,6 @@ export default function SharedTaskView() {
   const currentStageColor = currentStage.color || 'var(--accent)'
   const activeStageColor = activeStage.color || 'var(--accent)'
   const executionStageModel = activeStage?.model || task?.model || ''
-  const executionOrigin = useMemo<DateTimeValue>(() => {
-    const step = (task?.steps || []).find(
-      (item) => item.step_key === activeStage?.key,
-    )
-    return step?.started_at || task?.created_at || null
-  }, [task, activeStage])
   const taskCompleted = isTaskCompleted(task?.steps || [])
 
   const findArtifact = (
@@ -697,7 +690,6 @@ export default function SharedTaskView() {
           taskCompleted={taskCompleted}
           runningStages={[]}
           executionStageModel={executionStageModel}
-          executionOrigin={executionOrigin}
           sessionIdForStep={() => null}
           onViewingPromptChange={() => {}}
           running={false}

@@ -472,6 +472,34 @@ async def test_upload_image_rejects_unsafe_prefix(api_context):
 
 
 @pytest.mark.anyio
+async def test_upload_image_without_project_uses_global_uploads(api_context, monkeypatch):
+    """No-project uploads (flow templates) land in ~/.workstep/data/uploads."""
+    import api.fs as fs_api
+
+    client, tmp_path = api_context
+    monkeypatch.setattr(fs_api, "CONFIG_DIR", tmp_path / "global-workstep")
+
+    import base64
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\nglobal-upload").decode()
+    uploaded = await client.post(
+        "/api/fs/upload/image?project_id=",
+        json={"filename": "shot.png", "data_url": f"data:image/png;base64,{png}"},
+    )
+    assert uploaded.status_code == 200
+    body = uploaded.json()
+    filename = body["filename"]
+    assert body["url"] == f"data/uploads/{filename}"
+    assert (
+        tmp_path / "global-workstep" / "data" / "uploads" / filename
+    ).is_file()
+
+    # Preview without a project_id: the path MarkdownMessage renders.
+    served = await client.get(f"/api/fs/serve/{filename}")
+    assert served.status_code == 200
+    assert served.content == b"\x89PNG\r\n\x1a\nglobal-upload"
+
+
+@pytest.mark.anyio
 async def test_upload_served_via_unicode_project_relative_url(api_context):
     """Chinese project names in the relative URL decode and serve correctly."""
     client, tmp_path = api_context

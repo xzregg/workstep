@@ -229,6 +229,68 @@ async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch)
 
 
 @pytest.mark.anyio
+async def test_template_mode_runs_without_project(gen_module, tmp_path, monkeypatch):
+    """Flow-template editing (empty project_id) runs and persists globally."""
+    import services.global_sessions as global_sessions
+    import agent_assistants.workflow_gen as wfgen_service
+    from models.gen_session import WorkflowGenSession
+
+    monkeypatch.setattr(
+        wfgen_service, "CONFIG_DIR", tmp_path / "config"
+    )
+    monkeypatch.setattr(
+        global_sessions, "GLOBAL_SESSIONS_DB_PATH", tmp_path / "gen_sessions.db"
+    )
+    global_sessions.reset_global_sessions_db()
+
+    module, bus, manager, project, _ = gen_module
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        assert cwd == str(tmp_path / "config" / "data" / "templates")
+        return json.dumps({"reply": "模板方案", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(
+        "",
+        None,
+        "设计一个内容发布模板",
+        "idem-template-1",
+        workflow_id="template:release",
+    )
+    assert accepted.status == "queued"
+    assert accepted.session_id == "wf::template:release"
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    session = module._sessions[("wf", "", "template:release")]
+    assert session.cwd == str(tmp_path / "config" / "data" / "templates")
+    assert session.project_id == ""
+
+    with global_sessions.global_sessions_ctx():
+        row = WorkflowGenSession.get_or_none(
+            WorkflowGenSession.project_id == "",
+            WorkflowGenSession.workflow_id == "template:release",
+        )
+    assert row is not None
+    assert row.cwd == str(tmp_path / "config" / "data" / "templates")
+
+    history = module.history("", "template:release")
+    assert history["session_id"] == "wf::template:release"
+    assert any(item["role"] == "assistant" for item in history["messages"])
+
+    assert module.reset_session("", "template:release") is True
+    with global_sessions.global_sessions_ctx():
+        gone = WorkflowGenSession.get_or_none(
+            WorkflowGenSession.project_id == "",
+            WorkflowGenSession.workflow_id == "template:release",
+        )
+    assert gone is None
+
+
+@pytest.mark.anyio
 async def test_thinking_effort_reaches_workflow_generation_engine(
     gen_module,
     monkeypatch,
@@ -367,6 +429,66 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
     # Conversation history is kept in memory only
     session = module._sessions[(project.id, accepted.session_id)]
     assert [m["role"] for m in session.messages] == ["user", "assistant"]
+
+
+@pytest.mark.anyio
+async def test_flow_proposals_persist_and_survive_history(gen_module, monkeypatch):
+    """flow_proposals 需随 assistant message 持久化，重开对话框后仍可恢复方案。"""
+    module, bus, manager, project, _ = gen_module
+    raw = json.dumps(
+        {
+            "reply": "请选择一个方案",
+            "flow_proposals": [
+                {
+                    "title": "标准版",
+                    "summary": "需求到发布",
+                    "steps": {
+                        "nodes": [
+                            {"id": 1, "type": "req", "title": "需求"},
+                            {"id": 2, "type": "publish", "title": "发布"},
+                        ],
+                        "connections": [
+                            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0, "kind": "solid"}
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return raw, [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "设计一个发布流程",
+        "idem-persist",
+        workflow_id="wf-x",
+    )
+    status = await _wait_turn(module, accepted.turn_id)
+    assert status == "completed"
+
+    session = module._sessions[("wf", project.id, "wf-x")]
+    assert session.session_id == accepted.session_id
+    assistant_message = session.messages[-1]
+    assert assistant_message["role"] == "assistant"
+    persisted_types = [e["type"] for e in assistant_message["events"]]
+    assert "flow_proposals" in persisted_types
+    event = next(e for e in assistant_message["events"] if e["type"] == "flow_proposals")
+    assert event["data"]["proposals"][0]["title"] == "标准版"
+    assert event["data"]["proposals"][0]["nodeCount"] == 2
+
+    # 重新打开对话框：history API 必须把方案事件带回来
+    history = module.history(project.id, "wf-x")
+    assert history is not None
+    history_events = history["messages"][-1]["events"]
+    assert any(e["type"] == "flow_proposals" for e in history_events)
+    restored = next(e for e in history_events if e["type"] == "flow_proposals")
+    assert restored["data"]["proposals"][0]["title"] == "标准版"
+    assert restored["data"]["proposals"][0]["steps"]["nodes"][0]["title"] == "需求"
 
 
 @pytest.mark.anyio

@@ -1,0 +1,26 @@
+services:
+  workstep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: workstep:latest
+    container_name: workstep
+    ports:
+      - "${WORKSTEP_PORT:-8765}:8765"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      # 全局配置 / 模板 / 任务元数据（config.json、data/templates/ 等）
+      - workstep-data:/root/.workstep
+      # Codex CLI 登录凭据（auth.json）与会话（codex login 后持久化）
+      - codex-config:/root/.codex
+      # Claude Code 登录凭据与会话（claude setup 后持久化）
+      - claude-config:/root/.claude
+      # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
+      - ./data/projects:/data/projects
+    restart: unless-stopped
+
+volumes:
+  workstep-data:
+  codex-config:
+  claude-config:

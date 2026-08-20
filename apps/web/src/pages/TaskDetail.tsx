@@ -40,9 +40,6 @@ import {
   isStageResumableWithMessage,
   conversationBottomScrollTop,
 } from './taskDetailChat'
-import {
-  type DateTimeValue,
-} from '../utils/datetime'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
 
@@ -750,12 +747,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const currentStage = stages[selectedStage] || stages[0]
   const activeStage = stages[activeStageIndex] || stages[0]
   const executionStageModel = activeStage?.model || task?.model || ''
-  const executionOrigin = useMemo<DateTimeValue>(() => {
-    const step = (task?.steps || []).find(
-      (item: any) => item.step_key === activeStage?.key,
-    )
-    return step?.started_at || task?.created_at || null
-  }, [task, activeStage])
 
   useEffect(() => {
     if (!task?.id || selectedStageTaskRef.current === task.id) return
@@ -1701,7 +1692,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         taskCompleted={taskCompleted}
         runningStages={runningStages}
         executionStageModel={executionStageModel}
-        executionOrigin={executionOrigin}
         sessionIdForStep={sessionIdForStep}
         onViewingPromptChange={setViewingPrompt}
         running={running}

@@ -266,10 +266,10 @@ def test_unregister_project_only_removes_config_entry(tmp_path, manager):
     assert m.get_project_by_id(first.id) is None
     assert m.get_project_by_id(second.id) is second
     assert store.get("projects") == [
-        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second"}
+        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second", "sort_order": 0}
     ]
     assert json.loads(config_file.read_text())["projects"] == [
-        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second"}
+        {"id": second.id, "path": str(second_dir.resolve()), "name": "Second", "sort_order": 0}
     ]
     assert (first_dir / ".workstep" / "workstep.db").exists()
     assert (first_dir / ".workstep" / "steps.json").exists()

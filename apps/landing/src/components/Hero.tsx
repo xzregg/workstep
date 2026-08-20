@@ -1,4 +1,4 @@
-import { Download, Play } from 'lucide-react'
+import { ArrowRight, Download, Play } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { HeroPreview } from './HeroPreview'
 
@@ -25,7 +25,11 @@ export function Hero({ onOpenDownload, onOpenDemos }: HeroProps) {
           </h1>
           <p className="hero-lede">{t('hero.lede')}</p>
           <div className="hero-actions">
-            <button type="button" className="btn btn-primary" onClick={onOpenDownload}>
+            <a href="/" className="btn btn-primary">
+              {t('hero.ctaStart')}
+              <ArrowRight size={15} />
+            </a>
+            <button type="button" className="btn btn-ghost" onClick={onOpenDownload}>
               <Download size={15} />
               {t('hero.ctaPrimary')}
             </button>

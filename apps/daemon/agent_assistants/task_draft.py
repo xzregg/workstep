@@ -524,11 +524,12 @@ class TaskDraftModule(AssistantRuntime):
     async def _publish_draft(
         self, session, assistant_message_id: str, reply: str,
         drafts: list[dict], seq: int,
-    ) -> int:
-        return await self._publish(
+    ) -> tuple[int, list[dict]]:
+        seq = await self._publish(
             session,
             assistant_message_id,
             "task_draft",
             drafts[-1],
             seq,
         )
+        return seq, []

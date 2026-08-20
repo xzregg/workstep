@@ -2,7 +2,7 @@ import Icon from './Icon'
 import { useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import Button from './Button'
-import { formatExecutionClock } from '../utils/datetime'
+import { formatConversationDateTime } from '../utils/datetime'
 import { useI18n, zhCNT, type TFunction } from '../i18n'
 
 /* ══════════════════════════════════════════
@@ -226,7 +226,7 @@ export default function MessageResponseFooter({
       />
       {!running && endedAt && (
         <span style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
-          {formatExecutionClock(endedAt)}
+          {formatConversationDateTime(endedAt, Date.now(), locale)}
         </span>
       )}
     </div>

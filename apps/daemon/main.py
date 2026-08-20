@@ -191,13 +191,21 @@ web_dist = Path(settings.web_dist)
 landing_dist = Path(settings.landing_dist)  # 官网构建，托管在 "/landing"
 
 
-def _collect_static_files(root: Path) -> set[str]:
-    """Everything under a built app (except index.html) served verbatim."""
-    files: set[str] = set()
-    for entry in root.rglob("*"):
-        if entry.is_file() and entry.name != "index.html":
-            files.add(str(entry.relative_to(root)))
-    return files
+def _resolve_static(root: Path, rel: str) -> Path | None:
+    """Resolve a relative path inside ``root``; None when unsafe or missing.
+
+    Dist 构建会更换哈希文件名，因此按请求实时检查文件系统，避免启动时
+    的静态文件快照过期导致 /landing 等页面资源回退成 index.html。
+    """
+    if not rel or rel.startswith(("/", "\\", "..")):
+        return None
+    base = root.resolve()
+    candidate = (root / rel).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
 
 
 if web_dist.exists() or landing_dist.exists():
@@ -206,9 +214,7 @@ if web_dist.exists() or landing_dist.exists():
     from fastapi.responses import JSONResponse as _JSONResponse
 
     _web_dist_index = web_dist / "index.html" if web_dist.exists() else None
-    _web_static_files = _collect_static_files(web_dist) if web_dist.exists() else set()
     _landing_dist_index = landing_dist / "index.html" if landing_dist.exists() else None
-    _landing_static_files = _collect_static_files(landing_dist) if landing_dist.exists() else set()
 
     @app.get("/{fullpath:path}", include_in_schema=False)
     async def _spa_fallback(fullpath: str):
@@ -216,13 +222,17 @@ if web_dist.exists() or landing_dist.exists():
         if fullpath == "landing" or fullpath.startswith("landing/"):
             rel = fullpath[len("landing/") :] if fullpath.startswith("landing/") else ""
             if _landing_dist_index is not None:
-                if rel and rel in _landing_static_files:
-                    return _FileResponse(landing_dist / rel)
+                if rel:
+                    candidate = _resolve_static(landing_dist, rel)
+                    if candidate is not None:
+                        return _FileResponse(candidate)
                 return _FileResponse(_landing_dist_index)
             return _JSONResponse({"detail": "Not found"}, status_code=404)
         # Web 应用接管 home。
-        if fullpath in _web_static_files:
-            return _FileResponse(web_dist / fullpath)
+        if fullpath:
+            candidate = _resolve_static(web_dist, fullpath)
+            if candidate is not None:
+                return _FileResponse(candidate)
         if _web_dist_index is not None:
             return _FileResponse(_web_dist_index)
         return _JSONResponse({"detail": "Not found"}, status_code=404)

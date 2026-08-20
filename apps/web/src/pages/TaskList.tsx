@@ -18,7 +18,7 @@ import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
-import { formatDuration } from '../utils/datetime'
+import { formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatTokenTotal } from '../utils/statistics'
 import SchedulePage from './SchedulePage'
 import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
@@ -213,7 +213,7 @@ export default function TaskList() {
   const [taskAiBusy, setTaskAiBusy] = useState(false)
   const [taskAiMessage, setTaskAiMessage] = useState('')
   const [taskAiTitleAttempted, setTaskAiTitleAttempted] = useState(false)
-  const [taskAiChatWidth, setTaskAiChatWidth] = useState(380)
+  const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
   const [pendingTaskDraft, setPendingTaskDraft] = useState<TaskDraftResult | null>(null)
   const newTitleInputRef = useRef<HTMLInputElement>(null)
   const memorySavedRef = useRef('')
@@ -395,6 +395,18 @@ export default function TaskList() {
     return map
   }, [visibleTasks, lanes, getCardLane])
 
+  const anyRunning = useMemo(
+    () => visibleTasks.some((task: any) => (task.status || 'ready') === 'running'),
+    [visibleTasks],
+  )
+  const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    if (!anyRunning) return
+    setDurationNowMs(Date.now())
+    const timer = window.setInterval(() => setDurationNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [anyRunning])
+
   const handleCreate = async () => {
     if (!newTitle.trim() || !activeProject || taskAiBusy) return
     try {
@@ -453,9 +465,11 @@ export default function TaskList() {
 
   const startTaskAiDividerDrag = (event: React.MouseEvent) => {
     event.preventDefault()
+    const startX = event.clientX
+    const panelWidth = Math.min(1100, window.innerWidth * 0.9)
+    const startWidth = taskAiChatWidth ?? Math.round((panelWidth * 2) / 5)
     const onMove = (moveEvent: MouseEvent) => {
-      const panelWidth = Math.min(1100, window.innerWidth * 0.9)
-      setTaskAiChatWidth(Math.max(280, Math.min(panelWidth - 320, window.innerWidth - moveEvent.clientX)))
+      setTaskAiChatWidth(Math.max(280, Math.min(panelWidth - 320, startWidth + (startX - moveEvent.clientX))))
     }
     const onUp = () => {
       document.removeEventListener('mousemove', onMove)
@@ -912,6 +926,19 @@ export default function TaskList() {
                     )
                   const displayStatus = taskCompleted ? 'done' : stageStatus || status
                   const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
+                  const isRunning = status === 'running'
+                  const startedMs = toMilliseconds(task.first_message_at)
+                  const createdMs = toMilliseconds(task.created_at)
+                  let cardDurationMs: number | null = null
+                  if (isRunning) {
+                    const startMs = startedMs ?? createdMs
+                    if (startMs !== null) cardDurationMs = Math.max(0, durationNowMs - startMs)
+                  } else if (task.duration_ms != null) {
+                    cardDurationMs = task.duration_ms
+                  } else if (startedMs !== null) {
+                    const endMs = toMilliseconds(task.updated_at) ?? durationNowMs
+                    cardDurationMs = Math.max(0, endMs - startedMs)
+                  }
                   return (
                     <div
                       key={task.id}
@@ -986,15 +1013,6 @@ export default function TaskList() {
                         </div>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                        {taskCompleted && task.duration_ms != null && (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
-                          }}>
-                            <Icon name="clock" size={11} strokeWidth={2} />
-                            {t('taskList.duration')} {formatDuration(task.duration_ms, t)}
-                          </span>
-                        )}
                         <div className="card-actions" style={{ display: 'flex', gap: 2, flex: 1, opacity: 0, transition: 'opacity var(--motion-fast)' }}>
           {taskNotStarted && status !== 'running' && (
             <Button
@@ -1008,17 +1026,6 @@ export default function TaskList() {
             >
               ▶️
             </Button>
-          )}
-          {(task.total_tokens ?? 0) > 0 && (
-            <span
-              title={t('taskList.tokensTitle')}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
-              }}
-            >
-              {formatTokenTotal(task.total_tokens as number, locale)} {t('taskList.tokens')}
-            </span>
           )}
           <Button variant="icon" title={t('common.edit')} onClick={(e) => { e.stopPropagation(); handleSelectTask(task.id) }} style={{ width: 22, height: 22 }}>
             <Icon name="pencil" size={12} strokeWidth={2} />
@@ -1045,13 +1052,41 @@ export default function TaskList() {
               <Icon name="rotate-ccw" size={12} strokeWidth={2} />
             </Button>
           )}
-          {status !== 'running' && (
-            <Button variant="icon" title={t('common.delete')} onClick={(e) => deleteCard(e, task.id)} style={{ width: 22, height: 22, marginLeft: 'auto', color: 'var(--danger)' }}>
-              <Icon name="x" size={12} strokeWidth={2} />
-            </Button>
-          )}
+          <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+            {(task.total_tokens ?? 0) > 0 && (
+              <span
+                title={t('taskList.tokensTitle')}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+                }}
+              >
+                {formatTokenTotal(task.total_tokens as number, locale)} {t('taskList.tokens')}
+              </span>
+            )}
+            {cardDurationMs !== null && cardDurationMs > 0 && (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+              }}>
+                <Icon name="clock" size={11} strokeWidth={2} />
+                {t('taskList.duration')} {formatDuration(cardDurationMs, t)}
+              </span>
+            )}
+            {!isRunning && (
+              <Button variant="icon" title={t('common.delete')} onClick={(e) => deleteCard(e, task.id)} style={{ width: 22, height: 22, color: 'var(--danger)' }}>
+                <Icon name="x" size={12} strokeWidth={2} />
+              </Button>
+            )}
+          </div>
                         </div>
                       </div>
+                      {status === 'running' && (
+                        <div className="card-progress">
+                          <span className="card-progress-fill" />
+                        </div>
+                      )}
+
                     </div>
                   )
                 })}
@@ -1218,7 +1253,7 @@ export default function TaskList() {
               }} />
             </div>
             <div style={{
-              width: taskAiChatWidth, maxWidth: '45vw', minWidth: 280, flexShrink: 0, minHeight: 0,
+              width: taskAiChatWidth ?? '40%', maxWidth: '45vw', minWidth: 280, flexShrink: 0, minHeight: 0,
               display: 'flex', flexDirection: 'column', background: 'var(--bg)',
             }}>
               <AiTaskCreateChat

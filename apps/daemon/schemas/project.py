@@ -52,6 +52,10 @@ class RenameRequest(BaseSchema):
         return _reject_whitespace(v)
 
 
+class ReorderProjectsRequest(BaseSchema):
+    ordered_ids: list[str]
+
+
 class SaveStepsRequest(BaseSchema):
     steps: dict[str, Any]  # The full steps.json content
 

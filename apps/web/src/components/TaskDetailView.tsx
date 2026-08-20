@@ -50,9 +50,7 @@ import {
   stageAvatarText,
 } from '../pages/taskDetailChat'
 import {
-  type DateTimeValue,
   formatConversationDateTime,
-  formatExecutionClock,
   formatDurationBetween,
   toMilliseconds,
 } from '../utils/datetime'
@@ -302,7 +300,6 @@ export interface TaskDetailViewProps {
   taskCompleted: boolean
   runningStages: StageData[]
   executionStageModel: string
-  executionOrigin: DateTimeValue
   sessionIdForStep: (stepKey?: string | null) => string | null
   onViewingPromptChange: (value: string | null) => void
   running?: boolean
@@ -423,7 +420,6 @@ export default function TaskDetailView({
   taskCompleted,
   runningStages,
   executionStageModel,
-  executionOrigin,
   sessionIdForStep,
   onViewingPromptChange,
   running,
@@ -996,7 +992,7 @@ export default function TaskDetailView({
                     'color-mix(in oklab, var(--accent), transparent 90%)',
                 }}
               >
-            
+                {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
               </span>
             )}
           </div>
@@ -1018,7 +1014,6 @@ export default function TaskDetailView({
               const isSkipped = visualState === 'skipped'
               const isSelected = i === selectedStage
               const stageColor = stage.color || 'var(--accent)'
-              const stageLabelColor = isSkipped ? 'var(--meta)' : stageColor
               const currentRound = task?.run_round ?? 1
               const restartIndex = stages.findIndex(
                 (item: any) => item.key === task?.restart_from_step_key,
@@ -1081,6 +1076,11 @@ export default function TaskDetailView({
                       : isSkipped
                         ? 'var(--meta)'
                         : 'var(--border)'
+              const stageLabelColor = visualState === 'pending'
+                ? 'color-mix(in oklab, var(--meta), var(--bg) 25%)'
+                : isSkipped
+                  ? 'var(--meta)'
+                  : 'var(--fg-2)'
               return (
                 <div
                   key={stage.key}
@@ -1133,9 +1133,9 @@ export default function TaskDetailView({
                         isFailed ||
                         isCancelled ||
                         isSkipped
-                          ? stateColor
+                          ? stageColor
                           : 'var(--bg)',
-                      border: `2px solid ${stateColor}`,
+                      border: `2px solid ${stageColor}`,
                       position: 'relative',
                       zIndex: 1,
                       display: 'flex',
@@ -1151,13 +1151,17 @@ export default function TaskDetailView({
                   >
                     {isCompleted
                       ? '✓'
-                      : isFailed
-                        ? '×'
-                        : isCancelled
-                          ? '▮'
-                          : isSkipped
-                            ? '–'
-                            : ''}
+                      : isCurrentActive
+                        ? task.status === 'paused'
+                          ? '–'
+                          : <span className="task-status-spinner" />
+                        : isFailed
+                          ? '×'
+                          : isCancelled
+                            ? '▮'
+                            : isSkipped
+                              ? '–'
+                              : ''}
                   </div>
                   {visualState !== 'pending' && (
                     <span
@@ -1204,9 +1208,7 @@ export default function TaskDetailView({
                         border: isSelected
                           ? `1px solid ${stageColor}`
                           : '1px solid transparent',
-                        background: isSelected
-                          ? `color-mix(in oklab, ${stageColor}, transparent 88%)`
-                          : 'transparent',
+                        background: 'transparent',
                       }}
                     >
                       {stage.label}
@@ -2418,17 +2420,12 @@ export default function TaskDetailView({
                                         )
                                       : `@${stageLabel}`}
                                   </span>
-                                  {isCoordinator
-                                    ? formatConversationDateTime(
-                                        msg.started_at ||
-                                          msg.created_at,
-                                        Date.now(),
-                                        locale,
-                                      )
-                                    : formatExecutionClock(
-                                        msg.started_at ||
-                                          msg.created_at,
-                                      )}
+                                  {formatConversationDateTime(
+                                    msg.started_at ||
+                                      msg.created_at,
+                                    Date.now(),
+                                    locale,
+                                  )}
                                 </>
                               ) : (
                                 <MessageMetaBar
@@ -2465,11 +2462,6 @@ export default function TaskDetailView({
                                   }
                                   onViewPrompt={
                                     onViewingPromptChange
-                                  }
-                                  origin={
-                                    isCoordinator
-                                      ? undefined
-                                      : executionOrigin
                                   }
                                   status={terminalMessageStatus(
                                     msg.run_status,
@@ -3572,6 +3564,9 @@ export default function TaskDetailView({
                 alignItems: 'center',
                 gap: 8,
                 flexWrap: 'wrap',
+                width: '100%',
+                maxWidth: 800,
+                marginInline: 'auto',
               }}
             >
               <div

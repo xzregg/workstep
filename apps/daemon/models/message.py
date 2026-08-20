@@ -38,4 +38,6 @@ class Message(BaseModel):
         indexes = (
             (("task", "sequence"), True),
             (("task", "channel", "sequence"), False),
+            (("task", "position"), False),
+            (("task", "created_at"), False),
         )

@@ -2,10 +2,8 @@ import Icon from './Icon'
 import { useState } from 'react'
 import ProcessTrace from './ProcessTrace'
 import {
-  type DateTimeValue,
   formatConversationDateTime,
   formatDurationBetween,
-  formatExecutionClock,
   toMilliseconds,
 } from '../utils/datetime'
 import { useI18n } from '../i18n'
@@ -50,7 +48,6 @@ export interface MessageMetaBarProps {
   prompt?: string | null
   sessionId?: string | null
   onViewPrompt: (prompt: string) => void
-  origin?: DateTimeValue
   /** Terminal message status shown as a pill (cancelled/stopped/failed). */
   status?: 'cancelled' | 'stopped' | 'failed'
   /** Render this message as a manual review header (no engine process trace). */
@@ -70,7 +67,6 @@ export default function MessageMetaBar({
   prompt,
   sessionId,
   onViewPrompt,
-  origin,
   status,
   reviewMode = false,
   reviewStatus,
@@ -258,12 +254,10 @@ export default function MessageMetaBar({
               </button>
             )}
             <span
-              title={origin ? formatConversationDateTime(displayStartedAt, Date.now(), locale) : undefined}
-              style={{ width: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}
+              title={formatConversationDateTime(displayStartedAt, Date.now(), locale)}
+              style={{ minWidth: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
             >
-              {origin
-                ? formatExecutionClock(displayStartedAt)
-                : formatConversationDateTime(displayStartedAt, Date.now(), locale)}
+              {formatConversationDateTime(displayStartedAt, Date.now(), locale)}
             </span>
           </span>
         )}

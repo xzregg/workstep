@@ -18,6 +18,7 @@ import {
   normalizeA2uiMessages,
   reconcileA2uiReferences,
   splitA2uiUpdateComponents,
+  withoutApplyFlowSurfaces,
 } from '../utils/a2ui'
 import '../styles/a2ui-v09.css'
 
@@ -56,6 +57,7 @@ export default function A2uiMessage({
   messages,
   projectId,
   onAction,
+  hideApplyFlow = false,
 }: {
   content: string
   /** Store 累积的 A2UI 载荷（``CUSTOM a2ui.surface`` 事件），优先于 fence 解析。 */
@@ -63,13 +65,18 @@ export default function A2uiMessage({
   projectId?: string
   /** Receives user-initiated component actions (e.g. proposal buttons). */
   onAction?: (action: A2uiClientAction) => void
+  /** 隐藏 apply_flow 方案选择界面（提案卡片可见时避免重复）。 */
+  hideApplyFlow?: boolean
 }) {
   const surfaces = useMemo(() => {
-    const payloads = (messages && messages.length > 0)
+    const rawPayloads: A2uiMessagePayload[] = (messages && messages.length > 0)
       ? messages as unknown as A2uiMessagePayload[]
       : hasA2uiBlocks(content)
         ? extractA2uiMessages(content)
         : []
+    const payloads = hideApplyFlow
+      ? withoutApplyFlowSurfaces(rawPayloads)
+      : rawPayloads
     if (payloads.length === 0) return []
     const normalized = ensureA2uiRoots(
       normalizeA2uiInteractiveComponents(
@@ -149,7 +156,7 @@ export default function A2uiMessage({
         for (const _ of surface.componentsModel.entries) return true
         return false
       })
-  }, [content, messages, projectId, onAction])
+  }, [content, messages, projectId, onAction, hideApplyFlow])
 
   if (surfaces.length === 0) return null
 

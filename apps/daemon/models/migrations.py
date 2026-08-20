@@ -15,13 +15,27 @@ from models.schema import SchemaVersion
 
 LATEST_SCHEMA_VERSION = 0
 
-_STATISTICS_INDEXES = (
+# Dashboard statistics + hot-query indexes.  Model declarations in
+# ``Meta.indexes`` cover fresh databases; these statements converge existing
+# per-project databases onto the same schema (idempotent).
+_EXTRA_INDEXES = (
     "CREATE INDEX IF NOT EXISTS tasks_created_at ON tasks(created_at)",
     "CREATE INDEX IF NOT EXISTS tasks_workflow_created ON tasks(workflow_id, created_at)",
     "CREATE INDEX IF NOT EXISTS workflow_runs_started_at ON workflow_runs(started_at)",
     "CREATE INDEX IF NOT EXISTS step_runs_started_at ON step_runs(started_at)",
     "CREATE INDEX IF NOT EXISTS review_runs_started_at ON review_runs(started_at)",
     "CREATE INDEX IF NOT EXISTS message_started_at ON message(started_at)",
+    # Hot-query indexes — names match the indexes Peewee generates from the
+    # model ``Meta.indexes`` declarations (model-class + column names), so
+    # fresh and pre-existing databases converge to identical schemas.
+    "CREATE INDEX IF NOT EXISTS task_archived_updated_at ON tasks(archived, updated_at)",
+    "CREATE INDEX IF NOT EXISTS task_workflow_id_archived_updated_at ON tasks(workflow_id, archived, updated_at)",
+    "CREATE INDEX IF NOT EXISTS message_task_id_position ON message(task_id, position)",
+    "CREATE INDEX IF NOT EXISTS message_task_id_created_at ON message(task_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS chatsession_project_id_sort_order ON chat_sessions(project_id, sort_order)",
+    "CREATE INDEX IF NOT EXISTS workflowrun_status ON workflow_runs(status)",
+    "CREATE INDEX IF NOT EXISTS schedule_status_next_run_at ON schedules(status, next_run_at)",
+    "CREATE INDEX IF NOT EXISTS schedulerun_status ON schedule_runs(status)",
 )
 
 _ADDITIVE_COLUMNS = {
@@ -44,7 +58,8 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
     """Ensure an open database matches the current model schema.
 
     Creates any missing tables/columns from the current models, recreates
-    the dashboard statistics indexes, and records the baseline version.
+    the dashboard statistics and hot-query indexes, and records the baseline
+    version.
     Returns LATEST_SCHEMA_VERSION.
     """
     # Local import avoids the models/__init__ ↔ models/migrations import cycle.
@@ -62,7 +77,7 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
                 db.execute_sql(
                     f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
                 )
-    for statement in _STATISTICS_INDEXES:
+    for statement in _EXTRA_INDEXES:
         db.execute_sql(statement)
     (
         SchemaVersion.insert(id=1, version=LATEST_SCHEMA_VERSION)

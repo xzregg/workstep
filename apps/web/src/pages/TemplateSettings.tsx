@@ -357,10 +357,8 @@ export default function TemplateSettings() {
                 toolbarMid={
                   <Button
                     variant="ghost"
-                    title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
-                    disabled={!activeProject?.id}
+                    title={t('templateSettings.aiEditTitle')}
                     onClick={() => {
-                      if (!activeProject?.id) return
                       setAiPanelOpen(true)
                       setAiConfirmClose(false)
                     }}

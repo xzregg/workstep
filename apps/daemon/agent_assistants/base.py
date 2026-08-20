@@ -499,6 +499,8 @@ _PERSISTED_EVENT_TYPES = frozenset({
     "a2ui",
     "acp_raw",
     "elicitation_completed",
+    "flow_proposals",
+    "flow_proposals_rejected",
 })
 
 
@@ -1061,6 +1063,12 @@ class AssistantRuntime:
 
         if self._project_manager is None:
             return nullcontext()
+        if not project_id:
+            # Project-less sessions (e.g. flow-template editing) persist to
+            # the daemon-global session store instead of a project DB.
+            from services.global_sessions import global_sessions_ctx
+
+            return global_sessions_ctx()
         return self._project_manager.activate_project_by_id(project_id)
 
     async def _await_maybe(self, value):
@@ -1119,6 +1127,7 @@ class AssistantRuntime:
             _events: list[dict] = []
             started_at = utc_now().isoformat()
             streamed_reply = ""
+            structured_events: list[dict] = []
             try:
                 session.cwd = self._cwd(session.project_id)
                 prompt = self._build_prompt(session)
@@ -1249,7 +1258,7 @@ class AssistantRuntime:
                     )
                     seq_holder[0] += 1
                 if structured:
-                    seq_holder[0] = await self._publish_structured(
+                    seq_holder[0], structured_events = await self._publish_structured(
                         session,
                         assistant_message_id,
                         reply,
@@ -1285,6 +1294,13 @@ class AssistantRuntime:
                         + [
                             event
                             for event in repair_events
+                            if isinstance(event, dict)
+                            and event.get("type")
+                            in _PERSISTED_EVENT_TYPES
+                        ]
+                        + [
+                            event
+                            for event in structured_events
                             if isinstance(event, dict)
                             and event.get("type")
                             in _PERSISTED_EVENT_TYPES
@@ -1413,13 +1429,17 @@ class AssistantRuntime:
         reply: str,
         structured: list,
         seq: int,
-    ) -> int:
+    ) -> tuple[int, list[dict]]:
+        """发布结构化结果；返回 (next_seq, 待持久化的事件字典列表)。"""
         publisher = self._config.publish_structured
         if publisher is not None:
-            return await self._await_maybe(
+            result = await self._await_maybe(
                 publisher(session, assistant_message_id, reply, structured, seq)
             )
-        return seq
+            if isinstance(result, tuple) and len(result) == 2:
+                return int(result[0]), list(result[1])
+            return int(result), []
+        return seq, []
 
     async def _invoke(
         self,

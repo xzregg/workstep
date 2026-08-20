@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query
 
-from schemas.project import InitRequest, RegisterRequest, RenameRequest, SaveStepsRequest
+from schemas.project import InitRequest, ReorderProjectsRequest, RegisterRequest, RenameRequest, SaveStepsRequest
 from services.project import DEFAULT_STEPS, project_manager
 from services.workflow_definition import (
     WorkflowDefinition,
@@ -43,6 +43,13 @@ async def rename_project(req: RenameRequest):
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     return {"path": str(proj.path), "name": proj.name}
+
+
+@router.post("/reorder")
+async def reorder_projects(req: ReorderProjectsRequest):
+    """Reorder registered local projects by id."""
+    project_manager.reorder_projects(req.ordered_ids)
+    return {"reordered": True}
 
 
 @router.get("/list")

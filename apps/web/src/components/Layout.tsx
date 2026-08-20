@@ -46,7 +46,7 @@ const sectionLabel: React.CSSProperties = {
 
 const nestedSectionLabel: React.CSSProperties = {
   margin: '10px 12px 2px 28px',
-  fontSize: 13, fontWeight: 600,
+  fontSize: 17.5, fontWeight: 600,
   color: 'var(--muted)',
   fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
@@ -59,7 +59,7 @@ const nestedSectionLabel: React.CSSProperties = {
 const projectItemStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 13,
+  cursor: 'pointer', fontSize: 17.5,
   color: active ? 'var(--fg)' : 'var(--fg-2)',
   background: active ? 'var(--surface)' : 'transparent',
   fontWeight: active ? 500 : 400,
@@ -92,7 +92,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, addRemoteProject, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, addRemoteProject, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
   const [addProjectMode, setAddProjectMode] = useState<'local' | 'remote'>('local')
   const [remoteShareString, setRemoteShareString] = useState('')
@@ -117,7 +117,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [addWfConfirmClose, setAddWfConfirmClose] = useState(false)
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
   const [addWfSize, setAddWfSize] = useState<{ width: number; height: number } | null>(null)
-  const [addWfChatWidth, setAddWfChatWidth] = useState(380)
+  const [addWfChatWidth, setAddWfChatWidth] = useState<number | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(280)
   const [addWfAiOpen, setAddWfAiOpen] = useState(false)
   const [addWfAiMessage, setAddWfAiMessage] = useState('')
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
@@ -129,6 +130,8 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [shareProject, setShareProject] = useState<Project | null>(null)
   const [projectContextMenu, setProjectContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
+  const [dragProjectId, setDragProjectId] = useState<string | null>(null)
+  const [dropProjectId, setDropProjectId] = useState<string | null>(null)
   const sessions = useChatListStore((s) => s.sessions)
   const runningChatSessions = useChatSessionStore(
     useShallow((s) =>
@@ -161,12 +164,34 @@ export default function Layout({ onSelectProject, children }: Props) {
   const previewCanvasRef = useRef<FlowCanvasHandle>(null)
   const addWfModalRef = useRef<HTMLDivElement>(null)
 
+  const startSidebarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    const onMove = (ev: PointerEvent) => {
+      setSidebarWidth(Math.min(480, Math.max(180, startWidth + (ev.clientX - startX))))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
   const startDividerDrag = (e: React.MouseEvent) => {
     e.preventDefault()
     const startX = e.clientX
-    const startWidth = addWfChatWidth
+    const modalWidth = addWfModalRef.current?.clientWidth ?? window.innerWidth * 0.9
+    const startWidth = addWfChatWidth ?? Math.round((modalWidth * 2) / 5)
     const onMove = (ev: MouseEvent) => {
-      setAddWfChatWidth(Math.min(560, Math.max(280, startWidth - (ev.clientX - startX))))
+      setAddWfChatWidth(Math.min(Math.round(modalWidth * 0.6), Math.max(280, startWidth - (ev.clientX - startX))))
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
@@ -183,7 +208,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     const startX = e.clientX
     const startY = e.clientY
     const rect = addWfModalRef.current?.getBoundingClientRect()
-    const startWidth = rect?.width ?? 1160
+    const startWidth = rect?.width ?? window.innerWidth * 0.9
     const startHeight = rect?.height ?? 780
     const onMove = (ev: MouseEvent) => {
       const width = Math.min(window.innerWidth - 24, Math.max(760, startWidth + (ev.clientX - startX)))
@@ -326,7 +351,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     setAddWfConfirmClose(false)
     setPendingAiSteps(null)
     setAddWfSize(null)
-    setAddWfChatWidth(380)
+    setAddWfChatWidth(null)
     setAddWfAiOpen(false)
     setAddWfAiMessage('')
     try {
@@ -349,7 +374,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     setAddWfConfirmClose(false)
     setPendingAiSteps(null)
     setAddWfSize(null)
-    setAddWfChatWidth(380)
+    setAddWfChatWidth(null)
     setAddWfAiOpen(false)
     setAddWfAiMessage('')
   }
@@ -569,11 +594,35 @@ export default function Layout({ onSelectProject, children }: Props) {
   return (
     <div style={{ display: 'flex', height: '100vh' }}>
       {/* Sidebar */}
-      <aside style={sidebarStyle}>
+      <aside style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)' }}>
             <Icon name="layers" size={18} strokeWidth={2} color="var(--accent)" />
             WorkStep
+            <a
+              href="/landing"
+              style={{
+                marginLeft: 'auto',
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 500,
+                borderRadius: 6,
+                color: 'var(--fg-2)',
+                textDecoration: 'none',
+                fontFamily: 'var(--font-body)',
+                whiteSpace: 'nowrap',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--accent)'
+                e.currentTarget.style.background = 'var(--surface)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--fg-2)'
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              {t('layout.intro')}
+            </a>
           </div>
         </div>
 
@@ -604,6 +653,44 @@ export default function Layout({ onSelectProject, children }: Props) {
                   if (p.type === 'remote') return
                   e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('')
                 }}
+                draggable={p.type === 'local' && renameId !== p.path}
+                onDragStart={(e) => {
+                  e.stopPropagation()
+                  e.dataTransfer.effectAllowed = 'move'
+                  e.dataTransfer.setData('text/plain', p.id)
+                  setDragProjectId(p.id)
+                }}
+                onDragOver={(e) => {
+                  if (p.type !== 'local') return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dropProjectId !== p.id) setDropProjectId(p.id)
+                }}
+                onDragLeave={(e) => {
+                  e.stopPropagation()
+                  if (dropProjectId === p.id) setDropProjectId(null)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (p.type !== 'local') return
+                  const dragId = dragProjectId || e.dataTransfer.getData('text/plain')
+                  const targetId = p.id
+                  setDragProjectId(null)
+                  setDropProjectId(null)
+                  if (!dragId || dragId === targetId) return
+                  const ids = projects.map((item) => item.id)
+                  if (!ids.includes(dragId) || !ids.includes(targetId)) return
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const before = e.clientY < rect.top + rect.height / 2
+                  const next = ids.filter((id) => id !== dragId)
+                  const targetIndex = next.indexOf(targetId)
+                  next.splice(before ? targetIndex : targetIndex + 1, 0, dragId)
+                  if (next.join(',') !== ids.join(',')) {
+                    void reorderProjects(next)
+                  }
+                }}
+                onDragEnd={() => { setDragProjectId(null); setDropProjectId(null) }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -616,10 +703,17 @@ export default function Layout({ onSelectProject, children }: Props) {
                   })
                 }}
                 className="ws-row"
-                style={{ ...projectItemStyle(activeProject?.id === p.id), position: 'relative' }}
+                style={{
+                  ...projectItemStyle(activeProject?.id === p.id),
+                  position: 'relative',
+                  userSelect: 'none',
+                  opacity: dragProjectId === p.id ? 0.4 : 1,
+                  outline: dropProjectId === p.id ? '1px solid var(--accent)' : 'none',
+                  ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
+                }}
               >
                 <Icon
-                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={15} strokeWidth={2}
+                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={20.5} strokeWidth={2}
                   style={{ flexShrink: 0, color: activeProject?.id === p.id ? 'var(--accent)' : 'var(--meta)' }}
                 />
                 {renameId === p.path ? (
@@ -650,7 +744,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       setRenameId(null)
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, height: 22, fontSize: 13, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                    style={{ flex: 1, height: 30, fontSize: 17.5, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                   />
                 ) : (
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -713,7 +807,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Icon
-                              name={flowOpen ? 'folder-open' : 'folder'} size={13} strokeWidth={2}
+                              name={flowOpen ? 'folder-open' : 'folder'} size={17.5} strokeWidth={2}
                               style={{ flexShrink: 0, color: flowOpen ? 'var(--accent)' : 'var(--meta)' }}
                             />
                             {t('chatSession.flowSection')}
@@ -796,7 +890,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       style={{
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 13,
+                        fontSize: 17.5,
                         color: deleted ? 'var(--meta)' : (activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
                         background: isDropTarget
                           ? 'var(--accent-light)'
@@ -806,7 +900,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
                       }}
                     >
-                      <Icon name="workflow" size={12} strokeWidth={2} />
+                      <Icon name="workflow" size={16} strokeWidth={2} />
                       {renameWfId === wf.id ? (
                         <Input
                           ref={renameWfInputRef}
@@ -826,7 +920,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameWfId(null)
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 20, fontSize: 13, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                          style={{ flex: 1, height: 28, fontSize: 17.5, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                         />
                       ) : (
                         <span
@@ -835,18 +929,18 @@ export default function Layout({ onSelectProject, children }: Props) {
                         >{wf.name}</span>
                       )}
                       {wf.running && !deleted && (
-                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0 }} title={t('layout.flowRunning')} aria-hidden="true" />
+                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 13, height: 13 }} title={t('layout.flowRunning')} aria-hidden="true" />
                       )}
-                      {deleted && <span style={{ fontSize: 11, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
-                      {wf.is_default ? <span style={{ fontSize: 11, opacity: 0.6 }}>{t('layout.default')}</span> : null}
-                      <span style={{ fontSize: 11, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                      {deleted && <span style={{ fontSize: 14.5, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
+                      {wf.is_default ? <span style={{ fontSize: 14.5, opacity: 0.6 }}>{t('layout.default')}</span> : null}
+                      <span style={{ fontSize: 14.5, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       <Button
                         variant="icon"
                         className="ws-more-btn"
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, flexShrink: 0 }}
+                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 17.5, lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -875,7 +969,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Icon
-                          name={open ? 'folder-open' : 'folder'} size={13} strokeWidth={2}
+                          name={open ? 'folder-open' : 'folder'} size={17.5} strokeWidth={2}
                           style={{ flexShrink: 0, color: open ? 'var(--accent)' : 'var(--meta)' }}
                         />
                         {t('chatSession.navSection')}
@@ -956,7 +1050,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '3px 8px', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 12,
+                            cursor: 'pointer', fontSize: 16,
                             color: location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
                             background: isDropTarget
                               ? 'var(--accent-light)'
@@ -969,12 +1063,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                           {sessionRunning ? (
                             <span
                               className="task-status-spinner"
-                              style={{ color: 'var(--accent)', flexShrink: 0, width: 11, height: 11 }}
+                              style={{ color: 'var(--accent)', flexShrink: 0, width: 14.5, height: 14.5 }}
                               title={t('chatSession.runningHint')}
                               aria-hidden="true"
                             />
                           ) : (
-                            <Icon name="bot" size={11} strokeWidth={2} style={{ flexShrink: 0 }} />
+                            <Icon name="bot" size={14.5} strokeWidth={2} style={{ flexShrink: 0 }} />
                           )}
                           {renameSessionId === session.id ? (
                             <Input
@@ -987,7 +1081,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               }}
                               onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue) }}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ flex: 1, height: 18, fontSize: 12, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
+                              style={{ flex: 1, height: 25, fontSize: 16, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
                             />
                           ) : (
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
@@ -998,7 +1092,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             onClick={(e) => openSessionMenu(e, session.id, session.title)}
                             title={t('layout.moreActions')}
                             aria-label={t('layout.moreActions')}
-                            style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, flexShrink: 0 }}
+                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 17.5, lineHeight: '26px', padding: 0, flexShrink: 0 }}
                           >⋯</Button>
                         </div>
                         )
@@ -1038,6 +1132,19 @@ export default function Layout({ onSelectProject, children }: Props) {
           {t('nav.settings')}
         </Button>
       </aside>
+
+      <div
+        className="task-detail-split-handle"
+        role="separator"
+        aria-orientation="vertical"
+        tabIndex={0}
+        onPointerDown={startSidebarDrag}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+          e.preventDefault()
+          setSidebarWidth((w) => Math.min(480, Math.max(180, w + (e.key === 'ArrowLeft' ? -16 : 16))))
+        }}
+      />
 
       {projectContextMenu && (
         <div
@@ -1349,7 +1456,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             ref={addWfModalRef}
             className="modal"
             style={{
-              width: addWfSize ? addWfSize.width : 1160, maxWidth: '96vw',
+              width: addWfSize ? addWfSize.width : '90vw', maxWidth: '96vw',
               height: addWfSize ? addWfSize.height : 'min(92vh, 900px)', maxHeight: '92vh',
               display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
               position: 'relative',
@@ -1470,7 +1577,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   </div>
                   {/* Right: AI flow-design chat */}
                   <div style={{
-                    width: addWfChatWidth, flexShrink: 0,
+                    width: addWfChatWidth ?? '40%', flexShrink: 0,
                     display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)',
                   }}>
                     <AiFlowChat

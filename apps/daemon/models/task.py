@@ -10,6 +10,10 @@ class Task(BaseModel):
 
     class Meta:
         table_name = "tasks"
+        indexes = (
+            (("archived", "updated_at"), False),
+            (("workflow_id", "archived", "updated_at"), False),
+        )
 
     id = pw.TextField(primary_key=True)
     title = pw.TextField()

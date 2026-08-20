@@ -67,6 +67,8 @@ export interface ChatMessageBubbleProps {
   events?: InteractionEvent[]
   /** Store 累积的 A2UI 载荷，按 messageId 渲染（fence 仅作回退）。 */
   a2uiMessages?: Record<string, unknown>[]
+  /** 隐藏消息内重复的方案选择 A2UI（提案卡片可见时传入）。 */
+  hideApplyFlow?: boolean
   /** Submit an ACP permission or elicitation response. */
   onInteractionRespond?: (
     interactionId: string,
@@ -98,6 +100,7 @@ export default function ChatMessageBubble({
   onA2uiAction,
   events = [],
   a2uiMessages,
+  hideApplyFlow,
   onInteractionRespond,
   variant = 'surface',
   rootProps,
@@ -202,6 +205,7 @@ export default function ChatMessageBubble({
                       messages={a2uiMessages}
                       projectId={projectId}
                       onAction={onA2uiAction}
+                      hideApplyFlow={hideApplyFlow}
                     />
                   )}
                 </>

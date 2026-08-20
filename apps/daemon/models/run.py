@@ -24,6 +24,7 @@ class WorkflowRun(BaseModel):
 
     class Meta:
         table_name = "workflow_runs"
+        indexes = ((("status",), False),)
 
 
 class StepRun(BaseModel):

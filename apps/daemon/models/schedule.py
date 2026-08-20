@@ -25,6 +25,7 @@ class Schedule(BaseModel):
 
     class Meta:
         table_name = "schedules"
+        indexes = ((("status", "next_run_at"), False),)
 
 
 class ScheduleRun(BaseModel):
@@ -46,4 +47,7 @@ class ScheduleRun(BaseModel):
 
     class Meta:
         table_name = "schedule_runs"
-        indexes = ((('schedule', 'scheduled_for'), True),)
+        indexes = (
+            (('schedule', 'scheduled_for'), True),
+            (("status",), False),
+        )

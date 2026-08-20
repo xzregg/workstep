@@ -24,6 +24,20 @@ function closeStreamingFence(markdown: string): string {
 }
 
 const UPLOAD_RELATIVE = /^[^/]+\.workstep\/uploads\/([^/?#]+)$/
+const GLOBAL_UPLOAD_RELATIVE = /^data\/uploads\/([^/?#]+)$/
+
+function resolveUploadSrc(src: string | undefined, projectId?: string): string | undefined {
+  if (!src) return src
+  const projectMatch = src.match(UPLOAD_RELATIVE)
+  if (projectMatch && projectId) {
+    return `/api/fs/serve/${encodeURIComponent(projectMatch[1])}?project_id=${encodeURIComponent(projectId)}`
+  }
+  const globalMatch = src.match(GLOBAL_UPLOAD_RELATIVE)
+  if (globalMatch) {
+    return `/api/fs/serve/${encodeURIComponent(globalMatch[1])}`
+  }
+  return src
+}
 
 export default function MarkdownMessage({
   content,
@@ -32,17 +46,11 @@ export default function MarkdownMessage({
 }: MarkdownMessageProps) {
   const markdown = streaming ? closeStreamingFence(content) : content
 
-  const components = projectId
-    ? {
-        img: (props: { src?: string; alt?: string }) => {
-          const match = props.src?.match(UPLOAD_RELATIVE)
-          const src = match
-            ? `/api/fs/serve/${encodeURIComponent(match[1])}?project_id=${encodeURIComponent(projectId)}`
-            : props.src
-          return <img src={src} alt={props.alt ?? ''} />
-        },
-      }
-    : undefined
+  const components = {
+    img: (props: { src?: string; alt?: string }) => (
+      <img src={resolveUploadSrc(props.src, projectId)} alt={props.alt ?? ''} />
+    ),
+  }
 
   return (
     <div

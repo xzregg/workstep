@@ -107,6 +107,11 @@ export const projectApi = {
       method: 'POST',
       body: JSON.stringify({ path, name }),
     }),
+  reorder: (orderedIds: string[]) =>
+    request<{ reordered: boolean }>('/project/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    }),
   delete: (projectId: string) =>
     request<{ deleted: boolean }>(`/project/${encodeURIComponent(projectId)}`, {
       method: 'DELETE',

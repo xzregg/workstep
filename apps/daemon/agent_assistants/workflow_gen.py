@@ -27,7 +27,7 @@ from agent_assistants.base import (
     assistant_registry,
     extract_streaming_reply,
 )
-from services.config import config_store
+from services.config import CONFIG_DIR, config_store
 from services.workflow_definition import (
     WorkflowDefinition,
     WorkflowValidationError,
@@ -119,6 +119,7 @@ class WorkflowGenModule(AssistantRuntime):
             extract_streaming_text=extract_streaming_reply,
             history_message=self._history_message,
             validate_engine=self._validate_engine,
+            cwd_resolver=self._resolve_cwd,
         )
         self._workflow_gen_config = config
         super().__init__(config, event_bus, project_manager)
@@ -201,8 +202,8 @@ class WorkflowGenModule(AssistantRuntime):
 
     def reset_session(self, project_id: str, workflow_id: str) -> bool:
         """Clear the stable AI editing conversation for one workflow."""
-        if not project_id or not workflow_id:
-            raise ValueError("project_id and workflow_id are required")
+        if not workflow_id:
+            raise ValueError("workflow_id is required")
         memory_key, session_id = self._session_identity(
             project_id, None, workflow_id
         )
@@ -227,6 +228,21 @@ class WorkflowGenModule(AssistantRuntime):
             )
         sid = session_id or str(uuid.uuid4())
         return (project_id, sid), sid
+
+    @staticmethod
+    def _resolve_cwd(project_manager, project_id: str) -> str:
+        """Engine working directory for flow-design sessions.
+
+        Project sessions run in the project root; template editing (empty
+        ``project_id``) runs in the global templates directory so the agent
+        can read/write template files without a project.
+        """
+        if not project_id:
+            templates_dir = CONFIG_DIR / "data" / "templates"
+            templates_dir.mkdir(parents=True, exist_ok=True)
+            return str(templates_dir)
+        with project_manager.activate_project_by_id(project_id) as project:
+            return str(project.path)
 
     # ── engine / model resolution ───────────────────────────────────────
 
@@ -625,7 +641,7 @@ class WorkflowGenModule(AssistantRuntime):
         reply: str,
         proposals: list[dict],
         seq: int,
-    ) -> int:
+    ) -> tuple[int, list[dict]]:
         proposal_cards = []
         for index, item in enumerate(proposals):
             steps = item["steps"]
@@ -639,13 +655,15 @@ class WorkflowGenModule(AssistantRuntime):
                     "autoApply": bool(item.get("autoApply", False)),
                 }
             )
-        return await self._publish(
+        data = {"proposals": proposal_cards}
+        seq = await self._publish(
             session,
             assistant_message_id,
             "flow_proposals",
-            {"proposals": proposal_cards},
+            data,
             seq,
         )
+        return seq, [{"type": "flow_proposals", "data": data}]
 
     @staticmethod
     def _normalize_proposal(item: object) -> dict | None:

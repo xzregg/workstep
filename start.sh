@@ -148,17 +148,29 @@ if [ "$MODE" = "dev" ]; then
     echo ""
     tail -f "$LOG_DIR/daemon.log" "$LOG_DIR/web.log"
 else
-    # 生产模式: build 前端 → Daemon serve 静态文件
-    log "构建前端..."
+    # 生产模式: build 官网(landing) + 前端(web) → Daemon serve
+    # 官网托管在 "/landing"，Web 应用仍占据 home "/"
+    LANDING_DIR="$SCRIPT_DIR/apps/landing"
+    log "构建官网 landing..."
+    cd "$LANDING_DIR"
+    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
+        NODE_ENV=development yarn install 2>&1 | tail -3
+    fi
+    LANDING_BASE=/landing/ NODE_ENV=development yarn build
+    cd "$SCRIPT_DIR"
+    ok "官网已构建 → Daemon serve /landing"
+
+    log "构建前端 web..."
     cd "$WEB_DIR"
     if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
         NODE_ENV=development yarn install 2>&1 | tail -3
     fi
     NODE_ENV=development npx tsc -b && NODE_ENV=development npx vite build
     cd "$SCRIPT_DIR"
-    ok "前端已构建 → Daemon serve dist/"
+    ok "前端已构建 → Daemon serve home /"
     echo ""
-    echo -e "  ${GREEN}应用:${NC}  http://localhost:$PORT"
+    echo -e "  ${GREEN}官网:${NC}  http://localhost:$PORT/landing"
+    echo -e "  ${GREEN}应用:${NC}  http://localhost:$PORT/"
     echo -e "  ${GREEN}API文档:${NC} http://localhost:$PORT/docs"
     echo -e "  ${BLUE}日志:${NC}  $LOG_DIR/"
     echo ""

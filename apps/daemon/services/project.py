@@ -180,17 +180,27 @@ class ProjectManager:
     def _save_config(self):
         """Persist project list to config store.
 
-        Merges in-memory projects with existing config to avoid losing
-        entries whose paths are temporarily unavailable.
+        Writes projects in the current in-memory order with an explicit
+        ``sort_order``. Entries whose paths are temporarily unavailable
+        keep their relative order at the end.
         """
         existing = config_store.get("projects") or []
         existing_by_path = {e["path"]: e for e in existing if isinstance(e, dict)}
 
-        # Update with in-memory projects
+        ordered: list[dict] = []
         for path_str, proj in self._projects.items():
-            existing_by_path[path_str] = {"id": proj.id, "path": path_str, "name": proj.name}
+            existing_by_path.pop(path_str, None)
+            ordered.append({
+                "id": proj.id,
+                "path": path_str,
+                "name": proj.name,
+                "sort_order": len(ordered),
+            })
+        for entry in existing_by_path.values():
+            entry["sort_order"] = len(ordered)
+            ordered.append(entry)
 
-        config_store.set("projects", list(existing_by_path.values()))
+        config_store.set("projects", ordered)
 
     def bind_project(self, path: str | Path) -> "Project":
         """Bind this execution context to a project's database.
@@ -645,6 +655,22 @@ class ProjectManager:
         self._save_config()
         return proj
 
+    def reorder_projects(self, ordered_ids: list[str]) -> None:
+        """Reorder registered projects by an explicit id list.
+
+        Unknown ids (e.g. remote projects) keep their relative order at the
+        end. Persists the new order to the config store.
+        """
+        by_id = {proj.id: proj for proj in self._projects.values()}
+        ordered = []
+        for project_id in ordered_ids:
+            proj = by_id.pop(project_id, None)
+            if proj is not None:
+                ordered.append(proj)
+        ordered.extend(by_id.values())
+        self._projects = {str(proj.path): proj for proj in ordered}
+        self._save_config()
+
     def unregister(self, project_id: str) -> Project | None:
         """Forget a project without deleting anything from its workspace."""
         proj = self.get_project_by_id(project_id)
@@ -668,6 +694,7 @@ class ProjectManager:
                 )
             ],
         )
+        self._save_config()
         return proj
 
     def list_projects(self) -> list[dict]:

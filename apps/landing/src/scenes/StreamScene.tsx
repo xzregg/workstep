@@ -3,13 +3,40 @@ import type { CSSProperties } from 'react'
 import { useI18n } from '../i18n'
 import { arrive, typewriter } from './utils'
 
-const STAGES = [
-  { key: 'stage1', color: '#0071e3', doneAt: 2400 },
-  { key: 'stage2', color: '#7c3aed', doneAt: 4000 },
-  { key: 'stage3', color: '#059669', activeFrom: 4400 },
-  { key: 'stage4', color: '#d97706' },
-  { key: 'stage5', color: '#dc2626' },
-  { key: 'stage6', color: '#16a34a' },
+interface StageOutput {
+  key: string
+  type: string
+  doneAt?: number
+}
+
+const STAGES: Array<{
+  key: string
+  color: string
+  doneAt?: number
+  activeFrom?: number
+  outputs?: StageOutput[]
+}> = [
+  {
+    key: 'stage1',
+    color: '#0071e3',
+    doneAt: 2400,
+    outputs: [{ key: 'out1', type: 'md', doneAt: 2400 }],
+  },
+  {
+    key: 'stage2',
+    color: '#7c3aed',
+    doneAt: 4000,
+    outputs: [{ key: 'out2', type: 'md', doneAt: 4000 }],
+  },
+  {
+    key: 'stage3',
+    color: '#059669',
+    activeFrom: 4400,
+    outputs: [{ key: 'out3', type: 'tsx' }],
+  },
+  { key: 'stage4', color: '#d97706', outputs: [{ key: 'out4', type: 'ts' }] },
+  { key: 'stage5', color: '#dc2626', outputs: [{ key: 'out5', type: 'ts' }] },
+  { key: 'stage6', color: '#16a34a', outputs: [{ key: 'out6', type: 'zip' }] },
 ]
 
 const PLAN = [
@@ -63,19 +90,34 @@ export function StreamScene({ time }: { time: number }) {
           })}
         </div>
 
-        <div className="stage-list">
-          {STAGES.map((stage) => {
-            const done = stage.doneAt !== undefined && time >= stage.doneAt
-            const active = stage.activeFrom !== undefined && time >= stage.activeFrom && !done
-            return (
-              <div key={stage.key} className={`stage-row${done ? ' is-done' : ''}${active ? ' is-active' : ''}`}>
-                <span className="stage-row-dot" style={{ background: stage.color }} />
-                <span className="stage-row-name">{t(`scene.stream.${stage.key}`)}</span>
-                {done && <Check size={12} className="stage-row-check" />}
-                {active && <Loader2 size={12} className="spin stage-row-spin" />}
-              </div>
-            )
-          })}
+        <div className="output-label">{t('scene.stream.outputs')}</div>
+        <div className="output-list">
+          {STAGES.flatMap((stage) =>
+            (stage.outputs || []).map((out) => {
+              const done =
+                out.doneAt !== undefined && time >= out.doneAt
+              return (
+                <div
+                  key={out.key}
+                  className={`output-row${done ? ' is-done' : ''}`}
+                >
+                  <span className="output-arrow">↳</span>
+                  <span className="output-dot" />
+                  <span className="output-name">
+                    {t(`scene.stream.${out.key}`)}
+                  </span>
+                  <span className="output-type">{out.type}</span>
+                  <span
+                    className={`output-status${done ? ' is-done' : ''}`}
+                  >
+                    {done
+                      ? t('scene.stream.outputDone')
+                      : t('scene.stream.outputPending')}
+                  </span>
+                </div>
+              )
+            }),
+          )}
         </div>
       </aside>
 

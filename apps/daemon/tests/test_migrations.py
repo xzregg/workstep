@@ -182,3 +182,60 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     assert expected.issubset({column.name for column in db.get_columns("message")})
     assert expected.issubset({column.name for column in db.get_columns("chat_messages")})
     db.close()
+
+
+_HOT_QUERY_INDEXES = {
+    "message": {"message_task_id_sequence", "message_task_id_channel_sequence",
+                "message_task_id_position", "message_task_id_created_at"},
+    "chat_messages": {"chatmessage_session_id_created_at"},
+    "tasks": {"task_archived_updated_at", "task_workflow_id_archived_updated_at"},
+    "chat_sessions": {"chatsession_project_id_sort_order"},
+    "workflow_runs": {"workflowrun_status"},
+    "schedules": {"schedule_status_next_run_at"},
+    "schedule_runs": {"schedulerun_status"},
+}
+
+
+def test_init_db_creates_hot_query_indexes(tmp_path):
+    """Conversation and board queries are backed by composite indexes."""
+    from models import init_db
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    try:
+        for table, expected in _HOT_QUERY_INDEXES.items():
+            names = {index.name for index in db.get_indexes(table)}
+            assert expected <= names, f"missing indexes on {table}"
+    finally:
+        db.close()
+
+
+def test_migrate_database_adds_hot_query_indexes_to_existing_tables(tmp_path):
+    """Existing databases converge onto the same indexes, idempotently."""
+    import peewee as pw
+
+    from models import migrate_database
+
+    db = pw.SqliteDatabase(tmp_path / "legacy-indexes.db")
+    db.connect()
+    db.execute_sql('CREATE TABLE "message" ("id" TEXT PRIMARY KEY, "task_id" TEXT,'
+                   ' "position" INTEGER, "created_at" DATETIME, "started_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "chat_messages" ("id" TEXT PRIMARY KEY,'
+                   ' "session_id" TEXT, "created_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "tasks" ("id" TEXT PRIMARY KEY, "archived" INTEGER,'
+                   ' "updated_at" DATETIME, "workflow_id" TEXT, "created_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "chat_sessions" ("id" TEXT PRIMARY KEY,'
+                   ' "project_id" TEXT, "sort_order" INTEGER)')
+    db.execute_sql('CREATE TABLE "workflow_runs" ("id" TEXT PRIMARY KEY,'
+                   ' "status" TEXT, "started_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "schedules" ("id" TEXT PRIMARY KEY,'
+                   ' "status" TEXT, "next_run_at" DATETIME)')
+    db.execute_sql('CREATE TABLE "schedule_runs" ("id" TEXT PRIMARY KEY,'
+                   ' "status" TEXT)')
+
+    migrate_database(db)
+    migrate_database(db)  # second pass must stay idempotent
+
+    for table, expected in _HOT_QUERY_INDEXES.items():
+        names = {index.name for index in db.get_indexes(table)}
+        assert expected <= names, f"missing indexes on {table}"
+    db.close()

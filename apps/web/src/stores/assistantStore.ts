@@ -216,16 +216,55 @@ export function createAssistantStore(
           ...messages.filter((m) => !existingIds.has(m.id)),
           ...session.messages,
         ]
-        // 从历史事件的 a2ui.surface 载荷重建 A2UI 界面（fence 仅作旧数据回退）。
+        // 历史事件兼容两种形状：内部词汇（``type: 'a2ui'``，data 为载荷）与
+        // 对外 AG-UI CUSTOM（``type: 'CUSTOM'``、``name: 'a2ui.surface'``）。
+        const historyPayloads = (events: AssistantChatEvent[] | undefined, internalType: string, aguiName: string) =>
+          (events ?? []).flatMap((event) => {
+            if (event.type === internalType && event.data && typeof event.data === 'object') {
+              return [event.data as Record<string, unknown>]
+            }
+            if (event.type === 'CUSTOM' && event.name === aguiName && event.value && typeof event.value === 'object') {
+              return [event.value as Record<string, unknown>]
+            }
+            return []
+          })
+        // 内部事件类型 = AG-UI 名去掉 ``workstep.`` 前缀（如 flow_proposals）。
+        const internalTypeOf = (aguiName?: string) =>
+          aguiName ? (aguiName.startsWith('workstep.') ? aguiName.slice('workstep.'.length) : aguiName) : undefined
+        // 从历史事件重建 A2UI 界面（fence 仅作旧数据回退）。
         const a2uiMessages = { ...(session.a2uiMessages ?? {}) }
+        // 最近一轮结构化提案卡片与拒绝原因随历史恢复，重开对话框后仍可应用。
+        let latestProposals = session.latestProposals
+        let rejectionMessage = session.rejectionMessage
         for (const message of messages) {
-          const payloads = (message.events ?? []).filter((event) => (
-            event.type === 'CUSTOM'
-            && event.name === CUSTOM.a2ui
-            && event.value && typeof event.value === 'object'
-          )).map((event) => event.value as Record<string, unknown>)
-          if (payloads.length > 0) {
-            a2uiMessages[message.id] = payloads
+          const a2uiPayloads = historyPayloads(message.events, 'a2ui', CUSTOM.a2ui)
+          if (a2uiPayloads.length > 0) {
+            a2uiMessages[message.id] = a2uiPayloads
+          }
+          const proposalEvent = config.proposalEvent
+          if (proposalEvent && config.proposalExtractor) {
+            const proposalPayloads = historyPayloads(
+              message.events,
+              internalTypeOf(proposalEvent) ?? '',
+              proposalEvent,
+            )
+            const proposals = proposalPayloads.flatMap((data) => config.proposalExtractor!(data))
+            if (proposals.length > 0) {
+              latestProposals = proposals
+              rejectionMessage = ''
+            }
+          }
+          const rejectionEvent = config.rejectionEvent
+          if (rejectionEvent && config.rejectionMessageExtractor) {
+            const rejected = historyPayloads(
+              message.events,
+              internalTypeOf(rejectionEvent) ?? '',
+              rejectionEvent,
+            )
+            if (rejected.length > 0) {
+              latestProposals = []
+              rejectionMessage = config.rejectionMessageExtractor(rejected[rejected.length - 1])
+            }
           }
         }
         return {
@@ -234,6 +273,8 @@ export function createAssistantStore(
             messages: merged,
             running: running || session.running,
             a2uiMessages,
+            latestProposals,
+            rejectionMessage,
           }, maxSessions),
         }
       }),

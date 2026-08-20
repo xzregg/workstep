@@ -22,6 +22,7 @@ interface ProjectState {
   createWorkflow: (projectId: string, name: string, templateId?: string, steps?: any) => Promise<WorkflowDetail>
   deleteWorkflow: (id: string, projectId: string) => Promise<void>
   restoreWorkflow: (id: string, projectId: string) => Promise<void>
+  reorderProjects: (orderedIds: string[]) => Promise<void>
   reorderWorkflows: (projectId: string, orderedIds: string[]) => Promise<void>
   renameWorkflow: (id: string, projectId: string, name: string) => Promise<WorkflowDetail>
   saveSteps: (projectId: string, steps: any) => Promise<void>
@@ -72,6 +73,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set((s) => ({
         projects: s.projects.map((p: any) => p.id === projectId ? updated : p),
       }))
+    }
+  },
+
+  reorderProjects: async (orderedIds: string[]) => {
+    const { projects } = get()
+    const orderMap = new Map(orderedIds.map((id, index) => [id, index]))
+    const sorted = [...projects].sort((a, b) =>
+      (orderMap.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER)
+    )
+    set({ projects: sorted })
+    try {
+      await projectApi.reorder(orderedIds)
+    } catch {
+      await get().fetchProjects()
     }
   },
 

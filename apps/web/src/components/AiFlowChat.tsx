@@ -20,6 +20,7 @@ import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGen
 import { useI18n } from '../i18n'
 import { selectWorkflowTurnContext } from '../utils/workflowContext'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
+import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 
 /* ══════════════════════════════════════════
    AiFlowChat — reusable AI flow-design chat.
@@ -151,7 +152,7 @@ export default function AiFlowChat({
   // Workflow edit sessions reuse a stable conversation: load prior history.
   useEffect(() => {
     lastCanvasSnapshotRef.current = null
-    if (!workflowId || !projectId) return
+    if (!workflowId) return
     const canonicalId = workflowSessionId(projectId, workflowId)
     setSessionId(canonicalId)
     useWorkflowGenStore.getState().newSession(canonicalId)
@@ -196,14 +197,14 @@ export default function AiFlowChat({
     setSendError('')
     let sid = sessionId
     if (!sid) {
-      sid = workflowId && projectId
-        ? workflowSessionId(projectId, workflowId)
-        : randomId()
+      sid = workflowId ? workflowSessionId(projectId, workflowId) : randomId()
       useWorkflowGenStore.getState().newSession(sid)
       setSessionId(sid)
     }
     useWorkflowGenStore.getState().addUserMessage(sid, content)
     setInput('')
+    // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
+    flushWsSubscriptionNow()
     const currentSteps = getCanvasSteps?.() ?? { nodes: [], connections: [] }
     const turnContext = workflowId
       ? selectWorkflowTurnContext(
@@ -261,7 +262,7 @@ export default function AiFlowChat({
   }, [latestProposals, onProposal, send, t])
 
   const resetConversation = useCallback(async () => {
-    if (!workflowId || !projectId || running || resetting) return
+    if (!workflowId || running || resetting) return
     setResetConfirmOpen(false)
     setResetting(true)
     setSendError('')
@@ -328,6 +329,7 @@ export default function AiFlowChat({
         onAttachmentError={setSendError}
         onClose={onClose}
         onA2uiAction={handleA2uiAction}
+        hideApplyFlow={shouldShowA2uiProposalCards(latestProposals.length, appliedCardId)}
         quickPromptsLabel={t('aiFlow.quickPromptsLabel')}
         a2uiMessages={session?.a2uiMessages}
         quickPrompts={[

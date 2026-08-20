@@ -32,7 +32,10 @@ class ChatSession(BaseModel):
 
     class Meta:
         table_name = "chat_sessions"
-        indexes = ((("project_id", "workflow_id", "updated_at"), False),)
+        indexes = (
+            (("project_id", "workflow_id", "updated_at"), False),
+            (("project_id", "sort_order"), False),
+        )
 
 
 class ChatMessage(BaseModel):

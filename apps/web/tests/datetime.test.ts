@@ -9,13 +9,20 @@ import {
   toMilliseconds,
 } from '../src/utils/datetime.ts'
 
-test('formats recent conversation times by weekday and older times in full', () => {
+test('formats same-week conversation times by weekday and earlier times in full', () => {
   const now = new Date(2026, 7, 10, 12, 0, 0)
 
+  // Same calendar week (Mon 2026-08-10 through Sun 2026-08-16) → weekday.
   assert.equal(
-    formatConversationDateTime(new Date(2026, 7, 4, 11, 22, 33), now),
-    '周二 11:22:33',
+    formatConversationDateTime(new Date(2026, 7, 10, 11, 22, 33), now),
+    '周一 11:22:33',
   )
+  // Last week, even though within a rolling 7-day window → full date.
+  assert.equal(
+    formatConversationDateTime(new Date(2026, 7, 9, 11, 22, 33), now),
+    '2026-08-09 11:22:33',
+  )
+  // Older messages → full date.
   assert.equal(
     formatConversationDateTime(new Date(2026, 7, 2, 11, 11, 11), now),
     '2026-08-02 11:11:11',
