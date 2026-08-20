@@ -169,6 +169,10 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
     setTestOpen(false)
   }, [])
 
+  const toggleTestAssistant = useCallback(() => {
+    setTestOpen((open) => !open)
+  }, [])
+
   const beginDividerDrag = (
     event: React.PointerEvent<HTMLDivElement>,
     edge: 'aside' | 'section',
@@ -371,7 +375,16 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
                     required
                     help={t('schedules.instructionHelp')}
                     labelAction={
-                      <Button variant="ghost" size="sm" disabled={!instruction.trim()} onClick={() => setTestOpen(true)} style={{ border: '1px solid var(--border-soft)' }}><Icon name="sparkles" size={13} /> {t('schedules.testGenerate')}</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={!instruction.trim() && !testOpen}
+                        aria-expanded={testOpen}
+                        onClick={toggleTestAssistant}
+                        style={{ border: '1px solid var(--border-soft)' }}
+                      >
+                        <Icon name="sparkles" size={13} /> {t('schedules.testGenerate')}
+                      </Button>
                     }
                   >
                     <MarkdownEditor value={instruction} onChange={setInstruction} projectId={projectId} placeholder={t('schedules.instructionPlaceholder')} />

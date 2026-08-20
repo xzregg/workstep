@@ -60,6 +60,21 @@ function CanvasEditorInner() {
     navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}&workflow=${encodeURIComponent(id)}`, { replace: true })
   }
 
+  const requestCloseAiPanel = () => {
+    if (aiGenBusy) { setAiConfirmClose(true); return }
+    setAiPanelOpen(false)
+  }
+
+  const toggleAiPanel = () => {
+    if (!activeProject?.id) return
+    if (aiPanelOpen) {
+      requestCloseAiPanel()
+      return
+    }
+    setAiPanelOpen(true)
+    setAiConfirmClose(false)
+  }
+
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -108,12 +123,8 @@ function CanvasEditorInner() {
               variant="ghost"
               title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
               disabled={!activeProject?.id}
-              onClick={() => {
-                if (activeProject?.id) {
-                  setAiPanelOpen(true)
-                  setAiConfirmClose(false)
-                }
-              }}
+              aria-expanded={aiPanelOpen}
+              onClick={toggleAiPanel}
               style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
             >
               {t('canvas.aiEdit')}
@@ -138,7 +149,7 @@ function CanvasEditorInner() {
           }}
           onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
           onBusyChange={setAiGenBusy}
-          onRequestClose={() => { if (aiGenBusy) { setAiConfirmClose(true); return } setAiPanelOpen(false) }}
+          onRequestClose={requestCloseAiPanel}
           title={t('canvas.aiEditFlowTitle')}
         />
       )}

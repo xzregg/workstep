@@ -430,7 +430,19 @@ export default function TaskList() {
     }
   }
 
+  const requestCloseTaskAi = () => {
+    if (taskAiBusy) {
+      setConfirmCloseNewTask(true)
+      return
+    }
+    setTaskAiOpen(false)
+  }
+
   const handleStartTaskAi = () => {
+    if (taskAiOpen) {
+      requestCloseTaskAi()
+      return
+    }
     if (!newTitle.trim()) {
       setTaskAiTitleAttempted(true)
       setCreateError(t('taskList.aiTitleRequired'))
@@ -1187,6 +1199,7 @@ export default function TaskList() {
                 variant="ghost"
                 size="sm"
                 onClick={handleStartTaskAi}
+                aria-expanded={taskAiOpen}
                 title={t('taskList.aiCreateTitle')}
                 style={{
                   flexShrink: 0, whiteSpace: 'nowrap', color: 'var(--accent)',
@@ -1265,10 +1278,7 @@ export default function TaskList() {
                 initialMessage={taskAiMessage}
                 onDraft={handleTaskDraft}
                 onBusyChange={setTaskAiBusy}
-                onClose={() => {
-                  if (taskAiBusy) setConfirmCloseNewTask(true)
-                  else setTaskAiOpen(false)
-                }}
+                onClose={requestCloseTaskAi}
               />
             </div>
           </>

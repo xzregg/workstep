@@ -411,7 +411,19 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
+  const requestCloseAddWfAi = () => {
+    if (addWfGenBusy) {
+      setAddWfConfirmClose(true)
+      return
+    }
+    setAddWfAiOpen(false)
+  }
+
   const handleStartAiCreate = () => {
+    if (addWfAiOpen) {
+      requestCloseAddWfAi()
+      return
+    }
     if (!addWfProjectId) return
     if (!newWfName.trim()) {
       setAddWfNameAttempted(true)
@@ -1501,6 +1513,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       variant="ghost"
                       size="sm"
                       onClick={handleStartAiCreate}
+                      aria-expanded={addWfAiOpen}
                       title={t('layout.aiCreateTitle')}
                       style={{
                         flexShrink: 0, whiteSpace: 'nowrap',

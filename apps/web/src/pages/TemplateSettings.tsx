@@ -51,6 +51,20 @@ export default function TemplateSettings() {
   // Dirty when either the canvas (FlowCanvas) or metadata (name/desc/id) changed
   const editorDirty = canvasDirty || metaDirty
 
+  const requestCloseAiPanel = () => {
+    if (aiGenBusy) { setAiConfirmClose(true); return }
+    setAiPanelOpen(false)
+  }
+
+  const toggleAiPanel = () => {
+    if (aiPanelOpen) {
+      requestCloseAiPanel()
+      return
+    }
+    setAiPanelOpen(true)
+    setAiConfirmClose(false)
+  }
+
   const refresh = useCallback(async (force = false) => {
     try {
       const { templates: list } = await fetchTemplates(force)
@@ -358,10 +372,8 @@ export default function TemplateSettings() {
                   <Button
                     variant="ghost"
                     title={t('templateSettings.aiEditTitle')}
-                    onClick={() => {
-                      setAiPanelOpen(true)
-                      setAiConfirmClose(false)
-                    }}
+                    aria-expanded={aiPanelOpen}
+                    onClick={toggleAiPanel}
                     style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
                   >
                     {t('canvas.aiEdit')}
@@ -381,10 +393,7 @@ export default function TemplateSettings() {
                 }}
                 onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
                 onBusyChange={setAiGenBusy}
-                onRequestClose={() => {
-                  if (aiGenBusy) { setAiConfirmClose(true); return }
-                  setAiPanelOpen(false)
-                }}
+                onRequestClose={requestCloseAiPanel}
                 title={t('templateSettings.aiEditTitle')}
               />
             )}

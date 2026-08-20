@@ -10,6 +10,10 @@ const panelSource = await readFile(
   new URL('../src/components/AiFlowEditorPanel.tsx', import.meta.url),
   'utf8',
 ).catch(() => '')
+const canvasEditorSource = await readFile(
+  new URL('../src/pages/CanvasEditor.tsx', import.meta.url),
+  'utf8',
+)
 
 test('template editor reuses the shared AI flow editor with isolated template context', () => {
   assert.match(source, /import AiFlowEditorPanel from '..\/components\/AiFlowEditorPanel'/)
@@ -28,4 +32,12 @@ test('template AI editor guards manual changes and running generation on close',
   assert.match(source, /open=\{pendingAiSteps !== null\}/)
   assert.match(source, /if \(aiGenBusy\) \{ setAiConfirmClose\(true\); return \}/)
   assert.match(source, /open=\{aiConfirmClose\}/)
+})
+
+test('flow assistant toolbar button toggles its open panel', () => {
+  for (const editorSource of [canvasEditorSource, source]) {
+    assert.match(editorSource, /aria-expanded=\{aiPanelOpen\}/)
+    assert.match(editorSource, /if \(aiPanelOpen\) \{\s*requestCloseAiPanel\(\)\s*return\s*\}/)
+    assert.match(editorSource, /onClick=\{toggleAiPanel\}/)
+  }
 })
