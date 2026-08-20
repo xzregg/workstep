@@ -1,16 +1,10 @@
 """WorkStep Daemon — FastAPI entry point."""
 
-import asyncio
-import json
 import logging
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.encoders import jsonable_encoder
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
 
 from settings import settings
 from streaming.bus import EventBus
@@ -45,15 +39,19 @@ from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
 from agent_assistants.chat_session import ChatSessionModule
-from engines.core.agui import is_status_event
+from streaming.ws import (
+    WsSubscription,
+    _handle_client_message,
+    matches_subscription,
+    parse_subscription,
+    register_websocket_routes,
+)
 from services.remote_project import (
     ActorSnapshot,
     RemoteAccessService,
     RemoteProjectClientManager,
     RemoteProjectProxyMiddleware,
     RemoteProjectRegistry,
-    RemoteRouteDispatcher,
-    serve_remote_project_socket,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,298 +181,48 @@ async def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
-# --- WebSocket ---
-
-
-def _local_project_summary(project_id: str) -> dict[str, Any] | None:
-    return next(
-        (
-            {**project, "type": "local", "connection_status": "local"}
-            for project in project_manager.list_projects()
-            if project.get("id") == project_id
-        ),
-        None,
-    )
-
-
-@app.websocket("/ws/remote-project")
-async def remote_project_ws_endpoint(ws: WebSocket):
-    dispatcher = RemoteRouteDispatcher(app)
-    try:
-        await serve_remote_project_socket(
-            ws,
-            dispatcher=dispatcher,
-            access_service=remote_access_service,
-            event_bus=event_bus,
-            project_summary=_local_project_summary,
-        )
-    finally:
-        await dispatcher.aclose()
-
-
-_SUBSCRIBE_KEYS = ("task_ids", "status_only_task_ids", "session_ids", "channels")
-
-
-@dataclass
-class WsSubscription:
-    """单个 WebSocket 连接的订阅状态。
-
-    首次 ``subscribe`` 消息之前保持"全量"（向后兼容）；收到 subscribe 后
-    事件满足任一维度即推送：
-    - ``task_ids`` — 订阅任务的全量事件流（任务详情页）；
-    - ``status_only_task_ids`` — 仅订阅这些任务的状态类事件（任务列表）；
-    - ``session_ids`` — 按助手会话订阅（``session_chat`` / ``flow_gen`` 等）；
-    - ``channels`` — 按 channel 订阅。
-    """
-
-    task_ids: set[str] = field(default_factory=set)
-    status_only_task_ids: set[str] = field(default_factory=set)
-    session_ids: set[str] = field(default_factory=set)
-    channels: set[str] = field(default_factory=set)
-    project_id: str = ""
-    active: bool = False
-
-
-def parse_subscription(msg: dict[str, Any]) -> WsSubscription:
-    """把 subscribe 消息解析为订阅状态；不含任何订阅键时重置为全量。"""
-    if not any(key in msg for key in _SUBSCRIBE_KEYS) and not msg.get("project_id"):
-        return WsSubscription()
-    sub = WsSubscription(active=True)
-    sub.project_id = str(msg.get("project_id") or "")
-    for key in _SUBSCRIBE_KEYS:
-        values = msg.get(key)
-        if isinstance(values, (list, set, tuple)):
-            setattr(sub, key, {str(v) for v in values if v})
-    return sub
-
-
-def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
-    """判断事件是否命中订阅；未激活订阅（全量模式）恒为 True。"""
-    if not sub.active:
-        return True
-    if (
-        event.get("type") == "CUSTOM"
-        and event.get("name") == "workstep.remote_project_status"
-        and event.get("project_id") == sub.project_id
-    ):
-        return True
-    task_id = event.get("task_id")
-    if task_id:
-        if task_id in sub.task_ids:
-            return True
-        if task_id in sub.status_only_task_ids:
-            if is_status_event(event):
-                return True
-    session_id = event.get("session_id")
-    if session_id and session_id in sub.session_ids:
-        return True
-    channel = event.get("channel")
-    if channel and channel in sub.channels:
-        return True
-    return False
-
-
-def _make_subscription_predicate(sub: WsSubscription):
-    """返回基于当前订阅状态的过滤谓词（供 EventBus 使用）。"""
-
-    def predicate(event: dict[str, Any]) -> bool:
-        return matches_subscription(event, sub)
-
-    return predicate
-
-
-@app.websocket("/ws")
-async def ws_endpoint(ws: WebSocket):
-    """WebSocket endpoint for real-time event streaming.
-
-    - Server → Client: task events, status updates
-    - Client → Server: respond, cancel commands
-
-    Events are fanned out globally by the EventBus; each connection may
-    send ``{"type":"subscribe", ...}`` to narrow what it receives (see
-    ``WsSubscription``). Before the first subscribe message the connection
-    receives everything (backward compatible).
-    """
-    await ws.accept()
-    queue = event_bus.subscribe()
-    subscription = WsSubscription()
-    try:
-        while True:
-            bus_task = asyncio.create_task(queue.get())
-            ws_task = asyncio.create_task(ws.receive_text())
-
-            done, pending = await asyncio.wait(
-                [bus_task, ws_task], return_when=asyncio.FIRST_COMPLETED
-            )
-
-            for task in pending:
-                task.cancel()
-
-            if bus_task in done:
-                event = bus_task.result()
-                if event is None:  # shutdown sentinel
-                    break
-                await ws.send_json(jsonable_encoder(event))
-
-            if ws_task in done:
-                raw = ws_task.result()
-                await _handle_client_message(raw, subscription, queue)
-
-    except WebSocketDisconnect:
-        logger.debug("WebSocket client disconnected")
-    finally:
-        event_bus.unsubscribe(queue)
-
-
-async def _handle_client_message(
-    raw: str,
-    subscription: WsSubscription | None = None,
-    queue: asyncio.Queue | None = None,
-):
-    """Process incoming WebSocket messages from client."""
-    try:
-        msg = json.loads(raw)
-        msg_type = msg.get("type")
-
-        if msg_type == "subscribe":
-            if subscription is None or queue is None:
-                logger.warning("WS subscribe ignored (no connection context)")
-                return
-            new_sub = parse_subscription(msg)
-            subscription.task_ids = new_sub.task_ids
-            subscription.status_only_task_ids = new_sub.status_only_task_ids
-            subscription.session_ids = new_sub.session_ids
-            subscription.channels = new_sub.channels
-            subscription.project_id = new_sub.project_id
-            subscription.active = new_sub.active
-            event_bus.set_filter(queue, _make_subscription_predicate(subscription))
-            project_id = str(msg.get("project_id") or "")
-            if remote_project_registry.get(project_id) is not None:
-                try:
-                    await remote_project_client.subscribe(project_id, msg)
-                except Exception as exc:
-                    logger.info("Remote project subscription deferred: %s", exc)
-            logger.info(
-                "WS subscribe: tasks=%d status_only=%d sessions=%d channels=%d",
-                len(subscription.task_ids),
-                len(subscription.status_only_task_ids),
-                len(subscription.session_ids),
-                len(subscription.channels),
-            )
-
-        elif msg_type == "respond":
-            intervention_id = msg.get("intervention_id")
-            data = msg.get("data", {})
-            if intervention_id:
-                delivered = intervention_manager.deliver_response(intervention_id, data)
-                logger.info("WS intervention respond: %s → %s", intervention_id, delivered)
-            else:
-                logger.warning("WS respond missing intervention_id")
-
-        elif msg_type == "cancel":
-            task_id = msg.get("task_id")
-            if task_id and workflow_runtime:
-                await workflow_runtime.cancel(task_id)
-                logger.info("Cancelled task: %s", task_id)
-
-        else:
-            logger.warning("Unknown WS message type: %s", msg_type)
-
-    except json.JSONDecodeError:
-        logger.warning("Invalid JSON from client: %s", raw[:100])
-
-
-# --- Share WebSocket (read-only event stream) ---
-
-# Event types that shouldn't leak to external share viewers.
-_SHARE_SCRUBBED_EVENT_TYPES = {
-    "interaction_request",
-    "interaction_response",
-    "engine_state",
-    "subagent",
-}
-
-
-@app.websocket("/ws/share")
-async def ws_share_endpoint(ws: WebSocket, session: str = ""):
-    """Read-only WebSocket for share viewers.
-
-    Authenticates via the ``session`` query parameter (a session token
-    minted by ``POST /api/task-share/public/{token}/unlock``). Subscribes
-    to the event bus and forwards only events belonging to the shared
-    task, with coordinator and sensitive event types filtered out.
-    """
-    from services.share import resolve_share_session
-
-    ctx = resolve_share_session(session) if session else None
-    if ctx is None:
-        await ws.close(code=4401, reason="unauthorized")
-        return
-
-    task_id = ctx["task_id"]
-    await ws.accept()
-
-    def share_predicate(event: dict[str, Any]) -> bool:
-        if event.get("task_id") != task_id:
-            return False
-        channel = event.get("channel")
-        # Only forward execution events; drop coordinator and
-        # assistant traffic, which is private.
-        if channel is not None and channel != "execution":
-            return False
-        if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
-            return False
-        return True
-
-    queue = event_bus.subscribe(share_predicate)
-    try:
-        while True:
-            bus_task = asyncio.create_task(queue.get())
-            ws_task = asyncio.create_task(ws.receive_text())
-
-            done, pending = await asyncio.wait(
-                [bus_task, ws_task], return_when=asyncio.FIRST_COMPLETED
-            )
-            for fut in pending:
-                fut.cancel()
-
-            if ws_task in done:
-                # Share viewers are strictly read-only — any incoming
-                # message is unexpected, so treat it as a disconnect.
-                break
-
-            if bus_task in done:
-                event = bus_task.result()
-                if event is None:  # shutdown sentinel
-                    break
-                await ws.send_json(jsonable_encoder(event))
-    except WebSocketDisconnect:
-        logger.debug("Share WS disconnected for task %s", task_id)
-    finally:
-        event_bus.unsubscribe(queue)
+# --- WebSocket routes (see streaming.ws) ---
+register_websocket_routes(app)
 
 
 # --- Static file serving (production) ---
 
 web_dist = Path(settings.web_dist)
-if web_dist.exists():
+landing_dist = Path(settings.landing_dist)  # 官网构建，托管在 "/landing"
+
+
+def _collect_static_files(root: Path) -> set[str]:
+    """Everything under a built app (except index.html) served verbatim."""
+    files: set[str] = set()
+    for entry in root.rglob("*"):
+        if entry.is_file() and entry.name != "index.html":
+            files.add(str(entry.relative_to(root)))
+    return files
+
+
+if web_dist.exists() or landing_dist.exists():
     from starlette.responses import FileResponse as _FileResponse
 
-    _web_dist_index = web_dist / "index.html"
-    # Pre-computed set of static asset files (everything in web_dist that
-    # is served verbatim — js/css/images/etc.). Used by the SPA fallback.
-    _static_files: set[str] = set()
-    for _entry in web_dist.rglob("*"):
-        if _entry.is_file() and _entry.name != "index.html":
-            _static_files.add(str(_entry.relative_to(web_dist)))
+    from fastapi.responses import JSONResponse as _JSONResponse
+
+    _web_dist_index = web_dist / "index.html" if web_dist.exists() else None
+    _web_static_files = _collect_static_files(web_dist) if web_dist.exists() else set()
+    _landing_dist_index = landing_dist / "index.html" if landing_dist.exists() else None
+    _landing_static_files = _collect_static_files(landing_dist) if landing_dist.exists() else set()
 
     @app.get("/{fullpath:path}", include_in_schema=False)
     async def _spa_fallback(fullpath: str):
-        # Serve real assets verbatim; fall back to index.html for SPA
-        # client routes like /share/:token.
-        if fullpath in _static_files:
+        # "/landing" 指向官网（apps/landing）构建；home "/" 仍是 Web 应用。
+        if fullpath == "landing" or fullpath.startswith("landing/"):
+            rel = fullpath[len("landing/") :] if fullpath.startswith("landing/") else ""
+            if _landing_dist_index is not None:
+                if rel and rel in _landing_static_files:
+                    return _FileResponse(landing_dist / rel)
+                return _FileResponse(_landing_dist_index)
+            return _JSONResponse({"detail": "Not found"}, status_code=404)
+        # Web 应用接管 home。
+        if fullpath in _web_static_files:
             return _FileResponse(web_dist / fullpath)
-        if _web_dist_index.is_file():
+        if _web_dist_index is not None:
             return _FileResponse(_web_dist_index)
-        from fastapi.responses import JSONResponse
-        return JSONResponse({"detail": "Not found"}, status_code=404)
+        return _JSONResponse({"detail": "Not found"}, status_code=404)
