@@ -15,11 +15,18 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
+    ProviderRuntimeConfig,
     install_with_command,
 )
 
 from engines.core.plans import subagent_event_from_message
-from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
+from engines.core.events import (
+    InternalEvent,
+    normalize_cost,
+    tool_call_event,
+    tool_call_update_event,
+    usage_update_event,
+)
 from engines.core.interactions import (
     interaction_from_tool_use,
     permission_request,
@@ -125,6 +132,26 @@ _APPROVAL_DENIAL_PATTERN = re.compile(
 
 class ClaudeCodeEngine(AcpEngineBase):
     ENGINE_ID = "claude"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"anthropic_messages"}
+
+    def build_provider_runtime(self, provider, model):
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+            env={
+                "ANTHROPIC_BASE_URL": str(provider.get("base_url") or ""),
+                "ANTHROPIC_API_KEY": str(provider.get("api_key") or ""),
+            },
+            unset_env={
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_USE_BEDROCK",
+                "CLAUDE_CODE_USE_VERTEX",
+                "CLAUDE_CODE_USE_FOUNDRY",
+            },
+        )
 
     """Claude Code CLI engine using direct subprocess.
 
@@ -288,6 +315,11 @@ class ClaudeCodeEngine(AcpEngineBase):
             {"permission_mode": config_store.get_claude_permission_mode()},
             config_overrides,
         )["permission_mode"]
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=str((config_overrides or {}).get("provider_id") or ""),
+            model=model,
+        )
+        model = provider_runtime.model
         if not permission_mode:
             yield InternalEvent(type="error", data={
                 "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
@@ -317,13 +349,15 @@ class ClaudeCodeEngine(AcpEngineBase):
             flush=True,
         )
 
-        self._process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
+        process_kwargs = {
+            "stdin": asyncio.subprocess.PIPE,
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "cwd": cwd,
+        }
+        if provider_runtime.provider_id:
+            process_kwargs["env"] = provider_runtime.child_env()
+        self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
         self._running = True
 
         # Send prompt via stdin. Live mode keeps stdin open for later messages.
@@ -608,7 +642,7 @@ class ClaudeCodeEngine(AcpEngineBase):
                 cost = normalize_cost(obj)
             if cost is not None:
                 data["cost"] = cost
-            events.append(InternalEvent(type="usage_update", data=data))
+            events.append(usage_update_event(data))
             session_id = obj.get("session_id")
             if session_id and not state["session_started"]:
                 state["session_started"] = True

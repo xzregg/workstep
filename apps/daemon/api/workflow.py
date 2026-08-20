@@ -6,6 +6,8 @@ import logging
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from schemas.project import CreateWorkflowRequest, UpdateWorkflowRequest
+from engines.core.registry import list_all_engines
+from services import config as config_service
 from services.project import project_manager
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 
@@ -37,6 +39,47 @@ def _validate_steps(steps: dict) -> None:
         WorkflowDefinition.load(steps).validate()
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    nodes = steps.get("nodes") or steps.get("steps") or []
+    if not isinstance(nodes, list):
+        return
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        _validate_stage_provider(
+            str(node.get("engine") or ""),
+            node.get("config"),
+            "工作流阶段",
+        )
+        review = node.get("review")
+        if isinstance(review, dict):
+            _validate_stage_provider(
+                str(review.get("engine") or node.get("engine") or ""),
+                review.get("config"),
+                "评审阶段",
+            )
+
+
+def _validate_stage_provider(
+    engine_id: str,
+    config: object,
+    location: str,
+) -> None:
+    if not isinstance(config, dict):
+        return
+    provider_id = str(config.get("provider_id") or "").strip()
+    if not provider_id:
+        return
+    provider = config_service.config_store.get_provider(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=422, detail=f"{location}供应商不存在")
+    if not provider.get("enabled", True):
+        raise HTTPException(status_code=422, detail=f"{location}供应商已停用")
+    engine_cls = list_all_engines().get(engine_id.replace("-", "_"))
+    if engine_cls is None or not engine_cls.supports_provider(provider):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{location}供应商协议与引擎不兼容",
+        )
 
 
 @router.get("/list")

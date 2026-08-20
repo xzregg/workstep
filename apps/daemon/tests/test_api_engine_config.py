@@ -43,6 +43,7 @@ class MemoryEngineConfigStore:
         self.coordinator_default_vision_model = ""
         self.coordinator_default_thinking_effort = ""
         self.verified_engines = set()
+        self.engine_providers = {}
 
     # --- providers ---
 
@@ -85,7 +86,17 @@ class MemoryEngineConfigStore:
         return (
             self.pydantic_ai_config.get("provider_id") == provider_id
             or self.deepseek_harness_config.get("provider_id") == provider_id
+            or provider_id in self.engine_providers.values()
         )
+
+    def get_engine_provider(self, engine_id):
+        return self.engine_providers.get(engine_id, "")
+
+    def set_engine_provider(self, engine_id, provider_id):
+        if provider_id:
+            self.engine_providers[engine_id] = provider_id
+        else:
+            self.engine_providers.pop(engine_id, None)
 
     # --- Pydantic AI engine ---
 
@@ -180,6 +191,7 @@ class MemoryEngineConfigStore:
 @pytest.fixture
 async def engine_client(monkeypatch):
     store = MemoryEngineConfigStore()
+    monkeypatch.setattr(config_module, "config_store", store)
     monkeypatch.setattr(engine_api, "config_store", store)
     monkeypatch.setattr(provider_api, "config_store", store)
     monkeypatch.setattr(provider_service, "config_store", store)
@@ -193,11 +205,17 @@ async def engine_client(monkeypatch):
     engine_registry.refresh_registry()
 
 
-def _add_provider(store, name="DeepSeek 主账号", type_id="deepseek"):
+def _add_provider(
+    store,
+    name="DeepSeek 主账号",
+    type_id="deepseek",
+    protocol="openai_chat_completions",
+):
     provider = {
         "id": f"prov_{len(store.get_providers()) + 1}",
         "name": name,
         "type": type_id,
+        "protocol": protocol,
         "base_url": "https://api.deepseek.com/v1",
         "api_key": "secret-value",
         "enabled": True,
@@ -310,6 +328,7 @@ async def test_provider_crud_masks_and_reveals_key(engine_client):
         json={
             "name": "我的 DeepSeek",
             "type": "deepseek",
+            "protocol": "openai_chat_completions",
             "base_url": "https://api.deepseek.com/v1",
             "api_key": "sk-secret-value",
             "enabled": True,
@@ -320,6 +339,7 @@ async def test_provider_crud_masks_and_reveals_key(engine_client):
     provider = body["provider"]
     assert provider["name"] == "我的 DeepSeek"
     assert provider["type"] == "deepseek"
+    assert provider["protocol"] == "openai_chat_completions"
     assert provider["has_key"] is True
     assert provider["api_key"] == ""
     assert "sk-secret-value" not in created.text
@@ -646,6 +666,41 @@ async def test_engine_pydantic_ai_models_provider_override(engine_client, monkey
 
 
 @pytest.mark.anyio
+async def test_compatible_engine_models_use_provider_cache(engine_client, monkeypatch):
+    client, store = engine_client
+    provider = _add_provider(
+        store,
+        name="Responses Gateway",
+        type_id="openai",
+        protocol="openai_responses",
+    )
+    store.set_provider_models(
+        provider["id"],
+        [{"id": "gpt-gateway", "label": "GPT Gateway", "description": None}],
+        "2026-08-20T00:00:00+00:00",
+    )
+    from engines.codex import CodexEngine
+
+    monkeypatch.setattr(engine_api, "create_engine", lambda _engine_id: CodexEngine())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kwargs: None)
+
+    async def unexpected_list_models(*_args, **_kwargs):
+        raise AssertionError("provider-backed model reads must not call the CLI")
+
+    monkeypatch.setattr(CodexEngine, "list_models", unexpected_list_models)
+
+    result = (await client.get(
+        f"/api/engine/codex/models?provider_id={provider['id']}"
+    )).json()
+
+    assert result["error"] is None
+    assert result["models"] == [
+        {"id": "gpt-gateway", "label": "GPT Gateway", "description": None}
+    ]
+    assert result["fetched_at"] == "2026-08-20T00:00:00+00:00"
+
+
+@pytest.mark.anyio
 async def test_provider_balance_placeholder(engine_client):
     client, store = engine_client
     provider = _add_provider(store)
@@ -749,7 +804,7 @@ async def test_provider_delete_blocked_while_in_use(engine_client):
 
     blocked = await client.delete(f"/api/provider/{provider['id']}")
     assert blocked.status_code == 400
-    assert "Pydantic AI" in blocked.json()["detail"]
+    assert "引擎或助手" in blocked.json()["detail"]
     assert store.get_provider(provider["id"]) is not None
 
     store.set_pydantic_ai_engine_config(provider_id="", model="")
@@ -788,7 +843,8 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
 
     assert engines["claude"]["config"] is not None
     assert {field["key"] for field in engines["claude"]["config"]["fields"]} == {
-        "permission_mode"
+        "permission_mode",
+        "provider_id",
     }
 
 
@@ -906,6 +962,56 @@ async def test_coordinator_default_rejects_model_without_engine(engine_client):
         json={"engine": "", "model": "orphan-model"},
     )
     assert response.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_compatible_engine_config_exposes_and_saves_common_provider(engine_client):
+    client, store = engine_client
+    provider = _add_provider(
+        store,
+        name="Claude Gateway",
+        type_id="anthropic",
+        protocol="anthropic_messages",
+    )
+
+    loaded = (await client.get("/api/engine/claude/config")).json()
+    fields = {field["key"]: field for field in loaded["fields"]}
+    assert fields["provider_id"]["required"] is False
+    assert fields["provider_id"]["options"] == [
+        {"value": provider["id"], "label": "Claude Gateway"}
+    ]
+
+    saved = await client.put(
+        "/api/engine/claude/config",
+        json={
+            "values": {
+                "permission_mode": "acceptEdits",
+                "provider_id": provider["id"],
+            }
+        },
+    )
+    assert saved.json()["saved"] is True
+    assert saved.json()["values"]["provider_id"] == provider["id"]
+    assert store.get_engine_provider("claude") == provider["id"]
+
+
+@pytest.mark.anyio
+async def test_engine_config_rejects_incompatible_common_provider(engine_client):
+    client, store = engine_client
+    provider = _add_provider(store)
+
+    response = await client.put(
+        "/api/engine/codex/config",
+        json={
+            "values": {
+                "sandbox_mode": "workspace-write",
+                "provider_id": provider["id"],
+            }
+        },
+    )
+
+    assert response.json()["saved"] is False
+    assert "协议" in response.json()["message"]
 
     fast_response = await client.put(
         "/api/engine/coordinator/config",
@@ -1412,13 +1518,15 @@ def test_provider_storage_and_legacy_migration(tmp_path, monkeypatch):
     config_file.write_text(json.dumps(raw, ensure_ascii=False))
     store.invalidate()
     store.migrate_legacy_config()
+    providers = store.get_providers()
     migrated = json.loads(config_file.read_text())
     assert "api_engine" not in migrated
     assert migrated["execution_default_engine"] == ""
     assert migrated["coordinator_default_engine"] == ""
     assert "api" not in migrated["engine_default_models"]
     assert "api" not in migrated["verified_engines"]
-    assert migrated["providers"] == store.get_providers()
+    assert migrated["providers"] == providers
+    assert migrated["providers"][0]["protocol"] == "openai_chat_completions"
 
 
 def test_claude_agent_sdk_and_codex_configs_roundtrip(tmp_path, monkeypatch):

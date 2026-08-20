@@ -546,13 +546,21 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     const next = { ...(draft.config || {}) }
     if (value === '') delete next[key]
     else next[key] = value
-    updateDraft('config', next)
+    if (key === 'provider_id') {
+      setDraft({ ...draft, config: next, model: '' })
+    } else {
+      updateDraft('config', next)
+    }
   }
   const updateReviewConfig = (key: string, value: string) => {
     const next = { ...(review.config || {}) }
     if (value === '') delete next[key]
     else next[key] = value
-    updateReview('config', next)
+    if (key === 'provider_id') {
+      updateDraft('review', { ...review, config: next, model: '' })
+    } else {
+      updateReview('config', next)
+    }
   }
   const [confirmStageField, setConfirmStageField] = useState<EngineConfigField | null>(null)
   const [confirmReviewField, setConfirmReviewField] = useState<EngineConfigField | null>(null)
@@ -564,7 +572,8 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       setStageModels([])
       return
     }
-    const cached = getCachedEngineModels(draft.engine)
+    const providerId = draft.config?.provider_id || ''
+    const cached = getCachedEngineModels(draft.engine, providerId)
     if (cached) {
       setStageModels(cached.models || [])
       setStageModelsLoading(false)
@@ -572,7 +581,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     }
     let active = true
     setStageModelsLoading(true)
-    fetchEngineModels(draft.engine)
+    fetchEngineModels(draft.engine, false, providerId)
       .then((result) => {
         if (active) setStageModels(result.models || [])
       })
@@ -583,14 +592,15 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         if (active) setStageModelsLoading(false)
       })
     return () => { active = false }
-  }, [draft.engine])
+  }, [draft.engine, draft.config?.provider_id])
 
   useEffect(() => {
     if (!reviewEngine) {
       setReviewModels([])
       return
     }
-    const cached = getCachedEngineModels(reviewEngine)
+    const providerId = review.config?.provider_id || ''
+    const cached = getCachedEngineModels(reviewEngine, providerId)
     if (cached) {
       setReviewModels(cached.models || [])
       setReviewModelsLoading(false)
@@ -598,7 +608,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     }
     let active = true
     setReviewModelsLoading(true)
-    fetchEngineModels(reviewEngine)
+    fetchEngineModels(reviewEngine, false, providerId)
       .then((result) => {
         if (active) setReviewModels(result.models || [])
       })
@@ -609,7 +619,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         if (active) setReviewModelsLoading(false)
       })
     return () => { active = false }
-  }, [reviewEngine])
+  }, [reviewEngine, review.config?.provider_id])
 
   return (
     <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>

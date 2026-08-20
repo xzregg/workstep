@@ -13,6 +13,7 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
+    ProviderRuntimeConfig,
     install_python_package,
     resolve_thinking_effort,
     sdk_turn_watchdog,
@@ -25,6 +26,7 @@ from engines.core.events import (
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
+    usage_update_event,
 )
 from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
@@ -43,6 +45,26 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "claude_agent_sdk"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"anthropic_messages"}
+
+    def build_provider_runtime(self, provider, model):
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+            env={
+                "ANTHROPIC_BASE_URL": str(provider.get("base_url") or ""),
+                "ANTHROPIC_API_KEY": str(provider.get("api_key") or ""),
+            },
+            unset_env={
+                "ANTHROPIC_AUTH_TOKEN",
+                "CLAUDE_CODE_USE_BEDROCK",
+                "CLAUDE_CODE_USE_VERTEX",
+                "CLAUDE_CODE_USE_FOUNDRY",
+            },
+        )
 
     def __init__(self):
         super().__init__()
@@ -432,7 +454,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 if not session_id and result is not msg:
                     session_id = getattr(result, "session_id", None)
                 usage_data["session_id"] = session_id or ""
-                events.append(InternalEvent(type="usage_update", data=usage_data))
+                events.append(usage_update_event(usage_data))
             if is_error:
                 message = (
                     getattr(msg, "error", None)
@@ -501,6 +523,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
         sdk_config = self.merge_config_overrides(
             config_store.get_claude_agent_sdk_config(), config_overrides
         )
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=str((config_overrides or {}).get("provider_id") or ""),
+            model=model,
+        )
+        model = provider_runtime.model
         options = ClaudeAgentOptions(
             cwd=cwd,
             model=model or None,
@@ -509,6 +536,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             resume=session_id or None,
             include_partial_messages=True,
             can_use_tool=can_use_tool,
+            env=(provider_runtime.child_env() if provider_runtime.provider_id else {}),
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)
@@ -523,8 +551,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             options.effort = "low" if effort == "minimal" else effort
 
         logger.info(
-            "ClaudeAgentSDKEngine spawn: binary=%s cwd=%s model=%s options=%s",
-            binary, cwd, model, options,
+            "ClaudeAgentSDKEngine spawn: binary=%s cwd=%s model=%s provider_id=%s",
+            binary,
+            cwd,
+            model,
+            provider_runtime.provider_id or "native",
         )
 
         self._running = True
@@ -646,7 +677,6 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             turn_ended,
             end_prompt.set,
             disconnect=client.disconnect,
-            stream_closed=input_closed,
             pending_injection=(
                 (lambda: not live_message_queue.empty())
                 if live_message_queue is not None else None

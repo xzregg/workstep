@@ -246,14 +246,44 @@ def usage_update_event(
 ) -> InternalEvent:
     """ACP ``usage_update`` — context-window usage + token breakdown + cost.
 
-    ``used`` / ``size`` 仅在引擎原生提供时写入（不合成默认值）；token 字段由
+    ``used`` 统一表示最近一次 usage 的总 token；``size`` 仅在引擎原生提供
+    上下文窗口时写入，不合成窗口默认值。token 字段由
     ``normalize_token_usage`` 归一化。
     """
     data: dict[str, Any] = normalize_token_usage(usage)
-    if used is not None:
-        data["used"] = int(used)
-    if size is not None:
-        data["size"] = int(size)
+
+    def number(*keys: str) -> int | None:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return int(value)
+        return None
+
+    resolved_used = used if used is not None else number("used", "total_tokens", "tokens")
+    if resolved_used is None:
+        resolved_used = data["total_tokens"]
+    resolved_size = size if size is not None else number(
+        "size",
+        "context_window",
+        "model_context_window",
+        "contextWindow",
+        "modelContextWindow",
+    )
+    data["used"] = int(resolved_used)
+    if data["total_tokens"] == 0 and resolved_used > 0:
+        data["total_tokens"] = int(resolved_used)
+    if resolved_size is not None and resolved_size > 0:
+        data["size"] = int(resolved_size)
+    for key in (
+        "session_id",
+        "provider_id",
+        "requests",
+        "credits",
+        "thought_tokens",
+        "reasoning_output_tokens",
+    ):
+        if key in usage:
+            data[key] = usage[key]
     return InternalEvent(type="usage_update", data=data)
 
 

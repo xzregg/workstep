@@ -29,6 +29,7 @@ interface Props {
 interface ProviderForm {
   name: string
   type: string
+  protocol: string
   base_url: string
   api_key: string
   clear_key: boolean
@@ -37,6 +38,7 @@ interface ProviderForm {
 const EMPTY_FORM: ProviderForm = {
   name: '',
   type: 'custom',
+  protocol: 'openai_chat_completions',
   base_url: '',
   api_key: '',
   clear_key: false,
@@ -159,10 +161,17 @@ export default function ProviderSettings({ onChanged }: Props) {
 
   const typeLabel = (id: string) => types.find((item) => item.id === id)?.label ?? id
   const typeDefaultBaseUrl = (id: string) => types.find((item) => item.id === id)?.default_base_url ?? ''
+  const typeDefaultProtocol = (id: string) => types.find((item) => item.id === id)?.default_protocol ?? 'openai_chat_completions'
 
   const openCreate = () => {
     setEditingId(null)
-    setForm({ ...EMPTY_FORM, type: types[0]?.id ?? 'custom', base_url: typeDefaultBaseUrl(types[0]?.id ?? 'custom') })
+    const typeId = types[0]?.id ?? 'custom'
+    setForm({
+      ...EMPTY_FORM,
+      type: typeId,
+      protocol: typeDefaultProtocol(typeId),
+      base_url: typeDefaultBaseUrl(typeId),
+    })
     setFormError('')
     setKeyRevealed(false)
     setFormOpen(true)
@@ -173,6 +182,7 @@ export default function ProviderSettings({ onChanged }: Props) {
     setForm({
       name: provider.name,
       type: provider.type,
+      protocol: provider.protocol,
       base_url: provider.base_url,
       api_key: '',
       clear_key: false,
@@ -198,6 +208,7 @@ export default function ProviderSettings({ onChanged }: Props) {
       return {
         ...current,
         type: typeId,
+        protocol: typeDefaultProtocol(typeId),
         base_url: keepUrl ? current.base_url : defaultUrl,
       }
     })
@@ -245,6 +256,7 @@ export default function ProviderSettings({ onChanged }: Props) {
         id: editingId || undefined,
         name,
         type: form.type,
+        protocol: form.protocol,
         base_url: baseUrl,
         api_key: form.api_key,
         clear: form.clear_key ? { api_key: true } : undefined,
@@ -272,6 +284,7 @@ export default function ProviderSettings({ onChanged }: Props) {
         id: provider.id,
         name: provider.name,
         type: provider.type,
+        protocol: provider.protocol,
         base_url: provider.base_url,
         enabled: !provider.enabled,
       })
@@ -959,6 +972,21 @@ export default function ProviderSettings({ onChanged }: Props) {
                   {types.map((type) => (
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
+                </Select>
+              </Field>
+              <Field label={t('providerSettings.protocol')} htmlFor="provider-protocol" required>
+                <Select
+                  id="provider-protocol"
+                  value={form.protocol}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    protocol: event.target.value,
+                  }))}
+                  style={{ width: '100%', height: 32 }}
+                >
+                  <option value="anthropic_messages">{t('providerSettings.protocolAnthropic')}</option>
+                  <option value="openai_responses">{t('providerSettings.protocolResponses')}</option>
+                  <option value="openai_chat_completions">{t('providerSettings.protocolChat')}</option>
                 </Select>
               </Field>
               <Field label={t('providerSettings.baseUrl')} htmlFor="provider-base-url" required>

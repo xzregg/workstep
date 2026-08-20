@@ -8,11 +8,12 @@ import shutil
 from typing import AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.base import ProviderRuntimeConfig
 from engines.core.plans import plan_event
 from engines.core.events import (
     InternalEvent,
     acp_raw_event,
-    normalize_token_usage,
+    usage_update_event,
 )
 from engines.core.schema import EngineImage
 
@@ -27,6 +28,20 @@ class HermesEngine(AcpEngineBase):
     Lifecycle: initialize → session/new → session/prompt → stream updates.
     Surfaces ACP permission requests through WorkStep's interaction UI.
     """
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"openai_chat_completions"}
+
+    def build_provider_runtime(self, provider, model):
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+            env={
+                "OPENAI_BASE_URL": str(provider.get("base_url") or ""),
+                "OPENAI_API_KEY": str(provider.get("api_key") or ""),
+            },
+        )
 
     def __init__(self):
         super().__init__()
@@ -251,18 +266,7 @@ class HermesEngine(AcpEngineBase):
             return InternalEvent(type="plan_removed", data={"id": str(params.get("id") or "")})
 
         if update_type == "usage_update":
-            data = normalize_token_usage({
-                "input_tokens": params.get("input_tokens", 0),
-                "output_tokens": params.get("output_tokens", 0),
-                "cache_creation_input_tokens": params.get("cache_creation_input_tokens", 0),
-                "cache_read_input_tokens": params.get("cache_read_input_tokens", 0),
-                **({"cost": params["cost"]} if params.get("cost") is not None else {}),
-            })
-            if params.get("used") is not None:
-                data["used"] = int(params["used"])
-            if params.get("size") is not None:
-                data["size"] = int(params["size"])
-            return InternalEvent(type="usage_update", data=data)
+            return usage_update_event(params)
 
         if update_type == "session_info_update":
             data: dict = {}

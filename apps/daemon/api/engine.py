@@ -20,6 +20,7 @@ from services.config import (
     DEFAULT_EXECUTION_ENGINE,
     config_store,
 )
+from services import providers as provider_service
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
@@ -253,11 +254,7 @@ async def list_engine_models(
     refresh: bool = False,
     project_id: str = "",
 ):
-    """Return selectable models through the engine adapter interface.
-
-    Pydantic AI reads its saved per-provider model list by default;
-    ``refresh=1`` re-fetches from the provider and saves the result.
-    """
+    """Return native models or the selected provider's cached model list."""
     refresh_registry(invalidate_scan=False)
     engine = create_engine(engine_id)
     if engine is None:
@@ -271,24 +268,31 @@ async def list_engine_models(
     try:
         project = project_manager.get_project_by_id(project_id.strip()) if project_id.strip() else None
         models_kwargs: dict = {"cwd": str(project.path) if project else str(Path.cwd())}
-        if engine_id in {"pydantic_ai", "deepseek_harness"} and provider_id.strip():
-            models_kwargs["provider_id"] = provider_id.strip()
-        if engine_id in {"pydantic_ai", "deepseek_harness"} and refresh:
-            models_kwargs["refresh"] = True
-        models = await asyncio.wait_for(
-            engine.list_models(**models_kwargs),
-            timeout=15,
+        resolve_provider = getattr(engine, "resolve_provider_runtime", None)
+        provider_runtime = (
+            resolve_provider(provider_id=provider_id.strip())
+            if callable(resolve_provider)
+            else None
         )
-        if engine_id in {"pydantic_ai", "deepseek_harness"}:
-            effective_provider = (
-                provider_id.strip()
-                or (
-                    config_store.get_pydantic_ai_engine_config()
-                    if engine_id == "pydantic_ai"
-                    else config_store.get_deepseek_harness_config()
-                ).get("provider_id", "")
+        effective_provider = provider_runtime.provider_id if provider_runtime else ""
+        if effective_provider:
+            provider = config_store.get_provider(effective_provider)
+            entry = config_store.get_provider_models(effective_provider)
+            if refresh or not entry:
+                models = await asyncio.wait_for(
+                    provider_service.fetch_and_save_models(provider),
+                    timeout=15,
+                )
+            else:
+                models = provider_service.saved_models(effective_provider)
+            fetched_at = config_store.get_provider_models(effective_provider).get(
+                "fetched_at"
             )
-            fetched_at = config_store.get_provider_models(effective_provider).get("fetched_at")
+        else:
+            models = await asyncio.wait_for(
+                engine.list_models(**models_kwargs),
+                timeout=15,
+            )
         error = None
     except asyncio.TimeoutError:
         models = []
@@ -393,7 +397,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
         return {"engine_id": engine_id, "saved": False, "message": "未知引擎"}
     engine = cls()
     try:
-        await engine.save_config_values(
+        await engine.save_full_config_values(
             dict(req.values),
             clear=dict(req.clear),
             confirmed=dict(req.confirmed),
@@ -437,8 +441,8 @@ async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
 def _engine_config_response(engine_id: str, engine: BaseLLMEngine) -> dict:
     return {
         "engine_id": engine_id,
-        "fields": [asdict(field) for field in engine.config_schema()],
-        "values": engine.get_config_values(),
+        "fields": [asdict(field) for field in engine.full_config_schema()],
+        "values": engine.get_full_config_values(),
         "secrets": engine.get_config_secrets(),
         "configured": engine.is_configured(),
         "installed": engine.is_installed(),

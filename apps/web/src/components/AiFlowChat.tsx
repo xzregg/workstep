@@ -90,9 +90,8 @@ export default function AiFlowChat({
   const [resetting, setResetting] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [appliedCardId, setAppliedCardId] = useState<string | null>(null)
-  /** 应用提案前的画布快照，供「还原」按钮恢复。 */
+  /** 打开当前流程助手时的初始画布，供「还原」按钮反复恢复。 */
   const [restoreSteps, setRestoreSteps] = useState<any | null>(null)
-  const [restored, setRestored] = useState(false)
   const {
     enhance,
     onInputChange: enhanceInputChanged,
@@ -119,6 +118,13 @@ export default function AiFlowChat({
   const latestProposals = session?.latestProposals ?? EMPTY_PROPOSALS
   const rejectionMessage = session?.rejectionMessage
   const lastCanvasSnapshotRef = useRef<string | null>(null)
+  const getCanvasStepsRef = useRef(getCanvasSteps)
+  getCanvasStepsRef.current = getCanvasSteps
+
+  useEffect(() => {
+    const initialSteps = getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }
+    setRestoreSteps(cloneCanvasSteps(initialSteps))
+  }, [projectId, workflowId])
 
   useEffect(() => {
     onBusyChange?.(running)
@@ -130,16 +136,12 @@ export default function AiFlowChat({
     setAppliedCardId(null)
   }, [latestProposals])
 
-  // 应用方案前记录当前画布，使「还原」能回到应用前的 JSON。
   const applyFlowSteps = useCallback((steps: any, proposalId: string) => {
-    const snapshot = cloneCanvasSteps(getCanvasSteps?.() ?? { nodes: [], connections: [] })
-    setRestoreSteps(snapshot)
-    setRestored(false)
     // 仅当按钮载荷携带 proposalId 时才更新“已应用”标记：历史按钮没有该字段，
     // 置空会让 autoApply effect 把最近一轮自动方案重新应用，覆盖用户刚选的方案。
     if (proposalId) setAppliedCardId(proposalId)
     onProposal?.(steps)
-  }, [getCanvasSteps, onProposal])
+  }, [onProposal])
 
   useEffect(() => {
     const proposal = pendingAutoApplyProposal(latestProposals, appliedCardId)
@@ -149,8 +151,7 @@ export default function AiFlowChat({
 
   const handleRestore = useCallback(() => {
     if (restoreSteps === null) return
-    setRestored(true)
-    onRestore?.(restoreSteps)
+    onRestore?.(cloneCanvasSteps(restoreSteps))
   }, [restoreSteps, onRestore])
 
   useEffect(() => {
@@ -181,8 +182,6 @@ export default function AiFlowChat({
   // Workflow edit sessions reuse a stable conversation: load prior history.
   useEffect(() => {
     lastCanvasSnapshotRef.current = null
-    setRestoreSteps(null)
-    setRestored(false)
     if (!workflowId) return
     const canonicalId = workflowSessionId(projectId, workflowId)
     setSessionId(canonicalId)
@@ -309,8 +308,6 @@ export default function AiFlowChat({
       setInput('')
       resetEnhance()
       setAppliedCardId(null)
-      setRestoreSteps(null)
-      setRestored(false)
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.resetFailed'))
     } finally {
@@ -390,7 +387,7 @@ export default function AiFlowChat({
         composerActions={<Button
           variant="ghost"
           size="sm"
-          disabled={running || restoreSteps === null || restored}
+          disabled={running || restoreSteps === null}
           title={t('aiFlow.restoreStepsHint')}
           onClick={handleRestore}
           style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}

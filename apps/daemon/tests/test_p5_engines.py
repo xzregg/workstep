@@ -67,6 +67,7 @@ class TestOpenClawEngine:
         ]
         assert events[1].data["content"]["text"] == "完成"
         assert events[2].data["total_tokens"] == 15
+        assert events[2].data["used"] == 15
         assert events[2].data["cost"] == {"amount": 0.02, "currency": "USD"}
 
     def test_maps_agent_exec_error_envelope(self):

@@ -52,6 +52,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
   const [message, setMessage] = useState('')
   const [messageKind, setMessageKind] = useState<'error' | 'success' | ''>('')
   const [confirmField, setConfirmField] = useState<EngineConfigField | null>(null)
+  const reportedSaveState = useRef<{ saving: boolean; canSave: boolean } | null>(null)
 
   // Sync form state whenever the embedded payload changes (mount or after save).
   useEffect(() => {
@@ -60,8 +61,6 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     setRevealed({})
     setClearKeys({})
   }, [config])
-
-  if (!config || fields.length === 0) return null
 
   const needsConfirmation = (): EngineConfigField | null => {
     for (const field of fields) {
@@ -103,6 +102,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
   }
 
   const save = () => {
+    if (!config || fields.length === 0) return
     const field = needsConfirmation()
     if (field) {
       setConfirmField(field)
@@ -153,10 +153,11 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     field.required && !((values[field.key] ?? '').trim())
   ))
 
-  const reportedSaveState = useRef<{ saving: boolean; canSave: boolean } | null>(null)
-
   useEffect(() => {
-    const next = { saving, canSave: !saving && !hasRequiredGaps }
+    const next = {
+      saving,
+      canSave: Boolean(config && fields.length > 0) && !saving && !hasRequiredGaps,
+    }
     const prev = reportedSaveState.current
     if (
       !prev
@@ -169,6 +170,8 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
   })
 
   useImperativeHandle(ref, () => ({ save }))
+
+  if (!config || fields.length === 0) return null
 
   const renderField = (field: EngineConfigField) => {
     const value = values[field.key] ?? ''

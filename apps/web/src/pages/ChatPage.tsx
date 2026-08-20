@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
-import { usageFromEvents } from '../components/MessageResponseFooter'
-import type { ChatContextUsage } from '../components/ChatInput'
 import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
@@ -22,7 +20,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useI18n } from '../i18n'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
-import type { AssistantChatMessage } from '../stores/assistantStore'
+import { contextUsageFromMessages } from '../utils/contextUsage.js'
 
 /* ══════════════════════════════════════════
    ChatPage — Codex-style session chat.
@@ -38,33 +36,6 @@ function randomId(): string {
     return crypto.randomUUID()
   }
   return `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
-const FALLBACK_CONTEXT_WINDOW = 200_000
-
-/** Approximate the current context-window usage (tokens + percent) from the latest usage. */
-function contextUsageFromMessages(messages: AssistantChatMessage[]): ChatContextUsage | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const usage = usageFromEvents((messages[index]?.events as any[]) || [])
-    if (!usage || Object.keys(usage).length === 0) continue
-    if (usage.usage_kind === 'context_window') {
-      const used = Number(usage.used ?? 0)
-      const size = Number(usage.size ?? 0)
-      if (size > 0) {
-        return { used, total: size, percent: Math.min(100, (used / size) * 100) }
-      }
-    }
-    const input = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0)
-    const output = Number(usage.output_tokens ?? usage.completion_tokens ?? 0)
-    if (input + output > 0) {
-      return {
-        used: input + output,
-        total: FALLBACK_CONTEXT_WINDOW,
-        percent: Math.min(100, ((input + output) / FALLBACK_CONTEXT_WINDOW) * 100),
-      }
-    }
-  }
-  return null
 }
 
 export default function ChatPage() {

@@ -22,11 +22,6 @@ const storeSource = await readFile(
   new URL('../src/stores/assistantStore.ts', import.meta.url),
   'utf8',
 )
-const a2uiUtilSource = await readFile(
-  new URL('../src/utils/a2ui.ts', import.meta.url),
-  'utf8',
-)
-
 test('AI flow chat subscribes the session before invoking the engine', () => {
   assert.match(chatSource, /import \{ flushWsSubscriptionNow \} from '\.\.\/hooks\/useWebSocket'/)
   const sendIndex = chatSource.indexOf('const send = useCallback')
@@ -40,27 +35,20 @@ test('AI flow chat subscribes the session before invoking the engine', () => {
   )
 })
 
-test('AI flow chat hides duplicate apply-flow UI when proposal cards are shown', () => {
-  assert.match(chatSource, /hideApplyFlow=\{shouldShowA2uiProposalCards\(latestProposals\.length, appliedCardId\)\}/)
+test('AI flow chat keeps message-embedded apply-flow controls when proposals arrive', () => {
+  assert.doesNotMatch(chatSource, /hideApplyFlow=/)
+  assert.match(chatSource, /onA2uiAction=\{handleA2uiAction\}/)
 })
 
-test('assistant panel forwards hideApplyFlow and re-scrolls when A2UI mounts', () => {
-  assert.match(panelSource, /hideApplyFlow\?: boolean/)
-  assert.match(panelSource, /hideApplyFlow=\{hideApplyFlow\}/)
+test('assistant panel forwards embedded A2UI actions and re-scrolls when A2UI mounts', () => {
   assert.match(panelSource, /messages\.length, lastContent, scrollKey, a2uiMessages\]/)
-  assert.match(bubbleSource, /hideApplyFlow\?: boolean/)
-  assert.match(bubbleSource, /hideApplyFlow=\{hideApplyFlow\}/)
-  assert.match(a2uiMessageSource, /hideApplyFlow\?: boolean/)
-  assert.match(a2uiMessageSource, /withoutApplyFlowSurfaces/)
+  assert.match(panelSource, /onA2uiAction=\{onA2uiAction\}/)
+  assert.match(bubbleSource, /onAction=\{onA2uiAction\}/)
+  assert.doesNotMatch(a2uiMessageSource, /withoutApplyFlowSurfaces/)
 })
 
 test('assistant store hydrates proposals and a2ui payloads from history', () => {
   assert.match(storeSource, /latestProposals = proposals/)
   assert.match(storeSource, /rejectionMessage = config\.rejectionMessageExtractor/)
   assert.match(storeSource, /a2uiMessages\[message\.id\] = a2uiPayloads/)
-})
-
-test('a2ui util exports the apply-flow surface filter', () => {
-  assert.match(a2uiUtilSource, /export function withoutApplyFlowSurfaces/)
-  assert.match(a2uiUtilSource, /name === 'apply_flow'/)
 })

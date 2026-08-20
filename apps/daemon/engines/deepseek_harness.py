@@ -40,6 +40,21 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"openai_chat_completions"}
+
+    @classmethod
+    def provider_required(cls) -> bool:
+        return True
+
+    @classmethod
+    def supports_provider(cls, provider: dict) -> bool:
+        return (
+            super().supports_provider(provider)
+            and str(provider.get("type") or "") == "deepseek"
+        )
     SDK_PACKAGE = "deepseek-harness-sdk==0.1.0rc6"
     DEFAULT_PRESET = "standard"
     PRESET_COMPOSITIONS = {
@@ -75,6 +90,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             config.get("model")
             and provider
             and provider.get("type") == "deepseek"
+            and DeepSeekHarnessEngine.supports_provider(provider)
             and provider.get("enabled", True)
             and str(provider.get("base_url") or "").strip()
             and str(provider.get("api_key") or "").strip()
@@ -480,11 +496,23 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             config_store.get_deepseek_harness_config(),
             kwargs.get("config_overrides"),
         )
-        provider = config_store.get_provider(config.get("provider_id") or "")
+        selected_model = str(
+            model
+            or config_store.get_engine_default_model(self.ENGINE_ID)
+            or config.get("model")
+            or "deepseek-v4-flash"
+        )
+        try:
+            provider_runtime = self.resolve_provider_runtime(
+                provider_id=str(config.get("provider_id") or ""),
+                model=selected_model,
+            )
+        except ValueError as exc:
+            yield InternalEvent(type="error", data={"message": str(exc)})
+            return
+        provider = config_store.get_provider(provider_runtime.provider_id)
         if (
             provider is None
-            or provider.get("type") != "deepseek"
-            or not provider.get("enabled", True)
             or not provider.get("base_url")
             or not provider.get("api_key")
         ):
@@ -493,13 +521,6 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 data={"message": "请先配置可用的 DeepSeek 供应商"},
             )
             return
-
-        selected_model = str(
-            model
-            or config_store.get_engine_default_model(self.ENGINE_ID)
-            or config.get("model")
-            or "deepseek-v4-flash"
-        )
         raw_max_tokens = str(config.get("max_tokens") or "").strip()
         max_tokens = int(raw_max_tokens) if raw_max_tokens else None
         root_session_id = str(session_id or f"session-{uuid.uuid4().hex}")

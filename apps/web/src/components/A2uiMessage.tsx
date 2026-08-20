@@ -65,12 +65,11 @@ export default function A2uiMessage({
   onAction?: (action: A2uiClientAction) => void
 }) {
   const surfaces = useMemo(() => {
-    const rawPayloads: A2uiMessagePayload[] = (messages && messages.length > 0)
+    const payloads: A2uiMessagePayload[] = (messages && messages.length > 0)
       ? messages as unknown as A2uiMessagePayload[]
       : hasA2uiBlocks(content)
         ? extractA2uiMessages(content)
         : []
-    const payloads = rawPayloads
     if (payloads.length === 0) return []
     const normalized = ensureA2uiRoots(
       normalizeA2uiInteractiveComponents(

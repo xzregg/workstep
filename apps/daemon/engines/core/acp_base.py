@@ -302,7 +302,6 @@ class _StreamingClient:
 
 
 class AcpEngineBase(BaseLLMEngine):
-    _live_message_wait_seconds: float = 1.5
     ACP_COMMAND_DISCOVERY_TIMEOUT = 0.5
     ACP_COMMAND_CACHE_TTL = 30.0
     _acp_command_cache: dict[tuple[str, str], tuple[float, list[dict[str, str]]]] = {}
@@ -817,8 +816,11 @@ class AcpEngineBase(BaseLLMEngine):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        # 无配置模板的 ACP 引擎：阶段级覆盖暂不生效，仅保持签名一致。
-        del config_overrides
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=str((config_overrides or {}).get("provider_id") or ""),
+            model=model,
+        )
+        model = provider_runtime.model
         cmd = self.get_command()
         if not cmd:
             yield InternalEvent(type="error", data={"message": f"{self.ENGINE_ID}: no command configured"})
@@ -843,7 +845,7 @@ class AcpEngineBase(BaseLLMEngine):
                 cmd[0],
                 *cmd[1:],
                 cwd=cwd,
-                env=os.environ,
+                env=(provider_runtime.child_env() if provider_runtime.provider_id else os.environ),
             ) as (client, process):
                 self._process = process
                 self._running = True
@@ -941,17 +943,8 @@ class AcpEngineBase(BaseLLMEngine):
                         while not live_message_queue.empty():
                             live_items.append(live_message_queue.get_nowait())
                         if not live_items:
-                            # 轮间等待窗口：任务收尾时刚发出的插入消息不应静默丢失
-                            try:
-                                first = await asyncio.wait_for(
-                                    live_message_queue.get(),
-                                    timeout=self._live_message_wait_seconds,
-                                )
-                            except asyncio.TimeoutError:
-                                break
-                            live_items = [first]
-                            while not live_message_queue.empty():
-                                live_items.append(live_message_queue.get_nowait())
+                            # 插入队列已空：回复即收尾，不等待未来消息。
+                            break
                         injected = "\n\n".join(
                             content for _, content in live_items
                         )
@@ -1363,22 +1356,18 @@ class AcpEngineBase(BaseLLMEngine):
         if isinstance(update, schema.AgentPlanRemovedUpdate):
             return InternalEvent(type="plan_removed", data={"id": update.id})
         if isinstance(update, schema.UsageUpdate):
-            data: dict[str, Any] = {
+            usage: dict[str, Any] = {
                 "used": update.used,
                 "size": update.size,
             }
             if update.cost is not None:
-                data["cost"] = {
+                usage["cost"] = {
                     "amount": update.cost.amount,
                     "currency": update.cost.currency,
                 }
-            data["total_tokens"] = update.used
-            data["input_tokens"] = 0
-            data["output_tokens"] = 0
-            data["cache_creation_input_tokens"] = 0
-            data["cache_read_input_tokens"] = 0
-            data["context_window"] = update.size
-            return InternalEvent(type="usage_update", data=data)
+            event = usage_update_event(usage, used=update.used, size=update.size)
+            event.data["context_window"] = update.size
+            return event
         if isinstance(update, schema.SessionInfoUpdate):
             data: dict[str, Any] = {}
             if update.title is not None:
@@ -1469,16 +1458,16 @@ class AcpEngineBase(BaseLLMEngine):
         usage = getattr(response, "usage", None)
         if usage is None:
             return None
-        data = normalize_token_usage({
+        data = {
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "total_tokens": usage.total_tokens,
             "cached_read_tokens": usage.cached_read_tokens,
             "cached_write_tokens": usage.cached_write_tokens,
-        })
+        }
         if usage.thought_tokens is not None:
             data["thought_tokens"] = usage.thought_tokens
-        return InternalEvent(type="usage_update", data=data)
+        return usage_update_event(data)
 
     async def stop(self) -> None:
         if self._process:

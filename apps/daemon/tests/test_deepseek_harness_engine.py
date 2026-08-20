@@ -224,6 +224,7 @@ def test_deepseek_harness_maps_stream_tool_usage_plan_and_compaction():
     assert [event.type for event in message] == ["usage_update"]
     assert message[0].data["input_tokens"] == 10
     assert message[0].data["output_tokens"] == 3
+    assert message[0].data["used"] == 13
     assert plan[0].type == "plan"
     assert [entry["status"] for entry in plan[0].data["entries"]] == [
         "in_progress", "pending",

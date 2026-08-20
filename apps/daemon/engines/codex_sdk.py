@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.metadata
+import json
 import logging
 import os
 import uuid
@@ -11,6 +12,7 @@ from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
+    ProviderRuntimeConfig,
     install_python_package,
     resolve_thinking_effort,
 )
@@ -18,9 +20,9 @@ from engines.core.base import (
 from engines.core.events import (
     InternalEvent,
     compacted_event,
-    normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
+    usage_update_event,
 )
 from engines.core.interactions import permission_request, permission_signature
 from engines.core.input_items import workstep_input_commands
@@ -47,6 +49,25 @@ class CodexSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"openai_responses"}
+
+    def build_provider_runtime(self, provider, model):
+        base_url = str(provider.get("base_url") or "")
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+            env={"WORKSTEP_LLM_API_KEY": str(provider.get("api_key") or "")},
+            engine_config=(
+                'model_provider="workstep"',
+                'model_providers.workstep.name="WorkStep"',
+                f"model_providers.workstep.base_url={json.dumps(base_url)}",
+                'model_providers.workstep.env_key="WORKSTEP_LLM_API_KEY"',
+                'model_providers.workstep.wire_api="responses"',
+            ),
+        )
 
     def __init__(self):
         super().__init__()
@@ -385,11 +406,14 @@ class CodexSDKEngine(AcpEngineBase):
                     "cache_read_input_tokens": getattr(source, "cached_input_tokens", 0) or 0,
                     "total_tokens": getattr(source, "total_tokens", 0) or 0,
                 }
-                usage_data = normalize_token_usage(raw)
+                context_window = getattr(usage, "model_context_window", None)
+                if context_window is None:
+                    context_window = getattr(usage, "modelContextWindow", None)
+                usage_event = usage_update_event(raw, size=context_window)
                 reasoning = getattr(source, "reasoning_output_tokens", None)
                 if isinstance(reasoning, (int, float)):
-                    usage_data["reasoning_output_tokens"] = int(reasoning)
-                events.append(InternalEvent(type="usage_update", data=usage_data))
+                    usage_event.data["reasoning_output_tokens"] = int(reasoning)
+                events.append(usage_event)
 
         elif method == "thread/compacted":
             events.append(compacted_event())
@@ -465,6 +489,7 @@ class CodexSDKEngine(AcpEngineBase):
         images: list[EngineImage] | None = None,
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
+        config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
         guarded_prompt = self.render_image_prompt(
             self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
@@ -478,6 +503,7 @@ class CodexSDKEngine(AcpEngineBase):
             images=images,
             read_only=not workstep_tools,
             thinking_effort=thinking_effort,
+            config_overrides=config_overrides,
         ):
             yield event
 
@@ -516,6 +542,11 @@ class CodexSDKEngine(AcpEngineBase):
         sdk_config = self.merge_config_overrides(
             config_store.get_codex_sdk_config(), config_overrides
         )
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=str((config_overrides or {}).get("provider_id") or ""),
+            model=model,
+        )
+        model = provider_runtime.model
         sandbox_map = {
             "read-only": Sandbox.read_only,
             "workspace-write": Sandbox.workspace_write,
@@ -547,6 +578,8 @@ class CodexSDKEngine(AcpEngineBase):
         client_config = CodexConfig(
             codex_bin=override or None,
             cwd=cwd or None,
+            config_overrides=provider_runtime.engine_config,
+            env=(provider_runtime.child_env() if provider_runtime.provider_id else None),
         )
 
         self._running = True

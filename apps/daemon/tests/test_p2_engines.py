@@ -29,6 +29,49 @@ def test_codex_resolve_binary():
     assert binary is None or isinstance(binary, str)
 
 
+@pytest.mark.anyio
+async def test_codex_list_models_uses_cli_catalog(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self):
+            return (
+                b'{"models":['
+                b'{"slug":"gpt-visible","display_name":"GPT Visible",'
+                b'"description":"Selectable","visibility":"list"},'
+                b'{"slug":"gpt-hidden","display_name":"GPT Hidden",'
+                b'"description":"Internal","visibility":"hide"}'
+                b']}',
+                b"",
+            )
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        CodexEngine,
+        "resolve_binary",
+        staticmethod(lambda: "/fake/codex"),
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    models = await CodexEngine().list_models(str(tmp_path))
+
+    assert calls == [
+        (("/fake/codex", "debug", "models"), {
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "cwd": str(tmp_path),
+        })
+    ]
+    assert [(model.id, model.label, model.description) for model in models] == [
+        ("gpt-visible", "GPT Visible", "Selectable"),
+    ]
+
+
 def test_codex_broken_launcher_is_not_reported_as_installed(monkeypatch):
     """A PATH shim that cannot start Codex is not a usable engine."""
     class FailedVersion:
@@ -993,6 +1036,7 @@ def test_codex_map_turn_completed():
     assert event is not None
     assert event.type == "usage_update"
     assert event.data["input_tokens"] == 200
+    assert event.data["used"] == 300
 
 
 def test_codex_cli_maps_plan_snapshot_when_transport_emits_it():
@@ -1305,6 +1349,7 @@ def test_hermes_map_usage_update_with_cache():
     assert event.data["output_tokens"] == 100
     assert event.data["cache_creation_input_tokens"] == 150
     assert event.data["cache_read_input_tokens"] == 120
+    assert event.data["used"] == 400
 
 
 def test_hermes_map_usage_update_with_cost():
@@ -1361,6 +1406,8 @@ def test_acp_usage_update_includes_canonical_token_fields():
     assert event.type == "usage_update"
     assert event.data["total_tokens"] == 320
     assert event.data["context_window"] == 200000
+    assert event.data["used"] == 320
+    assert event.data["size"] == 200000
 
 
 @pytest.mark.anyio
@@ -1413,6 +1460,75 @@ async def test_acp_resume_failure_is_explicit_and_does_not_start_new_session(
     assert [event.type for event in events] == ["status", "error"]
     assert "missing-session" in events[1].data["message"]
     assert client.new_session_calls == 0
+
+
+@pytest.mark.anyio
+async def test_acp_finished_turn_does_not_wait_for_late_live_message(monkeypatch):
+    """A live message must already be queued when a turn finishes to continue."""
+    from engines.core.acp_base import AcpEngineBase
+
+    class TestEngine(AcpEngineBase):
+        COMMAND = ["fake-acp"]
+        ENGINE_ID = "test-acp"
+
+        @staticmethod
+        def is_installed():
+            return True
+
+        @staticmethod
+        def get_version():
+            return "test"
+
+        @staticmethod
+        def resolve_binary():
+            return "fake-acp"
+
+    class Client:
+        def __init__(self):
+            self.prompts: list[str] = []
+
+        async def initialize(self, **kwargs):
+            return None
+
+        async def new_session(self, **kwargs):
+            return _SdkFake(session_id="session-1")
+
+        async def prompt(self, *, prompt, **kwargs):
+            self.prompts.append(prompt[0].text)
+            return _SdkFake(usage=None)
+
+    client = Client()
+
+    @asynccontextmanager
+    async def fake_spawn(*args, **kwargs):
+        yield client, _SdkFake()
+
+    monkeypatch.setattr("engines.core.acp_base.acp.spawn_agent_process", fake_spawn)
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def enqueue_after_completion():
+        # The ACP notification pump polls at 0.1s. Arrive after it observes the
+        # completed prompt, but inside the former 0.05s insertion grace.
+        await asyncio.sleep(0.12)
+        await queue.put(("late-1", "迟到的插入消息"))
+
+    producer = asyncio.create_task(enqueue_after_completion())
+    events: list[InternalEvent] = []
+
+    async def consume():
+        async for event in TestEngine().spawn(
+            prompt="开始任务",
+            cwd="/tmp",
+            live_message_queue=queue,
+        ):
+            events.append(event)
+
+    await asyncio.wait_for(consume(), timeout=0.3)
+    await producer
+
+    assert client.prompts == ["开始任务"]
+    assert queue.qsize() == 1
+    assert not any(event.type == "live_message" for event in events)
 
 
 @pytest.mark.anyio
@@ -1777,6 +1893,7 @@ def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
     assert usage["output_tokens"] == 30
     assert usage["cache_creation_input_tokens"] == 40
     assert usage["cache_read_input_tokens"] == 20
+    assert usage["used"] == 130
     assert usage["cost"] == {"amount": 0.12, "currency": "USD"}
     assert events[1].data["status"] == "done"
 
@@ -2470,6 +2587,7 @@ def test_codex_sdk_maps_usage_with_cache():
                 total_tokens=150,
             ),
             total=None,
+            model_context_window=400,
         )),
     )
     events = engine._map_notification(
@@ -2482,6 +2600,8 @@ def test_codex_sdk_maps_usage_with_cache():
     assert usage["cache_read_input_tokens"] == 20
     assert usage["reasoning_output_tokens"] == 5
     assert usage["total_tokens"] == 150
+    assert usage["used"] == 150
+    assert usage["size"] == 400
 
 
 def test_codex_sdk_turn_completed_error():
@@ -3436,6 +3556,7 @@ def test_qoder_sdk_maps_result_usage_with_cost_and_credits():
         "cache_creation_input_tokens": 40,
         "cache_read_input_tokens": 120,
         "total_tokens": 400,
+        "used": 400,
         "cost": {"amount": 0.042, "currency": "USD"},
         "credits": 2.5,
         "session_id": "session-1",
@@ -3527,6 +3648,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     session_id = events[0].data["session_id"]
     assert isinstance(session_id, str) and session_id
     usage_event = next(event for event in events if event.type == "usage_update")
+    assert usage_event.data["used"] == 2
     assert usage_event.data["session_id"] == session_id
     assert usage_event.data["provider_id"] == "prov_1"
     assert events[-1].type == "status"
@@ -3614,11 +3736,11 @@ class _FakeSDKClient:
             pass
 
 
-def _patch_claude_sdk(monkeypatch):
+def _patch_claude_sdk(monkeypatch, client_class=_FakeSDKClient):
     import claude_agent_sdk as sdk_module
     from services.config import config_store
 
-    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _FakeSDKClient)
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", client_class)
     monkeypatch.setattr(sdk_module, "ClaudeAgentOptions", _SdkFake)
     monkeypatch.setattr(sdk_module, "PermissionResultAllow", _SdkFake)
     monkeypatch.setattr(sdk_module, "PermissionResultDeny", _SdkFake)
@@ -3630,6 +3752,57 @@ def _patch_claude_sdk(monkeypatch):
         "max_turns": "",
         "fallback_model": "",
     })
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_result_ends_a_persistent_message_stream(monkeypatch):
+    """Real receive_messages stays open; an empty queue must still end now."""
+
+    class PersistentSDKClient(_FakeSDKClient):
+        async def receive_messages(self):
+            yield _SdkFake(
+                type="system",
+                subtype="init",
+                data={"session_id": "sdk-session-1"},
+            )
+            yield _SdkFake(type="assistant", content=[
+                _SdkFake(type="text", text="回复完成"),
+            ])
+            yield _SdkFake(
+                type="result",
+                result=_SdkFake(
+                    is_error=False,
+                    output="",
+                    subtype="success",
+                    usage={"input_tokens": 1, "output_tokens": 1},
+                    total_cost_usd=0.0,
+                    session_id="sdk-session-1",
+                ),
+            )
+            while not self.disconnected:
+                await asyncio.sleep(0.01)
+
+    _patch_claude_sdk(monkeypatch, PersistentSDKClient)
+    events: list[InternalEvent] = []
+
+    async def consume():
+        async for event in ClaudeAgentSDKEngine().spawn(
+            "开始任务",
+            cwd="/tmp",
+            live_message_queue=asyncio.Queue(),
+        ):
+            events.append(event)
+
+    await asyncio.wait_for(consume(), timeout=0.25)
+
+    assert any(
+        event.type == "status" and event.data.get("status") == "done"
+        for event in events
+    )
+    assert not any(
+        event.type == "status" and event.data.get("status") == "cancelled"
+        for event in events
+    )
 
 
 @pytest.mark.anyio
@@ -3685,7 +3858,7 @@ async def test_claude_agent_sdk_early_injection_ends_when_queue_empty(monkeypatc
     _FakeSDKClient.merge_injections = True
     try:
         # 3s 超时保护：修复前 watchdog 误判保活、流只能靠外部取消收尾，
-        # 会留下 cancelled 事件；修复后 grace(0.2s) 内自然收尾、无 cancelled。
+        # 会留下 cancelled 事件；修复后空队列立即自然收尾、无 cancelled。
         await asyncio.wait_for(consume(), timeout=3)
     finally:
         _FakeSDKClient.merge_injections = False

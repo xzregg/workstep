@@ -26,6 +26,7 @@ from engines.core.events import (
     compacted_event,
     tool_call_event,
     tool_call_update_event,
+    usage_update_event,
 )
 from engines.core.interactions import elicitation_request
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
@@ -538,7 +539,7 @@ class QoderSDKEngine(AcpEngineBase):
                 session_id = getattr(msg, "session_id", None)
                 if session_id:
                     usage_data["session_id"] = str(session_id)
-                events.append(InternalEvent(type="usage_update", data=usage_data))
+                events.append(usage_update_event(usage_data))
             is_error = bool(getattr(msg, "is_error", False))
             subtype = getattr(msg, "subtype", "") or ""
             if is_error or (subtype and subtype != "success"):
@@ -796,7 +797,6 @@ class QoderSDKEngine(AcpEngineBase):
             turn_ended,
             end_prompt.set,
             disconnect=client.disconnect,
-            stream_closed=input_closed,
             pending_injection=(
                 (lambda: not live_message_queue.empty())
                 if live_message_queue is not None else None

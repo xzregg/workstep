@@ -3,13 +3,15 @@
 所有引擎继承 ``AcpEngineBase``（ACP 协议基类，见 ``acp_base.py``）；本类承载与协议无关的自定义函数：安装、版本、配置表单、模型枚举、能力声明等。新接入引擎必须实现本类的抽象方法（is_installed / get_version / resolve_binary）。"""
 
 import asyncio
+import json
 import logging
+import os
 import shutil
 import sys
 import time
 from abc import ABC, abstractmethod
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import importlib.util
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -18,7 +20,7 @@ from typing import Any, AsyncIterator, ClassVar
 logger = logging.getLogger(__name__)
 
 from engines.core.events import InternalEvent
-from engines.core.schema import EngineConfigField, EngineImage
+from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 
 
 # WorkStep thinking-effort values. ``"auto"`` means "let the engine decide":
@@ -58,7 +60,6 @@ async def sdk_turn_watchdog(
     turn_ended: asyncio.Event,
     on_idle: Callable[[], None],
     disconnect: Callable[[], Awaitable[None]] | None = None,
-    stream_closed: asyncio.Event | None = None,
     escalate_seconds: float = 15.0,
     pending_injection: Callable[[], bool] | None = None,
 ) -> None:
@@ -77,31 +78,21 @@ async def sdk_turn_watchdog(
     turns are never killed (only the runner's stage-level idle watchdog bounds
     them).
 
-    If ``stream_closed`` is provided, the watchdog waits for the stream to
-    actually close (up to ``escalate_seconds``) and only then falls back to
-    ``disconnect()``; without it, ``disconnect()`` runs after ``on_idle()`` as
-    before.
+    ``disconnect()`` runs immediately after ``on_idle()``.  Persistent SDK
+    message iterators do not necessarily end at a result message, so waiting
+    for the stream before disconnecting would turn the shutdown timeout into
+    a user-visible delay on every completed reply.
     """
 
     async def _close() -> None:
         on_idle()
         if disconnect is None:
             return
-        if stream_closed is not None:
-            try:
-                # 优雅收尾优先：等流真正关闭，超时才强制 disconnect，
-                # 避免 disconnect 抢在 stdin EOF 收尾前执行。
-                await asyncio.wait_for(
-                    stream_closed.wait(), timeout=escalate_seconds
-                )
-                return
-            except asyncio.TimeoutError:
-                pass
         try:
             await asyncio.wait_for(disconnect(), timeout=escalate_seconds)
         except asyncio.TimeoutError:
             logger.warning(
-                "SDK session did not close after turn grace window"
+                "SDK session disconnect timed out after completed turn"
             )
 
     while True:
@@ -157,6 +148,34 @@ class EngineInstallResult:
     success: bool
     message: str
     already_installed: bool = False
+
+
+@dataclass(frozen=True)
+class ProviderRuntimeConfig:
+    """Resolved provider material for one engine run, with secrets isolated."""
+
+    provider_id: str = ""
+    model: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    unset_env: set[str] = field(default_factory=set)
+    engine_config: tuple[str, ...] = ()
+
+    @property
+    def safe_summary(self) -> str:
+        return json.dumps({
+            "provider_id": self.provider_id,
+            "model": self.model,
+            "env_keys": sorted(self.env),
+            "unset_env": sorted(self.unset_env),
+            "engine_config": list(self.engine_config),
+        }, ensure_ascii=False)
+
+    def child_env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        for key in self.unset_env:
+            env.pop(key, None)
+        env.update(self.env)
+        return env
 
 
 async def run_install_command(
@@ -275,6 +294,172 @@ class BaseLLMEngine(ABC):
     def is_configured() -> bool:
         """Whether this installed adapter has enough configuration to run."""
         return True
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        """Provider wire protocols this adapter can safely consume."""
+        return set()
+
+    @classmethod
+    def provider_required(cls) -> bool:
+        """Whether this adapter requires a WorkStep-managed provider."""
+        return False
+
+    @classmethod
+    def provider_config_store(cls):
+        """Return the adapter's config store (also supports isolated test stores)."""
+        from services.config import ConfigStore, config_store
+
+        module = sys.modules.get(cls.__module__)
+        adapter_store = getattr(module, "config_store", config_store) if module else config_store
+        if adapter_store is config_store:
+            return config_store
+        if not isinstance(adapter_store, ConfigStore) and isinstance(
+            config_store, ConfigStore
+        ):
+            return adapter_store
+        return config_store
+
+    @classmethod
+    def supports_provider(cls, provider: dict[str, Any]) -> bool:
+        from services.config import default_provider_protocol
+
+        protocol = str(provider.get("protocol") or "").strip()
+        if not protocol:
+            protocol = default_provider_protocol(str(provider.get("type") or ""))
+        return protocol in cls.supported_provider_protocols()
+
+    def build_provider_runtime(
+        self,
+        provider: dict[str, Any],
+        model: str | None,
+    ) -> ProviderRuntimeConfig:
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+        )
+
+    def resolve_provider_runtime(
+        self,
+        provider_id: str | None = None,
+        model: str | None = None,
+    ) -> ProviderRuntimeConfig:
+        """Resolve turn override before engine default and validate it."""
+        config_store = self.provider_config_store()
+
+        selected = str(provider_id or "").strip()
+        if not selected:
+            selected = str(self.get_config_values().get("provider_id") or "").strip()
+        if not selected:
+            get_engine_provider = getattr(config_store, "get_engine_provider", None)
+            selected = (
+                get_engine_provider(self.ENGINE_ID)
+                if callable(get_engine_provider)
+                else ""
+            )
+        if not selected:
+            if self.provider_required():
+                raise ValueError("该引擎需要先选择供应商")
+            return ProviderRuntimeConfig(model=model)
+        provider = config_store.get_provider(selected)
+        if provider is None:
+            raise ValueError("供应商不存在")
+        if not provider.get("enabled", True):
+            raise ValueError("所选供应商已停用")
+        if not self.supports_provider(provider):
+            raise ValueError("所选供应商协议与该引擎不兼容")
+        return self.build_provider_runtime(provider, model)
+
+    @classmethod
+    def provider_config_field(cls) -> EngineConfigField | None:
+        protocols = cls.supported_provider_protocols()
+        if not protocols:
+            return None
+        config_store = cls.provider_config_store()
+
+        options = tuple(
+            EngineConfigOption(
+                value=str(provider.get("id") or ""),
+                label=str(provider.get("name") or provider.get("id") or ""),
+            )
+            for provider in config_store.get_providers()
+            if provider.get("enabled", True)
+            and str(provider.get("protocol") or "") in protocols
+        )
+        return EngineConfigField(
+            key="provider_id",
+            label="供应商",
+            type="select",
+            options=options,
+            required=cls.provider_required(),
+            placeholder="沿用引擎本机配置",
+            help="复用供应商的 API 地址、密钥和模型列表。",
+        )
+
+    @classmethod
+    def full_config_schema(cls) -> list[EngineConfigField]:
+        fields = list(cls.config_schema())
+        if any(field.key == "provider_id" for field in fields):
+            return fields
+        provider_field = cls.provider_config_field()
+        if provider_field is not None:
+            fields.insert(0, provider_field)
+        return fields
+
+    @classmethod
+    def full_stage_config_schema(cls) -> list[EngineConfigField]:
+        return [
+            field
+            for field in cls.full_config_schema()
+            if not field.sensitive and field.type != "password"
+        ]
+
+    def get_full_config_values(self) -> dict[str, Any]:
+        values = dict(self.get_config_values())
+        if self.supported_provider_protocols() and "provider_id" not in values:
+            config_store = self.provider_config_store()
+
+            values["provider_id"] = config_store.get_engine_provider(self.ENGINE_ID)
+        return values
+
+    def clear_provider_default_model(self) -> None:
+        """Clear an engine model that is invalid for a newly bound provider."""
+        self.provider_config_store().set_engine_default_model(self.ENGINE_ID, "")
+
+    async def save_full_config_values(
+        self,
+        values: dict[str, Any],
+        clear: dict[str, bool] | None = None,
+        confirmed: dict[str, bool] | None = None,
+    ) -> None:
+        own_provider_field = any(
+            field.key == "provider_id" for field in self.config_schema()
+        )
+        previous_provider_id = str(
+            self.get_config_values().get("provider_id") or ""
+        ).strip()
+        provider_id = str(values.get("provider_id") or "").strip()
+        if self.supported_provider_protocols():
+            config_store = self.provider_config_store()
+            if not own_provider_field:
+                previous_provider_id = config_store.get_engine_provider(self.ENGINE_ID)
+            if provider_id:
+                self.resolve_provider_runtime(provider_id=provider_id)
+        await self.save_config_values(values, clear, confirmed)
+        if self.supported_provider_protocols() and not own_provider_field:
+            config_store.set_engine_provider(self.ENGINE_ID, provider_id)
+        if provider_id and provider_id != previous_provider_id:
+            config_store = self.provider_config_store()
+
+            default_model = config_store.get_engine_default_model(self.ENGINE_ID)
+            cached = config_store.get_provider_models(provider_id)
+            model_ids = {
+                str(item.get("id") or "")
+                for item in cached.get("models", [])
+                if isinstance(item, dict)
+            }
+            if default_model and default_model not in model_ids:
+                self.clear_provider_default_model()
 
     # --- Install (runtime bootstrap) ---
 

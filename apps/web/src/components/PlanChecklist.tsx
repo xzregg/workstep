@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { PlanSnapshot } from '../utils/plan'
 
@@ -158,11 +158,34 @@ function ChevronIcon() {
   )
 }
 
+function DetailChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`plan-detail-chevron${expanded ? ' is-expanded' : ''}`}
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      aria-hidden="true"
+    >
+      <path
+        d="m5.5 3.75 4 4.25-4 4.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /* ── Main component ── */
 
 export default function PlanChecklist({ plan }: Props) {
   const { t } = useI18n()
   const [collapsed, setCollapsed] = useState(false)
+  const [expandedDetails, setExpandedDetails] = useState<Set<string>>(() => new Set())
+  const detailsId = useId()
 
   const hasActive = plan.entries.some((e) => e.status === 'in_progress')
   const allDone = plan.completed >= plan.total && plan.total > 0
@@ -222,9 +245,12 @@ export default function PlanChecklist({ plan }: Props) {
             {plan.entries.map((entry, index) => {
               const done = entry.status === 'completed'
               const active = entry.status === 'in_progress'
+              const entryKey = `${index}:${entry.content}`
+              const detailExpanded = expandedDetails.has(entryKey)
+              const detailId = `${detailsId}-detail-${index}`
               return (
                 <li
-                  key={`${index}:${entry.content}`}
+                  key={entryKey}
                   className={`plan-item${done ? ' done' : ''}${active ? ' active' : ''}`}
                   style={{ '--i': index } as React.CSSProperties}
                 >
@@ -233,8 +259,41 @@ export default function PlanChecklist({ plan }: Props) {
                     <ArrowIcon on={active} />
                     <CheckIcon on={done} />
                   </span>
-                  <span className="plan-label" data-label={entry.content}>
-                    {entry.content}
+                  <span className="plan-copy">
+                    <span className="plan-line">
+                      {entry.detail ? (
+                        <button
+                          type="button"
+                          className="plan-detail-toggle"
+                          aria-expanded={detailExpanded}
+                          aria-controls={detailId}
+                          aria-label={t(
+                            detailExpanded ? 'plan.hideDetails' : 'plan.showDetails',
+                            { step: entry.content },
+                          )}
+                          onClick={() => setExpandedDetails((current) => {
+                            const next = new Set(current)
+                            if (next.has(entryKey)) next.delete(entryKey)
+                            else next.add(entryKey)
+                            return next
+                          })}
+                        >
+                          <span className="plan-label" data-label={entry.content}>
+                            {entry.content}
+                          </span>
+                          <DetailChevronIcon expanded={detailExpanded} />
+                        </button>
+                      ) : (
+                        <span className="plan-label" data-label={entry.content}>
+                          {entry.content}
+                        </span>
+                      )}
+                    </span>
+                    {entry.detail && detailExpanded && (
+                      <span id={detailId} className="plan-detail">
+                        {entry.detail}
+                      </span>
+                    )}
                   </span>
                 </li>
               )

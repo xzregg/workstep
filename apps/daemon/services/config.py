@@ -39,6 +39,21 @@ QODER_PERMISSION_MODES = {
     "auto",
 }
 
+PROVIDER_PROTOCOLS = {
+    "anthropic_messages",
+    "openai_responses",
+    "openai_chat_completions",
+}
+
+
+def default_provider_protocol(type_id: str) -> str:
+    """Return the backward-compatible protocol for one provider preset."""
+    if type_id == "anthropic":
+        return "anthropic_messages"
+    if type_id == "openai":
+        return "openai_responses"
+    return "openai_chat_completions"
+
 
 class ConfigStore:
     """Centralized config read/write for ~/.workstep/config.json.
@@ -355,6 +370,25 @@ class ConfigStore:
             paths.pop(engine_id, None)
         self.set("engine_binary_paths", paths)
 
+    def get_engine_provider(self, engine_id: str) -> str:
+        bindings = self.get("engine_providers", {})
+        if not isinstance(bindings, dict):
+            return ""
+        value = bindings.get(engine_id, "")
+        return value.strip() if isinstance(value, str) else ""
+
+    def set_engine_provider(self, engine_id: str, provider_id: str) -> None:
+        bindings = self.get("engine_providers", {})
+        if not isinstance(bindings, dict):
+            bindings = {}
+        bindings = dict(bindings)
+        provider_id = str(provider_id or "").strip()
+        if provider_id:
+            bindings[engine_id] = provider_id
+        else:
+            bindings.pop(engine_id, None)
+        self.set("engine_providers", bindings)
+
     def get_pydantic_ai_engine_config(self) -> dict[str, Any]:
         raw = self.get("pydantic_ai_engine", {})
         if not isinstance(raw, dict):
@@ -618,7 +652,23 @@ class ConfigStore:
         raw = self.get("providers", [])
         if not isinstance(raw, list):
             return []
-        return [dict(item) for item in raw if isinstance(item, dict)]
+        providers: list[dict[str, Any]] = []
+        changed = False
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            normalized = dict(item)
+            protocol = str(normalized.get("protocol") or "").strip()
+            if protocol not in PROVIDER_PROTOCOLS:
+                normalized["protocol"] = default_provider_protocol(
+                    str(normalized.get("type") or "custom")
+                )
+                changed = True
+            providers.append(normalized)
+        if changed:
+            self._load()["providers"] = providers
+            self._save()
+        return providers
 
     def get_provider(self, provider_id: str) -> dict[str, Any] | None:
         for item in self.get_providers():
@@ -667,6 +717,15 @@ class ConfigStore:
 
     def is_provider_in_use(self, provider_id: str) -> bool:
         """Whether an API-driven engine currently uses this provider."""
+        bindings = self.get("engine_providers", {})
+        if isinstance(bindings, dict) and provider_id in bindings.values():
+            return True
+        assistant_defaults = self.get("assistant_defaults", {})
+        if isinstance(assistant_defaults, dict) and any(
+            isinstance(item, dict) and item.get("provider_id") == provider_id
+            for item in assistant_defaults.values()
+        ):
+            return True
         for section in ("pydantic_ai_engine", "deepseek_harness_engine"):
             raw = self.get(section, {})
             if (

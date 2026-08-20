@@ -96,13 +96,14 @@ def validate_provider_override(provider_id: str, engine_id: str) -> str:
     provider_id = (provider_id or "").strip()
     if not provider_id:
         return ""
-    if engine_id != "pydantic_ai":
-        raise ValueError("供应商是内置引擎的动态配置，请先选择 Pydantic AI 引擎")
     provider = config_store.get_provider(provider_id)
     if provider is None:
         raise ValueError("供应商不存在")
     if not provider.get("enabled", True):
         raise ValueError("所选供应商已停用")
+    engine = create_engine(engine_id)
+    if engine is None or not engine.supports_provider(provider):
+        raise ValueError("供应商协议与所选引擎不兼容")
     return provider_id
 
 
@@ -1480,13 +1481,9 @@ class AssistantRuntime:
             if run_key
             else None
         )
-        provider_id = turn_provider or (
-            config_store.get_assistant_defaults(self._config.name).get(
-                "provider_id", ""
-            )
-            if engine_id == "pydantic_ai"
-            else ""
-        )
+        provider_id = turn_provider or config_store.get_assistant_defaults(
+            self._config.name
+        ).get("provider_id", "")
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )

@@ -5,6 +5,8 @@ import Button from './Button'
 import { formatConversationDateTime } from '../utils/datetime'
 import { useI18n, zhCNT, type TFunction } from '../i18n'
 
+export { usageFromEvents } from '../utils/contextUsage.js'
+
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
    (usage / engine / model summary + copy button).
@@ -13,26 +15,6 @@ import { useI18n, zhCNT, type TFunction } from '../i18n'
    ══════════════════════════════════════════ */
 
 export type MessageUsage = Record<string, unknown> | null | undefined
-
-export function usageFromEvents(events: any[]): MessageUsage {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]
-    if (
-      (event?.type === 'usage' || event?.type === 'usage_update')
-      && event.data && typeof event.data === 'object'
-    ) {
-      return event.data as Record<string, unknown>
-    }
-    if (
-      event?.type === 'CUSTOM'
-      && event?.name === 'workstep.usage'
-      && event?.value && typeof event.value === 'object'
-    ) {
-      return event.value as Record<string, unknown>
-    }
-  }
-  return null
-}
 
 function usageValue(usage: MessageUsage, ...keys: string[]) {
   for (const key of keys) {

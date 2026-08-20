@@ -204,10 +204,18 @@ function AgentAssistantSettings() {
   }, [])
 
   engineRef.current = engine
+  const selectedEngineInfo = engines.find((item) => item.id === engine)
+  const engineSupportsProvider = Boolean(selectedEngineInfo?.supports_provider)
+  const compatibleProviders = providers.filter((item) => (
+    (selectedEngineInfo?.provider_protocols || []).includes(item.protocol)
+  ))
 
   const loadAssistantModels = async (engineId: string, force: boolean) => {
     if (!force) {
-      const cached = getCachedEngineModels(engineId)
+      const cached = getCachedEngineModels(
+        engineId,
+        engineSupportsProvider ? providerId : '',
+      )
       if (cached) {
         if (engineRef.current !== engineId) return
         setModels(cached.models || [])
@@ -222,7 +230,7 @@ function AgentAssistantSettings() {
       const result = await fetchEngineModels(
         engineId,
         force,
-        engineId === 'pydantic_ai' ? providerId : '',
+        engineSupportsProvider ? providerId : '',
       )
       if (engineRef.current !== engineId) return
       setModels(result.models || [])
@@ -247,12 +255,12 @@ function AgentAssistantSettings() {
   }, [engine])
 
   useEffect(() => {
-    if (engine === 'pydantic_ai') {
+    if (engineSupportsProvider) {
       // 切换供应商读取已保存的模型列表；未保存过才由后端拉取一次并保存。
       void loadAssistantModels(engine, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerId])
+  }, [providerId, engineSupportsProvider])
 
   const changeEngine = (engineId: string) => {
     setEngine(engineId)
@@ -274,7 +282,7 @@ function AgentAssistantSettings() {
         fastModel: fields.includes('fast_model') ? fastModel : '',
         visionModel: fields.includes('vision_model') ? visionModel : '',
         thinkingEffort: fields.includes('thinking_effort') ? thinkingEffort : '',
-        providerId: fields.includes('provider_id') && engine === 'pydantic_ai' ? providerId : '',
+        providerId: fields.includes('provider_id') && engineSupportsProvider ? providerId : '',
       })
       setAssistants((prev) => prev.map((item) =>
         item.name === selectedName
@@ -343,7 +351,7 @@ function AgentAssistantSettings() {
             style={{ flex: 1, minWidth: 0, height: 30 }}
           />
         </div>
-        {engine === 'pydantic_ai' && fields.includes('provider_id') && (
+        {engineSupportsProvider && fields.includes('provider_id') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
               {t('settings.assistantProvider')}
@@ -351,7 +359,12 @@ function AgentAssistantSettings() {
             <Select
               value={providerId}
               disabled={providersLoading || saving}
-              onChange={(event) => setProviderId(event.target.value)}
+              onChange={(event) => {
+                setProviderId(event.target.value)
+                setModel('')
+                setFastModel('')
+                setVisionModel('')
+              }}
               aria-label={t('settings.assistantProviderAria')}
               style={{ flex: 1, minWidth: 0, height: 30 }}
             >
@@ -360,12 +373,12 @@ function AgentAssistantSettings() {
                   ? t('flow.modelsLoading')
                   : t('settings.followEngineProvider')}
               </option>
-              {providers.length === 0 && !providersLoading && (
+              {compatibleProviders.length === 0 && !providersLoading && (
                 <option value="" disabled>
                   {t('settings.assistantProviderEmpty')}
                 </option>
               )}
-              {providers.map((item) => (
+              {compatibleProviders.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name || item.id}
                 </option>

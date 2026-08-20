@@ -19,6 +19,7 @@ from engines.core.events import (
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
+    usage_update_event,
 )
 from engines.core.interactions import elicitation_request, permission_request
 from engines.core.plans import plan_event
@@ -33,6 +34,18 @@ logger = logging.getLogger(__name__)
 
 class PydanticAIEngine(AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {
+            "anthropic_messages",
+            "openai_responses",
+            "openai_chat_completions",
+        }
+
+    @classmethod
+    def provider_required(cls) -> bool:
+        return True
 
     """Built-in agent that lets Pydantic AI load the configured provider."""
 
@@ -82,7 +95,14 @@ class PydanticAIEngine(AcpEngineBase):
             raise RuntimeError("Pydantic AI 尚未配置")
         config = get_config()
         model_name = str(config.get("model") or "")
-        provider = config_store.get_provider(config.get("provider_id") or "")
+        try:
+            runtime = cls().resolve_provider_runtime(
+                provider_id=str(config.get("provider_id") or ""),
+                model=model_name,
+            )
+        except ValueError as exc:
+            raise RuntimeError(str(exc)) from exc
+        provider = config_store.get_provider(runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
         loaded_model = cls.build_model(provider=provider, model_name=model_name)
@@ -102,7 +122,12 @@ class PydanticAIEngine(AcpEngineBase):
         if not config["provider_id"] or not config["model"]:
             return False
         provider = config_store.get_provider(config["provider_id"])
-        return bool(provider and provider.get("base_url") and provider.get("enabled", True))
+        return bool(
+            provider
+            and provider.get("base_url")
+            and provider.get("enabled", True)
+            and PydanticAIEngine.supports_provider(provider)
+        )
 
     @staticmethod
     def get_version() -> str | None:
@@ -146,6 +171,15 @@ class PydanticAIEngine(AcpEngineBase):
 
     def get_config_secrets(self) -> dict[str, bool]:
         return {}
+
+    def clear_provider_default_model(self) -> None:
+        current = config_store.get_pydantic_ai_engine_config()
+        config_store.set_pydantic_ai_engine_config(
+            provider_id=current["provider_id"],
+            model="",
+            mcp_servers=current["mcp_servers"],
+            harness="auto",
+        )
 
     async def save_config_values(
         self,
@@ -276,9 +310,12 @@ class PydanticAIEngine(AcpEngineBase):
     def build_model(*, provider: dict, model_name: str):
         """Construct the Pydantic AI model from a stored provider record."""
         provider_type = str(provider.get("type") or "custom")
+        protocol = provider_service.normalize_provider_protocol(
+            str(provider.get("protocol") or ""), provider_type
+        )
         base_url = str(provider.get("base_url") or "").rstrip("/")
         api_key = str(provider.get("api_key") or "")
-        if provider_type == "anthropic":
+        if protocol == "anthropic_messages":
             from pydantic_ai.models.anthropic import AnthropicModel
             from pydantic_ai.providers.anthropic import AnthropicProvider
 
@@ -290,10 +327,15 @@ class PydanticAIEngine(AcpEngineBase):
                 ),
             )
 
-        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
         from pydantic_ai.providers.openai import OpenAIProvider
 
-        return OpenAIChatModel(
+        model_class = (
+            OpenAIResponsesModel
+            if protocol == "openai_responses"
+            else OpenAIChatModel
+        )
+        return model_class(
             model_name,
             provider=OpenAIProvider(
                 base_url=base_url,
@@ -984,7 +1026,15 @@ class PydanticAIEngine(AcpEngineBase):
             config_store.get_pydantic_ai_engine_config(), config_overrides
         )
         model_name = model or config["model"]
-        provider = config_store.get_provider(config["provider_id"])
+        try:
+            provider_runtime = self.resolve_provider_runtime(
+                provider_id=config["provider_id"], model=model_name
+            )
+        except ValueError as exc:
+            yield InternalEvent(type="error", data={"message": str(exc)})
+            return
+        model_name = provider_runtime.model
+        provider = config_store.get_provider(provider_runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             yield InternalEvent(
                 type="error",
@@ -1104,7 +1154,7 @@ class PydanticAIEngine(AcpEngineBase):
                             "currency": "USD",
                         }
                 usage_data["session_id"] = session_uuid
-                yield InternalEvent(type="usage_update", data=usage_data)
+                yield usage_update_event(usage_data)
             yield InternalEvent(type="status", data={"status": "done"})
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})

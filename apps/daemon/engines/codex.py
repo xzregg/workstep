@@ -15,11 +15,19 @@ import re
 from engines.core.acp_base import AcpEngineBase
 from engines.core.base import (
     EngineInstallResult,
+    EngineModel,
+    ProviderRuntimeConfig,
     install_with_command,
     resolve_thinking_effort,
 )
 
-from engines.core.events import InternalEvent, normalize_cost, tool_call_event, tool_call_update_event
+from engines.core.events import (
+    InternalEvent,
+    normalize_cost,
+    tool_call_event,
+    tool_call_update_event,
+    usage_update_event,
+)
 from engines.core.interactions import permission_request, permission_signature
 from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
@@ -59,6 +67,25 @@ def _escalate_sandbox(mode: str) -> str:
 
 class CodexEngine(AcpEngineBase):
     ENGINE_ID = "codex"
+
+    @classmethod
+    def supported_provider_protocols(cls) -> set[str]:
+        return {"openai_responses"}
+
+    def build_provider_runtime(self, provider, model):
+        base_url = str(provider.get("base_url") or "")
+        return ProviderRuntimeConfig(
+            provider_id=str(provider.get("id") or ""),
+            model=model,
+            env={"WORKSTEP_LLM_API_KEY": str(provider.get("api_key") or "")},
+            engine_config=(
+                'model_provider="workstep"',
+                'model_providers.workstep.name="WorkStep"',
+                f"model_providers.workstep.base_url={json.dumps(base_url)}",
+                'model_providers.workstep.env_key="WORKSTEP_LLM_API_KEY"',
+                'model_providers.workstep.wire_api="responses"',
+            ),
+        )
 
     """Codex CLI engine using direct subprocess.
 
@@ -121,6 +148,46 @@ class CodexEngine(AcpEngineBase):
             ["npm", "install", "-g", "@openai/codex"],
             display="Codex CLI",
         )
+
+    async def list_models(self, cwd: str) -> list[EngineModel]:
+        """Read the selectable model catalog from the installed Codex CLI."""
+        binary = self.resolve_binary()
+        if not binary:
+            return []
+
+        process = await asyncio.create_subprocess_exec(
+            binary,
+            "debug",
+            "models",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            raise RuntimeError(detail or "Codex CLI 读取模型列表失败")
+
+        try:
+            payload = json.loads(stdout)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Codex CLI 返回了无效的模型列表") from exc
+
+        models = payload.get("models") if isinstance(payload, dict) else None
+        if not isinstance(models, list):
+            raise RuntimeError("Codex CLI 返回了无效的模型列表")
+
+        return [
+            EngineModel(
+                id=str(model["slug"]),
+                label=str(model.get("display_name") or model["slug"]),
+                description=str(model.get("description") or ""),
+            )
+            for model in models
+            if isinstance(model, dict)
+            and model.get("slug")
+            and model.get("visibility") == "list"
+        ]
 
     # --- Config schema (backend-driven settings form) ---
 
@@ -205,6 +272,11 @@ class CodexEngine(AcpEngineBase):
         codex_config = self.merge_config_overrides(
             config_store.get_codex_config(), config_overrides
         )
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=str((config_overrides or {}).get("provider_id") or ""),
+            model=model,
+        )
+        model = provider_runtime.model
         run_prompt = prompt
         resume_session = session_id or None
         self._escalate_sandbox = False
@@ -246,16 +318,20 @@ class CodexEngine(AcpEngineBase):
                 )
             if codex_config["approval_policy"]:
                 cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
+            for item in provider_runtime.engine_config:
+                cmd.extend(["-c", item])
 
             logger.info("Spawning: %s", " ".join(cmd))
 
-            self._process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
+            process_kwargs = {
+                "stdin": asyncio.subprocess.PIPE,
+                "stdout": asyncio.subprocess.PIPE,
+                "stderr": asyncio.subprocess.PIPE,
+                "cwd": cwd,
+            }
+            if provider_runtime.provider_id:
+                process_kwargs["env"] = provider_runtime.child_env()
+            self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
             self._running = True
             self._stderr = []
             stderr_task = asyncio.create_task(self._drain_stderr())
@@ -589,7 +665,7 @@ class CodexEngine(AcpEngineBase):
             cost = normalize_cost(usage)
             if cost is not None:
                 data["cost"] = cost
-            return InternalEvent(type="usage_update", data=data)
+            return usage_update_event(data)
 
         if event_type in ("error", "turn.failed"):
             return InternalEvent(type="error", data={

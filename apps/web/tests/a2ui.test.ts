@@ -21,12 +21,10 @@ import {
   a2uiActionMessageParams,
   resolveA2uiFlowSteps,
   pendingAutoApplyProposal,
-  shouldShowA2uiProposalCards,
   splitA2uiUpdateComponents,
   stripA2uiBlocks,
   stripA2uiBlocksForDisplay,
   stripAssistantPayloadsForDisplay,
-  withoutApplyFlowSurfaces,
   type A2uiReferenceStore,
 } from '../src/utils/a2ui.ts'
 
@@ -668,13 +666,6 @@ test('historical flow actions prefer their self-contained steps payload', () => 
   assert.deepEqual(resolved, { steps: historical, proposalId: '' })
 })
 
-test('hides the proposal card group after any proposal is applied', () => {
-  assert.equal(shouldShowA2uiProposalCards(2, null), true)
-  assert.equal(shouldShowA2uiProposalCards(2, 'proposal-1'), false)
-  assert.equal(shouldShowA2uiProposalCards(2, ''), false)
-  assert.equal(shouldShowA2uiProposalCards(0, null), false)
-})
-
 test('returns only an unapplied auto-apply proposal', () => {
   const proposals = [
     { id: 'p1', steps: {}, autoApply: false },
@@ -682,48 +673,4 @@ test('returns only an unapplied auto-apply proposal', () => {
   ]
   assert.equal(pendingAutoApplyProposal(proposals, null)?.id, 'p2')
   assert.equal(pendingAutoApplyProposal(proposals, 'p2'), undefined)
-})
-
-test('withoutApplyFlowSurfaces keeps non-choice payloads and drops apply_flow buttons', () => {
-  const createSurfacePayload = {
-    version: 'v0.9.1',
-    createSurface: { surfaceId: 'plan-select', catalogId: 'basic' },
-  }
-  const choicePayload = {
-    version: 'v0.9.1',
-    updateComponents: {
-      surfaceId: 'plan-select',
-      components: [
-        { component: 'Column', id: 'root', children: ['hint', 'b1'] },
-        { component: 'Text', id: 'hint', text: '请选择一个方案' },
-        {
-          component: 'Button', id: 'b1', child: 'b1-label', variant: 'primary',
-          action: { event: { name: 'apply_flow', context: { proposal: 1 } } },
-        },
-      ],
-    },
-  }
-  const infoPayload = {
-    version: 'v0.9.1',
-    updateComponents: {
-      surfaceId: 'plan-select',
-      components: [{ component: 'Text', id: 'hint', text: '说明' }],
-    },
-  }
-
-  const kept = withoutApplyFlowSurfaces([createSurfacePayload, choicePayload, infoPayload])
-  assert.equal(kept.length, 2)
-  assert.deepEqual(kept, [createSurfacePayload, infoPayload])
-})
-
-test('withoutApplyFlowSurfaces is a no-op without apply_flow payloads', () => {
-  const payloads = [
-    { version: 'v0.9.1', createSurface: { surfaceId: 's1', catalogId: 'basic' } },
-    { version: 'v0.9.1', updateComponents: { surfaceId: 's1', components: [] } },
-    null,
-    'not-an-object',
-  ]
-  const kept = withoutApplyFlowSurfaces(payloads)
-  assert.equal(kept.length, 4)
-  assert.deepEqual(kept, payloads)
 })

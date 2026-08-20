@@ -48,6 +48,21 @@ def test_plan_event_uses_acp_stable_snapshot_shape():
     }
 
 
+def test_plan_event_preserves_optional_step_detail():
+    event = plan_event([{
+        "content": "环境检查",
+        "detail": "检查运行环境与依赖版本",
+        "status": "pending",
+    }])
+
+    assert event.data["entries"] == [{
+        "content": "环境检查",
+        "detail": "检查运行环境与依赖版本",
+        "priority": "medium",
+        "status": "pending",
+    }]
+
+
 def test_base_engine_normalizes_claude_todo_snapshot_to_acp_plan():
     event = PlanEngine().normalize_event(InternalEvent(type="tool_call", data={
 		"tool_call_id": "todo-1",
@@ -91,6 +106,7 @@ def test_base_engine_reduces_claude_task_tools_to_full_plan_snapshots():
     assert updated is not None and updated.type == "plan"
     assert updated.data["entries"] == [{
         "content": "实现后端",
+        "detail": "接入 Plan",
         "priority": "medium",
         "status": "in_progress",
     }]

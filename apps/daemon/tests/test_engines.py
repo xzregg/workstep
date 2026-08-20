@@ -6,7 +6,12 @@ from typing import get_args, get_type_hints
 import pytest
 
 from engines.core.acp_base import AcpEngineBase
-from engines.core.events import InternalEvent, normalize_cost, normalize_token_usage
+from engines.core.events import (
+    InternalEvent,
+    normalize_cost,
+    normalize_token_usage,
+    usage_update_event,
+)
 from engines.core.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
 
@@ -109,6 +114,25 @@ def test_normalize_token_usage_appends_cost():
     assert result["input_tokens"] == 10
     assert result["total_tokens"] == 15
     assert result["cost"] == {"amount": 0.01, "currency": "USD"}
+
+
+def test_usage_update_exposes_canonical_context_snapshot():
+    event = usage_update_event({
+        "input_tokens": 100,
+        "output_tokens": 30,
+        "total_tokens": 150,
+        "model_context_window": 400,
+    })
+
+    assert event.data["used"] == 150
+    assert event.data["size"] == 400
+
+
+def test_usage_update_keeps_context_size_optional_when_provider_omits_it():
+    event = usage_update_event({"input_tokens": 10, "output_tokens": 5})
+
+    assert event.data["used"] == 15
+    assert "size" not in event.data
 
 
 @pytest.mark.anyio
@@ -411,6 +435,7 @@ def test_claude_map_event_usage():
     assert event.type == "usage_update"
     assert event.data["input_tokens"] == 100
     assert event.data["session_id"] == "sess_abc"
+    assert event.data["used"] == 150
 
 
 def test_claude_map_event_usage_with_cache():
@@ -455,6 +480,8 @@ def test_claude_map_event_usage_from_nested_result_payload():
         "output_tokens": 50,
         "cache_creation_input_tokens": 150,
         "cache_read_input_tokens": 120,
+        "total_tokens": 350,
+        "used": 350,
         "session_id": "a37b97f3-58ac-4dbe-9b20-b2057b026acc",
     }
 

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from engines.core.registry import refresh_registry
 from services import providers as provider_service
-from services.config import config_store
+from services.config import config_store, default_provider_protocol
 
 router = APIRouter(prefix="/api/provider")
 
@@ -20,6 +20,7 @@ class ProviderSaveRequest(BaseModel):
     id: str = Field(default="", max_length=64)
     name: str = Field(default="", max_length=100)
     type: str = Field(default="custom", max_length=32)
+    protocol: str = Field(default="", max_length=64)
     base_url: str = Field(default="", max_length=2048)
     api_key: str = Field(default="", max_length=4096)
     enabled: bool = True
@@ -43,6 +44,8 @@ def _public_provider(provider: dict) -> dict:
         "id": provider.get("id", ""),
         "name": provider.get("name", ""),
         "type": provider.get("type", "custom"),
+        "protocol": provider.get("protocol")
+        or default_provider_protocol(str(provider.get("type") or "custom")),
         "base_url": provider.get("base_url", ""),
         "api_key": "",
         "has_key": bool(provider.get("api_key")),
@@ -110,11 +113,13 @@ async def save_provider(
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
     base_url = str(req.base_url or "").strip().rstrip("/")
+    protocol = str(req.protocol or "").strip() or default_provider_protocol(type_id)
 
     error = provider_service.validate_provider_values(
         name=name,
         type_id=type_id,
         base_url=base_url,
+        protocol=protocol,
     )
     if error:
         return {"saved": False, "message": error, "provider": None}
@@ -141,6 +146,7 @@ async def save_provider(
         "id": provider_id,
         "name": name,
         "type": type_id,
+        "protocol": protocol,
         "base_url": base_url,
         "api_key": api_key or "",
         "enabled": bool(req.enabled),
@@ -229,6 +235,7 @@ async def import_cc_switch(req: ProviderImportRequest):
             "id": f"prov_{uuid.uuid4().hex[:12]}",
             "name": name,
             "type": candidate["type"],
+            "protocol": candidate["protocol"],
             "base_url": candidate["base_url"],
             "api_key": candidate["api_key"] or "",
             "enabled": True,
@@ -256,7 +263,7 @@ async def delete_provider(provider_id: str):
     if config_store.is_provider_in_use(provider_id):
         raise HTTPException(
             status_code=400,
-            detail="该供应商正被 Pydantic AI 或 DeepSeek Harness 引擎使用，请先切换其它供应商",
+            detail="该供应商正被引擎或助手使用，请先切换其它供应商",
         )
     config_store.delete_provider(provider_id)
     config_store.clear_provider_models(provider_id)

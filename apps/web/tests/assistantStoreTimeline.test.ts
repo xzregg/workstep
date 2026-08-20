@@ -8,7 +8,13 @@ test('keeps text and tool events on assistant messages for ordered rendering', (
   store.getState().newSession('session-1')
   store.getState().handleWsEvent({
     type: 'TEXT_MESSAGE_START', channel: 'flow', session_id: 'session-1', messageId: 'message-1',
+    created_at: '2026-08-20T10:00:00.000Z',
   })
+  assert.equal(store.getState().sessions['session-1'].messages[0].status, 'running')
+  assert.equal(
+    store.getState().sessions['session-1'].messages[0].created_at,
+    '2026-08-20T10:00:00.000Z',
+  )
   for (const event of [
     { type: 'TEXT_MESSAGE_CHUNK', delta: '先检查。' },
     { type: 'TOOL_CALL_START', toolCallId: 'read-1', toolCallName: 'Read', args: { path: 'a.py' } },

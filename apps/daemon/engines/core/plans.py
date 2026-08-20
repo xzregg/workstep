@@ -38,11 +38,19 @@ def normalize_plan_entries(
             continue
         raw_priority = str(entry.get("priority") or "medium").lower()
         raw_status = str(entry.get("status") or "pending").replace("-", "_").lower()
-        normalized.append({
+        normalized_entry = {
             "content": content,
             "priority": raw_priority if raw_priority in _PRIORITIES else "medium",
             "status": _STATUSES.get(raw_status, "pending"),
-        })
+        }
+        detail = str(entry.get("detail") or entry.get("details") or "").strip()
+        subject = str(entry.get("subject") or "").strip()
+        description = str(entry.get("description") or "").strip()
+        if not detail and subject and description and description != content:
+            detail = description
+        if detail and detail != content:
+            normalized_entry["detail"] = detail
+        normalized.append(normalized_entry)
     return normalized
 
 
@@ -119,6 +127,9 @@ class NativePlanTracker:
                     "priority": tool_input.get("priority") or "medium",
                     "status": "pending",
                 }
+                description = str(tool_input.get("description") or "").strip()
+                if tool_input.get("subject") and description and description != str(content):
+                    self._tasks[key]["detail"] = description
                 if call_id:
                     self._create_calls[call_id] = key
                     self._create_names[call_id] = name
@@ -143,10 +154,14 @@ class NativePlanTracker:
                     "priority": "medium",
                     "status": "pending",
                 })
-                if tool_input.get("subject") or tool_input.get("description"):
-                    current["content"] = (
-                        tool_input.get("subject") or tool_input.get("description")
-                    )
+                if tool_input.get("subject"):
+                    current["content"] = tool_input["subject"]
+                if tool_input.get("description"):
+                    description = str(tool_input["description"]).strip()
+                    if current.get("content") and current["content"] != task_id:
+                        current["detail"] = description
+                    else:
+                        current["content"] = description
                 if tool_input.get("priority"):
                     current["priority"] = tool_input["priority"]
                 if tool_input.get("status"):
@@ -201,9 +216,14 @@ class NativePlanTracker:
             if not isinstance(task, Mapping):
                 task = {}
             task_id = str(task.get("id") or provisional)
-            content = task.get("subject") or task.get("description")
-            if content:
-                current["content"] = content
+            if task.get("subject"):
+                current["content"] = task["subject"]
+            if task.get("description"):
+                description = str(task["description"]).strip()
+                if task.get("subject") or current.get("content") != description:
+                    current["detail"] = description
+                else:
+                    current["content"] = description
             if task.get("status"):
                 current["status"] = task["status"]
             elif create_name in ("task", "spawnagent") or is_subagent_call:

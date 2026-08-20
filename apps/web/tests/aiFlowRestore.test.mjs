@@ -27,11 +27,14 @@ const layoutSource = await readFile(
   'utf8',
 )
 
-test('AI flow chat exposes a stable restore action that bypasses proposal confirmation', () => {
+test('AI flow chat repeatedly restores the initial canvas and bypasses proposal confirmation', () => {
   assert.match(chatSource, /onRestore\?: \(steps: any\) => void/)
-  assert.match(chatSource, /const snapshot = cloneCanvasSteps\(/)
-  assert.match(chatSource, /onRestore\?\.\(restoreSteps\)/)
-  assert.match(chatSource, /disabled=\{running \|\| restoreSteps === null \|\| restored\}/)
+  assert.match(chatSource, /getCanvasStepsRef\.current = getCanvasSteps/)
+  assert.match(chatSource, /setRestoreSteps\(cloneCanvasSteps\(initialSteps\)\)/)
+  assert.match(chatSource, /onRestore\?\.\(cloneCanvasSteps\(restoreSteps\)\)/)
+  assert.doesNotMatch(chatSource, /setRestoreSteps\([^)]*\)[\s\S]{0,120}onProposal\?\.\(steps\)/)
+  assert.doesNotMatch(chatSource, /restored|setRestored/)
+  assert.match(chatSource, /disabled=\{running \|\| restoreSteps === null\}/)
   assert.match(chatSource, /composerActions=\{<Button/)
   assert.doesNotMatch(chatSource, /headerActions=\{<>\s*<Button[\s\S]*restoreStepsHint/)
   assert.match(assistantPanelSource, /composerActions\?: ReactNode/)

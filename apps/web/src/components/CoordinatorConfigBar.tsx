@@ -36,7 +36,7 @@ export interface CoordinatorConfigBarProps {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
-  /** Enabled providers for the built-in Pydantic AI engine's dynamic config. */
+  /** Enabled providers compatible with the selected engine. */
   providers?: ProviderInfo[]
   /** '' = follow the default provider. */
   providerId?: string
@@ -198,13 +198,17 @@ export default function CoordinatorConfigBar({
   const [models, setModels] = useState<EngineModel[]>([])
 
   const engineId = engine || defaultEngine
-  const isPydanticAi = engineId === 'pydantic_ai'
+  const selectedEngine = engines.find((item) => item.id === engineId)
+  const supportsProvider = Boolean(selectedEngine?.supports_provider)
+  const compatibleProviders = providers.filter((item) => (
+    item.enabled && (selectedEngine?.provider_protocols || []).includes(item.protocol)
+  ))
   useEffect(() => {
     if (!engineId) {
       setModels([])
       return
     }
-    const effectiveProvider = isPydanticAi ? providerId : ''
+    const effectiveProvider = supportsProvider ? providerId : ''
     const cached = getCachedEngineModels(engineId, effectiveProvider, projectId)
     if (cached) {
       setModels(cached.models || [])
@@ -219,7 +223,7 @@ export default function CoordinatorConfigBar({
         if (active) setModels([])
       })
     return () => { active = false }
-  }, [engineId, providerId, isPydanticAi, projectId])
+  }, [engineId, providerId, supportsProvider, projectId])
 
   const modelDisabled = disabled || models.length === 0
   const isMenu = variant === 'menu'
@@ -268,7 +272,7 @@ export default function CoordinatorConfigBar({
                 })),
             ]}
           />
-          {isPydanticAi && onProviderChange && (
+          {supportsProvider && onProviderChange && (
             <MenuField
               label={t('coord.provider')}
               title={t('coord.providerTitle')}
@@ -279,8 +283,7 @@ export default function CoordinatorConfigBar({
               onChange={onProviderChange}
               options={[
                 { value: '', label: t('coord.providerFollow') },
-                ...providers
-                  .filter((item) => item.enabled)
+                ...compatibleProviders
                   .map((item) => ({ value: item.id, label: item.name || item.id })),
               ]}
             />
@@ -363,7 +366,7 @@ export default function CoordinatorConfigBar({
             title={engineTitle ?? t('coord.engineTitle')}
             style={engineStyle}
           />
-          {isPydanticAi && onProviderChange && (
+          {supportsProvider && onProviderChange && (
             <Select
               value={providerId}
               disabled={disabled}
@@ -372,7 +375,7 @@ export default function CoordinatorConfigBar({
               style={fieldStyle}
             >
               <option value="">{t('coord.providerFollow')}</option>
-              {providers.filter((item) => item.enabled).map((item) => (
+              {compatibleProviders.map((item) => (
                 <option key={item.id} value={item.id}>{item.name || item.id}</option>
               ))}
             </Select>

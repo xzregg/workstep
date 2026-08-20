@@ -350,7 +350,7 @@ export function createAssistantStore(
                 id: mid,
                 role: isUserEvent ? 'user' : 'assistant',
                 content: isUserEvent ? String(event.content ?? '') : '',
-                status: userStatus,
+                status: isUserEvent ? userStatus : 'running',
                 engine: event.engine,
                 model: event.model,
                 prompt,

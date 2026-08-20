@@ -15,6 +15,7 @@ from engines.core.events import (
     normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
+    usage_update_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,7 +180,7 @@ class OpenClawEngine(AcpEngineBase):
             })
             if session_id:
                 usage_data["session_id"] = str(session_id)
-            events.append(InternalEvent(type="usage_update", data=usage_data))
+            events.append(usage_update_event(usage_data))
         return events
 
     def _map_event(self, obj: dict) -> InternalEvent | None:
@@ -224,7 +225,7 @@ class OpenClawEngine(AcpEngineBase):
 
         if event_type == "usage":
             usage = obj.get("usage") if isinstance(obj.get("usage"), dict) else obj
-            return InternalEvent(type="usage_update", data=normalize_token_usage(usage))
+            return usage_update_event(usage)
 
         return None
 

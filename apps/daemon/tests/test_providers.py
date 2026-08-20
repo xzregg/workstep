@@ -209,6 +209,7 @@ def test_cc_switch_scan_discovers_claude_code_providers(tmp_path, monkeypatch):
         "source_type": "claude",
         "name": "Claude DeepSeek",
         "type": "anthropic",
+        "protocol": "anthropic_messages",
         "base_url": "https://api.deepseek.com/anthropic",
         "api_key": "sk-ant-secret",
         "has_key": True,

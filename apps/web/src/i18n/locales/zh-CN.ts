@@ -264,6 +264,8 @@ export const zhCN = {
   plan: {
     title: '执行计划',
     inProgress: '执行中',
+    showDetails: '展开“{step}”的详情',
+    hideDetails: '收起“{step}”的详情',
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   md: {
@@ -396,7 +398,7 @@ export const zhCN = {
     resetSessionMessage: '当前流程的流程助手对话记录将被永久清空，画布内容不会改变。',
     resetSessionConfirm: '确认重置',
     restoreSteps: '还原',
-    restoreStepsHint: '还原到应用提案前的画布',
+    restoreStepsHint: '还原到打开流程助手时的初始画布',
     thinking: '协调 Agent 思考中…',
     emptyIntro: '描述你的目标（例如“做一个内容发布流程”），我会先追问几个关键问题，然后为你生成可直接编辑的流程编排。',
     me: '我',
@@ -837,6 +839,10 @@ export const zhCN = {
     name: '名称',
     namePlaceholder: '例如 DeepSeek 主账号',
     type: '类型',
+    protocol: '接口协议',
+    protocolAnthropic: 'Anthropic Messages',
+    protocolResponses: 'OpenAI Responses',
+    protocolChat: 'OpenAI Chat Completions',
     baseUrl: 'API 地址',
     baseUrlPlaceholder: 'https://api.example.com/v1',
     apiKey: 'API Key',

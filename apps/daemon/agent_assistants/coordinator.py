@@ -314,11 +314,10 @@ class CoordinatorModule:
             ):
                 raise ValueError("A coordinator model requires an engine")
             if normalized_provider:
-                current_engine = normalized_engine or task.coordinator_engine
-                if current_engine is not None and current_engine != "pydantic_ai":
-                    raise ValueError(
-                        "供应商是内置引擎的动态配置，请先选择 Pydantic AI 引擎"
-                    )
+                current_engine = normalized_engine or self._resolve_engine_models(task)[0]
+                candidate = create_engine(current_engine or "")
+                if candidate is None or not candidate.supports_provider(provider):
+                    raise ValueError("供应商协议与协调引擎不兼容")
 
             previous = {
                 "engine": task.coordinator_engine,
@@ -1156,13 +1155,11 @@ class CoordinatorModule:
                 **spawn_kwargs,
             )
 
-        provider_id = provider_id or (
-            config_store.get_assistant_defaults("task_coordinator").get(
-                "provider_id", ""
-            )
-            if engine_id == "pydantic_ai"
-            else ""
+        get_defaults = getattr(config_store, "get_assistant_defaults", None)
+        assistant_defaults = (
+            get_defaults("task_coordinator") if callable(get_defaults) else {}
         )
+        provider_id = provider_id or assistant_defaults.get("provider_id", "")
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )

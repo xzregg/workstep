@@ -837,6 +837,8 @@ export interface CoordinatorEngineSummary {
   verified: boolean
   built_in: boolean
   supports_coordinator: boolean
+  supports_provider: boolean
+  provider_protocols: string[]
 }
 
 export interface CoordinatorSelection {
@@ -1261,6 +1263,8 @@ export interface EngineInfo {
   supports_tool_disable: boolean
   supports_native_schema: boolean
   supports_live_stage_message: boolean
+  supports_provider: boolean
+  provider_protocols: string[]
   binary_path: string | null
   configured_path: string | null
 }
@@ -1409,6 +1413,7 @@ export interface ProviderInfo {
   id: string
   name: string
   type: string
+  protocol: string
   base_url: string
   api_key: string
   has_key: boolean
@@ -1424,6 +1429,7 @@ export interface ProviderTypeMeta {
   label: string
   default_base_url: string
   auth: string
+  default_protocol: string
   help: string
 }
 
@@ -1436,6 +1442,7 @@ export interface ProviderSaveInput {
   id?: string
   name: string
   type: string
+  protocol: string
   base_url: string
   api_key?: string
   enabled?: boolean
@@ -1468,6 +1475,7 @@ export interface ProviderImportCandidate {
   source_type: string
   name: string
   type: string
+  protocol: string
   base_url: string
   has_key: boolean
   wire_api: string

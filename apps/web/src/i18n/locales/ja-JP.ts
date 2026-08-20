@@ -266,6 +266,8 @@ export const jaJP: Messages = {
   plan: {
     title: '実行計画',
     inProgress: '実行中',
+    showDetails: '「{step}」の詳細を展開',
+    hideDetails: '「{step}」の詳細を閉じる',
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   md: {
@@ -398,7 +400,7 @@ export const jaJP: Messages = {
     resetSessionMessage: '現在のフローのフローアシスタント会話履歴は完全に消去されます。キャンバスの内容は変わりません。',
     resetSessionConfirm: '确认重置',
     restoreSteps: '戻す',
-    restoreStepsHint: '提案を適用する前のキャンバスに戻す',
+    restoreStepsHint: 'フローアシスタントを開いた時点のキャンバスに戻す',
     thinking: 'コーディネーター Agent 思考中…',
     emptyIntro: '目標を説明してください（例：「コンテンツ公開フローを作る」）。最初にいくつか重要な質問をしてから、編集可能なフロー構成を生成します。',
     me: '自分',
@@ -839,6 +841,10 @@ export const jaJP: Messages = {
     name: '名称',
     namePlaceholder: '例如 DeepSeek 主账号',
     type: '类型',
+    protocol: '接口协议',
+    protocolAnthropic: 'Anthropic Messages',
+    protocolResponses: 'OpenAI Responses',
+    protocolChat: 'OpenAI Chat Completions',
     baseUrl: 'API 地址',
     baseUrlPlaceholder: 'https://api.example.com/v1',
     apiKey: 'API Key',

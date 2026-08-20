@@ -197,6 +197,8 @@ def get_available_engines() -> list[dict]:
                 "version": versions.get(backend),
                 "mode": mode,
                 "config": _engine_config_payload(resolved),
+                "supports_provider": bool(resolved.supported_provider_protocols()),
+                "provider_protocols": sorted(resolved.supported_provider_protocols()),
                 "installable": resolved.install_command() is not None,
                 "install_command": resolved.install_command(),
                 "supports_resume": instance.supports_resume,
@@ -224,6 +226,12 @@ def get_available_engines() -> list[dict]:
                 "version": None,
                 "mode": None,
                 "config": _engine_config_payload(target) if target else None,
+                "supports_provider": bool(
+                    target and target.supported_provider_protocols()
+                ),
+                "provider_protocols": (
+                    sorted(target.supported_provider_protocols()) if target else []
+                ),
                 "installable": bool(target) and target.install_command() is not None,
                 "install_command": target.install_command() if target else None,
                 "supports_resume": False,
@@ -247,16 +255,16 @@ def _engine_config_payload(cls: type[AcpEngineBase]) -> dict | None:
     Lets the settings page render every engine's config form from the single
     ``/api/engine/list`` response instead of fetching one config per engine.
     """
-    schema = cls.config_schema()
+    schema = cls.full_config_schema()
     if not schema:
         return None
     instance = cls()
     return {
         "fields": [asdict(field) for field in schema],
         "stage_fields": [
-            asdict(field) for field in cls.stage_config_schema()
+            asdict(field) for field in cls.full_stage_config_schema()
         ],
-        "values": instance.get_config_values(),
+        "values": instance.get_full_config_values(),
         "secrets": instance.get_config_secrets(),
     }
 

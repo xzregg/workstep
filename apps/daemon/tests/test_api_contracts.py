@@ -1000,7 +1000,10 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
     assert rejected.json()["saved"] is False
     assert saved == ["bypassPermissions"]
     assert accepted.json()["saved"] is True
-    assert accepted.json()["values"] == {"permission_mode": "bypassPermissions"}
+    assert accepted.json()["values"] == {
+        "provider_id": "",
+        "permission_mode": "bypassPermissions",
+    }
 
 
 @pytest.mark.anyio

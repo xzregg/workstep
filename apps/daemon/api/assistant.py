@@ -130,16 +130,14 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
     elif model or fast_model or vision_model:
         raise HTTPException(status_code=400, detail="默认模型需要先选择引擎")
     if provider_id:
-        if engine != "pydantic_ai":
-            raise HTTPException(
-                status_code=400,
-                detail="供应商是内置引擎的动态配置，请先选择 Pydantic AI 引擎",
-            )
         provider = config_store.get_provider(provider_id)
         if provider is None:
             raise HTTPException(status_code=404, detail=f"供应商不存在：{provider_id}")
         if not provider.get("enabled", True):
             raise HTTPException(status_code=400, detail="所选供应商已停用")
+        candidate = create_engine(engine) if engine else None
+        if candidate is None or not candidate.supports_provider(provider):
+            raise HTTPException(status_code=400, detail="供应商协议与助手引擎不兼容")
     config_store.set_assistant_defaults(
         name,
         engine,

@@ -266,6 +266,8 @@ export const enUS: Messages = {
   plan: {
     title: 'Execution plan',
     inProgress: 'In progress',
+    showDetails: 'Show details for “{step}”',
+    hideDetails: 'Hide details for “{step}”',
     progress: 'Step {current}/{total} · {completed} completed',
   },
   md: {
@@ -398,7 +400,7 @@ export const enUS: Messages = {
     resetSessionMessage: 'The flow assistant conversation for this flow will be permanently cleared; the canvas content will not change.',
     resetSessionConfirm: '确认重置',
     restoreSteps: 'Restore',
-    restoreStepsHint: 'Restore the canvas to its state before the proposal was applied',
+    restoreStepsHint: 'Restore the canvas to its initial state when the flow assistant was opened',
     thinking: 'Coordinator agent is thinking…',
     emptyIntro: 'Describe your goal (e.g. “build a content publishing flow”) and I will ask a few key questions, then generate an editable flow for you.',
     me: 'Me',
@@ -839,6 +841,10 @@ export const enUS: Messages = {
     name: '名称',
     namePlaceholder: '例如 DeepSeek 主账号',
     type: '类型',
+    protocol: '接口协议',
+    protocolAnthropic: 'Anthropic Messages',
+    protocolResponses: 'OpenAI Responses',
+    protocolChat: 'OpenAI Chat Completions',
     baseUrl: 'API 地址',
     baseUrlPlaceholder: 'https://api.example.com/v1',
     apiKey: 'API Key',

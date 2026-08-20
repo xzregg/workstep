@@ -282,7 +282,7 @@ async def test_assistant_config_provider_round_trip(assistant_client):
 
 
 async def test_assistant_config_provider_requires_builtin_engine(assistant_client):
-    """供应商只对内置引擎（Pydantic AI）生效，其它引擎拒绝保存。"""
+    """协议不兼容的供应商不能绑定到助手引擎。"""
     client, store = assistant_client
     store.save_provider({
         "id": "p-b",
@@ -297,6 +297,29 @@ async def test_assistant_config_provider_requires_builtin_engine(assistant_clien
         json={"engine": "claude", "provider_id": "p-b"},
     )
     assert response.status_code == 400
+
+
+async def test_assistant_config_accepts_compatible_external_engine_provider(
+    assistant_client,
+):
+    client, store = assistant_client
+    store.save_provider({
+        "id": "p-claude",
+        "name": "Claude Gateway",
+        "type": "anthropic",
+        "protocol": "anthropic_messages",
+        "base_url": "https://claude.example.com/v1",
+        "api_key": "sk-test",
+        "enabled": True,
+    })
+
+    response = await client.put(
+        "/api/assistant/task_create/config",
+        json={"engine": "claude", "provider_id": "p-claude"},
+    )
+
+    assert response.status_code == 200
+    assert store.get_assistant_defaults("task_create")["provider_id"] == "p-claude"
 
 
 async def test_assistant_config_provider_must_exist_and_be_enabled(assistant_client):
@@ -402,10 +425,10 @@ async def test_assistant_runtime_injects_assistant_provider(monkeypatch):
     runtime._running_engines = {}
     await runtime._invoke("pydantic_ai", None, "/tmp", "hi", None)
     assert captured["config_overrides"] == {"provider_id": "p-b"}
-    # 其它引擎不注入供应商覆盖
+    # 兼容性已在保存/排队 seam 校验；运行时对所有引擎统一注入覆盖。
     captured.clear()
     await runtime._invoke("claude", None, "/tmp", "hi", None)
-    assert captured.get("config_overrides") is None
+    assert captured["config_overrides"] == {"provider_id": "p-b"}
 
 
 async def test_assistant_config_provider_requires_explicit_builtin_engine(assistant_client):

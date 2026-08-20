@@ -24,7 +24,11 @@ import httpx
 
 from engines.core.base import EngineModel, EngineTestResult
 from engines.core.schema import validate_api_base_url
-from services.config import config_store
+from services.config import (
+    PROVIDER_PROTOCOLS,
+    config_store,
+    default_provider_protocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +41,7 @@ class ProviderType:
     label: str
     default_base_url: str
     auth: str  # bearer | anthropic | none
+    default_protocol: str = "openai_chat_completions"
     supports_balance: bool = False
     help: str = ""
 
@@ -61,6 +66,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="OpenAI",
         default_base_url="https://api.openai.com/v1",
         auth="bearer",
+        default_protocol="openai_responses",
         help="OpenAI 官方接口",
     ),
     "anthropic": ProviderType(
@@ -68,6 +74,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="Anthropic",
         default_base_url="https://api.anthropic.com/v1",
         auth="anthropic",
+        default_protocol="anthropic_messages",
         help="Anthropic Messages API（x-api-key 鉴权）",
     ),
     "ollama": ProviderType(
@@ -117,6 +124,12 @@ def auth_headers(provider: dict) -> dict[str, str]:
     """Build per-provider auth headers for OpenAI-compatible / Anthropic calls."""
     provider_type = get_type_meta(str(provider.get("type") or "custom"))
     auth = provider_type.auth if provider_type else "bearer"
+    protocol = normalize_provider_protocol(
+        str(provider.get("protocol") or ""),
+        str(provider.get("type") or "custom"),
+    )
+    if protocol == "anthropic_messages":
+        auth = "anthropic"
     api_key = str(provider.get("api_key") or "")
     if auth == "anthropic":
         headers = {"anthropic-version": "2023-06-01", "Accept": "application/json"}
@@ -133,6 +146,7 @@ def validate_provider_values(
     name: str,
     type_id: str,
     base_url: str,
+    protocol: str | None = None,
 ) -> str | None:
     """Validate provider form values; return an error message or None."""
     if not name:
@@ -142,10 +156,30 @@ def validate_provider_values(
         return "不支持的供应商类型"
     if not base_url:
         return "API 地址不能为空"
+    if protocol is not None and protocol not in PROVIDER_PROTOCOLS:
+        return "不支持的供应商协议"
     url_error = validate_api_base_url(base_url)
     if url_error:
         return url_error
     return None
+
+
+def normalize_provider_protocol(value: str, type_id: str = "custom") -> str:
+    aliases = {
+        "messages": "anthropic_messages",
+        "anthropic": "anthropic_messages",
+        "responses": "openai_responses",
+        "chat": "openai_chat_completions",
+        "chat_completions": "openai_chat_completions",
+        "openai-completions": "openai_chat_completions",
+    }
+    raw = str(value or "").strip()
+    normalized = aliases.get(raw, raw)
+    return (
+        normalized
+        if normalized in PROVIDER_PROTOCOLS
+        else default_provider_protocol(type_id)
+    )
 
 
 def detect_provider_type(base_url: str) -> str:
@@ -335,15 +369,20 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         if base_url
         else "未找到可导入的 API 地址"
     )
+    wire_api = str(
+        parsed.get("wire_api")
+        or ("responses" if app_type == "codex" else "")
+    )
     return {
         "id": str(row.get("id") or ""),
         "source_type": app_type,
         "name": name,
         "type": type_id,
+        "protocol": normalize_provider_protocol(wire_api, type_id),
         "base_url": base_url,
         "api_key": api_key,
         "has_key": bool(api_key),
-        "wire_api": str(parsed.get("wire_api") or "responses"),
+        "wire_api": wire_api or "responses",
         "model_ids": model_ids,
         "category": str(row.get("category") or ""),
         "error": error,
@@ -396,8 +435,11 @@ async def fetch_models(
     """Fetch the provider's model list using its protocol-specific path."""
     base_url = str(provider.get("base_url") or "").rstrip("/")
     provider_type = str(provider.get("type") or "custom")
+    protocol = normalize_provider_protocol(
+        str(provider.get("protocol") or ""), provider_type
+    )
     base_path = urlparse(base_url).path.rstrip("/")
-    if provider_type == "anthropic" and not base_path.endswith("/v1"):
+    if protocol == "anthropic_messages" and not base_path.endswith("/v1"):
         models_url = f"{base_url}/v1/models"
     else:
         models_url = f"{base_url}/models"

@@ -266,6 +266,8 @@ export const zhTW: Messages = {
   plan: {
     title: '執行計畫',
     inProgress: '執行中',
+    showDetails: '展開「{step}」的詳情',
+    hideDetails: '收起「{step}」的詳情',
     progress: '第 {current}/{total} 步 · 已完成 {completed}',
   },
   md: {
@@ -398,7 +400,7 @@ export const zhTW: Messages = {
     resetSessionMessage: '當前流程的流程助手對話記錄將被永久清空，畫布內容不會改變。',
     resetSessionConfirm: '确认重置',
     restoreSteps: '還原',
-    restoreStepsHint: '還原到套用提案前的畫布',
+    restoreStepsHint: '還原到開啟流程助手時的初始畫布',
     thinking: '協調 Agent 思考中…',
     emptyIntro: '描述你的目標（例如“做一個內容釋出流程”），我會先追問幾個關鍵問題，然後為你生成可直接編輯的流程編排。',
     me: '我',
@@ -839,6 +841,10 @@ export const zhTW: Messages = {
     name: '名称',
     namePlaceholder: '例如 DeepSeek 主账号',
     type: '类型',
+    protocol: '接口协议',
+    protocolAnthropic: 'Anthropic Messages',
+    protocolResponses: 'OpenAI Responses',
+    protocolChat: 'OpenAI Chat Completions',
     baseUrl: 'API 地址',
     baseUrlPlaceholder: 'https://api.example.com/v1',
     apiKey: 'API Key',
