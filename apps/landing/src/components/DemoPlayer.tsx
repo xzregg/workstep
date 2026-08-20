@@ -8,11 +8,12 @@ interface DemoPlayerProps {
   demo: DemoDef
   autoplay?: boolean
   showControls?: boolean
+  loop?: boolean
 }
 
-export function DemoPlayer({ demo, autoplay = true, showControls = true }: DemoPlayerProps) {
+export function DemoPlayer({ demo, autoplay = true, showControls = true, loop = true }: DemoPlayerProps) {
   const { t } = useI18n()
-  const timeline = useDemoTimeline({ durationMs: demo.durationMs, autoplay, loop: true })
+  const timeline = useDemoTimeline({ durationMs: demo.durationMs, autoplay, loop })
   const Scene = demo.Scene
 
   return (
@@ -54,10 +55,12 @@ export function DemoPlayer({ demo, autoplay = true, showControls = true }: DemoP
           <span className="player-time">
             {formatTime(timeline.time)} / {formatTime(demo.durationMs)}
           </span>
-          <span className="player-chip" title={t('common.loop')}>
-            <Repeat size={13} />
-            {t('common.loop')}
-          </span>
+          {loop && (
+            <span className="player-chip" title={t('common.loop')}>
+              <Repeat size={13} />
+              {t('common.loop')}
+            </span>
+          )}
         </div>
       )}
     </div>

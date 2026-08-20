@@ -92,7 +92,7 @@ def _require_provider(provider_id: str) -> dict:
 
 
 @router.get("/list")
-async def list_providers():
+async def list_providers(project_id: str = ""):
     """Return all providers (masked) plus built-in type presets."""
     providers = config_store.get_providers()
     return {

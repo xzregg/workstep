@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Button from './Button'
+import Input from './Input'
 import { useI18n } from '../i18n'
 import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/client'
 
@@ -12,6 +13,10 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
   const { t } = useI18n()
   const [current, setCurrent] = useState<DirectoryBrowseResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [creatingBusy, setCreatingBusy] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const browse = async (path?: string) => {
     setLoading(true)
@@ -47,6 +52,33 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
     }
   }
 
+  const resetCreate = () => {
+    setCreating(false)
+    setNewName('')
+    setCreateError(null)
+  }
+
+  const handleCreate = async () => {
+    if (!current) return
+    const name = newName.trim()
+    if (!name) return
+    if (/[\s/\\]/.test(name) || name === '.' || name === '..' || name.startsWith('.')) {
+      setCreateError(t('browser.folderNameInvalid'))
+      return
+    }
+    setCreatingBusy(true)
+    setCreateError(null)
+    try {
+      await fsApi.mkdir(current.path, name)
+      resetCreate()
+      await browse(current.path)
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : t('browser.createFolderFailed'))
+    } finally {
+      setCreatingBusy(false)
+    }
+  }
+
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
       {/* Breadcrumb bar */}
@@ -69,6 +101,14 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
           {current?.path || t('common.loading')}
         </span>
         <Button
+          variant="ghost"
+          onClick={() => setCreating(true)}
+          disabled={!current}
+          style={{ fontSize: 11, padding: '4px 10px' }}
+        >
+          ＋ {t('browser.newFolder')}
+        </Button>
+        <Button
           variant="primary"
           onClick={handleSelect}
           style={{ fontSize: 11, padding: '4px 10px' }}
@@ -77,6 +117,50 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
           {t('browser.selectDir')}
         </Button>
       </div>
+
+      {/* Create-folder row */}
+      {creating && (
+        <div style={{
+          padding: '8px 12px',
+          background: 'var(--bg)',
+          borderBottom: '1px solid var(--border-soft)',
+        }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Input
+              autoFocus
+              value={newName}
+              onChange={(e) => { setNewName(e.target.value); setCreateError(null) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate()
+                if (e.key === 'Escape') resetCreate()
+              }}
+              placeholder={t('browser.folderName')}
+              style={{ flex: 1, height: 28, fontSize: 13 }}
+            />
+            <Button
+              variant="primary"
+              loading={creatingBusy}
+              disabled={!newName.trim()}
+              onClick={() => void handleCreate()}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {t('browser.createFolder')}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={resetCreate}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {t('common.cancel')}
+            </Button>
+          </div>
+          {createError && (
+            <div style={{ marginTop: 6, color: 'var(--danger)', fontSize: 12 }}>
+              {createError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* File list */}
       <div style={{

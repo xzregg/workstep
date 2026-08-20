@@ -1584,6 +1584,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       projectId={addWfProjectId}
                       getCanvasSteps={() => previewCanvasRef.current?.getSteps()}
                       onProposal={handleAiProposal}
+                      onRestore={(steps) => previewCanvasRef.current?.loadSteps(steps)}
                       onBusyChange={setAddWfGenBusy}
                       title={t('aiFlow.title')}
                       initialMessage={addWfAiMessage}

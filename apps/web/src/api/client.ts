@@ -27,6 +27,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
+// Dedupe concurrent in-flight reads: React StrictMode double-mounts effects in
+// dev, so mount-time fetches would otherwise fire twice (first result discarded).
+const inFlightReads = new Map<string, Promise<unknown>>()
+function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const pending = inFlightReads.get(key)
+  if (pending) return pending as Promise<T>
+  const promise = run().finally(() => {
+    if (inFlightReads.get(key) === promise) inFlightReads.delete(key)
+  })
+  inFlightReads.set(key, promise)
+  return promise
+}
+
 export interface SystemSettings {
   user_name: string
   device_id?: string
@@ -443,8 +456,11 @@ export const workflowGenApi = {
       }),
     }),
   history: (projectId: string, workflowId: string) =>
-    request<WorkflowGenHistory>(
-      `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
+    singleFlight(
+      `workflow-history:${projectId}/${workflowId}`,
+      () => request<WorkflowGenHistory>(
+        `/workflow/generate/history?project_id=${encodeURIComponent(projectId)}&workflow_id=${encodeURIComponent(workflowId)}`,
+      ),
     ),
   reset: (projectId: string, workflowId: string) =>
     request<{ reset: boolean; session_id: string }>(
@@ -1477,7 +1493,9 @@ export interface ProviderImportResult {
 }
 
 export const providerApi = {
-  list: () => request<ProviderListResult>('/provider/list'),
+  list: (projectId = '') => request<ProviderListResult>(
+    `/provider/list${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+  ),
   save: (input: ProviderSaveInput) =>
     request<ProviderSaveResult>('/provider', {
       method: 'POST',
@@ -1520,26 +1538,28 @@ export const providerApi = {
 
 const engineModelsCache = new Map<string, EngineModelsResult>()
 
-function modelsCacheKey(engineId: string, providerId: string): string {
-  return `${engineId}::${providerId}`
+function modelsCacheKey(engineId: string, providerId: string, projectId: string): string {
+  return `${engineId}::${providerId}::${projectId}`
 }
 
 export function getCachedEngineModels(
   engineId: string,
   providerId = '',
+  projectId = '',
 ): EngineModelsResult | null {
-  return engineModelsCache.get(modelsCacheKey(engineId, providerId)) ?? null
+  return engineModelsCache.get(modelsCacheKey(engineId, providerId, projectId)) ?? null
 }
 
 export async function fetchEngineModels(
   engineId: string,
   force = false,
   providerId = '',
+  projectId = '',
 ): Promise<EngineModelsResult> {
-  const cacheKey = modelsCacheKey(engineId, providerId)
+  const cacheKey = modelsCacheKey(engineId, providerId, projectId)
   const cached = engineModelsCache.get(cacheKey)
   if (cached && !force) return cached
-  const result = await engineApi.models(engineId, providerId, force)
+  const result = await engineApi.models(engineId, providerId, force, projectId)
   engineModelsCache.set(cacheKey, result)
   return result
 }
@@ -1563,8 +1583,12 @@ export const engineApi = {
       method: 'PUT',
       body: JSON.stringify({ engine }),
     }),
-  coordinatorDefaults: () =>
-    request<CoordinatorDefaultConfig>('/engine/coordinator/config'),
+  coordinatorDefaults: (projectId = '') =>
+    singleFlight(`engine/coordinator/config::${projectId}`, () =>
+      request<CoordinatorDefaultConfig>(
+        `/engine/coordinator/config${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+      ),
+    ),
   setCoordinatorDefaults: (engine: string, model: string, fastModel: string, visionModel: string, thinkingEffort: string) =>
     request<{ saved: boolean; engine: string; model: string; fast_model: string; vision_model: string; thinking_effort: string }>(
       '/engine/coordinator/config',
@@ -1588,11 +1612,15 @@ export const engineApi = {
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {
       method: 'POST',
     }),
-  models: (engineId: string, providerId = '', refresh = false) =>
+  models: (engineId: string, providerId = '', refresh = false, projectId = '') =>
     request<EngineModelsResult>(
       `/engine/${encodeURIComponent(engineId)}/models${
-        providerId ? `?provider_id=${encodeURIComponent(providerId)}` : ''
-      }${refresh ? `${providerId ? '&' : '?'}refresh=1` : ''}`,
+        providerId || refresh || projectId ? '?' : ''
+      }${[
+        providerId ? `provider_id=${encodeURIComponent(providerId)}` : '',
+        refresh ? 'refresh=1' : '',
+        projectId ? `project_id=${encodeURIComponent(projectId)}` : '',
+      ].filter(Boolean).join('&')}`,
     ),
   setDefaultModel: (engineId: string, model: string) =>
     request<{ engine_id: string; default_model: string; saved: boolean }>(
@@ -1763,6 +1791,11 @@ export const fsApi = {
         ? `/fs/browse?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}`
         : `/fs/browse${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`
     ),
+  mkdir: (parent: string, name: string) =>
+    request<{ path: string; name: string }>('/fs/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ parent, name }),
+    }),
   fileUrl: (path: string, projectId?: string) =>
     `${BASE}/fs/raw/${path
       .replace(/^\/+/, '')

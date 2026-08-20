@@ -15,10 +15,12 @@ import ChatInput, {
   type ChatInputPlan,
 } from './ChatInput'
 import ChatMessageBubble from './ChatMessageBubble'
+import AssistantThinkingMessage from './AssistantThinkingMessage'
 import MarkdownMessage from './MarkdownMessage'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -63,6 +65,8 @@ export interface AssistantChatPanelProps {
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
   headerActions?: ReactNode
+  /** Assistant-specific controls rendered in the button row above the composer. */
+  composerActions?: ReactNode
   afterMessages?: ReactNode
   scrollKey?: string | number
   quickPrompts?: AssistantQuickPrompt[]
@@ -70,8 +74,6 @@ export interface AssistantChatPanelProps {
   onQuickPromptSelect?: (prompt: string) => void
   /** Store 累积的 A2UI 载荷（messageId → payload[]），随消息渲染。 */
   a2uiMessages?: Record<string, Record<string, unknown>[]>
-  /** 隐藏消息内重复的方案选择 A2UI（提案卡片可见时由 AiFlowChat 传入）。 */
-  hideApplyFlow?: boolean
   /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
   showUserTag?: boolean
 }
@@ -80,17 +82,22 @@ export interface AssistantChatPanelProps {
 export default function AssistantChatPanel({
   projectId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
-  onQuickPromptSelect, a2uiMessages, hideApplyFlow, showUserTag = false,
+  onA2uiAction, headerActions, composerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
+  onQuickPromptSelect, a2uiMessages, showUserTag = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
+  const [awaitingReply, setAwaitingReply] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const followRef = useRef(true)
   const lastProgrammaticScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const lastContent = messages.at(-1)?.content ?? ''
+  const showThinkingReply = shouldShowAssistantThinking(
+    awaitingReply || running,
+    messages,
+  )
   const respondInteraction = useCallback(async (
     interactionId: string,
     response: Record<string, unknown>,
@@ -109,6 +116,11 @@ export default function AssistantChatPanel({
   useEffect(() => {
     followRef.current = true
   }, [scrollKey])
+  useEffect(() => {
+    if (messages.at(-1)?.role === 'assistant' || sendError) {
+      setAwaitingReply(false)
+    }
+  }, [messages, sendError])
 
   // 图片/媒体异步加载会撑高内容且不触发上面的跟随 effect，
   // 跟随中时在 capture 阶段监听 load 重新钉底。
@@ -235,10 +247,17 @@ export default function AssistantChatPanel({
               />
             ) : undefined}
             onA2uiAction={onA2uiAction}
-            hideApplyFlow={hideApplyFlow}
           />
           )
         })}
+        {showThinkingReply && (
+          <AssistantThinkingMessage
+            sender={copy.agent}
+            initials={copy.agentInitials}
+            label={copy.thinking}
+            onViewPrompt={setViewingPrompt}
+          />
+        )}
         {afterMessages}
       </div>
 
@@ -247,14 +266,15 @@ export default function AssistantChatPanel({
         flexShrink: 0, padding: '10px 12px',
         borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
       }}>
-        {quickPrompts && quickPrompts.length > 0 && (
+        {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
           <div
             className="chat-quick-prompts"
             role="group"
             aria-label={quickPromptsLabel}
             style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
           >
-            {quickPrompts.map((item) => (
+            {composerActions}
+            {quickPrompts?.map((item) => (
               <Button
                 key={item.label}
                 type="button"
@@ -277,7 +297,11 @@ export default function AssistantChatPanel({
           inputRef={inputRef}
           value={input}
           onChange={onInputChange}
-          onSend={onSend}
+          onSend={() => {
+            if (!input.trim() || running) return
+            setAwaitingReply(true)
+            onSend()
+          }}
           onStop={onStop}
           disabled={running}
           running={running}

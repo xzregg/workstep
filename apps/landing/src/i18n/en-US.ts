@@ -237,6 +237,8 @@ export const enUS: I18nDict = {
       prompt4: 'Backend API and migrations',
       prompt5: 'Run tests and generate a report',
       prompt6: 'Build and ship',
+      reworkLabel: 'Rework feedback',
+      reworkDesc: 'Solid line = data flow · Dashed line = rework feedback (edges back upstream turn dashed automatically)',
     },
     board: {
       editStages: 'Edit stages',

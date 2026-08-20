@@ -69,33 +69,6 @@ export function extractA2uiMessages(content: string): A2uiMessage[] {
   return messages
 }
 
-/** 载荷中是否含 apply_flow 动作按钮（与提案卡片重复的方案选择界面）。 */
-function payloadHasApplyFlow(payload: unknown): boolean {
-  if (!payload || typeof payload !== 'object') return false
-  const update = (payload as Record<string, unknown>).updateComponents
-  if (!update || typeof update !== 'object') return false
-  const components = (update as Record<string, unknown>).components
-  if (!Array.isArray(components)) return false
-  return components.some((component) => {
-    if (!component || typeof component !== 'object') return false
-    const action = (component as Record<string, unknown>).action
-    if (!action || typeof action !== 'object') return false
-    const event = (action as Record<string, unknown>).event
-    return !!event && typeof event === 'object'
-      && (event as Record<string, unknown>).name === 'apply_flow'
-  })
-}
-
-/**
- * 过滤掉 apply_flow 方案选择载荷（createSurface 保留但无组件时不会渲染）。
- * 用于提案卡片可见时隐藏消息内重复的「应用方案」按钮。
- */
-export function withoutApplyFlowSurfaces<T>(
-  payloads: readonly T[],
-): T[] {
-  return payloads.filter((payload) => !payloadHasApplyFlow(payload))
-}
-
 /** Remove complete ```a2ui fences from text used for markdown/copy. */
 export function stripA2uiBlocks(content: string): string {
   return content.replace(A2UI_FENCE, '')
@@ -228,14 +201,6 @@ export function resolveA2uiFlowSteps(
   return proposal
     ? { steps: proposal.steps, proposalId: proposal.id ?? '' }
     : undefined
-}
-
-/** Proposal cards are transient choices and collapse after one is applied. */
-export function shouldShowA2uiProposalCards(
-  proposalCount: number,
-  appliedProposalId: string | null,
-): boolean {
-  return proposalCount > 0 && appliedProposalId === null
 }
 
 export function pendingAutoApplyProposal<T extends A2uiFlowProposalLike>(

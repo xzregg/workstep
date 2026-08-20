@@ -8,6 +8,7 @@ interface AiFlowEditorPanelProps {
   workflowName?: string
   getCanvasSteps?: () => any
   onProposal: (steps: any) => void
+  onRestore: (steps: any) => void
   onBusyChange: (busy: boolean) => void
   onRequestClose: () => void
   title: string
@@ -19,6 +20,7 @@ export default function AiFlowEditorPanel({
   workflowName,
   getCanvasSteps,
   onProposal,
+  onRestore,
   onBusyChange,
   onRequestClose,
   title,
@@ -70,6 +72,7 @@ export default function AiFlowEditorPanel({
           workflowName={workflowName}
           getCanvasSteps={getCanvasSteps}
           onProposal={onProposal}
+          onRestore={onRestore}
           onBusyChange={onBusyChange}
           onClose={onRequestClose}
           title={title}

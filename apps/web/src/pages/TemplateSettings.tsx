@@ -379,6 +379,7 @@ export default function TemplateSettings() {
                   if (canvasDirty) { setPendingAiSteps(steps); return }
                   canvasRef.current?.loadSteps(steps)
                 }}
+                onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
                 onBusyChange={setAiGenBusy}
                 onRequestClose={() => {
                   if (aiGenBusy) { setAiConfirmClose(true); return }
@@ -392,49 +393,54 @@ export default function TemplateSettings() {
         document.body,
       )}
 
-      <ConfirmDialog
-        open={aiConfirmClose}
-        title={t('canvas.aiGeneratingTitle')}
-        message={t('canvas.aiGeneratingMessage')}
-        confirmText={t('common.close')}
-        onConfirm={() => { setAiConfirmClose(false); setAiPanelOpen(false) }}
-        onCancel={() => setAiConfirmClose(false)}
-      />
+      {createPortal(
+        <>
+          <ConfirmDialog
+            open={aiConfirmClose}
+            title={t('canvas.aiGeneratingTitle')}
+            message={t('canvas.aiGeneratingMessage')}
+            confirmText={t('common.close')}
+            onConfirm={() => { setAiConfirmClose(false); setAiPanelOpen(false) }}
+            onCancel={() => setAiConfirmClose(false)}
+          />
 
-      <ConfirmDialog
-        open={pendingAiSteps !== null}
-        title={t('canvas.proposalOverwriteTitle')}
-        message={t('canvas.proposalOverwriteMessage')}
-        confirmText={t('canvas.applyProposal')}
-        danger
-        onConfirm={() => {
-          if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
-          setPendingAiSteps(null)
-        }}
-        onCancel={() => setPendingAiSteps(null)}
-      />
+          <ConfirmDialog
+            open={pendingAiSteps !== null}
+            title={t('canvas.proposalOverwriteTitle')}
+            message={t('canvas.proposalOverwriteMessage')}
+            confirmText={t('canvas.applyProposal')}
+            danger
+            onConfirm={() => {
+              if (pendingAiSteps !== null) canvasRef.current?.loadSteps(pendingAiSteps)
+              setPendingAiSteps(null)
+            }}
+            onCancel={() => setPendingAiSteps(null)}
+          />
 
-      {/* Unsaved changes confirm */}
-      <ConfirmDialog
-        open={confirmClose}
-        title={t('canvas.unsavedTitle')}
-        message={t('templateSettings.unsavedMessage')}
-        confirmText={t('layout.discardChanges')}
-        danger
-        onConfirm={() => { setConfirmClose(false); closeEditor() }}
-        onCancel={() => setConfirmClose(false)}
-      />
+          {/* Unsaved changes confirm */}
+          <ConfirmDialog
+            open={confirmClose}
+            title={t('canvas.unsavedTitle')}
+            message={t('templateSettings.unsavedMessage')}
+            confirmText={t('layout.discardChanges')}
+            danger
+            onConfirm={() => { setConfirmClose(false); closeEditor() }}
+            onCancel={() => setConfirmClose(false)}
+          />
 
-      {/* Delete template confirm */}
-      <ConfirmDialog
-        open={deleting !== null}
-        title={t('templateSettings.deleteTitle')}
-        message={deleting ? t('templateSettings.deleteMessage', { name: deleting.name }) : undefined}
-        confirmText={t('common.delete')}
-        danger
-        onConfirm={() => void deleteTemplate()}
-        onCancel={() => { if (!deletingBusy) setDeleting(null) }}
-      />
+          {/* Delete template confirm */}
+          <ConfirmDialog
+            open={deleting !== null}
+            title={t('templateSettings.deleteTitle')}
+            message={deleting ? t('templateSettings.deleteMessage', { name: deleting.name }) : undefined}
+            confirmText={t('common.delete')}
+            danger
+            onConfirm={() => void deleteTemplate()}
+            onCancel={() => { if (!deletingBusy) setDeleting(null) }}
+          />
+        </>,
+        document.body,
+      )}
     </div>
   )
 }

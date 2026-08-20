@@ -11,6 +11,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from engines.core.registry import create_engine, refresh_registry
 
 
+def response_text(events: list[dict]) -> str:
+    """Collect assistant text from the current internal event vocabulary."""
+    return "".join(
+        str((event["data"].get("content") or {}).get("text", ""))
+        for event in events
+        if event["type"] == "agent_message_chunk"
+    )
+
+
 async def run(
     engine_id: str,
     cwd: str,
@@ -38,11 +47,7 @@ async def run(
         return 3
 
     errors = [event for event in events if event["type"] == "error"]
-    text = "".join(
-        event["data"].get("delta", "")
-        for event in events
-        if event["type"] == "text_delta"
-    )
+    text = response_text(events)
     passed = not errors and bool(text) and (
         expected is None or expected in text
     )

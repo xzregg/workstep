@@ -29,6 +29,23 @@ from streaming.bus import EventBus
 import api.remote_project as remote_project_api
 
 
+async def test_remote_model_selection_read_routes_are_project_scoped():
+    import api.engine as engine_api
+    import api.provider as provider_api
+
+    app = FastAPI()
+    app.include_router(engine_api.router)
+    app.include_router(provider_api.router)
+    dispatcher = RemoteRouteDispatcher(app)
+
+    try:
+        assert dispatcher._resolve("GET", "/api/engine/coordinator/config")
+        assert dispatcher._resolve("GET", "/api/provider/list")
+        assert dispatcher._resolve("GET", "/api/engine/codex/models")
+    finally:
+        await dispatcher.aclose()
+
+
 def test_network_address_selection_prefers_lan_card_over_vpn_adapter():
     assert _select_network_ipv4(
         ["198.18.0.1", "127.0.0.1", "192.168.52.147"]

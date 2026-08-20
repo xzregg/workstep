@@ -23,6 +23,8 @@ import { useI18n } from '../i18n'
    ══════════════════════════════════════════ */
 
 export interface CoordinatorConfigBarProps {
+  /** Project scope used to route model reads to a remote WorkStep host. */
+  projectId?: string
   /** Available coordinator engines (from coordinator defaults / task config). */
   engines: CoordinatorEngineSummary[]
   /** Currently selected engine id ('' = follow the default). */
@@ -167,6 +169,7 @@ function MenuField({
 }
 
 export default function CoordinatorConfigBar({
+  projectId = '',
   engines,
   engine,
   defaultEngine,
@@ -202,13 +205,13 @@ export default function CoordinatorConfigBar({
       return
     }
     const effectiveProvider = isPydanticAi ? providerId : ''
-    const cached = getCachedEngineModels(engineId, effectiveProvider)
+    const cached = getCachedEngineModels(engineId, effectiveProvider, projectId)
     if (cached) {
       setModels(cached.models || [])
       return
     }
     let active = true
-    fetchEngineModels(engineId, false, effectiveProvider)
+    fetchEngineModels(engineId, false, effectiveProvider, projectId)
       .then((result) => {
         if (active) setModels(result.models || [])
       })
@@ -216,7 +219,7 @@ export default function CoordinatorConfigBar({
         if (active) setModels([])
       })
     return () => { active = false }
-  }, [engineId, providerId, isPydanticAi])
+  }, [engineId, providerId, isPydanticAi, projectId])
 
   const modelDisabled = disabled || models.length === 0
   const isMenu = variant === 'menu'

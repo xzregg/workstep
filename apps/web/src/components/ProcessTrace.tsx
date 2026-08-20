@@ -105,7 +105,7 @@ export default function ProcessTrace({
 }: ProcessTraceProps) {
   const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
-  const [open, setOpen] = useState(running)
+  const [open, setOpen] = useState(true)
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
@@ -113,7 +113,7 @@ export default function ProcessTrace({
     return () => window.clearInterval(timer)
   }, [running])
   useEffect(() => {
-    setOpen(running)
+    if (running) setOpen(true)
   }, [running])
 
   const processItems = buildMessageTimeline(events).filter(

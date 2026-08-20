@@ -6,21 +6,22 @@ services:
     image: workstep:latest
     container_name: workstep
     ports:
-      - "${WORKSTEP_PORT:-8765}:8765"
+      - "${WORKSTEP_PORT:-8755}:8765"
     environment:
       TZ: Asia/Shanghai
     volumes:
-      # 全局配置 / 模板 / 任务元数据（config.json、data/templates/ 等）
-      - workstep-data:/root/.workstep
-      # Codex CLI 登录凭据（auth.json）与会话（codex login 后持久化）
-      - codex-config:/root/.codex
-      # Claude Code 登录凭据与会话（claude setup 后持久化）
-      - claude-config:/root/.claude
+      # 全局配置 / 模板 / 任务元数据（容器独立目录，不与宿主机 ~/.workstep 冲突）
+      - ./data/workstep:/root/.workstep
+      # 复用宿主机 Codex 登录态与会话（本机已 codex login 则容器免再次登录）
+      - ${HOME}/.codex:/root/.codex
+      # 复用宿主机 Claude Code 登录态与会话（本机已登录则容器免再次登录）
+      - ${HOME}/.claude:/root/.claude
       # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
       - ./data/projects:/data/projects
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
     restart: unless-stopped
-
-volumes:
-  workstep-data:
-  codex-config:
-  claude-config:

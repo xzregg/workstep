@@ -10,6 +10,7 @@ import {
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import {
   type ActionProposal,
   type CoordinatorConfig,
@@ -23,6 +24,7 @@ import Button from './Button'
 import Input from './Input'
 import Textarea from './Textarea'
 import ChatMessageBubble from './ChatMessageBubble'
+import AssistantThinkingMessage from './AssistantThinkingMessage'
 import ChatInput, { type ChatInputEngineConfig } from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, {
@@ -55,6 +57,7 @@ import {
   toMilliseconds,
 } from '../utils/datetime'
 import { useI18n, type TKey } from '../i18n'
+import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -200,6 +203,7 @@ export interface TaskDetailViewProps {
   coordinatorRunning?: boolean
   coordinatorConfig?: CoordinatorConfig | null
   chatError?: string
+  onChatError?: (message: string) => void
   prompt?: string
   onPromptChange?: (value: string) => void
   onSend?: () => void
@@ -424,9 +428,20 @@ export default function TaskDetailView({
   onViewingPromptChange,
   running,
   projectId,
+  onChatError,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
   const localDeviceId = useUserSettingsStore((state) => state.deviceId)
+  const {
+    enhance,
+    onInputChange: enhanceInputChanged,
+  } = usePromptEnhance({
+    projectId: projectId && onPromptChange ? projectId : undefined,
+    getDraft: () => prompt ?? '',
+    setDraft: (value) => onPromptChange?.(value),
+    onError: (message) => onChatError?.(message),
+    errorMessage: t('chatSession.enhanceFailed'),
+  })
 
   // 未在运行的阶段（等待审核 / 手动停止 / 失败 / 审核驳回）仍保留在「发给谁」选择中，
   // 选中后输入消息可带提示重新执行该阶段。
@@ -604,6 +619,12 @@ export default function TaskDetailView({
           isUnpersistedLiveMessage(message, persistedMessageIds),
       ),
     [liveMessages, persistedMessageIds],
+  )
+
+  const showCoordinatorThinking = shouldShowAssistantThinking(
+    coordinatorRunning ?? false,
+    [...historyMessages, ...liveCoordinatorMessages],
+    'coordinator',
   )
 
   const hasStructuredExecutionMessage = useMemo(
@@ -2878,6 +2899,15 @@ export default function TaskDetailView({
               })
             })()}
 
+            {showCoordinatorThinking && (
+              <AssistantThinkingMessage
+                sender={t('aiFlow.agent')}
+                initials={t('aiFlow.agentInitials')}
+                label={t('aiFlow.thinking')}
+                onViewPrompt={onViewingPromptChange}
+              />
+            )}
+
             {liveCoordinatorMessages.map(
               (message) => (
                 <ChatMessageBubble
@@ -3738,9 +3768,13 @@ export default function TaskDetailView({
                   || coordinatorConfig?.resolved.engine}
               value={prompt ?? ''}
               onChange={
-                onPromptChange ?? (() => {})
+                (value) => {
+                  enhanceInputChanged(value)
+                  onPromptChange?.(value)
+                }
               }
               onSend={onSend ?? (() => {})}
+              enhance={enhance}
               inputRef={chatInputRef}
               imageAttach={
                 projectId
@@ -3762,6 +3796,7 @@ export default function TaskDetailView({
               }
               config={
                 {
+                  projectId,
                   engines:
                     coordinatorConfig
                       ?.available_engines ||

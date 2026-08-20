@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from engines.codex import CodexEngine
@@ -2193,6 +2194,61 @@ def test_codex_sdk_resume_capability():
     assert engine.build_resume_params("thread-1") == {"session_id": "thread-1"}
 
 
+@pytest.mark.anyio
+async def test_codex_sdk_list_models_uses_codex_config(monkeypatch):
+    """模型发现必须遵守真实 SDK 的 ``AsyncCodex(config=...)`` 契约。"""
+    import openai_codex as codex_module
+
+    captured = {}
+
+    class Model:
+        id = "gpt-test"
+        display_name = "GPT Test"
+        description = "test model"
+        hidden = False
+
+    class Response:
+        data = [Model()]
+
+    class StrictClient:
+        def __init__(self, config=None):
+            captured["config"] = config
+
+        async def models(self):
+            return Response()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", StrictClient)
+
+    models = await CodexSDKEngine().list_models("/tmp/project")
+
+    assert [model.id for model in models] == ["gpt-test"]
+    assert captured["config"].cwd == "/tmp/project"
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_list_models_propagates_sdk_errors(monkeypatch):
+    """模型发现失败必须交给 API 呈现，不能伪装成成功的空列表。"""
+    import openai_codex as codex_module
+
+    class FailingClient:
+        def __init__(self, config=None):
+            pass
+
+        async def models(self):
+            raise RuntimeError("model discovery failed")
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FailingClient)
+
+    with pytest.raises(RuntimeError, match="model discovery failed"):
+        await CodexSDKEngine().list_models("/tmp/project")
+
+
 def test_codex_sdk_maps_compacted_notification():
     engine = CodexSDKEngine()
     notification = _SdkFake(method="thread/compacted", payload=_SdkFake())
@@ -2495,6 +2551,9 @@ async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
     class FakeClient:
         def __init__(self, **kwargs):
             captured["client_kwargs"] = kwargs
+            self._client = SimpleNamespace(
+                _sync=SimpleNamespace(_approval_handler=None)
+            )
 
         async def thread_start(self, **kwargs):
             captured["start_kwargs"] = kwargs
@@ -2549,7 +2608,9 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
 
     class FakeClient:
         def __init__(self, **kwargs):
-            pass
+            self._client = SimpleNamespace(
+                _sync=SimpleNamespace(_approval_handler=None)
+            )
 
         async def thread_start(self, **kwargs):
             captured["start_kwargs"] = kwargs
@@ -2587,7 +2648,7 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
 
 @pytest.mark.anyio
 async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
-    """AsyncCodex 必须收到 approval_handler，否则 SDK 默认自动 accept 无弹窗。"""
+    """AsyncCodex 的底层 CodexClient 必须注册审批回调，禁止默认自动放行。"""
     import openai_codex as codex_module
 
     captured = {}
@@ -2604,8 +2665,16 @@ async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
             return FakeTurn()
 
     class FakeClient:
-        def __init__(self, **kwargs):
-            captured["client_kwargs"] = kwargs
+        def __init__(self, config=None):
+            class SyncClient:
+                _approval_handler = None
+
+            class AsyncClient:
+                _sync = SyncClient()
+
+            self._client = AsyncClient()
+            captured["config"] = config
+            captured["sync_client"] = self._client._sync
 
         async def thread_start(self, **kwargs):
             return FakeThread()
@@ -2626,8 +2695,9 @@ async def test_codex_sdk_spawn_registers_approval_handler(monkeypatch):
     events = [
         event async for event in CodexSDKEngine().spawn(prompt="hi", cwd="/tmp")
     ]
-    handler = captured["client_kwargs"]["approval_handler"]
+    handler = captured["sync_client"]._approval_handler
     assert callable(handler)
+    assert captured["config"].cwd == "/tmp"
     assert [event.type for event in events] == [
         "status",
         "session_started",

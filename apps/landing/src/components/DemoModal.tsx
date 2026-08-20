@@ -26,7 +26,7 @@ export function DemoModal({ demo, onClose }: DemoModalProps) {
           <p>{t(`demos.item${index}Desc`)}</p>
         </div>
       </div>
-      <DemoPlayer demo={demo} autoplay />
+      <DemoPlayer demo={demo} autoplay loop={false} />
     </Modal>
   )
 }

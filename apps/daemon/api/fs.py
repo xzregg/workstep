@@ -26,6 +26,11 @@ class OpenDirectoryRequest(BaseModel):
     opener: str = "file_manager"
 
 
+class MkdirRequest(BaseModel):
+    parent: str
+    name: str
+
+
 OPENERS = (
     {"id": "vscode", "label": "VS Code", "mac_app": "Visual Studio Code", "commands": ("code",)},
     {"id": "sublime", "label": "Sublime Text", "mac_app": "Sublime Text", "commands": ("subl",)},
@@ -345,6 +350,39 @@ async def browse_directory(path: str | None = None, project_id: str | None = Que
         "parent": str(target.parent) if target.parent != target else None,
         "entries": entries,
     }
+
+
+@router.post("/mkdir")
+async def mkdir_directory(req: MkdirRequest):
+    """Create a new directory (used by the project path picker)."""
+    name = req.name.strip()
+    if (
+        not name
+        or name in (".", "..")
+        or name.startswith(".")
+        or any(ch.isspace() for ch in name)
+        or "/" in name
+        or "\\" in name
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Folder name must not be empty, start with '.', or contain whitespace or '/'",
+        )
+    parent = Path(req.parent).expanduser().resolve()
+    if not parent.exists():
+        raise HTTPException(status_code=404, detail=f"Directory not found: {parent}")
+    if not parent.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {parent}")
+    target = parent / name
+    if target.exists():
+        raise HTTPException(status_code=409, detail=f"Already exists: {target}")
+    try:
+        target.mkdir()
+    except (PermissionError, OSError) as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create directory: {target}"
+        ) from exc
+    return {"path": str(target), "name": name}
 
 
 @router.get("/file")

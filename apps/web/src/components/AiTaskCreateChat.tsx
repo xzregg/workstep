@@ -13,6 +13,7 @@ import { useTaskDraftStore, type TaskDraftResult } from '../stores/taskDraftStor
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import { applyTaskQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
+import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import AssistantChatPanel from './AssistantChatPanel'
 import MarkdownMessage from './MarkdownMessage'
 
@@ -67,6 +68,17 @@ export default function AiTaskCreateChat({
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
+  const {
+    enhance,
+    onInputChange: enhanceInputChanged,
+    reset: resetEnhance,
+  } = usePromptEnhance({
+    projectId,
+    getDraft: () => input,
+    setDraft: setInput,
+    onError: setSendError,
+    errorMessage: t('chatSession.enhanceFailed'),
+  })
   const deliveredResultRef = useRef<Record<string, unknown> | undefined>(undefined)
   const sessionIdRef = useRef<string | null>(null)
   const runningRef = useRef(false)
@@ -94,7 +106,7 @@ export default function AiTaskCreateChat({
 
   useEffect(() => {
     let active = true
-    engineApi.coordinatorDefaults()
+    engineApi.coordinatorDefaults(projectId)
       .then((config) => {
         if (!active) return
         setCoordinatorConfig(config)
@@ -107,17 +119,17 @@ export default function AiTaskCreateChat({
         )
       })
     return () => { active = false }
-  }, [t])
+  }, [projectId, t])
 
   useEffect(() => {
     let active = true
-    providerApi.list()
+    providerApi.list(projectId)
       .then((result) => {
         if (active) setProviders(result.providers.filter((item) => item.enabled))
       })
       .catch(() => { /* provider list is optional for the engine picker */ })
     return () => { active = false }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     if (initialMessage) setInput(initialMessage)
@@ -142,6 +154,7 @@ export default function AiTaskCreateChat({
     }
     useTaskDraftStore.getState().addUserMessage(sid, content)
     setInput('')
+    resetEnhance()
     // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
     flushWsSubscriptionNow()
     try {
@@ -172,7 +185,7 @@ export default function AiTaskCreateChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('taskList.aiSendFailed'))
     }
-  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId])
+  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance])
 
   useEffect(() => {
     if (!autoSend || autoSentRef.current) return
@@ -215,9 +228,10 @@ export default function AiTaskCreateChat({
       sendError={sendError}
       locale={locale}
       attachmentPrefix="task-create"
-      onInputChange={(value) => { setInput(value); setSendError('') }}
+      onInputChange={(value) => { enhanceInputChanged(value); setInput(value); setSendError('') }}
       onSend={() => void send()}
       onStop={() => void stop()}
+      enhance={enhance}
       onAttachmentError={setSendError}
       onClose={onClose}
       onA2uiAction={handleA2uiAction}
@@ -259,6 +273,7 @@ export default function AiTaskCreateChat({
         closePrompt: t('common.close'),
       }}
       config={{
+        projectId,
         engines: coordinatorConfig?.available_engines || [],
         engine: selectedEngine,
         providers,

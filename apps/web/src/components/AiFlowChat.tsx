@@ -7,7 +7,6 @@ import {
   a2uiActionMessageParams,
   pendingAutoApplyProposal,
   resolveA2uiFlowSteps,
-  shouldShowA2uiProposalCards,
 } from '../utils/a2ui'
 import {
   workflowGenApi,
@@ -21,6 +20,8 @@ import { useI18n } from '../i18n'
 import { selectWorkflowTurnContext } from '../utils/workflowContext'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
+import { usePromptEnhance } from '../hooks/usePromptEnhance'
+import { cloneCanvasSteps } from '../utils/canvasRestore'
 
 /* ══════════════════════════════════════════
    AiFlowChat — reusable AI flow-design chat.
@@ -36,6 +37,8 @@ export interface AiFlowChatProps {
   projectId: string
   /** Called with the steps ({nodes, connections}) of each validated proposal. */
   onProposal?: (steps: any) => void
+  /** Restores a captured canvas directly, without proposal overwrite confirmation. */
+  onRestore?: (steps: any) => void
   /** Fired when a generation turn starts/ends. */
   onBusyChange?: (busy: boolean) => void
   title?: string
@@ -70,6 +73,7 @@ const EMPTY_PROPOSALS: GenProposalCard[] = []
 export default function AiFlowChat({
   projectId,
   onProposal,
+  onRestore,
   onBusyChange,
   title,
   onClose,
@@ -86,6 +90,20 @@ export default function AiFlowChat({
   const [resetting, setResetting] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [appliedCardId, setAppliedCardId] = useState<string | null>(null)
+  /** 应用提案前的画布快照，供「还原」按钮恢复。 */
+  const [restoreSteps, setRestoreSteps] = useState<any | null>(null)
+  const [restored, setRestored] = useState(false)
+  const {
+    enhance,
+    onInputChange: enhanceInputChanged,
+    reset: resetEnhance,
+  } = usePromptEnhance({
+    projectId,
+    getDraft: () => input,
+    setDraft: setInput,
+    onError: setSendError,
+    errorMessage: t('chatSession.enhanceFailed'),
+  })
   // Coordinator engine / model overrides (session-scoped: this chat turn only).
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
@@ -112,21 +130,32 @@ export default function AiFlowChat({
     setAppliedCardId(null)
   }, [latestProposals])
 
+  // 应用方案前记录当前画布，使「还原」能回到应用前的 JSON。
+  const applyFlowSteps = useCallback((steps: any, proposalId: string) => {
+    const snapshot = cloneCanvasSteps(getCanvasSteps?.() ?? { nodes: [], connections: [] })
+    setRestoreSteps(snapshot)
+    setRestored(false)
+    // 仅当按钮载荷携带 proposalId 时才更新“已应用”标记：历史按钮没有该字段，
+    // 置空会让 autoApply effect 把最近一轮自动方案重新应用，覆盖用户刚选的方案。
+    if (proposalId) setAppliedCardId(proposalId)
+    onProposal?.(steps)
+  }, [getCanvasSteps, onProposal])
+
   useEffect(() => {
     const proposal = pendingAutoApplyProposal(latestProposals, appliedCardId)
     if (!proposal) return
-    setAppliedCardId(proposal.id)
-    onProposal?.(proposal.steps)
-  }, [appliedCardId, latestProposals, onProposal])
+    applyFlowSteps(proposal.steps, proposal.id ?? '')
+  }, [appliedCardId, latestProposals, applyFlowSteps])
 
-  const applyCard = (card: GenProposalCard) => {
-    setAppliedCardId(card.id)
-    onProposal?.(card.steps)
-  }
+  const handleRestore = useCallback(() => {
+    if (restoreSteps === null) return
+    setRestored(true)
+    onRestore?.(restoreSteps)
+  }, [restoreSteps, onRestore])
 
   useEffect(() => {
     let active = true
-    engineApi.coordinatorDefaults()
+    engineApi.coordinatorDefaults(projectId)
       .then((config) => {
         if (!active) return
         setCoordinatorConfig(config)
@@ -137,21 +166,23 @@ export default function AiFlowChat({
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('aiFlow.configLoadFailed'))
       })
     return () => { active = false }
-  }, [t])
+  }, [projectId, t])
 
   useEffect(() => {
     let active = true
-    providerApi.list()
+    providerApi.list(projectId)
       .then((result) => {
         if (active) setProviders(result.providers.filter((item) => item.enabled))
       })
       .catch(() => { /* provider list is optional for the engine picker */ })
     return () => { active = false }
-  }, [])
+  }, [projectId])
 
   // Workflow edit sessions reuse a stable conversation: load prior history.
   useEffect(() => {
     lastCanvasSnapshotRef.current = null
+    setRestoreSteps(null)
+    setRestored(false)
     if (!workflowId) return
     const canonicalId = workflowSessionId(projectId, workflowId)
     setSessionId(canonicalId)
@@ -203,6 +234,7 @@ export default function AiFlowChat({
     }
     useWorkflowGenStore.getState().addUserMessage(sid, content)
     setInput('')
+    resetEnhance()
     // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
     flushWsSubscriptionNow()
     const currentSteps = getCanvasSteps?.() ?? { nodes: [], connections: [] }
@@ -249,17 +281,16 @@ export default function AiFlowChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
     }
-  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t])
+  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
     const flow = resolveA2uiFlowSteps(action, latestProposals)
     if (flow) {
-      setAppliedCardId(flow.proposalId)
-      onProposal?.(flow.steps)
+      applyFlowSteps(flow.steps, flow.proposalId)
       return
     }
     void send(t('taskDetail.a2uiActionMessage', a2uiActionMessageParams(action)))
-  }, [latestProposals, onProposal, send, t])
+  }, [latestProposals, applyFlowSteps, send, t])
 
   const resetConversation = useCallback(async () => {
     if (!workflowId || running || resetting) return
@@ -276,13 +307,16 @@ export default function AiFlowChat({
       setSessionId(canonicalId)
       lastCanvasSnapshotRef.current = null
       setInput('')
+      resetEnhance()
       setAppliedCardId(null)
+      setRestoreSteps(null)
+      setRestored(false)
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.resetFailed'))
     } finally {
       setResetting(false)
     }
-  }, [projectId, resetting, running, sessionId, t, workflowId])
+  }, [projectId, resetting, running, sessionId, t, workflowId, resetEnhance])
 
   // The add-workflow entry point only prepares a draft; the user sends it.
   useEffect(() => {
@@ -323,13 +357,13 @@ export default function AiFlowChat({
         locale={locale}
         attachmentPrefix="flow-gen"
         scrollKey={latestProposals.length}
-        onInputChange={(value) => { setInput(value); setSendError('') }}
+        onInputChange={(value) => { enhanceInputChanged(value); setInput(value); setSendError('') }}
         onSend={() => void send()}
         onStop={() => void stop()}
+        enhance={enhance}
         onAttachmentError={setSendError}
         onClose={onClose}
         onA2uiAction={handleA2uiAction}
-        hideApplyFlow={shouldShowA2uiProposalCards(latestProposals.length, appliedCardId)}
         quickPromptsLabel={t('aiFlow.quickPromptsLabel')}
         a2uiMessages={session?.a2uiMessages}
         quickPrompts={[
@@ -353,6 +387,16 @@ export default function AiFlowChat({
           fullPrompt: t('aiFlow.fullPrompt'),
           closePrompt: t('aiFlow.closePrompt'),
         }}
+        composerActions={<Button
+          variant="ghost"
+          size="sm"
+          disabled={running || restoreSteps === null || restored}
+          title={t('aiFlow.restoreStepsHint')}
+          onClick={handleRestore}
+          style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
+        >
+          {t('aiFlow.restoreSteps')}
+        </Button>}
         headerActions={workflowId ? (
           <Button
             variant="ghost"
@@ -366,49 +410,6 @@ export default function AiFlowChat({
           </Button>
         ) : undefined}
         afterMessages={<>
-        {shouldShowA2uiProposalCards(latestProposals.length, appliedCardId) && (
-          <div style={{ marginTop: 2 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
-              {t('aiFlow.chooseProposal')}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {latestProposals.map((card) => {
-                const applied = appliedCardId === card.id
-                return (
-                  <button
-                    key={card.id}
-                    onClick={() => applyCard(card)}
-                    disabled={applied}
-                    title={t('aiFlow.applyToCanvas')}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', cursor: applied ? 'default' : 'pointer',
-                      border: `1px solid ${applied ? 'var(--success)' : 'var(--border)'}`,
-                      borderRadius: 10, background: applied
-                        ? 'color-mix(in oklab, var(--success), transparent 94%)'
-                        : 'var(--surface)',
-                      padding: '9px 11px', color: 'var(--fg)', fontFamily: 'var(--font-body)', fontSize: 13,
-                      transition: 'border-color 0.15s, box-shadow 0.15s',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 600 }}>{card.title}</span>
-                      <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('aiFlow.stepsCount', { count: card.nodeCount })}</span>
-                      <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 11, color: applied ? 'var(--success)' : 'var(--accent)' }}>
-                        {applied ? t('aiFlow.applied') : t('aiFlow.apply')}
-                      </span>
-                    </div>
-                    {card.summary && (
-                      <div style={{ fontSize: 13, color: 'var(--meta)', marginTop: 3, lineHeight: 1.5 }}>
-                        {card.summary}
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
         {rejectionMessage && latestProposals.length === 0 && (
           <div style={{
             marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 13,
@@ -422,6 +423,7 @@ export default function AiFlowChat({
         )}
         </>}
         config={{
+          projectId,
           engines: coordinatorConfig?.available_engines || [],
           engine: selectedEngine,
           providers,

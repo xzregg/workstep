@@ -157,25 +157,22 @@ class CodexSDKEngine(AcpEngineBase):
     async def list_models(self, cwd: str) -> list[EngineModel]:
         if not CodexSDKEngine._sdk_available():
             return []
+        from openai_codex import AsyncCodex, CodexConfig
+
+        client = AsyncCodex(config=CodexConfig(cwd=cwd or None))
         try:
-            from openai_codex import AsyncCodex
-            client = AsyncCodex(cwd=cwd or None)
-            try:
-                response = await client.models()
-            finally:
-                await client.close()
-            return [
-                EngineModel(
-                    id=model.id,
-                    label=model.display_name or model.id,
-                    description=model.description,
-                )
-                for model in response.data
-                if not getattr(model, "hidden", False)
-            ]
-        except Exception as exc:
-            logger.warning("CodexSDKEngine list_models failed: %s", exc)
-            return []
+            response = await client.models()
+        finally:
+            await client.close()
+        return [
+            EngineModel(
+                id=model.id,
+                label=model.display_name or model.id,
+                description=model.description,
+            )
+            for model in response.data
+            if not getattr(model, "hidden", False)
+        ]
 
     # --- Notification mapping ---
 
@@ -503,7 +500,12 @@ class CodexSDKEngine(AcpEngineBase):
             )
             return
         try:
-            from openai_codex import ApprovalMode, AsyncCodex, Sandbox
+            from openai_codex import (
+                ApprovalMode,
+                AsyncCodex,
+                CodexConfig,
+                Sandbox,
+            )
         except Exception as exc:
             yield InternalEvent(
                 type="error",
@@ -541,10 +543,11 @@ class CodexSDKEngine(AcpEngineBase):
         if approval_mode is not None:
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
             thread_kwargs["approval_mode"] = approval_mode
-        client_kwargs: dict[str, Any] = {}
         override = self.get_binary_override()
-        if override:
-            client_kwargs["codex_bin"] = override
+        client_config = CodexConfig(
+            codex_bin=override or None,
+            cwd=cwd or None,
+        )
 
         self._running = True
         yield InternalEvent(type="status", data={"status": "initializing"})
@@ -552,12 +555,13 @@ class CodexSDKEngine(AcpEngineBase):
         client: Any = None
         try:
             event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
-            client_kwargs["approval_handler"] = self._build_approval_handler(
+            approval_handler = self._build_approval_handler(
                 event_queue,
                 asyncio.get_running_loop(),
                 session_id or "",
             )
-            client = AsyncCodex(**client_kwargs)
+            client = AsyncCodex(config=client_config)
+            self._install_approval_handler(client, approval_handler)
             self._client = client
             state: dict[str, Any] = {
                 "emitted_text": False,
@@ -649,6 +653,24 @@ class CodexSDKEngine(AcpEngineBase):
                     except Exception:
                         pass
             self._running = False
+
+    @staticmethod
+    def _install_approval_handler(client: Any, handler: Any) -> None:
+        """Install WorkStep's approval bridge on openai-codex 0.144.x.
+
+        The public ``AsyncCodex`` wrapper does not expose the
+        ``approval_handler`` accepted by its wrapped synchronous
+        ``CodexClient``.  Validate that compatibility seam before assigning it
+        so an SDK layout change fails closed instead of silently auto-accepting
+        tool approvals.
+        """
+        async_client = getattr(client, "_client", None)
+        sync_client = getattr(async_client, "_sync", None)
+        if sync_client is None or not hasattr(sync_client, "_approval_handler"):
+            raise RuntimeError(
+                "当前 openai-codex SDK 不支持 WorkStep 异步审批桥接"
+            )
+        sync_client._approval_handler = handler
 
     def _build_approval_handler(
         self,

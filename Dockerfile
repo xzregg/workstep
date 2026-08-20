@@ -2,7 +2,7 @@
 
 # ============================================================
 # 阶段 1：前端构建（web + landing）
-# 基础镜像 node:24-bookworm —— 完整 Node.js 24（corepack 激活 yarn）+ Python 3.11 + git/curl
+# 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
 # ============================================================
 FROM node:24-bookworm AS web-build
 
@@ -16,34 +16,43 @@ WORKDIR /app/apps/landing
 COPY apps/landing/package.json apps/landing/yarn.lock ./
 RUN corepack enable && corepack prepare yarn@1.22.22 --activate && yarn install --frozen-lockfile
 COPY apps/landing ./
-RUN yarn build
+# 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
+RUN LANDING_BASE=/landing/ yarn build
 
 # ============================================================
-# 阶段 2：运行时镜像
-# - 完整 Node.js 24 + npm：LLM 引擎（Codex CLI / Claude Code 等）由应用内按需安装
-# - Python 3.14：由 uv 自动管理解释器（ENV UV_PYTHON=3.14）
-# - daemon（FastAPI）+ 前端构建产物（daemon 以相对路径托管）
+# 阶段 2：运行时镜像（最小化）
+# - 基础镜像 node:24-bookworm-slim（Node 24 + npm，约 1/5 体积）
+# - 最小系统依赖：git / curl / ca-certificates（引擎应用内按需安装所需）
+# - Python 3.14：由 uv 按 UV_PYTHON 自动下载 standalone 解释器（无需系统 python）
+# - 依赖缓存与字节码在构建后立即清理，尽量减小镜像体积
 # ============================================================
-FROM node:24-bookworm
+FROM node:24-bookworm-slim
 
-# uv —— Python 依赖与解释器管理
+# 最小系统依赖（勿裁剪：git/curl 供应用内安装 LLM 引擎使用）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv —— Python 依赖与解释器管理；UV_CACHE_DIR 指向 /tmp 便于构建后清理
+ENV UV_PYTHON=3.14 \
+    UV_CACHE_DIR=/tmp/uv-cache \
+    UV_LINK_MODE=copy \
+    PATH="/root/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
 
-# 引擎应用内按需安装所需的运行时（勿裁剪）：
-# - npm：Codex CLI / Claude Code（npm install -g ...）
-# - uv：Python SDK 引擎（uv pip install --python <daemon 解释器> ...）
-# - git / curl / 编译工具链：node:24-bookworm 基础镜像自带（buildpack-deps）
+# 引擎按需安装环境自检（npm / uv / git / curl）
 RUN npm --version && uv --version && git --version && curl --version | head -1
 
-# 后端依赖（uv.lock 已入库；Docker 内固定 Python 3.14，由 uv 自动下载解释器）
-ENV UV_PYTHON=3.14
+# 后端依赖（uv.lock 已入库；固定 Python 3.14）
 WORKDIR /app/apps/daemon
 COPY apps/daemon/pyproject.toml apps/daemon/uv.lock apps/daemon/.python-version ./
-RUN uv sync --no-dev --frozen
+RUN uv sync --no-dev --frozen \
+    && rm -rf /tmp/uv-cache
 
-# 后端源码
+# 后端源码（清理字节码缓存）
 COPY apps/daemon ./
+RUN find /app -name '__pycache__' -type d -prune -exec rm -rf {} + \
+    && rm -rf /root/.cache /tmp/uv-cache
 
 # 前端构建产物（settings.py 中 web_dist=../web/dist、landing_dist=../landing/dist）
 COPY --from=web-build /app/apps/web/dist ../web/dist

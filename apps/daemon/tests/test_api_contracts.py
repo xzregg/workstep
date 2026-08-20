@@ -2041,3 +2041,48 @@ async def test_resume_stage_message_conflict_when_stage_not_stopped(api_context,
     )
     assert sent.status_code == 409
     assert "阶段未停止" in sent.json()["detail"]
+
+
+# --- /api/fs/mkdir (project path picker) ---
+
+@pytest.mark.anyio
+async def test_fs_mkdir_creates_directory(api_context):
+    client, tmp_path = api_context
+    res = await client.post("/api/fs/mkdir", json={"parent": str(tmp_path), "name": "new-folder"})
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["name"] == "new-folder"
+    assert (tmp_path / "new-folder").is_dir()
+    assert body["path"] == str(tmp_path / "new-folder")
+
+
+@pytest.mark.anyio
+async def test_fs_mkdir_rejects_invalid_names(api_context):
+    client, tmp_path = api_context
+    for name in ["", " ", "a b", "a/b", "a\\b", ".", "..", ".hidden"]:
+        res = await client.post("/api/fs/mkdir", json={"parent": str(tmp_path), "name": name})
+        assert res.status_code == 400, f"name={name!r} -> {res.status_code}: {res.text}"
+
+
+@pytest.mark.anyio
+async def test_fs_mkdir_rejects_existing_target(api_context):
+    client, tmp_path = api_context
+    (tmp_path / "exists").mkdir()
+    res = await client.post("/api/fs/mkdir", json={"parent": str(tmp_path), "name": "exists"})
+    assert res.status_code == 409, res.text
+
+
+@pytest.mark.anyio
+async def test_fs_mkdir_missing_parent(api_context):
+    client, tmp_path = api_context
+    res = await client.post("/api/fs/mkdir", json={"parent": str(tmp_path / "nope"), "name": "x"})
+    assert res.status_code == 404, res.text
+
+
+@pytest.mark.anyio
+async def test_fs_mkdir_parent_is_file(api_context):
+    client, tmp_path = api_context
+    file_path = tmp_path / "file.txt"
+    file_path.write_text("hi")
+    res = await client.post("/api/fs/mkdir", json={"parent": str(file_path), "name": "x"})
+    assert res.status_code == 400, res.text

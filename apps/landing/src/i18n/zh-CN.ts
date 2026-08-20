@@ -235,6 +235,8 @@ export const zhCN = {
       prompt4: '实现后端 API 与数据库迁移',
       prompt5: '运行测试并生成回归报告',
       prompt6: '执行构建并发布上线',
+      reworkLabel: '返工反馈',
+      reworkDesc: '实线 = 数据流 · 虚线 = 返工反馈（连回上游自动变虚线）',
     },
     board: {
       editStages: '阶段编辑',

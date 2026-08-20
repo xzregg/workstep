@@ -561,13 +561,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   useEffect(() => {
     let active = true
-    providerApi.list()
+    if (!projectId) return
+    providerApi.list(projectId)
       .then((result) => {
         if (active) setProviders(result.providers.filter((item) => item.enabled))
       })
       .catch(() => { /* provider list is optional for the engine picker */ })
     return () => { active = false }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     if (!taskId || !projectId) {
@@ -1575,6 +1576,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         coordinatorRunning={coordinatorRunning}
         coordinatorConfig={coordinatorConfig}
         chatError={chatError}
+        onChatError={setChatError}
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={handleRun}

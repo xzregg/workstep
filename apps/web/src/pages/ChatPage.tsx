@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import { usageFromEvents } from '../components/MessageResponseFooter'
@@ -19,6 +19,7 @@ import {
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useI18n } from '../i18n'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import type { AssistantChatMessage } from '../stores/assistantStore'
@@ -110,9 +111,18 @@ export default function ChatPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
-  const [enhancePhase, setEnhancePhase] = useState<'idle' | 'enhancing' | 'enhanced'>('idle')
-  const enhancedValueRef = useRef('')
-  const originalDraftRef = useRef('')
+
+  const {
+    enhance,
+    onInputChange: enhanceInputChanged,
+    reset: resetEnhance,
+  } = usePromptEnhance({
+    projectId: activeProject?.id,
+    getDraft: () => input,
+    setDraft: setInput,
+    onError: setSendError,
+    errorMessage: t('chatSession.enhanceFailed'),
+  })
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
   const running = session?.running ?? false
@@ -144,7 +154,8 @@ export default function ChatPage() {
   // Engine defaults + per-project quick buttons.
   useEffect(() => {
     let active = true
-    engineApi.coordinatorDefaults()
+    if (!activeProject?.id) return
+    engineApi.coordinatorDefaults(activeProject.id)
       .then((config) => {
         if (!active) return
         setCoordinatorConfig(config)
@@ -155,17 +166,18 @@ export default function ChatPage() {
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [t])
+  }, [activeProject?.id, t])
 
   useEffect(() => {
     let active = true
-    providerApi.list()
+    if (!activeProject?.id) return
+    providerApi.list(activeProject.id)
       .then((result) => {
         if (active) setProviders(result.providers.filter((item) => item.enabled))
       })
       .catch(() => { /* provider list is optional for the engine picker */ })
     return () => { active = false }
-  }, [])
+  }, [activeProject?.id])
 
   useEffect(() => {
     if (!activeProject?.id) return
@@ -190,15 +202,11 @@ export default function ChatPage() {
       setSendError('')
       setStopping(false)
       setPermissionMode('')
-      setEnhancePhase('idle')
-      enhancedValueRef.current = ''
-      originalDraftRef.current = ''
+      resetEnhance()
       return
     }
     if (!activeProject?.id) return
-    setEnhancePhase('idle')
-    enhancedValueRef.current = ''
-    originalDraftRef.current = ''
+    resetEnhance()
     let active = true
     const store = useChatSessionStore.getState()
     store.newSession(sessionParam)
@@ -238,7 +246,7 @@ export default function ChatPage() {
         navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
       })
     return () => { active = false }
-  }, [sessionParam, activeProject?.id, projectParam, workflowParam, navigate])
+  }, [sessionParam, activeProject?.id, projectParam, workflowParam, navigate, resetEnhance])
 
   // Keep the sidebar session list fresh (titles/previews after turns).
   useEffect(() => {
@@ -263,9 +271,7 @@ export default function ChatPage() {
     setSendError('')
     useChatSessionStore.getState().addUserMessage(sessionId, content)
     setInput('')
-    setEnhancePhase('idle')
-    enhancedValueRef.current = ''
-    originalDraftRef.current = ''
+    resetEnhance()
     try {
       const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomId(), {
         engine: selectedEngine || undefined,
@@ -301,41 +307,13 @@ export default function ChatPage() {
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
     }
-  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, permissionMode, planMode, t])
-
-  const enhancePrompt = useCallback(async () => {
-    if (!activeProject?.id || !sessionId || enhancePhase === 'enhancing') return
-    const draft = input.trim()
-    if (!draft) return
-    setEnhancePhase('enhancing')
-    originalDraftRef.current = draft
-    try {
-      const result = await chatSessionApi.enhancePrompt(activeProject.id, draft)
-      enhancedValueRef.current = result.prompt
-      setInput(result.prompt)
-      setEnhancePhase('enhanced')
-    } catch (reason) {
-      setEnhancePhase('idle')
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.enhanceFailed'))
-    }
-  }, [activeProject?.id, sessionId, enhancePhase, input, t])
-
-  const revertEnhance = useCallback(() => {
-    setInput(originalDraftRef.current || enhancedValueRef.current)
-    enhancedValueRef.current = ''
-    originalDraftRef.current = ''
-    setEnhancePhase('idle')
-  }, [])
+  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, permissionMode, planMode, t, resetEnhance])
 
   const handleInputChange = useCallback((value: string) => {
-    if (enhancePhase === 'enhanced' && value !== enhancedValueRef.current) {
-      setEnhancePhase('idle')
-      enhancedValueRef.current = ''
-      originalDraftRef.current = ''
-    }
+    enhanceInputChanged(value)
     setInput(value)
     setSendError('')
-  }, [enhancePhase])
+  }, [enhanceInputChanged])
 
   const stop = useCallback(async () => {
     if (!sessionId || !activeProject?.id || stopping) return
@@ -593,6 +571,7 @@ export default function ChatPage() {
           </>
         )}
         config={{
+          projectId: activeProject.id,
           engines: coordinatorConfig?.available_engines || [],
           engine: selectedEngine,
           providers,
@@ -639,12 +618,7 @@ export default function ChatPage() {
           onChange: setPlanMode,
           disabled: running,
         }}
-        enhance={{
-          enhancing: enhancePhase === 'enhancing',
-          enhanced: enhancePhase === 'enhanced',
-          onEnhance: () => void enhancePrompt(),
-          onRevert: revertEnhance,
-        }}
+        enhance={enhance}
         context={context}
       />
 

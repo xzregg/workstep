@@ -31,9 +31,10 @@ test('summary includes executed commands only when at least one tool ran', () =>
   assert.match(source, /commandCount > 0 && t\('trace\.commandCount'/)
 })
 
-test('process stream stays expanded while running and collapses when completed', () => {
-  assert.match(source, /useState\(running\)/)
-  assert.match(source, /setOpen\(running\)/)
+test('process stream defaults expanded for running and completed durations', () => {
+  assert.match(source, /useState\(true\)/)
+  assert.match(source, /if \(running\) setOpen\(true\)/)
+  assert.doesNotMatch(source, /setOpen\(running\)/)
   assert.match(source, /<details[\s\S]*className="process-trace-session"[\s\S]*open=\{open\}/)
   assert.doesNotMatch(source, /!running && !stopped && t\('trace\.commandCount'/)
 })

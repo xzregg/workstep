@@ -32,6 +32,8 @@ const inputItemIcon = (item: EngineInputItem) => {
    ══════════════════════════════════════════ */
 
 export interface ChatInputEngineConfig {
+  /** Project scope used for remote engine/provider/model reads. */
+  projectId?: string
   engines: CoordinatorEngineSummary[]
   /** Currently selected engine id ('' = follow the default). */
   engine: string
@@ -728,6 +730,7 @@ export default function ChatInput({
                       </button>
                     )}
                     <CoordinatorConfigBar
+                      projectId={config.projectId}
                       variant="menu"
                       autoOpenField={configFocus}
                       engines={config.engines}

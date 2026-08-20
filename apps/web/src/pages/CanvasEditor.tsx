@@ -136,6 +136,7 @@ function CanvasEditorInner() {
             if (dirty) { setPendingAiSteps(steps); return }
             canvasRef.current?.loadSteps(steps)
           }}
+          onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
           onBusyChange={setAiGenBusy}
           onRequestClose={() => { if (aiGenBusy) { setAiConfirmClose(true); return } setAiPanelOpen(false) }}
           title={t('canvas.aiEditFlowTitle')}

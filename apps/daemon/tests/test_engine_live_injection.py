@@ -561,6 +561,9 @@ class _FakeAsyncCodex:
     def __init__(self, **kwargs):
         self.closed = False
         self.threads: dict[str, _FakeSdkThread] = {}
+        self._client = SimpleNamespace(
+            _sync=SimpleNamespace(_approval_handler=None)
+        )
         _FakeAsyncCodex.instances.append(self)
 
     async def thread_start(self, **kwargs):

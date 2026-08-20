@@ -31,11 +31,16 @@ const EDGES: Array<[string, string]> = [
   ['n5', 'n6'],
 ]
 
+// 橙色回环线：测试阶段产出未达标时，任务回流到「前端」阶段重做（阶段返工回调）。
+const REWORK_LOOP_PATH = 'M 620 215 C 780 45, 690 10, 600 95'
+const REWORK_LOOP_AT = 4600
+
 export function CanvasScene({ time }: { time: number }) {
   const { t } = useI18n()
   const byId = new Map(NODES.map((node) => [node.id, node]))
   const dirty = time >= 3200 && time < 5800
   const saved = time >= 6100
+  const loopVisible = time >= REWORK_LOOP_AT
 
   return (
     <div className="scene-body scene-canvas">
@@ -89,7 +94,26 @@ export function CanvasScene({ time }: { time: number }) {
               />
             )
           })}
+          {loopVisible && (
+            <g>
+              <path
+                d={REWORK_LOOP_PATH}
+                className="canvas-loop-edge"
+                style={{ opacity: arrive(time, REWORK_LOOP_AT, 600) }}
+              />
+              <circle r="5" fill="#f97316" className="canvas-loop-dot">
+                <animateMotion dur="2.2s" repeatCount="indefinite" path={REWORK_LOOP_PATH} />
+              </circle>
+            </g>
+          )}
         </svg>
+
+        {loopVisible && (
+          <div className="canvas-loop-tag" style={{ opacity: arrive(time, REWORK_LOOP_AT + 300, 500) }}>
+            <span className="canvas-loop-tag-dot" />
+            {t('scene.canvas.reworkLabel')}
+          </div>
+        )}
 
         {NODES.map((node) => {
           if (time < node.appearAt) return null
@@ -131,6 +155,13 @@ export function CanvasScene({ time }: { time: number }) {
           )
         })}
       </div>
+
+      {loopVisible && (
+        <div className="canvas-rework-bar" style={{ opacity: arrive(time, REWORK_LOOP_AT + 500, 500) }}>
+          <span className="canvas-rework-dot" />
+          <span>{t('scene.canvas.reworkDesc')}</span>
+        </div>
+      )}
     </div>
   )
 }

@@ -549,6 +549,9 @@ class WorkflowGenModule(AssistantRuntime):
                     context["stepsJson"] = json.dumps(
                         steps, ensure_ascii=False, separators=(",", ":")
                     )
+                    proposal_id = proposals[proposal_index].get("id") if isinstance(proposals[proposal_index], dict) else None
+                    if proposal_id:
+                        context["proposalId"] = proposal_id
                     changed = True
             if not changed:
                 return match.group(0)

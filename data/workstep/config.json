@@ -1,0 +1,21 @@
+{
+  "device": {
+    "device_id": "41d20965-4b10-4663-bd82-4306ef128bd2",
+    "device_name": "7fa9cd18a1c5"
+  },
+  "user": {
+    "name": "xzr"
+  },
+  "projects": [
+    {
+      "id": "8227e334",
+      "path": "/data/projects/t1",
+      "name": "t1",
+      "sort_order": 0
+    }
+  ],
+  "verified_engines": {
+    "claude_agent_sdk": true
+  },
+  "execution_default_engine": "claude_agent_sdk"
+}

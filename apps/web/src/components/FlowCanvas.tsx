@@ -197,7 +197,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
   if (stepsJson?.nodes?.length) {
     const nodes: StepNodeData[] = stepsJson.nodes.map((n: any) => ({
       nodeId: n.id,
-      key: n.type || n.key,
+      key: n.type || n.key || '',
       label: n.title || n.label || n.type,
       autoStart: Boolean(n.autoStart),
       engine: n.engine || DEFAULT_EXECUTION_ENGINE,
@@ -246,7 +246,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
   if (stepsJson?.steps?.length) {
     const nodes: StepNodeData[] = stepsJson.steps.map((s: any, i: number) => ({
       nodeId: i + 1,
-      key: s.key || s.id,
+      key: s.key || s.id || '',
       label: s.label || s.name || s.key,
       engine: s.engine || DEFAULT_EXECUTION_ENGINE,
       model: s.model || '',
@@ -513,7 +513,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     setDraft(updated)
   }
 
-  const normalizedKey = draft.key.trim()
+  const normalizedKey = (draft.key ?? '').trim()
   const keyError = !normalizedKey
     ? t('flow.keyRequired')
     : !STEP_TYPE_PATTERN.test(normalizedKey)
@@ -1322,7 +1322,7 @@ function FlowCanvasInner({
       return {
         index,
         label: data.label || t('flow.stageN', { index: index + 1 }),
-        value: data.key.trim(),
+        value: (data.key ?? '').trim(),
       }
     })
     const missingType = stepTypes.find((step) => !step.value)

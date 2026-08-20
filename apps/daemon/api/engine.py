@@ -119,7 +119,7 @@ async def set_execution_default_config(req: DefaultEngineRequest):
 
 
 @router.get("/coordinator/config")
-async def get_coordinator_default_config():
+async def get_coordinator_default_config(project_id: str = ""):
     return {
         "engine": config_store.get_coordinator_default_engine(),
         "model": config_store.get_coordinator_default_model(),
@@ -251,6 +251,7 @@ async def list_engine_models(
     engine_id: str,
     provider_id: str = "",
     refresh: bool = False,
+    project_id: str = "",
 ):
     """Return selectable models through the engine adapter interface.
 
@@ -268,7 +269,8 @@ async def list_engine_models(
         }
     fetched_at = None
     try:
-        models_kwargs: dict = {"cwd": str(Path.cwd())}
+        project = project_manager.get_project_by_id(project_id.strip()) if project_id.strip() else None
+        models_kwargs: dict = {"cwd": str(project.path) if project else str(Path.cwd())}
         if engine_id in {"pydantic_ai", "deepseek_harness"} and provider_id.strip():
             models_kwargs["provider_id"] = provider_id.strip()
         if engine_id in {"pydantic_ai", "deepseek_harness"} and refresh:

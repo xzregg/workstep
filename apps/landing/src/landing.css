@@ -1124,6 +1124,83 @@ button {
   stroke: var(--accent);
 }
 
+/* 返工反馈回环线：实线=数据流，虚线=返工反馈（连回上游自动变虚线） */
+.canvas-loop-edge {
+  fill: none;
+  stroke: #f97316;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 10 8;
+  stroke-linecap: round;
+  filter: drop-shadow(0 1px 2px rgba(249, 115, 22, 0.45));
+}
+
+.canvas-loop-dot {
+  filter: drop-shadow(0 1px 2px rgba(249, 115, 22, 0.6));
+}
+
+.canvas-loop-tag {
+  position: absolute;
+  z-index: 3;
+  left: 68%;
+  top: 6%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f97316;
+  background: color-mix(in oklab, #f97316, var(--bg) 88%);
+  border: 1px solid color-mix(in oklab, #f97316, transparent 55%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.canvas-loop-tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f97316;
+}
+
+.canvas-rework-bar {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 9px;
+  border-left: 3px solid #f97316;
+  background: color-mix(in oklab, var(--bg), transparent 6%);
+  box-shadow: var(--elev);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  pointer-events: none;
+}
+
+.canvas-rework-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f97316;
+  box-shadow: 0 0 0 3px color-mix(in oklab, #f97316, transparent 78%);
+  animation: canvas-rework-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes canvas-rework-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in oklab, #f97316, transparent 78%); }
+  50% { box-shadow: 0 0 0 6px color-mix(in oklab, #f97316, transparent 85%); }
+}
+
 .stage-node {
   position: absolute;
   z-index: 2;
@@ -2220,6 +2297,11 @@ button {
 .demo-modal-head {
   padding-right: 48px;
   margin-bottom: 16px;
+}
+
+.demo-modal {
+  width: min(1200px, 94vw);
+  max-width: 1200px;
 }
 
 .demo-modal-head h3 {
