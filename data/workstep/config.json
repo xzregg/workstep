@@ -12,10 +12,25 @@
       "path": "/data/projects/t1",
       "name": "t1",
       "sort_order": 0
+    },
+    {
+      "id": "c1135976",
+      "path": "/data/projects/channel_system",
+      "name": "channel_system",
+      "sort_order": 1
     }
   ],
   "verified_engines": {
     "claude_agent_sdk": true
   },
-  "execution_default_engine": "claude_agent_sdk"
+  "execution_default_engine": "claude_agent_sdk",
+  "assistant_defaults": {
+    "chat_session": {
+      "engine": "claude_agent_sdk"
+    }
+  },
+  "prompt_enhance": {
+    "provider_id": "",
+    "model": ""
+  }
 }

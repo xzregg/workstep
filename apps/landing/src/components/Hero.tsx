@@ -1,13 +1,12 @@
-import { ArrowRight, Download, Play } from 'lucide-react'
+import { ArrowRight, Play } from 'lucide-react'
 import { useI18n } from '../i18n'
 import { HeroPreview } from './HeroPreview'
 
 interface HeroProps {
-  onOpenDownload: () => void
   onOpenDemos: () => void
 }
 
-export function Hero({ onOpenDownload, onOpenDemos }: HeroProps) {
+export function Hero({ onOpenDemos }: HeroProps) {
   const { t } = useI18n()
 
   return (
@@ -29,10 +28,6 @@ export function Hero({ onOpenDownload, onOpenDemos }: HeroProps) {
               {t('hero.ctaStart')}
               <ArrowRight size={15} />
             </a>
-            <button type="button" className="btn btn-ghost" onClick={onOpenDownload}>
-              <Download size={15} />
-              {t('hero.ctaPrimary')}
-            </button>
             <button type="button" className="btn btn-ghost" onClick={onOpenDemos}>
               <Play size={14} />
               {t('hero.ctaSecondary')}

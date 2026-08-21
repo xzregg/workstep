@@ -32,7 +32,7 @@ export const zhCN = {
     meta3: '每项目独立 SQLite',
   },
   heroPreview: {
-    statistics: '统计',
+    statistics: '数据统计',
     projects: '项目',
     project: '研发项目',
     workflows: '流程',
@@ -42,7 +42,7 @@ export const zhCN = {
     sessions: '会话',
     session1: 'PRD → 前端实现',
     session2: '会议纪要',
-    newProject: '新建项目',
+    newProject: '添加项目',
     editStages: '阶段编辑',
     newTask: '新建',
     workflowId: 'ID: default',
@@ -67,14 +67,6 @@ export const zhCN = {
     statusRunning: '进行中',
     statusReady: '预备中',
     statusReviewing: '审核中',
-  },
-  heroTicker: {
-    live: '实时流',
-    eventMessage: 'agent_message',
-    eventThought: 'agent_thought',
-    eventTool: 'tool_call',
-    eventPlan: 'plan_update',
-    eventUsage: 'usage_update',
   },
   engines: {
     label: '一个接口，连接你已有的引擎',

@@ -18,6 +18,7 @@ services:
       - ${HOME}/.claude:/root/.claude
       # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
       - ./data/projects:/data/projects
+      - /Users/xzr/Desktop/packer/projects/channel_system:/data/projects/channel_system
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
       interval: 30s

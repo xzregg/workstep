@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { Demos } from './components/Demos'
 import { DemoModal } from './components/DemoModal'
-import { Download } from './components/Download'
-import { DownloadModal } from './components/DownloadModal'
 import { EnginesStrip } from './components/EnginesStrip'
 import { Features } from './components/Features'
 import { Footer } from './components/Footer'
@@ -18,26 +16,20 @@ function scrollToDemos() {
 
 export default function App() {
   const [openDemo, setOpenDemo] = useState<DemoDef | null>(null)
-  const [downloadOpen, setDownloadOpen] = useState(false)
 
   return (
     <>
-      <Nav onOpenDownload={() => setDownloadOpen(true)} />
+      <Nav />
       <main>
-        <Hero
-          onOpenDownload={() => setDownloadOpen(true)}
-          onOpenDemos={scrollToDemos}
-        />
+        <Hero onOpenDemos={scrollToDemos} />
         <EnginesStrip />
         <Features />
         <RemoteShare />
         <Demos onOpen={setOpenDemo} />
         <Workflow />
-        <Download onOpen={() => setDownloadOpen(true)} />
       </main>
       <Footer />
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}
-      {downloadOpen && <DownloadModal onClose={() => setDownloadOpen(false)} />}
     </>
   )
 }

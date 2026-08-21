@@ -44,7 +44,7 @@ export const enUS: I18nDict = {
     sessions: 'Sessions',
     session1: 'PRD → frontend build',
     session2: 'Meeting notes',
-    newProject: 'New project',
+    newProject: 'Add project',
     editStages: 'Edit stages',
     newTask: 'New',
     workflowId: 'ID: default',
@@ -69,14 +69,6 @@ export const enUS: I18nDict = {
     statusRunning: 'Running',
     statusReady: 'Ready',
     statusReviewing: 'Reviewing',
-  },
-  heroTicker: {
-    live: 'Live',
-    eventMessage: 'agent_message',
-    eventThought: 'agent_thought',
-    eventTool: 'tool_call',
-    eventPlan: 'plan_update',
-    eventUsage: 'usage_update',
   },
   engines: {
     label: 'One interface for the engines you already use',

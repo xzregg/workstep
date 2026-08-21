@@ -16,6 +16,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAEMON_DIR="$SCRIPT_DIR/apps/daemon"
 WEB_DIR="$SCRIPT_DIR/apps/web"
+LANDING_DIR="$SCRIPT_DIR/apps/landing"
 DEFAULT_PORT=8765
 PORT=${1:-$DEFAULT_PORT}
 MODE=${2:-dev}
@@ -85,6 +86,17 @@ fi
 # 检查依赖
 command -v uv >/dev/null 2>&1 || fail "需要 uv (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 
+# === 构建官网 ===
+# Daemon 在 "/landing" 托管官网，dev/prod 启动都需使用对应资源基路径。
+log "构建官网 landing..."
+cd "$LANDING_DIR"
+if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
+    NODE_ENV=development yarn install 2>&1 | tail -3
+fi
+LANDING_BASE=/landing/ yarn build
+cd "$SCRIPT_DIR"
+ok "官网已构建 → Daemon serve /landing"
+
 # === 清理函数 ===
 cleanup() {
     echo ""
@@ -148,18 +160,8 @@ if [ "$MODE" = "dev" ]; then
     echo ""
     tail -f "$LOG_DIR/daemon.log" "$LOG_DIR/web.log"
 else
-    # 生产模式: build 官网(landing) + 前端(web) → Daemon serve
+    # 生产模式: build 前端(web) → Daemon serve
     # 官网托管在 "/landing"，Web 应用仍占据 home "/"
-    LANDING_DIR="$SCRIPT_DIR/apps/landing"
-    log "构建官网 landing..."
-    cd "$LANDING_DIR"
-    if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
-        NODE_ENV=development yarn install 2>&1 | tail -3
-    fi
-    LANDING_BASE=/landing/ NODE_ENV=development yarn build
-    cd "$SCRIPT_DIR"
-    ok "官网已构建 → Daemon serve /landing"
-
     log "构建前端 web..."
     cd "$WEB_DIR"
     if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then

@@ -444,7 +444,7 @@ button {
 .hero-app {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  min-height: 400px;
+  min-height: 460px;
 }
 
 .app-sidebar {
@@ -569,7 +569,7 @@ button {
 .side-add {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   margin: auto 12px 8px;
   padding: 8px;
@@ -911,129 +911,6 @@ button {
   border-radius: 999px;
   background: linear-gradient(90deg, var(--status-running), #38bdf8);
   animation: card-progress 1.8s ease-in-out infinite;
-}
-
-/* ── Hero live activity ticker ── */
-
-.hero-ticker {
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-  border-top: 1px solid var(--border-soft);
-  background: var(--bg);
-}
-
-.hero-ticker::before,
-.hero-ticker::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 56px;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.hero-ticker::before {
-  left: 0;
-  background: linear-gradient(to right, var(--bg), transparent);
-}
-
-.hero-ticker::after {
-  right: 0;
-  background: linear-gradient(to left, var(--bg), transparent);
-}
-
-.ticker-live {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--status-running);
-  background: var(--bg);
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  padding: 3px 8px;
-  white-space: nowrap;
-}
-
-.ticker-live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--status-running);
-  animation: soft-pulse 1.8s ease-in-out infinite;
-}
-
-.ticker-track {
-  display: flex;
-  width: max-content;
-  animation: ticker-scroll 34s linear infinite;
-}
-
-.ticker-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-}
-
-.ticker-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: 10.5px;
-  color: var(--meta);
-  background: var(--surface-2);
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  padding: 3px 10px;
-}
-
-.ticker-engine {
-  color: var(--fg-2);
-  font-weight: 600;
-}
-
-.ticker-event {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-}
-
-.ticker-metric-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-@keyframes ticker-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ticker-track {
-    animation: none;
-  }
-
-  .ticker-live-dot {
-    animation: none;
-  }
 }
 
 .board-done {

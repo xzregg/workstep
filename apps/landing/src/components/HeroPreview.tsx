@@ -22,35 +22,6 @@ interface Lane {
   cards: Array<{ title: string; desc: string; status: 'done' | 'running' | 'ready' }>
 }
 
-const TICKER = [
-  { engine: 'codex', event: 'eventMessage' },
-  { engine: 'claude', event: 'eventTool' },
-  { engine: 'hermes', event: 'eventPlan' },
-  { engine: 'qoder', event: 'eventThought' },
-  { engine: 'pydantic', event: 'eventUsage' },
-] as const
-
-function TickerGroup() {
-  const { t } = useI18n()
-
-  return (
-    <div className="ticker-group">
-      {TICKER.map(({ engine, event }) => (
-        <span key={engine} className="ticker-item">
-          <span className={`engine-dot dot-${engine}`} />
-          <span className="ticker-engine">{t(`engines.${engine}`)}</span>
-          <span className="ticker-event">{t(`heroTicker.${event}`)}</span>
-        </span>
-      ))}
-      <span className="ticker-item">
-        <span className="ticker-metric-dot" />
-        <span className="ticker-engine">12.4k tokens</span>
-        <span className="ticker-event">{t('heroTicker.eventUsage')}</span>
-      </span>
-    </div>
-  )
-}
-
 export function HeroPreview() {
   const { t } = useI18n()
 
@@ -209,17 +180,6 @@ export function HeroPreview() {
                   </div>
                 </div>
               ))}
-            </div>
-
-            <div className="hero-ticker" aria-hidden="true">
-              <span className="ticker-live">
-                <span className="ticker-live-dot" />
-                {t('heroTicker.live')}
-              </span>
-              <div className="ticker-track">
-                <TickerGroup />
-                <TickerGroup />
-              </div>
             </div>
           </div>
         </div>

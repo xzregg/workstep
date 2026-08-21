@@ -1,11 +1,6 @@
-import { Download } from 'lucide-react'
 import { useI18n, type Lang } from '../i18n'
 
-interface NavProps {
-  onOpenDownload: () => void
-}
-
-export function Nav({ onOpenDownload }: NavProps) {
+export function Nav() {
   const { t, lang, setLang } = useI18n()
   const otherLang: Lang = lang === 'zh-CN' ? 'en-US' : 'zh-CN'
   const otherLabel = lang === 'zh-CN' ? 'EN' : '中文'
@@ -26,10 +21,6 @@ export function Nav({ onOpenDownload }: NavProps) {
         <div className="nav-spacer" />
         <button type="button" className="nav-lang" onClick={() => setLang(otherLang)}>
           {otherLabel}
-        </button>
-        <button type="button" className="nav-cta" onClick={onOpenDownload}>
-          <Download size={14} />
-          {t('nav.download')}
         </button>
       </div>
     </header>
