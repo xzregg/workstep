@@ -1205,6 +1205,7 @@ class AssistantRuntime:
                             "tool_call",
                             "tool_call_update",
                             "subagent",
+                            "compacted",
                             "session_started",
                         }:
                             await self._publish(

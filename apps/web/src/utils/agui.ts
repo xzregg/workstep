@@ -118,6 +118,7 @@ export const CUSTOM = {
   currentModeUpdate: 'workstep.current_mode_update',
   mcpMessage: 'workstep.mcp_message',
   elicitationCompleted: 'workstep.elicitation_completed',
+  scheduledStart: 'workstep.scheduled_start',
   a2ui: 'a2ui.surface',
 } as const
 

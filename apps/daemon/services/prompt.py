@@ -83,6 +83,21 @@ def assemble_prompt(
     if task.description:
         parts.append(f"## 任务说明\n{task.description}")
 
+    if task.input_manifest_json:
+        try:
+            external_inputs = json.loads(task.input_manifest_json)
+        except (TypeError, json.JSONDecodeError):
+            external_inputs = []
+        if isinstance(external_inputs, list) and external_inputs:
+            parts.append(
+                "## 外部输入产物（来自上游任务）\n"
+                + "\n".join(
+                    f"- {item.get('path')}"
+                    for item in external_inputs
+                    if isinstance(item, dict) and item.get("path")
+                )
+            )
+
     # Upstream artifacts
     workflow_name = task.workflow_id or "default"
     upstream = _collect_upstream_artifacts(task, step, artifacts_dir, workflow_name)

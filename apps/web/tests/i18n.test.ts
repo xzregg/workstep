@@ -70,6 +70,16 @@ test('keeps unknown placeholders as-is when params are missing', () => {
   assert.equal(zhCNT('taskDetail.sendAll'), '全部发送（{count}）')
 })
 
+test('uses product-facing engine names', () => {
+  for (const dict of Object.values(locales)) {
+    const t = createT(dict)
+    assert.equal(t('engine.label.codex_sdk'), 'Codex')
+    assert.equal(t('engine.label.claude_agent_sdk'), 'Claude Code')
+    assert.equal(t('engine.label.claude'), 'Claude Code CLI')
+  }
+  assert.equal(zhCNT('settings.systemDefault'), '系统默认（Pydantic AI）')
+})
+
 test('uses duration wording for completed and stopped LLM messages', () => {
   assert.equal(zhCNT('trace.processed'), '耗时')
   assert.equal(zhCNT('trace.stoppedAfter', { duration: '3秒' }), '已停止，耗时 3秒')

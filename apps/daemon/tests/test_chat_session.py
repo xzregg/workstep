@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from models import LATEST_SCHEMA_VERSION, SchemaVersion, init_db
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS, SYSTEM_PROMPT, ChatSessionModule
+from engines.core.events import InternalEvent
 from services.project import ProjectManager
 from streaming.bus import EventBus
 
@@ -548,6 +549,50 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
     assert user_message["role"] == "user"
     assert user_message["author_name"] == "本地用户"
     assert user_message["author_device_id"] == "device-a"
+
+
+@pytest.mark.anyio
+async def test_chat_compacted_event_is_live_and_persisted(chat_module, monkeypatch):
+    module, bus, manager, project, _ = chat_module
+    queue = bus.subscribe()
+    collected: list[dict] = []
+
+    async def collector():
+        while True:
+            event = await queue.get()
+            collected.append(event)
+            if event.get("type") == "TEXT_MESSAGE_END":
+                return
+
+    compacted = InternalEvent(
+        type="compacted",
+        data={"summary": "保留会话目标"},
+    )
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        if on_event is not None:
+            await on_event(compacted)
+        return "压缩后继续", [compacted.to_dict()], session_id
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    session = module.create_session(project.id, "wf-compact")
+    accepted = module.submit_message(project.id, session["id"], "继续", "idem-compact")
+    collector_task = asyncio.create_task(collector())
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    await asyncio.wait_for(collector_task, timeout=2)
+
+    compacted_events = [
+        event for event in collected
+        if event.get("type") == "CUSTOM" and event.get("name") == "workstep.compacted"
+    ]
+    assert len(compacted_events) == 1
+    assert compacted_events[0]["session_id"] == session["id"]
+
+    detail = module.get_session(project.id, session["id"])
+    assert compacted_events[0]["messageId"] == detail["messages"][-1]["id"]
+    assert detail["messages"][-1]["events"] == [compacted.to_dict()]
 
 
 @pytest.mark.anyio

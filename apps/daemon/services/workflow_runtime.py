@@ -20,6 +20,7 @@ from models import (
 from models.fields import utc_now
 from models.base import db_proxy
 from services.task_runner import TaskRunner
+from services.task_dispatch import TaskDispatchService
 from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message, new_message_id
 from services.intervention import seal_unanswered_interactions
@@ -75,6 +76,9 @@ class WorkflowRuntime:
         self._active_tasks: set[asyncio.Task[str]] = set()
         self._operation_locks: dict[str, asyncio.Lock] = {}
         self._graceful_shutdown = False
+        self._dispatch_service = TaskDispatchService(
+            project_manager, event_bus, self
+        )
 
     async def run(
         self,
@@ -148,7 +152,11 @@ class WorkflowRuntime:
         artifacts_dir = Path(project.workstep_dir) / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-        runner = TaskRunner(self._event_bus)
+        runner = TaskRunner(
+            self._event_bus,
+            dispatch_service=self._dispatch_service,
+            source_project_id=project.id,
+        )
         if task.id in self._runners:
             workflow_run.status = "failed"
             workflow_run.ended_at = utc_now()
@@ -546,7 +554,11 @@ class WorkflowRuntime:
         workflow_run.status = "running"
         workflow_run.ended_at = None
         workflow_run.save()
-        runner = TaskRunner(self._event_bus)
+        runner = TaskRunner(
+            self._event_bus,
+            dispatch_service=self._dispatch_service,
+            source_project_id=project.id,
+        )
         self._runners[task.id] = runner
         completion = asyncio.create_task(
             self._execute(
@@ -749,7 +761,11 @@ class WorkflowRuntime:
                 except Exception:
                     self._restore_archived_artifacts(archived)
                     raise
-                new_runner = TaskRunner(self._event_bus)
+                new_runner = TaskRunner(
+                    self._event_bus,
+                    dispatch_service=self._dispatch_service,
+                    source_project_id=project.id,
+                )
                 self._runners[task.id] = new_runner
                 completion = asyncio.create_task(
                     self._execute(

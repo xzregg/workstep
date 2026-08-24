@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, WorkflowRun
 from models.base import db_proxy
@@ -37,6 +38,13 @@ class TaskService:
         start_step_key: str | None = None,
         review_overrides: dict[str, object] | None = None,
         workflow_id: str | None = None,
+        scheduled_start_at: datetime | None = None,
+        source_dispatch_id: str | None = None,
+        source_project_id: str | None = None,
+        source_task_id: str | None = None,
+        source_step_key: str | None = None,
+        input_manifest: list[dict] | None = None,
+        dispatch_lineage: list[str] | None = None,
     ) -> dict:
         """Create a task, optionally skipping stages before its start stage."""
         steps = (
@@ -49,11 +57,22 @@ class TaskService:
             raise WorkflowValidationError(
                 f"start_step_key: stage '{start_step_key}' does not exist"
             )
-        start_index = (
-            step_keys.index(start_step_key)
-            if start_step_key is not None
-            else 0
-        )
+        if scheduled_start_at is not None:
+            if scheduled_start_at.tzinfo is None:
+                raise ValueError("scheduled_start_at must include a timezone")
+            scheduled_start_at = scheduled_start_at.astimezone(timezone.utc)
+            if scheduled_start_at <= utc_now():
+                raise ValueError("scheduled_start_at must be in the future")
+        execution_keys = set(step_keys)
+        if start_step_key is not None:
+            execution_keys = {start_step_key}
+            changed = True
+            while changed:
+                changed = False
+                for step in steps:
+                    if any(dep in execution_keys for dep in step.get("dependsOn", [])) and step["key"] not in execution_keys:
+                        execution_keys.add(step["key"])
+                        changed = True
         now = utc_now()
         task_id = str(uuid.uuid4())
 
@@ -66,6 +85,20 @@ class TaskService:
             workflow_id=workflow_id,
             created_at=now,
             updated_at=now,
+            scheduled_start_at=scheduled_start_at,
+            scheduled_start_state="pending" if scheduled_start_at else None,
+            source_dispatch_id=source_dispatch_id,
+            source_project_id=source_project_id,
+            source_task_id=source_task_id,
+            source_step_key=source_step_key,
+            input_manifest_json=(
+                json.dumps(input_manifest, ensure_ascii=False)
+                if input_manifest is not None else None
+            ),
+            dispatch_lineage_json=(
+                json.dumps(dispatch_lineage, ensure_ascii=False)
+                if dispatch_lineage is not None else None
+            ),
         )
         if review_overrides:
             task.review_overrides_json = json.dumps(review_overrides, ensure_ascii=False)
@@ -75,10 +108,56 @@ class TaskService:
             TaskStep.create(
                 task=task,
                 step_key=step["key"],
-                status="skipped" if index < start_index else "pending",
+                status="pending" if step["key"] in execution_keys else "skipped",
                 engine=step.get("engine"),
             )
 
+        return self._task_to_dict(task)
+
+    def update_scheduled_start(
+        self, task_id: str, scheduled_start_at: datetime | None,
+    ) -> dict | None:
+        try:
+            task = Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            return None
+        if any(step.status != "pending" for step in TaskStep.select().where(TaskStep.task == task)):
+            raise RuntimeError("Task has already started")
+        if scheduled_start_at is not None:
+            if scheduled_start_at.tzinfo is None:
+                raise ValueError("scheduled_start_at must include a timezone")
+            scheduled_start_at = scheduled_start_at.astimezone(timezone.utc)
+            if scheduled_start_at <= utc_now():
+                raise ValueError("scheduled_start_at must be in the future")
+            task.scheduled_start_at = scheduled_start_at
+            task.scheduled_start_state = "pending"
+            task.scheduled_start_error = None
+        else:
+            task.scheduled_start_at = None
+            task.scheduled_start_state = None
+            task.scheduled_start_error = None
+        task.updated_at = utc_now()
+        task.save()
+        return self._task_to_dict(task)
+
+    def clear_scheduled_start(self, task_id: str) -> None:
+        task = Task.get_or_none(Task.id == task_id)
+        if task is None or task.scheduled_start_at is None:
+            return
+        task.scheduled_start_at = None
+        task.scheduled_start_state = None
+        task.scheduled_start_error = None
+        task.updated_at = utc_now()
+        task.save()
+
+    def mark_scheduled_start(self, task_id: str, state: str, error: str | None = None) -> dict | None:
+        task = Task.get_or_none(Task.id == task_id)
+        if task is None:
+            return None
+        task.scheduled_start_state = state
+        task.scheduled_start_error = error
+        task.updated_at = utc_now()
+        task.save()
         return self._task_to_dict(task)
 
     def list_tasks(
@@ -387,6 +466,7 @@ class TaskService:
             if task.status == "running":
                 raise RuntimeError("Running tasks cannot be archived")
             task.archived = 1
+            self.clear_scheduled_start(task_id)
             task.updated_at = utc_now()
             task.save()
             return True
@@ -554,6 +634,14 @@ class TaskService:
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,
+            "scheduled_start_at": task.scheduled_start_at,
+            "scheduled_start_state": task.scheduled_start_state,
+            "scheduled_start_error": task.scheduled_start_error,
+            "source_dispatch_id": task.source_dispatch_id,
+            "source_project_id": task.source_project_id,
+            "source_task_id": task.source_task_id,
+            "source_step_key": task.source_step_key,
+            "input_manifest": json.loads(task.input_manifest_json) if task.input_manifest_json else [],
             "steps": [
                 {
                     "step_key": step.step_key,

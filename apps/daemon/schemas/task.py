@@ -1,5 +1,7 @@
 """Task API schemas."""
 
+from datetime import datetime
+
 from schemas.base import BaseSchema
 
 
@@ -12,6 +14,7 @@ class CreateTaskRequest(BaseSchema):
     auto_start: bool | None = None
     review_overrides: dict[str, object] | None = None
     workflow_id: str | None = None
+    scheduled_start_at: datetime | None = None
 
 
 class RunTaskRequest(BaseSchema):
@@ -22,6 +25,10 @@ class RunTaskRequest(BaseSchema):
 class UpdateTaskRequest(BaseSchema):
     description: str | None = None
     review_overrides: dict[str, object] | None = None
+
+
+class ScheduledStartRequest(BaseSchema):
+    scheduled_start_at: datetime | None = None
 
 
 class ReviewDecisionRequest(BaseSchema):

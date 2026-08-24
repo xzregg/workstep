@@ -65,6 +65,38 @@ async def test_compaction_receipt_emits_compacted_event():
 
 
 @pytest.mark.anyio
+async def test_tiered_compaction_triggers_once_when_history_crosses_small_window():
+    from pydantic_ai import ModelRequestContext, RunContext, RunUsage
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.models.test import TestModel
+    from pydantic_ai_harness.compaction import TieredCompaction
+    calls = []
+    class KeepLatest:
+        async def compact(self, messages, ctx):
+            calls.append(1)
+            return messages[-1:]
+
+    model = TestModel()
+    request = ModelRequestContext(
+        model=model,
+        messages=[
+            ModelRequest(parts=[UserPromptPart(content="a" * 500)]),
+            ModelRequest(parts=[UserPromptPart(content="b" * 500)]),
+        ],
+        model_settings=None,
+        model_request_parameters=ModelRequestParameters(),
+    )
+    context = RunContext(deps=None, model=model, usage=RunUsage())
+    capability = TieredCompaction(
+        tiers=[KeepLatest()], target_tokens=10, tokenizer=lambda text: len(text)
+    )
+    compacted = await capability.before_model_request(context, request)
+    assert len(compacted.messages) == 1
+    assert len(calls) == 1
+
+
+@pytest.mark.anyio
 async def test_run_agent_passes_conversation_id_when_harness_on(monkeypatch, tmp_path):
     from pydantic_ai.models.test import TestModel
 

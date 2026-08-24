@@ -13,6 +13,7 @@ class Task(BaseModel):
         indexes = (
             (("archived", "updated_at"), False),
             (("workflow_id", "archived", "updated_at"), False),
+            (("scheduled_start_state", "scheduled_start_at"), False),
         )
 
     id = pw.TextField(primary_key=True)
@@ -35,6 +36,15 @@ class Task(BaseModel):
     next_message_sequence = pw.IntegerField(default=1)
     pipeline_version = pw.TextField(null=True)
     review_overrides_json = pw.TextField(null=True)
+    scheduled_start_at = UTCDateTimeField(null=True)
+    scheduled_start_state = pw.TextField(null=True)  # pending / missed / failed
+    scheduled_start_error = pw.TextField(null=True)
+    source_dispatch_id = pw.TextField(null=True, unique=True)
+    source_project_id = pw.TextField(null=True)
+    source_task_id = pw.TextField(null=True)
+    source_step_key = pw.TextField(null=True)
+    input_manifest_json = pw.TextField(null=True)
+    dispatch_lineage_json = pw.TextField(null=True)
     created_at = UTCDateTimeField()
     updated_at = UTCDateTimeField()
 

@@ -137,6 +137,13 @@ interface StepNodeData {
   inputs: InputField[]
   outputs: OutputField[]
   review?: ReviewConfig
+  kind?: 'llm' | 'task_dispatch'
+  dispatch?: {
+    targetProjectId: string
+    targetWorkflowId: string
+    targetStartStepKey: string
+    startMode: 'inherit' | 'immediate'
+  }
   [k: string]: unknown
 }
 
@@ -212,6 +219,8 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
       })),
       outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
+      kind: n.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
+      dispatch: n.dispatch,
     }))
     const nodeById = new Map(nodes.map((node) => [node.nodeId, node]))
     const connections: CanvasConnection[] = (stepsJson.connections || [])
@@ -259,6 +268,8 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE })),
       })),
       outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
+      kind: s.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
+      dispatch: s.dispatch,
     }))
     // Build connections from dependsOn
     const conns: CanvasConnection[] = []
@@ -296,7 +307,8 @@ const SUB_ROW_H = 16
 const PORT_PAD = 8
 
 function StepNode({ data }: { data: StepNodeData }) {
-  const hasPrompt = !!data.prompt
+  const isDispatch = data.kind === 'task_dispatch'
+  const hasPrompt = !!data.prompt && !isDispatch
   const topOffset = (hasPrompt ? HEADER_H + PROMPT_H : HEADER_H) + PORT_PAD
 
   // Calculate Y for each input handle + collect sub-output Y positions
@@ -335,13 +347,13 @@ function StepNode({ data }: { data: StepNodeData }) {
         : <Handle id="in-0" type="target" position={Position.Left} style={{ ...handleStyle, top: '50%' }} />
       }
       {/* Output handles — one per sub-output, aligned to sub-output rows */}
-      {outputYs.length > 0
+      {!isDispatch && (outputYs.length > 0
         ? outputYs.map((y, i) => (
             <Handle key={`out-${i}`} id={`out-${i}`} type="source" position={Position.Right}
               style={{ ...handleStyle, top: y }} />
           ))
         : <Handle id="out-0" type="source" position={Position.Right} style={{ ...handleStyle, top: '50%' }} />
-      }
+      )}
 
       {/* Header */}
       <div style={{ height: HEADER_H, padding: '0 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -349,7 +361,7 @@ function StepNode({ data }: { data: StepNodeData }) {
           {data.label.charAt(0)}
         </div>
         <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{data.label}</span>
-        <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{data.engine}</span>
+          <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
       </div>
 
       {hasPrompt && (
@@ -495,6 +507,12 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   const [reviewModels, setReviewModels] = useState<EngineModel[]>([])
   const [stageModelsLoading, setStageModelsLoading] = useState(false)
   const [reviewModelsLoading, setReviewModelsLoading] = useState(false)
+  const [dispatchProjects, setDispatchProjects] = useState<Project[]>([])
+  const [dispatchWorkflows, setDispatchWorkflows] = useState<WorkflowSummary[]>([])
+  const [dispatchStages, setDispatchStages] = useState<Array<{ key: string; label: string }>>([])
+  const dispatchConfig = draft.dispatch || {
+    targetProjectId: '', targetWorkflowId: '', targetStartStepKey: '', startMode: 'inherit' as const,
+  }
 
   // Sync draft when node changes (e.g. clicking different node)
 
@@ -568,6 +586,41 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     fields.find((field) => (field.confirm_values || []).includes(config[field.key] ?? '')) || null
 
   useEffect(() => {
+    if (draft.kind !== 'task_dispatch') return
+    projectApi.list().then(({ projects }) => setDispatchProjects(projects)).catch(() => setDispatchProjects([]))
+  }, [draft.kind])
+
+  useEffect(() => {
+    if (draft.kind !== 'task_dispatch' || !dispatchConfig.targetProjectId) {
+      setDispatchWorkflows([])
+      return
+    }
+    workflowApi.list(dispatchConfig.targetProjectId)
+      .then(({ workflows }) => setDispatchWorkflows(workflows.filter((workflow) => !workflow.deleted)))
+      .catch(() => setDispatchWorkflows([]))
+  }, [draft.kind, dispatchConfig.targetProjectId])
+
+  useEffect(() => {
+    if (draft.kind !== 'task_dispatch' || !dispatchConfig.targetProjectId || !dispatchConfig.targetWorkflowId) {
+      setDispatchStages([])
+      return
+    }
+    workflowApi.get(dispatchConfig.targetWorkflowId, dispatchConfig.targetProjectId)
+      .then((workflow) => {
+        const raw = workflow.steps?.nodes || workflow.steps?.steps || []
+        setDispatchStages(raw.map((item: any) => ({
+          key: item.key || item.type || item.id,
+          label: item.label || item.title || item.type || item.id,
+        })).filter((item: any) => item.key))
+      })
+      .catch(() => setDispatchStages([]))
+  }, [draft.kind, dispatchConfig.targetProjectId, dispatchConfig.targetWorkflowId])
+
+  const updateDispatch = (field: string, value: string) => {
+    updateDraft('dispatch', { ...dispatchConfig, [field]: value })
+  }
+
+  useEffect(() => {
     if (!draft.engine) {
       setStageModels([])
       return
@@ -620,6 +673,25 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       })
     return () => { active = false }
   }, [reviewEngine, review.config?.provider_id])
+
+  if (draft.kind === 'task_dispatch') {
+    return (
+      <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>{draft.label.charAt(0)}</div><span style={{ fontSize: 13, fontWeight: 600 }}>{draft.label}</span></div>
+          <div style={{ display: 'flex', gap: 6 }}><Button variant="primary" style={{ fontSize: 13, padding: '4px 12px' }} disabled={Boolean(keyError) || !dispatchConfig.targetProjectId || !dispatchConfig.targetWorkflowId || !dispatchConfig.targetStartStepKey} onClick={() => onSave({ ...draft, key: normalizedKey })}>{t('flow.stash')}</Button><Button variant="icon" onClick={onClose}>✕</Button></div>
+        </div>
+        <div><div style={sectionTitle}>{t('flow.basicInfo')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><label style={{ fontSize: 13 }}>{t('flow.name')}<Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} style={{ marginTop: 4 }} /></label><label style={{ fontSize: 13 }}>{t('flow.stageKey')}<Input value={draft.key} onChange={(e) => updateDraft('key', e.target.value)} style={{ marginTop: 4 }} /></label></div></div>
+        <div><div style={sectionTitle}>{t('flow.dispatchTarget')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ fontSize: 13 }}>{t('flow.targetProject')}<Select value={dispatchConfig.targetProjectId} onChange={(e) => { updateDraft('dispatch', { ...dispatchConfig, targetProjectId: e.target.value, targetWorkflowId: '', targetStartStepKey: '' }) }} style={{ marginTop: 4 }}><option value="">{t('flow.selectTarget')}</option>{dispatchProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.type === 'remote' ? ' · 远程' : ''}</option>)}</Select></label>
+          <label style={{ fontSize: 13 }}>{t('flow.targetWorkflow')}<Select value={dispatchConfig.targetWorkflowId} onChange={(e) => updateDraft('dispatch', { ...dispatchConfig, targetWorkflowId: e.target.value, targetStartStepKey: '' })} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetProjectId}><option value="">{t('flow.selectTarget')}</option>{dispatchWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</Select></label>
+          <label style={{ fontSize: 13 }}>{t('flow.targetStartStage')}<Select value={dispatchConfig.targetStartStepKey} onChange={(e) => updateDispatch('targetStartStepKey', e.target.value)} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetWorkflowId}><option value="">{t('flow.selectTarget')}</option>{dispatchStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}（{stage.key}）</option>)}</Select></label>
+          <label style={{ fontSize: 13 }}>{t('flow.startMode')}<Select value={dispatchConfig.startMode || 'inherit'} onChange={(e) => updateDispatch('startMode', e.target.value)} style={{ marginTop: 4 }}><option value="inherit">{t('flow.inheritAutoStart')}</option><option value="immediate">{t('flow.immediateStart')}</option></Select></label>
+        </div></div>
+        <div style={{ fontSize: 12, color: 'var(--meta)', lineHeight: 1.5 }}>{t('flow.dispatchTerminalHint')}</div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1155,9 +1227,26 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), kind: 'llm', autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
+  }
+
+  const handleAddDispatchNode = () => {
+    const id = Date.now()
+    const maxId = Math.max(0, ...nodes.map((n) => (n.data as StepNodeData).nodeId))
+    const nodeId = maxId + 1
+    const newNode: Node = {
+      id: String(nodeId), type: 'step',
+      position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
+      data: {
+        nodeId, key: `handoff_${id}`, label: t('flow.newDispatchStage'), kind: 'task_dispatch', color: '#eb6c36', engine: '', model: '', prompt: '',
+        inputs: [{ name: t('flow.upstreamInputs'), type: DEFAULT_OUTPUT_TYPE, outputs: [] }], outputs: [], config: {},
+        dispatch: { targetProjectId: '', targetWorkflowId: '', targetStartStepKey: '', startMode: 'inherit' },
+      } as StepNodeData,
+    }
+    setNodes((nds) => [...nds, newNode])
+    setDirty(true)
   }
 
   const loadCopyWorkflow = async (srcProjectId: string, workflowId: string) => {
@@ -1305,6 +1394,8 @@ function FlowCanvasInner({
         autoStart: Boolean(d.autoStart),
         position: n.position, engine: d.engine, model: d.model,
         prompt: d.prompt,
+        kind: d.kind || 'llm',
+        dispatch: d.dispatch,
         config: d.config || {},
         review: d.review || emptyReview(),
         inputs: d.inputs, outputs: d.outputs,
@@ -1339,6 +1430,11 @@ function FlowCanvasInner({
     if (missingType) {
       return t('flow.stageTypeRequired', { label: missingType.label })
     }
+    const missingDispatch = nodes.find((node) => {
+      const data = node.data as StepNodeData
+      return data.kind === 'task_dispatch' && (!data.dispatch?.targetProjectId || !data.dispatch.targetWorkflowId || !data.dispatch.targetStartStepKey)
+    })
+    if (missingDispatch) return t('flow.dispatchConfigRequired')
     const invalidType = stepTypes.find((step) => !STEP_TYPE_PATTERN.test(step.value))
     if (invalidType) {
       return t('flow.stageTypeInvalid', { label: invalidType.label })
@@ -1422,6 +1518,8 @@ function FlowCanvasInner({
   const onConnect = useCallback((params: Connection) => {
     const { source, target } = params
     if (!source || !target || source === target) return  // self-loop is invalid
+    const sourceNode = nodes.find((node) => node.id === source)
+    if ((sourceNode?.data as StepNodeData | undefined)?.kind === 'task_dispatch') return
     setEdges((eds) => {
       // A solid edge source -> target would create a cycle iff `target` can
       // already reach `source` through existing solid edges. In that case the
@@ -1453,7 +1551,7 @@ function FlowCanvasInner({
       }, eds)
     })
     setDirty(true)
-  }, [setEdges, setDirty])
+  }, [nodes, setEdges, setDirty])
 
   const handleSave = async () => {
     const stepError = computeStepError()
@@ -1560,6 +1658,7 @@ function FlowCanvasInner({
           {(close) => (
             <>
               <MenuItem onClick={() => { close(); handleAddNode() }}>{t('flow.addStage')}</MenuItem>
+              <MenuItem onClick={() => { close(); handleAddDispatchNode() }}>{t('flow.addDispatchStage')}</MenuItem>
               <MenuItem onClick={() => { close(); void openCopyModal() }}>{t('flow.copyNodeFromWorkflow')}</MenuItem>
             </>
           )}

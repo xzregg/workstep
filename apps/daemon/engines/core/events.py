@@ -177,6 +177,29 @@ def _content_block(text: str) -> dict[str, str]:
     return {"text": str(text)}
 
 
+def extract_reasoning_text(value: Any) -> str:
+    """Extract displayable text from Codex reasoning content/summary blocks."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        for key in ("text", "summary", "content"):
+            text = extract_reasoning_text(value.get(key))
+            if text:
+                return text
+        return ""
+    if isinstance(value, (list, tuple)):
+        return "\n".join(
+            text for item in value if (text := extract_reasoning_text(item))
+        )
+    for attr in ("text", "summary", "content"):
+        text = extract_reasoning_text(getattr(value, attr, None))
+        if text:
+            return text
+    return ""
+
+
 def agent_message_chunk(text: str) -> InternalEvent:
     """ACP ``agent_message_chunk`` — assistant text increment."""
     return InternalEvent(type="agent_message_chunk", data={"content": _content_block(text)})

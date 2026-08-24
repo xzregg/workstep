@@ -36,6 +36,37 @@ test('keeps text and tool events on assistant messages for ordered rendering', (
   ])
 })
 
+test('keeps compacted AG-UI events on the assistant message timeline', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().newSession('session-compact')
+  store.getState().handleWsEvent({
+    type: 'TEXT_MESSAGE_START',
+    channel: 'session_chat',
+    session_id: 'session-compact',
+    messageId: 'message-compact',
+  })
+  store.getState().handleWsEvent({
+    type: 'CUSTOM',
+    name: 'workstep.compacted',
+    value: { summary: '保留任务目标' },
+    channel: 'session_chat',
+    session_id: 'session-compact',
+    messageId: 'message-compact',
+  })
+  store.getState().handleWsEvent({
+    type: 'TEXT_MESSAGE_END',
+    status: 'succeeded',
+    channel: 'session_chat',
+    session_id: 'session-compact',
+    messageId: 'message-compact',
+  })
+
+  const message = store.getState().sessions['session-compact'].messages[0]
+  assert.equal(message.status, 'succeeded')
+  assert.deepEqual(message.events?.map((event) => event.name), ['workstep.compacted'])
+  assert.equal(message.events?.[0].value?.summary, '保留任务目标')
+})
+
 test('hydrateSession restores flow proposals from persisted history', () => {
   const store = createAssistantStore({
     channel: 'flow_gen',

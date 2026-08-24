@@ -39,6 +39,9 @@ export const useWorkflowGenStore = createAssistantStore({
       .map((item) => ({
         id: String(item.id || ''),
         title: String(item.title || zhCNT('aiFlow.defaultProposalTitle')),
+        workflowName: typeof item.workflowName === 'string'
+          ? item.workflowName.trim()
+          : undefined,
         summary: String(item.summary || ''),
         steps: item.steps,
         nodeCount: Number(item.nodeCount || 0),

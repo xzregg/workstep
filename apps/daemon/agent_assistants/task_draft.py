@@ -27,16 +27,16 @@ MAX_HISTORY_TURNS = 8
 # Bounded wall-clock budget for one headless scheduled run attempt.
 SCHEDULE_ATTEMPT_TIMEOUT_SECONDS = 10 * 60
 
-SYSTEM_PROMPT = """你是 WorkStep 的任务创建 Agent。你通过多轮对话帮助用户把一个已有标题的任务整理成清晰、可执行的 Markdown 任务描述。
+SYSTEM_PROMPT = """你是 WorkStep 的任务创建 Agent。你通过多轮对话帮助用户把任务整理成标题明确、清晰且可执行的 Markdown 任务描述。
 
 工作方式：
-1. 结合项目记忆、所选工作流、起始阶段、任务标题和当前描述理解任务。
+1. 结合项目记忆、所选工作流、起始阶段、任务标题和当前描述理解任务；标题为空时，在信息足够后生成简洁明确的标题。
 2. 信息不足时，只追问当前最关键的问题，此时 task_draft 必须为 null。
-3. 信息足够时生成完整任务描述，覆盖目标、背景、范围、约束和可验证的验收标准；同时根据任务内容选择最合适的起始阶段。例如纯测试任务应直接选择测试阶段，跳过研发阶段。不要修改标题、工作流、评审设置或自动开始设置。
+3. 信息足够时生成完整任务描述，覆盖目标、背景、范围、约束和可验证的验收标准；同时根据任务内容选择最合适的起始阶段。例如纯测试任务应直接选择测试阶段，跳过研发阶段。已有标题时不要修改标题，也不要修改工作流、评审设置或自动开始设置。
 4. 用户后续提出调整时，始终返回完整描述，不要只返回增量。
 
 回复必须是合法 JSON：
-{"reply":"给用户看的自然语言回复（Markdown）","task_draft":{"description":"完整 Markdown 任务描述","start_step_key":"所选工作流中的阶段 key"}}
+{"reply":"给用户看的自然语言回复（Markdown）","task_draft":{"title":"标题为空时生成的任务标题（已有标题时省略）","description":"完整 Markdown 任务描述","start_step_key":"所选工作流中的阶段 key"}}
 尚需澄清时使用：{"reply":"澄清问题","task_draft":null}
 不要在 reply 中重复输出完整任务描述。"""
 
@@ -109,9 +109,9 @@ class TaskDraftModule(AssistantRuntime):
         allow_generate_title: bool = False,
         retry_feedback: str | None = None,
     ) -> ChatAccepted:
-        schedule_mode = bool(allow_generate_title)
+        schedule_mode = instruction is not None or candidate_workflow_ids is not None
         normalized_title = (title or "").strip()
-        if not normalized_title and not schedule_mode:
+        if not normalized_title and not (schedule_mode or allow_generate_title):
             raise ValueError("Task title cannot be empty")
         with self._project_manager.activate_project_by_id(project_id) as project:
             if workflow_id and project.workflow_by_id(workflow_id) is None:
@@ -151,7 +151,7 @@ class TaskDraftModule(AssistantRuntime):
                 "schedule_mode": schedule_mode,
                 "instruction": (instruction or "").strip(),
                 "candidate_workflow_ids": candidate_ids,
-                "allow_generate_title": schedule_mode,
+                "allow_generate_title": bool(allow_generate_title),
                 "retry_feedback": retry_feedback,
             },
         )
@@ -191,6 +191,7 @@ class TaskDraftModule(AssistantRuntime):
             idempotency_key=str(uuid.uuid4()),
             title=title or "",
             description=description,
+            instruction=normalized_instruction,
             allow_generate_title=True,
             candidate_workflow_ids=candidate_workflow_ids,
             retry_feedback=retry_feedback,
@@ -315,6 +316,9 @@ class TaskDraftModule(AssistantRuntime):
                 },
                 "task_draft": {
                     "title": session.extra.get("title", ""),
+                    "allow_generate_title": bool(
+                        session.extra.get("allow_generate_title")
+                    ),
                     "description": session.extra.get("description", ""),
                     "workflow_id": workflow.get("id") if workflow else None,
                     "start_step_key": session.extra.get("start_step_key"),
@@ -451,10 +455,15 @@ class TaskDraftModule(AssistantRuntime):
                 f"Valid stage keys: {sorted(valid_keys)}\n\n"
                 f"{raw}"
             )
+        title_field = (
+            '"title":"generated task title",'
+            if session.extra.get("allow_generate_title")
+            else ""
+        )
         return (
             "Repair the response into valid task-creation JSON of the form "
-            '{"reply":"...","task_draft":{"description":"...",'
-            '"start_step_key":"valid workflow stage key"}}. '
+            f'{{"reply":"...","task_draft":{{{title_field}"description":"...",'
+            '"start_step_key":"valid workflow stage key"}}}. '
             "Use task_draft:null when clarification is required. Return JSON only.\n\n"
             f"Valid stage keys: {sorted(valid_keys)}\n\n"
             f"{raw}"
@@ -516,10 +525,17 @@ class TaskDraftModule(AssistantRuntime):
         valid_keys = self._valid_step_keys(session)
         if not isinstance(start_step_key, str) or start_step_key not in valid_keys:
             raise RuntimeError("Task creation agent returned an invalid start stage")
-        return [{
+        result = {
             "description": draft["description"],
             "start_step_key": start_step_key,
-        }]
+        }
+        if session.extra.get("allow_generate_title"):
+            title = str(draft.get("title") or "").strip()
+            if not session.extra.get("title") and not title:
+                raise RuntimeError("Task creation agent returned no task title")
+            if title:
+                result["title"] = title
+        return [result]
 
     async def _publish_draft(
         self, session, assistant_message_id: str, reply: str,

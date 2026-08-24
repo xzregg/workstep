@@ -1,5 +1,6 @@
 """Project schedule behavior through the public schedule module interface."""
 
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -192,6 +193,105 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
         task = Task.get_by_id(runs[0]["task_id"])
         assert task.title == "Scheduled work"
         assert task.status == "ready"
+
+
+@pytest.mark.anyio
+async def test_one_shot_task_timer_starts_once_and_clears(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    bus = EventBus()
+    tasks = TaskService(bus)
+    with manager.activate_project_by_id(project.id):
+        task = tasks.create_task(
+            title="Timer", cwd=str(project.path),
+            scheduled_start_at=datetime(2099, 1, 2, 3, 4, tzinfo=timezone.utc),
+        )
+    started = []
+
+    class Runtime:
+        async def start(self, project_id, task_id, prompt):
+            started.append((project_id, task_id))
+
+    module = ScheduleModule(manager, tasks, Runtime())
+    await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
+    await module.wait_idle()
+    assert started == [(project.id, task["id"])]
+    with manager.activate_project_by_id(project.id):
+        current = tasks.get_task(task["id"])
+        assert current["scheduled_start_at"] is None
+        assert current["scheduled_start_state"] is None
+    await bus.close()
+
+
+@pytest.mark.anyio
+async def test_stopped_one_shot_task_does_not_restart_on_next_tick(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    bus = EventBus()
+    tasks = TaskService(bus)
+    with manager.activate_project_by_id(project.id):
+        task = tasks.create_task(
+            title="Stopped timer", cwd=str(project.path),
+            scheduled_start_at=datetime(2099, 1, 2, 3, 4, tzinfo=timezone.utc),
+        )
+    starts = 0
+
+    class Runtime:
+        async def start(self, project_id, task_id, prompt):
+            nonlocal starts
+            starts += 1
+            raise asyncio.CancelledError
+
+    module = ScheduleModule(manager, tasks, Runtime())
+    due = datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc)
+    await module.tick(due)
+    await module.wait_idle()
+    await module.tick(due)
+    await module.wait_idle()
+
+    assert starts == 1
+    with manager.activate_project_by_id(project.id):
+        current = tasks.get_task(task["id"])
+        assert current["scheduled_start_at"] is None
+        assert current["scheduled_start_state"] is None
+    await bus.close()
+
+
+@pytest.mark.anyio
+async def test_one_shot_task_timer_is_marked_missed_on_startup(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+    from services.task import TaskService
+    from streaming.bus import EventBus
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    bus = EventBus()
+    tasks = TaskService(bus)
+    with manager.activate_project_by_id(project.id):
+        task = tasks.create_task(
+            title="Missed", cwd=str(project.path),
+            scheduled_start_at=datetime(2099, 1, 2, 3, 4, tzinfo=timezone.utc),
+        )
+    class Runtime:
+        async def start(self, *args):
+            raise AssertionError("missed timer must not start")
+    module = ScheduleModule(manager, tasks, Runtime())
+    await module.tick(datetime(2099, 1, 2, 3, 5, tzinfo=timezone.utc), startup=True)
+    with manager.activate_project_by_id(project.id):
+        current = tasks.get_task(task["id"])
+        assert current["scheduled_start_state"] == "missed"
+    await bus.close()
 
 
 @pytest.mark.anyio

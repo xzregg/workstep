@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -88,6 +89,18 @@ def test_create_task(db_and_service):
     task = service.create_task(title="Test", cwd="/tmp")
 
     assert task["title"] == "Test"
+
+
+def test_create_and_update_scheduled_start(db_and_service):
+    service, _ = db_and_service
+    at = datetime.now(timezone.utc) + timedelta(hours=1)
+    task = service.create_task(title="Scheduled", cwd="/tmp", scheduled_start_at=at)
+    assert task["scheduled_start_state"] == "pending"
+    assert task["scheduled_start_at"] == at
+
+    updated = service.update_scheduled_start(task["id"], None)
+    assert updated["scheduled_start_at"] is None
+    assert updated["scheduled_start_state"] is None
     assert task["cwd"] == "/tmp"
     assert task["status"] == "ready"
     assert task["engine"] == "pydantic_ai"
@@ -162,6 +175,33 @@ def test_create_task_from_later_stage_skips_predecessors(db_and_service):
         "req": "skipped",
         "ui": "skipped",
         "frontend": "pending",
+    }
+
+
+def test_create_task_from_stage_skips_unrelated_branch(db_and_service):
+    service, _ = db_and_service
+    task = service.create_task(
+        title="Build only",
+        cwd="/tmp",
+        start_step_key="build",
+        workflow={
+            "steps": [
+                {"key": "req"},
+                {"key": "build", "dependsOn": ["req"]},
+                {"key": "docs", "dependsOn": ["req"]},
+                {"key": "test", "dependsOn": ["build"]},
+            ],
+        },
+    )
+
+    assert {
+        step["step_key"]: step["status"]
+        for step in task["steps"]
+    } == {
+        "req": "skipped",
+        "docs": "skipped",
+        "build": "pending",
+        "test": "pending",
     }
 
 

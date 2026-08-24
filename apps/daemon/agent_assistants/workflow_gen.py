@@ -43,7 +43,7 @@ SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流�
 
 工作方式：
 1. 第一轮先澄清关键信息，最多追问 2 个问题（每次只问当前最关键的问题）：目标产物、输入与输出、约束或偏好（是否需要审核、是否并行分支、使用哪些阶段）。
-2. 信息足够后，输出自然语言说明 + 2~3 个不同的完整流程方案（flow_proposals），供用户选择。方案之间要有实质差异（例如：简洁版 / 标准版（含并行或审核）/ 完整版），每个方案包含标题、一句话摘要与完整画布 JSON。
+2. 信息足够后，输出自然语言说明 + 2~3 个不同的完整流程方案（flow_proposals），供用户选择。方案之间要有实质差异（例如：简洁版 / 标准版（含并行或审核）/ 完整版），每个方案包含方案标题、建议流程名称、一句话摘要与完整画布 JSON。
 3. 用户后续会用自然语言调整（如"去掉测试阶段"、"加一个审核"、"这两段并行执行"），你要基于最新会话历史返回一个完整方案到 flow_proposals，不要只给增量。编辑已有流程且调整目标明确时只返回 1 个方案，并设置 "autoApply": true，由前端直接应用到画布。
 
 画布 JSON 规范：
@@ -62,7 +62,7 @@ SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流�
 - engine 可选，默认 "claude"；color 可选；review 可选（{"auto": true/false, "maxRetries": 1, "prompt": "审核标准"}）。
 - connections 可省略，缺省表示按 nodes 顺序串行；from/to 必须是已有节点 id；fromPort/toPort 在对应端口范围内；kind 为 "solid"（数据流）或 "dashed"（返工反馈）。
 
-回复必须是合法 JSON，格式：{"reply": "给用户的自然语言回复（markdown）", "flow_proposals": [{"title": "方案标题", "summary": "一句话说明", "steps": <画布JSON>, "autoApply": false}]}
+回复必须是合法 JSON，格式：{"reply": "给用户的自然语言回复（markdown）", "flow_proposals": [{"title": "方案标题", "workflowName": "建议流程名称（不能包含空白字符）", "summary": "一句话说明", "steps": <画布JSON>, "autoApply": false}]}
 当还在澄清阶段时 flow_proposals 必须为空数组 []。
 - reply 只能包含给用户看的说明和 A2UI 控件，严禁在 reply 中输出画布 JSON、```json 代码块或“当前完整画布 JSON 如下”等内容。完整画布只能放入 flow_proposals[].steps。
 - 首次给出 2~3 个备选方案时 autoApply 必须为 false 或省略；用户已明确选择方案、或要求直接修改当前流程时，返回唯一一个完整方案并设置 autoApply: true，前端会自动加载到画布。
@@ -576,7 +576,8 @@ class WorkflowGenModule(AssistantRuntime):
                 (
                     "Repair the following response into valid workflow-generation "
                     'JSON of the form {"reply": "...", "flow_proposals": '
-                    '[{"title": "...", "summary": "...", "steps": {...}}]}. '
+                    '[{"title": "...", "workflowName": "...", '
+                    '"summary": "...", "steps": {...}}]}. '
                     "Return JSON only.\n\n"
                     f"{raw}"
                 ),
@@ -599,8 +600,9 @@ class WorkflowGenModule(AssistantRuntime):
             repair_prompt = (
                 "The proposed flows below are structurally invalid. Fix ONLY the "
                 "structural errors and return the complete corrected JSON "
-                '{"reply": "...", "flow_proposals": [{"title": "...", "summary": '
-                '"...", "steps": {...}}]} keeping the same number of proposals. '
+                '{"reply": "...", "flow_proposals": [{"title": "...", '
+                '"workflowName": "...", "summary": "...", "steps": {...}}]} '
+                "keeping the same number of proposals. "
                 "Return JSON only.\n\n"
                 f"Validation error: {first_error}\n\n"
                 f"Proposals:\n{json.dumps(proposals, ensure_ascii=False)}"
@@ -652,6 +654,7 @@ class WorkflowGenModule(AssistantRuntime):
                 {
                     "id": f"p{index + 1}",
                     "title": item.get("title") or f"方案 {index + 1}",
+                    "workflowName": item.get("workflowName", ""),
                     "summary": item.get("summary", ""),
                     "steps": steps,
                     "nodeCount": len(steps.get("nodes") or steps.get("steps") or []),
@@ -676,9 +679,15 @@ class WorkflowGenModule(AssistantRuntime):
         if not isinstance(steps, dict):
             return None
         title = item.get("title")
+        workflow_name = item.get("workflowName") or item.get("workflow_name")
         summary = item.get("summary")
         return {
             "title": title if isinstance(title, str) and title.strip() else "",
+            "workflowName": (
+                re.sub(r"\s+", "", workflow_name)
+                if isinstance(workflow_name, str) and workflow_name.strip()
+                else ""
+            ),
             "summary": (
                 summary if isinstance(summary, str) and summary.strip() else ""
             ),

@@ -106,8 +106,10 @@ class TaskRunner:
     - Status tracking and event broadcasting
     """
 
-    def __init__(self, event_bus: EventBus):
+    def __init__(self, event_bus: EventBus, dispatch_service=None, source_project_id=None):
         self._event_bus = event_bus
+        self._dispatch_service = dispatch_service
+        self._source_project_id = source_project_id
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
@@ -328,6 +330,44 @@ class TaskRunner:
             "type": "status",
             "data": {"status": "running", "step_key": step_key},
         })
+
+        if step.kind == "task_dispatch":
+            try:
+                if self._dispatch_service is None:
+                    raise RuntimeError("流程阶段服务未初始化")
+                await self._dispatch_service.dispatch(
+                    source_project_id=self._source_project_id,
+                    task=task,
+                    step=step,
+                    workflow_run=workflow_run,
+                    artifacts_dir=artifacts_dir,
+                )
+            except Exception as exc:
+                error = str(exc) or "创建下游任务失败"
+                await self._fail_step(ts, task, step_key, error)
+                failed.add(step_key)
+                running.discard(step_key)
+                if step_run is not None:
+                    step_run.status = "failed"
+                    step_run.error = error
+                    step_run.ended_at = utc_now()
+                    step_run.save()
+            else:
+                ts.status = "passed"
+                ts.ended_at = utc_now()
+                ts.error = None
+                ts.save()
+                completed.add(step_key)
+                running.discard(step_key)
+                if step_run is not None:
+                    step_run.status = "succeeded"
+                    step_run.ended_at = utc_now()
+                    step_run.save()
+                await self._publish(task.id, step_key, {
+                    "type": "status",
+                    "data": {"status": "passed", "step_key": step_key},
+                })
+            return
 
         # Assemble prompt
         feedback = review_feedback or manual_review_feedback or rework_feedback

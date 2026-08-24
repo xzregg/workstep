@@ -267,7 +267,7 @@ export default function CoordinatorConfigBar({
                 .filter((item) => item.installed || item.built_in)
                 .map((item) => ({
                   value: item.id,
-                  label: `${engineLabel(item.id, t)}${item.mode ? ` · ${item.mode.toUpperCase()}` : ''}`,
+                  label: engineLabel(item.id, t),
                   disabled: !isEngineSelectable(item, true),
                 })),
             ]}

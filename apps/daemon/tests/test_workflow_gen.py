@@ -371,7 +371,12 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
         {
             "reply": "这是完整流程",
             "flow_proposals": [
-                {"title": "标准版", "summary": "需求到发布", "steps": proposal}
+                {
+                    "title": "标准版",
+                    "workflowName": "发布流程",
+                    "summary": "需求到发布",
+                    "steps": proposal,
+                }
             ],
         }
     )
@@ -412,6 +417,7 @@ async def test_flow_proposal_event_is_validated_and_taskless(gen_module, monkeyp
     cards = event["value"]["proposals"]
     assert len(cards) == 1
     assert cards[0]["title"] == "标准版"
+    assert cards[0]["workflowName"] == "发布流程"
     assert cards[0]["nodeCount"] == 2
     steps = cards[0]["steps"]
     WorkflowDefinition.load(steps).validate()

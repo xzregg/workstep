@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from contextlib import nullcontext
+from datetime import datetime
 
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.workflow_definition import WorkflowDefinition
@@ -27,6 +28,13 @@ async def create_project_task(
     start_step_key: str | None = None,
     review_overrides: dict | None = None,
     execution_mode: str = "workflow",
+    scheduled_start_at: datetime | None = None,
+    source_dispatch_id: str | None = None,
+    source_project_id: str | None = None,
+    source_task_id: str | None = None,
+    source_step_key: str | None = None,
+    input_manifest: list[dict] | None = None,
+    dispatch_lineage: list[str] | None = None,
 ) -> TaskCreationResult:
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
@@ -57,6 +65,13 @@ async def create_project_task(
             start_step_key=start_step_key,
             review_overrides=review_overrides,
             workflow_id=workflow["id"],
+            scheduled_start_at=scheduled_start_at,
+            source_dispatch_id=source_dispatch_id,
+            source_project_id=source_project_id,
+            source_task_id=source_task_id,
+            source_step_key=source_step_key,
+            input_manifest=input_manifest,
+            dispatch_lineage=dispatch_lineage,
         )
         should_start = (
             execution_mode == "immediate"

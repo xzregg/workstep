@@ -85,6 +85,7 @@ interface TaskState {
     reviewOverrides?: Record<string, any> | null,
     workflowId?: string | null,
     autoStart?: boolean,
+    scheduledStartAt?: string | null,
   ) => Promise<Task>
   runTask: (taskId: string, prompt: string, projectId: string) => Promise<void>
   cancelTask: (taskId: string, projectId: string) => Promise<void>
@@ -95,6 +96,7 @@ interface TaskState {
     projectId: string,
     reviewOverrides?: Record<string, any> | null,
   ) => Promise<Task>
+  updateScheduledStart: (taskId: string, scheduledStartAt: string | null, projectId: string) => Promise<Task>
   deleteTask: (taskId: string, projectId: string) => Promise<void>
   archiveTask: (taskId: string, projectId: string) => Promise<void>
   unarchiveTask: (taskId: string, projectId: string) => Promise<void>
@@ -133,7 +135,7 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   setActiveTask: (id) => set({ activeTaskId: id }),
 
-  createTask: async (title, cwd, projectId, description, startStepKey, reviewOverrides, workflowId, autoStart) => {
+  createTask: async (title, cwd, projectId, description, startStepKey, reviewOverrides, workflowId, autoStart, scheduledStartAt) => {
     const task = await taskApi.create(
       title,
       cwd,
@@ -144,6 +146,7 @@ export const useTaskStore = create<TaskState>((set) => ({
       reviewOverrides || null,
       workflowId || null,
       autoStart,
+      scheduledStartAt || null,
     )
     set((s) => ({ tasks: [...s.tasks, task] }))
     return task
@@ -180,6 +183,12 @@ export const useTaskStore = create<TaskState>((set) => ({
     set((s) => ({
       tasks: s.tasks.map((task) => task.id === taskId ? updated : task),
     }))
+    return updated
+  },
+
+  updateScheduledStart: async (taskId, scheduledStartAt, projectId) => {
+    const updated = await taskApi.updateScheduledStart(taskId, projectId, scheduledStartAt)
+    set((s) => ({ tasks: s.tasks.map((task) => task.id === taskId ? updated : task) }))
     return updated
   },
 
@@ -262,6 +271,23 @@ export const useTaskStore = create<TaskState>((set) => ({
               [scope]: availableCommandInputItems(customValue(event)),
             },
           },
+        }
+      }
+      if (isCustom(event, CUSTOM.scheduledStart)) {
+        const value = customValue(event)
+        const scheduledAt = value.scheduled_start_at as string | null | undefined
+        const scheduledState = value.scheduled_start_state as Task['scheduled_start_state']
+        const scheduledError = value.scheduled_start_error as string | null | undefined
+        return {
+          tasks: s.tasks.map((task) => task.id === taskId
+            ? {
+                ...task,
+                scheduled_start_at: scheduledAt,
+                scheduled_start_state: scheduledState,
+                scheduled_start_error: scheduledError,
+              }
+            : task),
+          events: { ...s.events, [taskId]: [...(s.events[taskId] || []), timedEvent] },
         }
       }
       if (mid) {

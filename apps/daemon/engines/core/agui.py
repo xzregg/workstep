@@ -57,6 +57,7 @@ _STATUS_CUSTOM_NAMES = {
     "workstep.step_retrying",
     "workstep.step_rework",
     "workstep.run_recovered",
+    "workstep.scheduled_start",
 }
 
 

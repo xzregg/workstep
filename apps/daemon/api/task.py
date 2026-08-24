@@ -11,6 +11,7 @@ from schemas.task import (
     CoordinatorConfigRequest,
     ReviewDecisionRequest,
     RunTaskRequest,
+    ScheduledStartRequest,
     StageMessageRequest,
     StageResumeRequest,
     UpdateTaskRequest,
@@ -47,6 +48,10 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             else "manual" if req.auto_start is False
             else "workflow"
         )
+        if req.scheduled_start_at is not None and req.auto_start is True:
+            raise HTTPException(status_code=422, detail="scheduled_start_at conflicts with auto_start")
+        if req.scheduled_start_at is not None:
+            mode = "manual"
         result = await create_project_task(
             project_manager=project_manager,
             task_service=task_service,
@@ -64,12 +69,46 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             review_overrides=req.review_overrides,
             workflow_id=req.workflow_id,
             execution_mode=mode,
+            scheduled_start_at=req.scheduled_start_at,
         )
         return result.task
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        status = 422 if "scheduled_start_at" in str(exc) else 404
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+
+@router.patch("/{task_id}/scheduled-start")
+async def update_scheduled_start(
+    task_id: str,
+    req: ScheduledStartRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import task_service, event_bus
+    if not task_service:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _bind(pid)
+    try:
+        task = task_service.update_scheduled_start(task_id, req.scheduled_start_at)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await event_bus.publish({
+        "type": "CUSTOM",
+        "name": "workstep.scheduled_start",
+        "value": {
+            "task_id": task_id,
+            "scheduled_start_at": task["scheduled_start_at"].isoformat() if task["scheduled_start_at"] else None,
+            "scheduled_start_state": task["scheduled_start_state"],
+            "scheduled_start_error": task["scheduled_start_error"],
+        },
+        "task_id": task_id,
+    })
+    return task
 
 
 @router.get("/list")
@@ -421,11 +460,24 @@ async def force_approve_review(
 @router.post("/run")
 async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id")):
     """Run a task (fire-and-forget, events come via WebSocket)."""
-    from main import workflow_runtime
+    from main import workflow_runtime, task_service, event_bus
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
         handle = await workflow_runtime.start(pid, req.task_id, req.prompt)
+        if task_service and hasattr(task_service, "clear_scheduled_start"):
+            task_service.clear_scheduled_start(req.task_id)
+            await event_bus.publish({
+                "type": "CUSTOM",
+                "name": "workstep.scheduled_start",
+                "value": {
+                    "task_id": req.task_id,
+                    "scheduled_start_at": None,
+                    "scheduled_start_state": None,
+                    "scheduled_start_error": None,
+                },
+                "task_id": req.task_id,
+            })
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:

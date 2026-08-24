@@ -24,6 +24,8 @@ class Step:
     condition: str = ""  # Optional condition expression for conditional routing
     review: dict | None = None
     rework_upstream: list[str] = field(default_factory=list)  # 验证失败时返工的上游生产者
+    kind: str = "llm"
+    dispatch: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
@@ -41,6 +43,8 @@ class Step:
             condition=d.get("condition", ""),
             review=d.get("review"),
             rework_upstream=list(d.get("reworkUpstream", [])),
+            kind=d.get("kind", "llm"),
+            dispatch=dict(d.get("dispatch") or {}),
         )
 
 

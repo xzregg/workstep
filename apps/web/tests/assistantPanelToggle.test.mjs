@@ -9,11 +9,19 @@ const scheduleSource = await readFile(new URL('../src/pages/SchedulePage.tsx', i
 test('task assistant button toggles its embedded conversation', () => {
   assert.match(taskListSource, /aria-expanded=\{taskAiOpen\}/)
   assert.match(taskListSource, /if \(taskAiOpen\) \{\s*requestCloseTaskAi\(\)\s*return\s*\}/)
+  assert.doesNotMatch(
+    taskListSource,
+    /const handleStartTaskAi[\s\S]*?if \(!newTitle\.trim\(\)\)[\s\S]*?setTaskAiOpen\(true\)/,
+  )
 })
 
 test('new-workflow assistant button toggles its embedded conversation', () => {
   assert.match(layoutSource, /aria-expanded=\{addWfAiOpen\}/)
   assert.match(layoutSource, /if \(addWfAiOpen\) \{\s*requestCloseAddWfAi\(\)\s*return\s*\}/)
+  assert.doesNotMatch(
+    layoutSource,
+    /const handleStartAiCreate[\s\S]*?if \(!newWfName\.trim\(\)\)[\s\S]*?setAddWfAiOpen\(true\)/,
+  )
 })
 
 test('schedule test assistant button toggles its embedded conversation', () => {

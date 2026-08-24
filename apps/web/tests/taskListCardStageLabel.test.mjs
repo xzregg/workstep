@@ -21,3 +21,18 @@ test('uses the task status color for the card left border', () => {
   assert.match(source, /borderLeft: `3px solid \$\{statusColor\}`/)
   assert.doesNotMatch(source, /borderLeft: `3px solid \$\{lane\.color\}`/)
 })
+
+test('shows the scheduled time to the left of the task status', () => {
+  const scheduledTimePos = source.indexOf("task.scheduled_start_state === 'pending'")
+  const taskStatusPos = source.indexOf('data-s={displayStatus}')
+
+  assert.ok(scheduledTimePos >= 0, 'scheduled time is missing from task cards')
+  assert.ok(taskStatusPos > scheduledTimePos, 'scheduled time should precede the task status')
+})
+
+test('shows a clock icon before the scheduled time on task cards', () => {
+  assert.match(
+    source,
+    /task\.scheduled_start_state === 'pending'[\s\S]*?<Icon name="clock" size=\{11\} strokeWidth=\{2\} \/>[\s\S]*?formatScheduledStart\(task\.scheduled_start_at\)/,
+  )
+})

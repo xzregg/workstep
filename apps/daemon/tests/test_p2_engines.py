@@ -1,6 +1,7 @@
 """Tests for P2 engines: Codex, Hermes, SDK engines, registry strategy."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -139,6 +140,24 @@ def test_codex_map_agent_message_text_field():
     assert event is not None
     assert event.type == "agent_message_chunk"
     assert event.data["content"]["text"] == "你好！我是 Codex"
+
+
+def test_codex_maps_structured_reasoning_summary_to_thought_content():
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "reasoning",
+            "summary": [
+                {"type": "summary_text", "text": "先检查现有实现"},
+                {"type": "summary_text", "text": "再修改并验证"},
+            ],
+        },
+    })
+
+    assert event is not None
+    assert event.type == "agent_thought_chunk"
+    assert event.data["content"]["text"] == "先检查现有实现\n再修改并验证"
 
 
 def test_codex_map_command_execution():
@@ -560,6 +579,22 @@ def test_claude_code_maps_subagent_task_frames():
     assert updated[0].data["stage"] == "updated"
     assert failed[0].data["status"] == "failed"
     assert failed[0].data["summary"] == "工具执行错误"
+
+
+def test_claude_code_maps_compact_boundary_and_declares_event():
+    engine = ClaudeCodeEngine()
+
+    event = engine._map_events({
+        "type": "system",
+        "subtype": "compact_boundary",
+        "compact_metadata": {"pre_tokens": 1200, "post_tokens": 300},
+    })
+
+    assert [item.type for item in event] == ["compacted"]
+    assert event[0].data == {
+        "metadata": {"pre_tokens": 1200, "post_tokens": 300},
+    }
+    assert "compacted" in engine.acp_events
 
 
 def test_codex_maps_collab_agent_tool_call_items():
@@ -1039,6 +1074,20 @@ def test_codex_map_turn_completed():
     assert event.data["used"] == 300
 
 
+def test_codex_cli_maps_context_compacted_and_declares_event():
+    engine = CodexEngine()
+
+    event = engine._map_event({
+        "type": "context_compacted",
+        "summary": "保留任务目标与已完成步骤",
+    })
+
+    assert event is not None
+    assert event.type == "compacted"
+    assert event.data == {"summary": "保留任务目标与已完成步骤"}
+    assert "compacted" in engine.acp_events
+
+
 def test_codex_cli_maps_plan_snapshot_when_transport_emits_it():
     event = CodexEngine()._map_event({
         "type": "turn.plan.updated",
@@ -1188,6 +1237,62 @@ async def test_codex_spawn_resume_builds_resume_command(monkeypatch):
     assert cmd[i + 2] == "继续上次的任务"
     assert "--sandbox" not in cmd
     assert "-C" not in cmd
+    assert 'model_reasoning_summary="detailed"' in cmd
+    assert "model_supports_reasoning_summaries=true" in cmd
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_passes_compaction_overrides_for_new_and_resume(monkeypatch):
+    captured = []
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured.append([program, *args])
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+
+    async for _event in CodexEngine().spawn(
+        prompt="hello",
+        cwd="/tmp",
+        session_id="resume-1",
+        config_overrides={
+            "model_auto_compact_token_limit": 8000,
+            "model_auto_compact_token_limit_scope": "total",
+        },
+    ):
+        pass
+
+    cmd = captured[0]
+    assert "-c" in cmd
+    assert "model_auto_compact_token_limit=8000" in cmd
+    assert "model_auto_compact_token_limit_scope=\"total\"" in cmd
+
+
+@pytest.mark.anyio
+async def test_claude_spawn_passes_compaction_override_only_to_child(monkeypatch):
+    captured = {}
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude"))
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_permission_mode",
+        lambda: "default",
+    )
+
+    async for _event in ClaudeCodeEngine().spawn(
+        prompt="hello",
+        cwd="/tmp",
+        config_overrides={"autocompact_pct_override": 5},
+    ):
+        pass
+
+    assert captured["env"]["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "5"
+    assert os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") is None
 
 
 @pytest.mark.anyio
@@ -2440,6 +2545,33 @@ def test_codex_sdk_maps_reasoning_deltas():
     assert completed == []
 
 
+def test_codex_sdk_maps_completed_reasoning_summary_to_thought_content():
+    engine = CodexSDKEngine()
+    state = {
+        "emitted_text": False,
+        "emitted_thinking": False,
+        "tool_emitted": set(),
+    }
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="reasoning",
+                content=[],
+                summary=[
+                    _SdkFake(type="summary_text", text="检查代码"),
+                    _SdkFake(type="summary_text", text="验证修改"),
+                ],
+                id="r-summary",
+            ))),
+        ),
+        state,
+    )
+
+    assert [event.type for event in events] == ["agent_thought_chunk"]
+    assert events[0].data["content"]["text"] == "检查代码\n验证修改"
+
+
 @pytest.mark.parametrize(
     ("root", "expected_name", "expected_input", "expected_result"),
     [
@@ -2699,7 +2831,10 @@ async def test_codex_sdk_spawn_omits_approval_mode_when_unset(monkeypatch):
 
     assert "approval_mode" not in captured["start_kwargs"]
     assert captured["start_kwargs"]["sandbox"].value == "workspace-write"
-    assert captured["start_kwargs"]["config"] is None
+    assert captured["start_kwargs"]["config"] == {
+        "model_reasoning_summary": "detailed",
+        "model_supports_reasoning_summaries": True,
+    }
     assert [event.type for event in events] == [
         "status",
         "session_started",
@@ -2757,7 +2892,9 @@ async def test_codex_sdk_spawn_passes_configured_approval_mode(monkeypatch):
     assert captured["start_kwargs"]["approval_mode"] is ApprovalMode.deny_all
     assert captured["start_kwargs"]["sandbox"].value == "read-only"
     assert captured["start_kwargs"]["config"] == {
-        "model_reasoning_effort": "high"
+        "model_reasoning_effort": "high",
+        "model_reasoning_summary": "detailed",
+        "model_supports_reasoning_summaries": True,
     }
     assert [event.type for event in events] == [
         "status",

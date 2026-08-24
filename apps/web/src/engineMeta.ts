@@ -2,6 +2,14 @@ import { zhCNT, type TFunction, type TKey } from './i18n'
 
 export const DEFAULT_EXECUTION_ENGINE = 'pydantic_ai'
 
+const EXECUTION_ENGINE_ORDER: Record<string, number> = {
+  pydantic_ai: 0,
+  claude_agent_sdk: 1,
+  codex_sdk: 2,
+  claude: 3,
+  codex: 4,
+}
+
 export const ENGINE_LABELS: Record<string, TKey> = {
   claude: 'engine.label.claude',
   codex: 'engine.label.codex',
@@ -44,4 +52,14 @@ export function engineLabel(id: string, t: TFunction = zhCNT) {
 
 export function engineDescription(id: string, t: TFunction = zhCNT) {
   return ENGINE_DESCRIPTIONS[id] ? t(ENGINE_DESCRIPTIONS[id]) : t('engine.defaultDescription')
+}
+
+export function sortExecutionEngines<T extends { id: string; installed?: boolean }>(
+  engines: readonly T[],
+) {
+  return [...engines].sort((a, b) => {
+    const priorityA = EXECUTION_ENGINE_ORDER[a.id] ?? Number.MAX_SAFE_INTEGER
+    const priorityB = EXECUTION_ENGINE_ORDER[b.id] ?? Number.MAX_SAFE_INTEGER
+    return priorityA - priorityB || Number(Boolean(b.installed)) - Number(Boolean(a.installed))
+  })
 }

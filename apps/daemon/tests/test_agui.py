@@ -187,6 +187,31 @@ def test_subagent_engine_state_compacted_error_custom():
         assert event["name"] == expected
 
 
+def test_compacted_custom_preserves_context_and_summary():
+    event = to_agui_events(
+        InternalEvent(
+            type="compacted",
+            data={"summary": "保留任务目标", "metadata": {"post_tokens": 300}},
+        ),
+        _ctx(session_id="session-1"),
+    )[0]
+
+    assert event == {
+        "type": "CUSTOM",
+        "name": "workstep.compacted",
+        "value": {"summary": "保留任务目标", "metadata": {"post_tokens": 300}},
+        "messageId": "msg-1",
+        "task_id": "task-1",
+        "step_key": "step-a",
+        "channel": "execution",
+        "session_id": "session-1",
+        "engine": "codex",
+        "model": "gpt-5",
+        "sequence": 3,
+        "timestamp": 1234,
+    }
+
+
 def test_a2ui_event_maps_to_a2ui_surface_custom():
     payload = {
         "version": "v0.9.1",

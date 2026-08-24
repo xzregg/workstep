@@ -74,6 +74,34 @@ class WorkflowDefinition:
         if collection_name == "nodes":
             node_ids = {node.get("id") for node in items}
             nodes_by_id = {node.get("id"): node for node in items}
+            dispatch_node_ids = set()
+            for index, node in enumerate(items):
+                kind = node.get("kind", "llm")
+                if kind not in ("llm", "task_dispatch"):
+                    raise WorkflowValidationError(
+                        f"nodes[{index}].kind: unsupported stage kind '{kind}'"
+                    )
+                if kind != "task_dispatch":
+                    continue
+                dispatch_node_ids.add(node.get("id"))
+                dispatch = node.get("dispatch")
+                if not isinstance(dispatch, dict):
+                    raise WorkflowValidationError(
+                        f"nodes[{index}].dispatch: expected a dict"
+                    )
+                for field in (
+                    "targetProjectId",
+                    "targetWorkflowId",
+                    "targetStartStepKey",
+                ):
+                    if not isinstance(dispatch.get(field), str) or not dispatch[field].strip():
+                        raise WorkflowValidationError(
+                            f"nodes[{index}].dispatch.{field}: value is required"
+                        )
+                if dispatch.get("startMode", "inherit") not in ("inherit", "immediate"):
+                    raise WorkflowValidationError(
+                        f"nodes[{index}].dispatch.startMode: expected 'inherit' or 'immediate'"
+                    )
             connections = self._raw.get("connections", [])
             for index, connection in enumerate(connections):
                 kind = connection.get("kind", "solid")
@@ -89,6 +117,10 @@ class WorkflowDefinition:
                             f"connections[{index}].{endpoint}: "
                             f"node '{node_id}' does not exist"
                         )
+                if connection.get("from") in dispatch_node_ids:
+                    raise WorkflowValidationError(
+                        f"connections[{index}]: task dispatch stage cannot have outgoing connections"
+                    )
                 port_specs = (
                     ("fromPort", "from", "outputs"),
                     ("toPort", "to", "inputs"),
@@ -297,6 +329,14 @@ class WorkflowDefinition:
             "condition": step.get("condition", ""),
             "reworkUpstream": list(step.get("reworkUpstream", [])),
         }
+        if step.get("kind") == "task_dispatch":
+            dispatch = step.get("dispatch")
+            if not isinstance(dispatch, dict):
+                raise WorkflowValidationError(
+                    f"step '{normalized['key']}'.dispatch: expected a dict"
+                )
+            normalized["kind"] = "task_dispatch"
+            normalized["dispatch"] = deepcopy(dispatch)
         # Absence means legacy pass-through. An explicit review object enables
         # the review gate, including manual review when auto is false.
         if "review" in step:

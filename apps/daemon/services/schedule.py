@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 
-from models import Schedule, ScheduleRun
+from models import Schedule, ScheduleRun, Task
 from models.fields import utc_now
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 
@@ -553,6 +553,79 @@ class ScheduleModule:
                 )
             for schedule_id in queued_schedule_ids:
                 await self._drain_queue(project.id, schedule_id)
+            await self._tick_scheduled_tasks(project.id, current, startup=startup)
+
+    async def _tick_scheduled_tasks(
+        self, project_id: str, current: datetime, *, startup: bool,
+    ) -> None:
+        """Start one-shot task timers, or mark missed timers during recovery."""
+        with self._projects.activate_project_by_id(project_id):
+            rows = list(Task.select().where(
+                Task.scheduled_start_at.is_null(False),
+                Task.scheduled_start_at <= current,
+                Task.scheduled_start_state.in_(("pending", "dispatching")),
+            ))
+            if startup:
+                for task in rows:
+                    task.scheduled_start_state = "missed"
+                    task.scheduled_start_error = "应用未运行，错过了定时启动时间"
+                    task.updated_at = current
+                    task.save()
+                missed = [(task.id, task.scheduled_start_at) for task in rows]
+            else:
+                missed = []
+                for task in rows:
+                    task.scheduled_start_state = "dispatching"
+                    task.updated_at = current
+                    task.save()
+                    self._spawn(
+                        self._execute_scheduled_task(project_id, task.id),
+                        name=f"scheduled-task:{task.id}",
+                    )
+        for task_id, scheduled_at in missed:
+            await self._publish_scheduled_event(
+                task_id, "missed", scheduled_at, "应用未运行，错过了定时启动时间"
+            )
+
+    async def _execute_scheduled_task(self, project_id: str, task_id: str) -> None:
+        with self._projects.activate_project_by_id(project_id):
+            task = Task.get_or_none(Task.id == task_id)
+            scheduled_at = task.scheduled_start_at if task else None
+        if task is None or scheduled_at is None:
+            return
+        try:
+            await self._runtime.start(project_id, task_id, "")
+        except asyncio.CancelledError:
+            # A user stop cancels the workflow coroutine. The one-shot timer
+            # must be consumed as well, otherwise the next polling tick sees
+            # the stale dispatching row and starts the same task again.
+            self._tasks.clear_scheduled_start(task_id)
+            await self._publish_scheduled_event(task_id, None, scheduled_at, None)
+            return
+        except Exception as exc:
+            self._tasks.mark_scheduled_start(task_id, "failed", str(exc))
+            await self._publish_scheduled_event(task_id, "failed", scheduled_at, str(exc))
+            return
+        self._tasks.clear_scheduled_start(task_id)
+        await self._publish_scheduled_event(task_id, None, scheduled_at, None)
+
+    async def _publish_scheduled_event(
+        self, task_id: str, state: str | None, scheduled_at, error: str | None,
+    ) -> None:
+        event_bus = getattr(self._tasks, "_event_bus", None)
+        if event_bus is None:
+            return
+        await event_bus.publish({
+            "type": "CUSTOM",
+            "name": "workstep.scheduled_start",
+            "value": {
+                "task_id": task_id,
+                "scheduled_start_at": scheduled_at.isoformat() if scheduled_at else None,
+                "scheduled_start_state": state,
+                "scheduled_start_error": error,
+            },
+            "task_id": task_id,
+        })
 
     def _reconcile_running_rows(self) -> None:
         from models import WorkflowRun

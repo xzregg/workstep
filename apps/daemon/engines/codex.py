@@ -23,6 +23,7 @@ from engines.core.base import (
 
 from engines.core.events import (
     InternalEvent,
+    extract_reasoning_text,
     normalize_cost,
     tool_call_event,
     tool_call_update_event,
@@ -272,6 +273,7 @@ class CodexEngine(AcpEngineBase):
         codex_config = self.merge_config_overrides(
             config_store.get_codex_config(), config_overrides
         )
+        compaction_args = self._compaction_config_args(codex_config)
         provider_runtime = self.resolve_provider_runtime(
             provider_id=str((config_overrides or {}).get("provider_id") or ""),
             model=model,
@@ -316,6 +318,11 @@ class CodexEngine(AcpEngineBase):
                 cmd.extend(
                     ["-c", f"model_reasoning_effort={reasoning_effort}"]
                 )
+            cmd.extend([
+                "-c", 'model_reasoning_summary="detailed"',
+                "-c", "model_supports_reasoning_summaries=true",
+            ])
+            cmd.extend(compaction_args)
             if codex_config["approval_policy"]:
                 cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
             for item in provider_runtime.engine_config:
@@ -409,6 +416,35 @@ class CodexEngine(AcpEngineBase):
             else:
                 yield InternalEvent(type="status", data={"status": "done"})
             return
+
+    @staticmethod
+    def _compaction_config_args(config: dict) -> list[str]:
+        """Build hidden test-only Codex compaction overrides.
+
+        These keys intentionally are not part of the user-facing engine
+        schema; when absent, Codex keeps its own automatic policy.
+        """
+        limit = config.get("model_auto_compact_token_limit")
+        scope = config.get("model_auto_compact_token_limit_scope")
+        if limit in (None, "") and scope in (None, ""):
+            return []
+        try:
+            limit_value = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("model_auto_compact_token_limit must be an integer") from exc
+        if limit_value <= 0:
+            raise ValueError("model_auto_compact_token_limit must be positive")
+        scope_value = str(scope or "total")
+        if scope_value not in {"total", "body_after_prefix"}:
+            raise ValueError(
+                "model_auto_compact_token_limit_scope must be total or body_after_prefix"
+            )
+        return [
+            "-c",
+            f"model_auto_compact_token_limit={limit_value}",
+            "-c",
+            f'model_auto_compact_token_limit_scope="{scope_value}"',
+        ]
 
     async def send_live_stage_message(self, content: str) -> bool:
         """Direct mid-run injection is not possible for ``codex exec``.
@@ -540,6 +576,23 @@ class CodexEngine(AcpEngineBase):
         """Map Codex event to InternalEvent."""
         event_type = obj.get("type", "")
 
+        # Codex CLI emits this when its automatic context compaction finishes.
+        # Older/newer transports may wrap the message in ``event_msg``.
+        compacted = obj
+        if event_type == "event_msg" and isinstance(obj.get("msg"), dict):
+            compacted = obj["msg"]
+            event_type = compacted.get("type", "")
+        if event_type in {"context_compacted", "thread/compacted", "compacted"}:
+            summary = (
+                compacted.get("summary")
+                or compacted.get("compact_summary")
+                or compacted.get("text")
+            )
+            return InternalEvent(
+                type="compacted",
+                data={"summary": str(summary)} if summary else {},
+            )
+
         if event_type == "thread.started":
             return InternalEvent(type="status", data={"status": "initializing"})
 
@@ -581,13 +634,13 @@ class CodexEngine(AcpEngineBase):
                     )
 
             elif item_type in {"reasoning", "analysis"}:
-                thinking = item.get("text") or item.get("summary") or ""
-                if isinstance(thinking, list):
-                    thinking = "\n".join(str(part) for part in thinking)
+                thinking = extract_reasoning_text(
+                    item.get("text") or item.get("summary") or item.get("content")
+                )
                 if thinking:
                     return InternalEvent(
                         type="agent_thought_chunk",
-                        data={"content": {"text": str(thinking)}},
+                        data={"content": {"text": thinking}},
                     )
 
             elif item_type == "command_execution":
@@ -718,6 +771,7 @@ class CodexEngine(AcpEngineBase):
         "live_message",
         "status",
         "session_started",
+        "compacted",
         "error",
     })
 

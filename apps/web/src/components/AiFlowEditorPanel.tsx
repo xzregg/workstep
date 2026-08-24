@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import AiFlowChat from './AiFlowChat'
+import type { GenProposalCard } from '../stores/workflowGenStore'
 
 interface AiFlowEditorPanelProps {
   projectId: string
   workflowId?: string
   workflowName?: string
   getCanvasSteps?: () => any
-  onProposal: (steps: any) => void
+  onProposal: (steps: any, proposal?: GenProposalCard) => void
   onRestore: (steps: any) => void
   onBusyChange: (busy: boolean) => void
   onRequestClose: () => void

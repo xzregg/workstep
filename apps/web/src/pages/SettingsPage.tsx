@@ -29,6 +29,7 @@ import {
   ENGINE_COLORS,
   engineLabel,
   engineDescription,
+  sortExecutionEngines,
 } from '../engineMeta'
 import { useI18n, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
@@ -1006,14 +1007,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     }
   }
 
-  const enginePriority = (id: string) => (
-    id === 'pydantic_ai' ? 0 : 1
-  )
   const sortedEngines = useMemo(
-    () => [...engines].sort((a, b) =>
-      enginePriority(a.id) - enginePriority(b.id)
-      || Number(b.installed) - Number(a.installed)
-    ),
+    () => sortExecutionEngines(engines),
     [engines],
   )
   const installedCount = sortedEngines.filter((engine) => engine.installed).length
@@ -1173,7 +1168,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             </Button>
           </div>
 
-          <ExecutionDefaultSettings engines={engines} loading={loading} />          <div style={{
+          <ExecutionDefaultSettings engines={sortedEngines} loading={loading} />          <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginBottom: 8,
           }}>

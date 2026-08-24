@@ -55,7 +55,7 @@ function availabilityLabel(
   return ''
 }
 
-function optionLabel(
+export function engineOptionLabel(
   engine: EngineSelectOption,
   requireCoordinator: boolean,
   t: TFunction,
@@ -67,10 +67,9 @@ function optionLabel(
     t,
     allowUnconfiguredBuiltin,
   )
-  const mode = engine.mode ? ` · ${engine.mode.toUpperCase()}` : ''
   const builtin = engine.built_in ? t('engine.builtinPrefix') : ''
   const availabilitySuffix = availability ? t('engine.availabilitySuffix', { availability }) : ''
-  return `${builtin}${engineLabel(engine.id, t)}${mode}${availabilitySuffix}`
+  return `${builtin}${engineLabel(engine.id, t)}${availabilitySuffix}`
 }
 
 export default function EngineSelect({
@@ -103,7 +102,7 @@ export default function EngineSelect({
       value={engine.id}
       disabled={!isEngineSelectable(engine, requireCoordinator, allowUnconfiguredBuiltin)}
     >
-      {optionLabel(engine, requireCoordinator, t, allowUnconfiguredBuiltin)}
+      {engineOptionLabel(engine, requireCoordinator, t, allowUnconfiguredBuiltin)}
     </option>
   )
 

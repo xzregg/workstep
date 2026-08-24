@@ -60,6 +60,13 @@ test('message metadata shares the summary row without narrowing the process body
   assert.match(messageMetaBarSource, /className="message-meta-details"/)
 })
 
+test('message metadata shows compacted status without exposing the summary body', () => {
+  assert.match(messageMetaBarSource, /hasCompactedEvent\(events\)/)
+  assert.match(messageMetaBarSource, /t\('meta\.compactedTitle'\)/)
+  assert.match(messageMetaBarSource, /t\('meta\.compacted'\)/)
+  assert.doesNotMatch(messageMetaBarSource, /event\?\.value\?\.summary/)
+})
+
 test('each thinking segment has its own character-count disclosure', () => {
   assert.match(source, /function ThinkingTimelineItem/)
   assert.match(source, /className="process-trace-thinking-block"/)

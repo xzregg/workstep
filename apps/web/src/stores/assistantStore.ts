@@ -79,6 +79,7 @@ export interface AssistantChatMessage {
 export interface AssistantProposalCard {
   id: string
   title: string
+  workflowName?: string
   summary: string
   steps: any
   nodeCount: number

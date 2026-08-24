@@ -150,6 +150,48 @@ async def test_task_draft_publishes_description_without_creating_task(
 
 
 @pytest.mark.anyio
+async def test_task_draft_can_generate_and_publish_a_missing_title(
+    draft_module, monkeypatch
+):
+    module, bus, _, project, _ = draft_module
+    prompts = []
+
+    async def fake_invoke(*args, **kwargs):
+        prompts.append(args[3])
+        return json.dumps({
+            "reply": "任务信息已经整理完成。",
+            "task_draft": {
+                "title": "生成的任务标题",
+                "description": "## 目标\n\n完成发布。",
+                "start_step_key": "test",
+            },
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    queue = bus.subscribe()
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "帮我创建一个发布任务",
+        "idem-generated-title",
+        title="",
+        workflow_id=project.default_workflow()["id"],
+        allow_generate_title=True,
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    draft = None
+    while draft is None:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event["type"] == "CUSTOM" and event["name"] == "workstep.task_draft":
+            draft = event["value"]
+
+    assert draft["title"] == "生成的任务标题"
+    assert draft["start_step_key"] == "test"
+    assert "定时模式" not in prompts[0]
+
+
+@pytest.mark.anyio
 async def test_task_draft_clarification_does_not_publish_draft(
     draft_module, monkeypatch
 ):

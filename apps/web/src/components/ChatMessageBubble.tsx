@@ -61,6 +61,8 @@ export interface ChatMessageBubbleProps {
   loading?: ReactNode
   /** User messages: edit action (loads the content back into the composer). */
   onEdit?: (content: string) => void
+  /** User messages: reuse action (loads the content into the composer). */
+  onSendToInput?: (content: string) => void
   /** Receives user-initiated A2UI actions rendered inside the bubble. */
   onA2uiAction?: (action: A2uiClientAction) => void
   /** Engine interaction requests persisted in this message's event stream. */
@@ -95,6 +97,7 @@ export default function ChatMessageBubble({
   showLoading = false,
   loading,
   onEdit,
+  onSendToInput,
   onA2uiAction,
   events = [],
   a2uiMessages,
@@ -220,7 +223,7 @@ export default function ChatMessageBubble({
             )
           )}
           {isUser && content && (
-            // 预留固定高度的操作行，hover 时显示复制/编辑，不撑开下方布局。
+            // 预留固定高度的操作行，hover 时显示消息操作，不撑开下方布局。
             <div style={{
               display: 'flex', justifyContent: 'flex-end',
               alignItems: 'center', gap: 2, minHeight: 24,
@@ -240,6 +243,23 @@ export default function ChatMessageBubble({
                   }}
                 >
                   <Icon name="pencil" size={12} strokeWidth={2} />
+                </button>
+              )}
+              {onSendToInput && (
+                <button
+                  type="button"
+                  className="chat-message-action"
+                  title={t('bubble.sendToInput')}
+                  aria-label={t('bubble.sendToInput')}
+                  onClick={() => onSendToInput(content)}
+                  style={{
+                    width: 24, height: 24, minWidth: 24, padding: 0,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'transparent', border: 'none', borderRadius: 6,
+                    color: 'var(--muted)', cursor: 'pointer',
+                  }}
+                >
+                  <Icon name="send" size={12} strokeWidth={2} />
                 </button>
               )}
               <MessageCopyButton content={content} className="chat-message-action" />

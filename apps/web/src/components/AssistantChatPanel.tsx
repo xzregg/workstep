@@ -246,6 +246,10 @@ export default function AssistantChatPanel({
                 model={message.model}
               />
             ) : undefined}
+            onSendToInput={(content) => {
+              onInputChange(content)
+              requestAnimationFrame(() => inputRef.current?.focus())
+            }}
             onA2uiAction={onA2uiAction}
           />
           )

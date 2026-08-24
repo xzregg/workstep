@@ -20,6 +20,7 @@ from engines.core.base import (
 from engines.core.events import (
     InternalEvent,
     compacted_event,
+    extract_reasoning_text,
     tool_call_event,
     tool_call_update_event,
     usage_update_event,
@@ -368,11 +369,9 @@ class CodexSDKEngine(AcpEngineBase):
                         )
                     )
             elif rtype == "reasoning":
-                content = getattr(root, "content", None)
-                if isinstance(content, list):
-                    text = "\n".join(str(item) for item in content if item)
-                else:
-                    text = getattr(self._root_of(content), "text", None) or ""
+                text = extract_reasoning_text(getattr(root, "content", None))
+                if not text:
+                    text = extract_reasoning_text(getattr(root, "summary", None))
                 if text and not state.get("emitted_thinking", False):
                     state["emitted_thinking"] = True
                     events.append(
@@ -559,7 +558,10 @@ class CodexSDKEngine(AcpEngineBase):
         approval_mode = None
         if sdk_config["approval_mode"]:
             approval_mode = ApprovalMode(sdk_config["approval_mode"])
-        thread_config = {}
+        thread_config = {
+            "model_reasoning_summary": "detailed",
+            "model_supports_reasoning_summaries": True,
+        }
         reasoning_effort = resolve_thinking_effort(
             thinking_effort, sdk_config["model_reasoning_effort"]
         )

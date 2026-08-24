@@ -184,6 +184,63 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     db.close()
 
 
+def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
+    """Legacy task rows survive dispatch-column and unique-index migration."""
+    import peewee as pw
+
+    from models import migrate_database
+
+    db = pw.SqliteDatabase(tmp_path / "legacy-dispatch-columns.db")
+    db.connect()
+    db.execute_sql(
+        'CREATE TABLE "tasks" ('
+        '"id" TEXT PRIMARY KEY, "archived" INTEGER, "workflow_id" TEXT, '
+        '"scheduled_start_at" DATETIME, "scheduled_start_state" TEXT, '
+        '"created_at" DATETIME, "updated_at" DATETIME)'
+    )
+    db.execute_sql('INSERT INTO "tasks" ("id") VALUES ("task-1"), ("task-2")')
+
+    migrate_database(db)
+
+    columns = {column.name for column in db.get_columns("tasks")}
+    assert "source_dispatch_id" in columns
+    indexes = {index.name for index in db.get_indexes("tasks")}
+    assert "task_source_dispatch_id" in indexes
+    assert db.execute_sql('SELECT COUNT(*) FROM "tasks"').fetchone()[0] == 2
+    db.close()
+
+
+def test_migrate_database_repairs_index_created_before_scheduled_columns(tmp_path):
+    """A legacy constant-expression index is rebuilt after its columns exist."""
+    import peewee as pw
+
+    from models import migrate_database
+
+    db = pw.SqliteDatabase(tmp_path / "legacy-scheduled-index.db")
+    db.connect()
+    db.execute_sql(
+        'CREATE TABLE "tasks" ('
+        '"id" TEXT PRIMARY KEY, "archived" INTEGER, "workflow_id" TEXT, '
+        '"created_at" DATETIME, "updated_at" DATETIME)'
+    )
+    db.execute_sql('INSERT INTO "tasks" ("id") VALUES ("task-1"), ("task-2")')
+    db.execute_sql(
+        'CREATE INDEX "task_scheduled_start_state_scheduled_start_at" '
+        'ON "tasks" ("scheduled_start_state", "scheduled_start_at")'
+    )
+    db.execute_sql('ALTER TABLE "tasks" ADD COLUMN "scheduled_start_at" DATETIME')
+    db.execute_sql('ALTER TABLE "tasks" ADD COLUMN "scheduled_start_state" TEXT')
+
+    assert "missing from index" in db.execute_sql(
+        "PRAGMA integrity_check"
+    ).fetchone()[0]
+
+    migrate_database(db)
+
+    assert db.execute_sql("PRAGMA integrity_check").fetchone()[0] == "ok"
+    db.close()
+
+
 _HOT_QUERY_INDEXES = {
     "message": {"message_task_id_sequence", "message_task_id_channel_sequence",
                 "message_task_id_position", "message_task_id_created_at"},

@@ -21,6 +21,7 @@ from api.provider import router as provider_router
 from api.workflow import router as workflow_router
 from api.workflow_gen import router as workflow_gen_router
 from api.task_draft import router as task_draft_router
+from api.task_dispatch import router as task_dispatch_router
 from api.schedule import router as schedule_router
 from api.chat_session import router as chat_session_router
 from api.statistics import router as statistics_router
@@ -163,6 +164,7 @@ app.include_router(provider_router)
 app.include_router(workflow_router)
 app.include_router(workflow_gen_router)
 app.include_router(task_draft_router)
+app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
 app.include_router(statistics_router)

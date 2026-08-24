@@ -36,7 +36,7 @@ import { cloneCanvasSteps } from '../utils/canvasRestore'
 export interface AiFlowChatProps {
   projectId: string
   /** Called with the steps ({nodes, connections}) of each validated proposal. */
-  onProposal?: (steps: any) => void
+  onProposal?: (steps: any, proposal?: GenProposalCard) => void
   /** Restores a captured canvas directly, without proposal overwrite confirmation. */
   onRestore?: (steps: any) => void
   /** Fired when a generation turn starts/ends. */
@@ -140,8 +140,9 @@ export default function AiFlowChat({
     // 仅当按钮载荷携带 proposalId 时才更新“已应用”标记：历史按钮没有该字段，
     // 置空会让 autoApply effect 把最近一轮自动方案重新应用，覆盖用户刚选的方案。
     if (proposalId) setAppliedCardId(proposalId)
-    onProposal?.(steps)
-  }, [onProposal])
+    const proposal = latestProposals.find((item) => item.id === proposalId)
+    onProposal?.(steps, proposal)
+  }, [latestProposals, onProposal])
 
   useEffect(() => {
     const proposal = pendingAutoApplyProposal(latestProposals, appliedCardId)
@@ -256,7 +257,7 @@ export default function AiFlowChat({
         fastModel: selectedFastModel || undefined,
         thinkingEffort: selectedThinkingEffort || undefined,
         steps: turnContext.steps,
-        workflowName: 'workflowName' in turnContext ? turnContext.workflowName : undefined,
+        workflowName: 'workflowName' in turnContext ? turnContext.workflowName : workflowName,
         contextMode: turnContext.mode,
         workflowId: workflowId || undefined,
       })

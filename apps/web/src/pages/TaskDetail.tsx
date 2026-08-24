@@ -1,4 +1,5 @@
 import Button from '../components/Button'
+import DateTimePicker from '../components/DateTimePicker'
 import {
   useState,
   useEffect,
@@ -42,6 +43,7 @@ import {
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
+import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
@@ -232,6 +234,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
   const refreshTask = useTaskStore((s) => s.refreshTask)
+  const updateScheduledStart = useTaskStore((s) => s.updateScheduledStart)
+  const [scheduledDraft, setScheduledDraft] = useState('')
 
   const projectId = activeProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
@@ -1292,6 +1296,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
+  const scheduleInputValue = scheduledDraft || utcToLocalDateTime(task?.scheduled_start_at)
   if (!task) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: 'var(--meta)' }}>
@@ -1309,6 +1314,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const openDescriptionEditor = () => {
     setDescriptionDraft(task.description || '')
+    setScheduledDraft('')
     setDescriptionError('')
     setEditingDescription(true)
   }
@@ -1319,6 +1325,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setDescriptionError('')
     try {
       await updateTaskDescription(task.id, descriptionDraft, projectId)
+      if (scheduledDraft) {
+        const scheduledStartAt = localDateTimeToIso(scheduledDraft)
+        if (scheduledStartAt) {
+          await updateScheduledStart(task.id, scheduledStartAt, projectId)
+        }
+      }
+      setScheduledDraft('')
       setEditingDescription(false)
     } catch (error) {
       setDescriptionError(
@@ -1615,8 +1628,41 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         descriptionSaving={descriptionSaving}
         descriptionError={descriptionError}
         onSaveDescription={saveDescription}
-        onCancelDescriptionEdit={() => setEditingDescription(false)}
+        onCancelDescriptionEdit={() => {
+          setScheduledDraft('')
+          setEditingDescription(false)
+        }}
         onOpenDescriptionEditor={openDescriptionEditor}
+        scheduledStartText={formatScheduledStart(task.scheduled_start_at)}
+        descriptionEditorLeadingActions={editingDescription && task.scheduled_start_state && taskNotStarted ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 380, maxWidth: '100%' }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: task.scheduled_start_state === 'pending'
+                  ? 'var(--accent)'
+                  : task.scheduled_start_state === 'failed'
+                    ? 'var(--danger)'
+                    : 'var(--warning)',
+              }}
+            >
+              {task.scheduled_start_state === 'pending'
+                ? '定时启动'
+                : task.scheduled_start_state === 'failed'
+                  ? '启动失败'
+                  : '已错过'}
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DateTimePicker
+                value={scheduleInputValue}
+                min={localDateTimeAfter(1)}
+                onChange={setScheduledDraft}
+                disabled={descriptionSaving}
+              />
+            </div>
+          </div>
+        ) : undefined}
         onOpenPromptEditor={openPromptEditor}
         showReviewDrawer={showReviewDrawer}
         onShowReviewDrawerChange={setShowReviewDrawer}

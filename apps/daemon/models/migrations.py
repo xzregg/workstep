@@ -36,6 +36,14 @@ _EXTRA_INDEXES = (
     "CREATE INDEX IF NOT EXISTS workflowrun_status ON workflow_runs(status)",
     "CREATE INDEX IF NOT EXISTS schedule_status_next_run_at ON schedules(status, next_run_at)",
     "CREATE INDEX IF NOT EXISTS schedulerun_status ON schedule_runs(status)",
+    "CREATE INDEX IF NOT EXISTS task_scheduled_start_state_at ON tasks(scheduled_start_state, scheduled_start_at)",
+)
+
+# Older builds could create this quoted index before the scheduled-start
+# columns existed.  SQLite accepted those names as constant expressions, then
+# reported every existing task as missing after the columns were added.
+_LEGACY_MALFORMED_INDEXES = (
+    "task_scheduled_start_state_scheduled_start_at",
 )
 
 _ADDITIVE_COLUMNS = {
@@ -50,6 +58,17 @@ _ADDITIVE_COLUMNS = {
         "author_name": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
+    },
+    "tasks": {
+        "scheduled_start_at": "DATETIME",
+        "scheduled_start_state": "TEXT",
+        "scheduled_start_error": "TEXT",
+        "source_dispatch_id": "TEXT",
+        "source_project_id": "TEXT",
+        "source_task_id": "TEXT",
+        "source_step_key": "TEXT",
+        "input_manifest_json": "TEXT",
+        "dispatch_lineage_json": "TEXT",
     },
 }
 
@@ -66,7 +85,11 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
     from models import ALL_MODELS
 
     db_proxy.initialize(db)
-    db.create_tables(ALL_MODELS, safe=True)
+
+    # Existing tables must gain current model columns before Peewee recreates
+    # model indexes. SQLite otherwise treats a quoted missing column as a
+    # constant expression, so a unique index fails as soon as two legacy rows
+    # exist (for example task_source_dispatch_id).
     tables = set(db.get_tables())
     for table_name, columns in _ADDITIVE_COLUMNS.items():
         if table_name not in tables:
@@ -77,8 +100,11 @@ def migrate_database(db: pw.SqliteDatabase) -> int:
                 db.execute_sql(
                     f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}'
                 )
+    db.create_tables(ALL_MODELS, safe=True)
     for statement in _EXTRA_INDEXES:
         db.execute_sql(statement)
+    for index_name in _LEGACY_MALFORMED_INDEXES:
+        db.execute_sql(f'REINDEX "{index_name}"')
     (
         SchemaVersion.insert(id=1, version=LATEST_SCHEMA_VERSION)
         .on_conflict(

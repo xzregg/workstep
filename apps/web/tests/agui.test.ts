@@ -195,6 +195,38 @@ test('task store consumes AG-UI text and run events for live messages', () => {
   assert.ok(useTaskStore.getState().taskStatusEvents > 0)
 })
 
+test('task store keeps compacted events on the current stage message', () => {
+  useTaskStore.setState({
+    tasks: [],
+    liveMessages: {},
+    events: {},
+    content: {},
+    taskStatusEvents: 0,
+  })
+  const send = (event: Record<string, unknown>) =>
+    useTaskStore.getState().handleWsEvent({
+      ...event,
+      task_id: 'task-compact',
+      channel: 'execution',
+      step_key: 'build',
+      messageId: 'message-compact',
+    })
+
+  send({ type: 'TEXT_MESSAGE_START' })
+  send({
+    type: 'CUSTOM',
+    name: CUSTOM.compacted,
+    value: { summary: '保留阶段上下文' },
+  })
+  send({ type: 'TEXT_MESSAGE_CHUNK', delta: '压缩后继续输出' })
+
+  const message = useTaskStore.getState().liveMessages['task-compact']['message-compact']
+  assert.equal(message.content, '压缩后继续输出')
+  const compacted = message.events.find((event) => event.name === CUSTOM.compacted)
+  assert.ok(compacted)
+  assert.equal(compacted.value?.summary, '保留阶段上下文')
+})
+
 test('task store keeps latest commands per task conversation target', () => {
   useTaskStore.setState({ availableCommands: {} })
   const update = (commands: Array<Record<string, unknown>>) =>

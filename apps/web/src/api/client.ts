@@ -762,6 +762,9 @@ export interface Task {
   recovered_count?: number
   state_version?: number
   review_overrides?: Record<string, any> | null
+  scheduled_start_at?: string | null
+  scheduled_start_state?: 'pending' | 'missed' | 'failed' | null
+  scheduled_start_error?: string | null
   created_at: string
   updated_at: string
   first_message_at?: string | null
@@ -879,6 +882,7 @@ export const taskApi = {
     reviewOverrides?: Record<string, any> | null,
     workflowId?: string | null,
     autoStart?: boolean,
+    scheduledStartAt?: string | null,
   ) =>
     request<Task>(`/task/create?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
@@ -889,6 +893,7 @@ export const taskApi = {
         description,
         start_step_key: startStepKey,
         auto_start: autoStart,
+        scheduled_start_at: scheduledStartAt,
         review_overrides: reviewOverrides,
         workflow_id: workflowId,
       }),
@@ -973,6 +978,11 @@ export const taskApi = {
       }),
     },
   ),
+  updateScheduledStart: (id: string, projectId: string, scheduledStartAt: string | null) =>
+    request<Task>(`/task/${encodeURIComponent(id)}/scheduled-start?project_id=${encodeURIComponent(projectId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scheduled_start_at: scheduledStartAt }),
+    }),
   confirmAction: (
     taskId: string,
     proposalId: string,

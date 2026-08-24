@@ -16,6 +16,8 @@ import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import ProjectShareDialog from './ProjectShareDialog'
 import AiFlowChat from './AiFlowChat'
+import type { GenProposalCard } from '../stores/workflowGenStore'
+import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
 import {
   fetchTemplates,
@@ -46,7 +48,7 @@ const sectionLabel: React.CSSProperties = {
 
 const nestedSectionLabel: React.CSSProperties = {
   margin: '10px 12px 2px 28px',
-  fontSize: 17.5, fontWeight: 600,
+  fontSize: 14, fontWeight: 600,
   color: 'var(--muted)',
   fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
@@ -59,7 +61,7 @@ const nestedSectionLabel: React.CSSProperties = {
 const projectItemStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 17.5,
+  cursor: 'pointer', fontSize: 14,
   color: active ? 'var(--fg)' : 'var(--fg-2)',
   background: active ? 'var(--surface)' : 'transparent',
   fontWeight: active ? 500 : 400,
@@ -387,7 +389,8 @@ export default function Layout({ onSelectProject, children }: Props) {
     closeAddWorkflow()
   }
 
-  const handleAiProposal = (steps: any) => {
+  const handleAiProposal = (steps: any, proposal?: GenProposalCard) => {
+    setNewWfName((current) => backfillEmptyTitle(current, proposal?.workflowName))
     // A new proposal replaces the preview; guard manual edits with a confirm.
     if (addWfPreviewDirty) {
       setPendingAiSteps(steps)
@@ -425,17 +428,11 @@ export default function Layout({ onSelectProject, children }: Props) {
       return
     }
     if (!addWfProjectId) return
-    if (!newWfName.trim()) {
-      setAddWfNameAttempted(true)
-      wfInputRef.current?.focus()
-      return
-    }
-    if (hasWhitespace(newWfName)) {
-      setAddWfNameAttempted(true)
-      wfInputRef.current?.focus()
-      return
-    }
-    setAddWfAiMessage(t('layout.aiCreatePrompt', { name: newWfName.trim() }))
+    setAddWfNameAttempted(false)
+    setAddWfAiMessage(assistantStarterPrompt(
+      newWfName,
+      (name) => t('layout.aiCreatePrompt', { name }),
+    ))
     setAddWfAiOpen(true)
   }
 
@@ -725,7 +722,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 }}
               >
                 <Icon
-                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={20.5} strokeWidth={2}
+                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
                   style={{ flexShrink: 0, color: activeProject?.id === p.id ? 'var(--accent)' : 'var(--meta)' }}
                 />
                 {renameId === p.path ? (
@@ -756,7 +753,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       setRenameId(null)
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, height: 30, fontSize: 17.5, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                    style={{ flex: 1, height: 30, fontSize: 14, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                   />
                 ) : (
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -819,7 +816,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         >
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <Icon
-                              name={flowOpen ? 'folder-open' : 'folder'} size={17.5} strokeWidth={2}
+                              name={flowOpen ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
                               style={{ flexShrink: 0, color: flowOpen ? 'var(--accent)' : 'var(--meta)' }}
                             />
                             {t('chatSession.flowSection')}
@@ -833,7 +830,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               aria-label={t('layout.addWorkflowTitle')}
                               style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
                             >
-                              <Icon name="plus" size={12} strokeWidth={2} />
+                              <Icon name="plus" size={9.6} strokeWidth={2} />
                             </Button>
                           )}
                         </div>
@@ -902,7 +899,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       style={{
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 17.5,
+                        fontSize: 14,
                         color: deleted ? 'var(--meta)' : (activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
                         background: isDropTarget
                           ? 'var(--accent-light)'
@@ -912,7 +909,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
                       }}
                     >
-                      <Icon name="workflow" size={16} strokeWidth={2} />
+                      <Icon name="workflow" size={12.8} strokeWidth={2} />
                       {renameWfId === wf.id ? (
                         <Input
                           ref={renameWfInputRef}
@@ -932,7 +929,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameWfId(null)
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 28, fontSize: 17.5, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                          style={{ flex: 1, height: 28, fontSize: 14, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                         />
                       ) : (
                         <span
@@ -941,18 +938,18 @@ export default function Layout({ onSelectProject, children }: Props) {
                         >{wf.name}</span>
                       )}
                       {wf.running && !deleted && (
-                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 13, height: 13 }} title={t('layout.flowRunning')} aria-hidden="true" />
+                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
                       )}
-                      {deleted && <span style={{ fontSize: 14.5, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
-                      {wf.is_default ? <span style={{ fontSize: 14.5, opacity: 0.6 }}>{t('layout.default')}</span> : null}
-                      <span style={{ fontSize: 14.5, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                      {deleted && <span style={{ fontSize: 11.6, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
+                      {wf.is_default ? <span style={{ fontSize: 11.6, opacity: 0.6 }}>{t('layout.default')}</span> : null}
+                      <span style={{ fontSize: 11.6, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       <Button
                         variant="icon"
                         className="ws-more-btn"
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 17.5, lineHeight: '26px', padding: 0, flexShrink: 0 }}
+                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -981,7 +978,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <Icon
-                          name={open ? 'folder-open' : 'folder'} size={17.5} strokeWidth={2}
+                          name={open ? 'folder-open' : 'folder'} size={14} strokeWidth={2}
                           style={{ flexShrink: 0, color: open ? 'var(--accent)' : 'var(--meta)' }}
                         />
                         {t('chatSession.navSection')}
@@ -997,7 +994,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           aria-label={t('chatSession.newSession')}
                           style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
                         >
-                          <Icon name="plus" size={12} strokeWidth={2} />
+                          <Icon name="plus" size={9.6} strokeWidth={2} />
                         </Button>
                       )}
                     </div>
@@ -1062,7 +1059,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '3px 8px', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 16,
+                            cursor: 'pointer', fontSize: 12.8,
                             color: location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
                             background: isDropTarget
                               ? 'var(--accent-light)'
@@ -1075,12 +1072,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                           {sessionRunning ? (
                             <span
                               className="task-status-spinner"
-                              style={{ color: 'var(--accent)', flexShrink: 0, width: 14.5, height: 14.5 }}
+                              style={{ color: 'var(--accent)', flexShrink: 0, width: 11.6, height: 11.6 }}
                               title={t('chatSession.runningHint')}
                               aria-hidden="true"
                             />
                           ) : (
-                            <Icon name="bot" size={14.5} strokeWidth={2} style={{ flexShrink: 0 }} />
+                            <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
                           )}
                           {renameSessionId === session.id ? (
                             <Input
@@ -1093,7 +1090,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               }}
                               onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue) }}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ flex: 1, height: 25, fontSize: 16, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
+                              style={{ flex: 1, height: 25, fontSize: 12.8, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
                             />
                           ) : (
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
@@ -1104,7 +1101,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             onClick={(e) => openSessionMenu(e, session.id, session.title)}
                             title={t('layout.moreActions')}
                             aria-label={t('layout.moreActions')}
-                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 17.5, lineHeight: '26px', padding: 0, flexShrink: 0 }}
+                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '26px', padding: 0, flexShrink: 0 }}
                           >⋯</Button>
                         </div>
                         )

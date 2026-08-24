@@ -355,7 +355,19 @@ class ClaudeCodeEngine(AcpEngineBase):
             "stderr": asyncio.subprocess.PIPE,
             "cwd": cwd,
         }
-        if provider_runtime.provider_id:
+        compact_pct = (config_overrides or {}).get("autocompact_pct_override")
+        if compact_pct not in (None, ""):
+            try:
+                compact_pct_value = int(compact_pct)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("autocompact_pct_override must be an integer") from exc
+            if not 1 <= compact_pct_value <= 100:
+                raise ValueError("autocompact_pct_override must be between 1 and 100")
+            process_kwargs["env"] = provider_runtime.child_env()
+            process_kwargs["env"]["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
+                compact_pct_value
+            )
+        elif provider_runtime.provider_id:
             process_kwargs["env"] = provider_runtime.child_env()
         self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
         self._running = True
@@ -529,6 +541,16 @@ class ClaudeCodeEngine(AcpEngineBase):
 
         if event_type == "system":
             subtype = obj.get("subtype", "")
+            if subtype in {"compact_boundary", "compacted", "context_compaction"}:
+                metadata = obj.get("compact_metadata")
+                data: dict = {}
+                summary = obj.get("summary") or obj.get("compact_summary")
+                if summary:
+                    data["summary"] = str(summary)
+                if isinstance(metadata, dict):
+                    data["metadata"] = metadata
+                events.append(InternalEvent(type="compacted", data=data))
+                return events
             if subtype == "init":
                 events.append(
                     InternalEvent(type="status", data={"status": "initializing"})
@@ -810,6 +832,7 @@ class ClaudeCodeEngine(AcpEngineBase):
         "status",
         "session_started",
         "subagent",
+        "compacted",
         "error",
     })
 

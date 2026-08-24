@@ -248,6 +248,8 @@ export interface TaskDetailViewProps {
   onSaveDescription?: () => void
   onCancelDescriptionEdit?: () => void
   onOpenDescriptionEditor?: () => void
+  scheduledStartText?: string
+  descriptionEditorLeadingActions?: React.ReactNode
 
   // ── Prompt editing (edit mode only) ──
   onOpenPromptEditor?: () => void
@@ -380,6 +382,8 @@ export default function TaskDetailView({
   onSaveDescription,
   onCancelDescriptionEdit,
   onOpenDescriptionEditor,
+  scheduledStartText,
+  descriptionEditorLeadingActions,
   // Prompt
   onOpenPromptEditor,
   // Review config
@@ -873,17 +877,34 @@ export default function TaskDetailView({
               marginBottom: 8,
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              {t('taskDetail.description')}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--muted)',
+                  fontFamily: 'var(--font-mono)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                }}
+              >
+                {t('taskDetail.description')}
+              </div>
+              {scheduledStartText && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    color: 'var(--meta)',
+                    fontSize: 11,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Icon name="clock" size={11} strokeWidth={2} />
+                  {scheduledStartText}
+                </span>
+              )}
             </div>
             {!readOnly && !editingDescription && (
               <Button
@@ -925,11 +946,18 @@ export default function TaskDetailView({
               <div
                 style={{
                   display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
                   justifyContent: 'flex-end',
                   gap: 8,
                   marginTop: 8,
                 }}
               >
+                {descriptionEditorLeadingActions && (
+                  <div style={{ marginRight: 'auto' }}>
+                    {descriptionEditorLeadingActions}
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   disabled={descriptionSaving}
@@ -2363,6 +2391,14 @@ export default function TaskDetailView({
                                       onPromptChange(content)
                                       chatInputRef?.current?.focus()
                                     }
+                                  }
+                                : undefined
+                            }
+                            onSendToInput={
+                              !readOnly && isUser && onPromptChange
+                                ? (content) => {
+                                    onPromptChange(content)
+                                    chatInputRef?.current?.focus()
                                   }
                                 : undefined
                             }

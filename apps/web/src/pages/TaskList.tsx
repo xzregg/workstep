@@ -12,6 +12,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 import Field from '../components/Field'
 import Input from '../components/Input'
+import DateTimePicker from '../components/DateTimePicker'
 import MarkdownEditor from '../components/MarkdownEditor'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
@@ -22,6 +23,8 @@ import { formatDuration, toMilliseconds } from '../utils/datetime'
 import { formatTokenTotal } from '../utils/statistics'
 import SchedulePage from './SchedulePage'
 import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
+import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso } from '../utils/scheduledStart'
+import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -198,6 +201,8 @@ export default function TaskList() {
   const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
   const [newDesc, setNewDesc] = useState('')
   const [newAutoStart, setNewAutoStart] = useState(false)
+  const [newStartMode, setNewStartMode] = useState<'manual' | 'immediate' | 'scheduled'>('manual')
+  const [newScheduledStart, setNewScheduledStart] = useState('')
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [copiedWorkflowId, setCopiedWorkflowId] = useState(false)
@@ -212,7 +217,6 @@ export default function TaskList() {
   const [taskAiOpen, setTaskAiOpen] = useState(false)
   const [taskAiBusy, setTaskAiBusy] = useState(false)
   const [taskAiMessage, setTaskAiMessage] = useState('')
-  const [taskAiTitleAttempted, setTaskAiTitleAttempted] = useState(false)
   const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
   const [pendingTaskDraft, setPendingTaskDraft] = useState<TaskDraftResult | null>(null)
   const newTitleInputRef = useRef<HTMLInputElement>(null)
@@ -221,9 +225,11 @@ export default function TaskList() {
     title: string
     desc: string
     autoStart: boolean
+    startMode: 'manual' | 'immediate' | 'scheduled'
+    scheduledStart: string
     startStepKey: string | null
     overrides: Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }>
-  }>({ title: '', desc: '', autoStart: false, startStepKey: null, overrides: {} })
+  }>({ title: '', desc: '', autoStart: false, startMode: 'manual', scheduledStart: '', startStepKey: null, overrides: {} })
   const [directoryNotice, setDirectoryNotice] = useState('')
   const [directoryOpeners, setDirectoryOpeners] = useState<DirectoryOpener[]>(FALLBACK_OPENERS)
   const [selectedOpener, setSelectedOpener] = useState(
@@ -329,7 +335,6 @@ export default function TaskList() {
     setTaskAiOpen(false)
     setTaskAiBusy(false)
     setTaskAiMessage('')
-    setTaskAiTitleAttempted(false)
     setPendingTaskDraft(null)
     setActiveTab('content')
     // Initialize review overrides from canvas stage config
@@ -342,6 +347,8 @@ export default function TaskList() {
       stage.type || stage.key || String(stage.id)
     ) === selectedStepKey)
     setNewAutoStart(Boolean(selectedStage?.autoStart))
+    setNewStartMode(selectedStage?.autoStart ? 'immediate' : 'manual')
+    setNewScheduledStart('')
     if (canvasSteps?.nodes) {
       for (const n of canvasSteps.nodes) {
         const key = (n.type || n.key || String(n.id)) as string
@@ -363,6 +370,8 @@ export default function TaskList() {
       title: '',
       desc: '',
       autoStart: Boolean(selectedStage?.autoStart),
+      startMode: selectedStage?.autoStart ? 'immediate' : 'manual',
+      scheduledStart: '',
       startStepKey: selectedStepKey,
       overrides: JSON.parse(JSON.stringify(nodeConfigs)),
     }
@@ -418,10 +427,12 @@ export default function TaskList() {
         createLane?.key,
         Object.keys(reviewOverrides).length > 0 ? reviewOverrides : undefined,
         activeWorkflowId,
-        newAutoStart,
+        newStartMode === 'immediate',
+        newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
       )
       setNewTitle('')
       setNewDesc('')
+      setNewScheduledStart('')
       setShowNewPanel(false)
       setTaskAiOpen(false)
       setCreateError('')
@@ -443,15 +454,11 @@ export default function TaskList() {
       requestCloseTaskAi()
       return
     }
-    if (!newTitle.trim()) {
-      setTaskAiTitleAttempted(true)
-      setCreateError(t('taskList.aiTitleRequired'))
-      newTitleInputRef.current?.focus()
-      return
-    }
-    setTaskAiTitleAttempted(false)
     setCreateError('')
-    setTaskAiMessage(t('taskList.aiCreatePrompt', { name: newTitle.trim() }))
+    setTaskAiMessage(assistantStarterPrompt(
+      newTitle,
+      (name) => t('taskList.aiCreatePrompt', { name }),
+    ))
     setTaskAiOpen(true)
     setActiveTab('content')
   }
@@ -462,6 +469,7 @@ export default function TaskList() {
       setCreateError(t('taskList.aiGenerateFailed'))
       return
     }
+    setNewTitle((current) => backfillEmptyTitle(current, draft.title))
     setNewDesc(draft.description)
     setCreateStartStepKey(targetLane.key)
     setPendingTaskDraft(null)
@@ -557,6 +565,8 @@ export default function TaskList() {
     const dirty = newTitle !== baseline.title
       || newDesc !== baseline.desc
       || newAutoStart !== baseline.autoStart
+      || newStartMode !== baseline.startMode
+      || newScheduledStart !== baseline.scheduledStart
       || createStartStepKey !== baseline.startStepKey
       || JSON.stringify(reviewOverrides) !== JSON.stringify(baseline.overrides)
     if (dirty || taskAiBusy) {
@@ -680,10 +690,7 @@ export default function TaskList() {
     setDragId(null)
   }
 
-  const taskTitleError = taskAiTitleAttempted && !newTitle.trim()
-    ? t('taskList.aiTitleRequired')
-    : ''
-  const taskCreationErrors = resolveTaskCreationErrors(taskTitleError, createError)
+  const taskCreationErrors = resolveTaskCreationErrors('', createError)
 
   return (
     <>
@@ -986,6 +993,26 @@ export default function TaskList() {
                         >
                           {task.title.length > 20 ? task.title.slice(0, 20) + '…' : task.title}
                         </span>
+                        {task.scheduled_start_state === 'pending' && task.scheduled_start_at && (
+                          <span
+                            className="status-badge"
+                            title={t('taskList.scheduledStartPending')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--accent)' }}
+                          >
+                            <Icon name="clock" size={11} strokeWidth={2} />
+                            {formatScheduledStart(task.scheduled_start_at)}
+                          </span>
+                        )}
+                        {task.scheduled_start_state === 'missed' && (
+                          <span className="status-badge" title={task.scheduled_start_error || undefined} style={{ color: 'var(--warning)' }}>
+                            {t('taskList.scheduledStartMissed')}
+                          </span>
+                        )}
+                        {task.scheduled_start_state === 'failed' && (
+                          <span className="status-badge" title={task.scheduled_start_error || undefined} style={{ color: 'var(--danger)' }}>
+                            {t('taskList.scheduledStartFailed')}
+                          </span>
+                        )}
                         <span
                           className="status-badge"
                           data-s={displayStatus}
@@ -1188,7 +1215,6 @@ export default function TaskList() {
                 value={newTitle}
                 onChange={(e) => {
                   setNewTitle(e.target.value)
-                  setTaskAiTitleAttempted(false)
                   setCreateError('')
                 }}
                 placeholder={t('taskList.titlePlaceholder')}
@@ -1210,18 +1236,6 @@ export default function TaskList() {
                 <Icon name="sparkles" size={13} style={{ marginRight: 4, verticalAlign: -2 }} />
                 {t('taskList.aiCreate')}
               </Button>
-              <label
-                title={t('taskList.autoStartTitle', { lane: createLane?.label || t('taskList.currentStage') })}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={newAutoStart}
-                  onChange={(event) => setNewAutoStart(event.target.checked)}
-                  style={{ width: 16, height: 16 }}
-                />
-                {t('taskList.autoStart')}
-              </label>
             </div>
           </Field>
           <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>{t('taskList.taskDescription')}</label>
@@ -1231,6 +1245,42 @@ export default function TaskList() {
             projectId={activeProject?.id}
             placeholder={t('taskList.descPlaceholder', { lane: createLane?.label || t('taskList.currentStage') })}
           />
+          <div style={{ display: 'grid', gridTemplateColumns: newStartMode === 'scheduled' ? '1fr 1fr' : '1fr', gap: 12, marginTop: 8 }}>
+            <Field label={t('taskList.startMode')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', minHeight: 34 }}>
+                {([
+                  ['manual', t('taskList.startModeManual')],
+                  ['immediate', t('taskList.startModeImmediate')],
+                  ['scheduled', t('taskList.startModeScheduled')],
+                ] as const).map(([mode, label]) => (
+                  <label key={mode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>
+                    <input
+                      type="radio"
+                      name="new-task-start-mode"
+                      value={mode}
+                      checked={newStartMode === mode}
+                      onChange={() => {
+                        setNewStartMode(mode)
+                        setNewAutoStart(mode === 'immediate')
+                        if (mode !== 'scheduled') setNewScheduledStart('')
+                      }}
+                      style={{ width: 16, height: 16, margin: 0 }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </Field>
+            {newStartMode === 'scheduled' && (
+              <Field label={t('taskList.scheduledStart')}>
+                <DateTimePicker
+                  value={newScheduledStart}
+                  min={localDateTimeAfter(1)}
+                  onChange={setNewScheduledStart}
+                />
+              </Field>
+            )}
+          </div>
         </div>
         )}
 
@@ -1247,7 +1297,7 @@ export default function TaskList() {
         )}
         <div className="panel-footer">
           <Button variant="ghost" onClick={closeNewPanel}>{t('common.cancel')}</Button>
-          <Button variant="primary" disabled={taskAiBusy || !newTitle.trim()} onClick={handleCreate}>{t('common.create')}</Button>
+          <Button variant="primary" disabled={taskAiBusy || !newTitle.trim() || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))} onClick={handleCreate}>{t('common.create')}</Button>
         </div>
         </div>
         {taskAiOpen && activeProject && (
@@ -1273,6 +1323,7 @@ export default function TaskList() {
                 projectId={activeProject.id}
                 taskTitle={newTitle.trim()}
                 taskDescription={newDesc}
+                allowGenerateTitle={!newTitle.trim()}
                 workflowId={activeWorkflowId || undefined}
                 startStepKey={createLane?.key}
                 initialMessage={taskAiMessage}
