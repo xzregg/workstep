@@ -1,15 +1,12 @@
 # WorkStep Desktop — Windows build script
 # Usage: .\build.ps1
-# Output: apps\desktop\dist\WorkStep-Windows-<version>.zip
+# Output: apps\desktop\dist\WorkStep-windows-x64.zip
 $ErrorActionPreference = "Stop"
 
 $DesktopDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Split-Path -Parent $DesktopDir
 $DaemonDir = Join-Path $RootDir "daemon"
 $WebDir = Join-Path $RootDir "web"
-
-$VersionMatch = Select-String -Path (Join-Path $DaemonDir "pyproject.toml") -Pattern '^version\s*=\s*"([^"]+)"'
-$Version = $VersionMatch.Matches.Groups[1].Value
 
 function Log([string]$Msg) { Write-Host "[desktop] $Msg" -ForegroundColor Cyan }
 function OK([string]$Msg)  { Write-Host "[desktop] $Msg" -ForegroundColor Green }
@@ -38,7 +35,7 @@ OK "PyInstaller done."
 
 # 4. Package a portable archive
 $DistDir = Join-Path $DesktopDir "dist"
-$Out = Join-Path $DistDir "WorkStep-Windows-$Version.zip"
+$Out = Join-Path $DistDir "WorkStep-windows-x64.zip"
 Log "Packaging dist\WorkStep -> $Out"
 Remove-Item -Force $Out -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $DistDir "WorkStep") -DestinationPath $Out -CompressionLevel Optimal

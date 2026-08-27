@@ -1244,6 +1244,8 @@ export default function TaskList() {
             onChange={setNewDesc}
             projectId={activeProject?.id}
             placeholder={t('taskList.descPlaceholder', { lane: createLane?.label || t('taskList.currentStage') })}
+            minHeight={102}
+            showAttachmentHint
           />
           <div style={{ display: 'grid', gridTemplateColumns: newStartMode === 'scheduled' ? '1fr 1fr' : '1fr', gap: 12, marginTop: 8 }}>
             <Field label={t('taskList.startMode')}>

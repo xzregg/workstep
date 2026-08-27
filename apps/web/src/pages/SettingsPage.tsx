@@ -1,6 +1,7 @@
 import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Button from '../components/Button'
+import ConfirmDialog from '../components/ConfirmDialog'
 import Input from '../components/Input'
 import Select from '../components/Select'
 import {
@@ -721,6 +722,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, EngineTestResult>>({})
   const [installingEngine, setInstallingEngine] = useState<string | null>(null)
+  const [termsEngine, setTermsEngine] = useState<EngineInfo | null>(null)
   const [installResults, setInstallResults] = useState<Record<string, EngineInstallResult>>({})
   const [models, setModels] = useState<Record<string, EngineModel[]>>({})
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({})
@@ -878,7 +880,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
     }
   }
 
-  const installEngine = async (engineId: string) => {
+  const installEngine = async (engineId: string, acceptThirdPartyTerms = false) => {
     setInstallingEngine(engineId)
     setInstallResults((current) => {
       const next = { ...current }
@@ -886,7 +888,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       return next
     })
     try {
-      const result = await engineApi.install(engineId)
+      const result = await engineApi.install(engineId, acceptThirdPartyTerms)
       setInstallResults((current) => ({ ...current, [engineId]: result }))
       if (result.success) {
         // 安装成功后重新扫描，让该引擎进入可用列表
@@ -1398,7 +1400,13 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       title={engine.install_command
                         ? `${t('settings.installHint')}：${engine.install_command}`
                         : undefined}
-                      onClick={() => void installEngine(engine.id)}
+                      onClick={() => {
+                        if (engine.requires_third_party_terms_acceptance) {
+                          setTermsEngine(engine)
+                        } else {
+                          void installEngine(engine.id)
+                        }
+                      }}
                     >
                       {t('settings.install')}
                     </Button>
@@ -1673,6 +1681,30 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
           <AgentAssistantSettings />
         )}
       </section>
+      <ConfirmDialog
+        open={termsEngine !== null}
+        title={t('settings.thirdPartyTermsTitle')}
+        message={t('settings.thirdPartyTermsMessage', { engine: termsEngine ? engineLabel(termsEngine.id) : '' })}
+        confirmText={t('settings.acceptAndInstall')}
+        loading={Boolean(termsEngine && installingEngine === termsEngine.id)}
+        onCancel={() => setTermsEngine(null)}
+        onConfirm={() => {
+          if (!termsEngine) return
+          const engineId = termsEngine.id
+          void installEngine(engineId, true).finally(() => setTermsEngine(null))
+        }}
+      >
+        {termsEngine?.third_party_terms_url && (
+          <a
+            href={termsEngine.third_party_terms_url}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: 'inline-block', marginTop: 10, fontSize: 12 }}
+          >
+            {t('settings.reviewThirdPartyTerms')}
+          </a>
+        )}
+      </ConfirmDialog>
       </div>
       </div>
       {(inspecting || inspectResult || inspectError) && (

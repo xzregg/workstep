@@ -28,10 +28,11 @@ datas = [
 
 # --- engine SDKs are imported lazily at runtime; collect them explicitly ---
 # openai_codex + codex_cli_bin bring the bundled Codex CLI runtime (~300MB);
-# claude_agent_sdk / qoder_agent_sdk / pydantic_ai are pure SDK packages.
+# claude_agent_sdk / pydantic_ai are pure SDK packages. Qoder remains a
+# user-installed optional integration because it has separate service terms.
 hiddenimports: list[str] = []
 binaries: list = []
-for pkg in ("openai_codex", "codex_cli_bin", "claude_agent_sdk", "qoder_agent_sdk", "pydantic_ai"):
+for pkg in ("openai_codex", "codex_cli_bin", "claude_agent_sdk", "pydantic_ai"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
     datas += pkg_datas
     binaries += pkg_binaries
@@ -81,6 +82,10 @@ if sys.platform == "darwin":
             "NSHighResolutionCapable": True,
             "CFBundleDisplayName": "WorkStep",
             "NSHumanReadableCopyright": "WorkStep",
+            "CFBundleURLTypes": [{
+                "CFBundleURLName": "com.workstep.desktop",
+                "CFBundleURLSchemes": ["workstep"],
+            }],
         },
     )
     icns = desktop_dir / "assets" / "icon.icns"

@@ -201,6 +201,8 @@ def get_available_engines() -> list[dict]:
                 "provider_protocols": sorted(resolved.supported_provider_protocols()),
                 "installable": resolved.install_command() is not None,
                 "install_command": resolved.install_command(),
+                "requires_third_party_terms_acceptance": resolved.requires_third_party_terms_acceptance(),
+                "third_party_terms_url": resolved.third_party_terms_url(),
                 "supports_resume": instance.supports_resume,
                 "supports_coordinator": caps.supports_coordinator,
                 "supports_tool_disable": caps.supports_tool_disable,
@@ -234,6 +236,10 @@ def get_available_engines() -> list[dict]:
                 ),
                 "installable": bool(target) and target.install_command() is not None,
                 "install_command": target.install_command() if target else None,
+                "requires_third_party_terms_acceptance": bool(
+                    target and target.requires_third_party_terms_acceptance()
+                ),
+                "third_party_terms_url": target.third_party_terms_url() if target else None,
                 "supports_resume": False,
                 "supports_coordinator": False,
                 "supports_tool_disable": False,

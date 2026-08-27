@@ -18,6 +18,22 @@ const flowCanvasSource = await readFile(
   new URL('../src/components/FlowCanvas.tsx', import.meta.url),
   'utf8',
 )
+const chatPageSource = await readFile(
+  new URL('../src/pages/ChatPage.tsx', import.meta.url),
+  'utf8',
+)
+const flowAssistantSource = await readFile(
+  new URL('../src/components/AiFlowChat.tsx', import.meta.url),
+  'utf8',
+)
+const taskCreateAssistantSource = await readFile(
+  new URL('../src/components/AiTaskCreateChat.tsx', import.meta.url),
+  'utf8',
+)
+const apiClientSource = await readFile(
+  new URL('../src/api/client.ts', import.meta.url),
+  'utf8',
+)
 
 test('engine-owned provider selectors filter by declared wire protocol', () => {
   assert.match(coordinatorSource, /provider_protocols \|\| \[\]/)
@@ -30,6 +46,27 @@ test('assistant provider switching clears every selected model', () => {
     settingsSource,
     /setProviderId\(event\.target\.value\)[\s\S]*?setModel\(''\)[\s\S]*?setFastModel\(''\)[\s\S]*?setVisionModel\(''\)/,
   )
+})
+
+test('project chat loads its own assistant defaults', () => {
+  assert.match(chatPageSource, /assistantApi\.list\(\)/)
+  assert.match(chatPageSource, /item\.name === 'chat_session'/)
+  assert.match(chatPageSource, /setSelectedProvider\(configured\.provider_id \|\| ''\)/)
+  assert.doesNotMatch(chatPageSource, /engineApi\.coordinatorDefaults/)
+})
+
+test('internal assistants load their own vision configuration', () => {
+  assert.match(flowAssistantSource, /assistantApi\.list\(\)/)
+  assert.match(flowAssistantSource, /item\.name === 'workflow_gen'/)
+  assert.match(taskCreateAssistantSource, /assistantApi\.list\(\)/)
+  assert.match(taskCreateAssistantSource, /item\.name === 'task_create'/)
+  for (const source of [chatPageSource, flowAssistantSource, taskCreateAssistantSource]) {
+    assert.match(source, /visionModel: selectedVisionModel/)
+    assert.match(source, /showVision: true/)
+    assert.match(source, /onVisionModelChange: setSelectedVisionModel/)
+  }
+  assert.match(apiClientSource, /vision_model: options\.visionModel \|\| undefined/)
+  assert.match(apiClientSource, /vision_model: options\.vision_model \|\| undefined/)
 })
 
 test('workflow stages reload provider models and clear stale selections', () => {

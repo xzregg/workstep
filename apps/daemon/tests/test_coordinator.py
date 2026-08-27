@@ -182,6 +182,7 @@ class ImageRoutingCoordinatorFakeEngine(CoordinatorFakeEngine):
     async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
         type(self).calls.append({
             "prompt": prompt,
+            "model": model,
             "images": kwargs.get("images"),
         })
         yield InternalEvent(
@@ -1171,11 +1172,18 @@ async def test_coordinator_inherits_global_thinking_effort(
 @pytest.mark.anyio
 async def test_coordinator_routes_message_images_to_engine(api_context, monkeypatch):
     from engines.core.registry import ENGINE_REGISTRY
+    import agent_assistants.coordinator as coordinator_service
 
     client, tmp_path = api_context
     ImageRoutingCoordinatorFakeEngine.calls.clear()
     monkeypatch.setitem(
         ENGINE_REGISTRY, "claude", ImageRoutingCoordinatorFakeEngine
+    )
+    coordinator_service.config_store.set(
+        "coordinator_default_model", "reasoning-model"
+    )
+    coordinator_service.config_store.set(
+        "coordinator_default_vision_model", "vision-model"
     )
     project_id, task_id = await _create_task(client, tmp_path)
 
@@ -1203,6 +1211,7 @@ async def test_coordinator_routes_message_images_to_engine(api_context, monkeypa
 
     assert assistant["content"] == "协调回复"
     call = ImageRoutingCoordinatorFakeEngine.calls[-1]
+    assert call["model"] == "vision-model"
     images = call["images"]
     assert images is not None
     assert len(images) == 1

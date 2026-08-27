@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import {
-  engineApi,
+  assistantApi,
   providerApi,
   taskDraftApi,
-  type CoordinatorDefaultConfig,
+  type AssistantConfigInfo,
   type ProviderInfo,
 } from '../api/client'
 import { useI18n } from '../i18n'
@@ -60,12 +60,13 @@ export default function AiTaskCreateChat({
   const [input, setInput] = useState(initialMessage || '')
   const [sendError, setSendError] = useState('')
   const [stopping, setStopping] = useState(false)
-  const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
+  const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
+  const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const {
@@ -106,10 +107,18 @@ export default function AiTaskCreateChat({
 
   useEffect(() => {
     let active = true
-    engineApi.coordinatorDefaults(projectId)
-      .then((config) => {
+    assistantApi.list()
+      .then(({ assistants }) => {
         if (!active) return
-        setCoordinatorConfig(config)
+        const config = assistants.find((item) => item.name === 'task_create')
+        if (!config) throw new Error(t('taskList.aiConfigLoadFailed'))
+        setAssistantConfig(config)
+        setSelectedEngine(config.configured.engine || '')
+        setSelectedProvider(config.configured.provider_id || '')
+        setSelectedModel(config.configured.model || '')
+        setSelectedFastModel(config.configured.fast_model || '')
+        setSelectedVisionModel(config.configured.vision_model || '')
+        setSelectedThinkingEffort(config.configured.thinking_effort || '')
         setCoordinatorConfigError('')
       })
       .catch((reason) => {
@@ -167,6 +176,7 @@ export default function AiTaskCreateChat({
         providerId: selectedProvider || undefined,
         model: selectedModel || undefined,
         fastModel: selectedFastModel || undefined,
+        visionModel: selectedVisionModel || undefined,
         thinkingEffort: selectedThinkingEffort || undefined,
         allowGenerateTitle,
         candidateWorkflowIds,
@@ -185,7 +195,7 @@ export default function AiTaskCreateChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('taskList.aiSendFailed'))
     }
-  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance])
+  }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedVisionModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance])
 
   useEffect(() => {
     if (!autoSend || autoSentRef.current) return
@@ -274,39 +284,45 @@ export default function AiTaskCreateChat({
       }}
       config={{
         projectId,
-        engines: coordinatorConfig?.available_engines || [],
+        engines: assistantConfig?.available_engines || [],
         engine: selectedEngine,
         providers,
         providerId: selectedProvider,
-        defaultEngine: coordinatorConfig?.engine || 'claude',
+        defaultEngine: assistantConfig?.configured.engine || 'claude',
         model: selectedModel,
         fastModel: selectedFastModel,
+        visionModel: selectedVisionModel,
+        showVision: true,
         thinkingEffort: selectedThinkingEffort,
-        disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
+        disabled: !assistantConfig || coordinatorConfigError !== '' || running,
         error: coordinatorConfigError,
-        hint: coordinatorConfig ? t('aiFlow.sessionHint') : '',
+        hint: assistantConfig ? t('aiFlow.sessionHint') : '',
         engineTitle: t('taskList.aiEngineTitle'),
         onEngineChange: (engineId) => {
           setSelectedEngine(engineId)
           setSelectedProvider('')
           setSelectedModel('')
           setSelectedFastModel('')
+          setSelectedVisionModel('')
           setSelectedThinkingEffort('')
         },
         onProviderChange: (providerId) => {
           setSelectedProvider(providerId)
           setSelectedModel('')
           setSelectedFastModel('')
+          setSelectedVisionModel('')
           setSelectedThinkingEffort('')
         },
         onModelChange: setSelectedModel,
         onFastModelChange: setSelectedFastModel,
+        onVisionModelChange: setSelectedVisionModel,
         onThinkingEffortChange: setSelectedThinkingEffort,
         onReset: () => {
           setSelectedEngine('')
           setSelectedProvider('')
           setSelectedModel('')
           setSelectedFastModel('')
+          setSelectedVisionModel('')
           setSelectedThinkingEffort('')
         },
       }}

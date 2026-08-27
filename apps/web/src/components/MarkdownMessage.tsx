@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 
 interface MarkdownMessageProps {
   content: string
@@ -23,22 +24,6 @@ function closeStreamingFence(markdown: string): string {
   return openFence ? `${markdown}\n${openFence}` : markdown
 }
 
-const UPLOAD_RELATIVE = /^[^/]+\.workstep\/uploads\/([^/?#]+)$/
-const GLOBAL_UPLOAD_RELATIVE = /^data\/uploads\/([^/?#]+)$/
-
-function resolveUploadSrc(src: string | undefined, projectId?: string): string | undefined {
-  if (!src) return src
-  const projectMatch = src.match(UPLOAD_RELATIVE)
-  if (projectMatch && projectId) {
-    return `/api/fs/serve/${encodeURIComponent(projectMatch[1])}?project_id=${encodeURIComponent(projectId)}`
-  }
-  const globalMatch = src.match(GLOBAL_UPLOAD_RELATIVE)
-  if (globalMatch) {
-    return `/api/fs/serve/${encodeURIComponent(globalMatch[1])}`
-  }
-  return src
-}
-
 export default function MarkdownMessage({
   content,
   streaming = false,
@@ -48,7 +33,10 @@ export default function MarkdownMessage({
 
   const components = {
     img: (props: { src?: string; alt?: string }) => (
-      <img src={resolveUploadSrc(props.src, projectId)} alt={props.alt ?? ''} />
+      <img
+        src={props.src ? resolveMarkdownImageSrc(props.src, projectId) : undefined}
+        alt={props.alt ?? ''}
+      />
     ),
   }
 

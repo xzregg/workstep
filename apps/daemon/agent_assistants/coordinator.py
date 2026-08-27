@@ -22,6 +22,7 @@ from agent_assistants.base import (
     AssistantConfig,
     SCOPE_TASK,
     assistant_registry,
+    extract_uploaded_images,
     extract_streaming_reply,  # re-exported for back-compat
     invoke_engine,
 )
@@ -74,8 +75,6 @@ COORDINATOR_CONFIG = AssistantConfig(
 )
 assistant_registry.register(COORDINATOR_CONFIG)
 ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
-_IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
-_UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -527,16 +526,17 @@ class CoordinatorModule:
                         engine_state = json.loads(session.engine_state_json)
                     except json.JSONDecodeError:
                         engine_state = None
-                _, _, fast_model, _ = self._resolve_engine_models(task)
+                _, _, fast_model, vision_model = self._resolve_engine_models(task)
                 provider_id = self._resolve_provider_id(task)
                 thinking_effort = self._resolve_thinking_effort(task)
                 prompt, artifacts = self._assemble_context(
                     project, task, turn, root_dir=coordinator_root
                 )
                 user_message = Message.get_by_id(turn.user_message_id)
-                images = self._extract_images(
+                images = extract_uploaded_images(
                     project, task.cwd, user_message.content or ""
                 )
+                turn_model = (vision_model or turn.model) if images else turn.model
                 assistant.prompt_json = json.dumps(
                     {"prompt": prompt},
                     ensure_ascii=False,
@@ -604,7 +604,7 @@ class CoordinatorModule:
 
                 raw, events, session_id = await self._invoke(
                     turn.engine or "",
-                    turn.model,
+                    turn_model,
                     coordinator_root,
                     prompt,
                     session.session_id,
@@ -1178,53 +1178,6 @@ class CoordinatorModule:
             workstep_tools=COORDINATOR_CONFIG.workstep_tools,
             config_overrides=config_overrides,
         )
-
-    @staticmethod
-    def _extract_images(
-        project,
-        cwd: str,
-        content: str,
-    ) -> list[EngineImage]:
-        """Extract image references that live under the project uploads dir.
-
-        Accepts markdown ``![alt](path)`` and bare ``.workstep/uploads/...``
-        references. Paths outside the project uploads directory are ignored.
-        """
-        uploads = (Path(project.workstep_dir) / "uploads").resolve()
-        root = Path(cwd).resolve()
-        candidates = [
-            (alt, target)
-            for alt, target in _IMAGE_MARKDOWN_RE.findall(content)
-        ]
-        candidates.extend(
-            ("", target) for target in _UPLOADS_PATH_RE.findall(content)
-        )
-        images: list[EngineImage] = []
-        seen: set[str] = set()
-        for alt, target in candidates:
-            resolved: Path | None = None
-            for base in (root, root.parent):
-                candidate = Path(target)
-                if not candidate.is_absolute():
-                    candidate = base / candidate
-                try:
-                    candidate = candidate.resolve()
-                except OSError:
-                    continue
-                try:
-                    candidate.relative_to(uploads)
-                except ValueError:
-                    continue
-                if candidate.is_file():
-                    resolved = candidate
-                    break
-            if resolved is None:
-                continue
-            if str(resolved) in seen or not resolved.is_file():
-                continue
-            seen.add(str(resolved))
-            images.append(EngineImage(path=str(resolved), description=alt))
-        return images
 
     def _parse_result(self, raw: str) -> dict:
         candidates = [raw]

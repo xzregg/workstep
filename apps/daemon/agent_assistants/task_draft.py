@@ -102,6 +102,7 @@ class TaskDraftModule(AssistantRuntime):
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        vision_model: str | None = None,
         provider_id: str | None = None,
         thinking_effort: str | None = None,
         instruction: str | None = None,
@@ -141,6 +142,7 @@ class TaskDraftModule(AssistantRuntime):
             engine=engine,
             model=model,
             fast_model=fast_model,
+            vision_model=vision_model,
             provider_id=provider_id,
             thinking_effort=thinking_effort,
             extra={

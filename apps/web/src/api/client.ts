@@ -99,6 +99,8 @@ export interface Project {
   workflows: WorkflowSummary[]
   type?: 'local' | 'remote'
   connection_status?: 'local' | 'connecting' | 'connected' | 'disconnected' | 'error'
+  access_status?: 'pending' | 'active' | 'expired' | 'revoked'
+  access_expires_at?: number | null
   endpoint?: string
   host_project_id?: string
 }
@@ -152,7 +154,10 @@ export interface RemoteDevice {
   user_name: string
   device_name: string
   revoked: boolean
+  status: 'active' | 'expired' | 'revoked'
   connected: boolean
+  authorized_at: number
+  expires_at: number | null
   last_seen_at: number
 }
 
@@ -163,10 +168,10 @@ export const remoteProjectApi = {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
-  createShare: (projectId: string, access: 'internal' | 'external') =>
-    request<{ share_string: string; endpoint: string; expires_at: number }>('/remote-project/share', {
+  createShare: (projectId: string, access: 'internal' | 'external', accessExpiresAt: number | null = null) =>
+    request<{ share_string: string; endpoint: string; expires_at: number; access_expires_at: number | null }>('/remote-project/share', {
       method: 'POST',
-      body: JSON.stringify({ project_id: projectId, access }),
+      body: JSON.stringify({ project_id: projectId, access, access_expires_at: accessExpiresAt }),
     }),
   add: (shareString: string) => request<Project>('/remote-project/add', {
     method: 'POST',
@@ -182,6 +187,11 @@ export const remoteProjectApi = {
     request<{ revoked: boolean }>('/remote-project/devices/revoke', {
       method: 'POST',
       body: JSON.stringify({ project_id: projectId, device_id: deviceId }),
+    }),
+  updateDeviceAccess: (projectId: string, deviceId: string, expiresAt: number | null) =>
+    request<{ device: RemoteDevice }>('/remote-project/devices/access', {
+      method: 'PATCH',
+      body: JSON.stringify({ project_id: projectId, device_id: deviceId, expires_at: expiresAt }),
     }),
 }
 
@@ -425,6 +435,7 @@ export interface WorkflowGenHistory {
   engine: string
   model?: string | null
   fast_model?: string | null
+  vision_model?: string | null
   engine_session_id?: string | null
   messages: WorkflowGenHistoryMessage[]
 }
@@ -435,7 +446,7 @@ export const workflowGenApi = {
     content: string,
     sessionId: string | null,
     idempotencyKey: string,
-    options: { engine?: string; model?: string; fastModel?: string; providerId?: string; thinkingEffort?: string; steps?: any; workflowName?: string; contextMode?: 'initial' | 'canvas_updated' | 'none'; workflowId?: string } = {},
+    options: { engine?: string; model?: string; fastModel?: string; visionModel?: string; providerId?: string; thinkingEffort?: string; steps?: any; workflowName?: string; contextMode?: 'initial' | 'canvas_updated' | 'none'; workflowId?: string } = {},
   ) =>
     request<WorkflowGenAccepted>(`/workflow/generate/chat`, {
       method: 'POST',
@@ -447,6 +458,7 @@ export const workflowGenApi = {
         engine: options.engine || undefined,
         model: options.model || undefined,
         fast_model: options.fastModel || undefined,
+        vision_model: options.visionModel || undefined,
         provider_id: options.providerId || undefined,
         thinking_effort: options.thinkingEffort || undefined,
         steps: options.steps || undefined,
@@ -490,6 +502,7 @@ export interface TaskDraftChatOptions {
   engine?: string
   model?: string
   fastModel?: string
+  visionModel?: string
   providerId?: string
   thinkingEffort?: string
   instruction?: string
@@ -518,6 +531,7 @@ export const taskDraftApi = {
       engine: options.engine || undefined,
       model: options.model || undefined,
       fast_model: options.fastModel || undefined,
+      vision_model: options.visionModel || undefined,
       provider_id: options.providerId || undefined,
       thinking_effort: options.thinkingEffort || undefined,
       instruction: options.instruction || undefined,
@@ -542,6 +556,9 @@ export interface ChatSessionSummary {
   title: string
   engine: string
   model?: string | null
+  fast_model?: string | null
+  vision_model?: string | null
+  provider_id?: string | null
   permission_mode?: string
   message_count: number
   preview?: string
@@ -572,6 +589,7 @@ export interface ChatSessionCreateInput {
   engine?: string
   model?: string
   fast_model?: string
+  vision_model?: string
   provider_id?: string
   permission_mode?: string
 }
@@ -580,6 +598,7 @@ export interface ChatMessageOptions {
   engine?: string
   model?: string
   fast_model?: string
+  vision_model?: string
   provider_id?: string
   thinking_effort?: string
   permission_mode?: string
@@ -629,6 +648,7 @@ export const chatSessionApi = {
         engine: options.engine || undefined,
         model: options.model || undefined,
         fast_model: options.fast_model || undefined,
+        vision_model: options.vision_model || undefined,
         provider_id: options.provider_id || undefined,
         thinking_effort: options.thinking_effort || undefined,
         permission_mode: options.permission_mode || undefined,
@@ -1268,6 +1288,8 @@ export interface EngineInfo {
   config: EngineConfigPayload | null
   installable: boolean
   install_command: string | null
+  requires_third_party_terms_acceptance: boolean
+  third_party_terms_url: string | null
   supports_resume: boolean
   supports_coordinator: boolean
   supports_tool_disable: boolean
@@ -1626,9 +1648,10 @@ export const engineApi = {
       method: 'POST',
       body: JSON.stringify({ engine_id: engineId }),
     }),
-  install: (engineId: string) =>
+  install: (engineId: string, acceptThirdPartyTerms = false) =>
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {
       method: 'POST',
+      body: JSON.stringify({ accept_third_party_terms: acceptThirdPartyTerms }),
     }),
   models: (engineId: string, providerId = '', refresh = false, projectId = '') =>
     request<EngineModelsResult>(
@@ -1782,7 +1805,6 @@ export const fsApi = {
       }
     ),
   uploadImage: async (file: File, projectId: string, prefix?: string) => {
-    // Convert file to base64 data URL, then upload as JSON
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(reader.result as string)
@@ -1791,6 +1813,25 @@ export const fsApi = {
     })
     const res = await fetch(
       `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
+      }
+    )
+    if (!res.ok) throw new Error('Upload failed')
+    const data = await res.json()
+    return data as { url: string; filename: string; size: number }
+  },
+  uploadFile: async (file: File, projectId: string, prefix?: string) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const res = await fetch(
+      `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

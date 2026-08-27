@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.testclient import TestClient
@@ -183,6 +184,198 @@ def test_external_share_invite_is_one_time_and_issues_device_credential():
         raise AssertionError("an invite token must only authenticate once")
 
 
+def test_share_defaults_to_permanent_device_access_and_supports_expiry(monkeypatch):
+    import services.remote_project as remote_project_service
+
+    now = 1_800_000_000
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now)
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+    service.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+
+    permanent = service.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    permanent_payload = service.parse_share_string(permanent["share_string"])
+    service.authenticate(
+        project_id="owner-project",
+        actor=ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote"),
+        invite_token=permanent_payload["invite_token"],
+        credential=None,
+    )
+
+    expiring = service.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+        access_expires_at=now + 3600,
+    )
+    expiring_payload = service.parse_share_string(expiring["share_string"])
+    service.authenticate(
+        project_id="owner-project",
+        actor=ActorSnapshot("device-b", "李四", "device-b", "PC", "remote"),
+        invite_token=expiring_payload["invite_token"],
+        credential=None,
+    )
+
+    devices = service.list_devices("owner-project")
+    assert devices[0]["status"] == "active"
+    assert devices[0]["expires_at"] is None
+    assert devices[1]["status"] == "active"
+    assert devices[1]["expires_at"] == now + 3600
+
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now + 3601)
+    assert service.list_devices("owner-project")[1]["status"] == "expired"
+
+
+def test_owner_can_change_active_device_expiry_but_not_restore_revoked_device(monkeypatch):
+    import services.remote_project as remote_project_service
+
+    now = 1_800_000_000
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now)
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+    service.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    shared = service.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    payload = service.parse_share_string(shared["share_string"])
+    service.authenticate(
+        project_id="owner-project",
+        actor=ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote"),
+        invite_token=payload["invite_token"],
+        credential=None,
+    )
+
+    updated = service.update_device_expiry(
+        "owner-project", "device-a", now + 7200
+    )
+    assert updated is not None
+    assert updated["expires_at"] == now + 7200
+
+    updated = service.update_device_expiry("owner-project", "device-a", None)
+    assert updated is not None
+    assert updated["expires_at"] is None
+
+    assert service.revoke_device("owner-project", "device-a") is True
+    assert service.update_device_expiry("owner-project", "device-a", now + 7200) is None
+
+
+def test_device_last_seen_tracks_authenticated_activity(monkeypatch):
+    import services.remote_project as remote_project_service
+
+    now = 1_800_000_000
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now)
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+    service.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    shared = service.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+    payload = service.parse_share_string(shared["share_string"])
+    service.authenticate(
+        project_id="owner-project",
+        actor=ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote"),
+        invite_token=payload["invite_token"],
+        credential=None,
+    )
+
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now + 90)
+    service.touch_device_activity("owner-project", "device-a")
+
+    assert service.list_devices("owner-project")[0]["last_seen_at"] == now + 90
+
+
+def test_reauthorizing_same_device_replaces_its_previous_grant():
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+    service.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    actor = ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote")
+    credentials = []
+    for _ in range(2):
+        shared = service.create_share(
+            project_id="owner-project",
+            project_name="demo",
+            access="internal",
+        )
+        payload = service.parse_share_string(shared["share_string"])
+        principal = service.authenticate(
+            project_id="owner-project",
+            actor=actor,
+            invite_token=payload["invite_token"],
+            credential=None,
+        )
+        credentials.append(principal.credential)
+
+    devices = service.list_devices("owner-project")
+    assert len(devices) == 1
+    assert credentials[0] != credentials[1]
+
+
+def test_expired_device_credential_cannot_authenticate_or_make_requests(monkeypatch):
+    import services.remote_project as remote_project_service
+
+    now = 1_800_000_000
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now)
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+    service.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    shared = service.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+        access_expires_at=now + 60,
+    )
+    payload = service.parse_share_string(shared["share_string"])
+    actor = ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote")
+    principal = service.authenticate(
+        project_id="owner-project",
+        actor=actor,
+        invite_token=payload["invite_token"],
+        credential=None,
+    )
+
+    monkeypatch.setattr(remote_project_service.time, "time", lambda: now + 61)
+    assert service.is_principal_authorized(principal) is False
+    try:
+        service.authenticate(
+            project_id="owner-project",
+            actor=actor,
+            invite_token=None,
+            credential=principal.credential,
+        )
+    except PermissionError as exc:
+        assert "expired" in str(exc).lower()
+    else:
+        raise AssertionError("expired device credentials must not authenticate")
+
+
 async def test_dispatcher_overwrites_project_id_in_json_body():
     app = FastAPI()
     router = APIRouter(prefix="/api")
@@ -242,6 +435,25 @@ async def test_dispatcher_denies_global_routes_without_project_scope():
     await dispatcher.aclose()
 
 
+async def test_dispatcher_denies_owner_only_remote_access_management_routes():
+    app = FastAPI()
+    app.include_router(remote_project_api.router)
+    dispatcher = RemoteRouteDispatcher(app)
+    try:
+        for method, path in (
+            ("POST", "/api/remote-project/devices/revoke"),
+            ("PATCH", "/api/remote-project/devices/access"),
+        ):
+            try:
+                dispatcher._resolve(method, path)
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError(f"owner-only route must not be remotely accessible: {path}")
+    finally:
+        await dispatcher.aclose()
+
+
 def test_remote_project_registry_uses_local_id_and_keeps_host_id_private():
     config = MemoryConfig()
     access = RemoteAccessService(config)
@@ -282,6 +494,8 @@ def test_remote_project_registry_uses_local_id_and_keeps_host_id_private():
         "workflows": [],
         "type": "remote",
         "connection_status": "connected",
+        "access_status": "active",
+        "access_expires_at": None,
         "endpoint": "ws://192.168.1.20:8765/ws/remote-project",
         "host_project_id": "owner-project",
     }
@@ -372,6 +586,66 @@ def test_remote_websocket_authenticates_and_dispatches_requests_concurrently():
                 "actor": "张三",
             }
     assert access.list_devices("owner-project")[0]["connected"] is False
+
+
+def test_remote_websocket_closes_when_device_access_expires():
+    import time as system_time
+
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://127.0.0.1:8765",
+        external_base_url="",
+    )
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+        access_expires_at=int(system_time.time()) + 1,
+    )
+    parsed = access.parse_share_string(shared["share_string"])
+    app = FastAPI()
+    bus = EventBus()
+
+    @app.websocket("/ws/remote-project")
+    async def remote_socket(ws: WebSocket):
+        dispatcher = RemoteRouteDispatcher(app)
+        try:
+            await serve_remote_project_socket(
+                ws,
+                dispatcher=dispatcher,
+                access_service=access,
+                event_bus=bus,
+                project_summary=lambda project_id: {
+                    "id": project_id,
+                    "name": "demo",
+                    "steps": {},
+                    "workflows": [],
+                },
+            )
+        finally:
+            await dispatcher.aclose()
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/remote-project") as ws:
+            ws.send_json(
+                {
+                    "type": "auth",
+                    "project_id": "owner-project",
+                    "invite_token": parsed["invite_token"],
+                    "actor": {
+                        "actor_id": "device-b",
+                        "user_name": "张三",
+                        "device_id": "device-b",
+                        "device_name": "MacBook",
+                    },
+                }
+            )
+            authenticated = ws.receive_json()
+            assert authenticated["type"] == "auth_ok"
+            assert authenticated["access_expires_at"] == shared["access_expires_at"]
+            assert ws.receive_json() == {"type": "access_ended", "reason": "expired"}
 
 
 def test_remote_status_event_sends_refreshed_project_summary():
@@ -502,6 +776,33 @@ def test_revoked_device_can_no_longer_authorize_requests():
     assert access.is_principal_authorized(principal) is True
     assert access.revoke_device("owner-project", "device-b") is True
     assert access.is_principal_authorized(principal) is False
+
+
+async def test_owner_can_disconnect_all_live_sockets_for_a_device():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+
+    class FakeSocket:
+        def __init__(self):
+            self.sent = []
+            self.closed = []
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+        async def close(self, **kwargs):
+            self.closed.append(kwargs)
+
+    first = FakeSocket()
+    second = FakeSocket()
+    access.register_connection("owner-project", "device-b", first)
+    access.register_connection("owner-project", "device-b", second)
+
+    await access.disconnect_device("owner-project", "device-b", reason="revoked")
+
+    for socket in (first, second):
+        assert socket.sent == [{"type": "access_ended", "reason": "revoked"}]
+        assert socket.closed == [{"code": 4403, "reason": "revoked"}]
 
 
 def test_internal_access_address_defaults_to_primary_network_card_and_daemon_port():
@@ -806,7 +1107,66 @@ async def test_client_applies_remote_project_updates_and_forwards_status_events(
         "task_id": "task-1",
         "value": {"status": "running"},
     }
+    await socket.incoming.put(
+        json.dumps({"type": "access_ended", "reason": "revoked"})
+    )
+    for _ in range(100):
+        if registry.list_public()[0].get("access_status") == "revoked":
+            break
+        await asyncio.sleep(0.001)
+    assert registry.list_public()[0]["access_status"] == "revoked"
+    assert registry.list_public()[0]["connection_status"] == "disconnected"
     await manager.close()
+
+
+async def test_client_preserves_revoked_state_when_reconnect_authentication_fails():
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+    shared = access.create_share(
+        project_id="owner-project",
+        project_name="demo",
+        access="internal",
+    )
+
+    class FakeSocket:
+        async def send(self, _raw):
+            return None
+
+        async def recv(self):
+            return json.dumps(
+                {
+                    "type": "auth_error",
+                    "detail": "Remote device authorization was revoked",
+                }
+            )
+
+        async def close(self):
+            return None
+
+    registry = RemoteProjectRegistry(config)
+    manager = RemoteProjectClientManager(
+        registry=registry,
+        actor_provider=lambda: ActorSnapshot(
+            "device-b", "张三", "device-b", "MacBook", "local"
+        ),
+        event_sink=lambda _event: None,
+        connect_factory=lambda endpoint, **kwargs: asyncio.sleep(
+            0, result=FakeSocket()
+        ),
+    )
+    try:
+        await manager.add_share(shared["share_string"])
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("revoked credentials must fail to connect")
+
+    assert registry.list_public()[0]["access_status"] == "revoked"
 
 
 async def test_remote_project_settings_and_add_api(monkeypatch):
@@ -869,6 +1229,112 @@ async def test_remote_project_settings_and_add_api(monkeypatch):
         )
         assert added.status_code == 200
         assert added.json()["type"] == "remote"
+
+
+async def test_remote_project_share_and_device_expiry_api(monkeypatch):
+    import main
+
+    now = int(__import__("time").time())
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.update_settings(
+        enabled=True,
+        internal_base_url="http://host:8765",
+        external_base_url="",
+    )
+
+    class FakeProjectManager:
+        @staticmethod
+        def get_project_by_id(project_id):
+            if project_id != "owner-project":
+                return None
+            return SimpleNamespace(id=project_id, name="demo")
+
+    monkeypatch.setattr(remote_project_api, "remote_access_service", access)
+    monkeypatch.setattr(main, "project_manager", FakeProjectManager())
+    app = FastAPI()
+    app.include_router(remote_project_api.router)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        expired_invite_access = await client.post(
+            "/api/remote-project/share",
+            json={
+                "project_id": "owner-project",
+                "access": "internal",
+                "access_expires_at": now - 1,
+            },
+        )
+        assert expired_invite_access.status_code == 400
+
+        created = await client.post(
+            "/api/remote-project/share",
+            json={
+                "project_id": "owner-project",
+                "access": "internal",
+                "access_expires_at": now + 3600,
+            },
+        )
+        assert created.status_code == 200
+        payload = access.parse_share_string(created.json()["share_string"])
+        access.authenticate(
+            project_id="owner-project",
+            actor=ActorSnapshot("device-a", "张三", "device-a", "MacBook", "remote"),
+            invite_token=payload["invite_token"],
+            credential=None,
+        )
+
+        class FakeSocket:
+            def __init__(self):
+                self.sent = []
+                self.closed = []
+
+            async def send_json(self, message):
+                self.sent.append(message)
+
+            async def close(self, **kwargs):
+                self.closed.append(kwargs)
+
+        access_changed_socket = FakeSocket()
+        access.register_connection(
+            "owner-project", "device-a", access_changed_socket
+        )
+
+        permanent = await client.patch(
+            "/api/remote-project/devices/access",
+            json={
+                "project_id": "owner-project",
+                "device_id": "device-a",
+                "expires_at": None,
+            },
+        )
+        assert permanent.status_code == 200
+        assert permanent.json()["device"]["expires_at"] is None
+        assert access_changed_socket.sent == [
+            {"type": "access_ended", "reason": "access_changed"}
+        ]
+
+        invalid = await client.patch(
+            "/api/remote-project/devices/access",
+            json={
+                "project_id": "owner-project",
+                "device_id": "device-a",
+                "expires_at": now - 1,
+            },
+        )
+        assert invalid.status_code == 400
+
+        revoked_socket = FakeSocket()
+        access.register_connection("owner-project", "device-a", revoked_socket)
+        revoked = await client.post(
+            "/api/remote-project/devices/revoke",
+            json={"project_id": "owner-project", "device_id": "device-a"},
+        )
+        assert revoked.status_code == 200
+        assert revoked_socket.sent == [
+            {"type": "access_ended", "reason": "revoked"}
+        ]
 
 
 async def test_socket_cancellation_does_not_leave_child_tasks_running():

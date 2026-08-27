@@ -1,7 +1,7 @@
-import { CalendarClock, Code2, GitBranch, HardDrive, Layers, Radio } from 'lucide-react'
+import { CircleCheckBig, GitBranch, History, PackageOpen, RefreshCw, Waypoints } from 'lucide-react'
 import { useI18n } from '../i18n'
 
-const ICONS = [Layers, Code2, HardDrive, Radio, GitBranch, CalendarClock]
+const ICONS = [History, Waypoints, CircleCheckBig, RefreshCw, GitBranch, PackageOpen]
 
 export function Features() {
   const { t } = useI18n()

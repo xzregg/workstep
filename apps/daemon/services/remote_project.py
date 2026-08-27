@@ -53,6 +53,7 @@ class RemotePrincipal:
     project_id: str
     actor: ActorSnapshot
     credential: str | None = None
+    expires_at: int | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +214,7 @@ class RemoteAccessService:
         self._daemon_port = daemon_port
         self._network_address_resolver = network_address_resolver or _primary_network_ipv4
         self._live_connections: dict[tuple[str, str], int] = {}
+        self._live_sockets: dict[tuple[str, str], set[Any]] = {}
 
     def set_runtime_port(self, port: int) -> None:
         """Use the actual ASGI listener port when it differs from configuration."""
@@ -277,10 +279,13 @@ class RemoteAccessService:
         project_id: str,
         project_name: str,
         access: Literal["internal", "external"],
+        access_expires_at: int | None = None,
     ) -> dict[str, Any]:
         raw = self._load()
         if not raw.get("enabled"):
             raise ValueError("Remote project access is disabled")
+        if access_expires_at is not None and int(access_expires_at) <= int(time.time()):
+            raise ValueError("Device access expiry must be in the future")
         base_key = "external_base_url" if access == "external" else "internal_base_url"
         base_url = str(self.settings().get(base_key) or "")
         if not base_url:
@@ -300,6 +305,7 @@ class RemoteAccessService:
                 "project_id": project_id,
                 "token_hash": _secret_hash(invite_token),
                 "expires_at": expires_at,
+                "access_expires_at": access_expires_at,
                 "used": False,
             }
         )
@@ -322,6 +328,7 @@ class RemoteAccessService:
             "share_string": f"workstep://remote-project/v1/{encoded}",
             "endpoint": endpoint,
             "expires_at": expires_at,
+            "access_expires_at": access_expires_at,
         }
 
     @staticmethod
@@ -361,12 +368,16 @@ class RemoteAccessService:
                     if item.get("project_id") == project_id
                     and item.get("device_id") == actor.device_id
                     and secrets.compare_digest(str(item.get("credential_hash") or ""), credential_hash)
-                    and not item.get("revoked", False)
                 ),
                 None,
             )
             if matched is None:
                 raise PermissionError("Invalid remote-project credential")
+            if matched.get("revoked", False):
+                raise PermissionError("Remote device authorization was revoked")
+            expires_at = matched.get("expires_at")
+            if expires_at is not None and int(expires_at) <= int(time.time()):
+                raise PermissionError("Remote device authorization expired")
             matched.update(
                 user_name=actor.user_name,
                 device_name=actor.device_name,
@@ -374,7 +385,12 @@ class RemoteAccessService:
             )
             raw["devices"] = devices
             self._save(raw)
-            return RemotePrincipal(project_id=project_id, actor=actor, credential=credential)
+            return RemotePrincipal(
+                project_id=project_id,
+                actor=actor,
+                credential=credential,
+                expires_at=int(expires_at) if expires_at is not None else None,
+            )
 
         if not invite_token:
             raise PermissionError("Missing remote-project credential")
@@ -392,6 +408,14 @@ class RemoteAccessService:
             raise PermissionError("Invalid or expired remote-project invitation")
         invite["used"] = True
         issued = secrets.token_urlsafe(48)
+        devices = [
+            item
+            for item in devices
+            if not (
+                item.get("project_id") == project_id
+                and item.get("device_id") == actor.device_id
+            )
+        ]
         devices.append(
             {
                 "project_id": project_id,
@@ -400,19 +424,38 @@ class RemoteAccessService:
                 "device_name": actor.device_name,
                 "credential_hash": _secret_hash(issued),
                 "revoked": False,
+                "authorized_at": int(time.time()),
+                "expires_at": invite.get("access_expires_at"),
                 "last_seen_at": int(time.time()),
             }
         )
         raw["devices"] = devices
         self._save(raw)
-        return RemotePrincipal(project_id=project_id, actor=actor, credential=issued)
+        access_expires_at = invite.get("access_expires_at")
+        return RemotePrincipal(
+            project_id=project_id,
+            actor=actor,
+            credential=issued,
+            expires_at=(
+                int(access_expires_at) if access_expires_at is not None else None
+            ),
+        )
 
     def list_devices(self, project_id: str | None = None) -> list[dict[str, Any]]:
         """Return non-secret device metadata for the owner-side status UI."""
         result = []
+        now = int(time.time())
         for item in list(self._load().get("devices") or []):
             if project_id and item.get("project_id") != project_id:
                 continue
+            expires_at = item.get("expires_at")
+            status = (
+                "revoked"
+                if item.get("revoked", False)
+                else "expired"
+                if expires_at is not None and int(expires_at) <= now
+                else "active"
+            )
             result.append(
                 {
                     "project_id": str(item.get("project_id") or ""),
@@ -420,13 +463,16 @@ class RemoteAccessService:
                     "user_name": str(item.get("user_name") or ""),
                     "device_name": str(item.get("device_name") or ""),
                     "revoked": bool(item.get("revoked", False)),
+                    "status": status,
                     "connected": (
-                        not item.get("revoked", False)
+                        status == "active"
                         and self._live_connections.get(
                             (str(item.get("project_id") or ""), str(item.get("device_id") or "")),
                             0,
                         ) > 0
                     ),
+                    "authorized_at": int(item.get("authorized_at") or 0),
+                    "expires_at": int(expires_at) if expires_at is not None else None,
                     "last_seen_at": int(item.get("last_seen_at") or 0),
                 }
             )
@@ -442,6 +488,41 @@ class RemoteAccessService:
         else:
             self._live_connections[key] = count - 1
 
+    def register_connection(self, project_id: str, device_id: str, socket: Any) -> None:
+        key = (project_id, device_id)
+        self._live_sockets.setdefault(key, set()).add(socket)
+        self.mark_connection(project_id, device_id, True)
+
+    def unregister_connection(self, project_id: str, device_id: str, socket: Any) -> None:
+        key = (project_id, device_id)
+        sockets = self._live_sockets.get(key)
+        if sockets is None or socket not in sockets:
+            return
+        sockets.discard(socket)
+        if not sockets:
+            self._live_sockets.pop(key, None)
+        self.mark_connection(project_id, device_id, False)
+
+    async def disconnect_device(
+        self,
+        project_id: str,
+        device_id: str,
+        *,
+        reason: Literal["revoked", "expired", "access_changed"],
+    ) -> None:
+        key = (project_id, device_id)
+        sockets = list(self._live_sockets.pop(key, set()))
+        self._live_connections.pop(key, None)
+        for socket in sockets:
+            try:
+                await socket.send_json({"type": "access_ended", "reason": reason})
+            except Exception:
+                pass
+            try:
+                await socket.close(code=4403, reason=reason)
+            except Exception:
+                pass
+
     def revoke_device(self, project_id: str, device_id: str) -> bool:
         raw = self._load()
         devices = list(raw.get("devices") or [])
@@ -455,16 +536,66 @@ class RemoteAccessService:
             self._save(raw)
         return changed
 
+    def update_device_expiry(
+        self,
+        project_id: str,
+        device_id: str,
+        expires_at: int | None,
+    ) -> dict[str, Any] | None:
+        if expires_at is not None and int(expires_at) <= int(time.time()):
+            raise ValueError("Device access expiry must be in the future")
+        raw = self._load()
+        devices = list(raw.get("devices") or [])
+        changed = False
+        for item in devices:
+            if (
+                item.get("project_id") == project_id
+                and item.get("device_id") == device_id
+                and not item.get("revoked", False)
+            ):
+                item["expires_at"] = int(expires_at) if expires_at is not None else None
+                changed = True
+        if not changed:
+            return None
+        raw["devices"] = devices
+        self._save(raw)
+        return next(
+            item
+            for item in self.list_devices(project_id)
+            if item["device_id"] == device_id and item["status"] != "revoked"
+        )
+
+    def touch_device_activity(self, project_id: str, device_id: str) -> None:
+        raw = self._load()
+        devices = list(raw.get("devices") or [])
+        changed = False
+        for item in devices:
+            if (
+                item.get("project_id") == project_id
+                and item.get("device_id") == device_id
+                and not item.get("revoked", False)
+            ):
+                item["last_seen_at"] = int(time.time())
+                changed = True
+        if changed:
+            raw["devices"] = devices
+            self._save(raw)
+
     def is_principal_authorized(self, principal: RemotePrincipal) -> bool:
         if not self._load().get("enabled"):
             return False
         if not principal.credential:
             return False
         credential_hash = _secret_hash(principal.credential)
+        now = int(time.time())
         return any(
             item.get("project_id") == principal.project_id
             and item.get("device_id") == principal.actor.device_id
             and not item.get("revoked", False)
+            and (
+                item.get("expires_at") is None
+                or int(item["expires_at"]) > now
+            )
             and secrets.compare_digest(
                 str(item.get("credential_hash") or ""), credential_hash
             )
@@ -518,6 +649,8 @@ class RemoteProjectRegistry:
             "fingerprint": fingerprint,
             "invite_token": str(payload["invite_token"]),
             "connection_status": "disconnected",
+            "access_status": "pending",
+            "access_expires_at": None,
             "steps": {},
             "workflows": [],
         }
@@ -536,6 +669,8 @@ class RemoteProjectRegistry:
                 steps=existing.get("steps") or {},
                 workflows=existing.get("workflows") or [],
                 last_invite_hash=existing["last_invite_hash"],
+                access_status=existing.get("access_status") or "active",
+                access_expires_at=existing.get("access_expires_at"),
             )
             item.pop("invite_token", None)
         values = [entry for entry in values if entry.get("id") != local_id]
@@ -564,6 +699,8 @@ class RemoteProjectRegistry:
         *,
         credential: str,
         project: dict[str, Any],
+        access_status: str = "active",
+        access_expires_at: int | None = None,
     ) -> dict[str, Any]:
         item = self.get(local_project_id)
         if item is None:
@@ -574,6 +711,8 @@ class RemoteProjectRegistry:
             "name": str(project.get("name") or item.get("name") or ""),
             "steps": project.get("steps") or {},
             "workflows": project.get("workflows") or [],
+            "access_status": access_status,
+            "access_expires_at": access_expires_at,
         }
         values = self._load()
         stored = next(entry for entry in values if entry.get("id") == local_project_id)
@@ -609,6 +748,8 @@ class RemoteProjectRegistry:
             "workflows": item.get("workflows") or [],
             "type": "remote",
             "connection_status": str(item.get("connection_status") or "disconnected"),
+            "access_status": str(item.get("access_status") or "pending"),
+            "access_expires_at": item.get("access_expires_at"),
             "endpoint": str(item.get("endpoint") or ""),
             "host_project_id": str(item.get("host_project_id") or ""),
         }
@@ -638,6 +779,8 @@ def _build_route_catalog(app: FastAPI) -> list[_RouteDescriptor]:
     document = app.openapi()
     catalog: list[_RouteDescriptor] = []
     for path_template, path_item in document.get("paths", {}).items():
+        if path_template.startswith("/api/remote-project"):
+            continue
         if not isinstance(path_item, dict):
             continue
         path_regex, _, _ = compile_path(path_template)
@@ -821,7 +964,19 @@ class _RemoteProjectConnection:
                 raw = await asyncio.wait_for(socket.recv(), timeout=15)
                 message = json.loads(raw)
                 if message.get("type") != "auth_ok":
-                    raise PermissionError(str(message.get("detail") or "Remote authentication failed"))
+                    detail = str(message.get("detail") or "Remote authentication failed")
+                    normalized_detail = detail.lower()
+                    if "revoked" in normalized_detail:
+                        self._registry.update(
+                            self.local_project_id,
+                            access_status="revoked",
+                        )
+                    elif "expired" in normalized_detail:
+                        self._registry.update(
+                            self.local_project_id,
+                            access_status="expired",
+                        )
+                    raise PermissionError(detail)
                 if message.get("host_id") != descriptor.get("fingerprint"):
                     raise PermissionError("Remote host fingerprint changed")
                 credential = str(message.get("credential") or descriptor.get("credential") or "")
@@ -835,6 +990,12 @@ class _RemoteProjectConnection:
                     self.local_project_id,
                     credential=credential,
                     project=project,
+                    access_status=str(message.get("access_status") or "active"),
+                    access_expires_at=(
+                        int(message["access_expires_at"])
+                        if message.get("access_expires_at") is not None
+                        else None
+                    ),
                 )
                 self._reader_task = asyncio.create_task(self._reader())
                 await self._emit_status("connected")
@@ -881,6 +1042,14 @@ class _RemoteProjectConnection:
                         steps=project.get("steps") or {},
                         workflows=project.get("workflows") or [],
                     )
+                elif message.get("type") == "access_ended":
+                    reason = str(message.get("reason") or "")
+                    if reason in {"expired", "revoked"}:
+                        self._registry.update(
+                            self.local_project_id,
+                            access_status=reason,
+                        )
+                    return
         except asyncio.CancelledError:
             pass
         except Exception as exc:
@@ -1128,12 +1297,18 @@ async def serve_remote_project_socket(
                     "type": "auth_ok",
                     "project_id": principal.project_id,
                     "credential": principal.credential,
+                    "access_expires_at": principal.expires_at,
+                    "access_status": "active",
                     "host_id": access_service.settings()["host_id"],
                     "project": summary,
                 }
             )
         )
-        access_service.mark_connection(principal.project_id, principal.actor.device_id, True)
+        access_service.register_connection(
+            principal.project_id,
+            principal.actor.device_id,
+            ws,
+        )
     except (PermissionError, ValueError, asyncio.TimeoutError) as exc:
         try:
             await ws.send_json({"type": "auth_error", "detail": str(exc)})
@@ -1218,6 +1393,10 @@ async def serve_remote_project_socket(
             async with semaphore:
                 if not access_service.is_principal_authorized(principal):
                     raise PermissionError("Remote device authorization was revoked")
+                access_service.touch_device_activity(
+                    principal.project_id,
+                    principal.actor.device_id,
+                )
                 encoded_body = str(message.get("body_b64") or "")
                 request = RemoteHttpRequest(
                     request_id=request_id,
@@ -1261,6 +1440,18 @@ async def serve_remote_project_socket(
 
     writer_task = asyncio.create_task(writer())
     event_task = asyncio.create_task(forward_events())
+
+    async def expire_access() -> None:
+        if principal.expires_at is None:
+            return
+        await asyncio.sleep(max(0, principal.expires_at - time.time()))
+        await access_service.disconnect_device(
+            principal.project_id,
+            principal.actor.device_id,
+            reason="expired",
+        )
+
+    expiry_task = asyncio.create_task(expire_access())
     try:
         while True:
             message = await ws.receive_json()
@@ -1292,20 +1483,30 @@ async def serve_remote_project_socket(
                         else set()
                     )
             elif message_type == "ping":
+                access_service.touch_device_activity(
+                    principal.project_id,
+                    principal.actor.device_id,
+                )
                 await outgoing.put({"type": "pong", "timestamp": message.get("timestamp")})
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
-        access_service.mark_connection(principal.project_id, principal.actor.device_id, False)
+        access_service.unregister_connection(
+            principal.project_id,
+            principal.actor.device_id,
+            ws,
+        )
         event_bus.unsubscribe(bus_queue)
         tasks = list(request_tasks.values())
         for task in tasks:
             task.cancel()
         event_task.cancel()
         writer_task.cancel()
+        expiry_task.cancel()
         await asyncio.gather(
             *tasks,
             event_task,
             writer_task,
+            expiry_task,
             return_exceptions=True,
         )

@@ -475,6 +475,15 @@ class BaseLLMEngine(ABC):
         """
         return None
 
+    @staticmethod
+    def third_party_terms_url() -> str | None:
+        """Terms a user must review before installing a third-party runtime."""
+        return None
+
+    @staticmethod
+    def requires_third_party_terms_acceptance() -> bool:
+        return False
+
 
     async def install(self) -> EngineInstallResult:
         """Install the engine's required runtime (CLI binary / Python SDK).

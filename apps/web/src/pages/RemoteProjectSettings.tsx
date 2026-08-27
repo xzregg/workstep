@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Button from '../components/Button'
 import Field from '../components/Field'
 import Input from '../components/Input'
+import RemoteDeviceAccessList from '../components/RemoteDeviceAccessList'
 import {
   remoteProjectApi,
   type RemoteAccessSettings,
@@ -75,24 +76,16 @@ export default function RemoteProjectSettings() {
     }
   }
 
-  const handleRevoke = async (device: RemoteDevice) => {
-    setError('')
-    try {
-      await remoteProjectApi.revokeDevice(device.project_id, device.device_id)
-      setDevices((current) => current.map((item) => (
-        item.project_id === device.project_id && item.device_id === device.device_id
-          ? { ...item, revoked: true, connected: false }
-          : item
-      )))
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('settings.remoteRevokeFailed'))
-    }
+  const handleDeviceChange = (device: RemoteDevice) => {
+    setDevices((current) => current.map((item) => (
+      item.project_id === device.project_id && item.device_id === device.device_id
+        ? device
+        : item
+    )))
   }
 
-  const authorizedDevices = devices.filter((device) => !device.revoked)
-
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto' }}>
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <section style={{ paddingBottom: 24, borderBottom: '1px solid var(--border-soft)' }}>
         <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.remoteAccessTitle')}</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 18 }}>{t('settings.remoteAccessIntro')}</p>
@@ -143,22 +136,14 @@ export default function RemoteProjectSettings() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <h2 style={{ fontSize: 14, fontWeight: 650 }}>{t('settings.authorizedDevices')}</h2>
           <span style={{ color: 'var(--muted)', fontSize: 11 }}>
-            {t('layout.remoteDevices', { count: authorizedDevices.filter((device) => device.connected).length })}
+            {t('layout.remoteDevices', { count: devices.filter((device) => device.connected).length })}
           </span>
         </div>
-        {authorizedDevices.length === 0 ? (
-          <div style={{ padding: '18px 0', color: 'var(--meta)', fontSize: 12 }}>{t('settings.noAuthorizedDevices')}</div>
-        ) : authorizedDevices.map((device) => (
-          <div
-            key={`${device.project_id}:${device.device_id}`}
-            style={{ display: 'flex', alignItems: 'center', gap: 9, minHeight: 40, borderTop: '1px solid var(--border-soft)', fontSize: 12 }}
-          >
-            <span style={{ color: device.connected ? 'var(--success)' : 'var(--meta)' }}>{device.connected ? '●' : '○'}</span>
-            <span style={{ color: 'var(--fg)', fontWeight: 600 }}>{device.user_name || t('common.unknown')}</span>
-            <span style={{ flex: 1, color: 'var(--muted)' }}>{device.device_name}</span>
-            <Button variant="ghost" size="sm" onClick={() => void handleRevoke(device)}>{t('settings.revokeDevice')}</Button>
-          </div>
-        ))}
+        <RemoteDeviceAccessList
+          devices={devices}
+          onDeviceChange={handleDeviceChange}
+          onError={setError}
+        />
       </section>
     </div>
   )

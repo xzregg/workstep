@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
-  Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis,
+  Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, List,
-  Lightbulb, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
+  Lightbulb, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
 } from 'lucide-react'
 
@@ -20,6 +20,7 @@ const glyphs = {
   copy: Copy,
   download: Download,
   ellipsis: Ellipsis,
+  eye: Eye,
   'external-link': ExternalLink,
   file: FileText,
   folder: Folder,
@@ -29,6 +30,7 @@ const glyphs = {
   'layout-grid': LayoutGrid,
   lightbulb: Lightbulb,
   list: List,
+  paperclip: Paperclip,
   pencil: Pencil,
   plus: Plus,
   refresh: RefreshCw,

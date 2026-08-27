@@ -33,6 +33,7 @@ class RemoteAccessSettingsRequest(BaseModel):
 class CreateShareRequest(BaseModel):
     project_id: str
     access: Literal["internal", "external"]
+    access_expires_at: int | None = None
 
 
 class AddRemoteProjectRequest(BaseModel):
@@ -42,6 +43,12 @@ class AddRemoteProjectRequest(BaseModel):
 class RevokeDeviceRequest(BaseModel):
     project_id: str
     device_id: str
+
+
+class UpdateDeviceAccessRequest(BaseModel):
+    project_id: str
+    device_id: str
+    expires_at: int | None = None
 
 
 @router.get("/settings")
@@ -76,6 +83,7 @@ async def create_remote_project_share(req: CreateShareRequest, request: Request)
             project_id=project.id,
             project_name=project.name,
             access=req.access,
+            access_expires_at=req.access_expires_at,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -119,4 +127,37 @@ async def list_remote_devices(project_id: str | None = Query(None)):
 async def revoke_remote_device(req: RevokeDeviceRequest):
     if not remote_access_service.revoke_device(req.project_id, req.device_id):
         raise HTTPException(status_code=404, detail="Remote device not found")
+    await remote_access_service.disconnect_device(
+        req.project_id,
+        req.device_id,
+        reason="revoked",
+    )
     return {"revoked": True}
+
+
+@router.patch("/devices/access")
+async def update_remote_device_access(req: UpdateDeviceAccessRequest):
+    try:
+        device = remote_access_service.update_device_expiry(
+            req.project_id,
+            req.device_id,
+            req.expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if device is None:
+        raise HTTPException(status_code=404, detail="Active remote device not found")
+    await remote_access_service.disconnect_device(
+        req.project_id,
+        req.device_id,
+        reason="access_changed",
+    )
+    refreshed = next(
+        (
+            item
+            for item in remote_access_service.list_devices(req.project_id)
+            if item["device_id"] == req.device_id and item["status"] != "revoked"
+        ),
+        device,
+    )
+    return {"device": refreshed}

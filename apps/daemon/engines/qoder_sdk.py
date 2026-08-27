@@ -149,6 +149,14 @@ class QoderSDKEngine(AcpEngineBase):
     def install_command() -> str:
         return "pip install qoder-agent-sdk"
 
+    @staticmethod
+    def third_party_terms_url() -> str:
+        return "https://qoder.com/product-service"
+
+    @staticmethod
+    def requires_third_party_terms_acceptance() -> bool:
+        return True
+
     async def install(self) -> EngineInstallResult:
         """Install the official ``qoder-agent-sdk`` Python package."""
         return await install_python_package("qoder-agent-sdk")

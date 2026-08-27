@@ -417,6 +417,44 @@ async def test_upload_image_returns_project_relative_path(api_context):
 
 
 @pytest.mark.anyio
+async def test_upload_file_returns_project_relative_markdown_target(api_context):
+    """Ordinary attachments land beside images and remain downloadable."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "file_upload_project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    import base64
+    content = b"%PDF-1.7\nattachment"
+    encoded = base64.b64encode(content).decode()
+    uploaded = await client.post(
+        f"/api/fs/upload/file?project_id={project_id}",
+        json={
+            "filename": "interaction-notes.pdf",
+            "data_url": f"data:application/pdf;base64,{encoded}",
+            "prefix": "task-create",
+        },
+    )
+
+    assert uploaded.status_code == 200
+    body = uploaded.json()
+    assert body["url"].startswith("file_upload_project/.workstep/uploads/task-create-")
+    assert body["url"].endswith(".pdf")
+    assert body["size"] == len(content)
+    assert (project_dir / ".workstep" / "uploads" / body["filename"]).read_bytes() == content
+
+    served = await client.get(
+        f"/api/fs/serve/{body['filename']}?project_id={project_id}"
+    )
+    assert served.status_code == 200
+    assert served.content == content
+
+
+@pytest.mark.anyio
 async def test_upload_image_prefixes_filename(api_context):
     """Uploaded image filename starts with the given flow prefix."""
     client, tmp_path = api_context

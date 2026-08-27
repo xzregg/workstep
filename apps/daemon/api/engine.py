@@ -61,6 +61,10 @@ class EngineConfigRevealRequest(BaseModel):
     key: str = Field(min_length=1, max_length=200)
 
 
+class EngineInstallRequest(BaseModel):
+    accept_third_party_terms: bool = False
+
+
 @router.get("/list")
 async def list_engines():
     """Return every supported backend and its local availability."""
@@ -188,12 +192,20 @@ async def test_engine(req: EngineTestRequest):
 
 
 @router.post("/{engine_id}/install")
-async def install_engine(engine_id: str):
+async def install_engine(engine_id: str, req: EngineInstallRequest | None = None):
     """Install an engine's runtime (CLI binary / Python SDK) on this host."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")
     engine = cls()
+    if (
+        engine.requires_third_party_terms_acceptance()
+        and not (req and req.accept_third_party_terms)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="安装此前请先阅读并明确接受第三方服务条款",
+        )
     if engine.is_installed():
         return {
             "engine_id": engine_id,

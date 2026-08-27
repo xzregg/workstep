@@ -12,6 +12,13 @@ import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
+import {
+  removeMarkdownImage,
+  resolveMarkdownImageSrc,
+  splitMarkdownImages,
+  type MarkdownImageSegment,
+  type MarkdownTextSegment,
+} from '../utils/markdownImages'
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
 
 const inputItemIcon = (item: EngineInputItem) => {
@@ -180,6 +187,8 @@ export default function ChatInput({
 }: ChatInputProps) {
   const { t, locale } = useI18n()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
+  const inputFocusedRef = useRef(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
   const [statusOpen, setStatusOpen] = useState(false)
@@ -187,6 +196,7 @@ export default function ChatInput({
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
   const [slashCursor, setSlashCursor] = useState(value.length)
   const [slashDismissedValue, setSlashDismissedValue] = useState<string | null>(null)
@@ -198,7 +208,9 @@ export default function ChatInput({
   const canSend = !disabled && !running && !stopping && value.trim().length > 0
   const stopped = Boolean(running && onStop)
   const imageAlt = t('md.image')
-  const hasImage = value.includes(`![${imageAlt}](`)
+  const inputSegments = splitMarkdownImages(value)
+  const hasImage = inputSegments.some((segment) => segment.type === 'image')
+  const textSegmentCount = inputSegments.filter((segment) => segment.type === 'text').length
   const thinkingEffortLabel: Record<string, string> = {
     minimal: t('coord.thinkingLevels.minimal'),
     low: t('coord.thinkingLevels.low'),
@@ -238,6 +250,10 @@ export default function ChatInput({
     && Boolean(projectId && effectiveEngine)
 
   useEffect(() => {
+    if (!inputFocusedRef.current) setSlashCursor(value.length)
+  }, [value])
+
+  useEffect(() => {
     if (!slashActive || !projectId || !effectiveEngine) return
     let cancelled = false
     setSkillsLoading(true)
@@ -269,11 +285,26 @@ export default function ChatInput({
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
-  const resize = () => {
-    const element = textareaRef.current
+  const resizeElement = (element: HTMLTextAreaElement | null) => {
     if (!element) return
     element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`
+    element.style.height = `${element.scrollHeight}px`
+  }
+
+  const focusMarkdownCursor = (markdown: string, cursor: number) => {
+    const segments = splitMarkdownImages(markdown)
+    let textIndex = -1
+    const target = segments.find((segment) => {
+      if (segment.type !== 'text') return false
+      textIndex += 1
+      return cursor >= segment.start && cursor <= segment.end
+    }) as MarkdownTextSegment | undefined
+    const element = segmentRefs.current.get(Math.max(0, textIndex))
+    if (!target || !element) return
+    const localCursor = Math.max(0, Math.min(cursor - target.start, target.markdown.length))
+    textareaRef.current = element
+    element.focus()
+    element.setSelectionRange(localCursor, localCursor)
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -314,14 +345,22 @@ export default function ChatInput({
   const buttonDisabled = stopped ? stopping : !canSend
   const engineId = config?.engine || config?.defaultEngine || 'claude'
 
+  useEffect(() => {
+    if (!previewImage) return
+    const closePreview = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImage(null)
+    }
+    window.addEventListener('keydown', closePreview)
+    return () => window.removeEventListener('keydown', closePreview)
+  }, [previewImage])
+
   const applySelection = (item: Pick<EngineInputItem, 'insert_text'>) => {
     const selection = applySlashInputItem(value, slashCursor, item)
     onChange(selection.value)
     setSlashCursor(selection.cursor)
     setSlashDismissedValue(selection.value)
     requestAnimationFrame(() => {
-      textareaRef.current?.focus()
-      textareaRef.current?.setSelectionRange(selection.cursor, selection.cursor)
+      focusMarkdownCursor(selection.value, selection.cursor)
     })
   }
 
@@ -372,7 +411,16 @@ export default function ChatInput({
     try {
       const uploaded = await fsApi.uploadImage(file, imageAttach.projectId, imageAttach.prefix)
       const markdown = `![${imageAlt}](${uploaded.url})`
-      onChange(value ? `${value}\n\n${markdown}` : markdown)
+      const cursor = Math.max(0, Math.min(slashCursor, value.length))
+      const before = value.slice(0, cursor)
+      const after = value.slice(cursor)
+      const prefix = before && !before.endsWith('\n') ? '\n\n' : ''
+      const suffix = after && !after.startsWith('\n') ? '\n\n' : ''
+      const nextValue = before + prefix + markdown + suffix + after
+      const nextCursor = before.length + prefix.length + markdown.length + suffix.length
+      onChange(nextValue)
+      setSlashCursor(nextCursor)
+      requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
     } catch (reason) {
       imageAttach.onError?.(reason instanceof Error ? reason.message : t('chatInput.imageUploadFailed'))
     } finally {
@@ -388,6 +436,26 @@ export default function ChatInput({
     if (!file) return
     event.preventDefault()
     void handleAttachImage(file)
+  }
+
+  const updateTextSegment = (
+    segment: MarkdownTextSegment,
+    nextText: string,
+    localCursor: number,
+  ) => {
+    onChange(value.slice(0, segment.start) + nextText + value.slice(segment.end))
+    setSlashCursor(segment.start + localCursor)
+    setSlashDismissedValue(null)
+    setSkillIndex(0)
+    setStatusOpen(false)
+  }
+
+  const removeImageSegment = (segment: MarkdownImageSegment) => {
+    const nextValue = removeMarkdownImage(value, segment)
+    const nextCursor = Math.min(segment.start, nextValue.length)
+    onChange(nextValue)
+    setSlashCursor(nextCursor)
+    requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
   }
 
   return (
@@ -460,37 +528,99 @@ export default function ChatInput({
             : '0 0 0 0.5px var(--border-soft), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)',
         }}
       >
-        <textarea
-          ref={(element) => {
-            textareaRef.current = element
-            if (typeof inputRef === 'function') inputRef(element)
-            else if (inputRef) inputRef.current = element
+        <div
+          className="chat-input-editor"
+          style={{ minHeight, maxHeight }}
+          onClick={(event) => {
+            if (event.target !== event.currentTarget) return
+            const lastInput = segmentRefs.current.get(textSegmentCount - 1)
+            lastInput?.focus()
           }}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-            setSlashCursor(e.currentTarget.selectionStart)
-            setSlashDismissedValue(null)
-            setSkillIndex(0)
-            setStatusOpen(false)
-            resize()
-          }}
-          onPaste={imageAttach ? handleImagePaste : onPaste}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-          rows={rows}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onClick={(event) => setSlashCursor(event.currentTarget.selectionStart)}
-          onSelect={(event) => setSlashCursor(event.currentTarget.selectionStart)}
-          style={{
-            width: '100%', border: 'none', outline: 'none', resize: 'none',
-            background: 'transparent', color: 'var(--fg)',
-            fontFamily: 'var(--font-body)', fontSize: 12, lineHeight: 1.5,
-            padding: '8px 10px 2px', minHeight, maxHeight,
-          }}
-        />
+        >
+          {(() => {
+            let textIndex = -1
+            return inputSegments.map((segment, segmentIndex) => {
+              if (segment.type === 'image') {
+                return (
+                  <div
+                    key={`image:${segment.start}:${segment.markdown}`}
+                    className="chat-input-image-block"
+                    contentEditable={false}
+                  >
+                    <button
+                      type="button"
+                      className="chat-input-image"
+                      aria-label={`${t('md.preview')}：${segment.alt || imageAlt}`}
+                      title={t('md.preview')}
+                      onClick={() => setPreviewImage(segment)}
+                    >
+                      <img
+                        src={resolveMarkdownImageSrc(segment.url, imageAttach?.projectId)}
+                        alt={segment.alt || imageAlt}
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      className="chat-input-image-remove"
+                      aria-label={`${t('common.delete')}：${segment.alt || imageAlt}`}
+                      title={t('common.delete')}
+                      disabled={disabled}
+                      onClick={() => removeImageSegment(segment)}
+                    >
+                      <Icon name="x" size={10} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                )
+              }
+
+              textIndex += 1
+              const currentTextIndex = textIndex
+              const isLastText = currentTextIndex === textSegmentCount - 1
+              return (
+                <textarea
+                  key={`text:${segmentIndex}`}
+                  ref={(element) => {
+                    if (element) {
+                      segmentRefs.current.set(currentTextIndex, element)
+                      resizeElement(element)
+                      if (!textareaRef.current || isLastText) textareaRef.current = element
+                    } else {
+                      segmentRefs.current.delete(currentTextIndex)
+                    }
+                    if (isLastText) {
+                      if (typeof inputRef === 'function') inputRef(element)
+                      else if (inputRef) inputRef.current = element
+                    }
+                  }}
+                  className="chat-input-text-segment"
+                  value={segment.markdown}
+                  onChange={(event) => {
+                    updateTextSegment(segment, event.target.value, event.currentTarget.selectionStart)
+                    resizeElement(event.currentTarget)
+                  }}
+                  onPaste={imageAttach ? handleImagePaste : onPaste}
+                  onKeyDown={handleKeyDown}
+                  placeholder={inputSegments.length === 1 ? placeholder : undefined}
+                  disabled={disabled}
+                  rows={rows}
+                  onFocus={(event) => {
+                    textareaRef.current = event.currentTarget
+                    inputFocusedRef.current = true
+                    setFocused(true)
+                  }}
+                  onBlur={(event) => {
+                    if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) {
+                      inputFocusedRef.current = false
+                      setFocused(false)
+                    }
+                  }}
+                  onClick={(event) => setSlashCursor(segment.start + event.currentTarget.selectionStart)}
+                  onSelect={(event) => setSlashCursor(segment.start + event.currentTarget.selectionStart)}
+                />
+              )
+            })
+          })()}
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 6px' }}>
           {left}
           {imageAttach && (
@@ -821,6 +951,31 @@ export default function ChatInput({
           </button>
         </div>
       </div>
+      {previewImage && (
+        <div
+          className="chat-input-image-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${t('md.preview')}：${previewImage.alt || imageAlt}`}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewImage(null)
+          }}
+        >
+          <button
+            type="button"
+            className="chat-input-image-preview-close"
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            onClick={() => setPreviewImage(null)}
+          >
+            <Icon name="x" size={16} strokeWidth={2} />
+          </button>
+          <img
+            src={resolveMarkdownImageSrc(previewImage.url, imageAttach?.projectId)}
+            alt={previewImage.alt || imageAlt}
+          />
+        </div>
+      )}
     </div>
   )
 }

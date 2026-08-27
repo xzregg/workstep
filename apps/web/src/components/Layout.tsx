@@ -18,6 +18,7 @@ import ProjectShareDialog from './ProjectShareDialog'
 import AiFlowChat from './AiFlowChat'
 import type { GenProposalCard } from '../stores/workflowGenStore'
 import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
+import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
 import {
   fetchTemplates,
@@ -160,8 +161,13 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [renameSessionValue, setRenameSessionValue] = useState('')
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; title: string } | null>(null)
   const [sessionDeleteError, setSessionDeleteError] = useState('')
-  const [sessionSectionOpen, setSessionSectionOpen] = useState<Record<string, boolean>>({})
-  const [flowSectionOpen, setFlowSectionOpen] = useState<Record<string, boolean>>({})
+  const [storedSidebarSections] = useState(loadSidebarSectionState)
+  const [sessionSectionOpen, setSessionSectionOpen] = useState<Record<string, boolean>>(
+    storedSidebarSections.conversationsByProject,
+  )
+  const [flowSectionOpen, setFlowSectionOpen] = useState<Record<string, boolean>>(
+    storedSidebarSections.flowsByProject,
+  )
   const [creatingSession, setCreatingSession] = useState(false)
   const previewCanvasRef = useRef<FlowCanvasHandle>(null)
   const addWfModalRef = useRef<HTMLDivElement>(null)
@@ -228,6 +234,14 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
+
+  useEffect(() => {
+    saveSidebarSectionState({
+      expandedProjectId: activeProject?.id ?? storedSidebarSections.expandedProjectId,
+      flowsByProject: flowSectionOpen,
+      conversationsByProject: sessionSectionOpen,
+    })
+  }, [activeProject?.id, flowSectionOpen, sessionSectionOpen, storedSidebarSections.expandedProjectId])
 
   useEffect(() => {
     if (!projects.some((project) => project.type === 'remote')) return
@@ -305,6 +319,14 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   // Auto-select project from URL ?project=name (only once)
   const projectName = searchParams.get('project')
+  useEffect(() => {
+    if (projectName || activeProject || projects.length === 0) return
+    const rememberedProject = projects.find(
+      (project) => project.id === storedSidebarSections.expandedProjectId,
+    )
+    if (rememberedProject) setActiveProject(rememberedProject)
+  }, [projectName, projects, activeProject, setActiveProject, storedSidebarSections.expandedProjectId])
+
   useEffect(() => {
     if (projectName && projects.length > 0 && (!activeProject || activeProject.name !== projectName)) {
       const match = projects.find((p) => p.name === projectName)
@@ -760,20 +782,32 @@ export default function Layout({ onSelectProject, children }: Props) {
                     {p.name}
                     {p.type === 'remote' && (
                       <span
-                        title={p.endpoint}
+                        title={p.access_status === 'revoked'
+                          ? t('layout.remoteAccessRevoked')
+                          : p.access_status === 'expired'
+                            ? t('layout.remoteAccessExpired')
+                            : p.endpoint}
                         style={{
                           display: 'inline-block',
                           marginLeft: 6,
                           padding: '0 4px',
                           borderRadius: 3,
                           background: 'var(--surface)',
-                          color: 'var(--meta)',
+                          color: p.access_status === 'revoked'
+                            ? 'var(--danger)'
+                            : p.access_status === 'expired'
+                              ? 'var(--status-paused)'
+                              : 'var(--meta)',
                           fontSize: 10,
                           lineHeight: '16px',
                           verticalAlign: 1,
                         }}
                       >
-                        {t('layout.remoteLabel')}
+                        {p.access_status === 'revoked'
+                          ? t('layout.remoteAccessRevoked')
+                          : p.access_status === 'expired'
+                            ? t('layout.remoteAccessExpired')
+                            : t('layout.remoteLabel')}
                       </span>
                     )}
                   </span>
@@ -960,7 +994,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )
                   })()}
               {(() => {
-                const open = !!sessionSectionOpen[p.id] || (location.pathname === '/chat' && !!activeSessionId)
+                const open = sessionSectionOpen[p.id]
+                  ?? (location.pathname === '/chat' && !!activeSessionId)
                 return (
                   <>
                     <div

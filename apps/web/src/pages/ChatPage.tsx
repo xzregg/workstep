@@ -8,11 +8,11 @@ import Icon from '../components/Icon'
 import Input from '../components/Input'
 import MarkdownEditor from '../components/MarkdownEditor'
 import {
+  assistantApi,
   chatSessionApi,
-  engineApi,
   providerApi,
+  type AssistantConfigInfo,
   type ChatQuickButton,
-  type CoordinatorDefaultConfig,
   type ProviderInfo,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
@@ -72,12 +72,13 @@ export default function ChatPage() {
   const [promptSaving, setPromptSaving] = useState(false)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
-  const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
+  const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
+  const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
@@ -126,10 +127,21 @@ export default function ChatPage() {
   useEffect(() => {
     let active = true
     if (!activeProject?.id) return
-    engineApi.coordinatorDefaults(activeProject.id)
-      .then((config) => {
+    assistantApi.list()
+      .then(({ assistants }) => {
         if (!active) return
-        setCoordinatorConfig(config)
+        const config = assistants.find((item) => item.name === 'chat_session')
+        if (!config) throw new Error(t('chatSession.configLoadFailed'))
+        setAssistantConfig(config)
+        if (!sessionParam) {
+          const configured = config.configured
+          setSelectedEngine(configured.engine || '')
+          setSelectedProvider(configured.provider_id || '')
+          setSelectedModel(configured.model || '')
+          setSelectedFastModel(configured.fast_model || '')
+          setSelectedVisionModel(configured.vision_model || '')
+          setSelectedThinkingEffort(configured.thinking_effort || '')
+        }
         setCoordinatorConfigError('')
       })
       .catch((reason) => {
@@ -137,7 +149,7 @@ export default function ChatPage() {
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [activeProject?.id, t])
+  }, [activeProject?.id, sessionParam, t])
 
   useEffect(() => {
     let active = true
@@ -186,6 +198,11 @@ export default function ChatPage() {
         if (!active) return
         setSessionTitle(detail.title || '')
         setPermissionMode(detail.permission_mode || '')
+        setSelectedEngine(detail.engine || '')
+        setSelectedProvider(detail.provider_id || '')
+        setSelectedModel(detail.model || '')
+        setSelectedFastModel(detail.fast_model || '')
+        setSelectedVisionModel(detail.vision_model || '')
         store.newSession(detail.id)
         store.hydrateSession(
           detail.id,
@@ -249,6 +266,7 @@ export default function ChatPage() {
         provider_id: selectedProvider || undefined,
         model: selectedModel || undefined,
         fast_model: selectedFastModel || undefined,
+        vision_model: selectedVisionModel || undefined,
         thinking_effort: selectedThinkingEffort || undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: planMode || undefined,
@@ -278,7 +296,7 @@ export default function ChatPage() {
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
     }
-  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedThinkingEffort, permissionMode, planMode, t, resetEnhance])
+  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, t, resetEnhance])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -315,6 +333,7 @@ export default function ChatPage() {
         provider_id: selectedProvider || undefined,
         model: selectedModel || undefined,
         fast_model: selectedFastModel || undefined,
+        vision_model: selectedVisionModel || undefined,
       })
       const summary = {
         id: detail.id,
@@ -336,7 +355,7 @@ export default function ChatPage() {
     } finally {
       setCreating(false)
     }
-  }, [activeProject, creating, selectedEngine, selectedModel, selectedFastModel, projectParam, navigate, t])
+  }, [activeProject, creating, selectedEngine, selectedModel, selectedFastModel, selectedVisionModel, projectParam, navigate, t])
 
   const renameSession = useCallback(async () => {
     const title = renameValue.trim()
@@ -543,39 +562,45 @@ export default function ChatPage() {
         )}
         config={{
           projectId: activeProject.id,
-          engines: coordinatorConfig?.available_engines || [],
+          engines: assistantConfig?.available_engines || [],
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,
-          defaultEngine: coordinatorConfig?.engine || 'claude',
+          defaultEngine: assistantConfig?.configured.engine || 'claude',
           model: selectedModel,
           fastModel: selectedFastModel,
+          visionModel: selectedVisionModel,
+          showVision: true,
           thinkingEffort: selectedThinkingEffort,
-          disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
+          disabled: !assistantConfig || coordinatorConfigError !== '' || running,
           error: coordinatorConfigError,
-          hint: coordinatorConfig ? t('chatSession.sessionHint') : '',
+          hint: assistantConfig ? t('chatSession.sessionHint') : '',
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
             setSelectedEngine(engineId)
             setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
           onProviderChange: (providerId) => {
             setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
           onModelChange: setSelectedModel,
           onFastModelChange: setSelectedFastModel,
+          onVisionModelChange: setSelectedVisionModel,
           onThinkingEffortChange: setSelectedThinkingEffort,
           onReset: () => {
             setSelectedEngine('')
             setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
         }}

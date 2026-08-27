@@ -59,6 +59,12 @@ _ADDITIVE_COLUMNS = {
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
     },
+    "chat_sessions": {
+        "vision_model": "TEXT",
+    },
+    "gen_sessions": {
+        "vision_model": "TEXT",
+    },
     "tasks": {
         "scheduled_start_at": "DATETIME",
         "scheduled_start_state": "TEXT",

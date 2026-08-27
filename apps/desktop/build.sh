@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # WorkStep Desktop — macOS / Linux build script
 # Usage: ./build.sh
-# Output: apps/desktop/dist/WorkStep-macOS-<version>.zip (or -Linux-<version>.zip)
+# Output names are stable so GitHub's latest-release download URLs keep working.
 set -euo pipefail
 
 DESKTOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAEMON_DIR="$DESKTOP_DIR/../daemon"
 WEB_DIR="$DESKTOP_DIR/../web"
-
-VERSION="$(grep -m1 '^version' "$DAEMON_DIR/pyproject.toml" | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/')"
 
 log() { echo -e "\033[34m[desktop]\033[0m $1"; }
 ok()  { echo -e "\033[32m[desktop]\033[0m $1"; }
@@ -34,14 +32,24 @@ ok "PyInstaller done."
 # 4. Package a portable archive
 cd "$DESKTOP_DIR/dist"
 if [ -d "WorkStep.app" ]; then
-    OUT="WorkStep-macOS-$VERSION.zip"
+    ARCH="${WORKSTEP_ARCH:-$(uname -m)}"
+    [ "$ARCH" = "x86_64" ] && ARCH="x64"
+    OUT="WorkStep-macos-$ARCH.dmg"
     log "Packaging WorkStep.app -> $OUT"
     rm -f "$OUT"
-    ditto -c -k --keepParent "WorkStep.app" "$OUT"
+    hdiutil create -volname WorkStep -srcfolder "WorkStep.app" -ov -format UDZO "$OUT"
 else
-    OUT="WorkStep-Linux-$VERSION.zip"
+    OUT="WorkStep-linux-x64.AppImage"
     log "Packaging WorkStep/ -> $OUT"
     rm -f "$OUT"
-    ditto -c -k --keepParent "WorkStep" "$OUT" 2>/dev/null || zip -rq "$OUT" "WorkStep"
+    APPDIR="$DESKTOP_DIR/build/WorkStep.AppDir"
+    rm -rf "$APPDIR"
+    mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications"
+    cp -R WorkStep/. "$APPDIR/usr/bin/"
+    cp "$DESKTOP_DIR/assets/icon.png" "$APPDIR/workstep.png"
+    cp "$DESKTOP_DIR/workstep.desktop" "$APPDIR/workstep.desktop"
+    cp "$DESKTOP_DIR/AppRun" "$APPDIR/AppRun"
+    chmod +x "$APPDIR/AppRun"
+    appimagetool "$APPDIR" "$OUT"
 fi
 ok "Done: $DESKTOP_DIR/dist/$OUT"

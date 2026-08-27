@@ -69,12 +69,14 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 
 @pytest.fixture
 async def draft_module(tmp_path, monkeypatch):
+    import agent_assistants.base as assistant_base
     import services.config as config_service
     import services.project as project_service
     import agent_assistants.task_draft as task_draft_service
 
     store = MemoryConfigStore()
     monkeypatch.setattr(config_service, "config_store", store)
+    monkeypatch.setattr(assistant_base, "config_store", store)
     monkeypatch.setattr(project_service, "config_store", store)
     monkeypatch.setattr(task_draft_service, "config_store", store)
     monkeypatch.setattr(
@@ -147,6 +149,50 @@ async def test_task_draft_publishes_description_without_creating_task(
     assert '"start_step_key": "req"' in prompts[0]
     with project.db.bind_ctx([Task]):
         assert Task.select().count() == 0
+
+
+@pytest.mark.anyio
+async def test_task_create_assistant_routes_image_message_to_vision_model(
+    draft_module, monkeypatch
+):
+    module, _bus, _manager, project, config_store = draft_module
+    config_store.values["assistant_defaults"] = {
+        "task_create": {
+            "engine": "claude",
+            "model": "task-reasoning",
+            "fast_model": "task-fast",
+            "vision_model": "task-vision",
+        }
+    }
+    upload = project.workstep_dir / "uploads" / "requirement.png"
+    upload.parent.mkdir(parents=True, exist_ok=True)
+    upload.write_bytes(b"fake-png")
+    captured = {}
+
+    async def fake_invoke(*args, **kwargs):
+        captured.update(model=args[1], images=kwargs.get("images"))
+        return json.dumps({
+            "reply": "已读取需求图",
+            "task_draft": {
+                "description": "按图实现需求",
+                "start_step_key": "req",
+            },
+        }), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "读取需求图 ![需求](.workstep/uploads/requirement.png)",
+        "idem-image",
+        title="图片任务",
+        workflow_id=project.default_workflow()["id"],
+        start_step_key="req",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["model"] == "task-vision"
+    assert captured["images"][0].path == str(upload.resolve())
 
 
 @pytest.mark.anyio

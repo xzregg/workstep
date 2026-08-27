@@ -4,9 +4,10 @@ import { HeroPreview } from './HeroPreview'
 
 interface HeroProps {
   onOpenDemos: () => void
+  onLaunchFallback: () => void
 }
 
-export function Hero({ onOpenDemos }: HeroProps) {
+export function Hero({ onOpenDemos, onLaunchFallback }: HeroProps) {
   const { t } = useI18n()
 
   return (
@@ -24,7 +25,7 @@ export function Hero({ onOpenDemos }: HeroProps) {
           </h1>
           <p className="hero-lede">{t('hero.lede')}</p>
           <div className="hero-actions">
-            <a href="/" className="btn btn-primary">
+            <a href="workstep://open" className="btn btn-primary" onClick={onLaunchFallback}>
               {t('hero.ctaStart')}
               <ArrowRight size={15} />
             </a>
@@ -37,6 +38,7 @@ export function Hero({ onOpenDemos }: HeroProps) {
             <span>{t('hero.meta1')}</span>
             <span>{t('hero.meta2')}</span>
             <span>{t('hero.meta3')}</span>
+            <span>{t('hero.meta4')}</span>
           </div>
         </div>
         <HeroPreview />

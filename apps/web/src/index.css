@@ -1337,6 +1337,141 @@ input, select, textarea {
 textarea { height: auto; padding: 8px 10px; resize: vertical; }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
+/* ── Compact Markdown editor ── */
+
+.markdown-editor-root {
+  position: relative;
+  width: 100%;
+}
+
+.markdown-editor-capability-hint {
+  position: absolute;
+  right: 0;
+  top: -21px;
+  color: var(--meta);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.markdown-editor-shell {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast),
+    background var(--motion-fast);
+}
+
+.markdown-editor-shell:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent), transparent 86%);
+}
+
+.markdown-editor-shell[data-dragging="true"] {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent), var(--bg) 96%);
+}
+
+.markdown-editor-shell textarea.markdown-editor-input {
+  display: block;
+  width: 100%;
+  padding: 9px 66px 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-sizing: border-box;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.markdown-editor-shell textarea.markdown-editor-input:focus {
+  border-color: transparent;
+}
+
+.markdown-editor-preview {
+  padding: 9px 66px 9px 10px;
+  overflow-y: auto;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.markdown-editor-empty {
+  color: var(--meta);
+  font-style: italic;
+}
+
+.markdown-editor-actions {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.markdown-editor-action {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--meta);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+.markdown-editor-action:hover:not(:disabled),
+.markdown-editor-action[data-active="true"] {
+  background: color-mix(in oklab, var(--fg), transparent 94%);
+  color: var(--fg);
+}
+
+.markdown-editor-action:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.markdown-editor-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.markdown-editor-drop-overlay {
+  position: absolute;
+  z-index: 1;
+  inset: 4px;
+  display: flex;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--accent), var(--bg) 91%);
+  color: var(--accent);
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.markdown-editor-error {
+  margin-top: 5px;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* ── Chat composer (ChatInput) ── */
 
 .chat-input-root,
@@ -1352,6 +1487,156 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .task-chat-history-scroll {
   padding-inline: max(20px, calc((100% - 800px) / 2));
+}
+
+.chat-input-editor {
+  width: 100%;
+  padding: 8px 10px 2px;
+  overflow-y: auto;
+  cursor: text;
+  scrollbar-color: color-mix(in oklab, var(--fg), transparent 82%) transparent;
+  scrollbar-width: thin;
+}
+
+.chat-input-text-segment {
+  display: block;
+  width: 100%;
+  min-height: 18px;
+  padding: 0;
+  overflow: hidden;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-input-text-segment::placeholder {
+  color: var(--meta);
+}
+
+.chat-input-text-segment:focus-visible {
+  outline: 0;
+}
+
+.chat-input-image-block {
+  position: relative;
+  width: 156px;
+  height: 92px;
+  margin: 5px 0;
+}
+
+.chat-input-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--bg-2);
+  cursor: zoom-in;
+}
+
+.chat-input-image:hover {
+  border-color: color-mix(in oklab, var(--accent), var(--border-soft) 55%);
+}
+
+.chat-input-image:focus-visible,
+.chat-input-image-remove:focus-visible,
+.chat-input-image-preview-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chat-input-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chat-input-image-remove {
+  position: absolute;
+  z-index: 1;
+  top: -5px;
+  right: -5px;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 0 0 2px var(--bg);
+  color: var(--bg);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-input-image-remove:hover:not(:disabled) {
+  background: var(--danger);
+}
+
+.chat-input-image-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chat-input-image-preview {
+  position: fixed;
+  z-index: 2100;
+  inset: 0;
+  display: flex;
+  padding: 48px;
+  background: rgba(0, 0, 0, 0.72);
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-input-image-preview > img {
+  display: block;
+  max-width: min(960px, 92vw);
+  max-height: 86vh;
+  border-radius: 10px;
+  object-fit: contain;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+.chat-input-image-preview-close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-input-image-preview-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+@media (max-width: 520px) {
+  .chat-input-image-block {
+    width: 136px;
+    height: 80px;
+  }
+
+  .chat-input-image-preview {
+    padding: 20px;
+  }
 }
 
 .chat-skill-menu {

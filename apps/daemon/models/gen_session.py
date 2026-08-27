@@ -20,6 +20,7 @@ class WorkflowGenSession(BaseModel):
     engine = pw.TextField()
     model = pw.TextField(null=True)
     fast_model = pw.TextField(null=True)
+    vision_model = pw.TextField(null=True)
     engine_session_id = pw.TextField(null=True)
     engine_state_json = pw.TextField(null=True)
     messages_json = pw.TextField(null=True)

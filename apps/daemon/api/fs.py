@@ -150,6 +150,12 @@ class UploadImageRequest(BaseModel):
     prefix: str = ""
 
 
+class UploadFileRequest(BaseModel):
+    filename: str = "attachment.bin"
+    data_url: str
+    prefix: str = ""
+
+
 class MemoryWriteRequest(BaseModel):
     content: str
 
@@ -250,6 +256,56 @@ async def upload_image(
 
     # Relative path kept in markdown as-is so it stays meaningful for LLM
     # prompts; the frontend maps it back to /api/fs/serve/... for preview.
+    return {"url": rel_path, "filename": filename, "size": len(content)}
+
+
+@router.post("/upload/file")
+async def upload_file(
+    req: UploadFileRequest,
+    pid: str = Query("", alias="project_id"),
+):
+    """Upload an ordinary attachment and return its Markdown-safe relative path."""
+    project = None
+    if pid:
+        from main import project_manager
+        if not project_manager:
+            raise HTTPException(status_code=503, detail="Service not initialized")
+        try:
+            project = project_manager.bind_project_by_id(pid)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+
+    import base64
+    import re as _re
+
+    match = _re.match(r"data:([^;,]+);base64,(.+)", req.data_url)
+    if not match:
+        raise HTTPException(status_code=400, detail="Invalid data URL format")
+    content_type, b64data = match.groups()
+    try:
+        content = base64.b64decode(b64data, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 data")
+    if len(content) > 25_000_000:
+        raise HTTPException(status_code=400, detail="文件超过 25MB 上限")
+
+    prefix = req.prefix.strip()
+    if len(prefix) > 32 or not _re.fullmatch(r"[A-Za-z0-9_-]*", prefix):
+        raise HTTPException(status_code=400, detail="前缀仅允许字母、数字、下划线和连字符，长度不超过 32")
+
+    ext = Path(req.filename).suffix.lower()
+    if not _re.fullmatch(r"\.[a-z0-9]{1,10}", ext):
+        guessed = mimetypes.guess_extension(content_type) or ".bin"
+        ext = guessed if _re.fullmatch(r"\.[a-z0-9]{1,10}", guessed) else ".bin"
+    filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
+    if project is not None:
+        upload_dir = Path(project.workstep_dir) / "uploads"
+        rel_path = f"{project.name}/.workstep/uploads/{filename}"
+    else:
+        upload_dir = CONFIG_DIR / "data" / "uploads"
+        rel_path = f"data/uploads/{filename}"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    (upload_dir / filename).write_bytes(content)
     return {"url": rel_path, "filename": filename, "size": len(content)}
 
 

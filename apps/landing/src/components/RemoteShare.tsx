@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Copy, Globe2, KeyRound, Monitor, Network, Smartphone, User } from 'lucide-react'
+import { ArrowDown, ArrowRight, Check, Copy, FolderKanban, Globe2, KeyRound, Monitor, Network, Smartphone, User, Users } from 'lucide-react'
 import { useI18n } from '../i18n'
 
 const SHARE_VALUE =
@@ -19,6 +19,28 @@ export function RemoteShare() {
         <div className="section-eyebrow">{t('remoteShare.eyebrow')}</div>
         <h2 className="section-title">{t('remoteShare.title')}</h2>
         <p className="section-lede">{t('remoteShare.lede')}</p>
+
+        <div className="remote-exchange" aria-label={t('remoteShare.exchangeLabel')}>
+          <div className="remote-person">
+            <span className="remote-person-avatar">L</span>
+            <div><strong>{t('remoteShare.personA')}</strong><small>{t('remoteShare.personADevice')}</small></div>
+          </div>
+          <div className="remote-project-stack">
+            <div className="remote-project-chip is-a"><FolderKanban size={14} />{t('remoteShare.projectA')}</div>
+            <div className="remote-exchange-line"><span>{t('remoteShare.shareToB')}</span><ArrowRight size={18} /></div>
+            <div className="remote-exchange-line is-reverse"><ArrowRight size={18} /><span>{t('remoteShare.shareToA')}</span></div>
+            <div className="remote-project-chip is-b"><FolderKanban size={14} />{t('remoteShare.projectB')}</div>
+          </div>
+          <div className="remote-person">
+            <span className="remote-person-avatar is-b">Z</span>
+            <div><strong>{t('remoteShare.personB')}</strong><small>{t('remoteShare.personBDevice')}</small></div>
+          </div>
+          <div className="remote-third-member">
+            <ArrowDown size={14} />
+            <Users size={15} />
+            <span>{t('remoteShare.thirdMember')}</span>
+          </div>
+        </div>
 
         <div className="remote-layout">
           <div className="remote-visual">
@@ -92,6 +114,7 @@ export function RemoteShare() {
               <h3>{t('remoteShare.feature1Title')}</h3>
               <p>{t('remoteShare.feature1Desc')}</p>
             </div>
+
             <div className="remote-feature-card">
               <span className="remote-feature-icon">
                 <Network size={17} />

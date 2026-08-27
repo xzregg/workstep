@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 const ENGINES = [
   { key: 'codex', className: 'dot-codex' },
   { key: 'claude', className: 'dot-claude' },
-  { key: 'hermes', className: 'dot-hermes' },
+  { key: 'deepseek_hermes', className: 'dot-hermes' },
   { key: 'qoder', className: 'dot-qoder' },
   { key: 'pydantic', className: 'dot-pydantic' },
 ] as const

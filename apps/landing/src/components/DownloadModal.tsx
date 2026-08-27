@@ -30,25 +30,16 @@ export function DownloadModal({ onClose }: { onClose: () => void }) {
     <Modal onClose={onClose} className="download-modal">
       <h3>{t('download.choosePlatform')}</h3>
       <div className="download-platforms">
-        {PLATFORM_DOWNLOADS.map(({ key, url }) => {
+        {PLATFORM_DOWNLOADS.map(({ key, arch, asset, url }) => {
           const Icon = PLATFORM_ICONS[key]
           const label = t(`download.${key}`)
-          if (url) {
-            return (
-              <a key={key} className="download-platform" href={url} target="_blank" rel="noreferrer">
+          return (
+              <a key={asset} className="download-platform" href={url}>
                 <Icon size={22} />
-                <span className="download-platform-name">{label}</span>
+                <span className="download-platform-name">{label} · {arch}</span>
                 <span className="download-platform-action">{t('common.download')}</span>
               </a>
             )
-          }
-          return (
-            <div key={key} className="download-platform is-coming">
-              <Icon size={22} />
-              <span className="download-platform-name">{label}</span>
-              <span className="download-platform-badge">{t('common.comingSoon')}</span>
-            </div>
-          )
         })}
       </div>
       <p className="download-platform-hint">{t('download.platformHint')}</p>

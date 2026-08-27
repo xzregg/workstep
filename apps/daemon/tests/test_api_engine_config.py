@@ -1644,6 +1644,49 @@ async def test_engine_install_endpoint_rejects_non_installable(engine_client, mo
 
 
 @pytest.mark.anyio
+async def test_qoder_install_requires_explicit_third_party_terms_acceptance(
+    engine_client, monkeypatch
+):
+    client, _store = engine_client
+    called = False
+
+    async def fake_install(self):
+        nonlocal called
+        called = True
+        return EngineInstallResult(success=True, message="Qoder SDK 安装完成")
+
+    monkeypatch.setattr(
+        "engines.qoder_sdk.QoderSDKEngine.is_installed",
+        staticmethod(lambda: False),
+    )
+    monkeypatch.setattr("engines.qoder_sdk.QoderSDKEngine.install", fake_install)
+    engine_registry.refresh_registry()
+
+    rejected = await client.post("/api/engine/qoder_sdk/install", json={})
+    assert rejected.status_code == 400
+    assert called is False
+    assert "第三方" in rejected.json()["detail"]
+
+    accepted = await client.post(
+        "/api/engine/qoder_sdk/install",
+        json={"accept_third_party_terms": True},
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["success"] is True
+    assert called is True
+
+
+@pytest.mark.anyio
+async def test_engine_list_exposes_qoder_third_party_terms(engine_client):
+    client, _store = engine_client
+    response = await client.get("/api/engine/list")
+    qoder = next(item for item in response.json()["engines"] if item["id"] == "qoder_sdk")
+
+    assert qoder["requires_third_party_terms_acceptance"] is True
+    assert qoder["third_party_terms_url"] == "https://qoder.com/product-service"
+
+
+@pytest.mark.anyio
 async def test_pydantic_ai_inspect_capabilities(engine_client, tmp_path):
     client, store = engine_client
 

@@ -20,11 +20,13 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent
 from engines.core.registry import create_engine
+from engines.core.schema import EngineImage
 from models.fields import utc_now
 from services.chat_permissions import (
     is_valid_permission_mode,
@@ -48,6 +50,41 @@ SCOPE_CHAT = "chat"             # Codex-style chat session (row in chat_sessions
 MAX_HISTORY_TURNS = 8
 MAX_SESSIONS = 200
 SESSION_TTL_SECONDS = 60 * 60
+
+_IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+_UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
+
+
+def extract_uploaded_images(project, cwd: str, content: str) -> list[EngineImage]:
+    """Resolve image references that are safely contained in project uploads."""
+    if project is None:
+        return []
+    uploads = (Path(project.workstep_dir) / "uploads").resolve()
+    root = Path(cwd).resolve()
+    candidates = [(alt, target) for alt, target in _IMAGE_MARKDOWN_RE.findall(content)]
+    candidates.extend(("", target) for target in _UPLOADS_PATH_RE.findall(content))
+    images: list[EngineImage] = []
+    seen: set[str] = set()
+    for alt, target in candidates:
+        resolved: Path | None = None
+        for base in (root, root.parent):
+            candidate = Path(target)
+            if not candidate.is_absolute():
+                candidate = base / candidate
+            try:
+                candidate = candidate.resolve()
+                candidate.relative_to(uploads)
+            except (OSError, ValueError):
+                continue
+            if candidate.is_file():
+                resolved = candidate
+                break
+        if resolved is None or str(resolved) in seen:
+            continue
+        seen.add(str(resolved))
+        images.append(EngineImage(path=str(resolved), description=alt))
+    return images
+
 
 def extract_streaming_reply(raw: str) -> str:
     """Extract the currently complete part of a JSON reply string."""
@@ -121,6 +158,7 @@ async def invoke_engine(
     running_engines: dict[str, object] | None = None,
     assign_session_on_no_resume: bool = False,
     message_history: list | None = None,
+    images: list[EngineImage] | None = None,
     report_engine_state: bool = False,
     thinking_effort: str | None = None,
     permission_mode: str | None = None,
@@ -168,6 +206,8 @@ async def invoke_engine(
                 spawn_kwargs["message_history"] = message_history
             if report_engine_state:
                 spawn_kwargs["report_engine_state"] = True
+        if images:
+            spawn_kwargs["images"] = images
         if (
             getattr(
                 getattr(engine, "capabilities", None),
@@ -288,6 +328,7 @@ class AssistantSession:
     engine: str = ""
     model: str | None = None
     fast_model: str | None = None
+    vision_model: str | None = None
     resolved_session_id: str | None = None
     messages: list[dict] = field(default_factory=list)
     steps: dict | None = None
@@ -324,8 +365,10 @@ class PersistenceAdapter(Protocol):
         self,
         project_id: str,
         scope_key: str,
-    ) -> tuple[str, str | None, str | None, str | None, list[dict]] | None:
-        """Return (engine, model, fast_model, engine_session_id, messages)."""
+    ) -> tuple[
+        str, str | None, str | None, str | None, str | None, list[dict]
+    ] | None:
+        """Return engine, reasoning/fast/vision models, session id and messages."""
         ...
 
     def delete(self, project_id: str, scope_key: str) -> bool: ...
@@ -355,7 +398,7 @@ class JsonRowPersistence:
     """Persist a conversation as a JSON blob on a peewee model.
 
     The model is expected to expose: ``id``, ``project_id``, the scope field
-    (e.g. ``workflow_id``), ``engine``, ``model``, ``fast_model``,
+    (e.g. ``workflow_id``), ``engine``, ``model``, ``fast_model``, ``vision_model``,
     ``engine_session_id``, ``messages_json``, ``cwd`` and UTC timestamps —
     ``models/gen_session.WorkflowGenSession`` is the reference shape.
     """
@@ -394,6 +437,8 @@ class JsonRowPersistence:
             session.model = row.model
         if row.fast_model is not None:
             session.fast_model = row.fast_model
+        if row.vision_model is not None:
+            session.vision_model = row.vision_model
         if row.cwd:
             session.cwd = row.cwd
 
@@ -422,6 +467,7 @@ class JsonRowPersistence:
                     engine=session.engine,
                     model=session.model,
                     fast_model=session.fast_model,
+                    vision_model=session.vision_model,
                     engine_session_id=session.resolved_session_id,
                     engine_state_json=self._dump_state(session.engine_state),
                     messages_json=payload,
@@ -430,15 +476,16 @@ class JsonRowPersistence:
                     updated_at=now,
                 )
             else:
-                    row.engine = session.engine
-                    row.model = session.model
-                    row.fast_model = session.fast_model
-                    row.engine_session_id = session.resolved_session_id
-                    row.engine_state_json = self._dump_state(session.engine_state)
-                    row.messages_json = payload
-                    row.cwd = session.cwd
-                    row.updated_at = now
-                    row.save()
+                row.engine = session.engine
+                row.model = session.model
+                row.fast_model = session.fast_model
+                row.vision_model = session.vision_model
+                row.engine_session_id = session.resolved_session_id
+                row.engine_state_json = self._dump_state(session.engine_state)
+                row.messages_json = payload
+                row.cwd = session.cwd
+                row.updated_at = now
+                row.save()
         except Exception:
             logger.exception("Failed to persist assistant session")
 
@@ -446,7 +493,9 @@ class JsonRowPersistence:
         self,
         project_id: str,
         scope_key: str,
-    ) -> tuple[str, str | None, str | None, str | None, list[dict]] | None:
+    ) -> tuple[
+        str, str | None, str | None, str | None, str | None, list[dict]
+    ] | None:
         row = self._row(project_id, scope_key)
         if row is None:
             return None
@@ -454,6 +503,7 @@ class JsonRowPersistence:
             row.engine,
             row.model,
             row.fast_model,
+            row.vision_model,
             row.engine_session_id,
             _restore_messages(row.messages_json),
         )
@@ -679,6 +729,7 @@ class AssistantRuntime:
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        vision_model: str | None = None,
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
@@ -729,6 +780,9 @@ class AssistantRuntime:
             )
 
         engine_id, default_model, default_fast_model = self._resolve_engine_models()
+        default_vision_model = config_store.get_assistant_defaults(
+            self._config.name
+        ).get("vision_model", "") or None
         if engine:
             if self._config.validate_engine is not None:
                 self._config.validate_engine(engine)
@@ -741,10 +795,13 @@ class AssistantRuntime:
                     raise ValueError(
                         f"{self._config.engine_label} is unavailable: {engine}"
                     )
+            if engine != engine_id:
+                default_vision_model = None
             engine_id = engine
         normalized_provider = validate_provider_override(provider_id, engine_id)
         model = model or default_model
         fast_model = fast_model or default_fast_model
+        vision_model = vision_model or default_vision_model
         session = self._get_or_create_session(
             project_id,
             session_id,
@@ -753,10 +810,12 @@ class AssistantRuntime:
             engine_id,
             model,
             fast_model,
+            vision_model,
             steps,
             engine_override=engine,
             model_override=model,
             fast_model_override=fast_model,
+            vision_model_override=vision_model,
             extra=extra,
         )
 
@@ -854,9 +913,13 @@ class AssistantRuntime:
         """Return the persisted conversation for a scoped session (or None)."""
         try:
             engine, model, fast_model = self._resolve_engine_models()
+            vision_model = config_store.get_assistant_defaults(
+                self._config.name
+            ).get("vision_model", "") or None
         except ValueError:
             # 只读历史接口不因协调引擎未配置而失败：回退为尽力而为的元数据。
             engine, model, fast_model = "", None, None
+            vision_model = None
         if self._config.persistence is None:
             return None
         with self._project_ctx(project_id):
@@ -867,17 +930,22 @@ class AssistantRuntime:
             restored_engine,
             restored_model,
             restored_fast,
+            restored_vision,
             restored_engine_session_id,
             messages,
         ) = loaded
         engine = restored_engine or engine
         model = restored_model if restored_model is not None else model
         fast_model = restored_fast if restored_fast is not None else fast_model
+        vision_model = (
+            restored_vision if restored_vision is not None else vision_model
+        )
         normalize = self._config.history_message or default_history_message
         return {
             "engine": engine,
             "model": model,
             "fast_model": fast_model,
+            "vision_model": vision_model,
             "engine_session_id": restored_engine_session_id,
             "messages": [normalize(item) for item in messages],
         }
@@ -942,10 +1010,12 @@ class AssistantRuntime:
         engine_id: str,
         model: str | None,
         fast_model: str | None,
+        vision_model: str | None = None,
         steps: dict | None = None,
         engine_override: str | None = None,
         model_override: str | None = None,
         fast_model_override: str | None = None,
+        vision_model_override: str | None = None,
         extra: dict | None = None,
     ) -> AssistantSession:
         self._prune_sessions()
@@ -955,10 +1025,11 @@ class AssistantRuntime:
             messages: list[dict] = []
             resolved: str | None = None
             restored_engine_state: Any = None
-            restored_engine, restored_model, restored_fast = (
+            restored_engine, restored_model, restored_fast, restored_vision = (
                 engine_id,
                 model,
                 fast_model,
+                vision_model,
             )
             if self._config.persistence is not None:
                 candidate = AssistantSession(
@@ -970,6 +1041,7 @@ class AssistantRuntime:
                     engine=engine_id,
                     model=model,
                     fast_model=fast_model,
+                    vision_model=vision_model,
                 )
                 with self._project_ctx(project_id):
                     self._config.persistence.load(candidate)
@@ -982,6 +1054,11 @@ class AssistantRuntime:
                 )
                 restored_fast = (
                     candidate.fast_model if candidate.fast_model is not None else fast_model
+                )
+                restored_vision = (
+                    candidate.vision_model
+                    if candidate.vision_model is not None
+                    else vision_model
                 )
             session = AssistantSession(
                 session_id=session_id,
@@ -997,6 +1074,11 @@ class AssistantRuntime:
                     fast_model_override
                     if fast_model_override is not None
                     else restored_fast
+                ),
+                vision_model=(
+                    vision_model_override
+                    if vision_model_override is not None
+                    else restored_vision
                 ),
                 steps=steps,
                 messages=messages,
@@ -1016,6 +1098,11 @@ class AssistantRuntime:
                 fast_model_override
                 if fast_model_override is not None
                 else fast_model
+            )
+            session.vision_model = (
+                vision_model_override
+                if vision_model_override is not None
+                else vision_model
             )
             if steps is not None:
                 session.steps = steps
@@ -1149,6 +1236,19 @@ class AssistantRuntime:
                         },
                         seq,
                     )
+                images: list[EngineImage] = []
+                if user_messages and self._project_manager is not None:
+                    with self._project_ctx(session.project_id) as project:
+                        images = extract_uploaded_images(
+                            project,
+                            session.cwd,
+                            str(user_messages[-1].get("content", "")),
+                        )
+                turn_model = (
+                    session.vision_model or session.model
+                    if images
+                    else session.model
+                )
                 seq = await self._publish(
                     session,
                     assistant_message_id,
@@ -1228,14 +1328,17 @@ class AssistantRuntime:
 
                     return publish_live_event
 
+                invoke_kwargs = {"message_history": session.engine_state}
+                if images:
+                    invoke_kwargs["images"] = images
                 raw, _events, resolved = await self._invoke(
                     session.engine,
-                    session.model,
+                    turn_model,
                     session.cwd,
                     prompt,
                     session.resolved_session_id,
                     make_live_callback(),
-                    message_history=session.engine_state,
+                    **invoke_kwargs,
                 )
                 if self._turn_states[turn_id]["status"] == "stopping":
                     raise asyncio.CancelledError
@@ -1452,6 +1555,7 @@ class AssistantRuntime:
         session_id: str | None,
         on_event: Callable[[InternalEvent], Awaitable[None]] | None = None,
         message_history: list | None = None,
+        images: list[EngineImage] | None = None,
     ) -> tuple[str, list[dict], str | None]:
         current_task = asyncio.current_task()
         run_key = next(
@@ -1497,6 +1601,7 @@ class AssistantRuntime:
             on_event,
             error_prefix=self._config.engine_label,
             message_history=message_history,
+            images=images,
             report_engine_state=True,
             run_key=run_key,
             running_engines=self._running_engines,

@@ -20,13 +20,41 @@ import sys
 import threading
 import time
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
 logger = logging.getLogger("workstep.desktop")
 
 DEFAULT_PORT = 8765
 DEFAULT_HOST = "127.0.0.1"
 HEALTH_TIMEOUT_S = 30.0
+
+
+@dataclass(frozen=True)
+class ProtocolRequest:
+    action: str
+    raw_url: str
+
+
+def parse_workstep_url(value: str) -> ProtocolRequest:
+    """Validate a WorkStep deep link before forwarding it to the local UI."""
+    parsed = urlparse(value)
+    if parsed.scheme.lower() != "workstep":
+        raise ValueError("Only workstep:// links are accepted")
+    action = parsed.netloc.lower()
+    if action == "open" and not parsed.path.rstrip("/"):
+        return ProtocolRequest(action="open", raw_url=value)
+    if action == "remote-project" and parsed.path.startswith("/v1/"):
+        return ProtocolRequest(action="remote-project", raw_url=value)
+    raise ValueError("Unsupported WorkStep link")
+
+
+def local_path_for_protocol_url(value: str) -> str:
+    request = parse_workstep_url(value)
+    if request.action == "open":
+        return "/"
+    return f"/?workstep_url={quote(request.raw_url, safe='')}"
 
 
 # --- path helpers ---
@@ -136,10 +164,10 @@ def _start_server(app, host: str, port: int, sock: socket.socket):
 # --- window ---
 
 
-def _open_window(host: str, port: int, server, thread) -> None:
+def _open_window(host: str, port: int, server, thread, path: str = "/") -> None:
     import webview
 
-    url = f"http://{host}:{port}/"
+    url = f"http://{host}:{port}{path}"
     window = webview.create_window(
         "WorkStep",
         url,
@@ -163,7 +191,7 @@ def _open_window(host: str, port: int, server, thread) -> None:
 # --- main ---
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="WorkStep Desktop")
     parser.add_argument("--serve-only", action="store_true",
                         help="Start the daemon without a window (smoke tests)")
@@ -173,7 +201,15 @@ def main() -> int:
                         help=f"Bind host (default {DEFAULT_HOST})")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Also log to stdout")
-    args = parser.parse_args()
+    parser.add_argument("protocol_url", nargs="?", help="A workstep:// deep link")
+    args = parser.parse_args(argv)
+
+    local_path = "/"
+    if args.protocol_url:
+        try:
+            local_path = local_path_for_protocol_url(args.protocol_url)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     _setup_logging(args.verbose or args.serve_only)
     ensure_daemon_on_path()
@@ -235,7 +271,7 @@ def main() -> int:
         thread.join(timeout=10)
         return 0
 
-    _open_window(host, port, server, thread)
+    _open_window(host, port, server, thread, local_path)
     return 0
 
 

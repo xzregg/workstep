@@ -19,6 +19,15 @@ test('open task details refresh persisted history when a user message arrives', 
   assert.match(detailSource, /setHistoryMessages\(response\.messages \|\| \[\]\)/)
 })
 
+test('open task details recover messages when a realtime event is missed', () => {
+  assert.match(detailSource, /REMOTE_CHAT_HISTORY_SYNC_MS/)
+  assert.match(detailSource, /window\.setInterval/)
+  assert.match(detailSource, /document\.visibilityState !== 'visible'/)
+  assert.match(detailSource, /startsWith\('pending-'\)/)
+  assert.match(detailSource, /window\.clearInterval/)
+  assert.match(detailSource, /taskApi\.history\(taskId, projectId, 50, 0\)/)
+})
+
 test('assistant chat adopts optimistic user bubbles and carries sender identity', () => {
   assert.match(assistantStoreSource, /startsWith\('user-'\)/)
   assert.match(assistantStoreSource, /event\.actor\?\.name/)

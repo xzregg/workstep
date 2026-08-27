@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -37,6 +38,18 @@ class MemoryConfigStore:
 
     def get_coordinator_default_fast_model(self):
         return self.values.get("coordinator_default_fast_model", "")
+
+    def get_assistant_defaults(self, name):
+        defaults = {
+            "engine": self.get_coordinator_default_engine(),
+            "model": self.get_coordinator_default_model(),
+            "fast_model": self.get_coordinator_default_fast_model(),
+            "vision_model": "",
+            "thinking_effort": "",
+            "provider_id": "",
+        }
+        defaults.update(self.values.get("assistant_defaults", {}).get(name, {}))
+        return defaults
 
     def get_engine_default_model(self, engine_id):
         return self.values.get("engine_default_models", {}).get(engine_id, "")
@@ -75,6 +88,10 @@ class FakeEngine:
     supports_resume = False
     supports_message_history = False
 
+    @staticmethod
+    def supports_provider(provider):
+        return provider.get("protocol") == "openai_compatible"
+
 
 def test_init_db_records_latest_schema_version(tmp_path):
     """Fresh databases create the chat tables and record the latest schema version."""
@@ -111,6 +128,7 @@ async def _wait_turn(module, turn_id, timeout=5.0):
 @pytest.fixture
 async def chat_module(tmp_path, monkeypatch):
     import agent_assistants.chat_session as chat_service
+    import agent_assistants.base as assistant_base
     import services.config as config_service
     import services.project as project_service
 
@@ -118,7 +136,9 @@ async def chat_module(tmp_path, monkeypatch):
     monkeypatch.setattr(config_service, "config_store", config_store)
     monkeypatch.setattr(project_service, "config_store", config_store)
     monkeypatch.setattr(chat_service, "config_store", config_store)
+    monkeypatch.setattr(assistant_base, "config_store", config_store)
     monkeypatch.setattr(chat_service, "create_engine", lambda engine_id: FakeEngine())
+    monkeypatch.setattr(assistant_base, "create_engine", lambda engine_id: FakeEngine())
 
     manager = ProjectManager()
     bus = EventBus()
@@ -159,6 +179,111 @@ async def test_session_crud_round_trip(chat_module):
     assert module.get_session(project.id, session_id) is None
     with pytest.raises(ValueError):
         module.delete_session(project.id, session_id)
+
+
+@pytest.mark.anyio
+async def test_new_session_uses_chat_assistant_defaults(chat_module):
+    """A new project chat inherits its own assistant settings, not coordinator settings."""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "coordinator_default_engine": "claude",
+        "coordinator_default_model": "coordinator-model",
+        "coordinator_default_fast_model": "coordinator-fast",
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+                "model": "chat-reasoning",
+                "fast_model": "chat-fast",
+            },
+        },
+        "providers": [{
+            "id": "chat-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+
+    created = module.create_session(project.id)
+
+    assert created["engine"] == "pydantic_ai"
+    assert created["provider_id"] == "chat-provider"
+    assert created["model"] == "chat-reasoning"
+    assert created["fast_model"] == "chat-fast"
+
+
+@pytest.mark.anyio
+async def test_new_session_explicit_engine_does_not_inherit_other_engine_models(
+    chat_module,
+):
+    """Selecting another engine falls back to that engine's model configuration."""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+                "model": "chat-reasoning",
+                "fast_model": "chat-fast",
+            },
+        },
+        "engine_default_models": {"claude": "claude-default"},
+    })
+
+    created = module.create_session(project.id, engine="claude")
+
+    assert created["engine"] == "claude"
+    assert created["provider_id"] is None
+    assert created["model"] == "claude-default"
+    assert created["fast_model"] == "claude-default"
+
+
+@pytest.mark.anyio
+async def test_project_chat_routes_uploaded_image_message_to_vision_model(
+    chat_module,
+    monkeypatch,
+):
+    """An image message uses the project-chat vision model and forwards the image."""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values["assistant_defaults"] = {
+        "chat_session": {
+            "engine": "pydantic_ai",
+            "model": "chat-reasoning",
+            "fast_model": "chat-fast",
+            "vision_model": "chat-vision",
+        },
+    }
+    upload = Path(project.workstep_dir) / "uploads" / "diagram.png"
+    upload.parent.mkdir(parents=True, exist_ok=True)
+    upload.write_bytes(b"fake-png")
+    captured: dict = {}
+
+    async def fake_invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+        images=None,
+    ):
+        captured.update(model=model, images=images)
+        return "看到了流程图", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    session = module.create_session(project.id)
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "请分析这张图\n\n![流程图](.workstep/uploads/diagram.png)",
+        "vision-message-1",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["model"] == "chat-vision"
+    assert len(captured["images"]) == 1
+    assert captured["images"][0].path == str(upload.resolve())
 
 
 @pytest.mark.anyio

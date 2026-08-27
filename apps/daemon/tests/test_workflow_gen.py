@@ -174,12 +174,14 @@ async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
 
 @pytest.fixture
 async def gen_module(tmp_path, monkeypatch):
+    import agent_assistants.base as assistant_base
     import services.config as config_service
     import services.project as project_service
     import agent_assistants.workflow_gen as wfgen_service
 
     config_store = MemoryConfigStore()
     monkeypatch.setattr(config_service, "config_store", config_store)
+    monkeypatch.setattr(assistant_base, "config_store", config_store)
     monkeypatch.setattr(project_service, "config_store", config_store)
     monkeypatch.setattr(wfgen_service, "config_store", config_store)
 
@@ -226,6 +228,41 @@ async def test_submit_creates_session_and_is_idempotent(gen_module, monkeypatch)
     )
     assert replayed.turn_id == accepted.turn_id
     assert replayed.session_id == accepted.session_id
+
+
+@pytest.mark.anyio
+async def test_workflow_assistant_routes_image_message_to_vision_model(
+    gen_module, monkeypatch
+):
+    module, _bus, _manager, project, config_store = gen_module
+    config_store.values["assistant_defaults"] = {
+        "workflow_gen": {
+            "engine": "claude",
+            "model": "workflow-reasoning",
+            "fast_model": "workflow-fast",
+            "vision_model": "workflow-vision",
+        }
+    }
+    upload = project.workstep_dir / "uploads" / "canvas.png"
+    upload.parent.mkdir(parents=True, exist_ok=True)
+    upload.write_bytes(b"fake-png")
+    captured = {}
+
+    async def fake_invoke(*args, **kwargs):
+        captured.update(model=args[1], images=kwargs.get("images"))
+        return json.dumps({"reply": "已分析画布", "flow_proposals": []}), [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "按图设计流程 ![画布](.workstep/uploads/canvas.png)",
+        "idem-image",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured["model"] == "workflow-vision"
+    assert captured["images"][0].path == str(upload.resolve())
 
 
 @pytest.mark.anyio

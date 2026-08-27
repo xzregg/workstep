@@ -9,10 +9,10 @@ import {
   resolveA2uiFlowSteps,
 } from '../utils/a2ui'
 import {
+  assistantApi,
   workflowGenApi,
-  engineApi,
   providerApi,
-  type CoordinatorDefaultConfig,
+  type AssistantConfigInfo,
   type ProviderInfo,
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
@@ -103,13 +103,14 @@ export default function AiFlowChat({
     onError: setSendError,
     errorMessage: t('chatSession.enhanceFailed'),
   })
-  // Coordinator engine / model overrides (session-scoped: this chat turn only).
-  const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorDefaultConfig | null>(null)
+  // Assistant engine / model overrides (session-scoped: this chat turn only).
+  const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedFastModel, setSelectedFastModel] = useState('')
+  const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const session = useWorkflowGenStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
@@ -157,10 +158,18 @@ export default function AiFlowChat({
 
   useEffect(() => {
     let active = true
-    engineApi.coordinatorDefaults(projectId)
-      .then((config) => {
+    assistantApi.list()
+      .then(({ assistants }) => {
         if (!active) return
-        setCoordinatorConfig(config)
+        const config = assistants.find((item) => item.name === 'workflow_gen')
+        if (!config) throw new Error(t('aiFlow.configLoadFailed'))
+        setAssistantConfig(config)
+        setSelectedEngine(config.configured.engine || '')
+        setSelectedProvider(config.configured.provider_id || '')
+        setSelectedModel(config.configured.model || '')
+        setSelectedFastModel(config.configured.fast_model || '')
+        setSelectedVisionModel(config.configured.vision_model || '')
+        setSelectedThinkingEffort(config.configured.thinking_effort || '')
         setCoordinatorConfigError('')
       })
       .catch((reason) => {
@@ -255,6 +264,7 @@ export default function AiFlowChat({
         providerId: selectedProvider || undefined,
         model: selectedModel || undefined,
         fastModel: selectedFastModel || undefined,
+        visionModel: selectedVisionModel || undefined,
         thinkingEffort: selectedThinkingEffort || undefined,
         steps: turnContext.steps,
         workflowName: 'workflowName' in turnContext ? turnContext.workflowName : workflowName,
@@ -281,7 +291,7 @@ export default function AiFlowChat({
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
     }
-  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance])
+  }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance])
 
   const handleA2uiAction = useCallback((action: A2uiClientAction) => {
     const flow = resolveA2uiFlowSteps(action, latestProposals)
@@ -422,17 +432,19 @@ export default function AiFlowChat({
         </>}
         config={{
           projectId,
-          engines: coordinatorConfig?.available_engines || [],
+          engines: assistantConfig?.available_engines || [],
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,
-          defaultEngine: coordinatorConfig?.engine || 'claude',
+          defaultEngine: assistantConfig?.configured.engine || 'claude',
           model: selectedModel,
           fastModel: selectedFastModel,
+          visionModel: selectedVisionModel,
+          showVision: true,
           thinkingEffort: selectedThinkingEffort,
-          disabled: !coordinatorConfig || coordinatorConfigError !== '' || running,
+          disabled: !assistantConfig || coordinatorConfigError !== '' || running,
           error: coordinatorConfigError,
-          hint: coordinatorConfig ? t('aiFlow.sessionHint') : '',
+          hint: assistantConfig ? t('aiFlow.sessionHint') : '',
           engineTitle: t('aiFlow.engineTitle'),
           onEngineChange: (engineId) => {
             lastCanvasSnapshotRef.current = null
@@ -440,6 +452,7 @@ export default function AiFlowChat({
             setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
           onProviderChange: (providerId) => {
@@ -447,6 +460,7 @@ export default function AiFlowChat({
             setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
           onModelChange: (model) => {
@@ -454,6 +468,7 @@ export default function AiFlowChat({
             setSelectedModel(model)
           },
           onFastModelChange: setSelectedFastModel,
+          onVisionModelChange: setSelectedVisionModel,
           onThinkingEffortChange: setSelectedThinkingEffort,
           onReset: () => {
             lastCanvasSnapshotRef.current = null
@@ -461,6 +476,7 @@ export default function AiFlowChat({
             setSelectedProvider('')
             setSelectedModel('')
             setSelectedFastModel('')
+            setSelectedVisionModel('')
             setSelectedThinkingEffort('')
           },
         }}

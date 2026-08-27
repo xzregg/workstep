@@ -128,6 +128,8 @@ class ChatRowPersistence(PersistenceAdapter):
             session.model = row.model
         if row.fast_model is not None:
             session.fast_model = row.fast_model
+        if row.vision_model is not None:
+            session.vision_model = row.vision_model
 
     def _load_messages(self, row: ChatSession) -> list[dict]:
         messages: list[dict] = []
@@ -181,6 +183,7 @@ class ChatRowPersistence(PersistenceAdapter):
                 engine=session.engine,
                 model=session.model,
                 fast_model=session.fast_model,
+                vision_model=session.vision_model,
                 engine_session_id=session.resolved_session_id,
                 engine_state_json=self._dump_state(session.engine_state),
                 created_at=now,
@@ -192,6 +195,7 @@ class ChatRowPersistence(PersistenceAdapter):
             row.engine = session.engine
             row.model = session.model
             row.fast_model = session.fast_model
+            row.vision_model = session.vision_model
             row.engine_session_id = session.resolved_session_id
             row.engine_state_json = self._dump_state(session.engine_state)
             row.updated_at = now
@@ -259,7 +263,9 @@ class ChatRowPersistence(PersistenceAdapter):
         self,
         project_id: str,
         scope_key: str,
-    ) -> tuple[str, str | None, str | None, str | None, list[dict]] | None:
+    ) -> tuple[
+        str, str | None, str | None, str | None, str | None, list[dict]
+    ] | None:
         row = ChatSession.get_or_none(ChatSession.id == scope_key)
         if row is None:
             return None
@@ -267,6 +273,7 @@ class ChatRowPersistence(PersistenceAdapter):
             row.engine,
             row.model,
             row.fast_model,
+            row.vision_model,
             row.engine_session_id,
             self._load_messages(row),
         )
@@ -344,6 +351,7 @@ class ChatSessionModule(AssistantRuntime):
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        vision_model: str | None = None,
         permission_mode: str | None = None,
         provider_id: str | None = None,
     ) -> dict:
@@ -353,12 +361,29 @@ class ChatSessionModule(AssistantRuntime):
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
         engine_id, default_model, default_fast_model = self._resolve_engine_models()
+        default_vision_model = config_store.get_assistant_defaults(
+            "chat_session"
+        ).get("vision_model", "") or None
         if engine:
             self._validate_engine(engine)
+            if engine != engine_id:
+                default_model = (
+                    config_store.get_engine_default_model(engine) or None
+                )
+                default_fast_model = default_model
+                default_vision_model = None
             engine_id = engine
+        defaults = config_store.get_assistant_defaults("chat_session")
+        default_provider = (
+            defaults.get("provider_id", "")
+            if engine_id == (defaults.get("engine") or engine_id)
+            else ""
+        )
+        provider_id = provider_id or default_provider
         normalized_provider = validate_provider_override(provider_id, engine_id)
         model = model or default_model
         fast_model = fast_model or default_fast_model
+        vision_model = vision_model or default_vision_model
         session_id = str(uuid.uuid4())
         now = utc_now()
         with self._project_ctx(project_id):
@@ -378,6 +403,7 @@ class ChatSessionModule(AssistantRuntime):
                 engine=engine_id,
                 model=model,
                 fast_model=fast_model,
+                vision_model=vision_model,
                 provider_id=normalized_provider or None,
                 permission_mode=permission_mode or None,
                 created_at=now,
@@ -467,6 +493,8 @@ class ChatSessionModule(AssistantRuntime):
             "title": row.title or "未命名会话",
             "engine": row.engine,
             "model": row.model,
+            "fast_model": row.fast_model,
+            "vision_model": row.vision_model,
             "provider_id": row.provider_id,
             "permission_mode": row.permission_mode or "",
             "message_count": ChatMessage.select()
@@ -488,6 +516,7 @@ class ChatSessionModule(AssistantRuntime):
         engine: str | None = None,
         model: str | None = None,
         fast_model: str | None = None,
+        vision_model: str | None = None,
         thinking_effort: str | None = None,
         permission_mode: str | None = None,
         plan_mode: bool | None = None,
@@ -517,6 +546,7 @@ class ChatSessionModule(AssistantRuntime):
             engine=engine,
             model=model,
             fast_model=fast_model,
+            vision_model=vision_model,
             thinking_effort=thinking_effort,
             permission_mode=permission_mode or None,
             plan_mode=plan_mode,
@@ -671,24 +701,33 @@ class ChatSessionModule(AssistantRuntime):
         return default_engine_id, None
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
-        configured_id = config_store.get_coordinator_default_engine() or "claude"
+        defaults = config_store.get_assistant_defaults("chat_session")
+        configured_id = defaults["engine"] or "claude"
+        if (
+            configured_id == "pydantic_ai"
+            and (defaults.get("provider_id") or "").strip()
+        ):
+            if create_engine("pydantic_ai") is None:
+                raise ValueError("内置引擎不可用")
+            model = (
+                defaults["model"]
+                or config_store.get_engine_default_model("pydantic_ai")
+                or None
+            )
+            return "pydantic_ai", model, defaults["fast_model"] or model
         engine_id, engine = self._fallback_engine(configured_id)
         if engine is None:
             raise ValueError(f"Chat engine is unavailable: {engine_id}")
         if engine_id == configured_id:
             model = (
-                config_store.get_coordinator_default_model()
+                defaults["model"]
                 or config_store.get_engine_default_model(engine_id)
                 or None
             )
+            fast_model = defaults["fast_model"] or model
         else:
             model = config_store.get_engine_default_model(engine_id) or None
-        get_fast_model = getattr(
-            config_store,
-            "get_coordinator_default_fast_model",
-            lambda: "",
-        )
-        fast_model = (get_fast_model() if engine_id == configured_id else "") or model
+            fast_model = model
         return engine_id, model, fast_model
 
     def _validate_engine(self, engine_id: str) -> None:

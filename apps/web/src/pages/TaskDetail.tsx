@@ -47,6 +47,7 @@ import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLoca
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
+const REMOTE_CHAT_HISTORY_SYNC_MS = 2000
 
 type StageVisualState =
   | 'completed'
@@ -525,6 +526,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }, 50)
     return () => window.clearTimeout(timer)
   }, [projectId, taskId, userMessageEvents])
+
+  // Real-time delivery is the fast path. Periodic history reconciliation is
+  // the recovery path when a peer message lands while either WebSocket is
+  // reconnecting, because the in-memory event bus cannot replay that event.
+  useEffect(() => {
+    if (!taskId || !projectId) return
+    let cancelled = false
+    let inFlight = false
+
+    const syncHistory = () => {
+      if (document.visibilityState !== 'visible' || inFlight) return
+      inFlight = true
+      taskApi.history(taskId, projectId, 50, 0)
+        .then((response) => {
+          if (cancelled) return
+          setHistoryMessages((current) => (
+            current.some((message) => String(message.id).startsWith('pending-'))
+              ? current
+              : (response.messages || [])
+          ))
+        })
+        .catch(() => undefined)
+        .finally(() => { inFlight = false })
+    }
+
+    const timer = window.setInterval(syncHistory, REMOTE_CHAT_HISTORY_SYNC_MS)
+    document.addEventListener('visibilitychange', syncHistory)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', syncHistory)
+    }
+  }, [projectId, taskId])
 
   useEffect(() => {
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return

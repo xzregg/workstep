@@ -198,8 +198,8 @@ export function HeroPreview() {
         </span>
         <span className="hero-engine-pill">
           <span className="engine-dot dot-hermes" />
-          {t('engines.hermes')}
-          <em>{t('heroPreview.statusReady')}</em>
+          {t('engines.deepseek_hermes')}
+          <em>{t('heroPreview.statusDone')}</em>
         </span>
       </div>
     </div>
