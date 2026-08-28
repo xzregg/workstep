@@ -763,9 +763,9 @@ class PydanticAIEngine(AcpEngineBase):
         """Build a Pydantic AI UserContent, embedding images when present."""
         if not images:
             return prompt
-        from pydantic_ai.messages import ImageUrl, TextPart
+        from pydantic_ai.messages import ImageUrl
 
-        parts = [TextPart(content=prompt)]
+        parts = [prompt]
         for image in images:
             parts.append(ImageUrl(url=image.to_data_url()))
         return parts

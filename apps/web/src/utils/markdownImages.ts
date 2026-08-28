@@ -17,7 +17,7 @@ export interface MarkdownImageSegment {
 export type MarkdownInputSegment = MarkdownTextSegment | MarkdownImageSegment
 
 const MARKDOWN_IMAGE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
-const UPLOAD_RELATIVE = /^[^/]+\/\.workstep\/uploads\/([^/?#]+)$/
+const UPLOAD_RELATIVE = /^(?:[^/]+\/)?\.workstep\/uploads\/([^/?#]+)$/
 const GLOBAL_UPLOAD_RELATIVE = /^data\/uploads\/([^/?#]+)$/
 
 export function splitMarkdownImages(markdown: string): MarkdownInputSegment[] {

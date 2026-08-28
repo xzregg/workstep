@@ -7,7 +7,7 @@
       "status": "running",
       "currentStep": 2,
       "engine": "claude",
-      "cwd": "/Users/xzr/Desktop/projects/auth-service",
+      "cwd": "/workspace/examples/auth-service",
       "createdAt": "2026-06-20",
       "timeline": [
         { "start": "2025-09-12 11:11:00", "end": "2025-09-12 14:33:33" },

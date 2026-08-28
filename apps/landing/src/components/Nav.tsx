@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useI18n, type Lang } from '../i18n'
 import { applyTheme, initialTheme, nextTheme } from '../theme'
 
-export function Nav() {
+export function Nav({ onDownload = () => {} }: { onDownload?: () => void }) {
   const { t, lang, setLang } = useI18n()
   const [theme, setTheme] = useState(initialTheme)
   const otherLang: Lang = lang === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -31,6 +31,9 @@ export function Nav() {
         </nav>
         <div className="nav-spacer" />
         <div className="nav-actions">
+          <button type="button" className="nav-control nav-download" onClick={onDownload}>
+            {t('common.download')}
+          </button>
           <button type="button" className="nav-control nav-lang" onClick={() => setLang(otherLang)}>
             {otherLabel}
           </button>
@@ -44,7 +47,6 @@ export function Nav() {
           >
             {theme === 'light' ? <Moon size={16} aria-hidden="true" /> : <Sun size={16} aria-hidden="true" />}
           </button>
-
         </div>
       </div>
     </header>

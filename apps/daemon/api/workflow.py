@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/workflow", tags=["工作流管理"])
 
 
+async def _run_db(project_id, operation):
+    run_db = getattr(project_manager, "run_db", None)
+    if run_db is not None:
+        return await run_db(project_id, operation)
+    with project_manager.activate_project_by_id(project_id) as project:
+        return operation(project)
+
+
 def _resolve_template_steps(template_id: str) -> dict | None:
     """Resolve template steps by ID from ~/.workstep/data/templates/."""
     from api.templates import GLOBAL_TEMPLATES_DIR
@@ -85,7 +93,7 @@ def _validate_stage_provider(
 @router.get("/list")
 async def list_workflows(pid: str = Query(..., alias="project_id")):
     """List all workflows for a project."""
-    with project_manager.activate_project_by_id(pid) as proj:
+    def load(proj):
         return {
             "workflows": [
                 {
@@ -103,6 +111,8 @@ async def list_workflows(pid: str = Query(..., alias="project_id")):
             ]
         }
 
+    return await _run_db(pid, load)
+
 
 @router.post("/reorder")
 async def reorder_workflows(
@@ -110,65 +120,79 @@ async def reorder_workflows(
     ordered_ids: list[str] = Body(..., embed=True),
 ):
     """Persist a new display order for the project's workflows."""
-    with project_manager.activate_project_by_id(pid) as proj:
+    def reorder(proj):
         project_manager.reorder_workflows(proj, ordered_ids)
         return {"ok": True}
+
+    return await _run_db(pid, reorder)
 
 
 @router.post("/create")
 async def create_workflow(req: CreateWorkflowRequest, pid: str = Query(..., alias="project_id")):
     """Create a new workflow for a project."""
-    with project_manager.activate_project_by_id(pid) as proj:
-        steps = req.steps
-        if steps is None and req.template_id:
-            steps = _resolve_template_steps(req.template_id)
-            if steps is None:
-                raise HTTPException(status_code=404, detail=f"Template not found: {req.template_id}")
-        if steps is not None:
-            _validate_steps(steps)
+    steps = req.steps
+    if steps is None and req.template_id:
+        steps = _resolve_template_steps(req.template_id)
+        if steps is None:
+            raise HTTPException(status_code=404, detail=f"Template not found: {req.template_id}")
+    if steps is not None:
+        _validate_steps(steps)
+
+    def create(proj):
         wf = project_manager.create_workflow(proj, name=req.name, steps=steps, is_default=req.is_default)
         return wf
+
+    return await _run_db(pid, create)
 
 
 @router.get("/{workflow_id}")
 async def get_workflow(workflow_id: str, pid: str = Query(..., alias="project_id")):
     """Get a single workflow with full steps."""
-    with project_manager.activate_project_by_id(pid) as proj:
+    def load(proj):
         wf = next((w for w in proj.workflows if w["id"] == workflow_id), None)
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         return wf
 
+    return await _run_db(pid, load)
+
 
 @router.put("/{workflow_id}")
 async def update_workflow(workflow_id: str, req: UpdateWorkflowRequest, pid: str = Query(..., alias="project_id")):
     """Update workflow name and/or steps."""
-    with project_manager.activate_project_by_id(pid) as proj:
-        if req.steps is not None:
-            _validate_steps(req.steps)
+    if req.steps is not None:
+        _validate_steps(req.steps)
+
+    def update(proj):
         wf = project_manager.update_workflow(proj, workflow_id, name=req.name, steps=req.steps)
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         return wf
 
+    return await _run_db(pid, update)
+
 
 @router.post("/{workflow_id}/restore")
 async def restore_workflow(workflow_id: str, pid: str = Query(..., alias="project_id")):
     """Restore a soft-deleted workflow from the recycle bin."""
-    with project_manager.activate_project_by_id(pid) as proj:
+    def restore(proj):
         wf = project_manager.restore_workflow(proj, workflow_id)
         if wf is None:
             raise HTTPException(status_code=404, detail="Workflow not found or not deleted")
         return wf
 
+    return await _run_db(pid, restore)
+
 
 @router.delete("/{workflow_id}")
 async def delete_workflow(workflow_id: str, pid: str = Query(..., alias="project_id")):
     """Delete a workflow — soft delete first, hard delete on the second call."""
-    with project_manager.activate_project_by_id(pid) as proj:
+    def delete(proj):
         result = project_manager.delete_workflow(proj, workflow_id)
         if result is None:
             raise HTTPException(status_code=404, detail="Workflow not found")
         if not result.get("deleted"):
             raise HTTPException(status_code=400, detail="默认流程或最后一个流程不能删除")
         return result
+
+    return await _run_db(pid, delete)

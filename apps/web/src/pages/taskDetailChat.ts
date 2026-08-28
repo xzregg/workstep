@@ -313,6 +313,18 @@ export function isNearConversationBottom(
   return scrollHeight - scrollTop - clientHeight <= threshold
 }
 
+type ConversationNavigationIntent =
+  | { type: 'wheel'; deltaY: number }
+  | { type: 'key'; key: string }
+
+/** 在浏览器真正更新 scrollTop 前识别“查看较早消息”的用户意图。 */
+export function shouldPauseConversationFollow(
+  intent: ConversationNavigationIntent,
+): boolean {
+  if (intent.type === 'wheel') return intent.deltaY < 0
+  return intent.key === 'ArrowUp' || intent.key === 'PageUp' || intent.key === 'Home'
+}
+
 export function shouldRenderLegacyExecution(
   running: boolean,
   hasProcessEvents: boolean,

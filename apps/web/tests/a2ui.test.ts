@@ -184,6 +184,29 @@ test('normalizes project-relative upload paths for Image components', () => {
   }
 })
 
+test('normalizes workspace-relative upload paths without a project-name prefix', () => {
+  const messages = normalizeA2uiMessages([
+    {
+      version: 'v0.9.1',
+      type: 'updateComponents',
+      updateComponents: {
+        surfaceId: 'main',
+        components: [
+          { component: 'Image', id: 'img1', url: '.workstep/uploads/abc-123.png' },
+        ],
+      },
+    },
+  ], 'project-id')
+
+  assert.ok('updateComponents' in messages[0])
+  if ('updateComponents' in messages[0]) {
+    assert.equal(
+      (messages[0].updateComponents.components[0] as { url?: string }).url,
+      '/api/fs/serve/abc-123.png?project_id=project-id',
+    )
+  }
+})
+
 test('leaves messages untouched when no project id is provided', () => {
   const messages = [
     {

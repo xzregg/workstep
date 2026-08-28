@@ -16,6 +16,7 @@ import logging
 import logging.handlers
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -55,6 +56,42 @@ def local_path_for_protocol_url(value: str) -> str:
     if request.action == "open":
         return "/"
     return f"/?workstep_url={quote(request.raw_url, safe='')}"
+
+
+def register_protocol_handler(executable: Path | None = None) -> None:
+    """Register the per-user ``workstep://`` handler for portable builds."""
+    packaged_app = os.environ.get("APPIMAGE") if sys.platform.startswith("linux") else None
+    app = (executable or Path(packaged_app or sys.executable)).resolve()
+    if sys.platform == "win32":
+        import winreg
+
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\workstep") as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ, "URL:WorkStep Protocol")
+            winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+        with winreg.CreateKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Classes\workstep\shell\open\command",
+        ) as key:
+            winreg.SetValueEx(key, None, 0, winreg.REG_SZ, f'"{app}" "%1"')
+        return
+    if sys.platform.startswith("linux"):
+        applications = Path.home() / ".local" / "share" / "applications"
+        applications.mkdir(parents=True, exist_ok=True)
+        desktop_file = applications / "workstep.desktop"
+        desktop_file.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\nName=WorkStep\n"
+            f'Exec="{app}" %u\n'
+            "Terminal=false\nMimeType=x-scheme-handler/workstep;\n"
+            "Categories=Development;\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["xdg-mime", "default", "workstep.desktop", "x-scheme-handler/workstep"],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 # --- path helpers ---
@@ -212,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(str(exc))
 
     _setup_logging(args.verbose or args.serve_only)
+    if is_frozen() and sys.platform != "darwin":
+        try:
+            register_protocol_handler()
+        except OSError:
+            logger.exception("Unable to register workstep:// protocol handler")
     ensure_daemon_on_path()
 
     host = args.host or os.environ.get("WORKSTEP_HOST") or DEFAULT_HOST

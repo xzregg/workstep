@@ -1,27 +1,21 @@
 {
   "device": {
-    "device_id": "41d20965-4b10-4663-bd82-4306ef128bd2",
-    "device_name": "7fa9cd18a1c5"
+    "device_id": "example-device",
+    "device_name": "workstep-demo"
   },
   "user": {
-    "name": "xzr"
+    "name": "WorkStep User"
   },
   "projects": [
     {
-      "id": "8227e334",
-      "path": "/data/projects/t1",
-      "name": "t1",
+      "id": "example-project",
+      "path": "/data/projects/example",
+      "name": "example",
       "sort_order": 0
-    },
-    {
-      "id": "c1135976",
-      "path": "/data/projects/channel_system",
-      "name": "channel_system",
-      "sort_order": 1
     }
   ],
   "verified_engines": {
-    "claude_agent_sdk": true
+    "claude_agent_sdk": false
   },
   "execution_default_engine": "claude_agent_sdk",
   "assistant_defaults": {

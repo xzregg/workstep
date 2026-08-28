@@ -65,17 +65,27 @@ class EngineInstallRequest(BaseModel):
     accept_third_party_terms: bool = False
 
 
+def _engine_summaries() -> list[dict]:
+    return [
+        {
+            **engine,
+            "default_model": config_store.get_engine_default_model(engine["id"]),
+        }
+        for engine in get_available_engines()
+    ]
+
+
 @router.get("/list")
 async def list_engines():
     """Return every supported backend and its local availability."""
-    return {"engines": get_available_engines()}
+    return {"engines": _engine_summaries()}
 
 
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
     refresh_registry()
-    return {"engines": get_available_engines()}
+    return {"engines": _engine_summaries()}
 
 
 def _coordinator_engine_options() -> list[dict]:

@@ -7,6 +7,7 @@ interface MarkdownMessageProps {
   streaming?: boolean
   /** Project id used to resolve `.workstep/uploads/...` relative image paths. */
   projectId?: string
+  className?: string
 }
 
 function closeStreamingFence(markdown: string): string {
@@ -28,6 +29,7 @@ export default function MarkdownMessage({
   content,
   streaming = false,
   projectId,
+  className,
 }: MarkdownMessageProps) {
   const markdown = streaming ? closeStreamingFence(content) : content
 
@@ -42,7 +44,7 @@ export default function MarkdownMessage({
 
   return (
     <div
-      className={`markdown-message${streaming ? ' is-streaming' : ''}`}
+      className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
       aria-live={streaming ? 'polite' : undefined}
     >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

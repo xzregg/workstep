@@ -12,6 +12,8 @@ from httpx import ASGITransport, AsyncClient
 
 from models import LATEST_SCHEMA_VERSION, SchemaVersion, init_db
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
+from models.fields import utc_now
+from agent_assistants.base import extract_uploaded_images
 from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS, SYSTEM_PROMPT, ChatSessionModule
 from engines.core.events import InternalEvent
 from services.project import ProjectManager
@@ -239,6 +241,52 @@ async def test_new_session_explicit_engine_does_not_inherit_other_engine_models(
 
 
 @pytest.mark.anyio
+async def test_existing_session_engine_switch_uses_engine_provider_default(
+    chat_module,
+    monkeypatch,
+):
+    """切换会话引擎后，“跟随默认”清除旧供应商并交给新引擎解析。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "pydantic_ai",
+                "provider_id": "chat-provider",
+            },
+        },
+        "providers": [{
+            "id": "chat-provider",
+            "protocol": "openai_compatible",
+            "enabled": True,
+        }],
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured["config_overrides"] = kwargs.get("config_overrides")
+        return "已切换", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+    assert created["provider_id"] == "chat-provider"
+
+    accepted = module.submit_message(
+        project.id,
+        created["id"],
+        "使用 Codex",
+        "switch-engine-provider-default",
+        engine="codex_sdk",
+        provider_id=None,
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    detail = module.get_session(project.id, created["id"])
+    assert detail["engine"] == "codex_sdk"
+    assert detail["provider_id"] is None
+    assert captured["config_overrides"] is None
+
+
+@pytest.mark.anyio
 async def test_project_chat_routes_uploaded_image_message_to_vision_model(
     chat_module,
     monkeypatch,
@@ -284,6 +332,26 @@ async def test_project_chat_routes_uploaded_image_message_to_vision_model(
     assert captured["model"] == "chat-vision"
     assert len(captured["images"]) == 1
     assert captured["images"][0].path == str(upload.resolve())
+
+
+@pytest.mark.anyio
+async def test_uploaded_image_extraction_accepts_legacy_project_display_name_path(
+    chat_module,
+):
+    """Old messages remain readable when the display name differs from the folder."""
+    _module, _bus, _manager, project, _config_store = chat_module
+    project.name = "测试项目"
+    upload = Path(project.workstep_dir) / "uploads" / "legacy.png"
+    upload.parent.mkdir(parents=True, exist_ok=True)
+    upload.write_bytes(b"fake-png")
+
+    images = extract_uploaded_images(
+        project,
+        project.path,
+        "![图片](测试项目/.workstep/uploads/legacy.png)",
+    )
+
+    assert [image.path for image in images] == [str(upload.resolve())]
 
 
 @pytest.mark.anyio
@@ -538,6 +606,130 @@ async def test_chat_messages_go_to_new_tables_not_task_tables(chat_module, monke
     assert history["messages"][-1]["ended_at"]
     assert history["messages"][-1]["created_at"] <= history["messages"][-1]["ended_at"]
     await reloaded.shutdown()
+
+
+@pytest.mark.anyio
+async def test_submitted_user_message_survives_reload_while_turn_is_running(
+    chat_module,
+    monkeypatch,
+):
+    """重新进入执行中的会话时，已提交的用户消息仍能从历史记录恢复。"""
+    module, _bus, _manager, project, _ = chat_module
+    invoke_started = asyncio.Event()
+    release_invoke = asyncio.Event()
+
+    async def blocking_invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+    ):
+        invoke_started.set()
+        await release_invoke.wait()
+        return "回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", blocking_invoke)
+
+    session = module.create_session(project.id, "wf-running-reload")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "这条消息不能丢",
+        "idem-running-reload-1",
+    )
+    await asyncio.wait_for(invoke_started.wait(), timeout=1)
+
+    detail = module.get_session(project.id, session["id"])
+    assert [(item["role"], item["content"]) for item in detail["messages"]] == [
+        ("user", "这条消息不能丢"),
+        ("assistant", ""),
+    ]
+    assert detail["messages"][-1]["status"] == "running"
+    assert detail["messages"][-1]["event_detail"]["available"] is True
+
+    release_invoke.set()
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+
+@pytest.mark.anyio
+async def test_running_history_uses_journal_snapshot_and_details_are_separate(
+    chat_module,
+    monkeypatch,
+):
+    module, _bus, _manager, project, _ = chat_module
+    invoke_started = asyncio.Event()
+    release_invoke = asyncio.Event()
+
+    async def streaming_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        await on_event(InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "已经生成"}},
+        ))
+        await on_event(InternalEvent(
+            type="agent_thought_chunk",
+            data={"content": {"text": "内部思考"}},
+        ))
+        invoke_started.set()
+        await release_invoke.wait()
+        return "已经生成完成", [], None
+
+    monkeypatch.setattr(module, "_invoke", streaming_invoke)
+    session = module.create_session(project.id)
+    accepted = module.submit_message(
+        project.id, session["id"], "执行长任务", "journal-running-1"
+    )
+    await asyncio.wait_for(invoke_started.wait(), timeout=1)
+
+    detail = module.get_session(project.id, session["id"])
+    assistant = detail["messages"][-1]
+    assert assistant["content"] == "已经生成"
+    assert assistant["event_summary"]["thought_characters"] == 4
+    assert "内部思考" not in json.dumps(detail, ensure_ascii=False)
+
+    events = module.message_events(project.id, session["id"], assistant["id"])
+    assert any(
+        event["type"] == "REASONING_MESSAGE_CHUNK"
+        and event["delta"] == "内部思考"
+        for event in events["events"]
+    )
+
+    release_invoke.set()
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+
+def test_startup_recovery_finalizes_interrupted_running_message(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id, "wf-recovery")
+    message_id = "assistant-recovery"
+    ref = module._event_journal.start(project.workstep_dir, session["id"], message_id)
+    module._event_journal.record(ref, {
+        "type": "agent_message_chunk",
+        "data": {"content": {"text": "异常退出前的部分回答"}},
+    })
+    module._event_journal.sync(ref, durable=True)
+    with module._project_ctx(project.id):
+        ChatMessage.create(
+            id=message_id,
+            session=session["id"],
+            role="assistant",
+            content="",
+            status="running",
+            event_log_path=ref.relative_path,
+            created_at=utc_now(),
+        )
+
+    assert module.recover_interrupted_messages() == 1
+
+    detail = module.get_session(project.id, session["id"])
+    recovered = next(item for item in detail["messages"] if item["id"] == message_id)
+    assert recovered["status"] == "stopped"
+    assert recovered["content"] == "异常退出前的部分回答"
+    assert recovered["event_detail"]["available"] is True
 
 
 @pytest.mark.anyio

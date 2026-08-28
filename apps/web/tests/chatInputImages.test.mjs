@@ -32,6 +32,10 @@ test('removing an image deletes its Markdown token and only the adjacent separat
 
 test('resolves project and global upload paths through the upload serving endpoint', () => {
   assert.equal(
+    resolveMarkdownImageSrc('.workstep/uploads/界面.png', 'project-id'),
+    '/api/fs/serve/%E7%95%8C%E9%9D%A2.png?project_id=project-id',
+  )
+  assert.equal(
     resolveMarkdownImageSrc('demo/.workstep/uploads/界面.png', 'project-id'),
     '/api/fs/serve/%E7%95%8C%E9%9D%A2.png?project_id=project-id',
   )

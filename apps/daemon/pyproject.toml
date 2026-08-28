@@ -25,7 +25,8 @@ dev = [
     "pytest-timeout>=2.4.0",
 ]
 desktop = [
-    "pywebview>=6.0",
+    "pywebview>=6.0; sys_platform != 'linux'",
+    "pywebview[qt]>=6.0; sys_platform == 'linux'",
     "pyinstaller>=6.10",
 ]
 qoder = [

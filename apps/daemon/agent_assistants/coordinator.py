@@ -857,9 +857,11 @@ class CoordinatorModule:
 
     @staticmethod
     def _resolve_provider_id(task: Task) -> str:
-        """Effective coordinator provider: task override wins, then assistant default."""
+        """Resolve a task override, or let an explicitly selected engine use its default."""
         if task.coordinator_provider_id:
             return task.coordinator_provider_id
+        if task.coordinator_engine:
+            return ""
         get_defaults = getattr(config_store, "get_assistant_defaults", None)
         if get_defaults is None:
             return ""

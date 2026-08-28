@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
 import ToolTimelineItem from './ToolTimelineItem'
@@ -15,6 +15,11 @@ import {
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
 import { isToolEvent, toolCallId } from '../utils/agui.ts'
+import {
+  conversationBottomScrollTop,
+  isNearConversationBottom,
+  shouldPauseConversationFollow,
+} from '../pages/taskDetailChat'
 
 type ProcessEvent = {
   type: string
@@ -31,14 +36,40 @@ interface ProcessTraceProps {
   endedAt?: DateTimeValue
   compact?: boolean
   summaryMeta?: ReactNode
+  eventSummary?: {
+    thought_characters?: number
+    tool_count?: number
+  }
+  detailsAvailable?: boolean
+  detailsLoaded?: boolean
+  detailsLoading?: boolean
+  detailsError?: string
+  onLoadDetails?: () => void
 }
 
 function ThinkingTimelineItem({ content, active }: { content: string; active: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(active)
+  const thinkingRef = useRef<HTMLDivElement>(null)
+  const followRef = useRef(true)
+  const lastScrollTopRef = useRef(0)
+  const lastProgrammaticScrollTopRef = useRef(0)
   useEffect(() => {
     setOpen(active)
+    if (active) followRef.current = true
   }, [active])
+  useLayoutEffect(() => {
+    if (!active || !open || !followRef.current) return
+    const container = thinkingRef.current
+    if (!container) return
+    const target = conversationBottomScrollTop(
+      container.scrollHeight,
+      container.clientHeight,
+    )
+    lastProgrammaticScrollTopRef.current = target
+    container.scrollTop = target
+    lastScrollTopRef.current = target
+  }, [active, content, open])
 
   return (
     <details
@@ -89,7 +120,43 @@ function ThinkingTimelineItem({ content, active }: { content: string; active: bo
           <MessageCopyButton content={content} title={t('trace.copyThinking')} />
         </span>
       </summary>
-      <div className="process-trace-thinking">{content}</div>
+      <div
+        ref={thinkingRef}
+        className="process-trace-thinking"
+        tabIndex={0}
+        aria-label={t('trace.thinking')}
+        onWheelCapture={(event) => {
+          if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
+            followRef.current = false
+          }
+        }}
+        onKeyDownCapture={(event) => {
+          if (shouldPauseConversationFollow({ type: 'key', key: event.key })) {
+            followRef.current = false
+          }
+        }}
+        onScroll={(event) => {
+          const container = event.currentTarget
+          const programmaticEcho = Math.abs(
+            container.scrollTop - lastProgrammaticScrollTopRef.current,
+          ) <= 1
+          if (!programmaticEcho) {
+            if (container.scrollTop < lastScrollTopRef.current) {
+              followRef.current = false
+            } else if (isNearConversationBottom(
+              container.scrollHeight,
+              container.scrollTop,
+              container.clientHeight,
+              4,
+            )) {
+              followRef.current = true
+            }
+          }
+          lastScrollTopRef.current = container.scrollTop
+        }}
+      >
+        {content}
+      </div>
     </details>
   )
 }
@@ -102,10 +169,16 @@ export default function ProcessTrace({
   endedAt,
   compact = false,
   summaryMeta,
+  eventSummary,
+  detailsAvailable = false,
+  detailsLoaded = false,
+  detailsLoading = false,
+  detailsError,
+  onLoadDetails,
 }: ProcessTraceProps) {
   const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(!detailsAvailable || detailsLoaded)
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
@@ -113,8 +186,8 @@ export default function ProcessTrace({
     return () => window.clearInterval(timer)
   }, [running])
   useEffect(() => {
-    if (running) setOpen(true)
-  }, [running])
+    if (running && !detailsAvailable) setOpen(true)
+  }, [running, detailsAvailable])
 
   const processItems = buildMessageTimeline(events).filter(
     (item): item is Exclude<MessageTimelineItem, { type: 'text' }> => item.type !== 'text',
@@ -122,7 +195,7 @@ export default function ProcessTrace({
   const lastProcessItem = processItems[processItems.length - 1]
   // 按工具调用去重计数：一次命令/工具调用会拆成 start/args/chunk/result
   // 多条事件（尤其流式参数会逐块产生大量 chunk），不能把事件数当命令数。
-  const commandCount = new Set(events
+  const eventCommandCount = new Set(events
     .filter((event) => event.type === 'tool_use' || isToolEvent(event))
     .map((event) => {
       if (event.type === 'tool_use') {
@@ -132,6 +205,9 @@ export default function ProcessTrace({
       return toolCallId(event)
     })
     .filter((id) => id !== '')).size
+  const commandCount = detailsLoaded || !detailsAvailable
+    ? eventCommandCount
+    : eventSummary?.tool_count ?? eventCommandCount
   const eventTimes = events
     .map((event) => toMilliseconds(event.timestamp))
     .filter((timestamp): timestamp is number => timestamp !== null)
@@ -156,14 +232,20 @@ export default function ProcessTrace({
     ? ''
     : formatDuration(elapsedMs, t)
 
-  if (!duration && processItems.length === 0 && !summaryMeta) return null
+  if (!duration && processItems.length === 0 && !summaryMeta && !detailsAvailable) return null
 
   return (
     <div className={`process-trace${compact ? ' process-trace-compact' : ''}`}>
       <details
         className="process-trace-session"
         open={open}
-        onToggle={(event) => setOpen(event.currentTarget.open)}
+        onToggle={(event) => {
+          const nextOpen = event.currentTarget.open
+          setOpen(nextOpen)
+          if (nextOpen && detailsAvailable && !detailsLoaded && !detailsLoading) {
+            onLoadDetails?.()
+          }
+        }}
       >
         <summary>
           <span>
@@ -186,6 +268,22 @@ export default function ProcessTrace({
           {summaryMeta}
         </summary>
         <div className="process-trace-body">
+          {detailsLoading && (
+            <div className="engine-loading-message" role="status">{t('trace.loadingDetails')}</div>
+          )}
+          {!detailsLoading && detailsError && (
+            <div style={{ color: 'var(--danger)', fontSize: 12 }}>{detailsError}</div>
+          )}
+          {!detailsLoading && !detailsError && detailsAvailable && !detailsLoaded && (
+            <div style={{ color: 'var(--meta)', fontSize: 12 }}>
+              {eventSummary?.thought_characters
+                ? t('trace.thoughtCharacters', { count: eventSummary.thought_characters })
+                : t('trace.loadDetails')}
+            </div>
+          )}
+          {!detailsLoading && detailsLoaded && processItems.length === 0 && (
+            <div style={{ color: 'var(--meta)', fontSize: 12 }}>{t('trace.noDetails')}</div>
+          )}
           {processItems.map((item) => item.type === 'thinking' ? (
             <ThinkingTimelineItem
               key={item.id}

@@ -56,6 +56,17 @@ export interface MessageMetaBarProps {
   reviewStatus?: string
   /** True when the stage insert queue has messages waiting to be sent. */
   pendingInserts?: boolean
+  eventSummary?: {
+    thought_characters?: number
+    tool_count?: number
+  }
+  eventDetail?: {
+    available?: boolean
+    loaded?: boolean
+    loading?: boolean
+    error?: string
+  }
+  onLoadEventDetails?: () => void
 }
 
 export default function MessageMetaBar({
@@ -71,6 +82,9 @@ export default function MessageMetaBar({
   reviewMode = false,
   reviewStatus,
   pendingInserts = false,
+  eventSummary,
+  eventDetail,
+  onLoadEventDetails,
 }: MessageMetaBarProps) {
   const { t, locale } = useI18n()
   const [sessionCopied, setSessionCopied] = useState(false)
@@ -149,6 +163,12 @@ export default function MessageMetaBar({
         startedAt={displayStartedAt}
         endedAt={endedAt}
         compact
+        eventSummary={eventSummary}
+        detailsAvailable={eventDetail?.available}
+        detailsLoaded={eventDetail?.loaded}
+        detailsLoading={eventDetail?.loading}
+        detailsError={eventDetail?.error}
+        onLoadDetails={onLoadEventDetails}
         summaryMeta={(
           <span
             className="message-meta-details"

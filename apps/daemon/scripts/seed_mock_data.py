@@ -5,11 +5,11 @@ sys.path.insert(0, '.')
 from services.project import project_manager
 from models import Task, TaskStep, Message
 
-project_manager.register('/Users/xzr/Desktop/test_workstep')
-project_manager.bind_project('/Users/xzr/Desktop/test_workstep')
+project_manager.register('/tmp/workstep-example')
+project_manager.bind_project('/tmp/workstep-example')
 
 # Read actual step keys from steps.json
-proj = project_manager.get_project('/Users/xzr/Desktop/test_workstep')
+proj = project_manager.get_project('/tmp/workstep-example')
 steps_data = proj.steps
 if steps_data.get('nodes'):
     step_keys = [n.get('type') for n in steps_data['nodes']]

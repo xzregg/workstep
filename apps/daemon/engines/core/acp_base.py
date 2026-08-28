@@ -1104,7 +1104,7 @@ class AcpEngineBase(BaseLLMEngine):
             cwd=cwd,
             model=model,
             session_id=session_id,
-            images=images,
+            images=images if self.capabilities.supports_vision else None,
             **spawn_kwargs,
         ):
             yield event

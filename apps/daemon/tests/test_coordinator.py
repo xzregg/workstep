@@ -179,6 +179,10 @@ class SecondCoordinatorFakeEngine(CoordinatorFakeEngine):
 class ImageRoutingCoordinatorFakeEngine(CoordinatorFakeEngine):
     calls: list[dict] = []
 
+    @property
+    def supports_vision(self):
+        return True
+
     async def spawn(self, prompt, cwd, model=None, session_id=None, **kwargs):
         type(self).calls.append({
             "prompt": prompt,
@@ -1741,3 +1745,35 @@ async def test_coordinator_provider_override_saved_and_validated(api_context):
     )
     assert loaded.status_code == 200
     assert loaded.json()["configured"]["provider_id"] == "prov_test"
+
+
+@pytest.mark.anyio
+async def test_explicit_engine_uses_its_own_provider_default(
+    api_context,
+    monkeypatch,
+):
+    """明确选择 Codex 后，“跟随默认”应使用 Codex 自己的默认供应商。"""
+    import agent_assistants.coordinator as coordinator_service
+    from engines.core.registry import ENGINE_REGISTRY
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "codex", SecondCoordinatorFakeEngine)
+    monkeypatch.setattr(
+        coordinator_service.config_store,
+        "get_assistant_defaults",
+        lambda _name: {
+            "engine": "codex",
+            "provider_id": "prov_chat",
+        },
+        raising=False,
+    )
+    project_id, task_id = await _create_task(client, tmp_path)
+
+    updated = await client.patch(
+        f"/api/task/{task_id}/coordinator-config?project_id={project_id}",
+        json={"engine": "codex", "provider_id": None},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["configured"]["provider_id"] == ""
+    assert updated.json()["resolved"]["provider_id"] == ""

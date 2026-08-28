@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
+import Icon from '../components/Icon'
 import FlowCanvas, { type FlowCanvasHandle } from '../components/FlowCanvas'
 import AiFlowEditorPanel from '../components/AiFlowEditorPanel'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Select from '../components/Select'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
+import { useOnboardingStore } from '../stores/onboardingStore'
 
 /* ══════════════════════════════════════════
    Workflow editor page — project/workflow shell
@@ -35,6 +37,12 @@ function CanvasEditorInner() {
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
   const canvasRef = useRef<FlowCanvasHandle>(null)
+  const onboardingWorkflowId = useOnboardingStore((state) => state.workflowId)
+  const canvasHintSeen = useOnboardingStore((state) => state.canvasHintSeen)
+  const markCanvasHintSeen = useOnboardingStore((state) => state.markCanvasHintSeen)
+  const showOnboardingHint = searchParams.get('onboarding') === '1'
+    && !canvasHintSeen
+    && activeWorkflowId === onboardingWorkflowId
 
   useEffect(() => {
     if (!projectParam) return
@@ -133,6 +141,17 @@ function CanvasEditorInner() {
         }
         ref={canvasRef}
       />
+
+      {showOnboardingHint && (
+        <aside className="onboarding-canvas-hint" role="status">
+          <div className="onboarding-canvas-hint-icon"><Icon name="workflow" size={18} strokeWidth={2} /></div>
+          <div>
+            <strong>{t('onboarding.canvasHintTitle')}</strong>
+            <p>{t('onboarding.canvasHintBody')}</p>
+            <Button variant="primary" onClick={markCanvasHintSeen}>{t('onboarding.canvasHintDismiss')}</Button>
+          </div>
+        </aside>
+      )}
 
       </div>
 

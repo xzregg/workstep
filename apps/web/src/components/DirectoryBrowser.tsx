@@ -6,10 +6,11 @@ import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/c
 
 interface Props {
   onSelect: (path: string) => void
+  selectedPath?: string
   initialPath?: string
 }
 
-export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
+export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }: Props) {
   const { t } = useI18n()
   const [current, setCurrent] = useState<DirectoryBrowseResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -43,12 +44,6 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
   const handleGoUp = () => {
     if (current?.parent) {
       browse(current.parent)
-    }
-  }
-
-  const handleSelect = () => {
-    if (current?.path) {
-      onSelect(current.path)
     }
   }
 
@@ -108,14 +103,6 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
         >
           ＋ {t('browser.newFolder')}
         </Button>
-        <Button
-          variant="primary"
-          onClick={handleSelect}
-          style={{ fontSize: 11, padding: '4px 10px' }}
-          disabled={!current}
-        >
-          {t('browser.selectDir')}
-        </Button>
       </div>
 
       {/* Create-folder row */}
@@ -166,7 +153,7 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
       <div style={{
         maxHeight: 300, overflowY: 'auto',
         padding: 4,
-      }}>
+      }} role="listbox" aria-label={t('browser.directoryList')}>
         {loading && (
           <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
             {t('common.loading')}
@@ -180,18 +167,30 @@ export default function DirectoryBrowser({ onSelect, initialPath }: Props) {
         {!loading && current?.entries.map((entry) => (
           <div
             key={entry.path}
+            role={entry.type === 'directory' ? 'option' : undefined}
+            aria-selected={entry.type === 'directory' ? selectedPath === entry.path : undefined}
+            tabIndex={entry.type === 'directory' ? 0 : undefined}
+            onClick={entry.type === 'directory' ? () => onSelect(entry.path) : undefined}
             onDoubleClick={() => handleDoubleClick(entry)}
+            onKeyDown={(event) => {
+              if (entry.type !== 'directory') return
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onSelect(entry.path)
+              }
+            }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
               padding: '6px 10px',
               borderRadius: 6,
               cursor: entry.type === 'directory' ? 'pointer' : 'default',
               fontSize: 13,
-              color: entry.type === 'directory' ? 'var(--fg)' : 'var(--muted)',
+              color: selectedPath === entry.path ? 'var(--accent-fg)' : entry.type === 'directory' ? 'var(--fg)' : 'var(--muted)',
+              background: selectedPath === entry.path ? 'var(--accent)' : 'transparent',
               transition: 'background var(--motion-fast)',
             }}
-            onMouseEnter={(e) => { if (entry.type === 'directory') e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+            onMouseEnter={(e) => { if (entry.type === 'directory' && selectedPath !== entry.path) e.currentTarget.style.background = 'var(--surface)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = selectedPath === entry.path ? 'var(--accent)' : 'transparent' }}
           >
             <span style={{ fontSize: 13 }}>
               {entry.type === 'directory' ? '📁' : '📄'}

@@ -10,6 +10,7 @@ import {
   isTaskNotStarted,
   isNearConversationBottom,
   conversationBottomScrollTop,
+  shouldPauseConversationFollow,
   isManualReviewMessage,
   isMessageReviewActionable,
   isStageResumableWithMessage,
@@ -343,6 +344,15 @@ test('describes the latest live engine activity before text arrives', () => {
 test('only follows new messages while the reader stays near the bottom', () => {
   assert.equal(isNearConversationBottom(1000, 620, 300), true)
   assert.equal(isNearConversationBottom(1000, 300, 300), false)
+})
+
+test('pauses message following as soon as the reader navigates toward older messages', () => {
+  assert.equal(shouldPauseConversationFollow({ type: 'wheel', deltaY: -1 }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'wheel', deltaY: 1 }), false)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'ArrowUp' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'PageUp' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'Home' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'ArrowDown' }), false)
 })
 
 test('does not render the legacy running placeholder beside a structured message', () => {

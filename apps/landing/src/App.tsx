@@ -35,7 +35,7 @@ export default function App() {
 
   return (
     <>
-      <Nav />
+      <Nav onDownload={() => setDownloadOpen(true)} />
       <main>
         <Hero onOpenDemos={scrollToDemos} onLaunchFallback={launchWithFallback} />
         <EnginesStrip />
@@ -44,12 +44,9 @@ export default function App() {
         <Demos onOpen={setOpenDemo} />
         <Workflow />
         <RemoteShare />
-        <FinalCta />
+        <FinalCta onLaunchFallback={launchWithFallback} />
       </main>
       <Footer />
-      <button type="button" className="download-fallback-link" onClick={() => setDownloadOpen(true)}>
-        下载 WorkStep
-      </button>
       {openDemo && <DemoModal demo={openDemo} onClose={() => setOpenDemo(null)} />}
       {downloadOpen && <DownloadModal onClose={() => setDownloadOpen(false)} />}
     </>

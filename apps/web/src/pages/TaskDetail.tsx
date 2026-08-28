@@ -39,7 +39,6 @@ import {
   isTaskCompleted,
   isTaskNotStarted,
   isStageResumableWithMessage,
-  conversationBottomScrollTop,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
@@ -339,13 +338,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const persistedMessageIds = useMemo(
     () => new Set(historyMessages.map((message) => String(message.id))),
     [historyMessages],
-  )
-  const liveCoordinatorMessages = useMemo(
-    () => Object.values(liveMessages).filter(
-      (message) => message.channel === 'coordinator'
-        && isUnpersistedLiveMessage(message, persistedMessageIds),
-    ),
-    [liveMessages, persistedMessageIds],
   )
   const liveExecutionMessages = useMemo(
     () => Object.values(liveMessages).filter(
@@ -656,45 +648,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [tasks.length, fetchTasks, projectId])
 
   useEffect(() => {
-    if (historyLoading) return
-    if (shouldFollowMessagesRef.current) {
-      const container = chatScrollRef.current
-      if (container) {
-        const target = conversationBottomScrollTop(
-          container.scrollHeight,
-          container.clientHeight,
-        )
-        lastProgrammaticScrollTopRef.current = target
-        container.scrollTop = target
-      }
-      setHasUnreadMessages(false)
-    } else {
-      setHasUnreadMessages(true)
-    }
-  }, [events, content, historyMessages, historyLoading, liveCoordinatorMessages, liveExecutionMessages])
-
-  useEffect(() => {
     shouldFollowMessagesRef.current = true
     setHasUnreadMessages(false)
   }, [taskId])
-
-  // 图片/媒体异步加载会撑高内容且不触发上面的跟随 effect，
-  // 跟随中时在 capture 阶段监听 load 重新钉底。
-  useEffect(() => {
-    const container = chatScrollRef.current
-    if (!container) return
-    const onMediaLoad = () => {
-      if (!shouldFollowMessagesRef.current) return
-      const target = conversationBottomScrollTop(
-        container.scrollHeight,
-        container.clientHeight,
-      )
-      lastProgrammaticScrollTopRef.current = target
-      container.scrollTop = target
-    }
-    container.addEventListener('load', onMediaLoad, true)
-    return () => container.removeEventListener('load', onMediaLoad, true)
-  }, [])
 
   useEffect(() => {
     if (!activeCoordinatorMessageId) return
@@ -1786,16 +1742,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         stageLastMessageRefs={stageLastMessageRefs}
         pendingStageScrollRef={pendingStageScrollRef}
         hasUnreadMessages={hasUnreadMessages}
-        onScrollToBottom={() => {
-          shouldFollowMessagesRef.current = true
-          setHasUnreadMessages(false)
-          const container = chatScrollRef.current
-          if (container) {
-            const target = conversationBottomScrollTop(container.scrollHeight, container.clientHeight)
-            lastProgrammaticScrollTopRef.current = target
-            container.scrollTop = target
-          }
-        }}
+        onUnreadMessagesChange={setHasUnreadMessages}
       />
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
         <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>

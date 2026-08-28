@@ -66,6 +66,17 @@ class WorkflowRunHandle:
     _completion: asyncio.Task[str] = field(repr=False, compare=False)
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedWorkflowRun:
+    project_id: str
+    database_executor: object
+    task: Task
+    workflow_run: WorkflowRun
+    steps_config: dict
+    artifacts_dir: Path
+    user_message: Message | None
+
+
 class WorkflowRuntime:
     """Run project workflows behind one small interface."""
 
@@ -97,22 +108,36 @@ class WorkflowRuntime:
         user_input: str = "",
     ) -> WorkflowRunHandle:
         """Start a saved workflow and return its stable background handle."""
-        with self._project_manager.activate_project_by_id(project_id) as project:
-            handle = self._start_in_project(project, task_id, user_input)
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            if task_id in self._runners:
+                raise RuntimeError(f"Task is already running: {task_id}")
+            prepared = await self._run_db(
+                project_id,
+                lambda project: self._prepare_start_in_project(
+                    project,
+                    task_id,
+                    user_input,
+                ),
+            )
+            handle = self._launch_prepared_run(prepared, user_input)
             normalized_input = user_input.strip()
-            if normalized_input:
-                user_message = Message.get(
-                    (Message.task == task_id)
-                    & (Message.role == "user")
-                    & (Message.run_id == handle.id)
-                )
+            if normalized_input and prepared.user_message is not None:
                 await self._publish_user_message(
                     task_id,
-                    user_message,
+                    prepared.user_message,
                     "message_started",
                     {"content": normalized_input, "status": "completed"},
                 )
             return handle
+
+    async def _run_db(self, project_id: str, operation):
+        """Use the production DB executor while retaining lightweight adapters."""
+        run_db = getattr(self._project_manager, "run_db", None)
+        if run_db is not None:
+            return await run_db(project_id, operation)
+        with self._project_manager.activate_project_by_id(project_id) as project:
+            return operation(project)
 
     def _start_in_project(
         self,
@@ -121,6 +146,18 @@ class WorkflowRuntime:
         user_input: str,
     ) -> WorkflowRunHandle:
         """Create persistent run state while its project context is active."""
+        if task_id in self._runners:
+            raise RuntimeError(f"Task is already running: {task_id}")
+        prepared = self._prepare_start_in_project(project, task_id, user_input)
+        return self._launch_prepared_run(prepared, user_input)
+
+    def _prepare_start_in_project(
+        self,
+        project,
+        task_id: str,
+        user_input: str,
+    ) -> _PreparedWorkflowRun:
+        """Persist a new run while executing on the project's DB thread."""
         try:
             task = Task.get_by_id(task_id)
         except Task.DoesNotExist as exc:
@@ -151,18 +188,6 @@ class WorkflowRuntime:
 
         artifacts_dir = Path(project.workstep_dir) / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-        runner = TaskRunner(
-            self._event_bus,
-            dispatch_service=self._dispatch_service,
-            source_project_id=project.id,
-        )
-        if task.id in self._runners:
-            workflow_run.status = "failed"
-            workflow_run.ended_at = utc_now()
-            workflow_run.save()
-            raise RuntimeError(f"Task is already running: {task.id}")
-        self._runners[task.id] = runner
         task.status = "running"
         task.active_workflow_run_id = workflow_run.id
         task.state_version += 1
@@ -170,6 +195,7 @@ class WorkflowRuntime:
         task.save()
 
         normalized_input = user_input.strip()
+        user_message = None
         if normalized_input:
             step_statuses = {
                 task_step.step_key: task_step.status
@@ -179,7 +205,7 @@ class WorkflowRuntime:
                 steps_config,
                 step_statuses,
             )
-            create_task_message(
+            user_message = create_task_message(
                 id=new_message_id(),
                 task=task,
                 channel="execution",
@@ -194,17 +220,47 @@ class WorkflowRuntime:
                 created_at=now,
             )
 
-        completion = asyncio.create_task(
-            self._execute(
-                task=task,
-                runner=runner,
-                workflow_run=workflow_run,
-                steps_config=steps_config,
-                artifacts_dir=artifacts_dir,
-                user_input=user_input,
-            ),
-            name=f"workflow-run:{workflow_run.id}",
+        return _PreparedWorkflowRun(
+            project_id=project.id,
+            database_executor=getattr(project, "database_executor", None),
+            task=task,
+            workflow_run=workflow_run,
+            steps_config=steps_config,
+            artifacts_dir=artifacts_dir,
+            user_message=user_message,
         )
+
+    def _launch_prepared_run(
+        self,
+        prepared: _PreparedWorkflowRun,
+        user_input: str,
+    ) -> WorkflowRunHandle:
+        """Attach prepared persistent state to event-loop-owned runtime state."""
+        task = prepared.task
+        workflow_run = prepared.workflow_run
+        runner = TaskRunner(
+            self._event_bus,
+            dispatch_service=self._dispatch_service,
+            source_project_id=prepared.project_id,
+            database_executor=prepared.database_executor,
+        )
+        self._runners[task.id] = runner
+
+        # asyncio tasks copy ContextVars at creation time. Activate the project
+        # here so the long-running pipeline keeps its database routing after
+        # this method returns to an unbound request context.
+        with self._project_manager.activate_project_by_id(prepared.project_id):
+            completion = asyncio.create_task(
+                self._execute(
+                    task=task,
+                    runner=runner,
+                    workflow_run=workflow_run,
+                    steps_config=prepared.steps_config,
+                    artifacts_dir=prepared.artifacts_dir,
+                    user_input=user_input,
+                ),
+                name=f"workflow-run:{workflow_run.id}",
+            )
         self._active_tasks.add(completion)
         completion.add_done_callback(
             functools.partial(
@@ -558,6 +614,7 @@ class WorkflowRuntime:
             self._event_bus,
             dispatch_service=self._dispatch_service,
             source_project_id=project.id,
+            database_executor=getattr(project, "database_executor", None),
         )
         self._runners[task.id] = runner
         completion = asyncio.create_task(
@@ -765,6 +822,7 @@ class WorkflowRuntime:
                     self._event_bus,
                     dispatch_service=self._dispatch_service,
                     source_project_id=project.id,
+                    database_executor=getattr(project, "database_executor", None),
                 )
                 self._runners[task.id] = new_runner
                 completion = asyncio.create_task(
@@ -1054,22 +1112,28 @@ class WorkflowRuntime:
             workflow_run.status = "failed"
             raise
         else:
-            task = Task.get_by_id(task.id)
-            if task.status == "ready":
-                workflow_run.status = "succeeded"
-            elif task.status == "paused" and TaskStep.select().where(
-                (TaskStep.task == task)
-                & (TaskStep.status.in_(
-                    ["awaiting_review", "rejected", "retrying"]
-                ))
-            ).exists():
-                workflow_run.status = "paused"
-            else:
-                workflow_run.status = "failed"
+            def resolve_run_status():
+                latest_task = Task.get_by_id(task.id)
+                if latest_task.status == "ready":
+                    workflow_run.status = "succeeded"
+                elif latest_task.status == "paused" and TaskStep.select().where(
+                    (TaskStep.task == latest_task)
+                    & (TaskStep.status.in_(
+                        ["awaiting_review", "rejected", "retrying"]
+                    ))
+                ).exists():
+                    workflow_run.status = "paused"
+                else:
+                    workflow_run.status = "failed"
+
+            await runner._run_db(resolve_run_status)
         finally:
-            if not (interrupted and self._graceful_shutdown):
-                workflow_run.ended_at = utc_now()
-            workflow_run.save()
+            def finalize_run():
+                if not (interrupted and self._graceful_shutdown):
+                    workflow_run.ended_at = utc_now()
+                workflow_run.save()
+
+            await runner._run_db(finalize_run)
             if self._runners.get(task.id) is runner:
                 self._runners.pop(task.id, None)
 

@@ -10,6 +10,8 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](apps/daemon/pyproject.toml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](apps/web/package.json)
 
+![WorkStep workflow workspace](apps/web/src/assets/hero.png)
+
 WorkStep keeps projects and execution data on your machine while giving every task a structured workflow, live agent output, approval boundaries, and resumable context. It ships a FastAPI daemon, a React web interface, and desktop packages for macOS, Windows, and Linux.
 
 ## Highlights

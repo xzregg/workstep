@@ -31,12 +31,21 @@ test('summary includes executed commands only when at least one tool ran', () =>
   assert.match(source, /commandCount > 0 && t\('trace\.commandCount'/)
 })
 
-test('process stream defaults expanded for running and completed durations', () => {
-  assert.match(source, /useState\(true\)/)
-  assert.match(source, /if \(running\) setOpen\(true\)/)
+test('process stream stays expanded except for lazy persisted details', () => {
+  assert.match(source, /useState\(!detailsAvailable \|\| detailsLoaded\)/)
+  assert.match(source, /if \(running && !detailsAvailable\) setOpen\(true\)/)
   assert.doesNotMatch(source, /setOpen\(running\)/)
   assert.match(source, /<details[\s\S]*className="process-trace-session"[\s\S]*open=\{open\}/)
   assert.doesNotMatch(source, /!running && !stopped && t\('trace\.commandCount'/)
+})
+
+test('persisted process details load only when their disclosure is opened', () => {
+  assert.match(source, /detailsAvailable\?:\s*boolean/)
+  assert.match(source, /detailsLoaded\?:\s*boolean/)
+  assert.match(source, /onLoadDetails\?:\s*\(\) => void/)
+  assert.match(source, /if \(nextOpen && detailsAvailable && !detailsLoaded && !detailsLoading\)/)
+  assert.match(source, /onLoadDetails\?\.\(\)/)
+  assert.match(messageMetaBarSource, /detailsAvailable=\{eventDetail\?\.available\}/)
 })
 
 test('process stream renders thinking and tools from one ordered timeline', () => {
@@ -90,6 +99,12 @@ test('thinking copy action appears only while the thinking block is hovered or f
     styles,
     /\.process-trace-thinking-block:hover[\s\S]*\.process-trace-thinking-copy[\s\S]*\.process-trace-thinking-block:focus-within[\s\S]*\.process-trace-thinking-copy\s*\{[\s\S]*?opacity:\s*1;/,
   )
+})
+
+test('active thinking output follows new text until the reader scrolls upward', () => {
+  assert.match(source, /useLayoutEffect\(\(\) => \{[\s\S]*thinkingRef\.current[\s\S]*scrollTop = target[\s\S]*\}, \[active, content, open\]\)/)
+  assert.match(source, /onWheelCapture=\{[\s\S]*shouldPauseConversationFollow/)
+  assert.match(source, /isNearConversationBottom\([\s\S]*followRef\.current = true/)
 })
 
 test('process stream renders subagent lifecycle items alongside tools', () => {

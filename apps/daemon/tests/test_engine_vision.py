@@ -45,6 +45,7 @@ class PromptCapturingEngine(AcpEngineBase):
     """Records the prompt it receives from spawn_coordinator."""
 
     calls: list[str] = []
+    image_calls: list[list[EngineImage] | None] = []
 
     @staticmethod
     def is_installed():
@@ -60,6 +61,7 @@ class PromptCapturingEngine(AcpEngineBase):
 
     async def spawn(self, prompt, cwd, model=None, add_dirs=None, session_id=None, **kwargs):
         type(self).calls.append(prompt)
+        type(self).image_calls.append(kwargs.get("images"))
         yield InternalEvent(type="text_delta", data={"delta": "ok"})
 
     async def stop(self):
@@ -83,6 +85,7 @@ class PromptCapturingEngine(AcpEngineBase):
 @pytest.mark.anyio
 async def test_base_spawn_coordinator_injects_image_refs_into_prompt():
     PromptCapturingEngine.calls.clear()
+    PromptCapturingEngine.image_calls.clear()
     engine = PromptCapturingEngine()
     images = [
         EngineImage(path="/project/.workstep/uploads/a.png", description="截图A"),
@@ -95,6 +98,7 @@ async def test_base_spawn_coordinator_injects_image_refs_into_prompt():
     assert "/project/.workstep/uploads/a.png" in prompt
     assert "截图A" in prompt
     assert "https://example.com/b.png" in prompt
+    assert PromptCapturingEngine.image_calls[-1] is None
 
 
 @pytest.mark.anyio
@@ -228,10 +232,26 @@ async def test_pydantic_ai_run_agent_builds_image_user_content(monkeypatch):
 
     parts = captured["prompt"]
     assert isinstance(parts, list)
-    assert parts[0].content == "看图说话"
-    assert parts[0].part_kind == "text"
+    assert parts[0] == "看图说话"
     assert parts[1].url == "https://example.com/x.png"
     assert parts[1].kind == "image-url"
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_image_user_content_is_accepted_by_agent():
+    """The real Pydantic AI input converter accepts our multimodal content."""
+    from pydantic_ai import Agent
+    from pydantic_ai.models.test import TestModel
+
+    from engines.pydantic_ai import PydanticAIEngine
+
+    content = PydanticAIEngine._build_user_content(
+        "图片有什么",
+        [EngineImage(url="https://example.com/x.png")],
+    )
+
+    result = await Agent(TestModel()).run(content)
+    assert isinstance(result.output, str)
 
 
 @pytest.mark.anyio

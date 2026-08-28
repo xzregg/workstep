@@ -328,8 +328,13 @@ class WorkflowGenModule(AssistantRuntime):
         if engine is not None and engine.supports_resume:
             # 引擎侧维护会话上下文：历史不再拼进 prompt。首轮携带完整系统
             # 提示，续轮只发当前画布与用户消息，避免重复污染引擎会话。
-            user_message = (
-                session.messages[-1]["content"] if session.messages else ""
+            user_message = next(
+                (
+                    str(item.get("content") or "")
+                    for item in reversed(session.messages)
+                    if item.get("role") == "user"
+                ),
+                "",
             )
             head = SYSTEM_PROMPT if not session.resolved_session_id else ""
             return f"{head}{canvas_json}\n\n{user_message}"

@@ -67,6 +67,43 @@ test('keeps compacted AG-UI events on the assistant message timeline', () => {
   assert.equal(message.events?.[0].value?.summary, '保留任务目标')
 })
 
+test('loads persisted event details lazily and preserves newer live events', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().hydrateSession('session-lazy', [{
+    id: 'message-lazy',
+    role: 'assistant',
+    content: '已恢复的回答',
+    status: 'running',
+    events: [{ type: 'usage_update', seq: 2, data: { used: 10 } }],
+    event_summary: {
+      event_count: 4,
+      last_event_seq: 4,
+      thought_characters: 12,
+      tool_count: 1,
+    },
+    event_detail: { available: true, loaded: false },
+  }])
+  store.getState().handleWsEvent({
+    type: 'REASONING_MESSAGE_CHUNK',
+    channel: 'session_chat',
+    session_id: 'session-lazy',
+    messageId: 'message-lazy',
+    event_sequence: 5,
+    delta: '新的实时思考',
+  })
+
+  store.getState().setMessageEventDetails('session-lazy', 'message-lazy', [
+    { type: 'agent_thought_chunk', seq: 1, data: { content: '历史思考' } },
+    { type: 'usage_update', seq: 2, data: { used: 10 } },
+  ], { complete: true, next_cursor: null })
+
+  const message = store.getState().sessions['session-lazy'].messages[0]
+  assert.deepEqual(message.events?.map((event) => event.seq ?? event.event_sequence), [1, 2, 5])
+  assert.equal(message.event_detail?.loaded, true)
+  assert.equal(message.event_detail?.loading, false)
+  assert.equal(message.event_detail?.complete, true)
+})
+
 test('hydrateSession restores flow proposals from persisted history', () => {
   const store = createAssistantStore({
     channel: 'flow_gen',

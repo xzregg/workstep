@@ -34,6 +34,8 @@ from agent_assistants.base import (
     repair_message_times,
     validate_provider_override,
 )
+from agent_assistants.event_journal import TurnEventJournal
+from engines.core.agui import AGUIContext, to_agui_events
 from services.chat_permissions import is_valid_permission_mode
 from services.config import config_store
 
@@ -92,6 +94,54 @@ def _load_json(raw: str | None, default):
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
         return default
+
+
+_AGUI_EVENT_TYPES = {
+    "TEXT_MESSAGE_START",
+    "TEXT_MESSAGE_CHUNK",
+    "TEXT_MESSAGE_CONTENT",
+    "TEXT_MESSAGE_END",
+    "REASONING_MESSAGE_CHUNK",
+    "TOOL_CALL_START",
+    "TOOL_CALL_ARGS",
+    "TOOL_CALL_CHUNK",
+    "TOOL_CALL_RESULT",
+    "RUN_STARTED",
+    "RUN_FINISHED",
+    "RUN_ERROR",
+    "CUSTOM",
+}
+
+
+def _detail_agui_events(
+    events: list[dict],
+    *,
+    project_id: str,
+    session_id: str,
+    message_id: str,
+) -> list[dict]:
+    translated: list[dict] = []
+    for index, event in enumerate(events, start=1):
+        event_type = str(event.get("type") or "")
+        sequence = int(event.get("seq") or event.get("sequence") or index)
+        if event_type in _AGUI_EVENT_TYPES:
+            item = dict(event)
+            item.setdefault("sequence", sequence)
+            item.setdefault("messageId", message_id)
+            translated.append(item)
+            continue
+        timestamp = event.get("timestamp")
+        ctx = AGUIContext(
+            project_id=project_id,
+            message_id=message_id,
+            channel=CHAT_CHANNEL,
+            session_id=session_id,
+            event_sequence=sequence,
+            created_at=timestamp if isinstance(timestamp, str) else None,
+            timestamp=timestamp if isinstance(timestamp, (int, float)) else None,
+        )
+        translated.extend(to_agui_events(event, ctx))
+    return translated
 
 
 def _preview(text: str, limit: int) -> str:
@@ -165,6 +215,17 @@ class ChatRowPersistence(PersistenceAdapter):
             events = _load_json(item.events_json, [])
             if events:
                 message["events"] = events
+            summary = _load_json(item.event_summary_json, {})
+            if item.event_log_path:
+                message["event_log_path"] = item.event_log_path
+                message["event_summary"] = summary
+                message["event_detail"] = {
+                    "available": True,
+                    "loaded": False,
+                    "event_count": item.event_count or 0,
+                    "last_event_seq": item.last_event_seq or 0,
+                    **summary,
+                }
             message = repair_message_times(message)
             messages.append(message)
         return messages
@@ -202,35 +263,45 @@ class ChatRowPersistence(PersistenceAdapter):
             row.save()
         for item in session.messages:
             message_id = str(item.get("id") or "")
-            if not message_id or ChatMessage.get_or_none(ChatMessage.id == message_id):
+            if not message_id:
                 continue
             created_at = _from_iso(item.get("created_at")) or now
             ended_at = _from_iso(item.get("ended_at"))
             events = [e for e in (item.get("events") or []) if isinstance(e, dict)]
-            ChatMessage.create(
-                id=message_id,
-                session=row,
-                role=item.get("role", "assistant"),
-                content=item.get("content", ""),
-                author_id=item.get("author_id"),
-                author_name=item.get("author_name"),
-                author_device_id=item.get("author_device_id"),
-                author_device_name=item.get("author_device_name"),
-                status=item.get("status") or (
+            values = {
+                "session": row,
+                "role": item.get("role", "assistant"),
+                "content": item.get("content", ""),
+                "author_id": item.get("author_id"),
+                "author_name": item.get("author_name"),
+                "author_device_id": item.get("author_device_id"),
+                "author_device_name": item.get("author_device_name"),
+                "status": item.get("status") or (
                     "succeeded" if item.get("role") == "assistant" else None
                 ),
-                engine=item.get("engine"),
-                model=item.get("model"),
-                prompt=item.get("prompt"),
-                events_json=json.dumps(events, ensure_ascii=False) if events else None,
-                usage_json=(
-                    json.dumps(_extract_usage(events), ensure_ascii=False)
-                    if _extract_usage(events)
-                    else None
+                "engine": item.get("engine"),
+                "model": item.get("model"),
+                "prompt": item.get("prompt"),
+                "events_json": json.dumps(events, ensure_ascii=False) if events else None,
+                "event_log_path": item.get("event_log_path"),
+                "event_summary_json": (
+                    json.dumps(item.get("event_summary"), ensure_ascii=False)
+                    if item.get("event_summary") else None
                 ),
-                created_at=created_at,
-                ended_at=ended_at,
-            )
+                "event_count": int((item.get("event_summary") or {}).get("event_count") or 0),
+                "last_event_seq": int((item.get("event_summary") or {}).get("last_event_seq") or 0),
+                "usage_json": (
+                    json.dumps(_extract_usage(events), ensure_ascii=False)
+                    if _extract_usage(events) else None
+                ),
+                "created_at": created_at,
+                "ended_at": ended_at,
+            }
+            existing = ChatMessage.get_or_none(ChatMessage.id == message_id)
+            if existing is None:
+                ChatMessage.create(id=message_id, **values)
+            else:
+                ChatMessage.update(**values).where(ChatMessage.id == message_id).execute()
 
     @staticmethod
     def _default_title(messages: list[dict]) -> str:
@@ -313,6 +384,7 @@ class ChatSessionModule(AssistantRuntime):
     """The Codex-style session chat assistant — config + row persistence."""
 
     def __init__(self, event_bus, project_manager):
+        self._event_journal = TurnEventJournal()
         config = AssistantConfig(
             name="chat_session",
             channel=CHAT_CHANNEL,
@@ -323,10 +395,57 @@ class ChatSessionModule(AssistantRuntime):
             max_sessions=MAX_SESSIONS,
             session_ttl_seconds=SESSION_TTL_SECONDS,
             persistence=ChatRowPersistence(),
+            event_journal=self._event_journal,
             validate_engine=self._validate_engine,
         )
         super().__init__(config, event_bus, project_manager)
         assistant_registry.register(config)
+
+    def recover_interrupted_messages(self) -> int:
+        """Finalize journal-backed turns left running by a previous daemon."""
+        recovered = 0
+        now = utc_now()
+        for project in tuple(self._project_manager.iter_projects()):
+            try:
+                with self._project_manager.activate_project(project.path):
+                    rows = list(ChatMessage.select().where(
+                        ChatMessage.role == "assistant",
+                        ChatMessage.status == "running",
+                    ))
+                    for row in rows:
+                        summary: dict[str, Any] = {}
+                        events: list[dict] = []
+                        content = row.content or ""
+                        if row.event_log_path:
+                            ref = self._event_journal.reopen(
+                                project.workstep_dir,
+                                row.event_log_path,
+                            )
+                            snapshot = self._event_journal.snapshot(ref)
+                            self._event_journal.finish(ref)
+                            content = snapshot["content"] or content
+                            summary = snapshot["summary"]
+                            events = snapshot["events"]
+                        row.content = content
+                        row.status = "stopped"
+                        row.ended_at = now
+                        if events:
+                            row.events_json = json.dumps(events, ensure_ascii=False)
+                        if summary:
+                            row.event_summary_json = json.dumps(summary, ensure_ascii=False)
+                        row.event_count = int(summary.get("event_count") or row.event_count or 0)
+                        row.last_event_seq = int(summary.get("last_event_seq") or row.last_event_seq or 0)
+                        row.save()
+                        ChatSession.update(updated_at=now).where(
+                            ChatSession.id == row.session_id,
+                        ).execute()
+                        recovered += 1
+            except Exception:
+                logger.exception(
+                    "Failed to recover interrupted chat messages for project %s",
+                    project.id,
+                )
+        return recovered
 
     # ── session CRUD ───────────────────────────────────────────────────
 
@@ -418,7 +537,87 @@ class ChatSessionModule(AssistantRuntime):
                 return None
             summary = self._session_summary(row)
         history = self.history(project_id, session_id) or {}
+        for message in history.get("messages", []):
+            if message.get("status") != "running" or not message.get("event_log_path"):
+                continue
+            try:
+                with self._project_ctx(project_id) as project:
+                    ref = self._event_journal.reopen(
+                        project.workstep_dir,
+                        str(message["event_log_path"]),
+                    )
+                    snapshot = self._event_journal.snapshot(ref)
+                message["content"] = snapshot["content"]
+                message["events"] = snapshot["events"]
+                message["event_summary"] = snapshot["summary"]
+                message["event_detail"] = {
+                    "available": True,
+                    "loaded": False,
+                    **snapshot["summary"],
+                }
+            except Exception:
+                logger.exception("Failed to restore running chat snapshot")
         return {**summary, "messages": history.get("messages", [])}
+
+    def message_events(
+        self,
+        project_id: str,
+        session_id: str,
+        message_id: str,
+        *,
+        cursor: int = 0,
+        limit: int = 200,
+    ) -> dict:
+        """Read one message's detailed timeline without loading it in history."""
+        with self._project_ctx(project_id) as project:
+            row = (
+                ChatMessage.select(ChatMessage, ChatSession)
+                .join(ChatSession)
+                .where(
+                    ChatMessage.id == message_id,
+                    ChatSession.id == session_id,
+                    ChatSession.project_id == project_id,
+                )
+                .first()
+            )
+            if row is None:
+                raise ValueError("Chat message not found")
+            if row.event_log_path:
+                ref = self._event_journal.reopen(
+                    project.workstep_dir,
+                    row.event_log_path,
+                )
+                page = self._event_journal.timeline(
+                    ref,
+                    cursor=cursor,
+                    limit=limit,
+                )
+                page["events"] = _detail_agui_events(
+                    page["events"],
+                    project_id=project_id,
+                    session_id=session_id,
+                    message_id=message_id,
+                )
+                return {"message_id": message_id, **page}
+            legacy = _load_json(row.events_json, [])
+        start = max(0, cursor)
+        bounded = min(max(1, limit), 200)
+        raw_events = legacy[start:start + bounded]
+        events = _detail_agui_events(
+            raw_events,
+            project_id=project_id,
+            session_id=session_id,
+            message_id=message_id,
+        )
+        next_cursor = start + len(raw_events)
+        return {
+            "message_id": message_id,
+            "events": events,
+            "event_count": len(legacy),
+            "last_event_seq": next_cursor,
+            "next_cursor": next_cursor if next_cursor < len(legacy) else None,
+            "complete": next_cursor >= len(legacy),
+        }
 
     def rename_session(
         self,
@@ -443,7 +642,10 @@ class ChatSessionModule(AssistantRuntime):
             if ChatSession.get_or_none(ChatSession.id == session_id) is None:
                 raise ValueError("Chat session not found")
         memory_key, sid = self._session_identity(project_id, session_id)
-        return self.reset_scoped_session(project_id, session_id, memory_key, sid)
+        removed = self.reset_scoped_session(project_id, session_id, memory_key, sid)
+        with self._project_ctx(project_id) as project:
+            self._event_journal.delete_session(project.workstep_dir, session_id)
+        return removed
 
 
     def reorder_sessions(
@@ -552,6 +754,11 @@ class ChatSessionModule(AssistantRuntime):
             plan_mode=plan_mode,
             provider_id=provider_id,
         )
+        if engine:
+            with self._project_ctx(project_id):
+                ChatSession.update(
+                    provider_id=(provider_id or "").strip() or None,
+                ).where(ChatSession.id == session_id).execute()
         return ChatAccepted(
             session_id=accepted.session_id,
             turn_id=accepted.turn_id,
@@ -573,12 +780,20 @@ class ChatSessionModule(AssistantRuntime):
         prompt = self.get_system_prompt(session.project_id)
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
-            user_message = (
-                session.messages[-1]["content"] if session.messages else ""
+            user_message = next(
+                (
+                    str(item.get("content") or "")
+                    for item in reversed(session.messages)
+                    if item.get("role") == "user"
+                ),
+                "",
             )
             head = prompt if not session.resolved_session_id else ""
             return f"{head}\n\n{user_message}"
-        turns = session.messages[-self._config.max_history_turns * 2:]
+        turns = [
+            item for item in session.messages
+            if not (item.get("role") == "assistant" and item.get("status") == "running")
+        ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
             f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
             for item in turns

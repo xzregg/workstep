@@ -25,6 +25,7 @@ import Input from './Input'
 import Textarea from './Textarea'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
+import ConversationNewMessagesButton from './ConversationNewMessagesButton'
 import ChatInput, { type ChatInputEngineConfig } from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, {
@@ -43,6 +44,7 @@ import {
   isMessageReviewActionable,
   isStageResumableWithMessage,
   isNearConversationBottom,
+  shouldPauseConversationFollow,
   conversationBottomScrollTop,
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
@@ -294,7 +296,7 @@ export interface TaskDetailViewProps {
   >
   pendingStageScrollRef?: React.MutableRefObject<string | null>
   hasUnreadMessages?: boolean
-  onScrollToBottom?: () => void
+  onUnreadMessagesChange?: (hasUnreadMessages: boolean) => void
 
   // ── Derived helpers ──
   locale: string
@@ -417,7 +419,7 @@ export default function TaskDetailView({
   stageLastMessageRefs,
   pendingStageScrollRef,
   hasUnreadMessages,
-  onScrollToBottom,
+  onUnreadMessagesChange,
   // Derived
   locale,
   durationNowMs,
@@ -558,7 +560,10 @@ export default function TaskDetailView({
   const stageLastRef = stageLastMessageRefs ?? localStageLastMessageRefs
   const pendingScrollRef = pendingStageScrollRef ?? localPendingStageScrollRef
   const unreadMessages = hasUnreadMessages ?? localHasUnread
-  const setUnreadMessages = onScrollToBottom ?? (() => setLocalHasUnread(false))
+  const setUnreadMessages = useCallback((value: boolean) => {
+    if (hasUnreadMessages === undefined) setLocalHasUnread(value)
+    onUnreadMessagesChange?.(value)
+  }, [hasUnreadMessages, onUnreadMessagesChange])
 
   // Auto-scroll to bottom when new messages arrive.
   // 依赖仅含消息内容：durationNowMs 每秒 tick 触发的重渲染不应强制钉底，
@@ -574,9 +579,9 @@ export default function TaskDetailView({
         programmaticRef.current = target
         container.scrollTop = target
       }
-      setUnreadMessages()
+      setUnreadMessages(false)
     } else {
-      setLocalHasUnread(true)
+      setUnreadMessages(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyMessages, liveMessages, events, content])
@@ -2125,6 +2130,16 @@ export default function TaskDetailView({
           <div
             className="chat-history-scroll task-chat-history-scroll"
             ref={scrollRef}
+            onWheelCapture={(event) => {
+              if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
+                followRef.current = false
+              }
+            }}
+            onKeyDownCapture={(event) => {
+              if (shouldPauseConversationFollow({ type: 'key', key: event.key })) {
+                followRef.current = false
+              }
+            }}
             onScroll={(event) => {
               const container = event.currentTarget
               const nearBottom = isNearConversationBottom(
@@ -2145,7 +2160,7 @@ export default function TaskDetailView({
                   followRef.current = false
                 } else if (nearBottom) {
                   followRef.current = true
-                  if (nearBottom) setUnreadMessages()
+                  setUnreadMessages(false)
                 }
               }
               lastScrollTopRef.current = container.scrollTop
@@ -2367,6 +2382,7 @@ export default function TaskDetailView({
                             initials={initials}
                             color={senderColor}
                             content={messageContent}
+                            projectId={projectId}
                             streaming={
                               msg.run_status ===
                               'running'
@@ -2957,6 +2973,7 @@ export default function TaskDetailView({
                   content={
                     message.content || ''
                   }
+                  projectId={projectId}
                   streaming={
                     message.status === 'running'
                   }
@@ -3099,6 +3116,7 @@ export default function TaskDetailView({
                 )}
                 color={activeStageColor}
                 content={content}
+                projectId={projectId}
                 streaming={running}
                 variant="bg"
                 onA2uiAction={
@@ -3174,51 +3192,24 @@ export default function TaskDetailView({
             <div ref={endRef} />
           </div>
 
-          {unreadMessages && (
-            <button
-              type="button"
-              onClick={() => {
-                followRef.current = true
-                setUnreadMessages()
-                const container = scrollRef.current
-                if (container) {
-                  const target =
-                    conversationBottomScrollTop(
-                      container.scrollHeight,
-                      container.clientHeight,
-                    )
-                  programmaticRef.current = target
-                  container.scrollTop = target
-                }
-              }}
-              aria-label={t(
-                'taskDetail.viewNewMessagesAria',
-              )}
-              style={{
-                position: 'absolute',
-                right: 12,
-                bottom: 12,
-                zIndex: 2,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '6px 10px',
-                borderRadius: 999,
-                border:
-                  '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
-                background: 'var(--bg)',
-                color: 'var(--accent)',
-                boxShadow:
-                  '0 3px 12px rgba(0,0,0,0.14)',
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              {t('taskDetail.newMessages')}{' '}
-              <span aria-hidden="true">↓</span>
-            </button>
-          )}
+          <ConversationNewMessagesButton
+            visible={unreadMessages}
+            label={t('taskDetail.newMessages')}
+            ariaLabel={t('taskDetail.viewNewMessagesAria')}
+            onClick={() => {
+              followRef.current = true
+              setUnreadMessages(false)
+              const container = scrollRef.current
+              if (container) {
+                const target = conversationBottomScrollTop(
+                  container.scrollHeight,
+                  container.clientHeight,
+                )
+                programmaticRef.current = target
+                container.scrollTo({ top: target, behavior: 'smooth' })
+              }
+            }}
+          />
         </div>
 
         {/* Chat input (edit mode only) */}

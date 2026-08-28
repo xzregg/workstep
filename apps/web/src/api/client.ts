@@ -411,19 +411,35 @@ export interface WorkflowGenHistoryEvent {
   data?: Record<string, unknown>
   timestamp?: number
   created_at?: string
+  seq?: number
+  [key: string]: unknown
+}
+
+export interface MessageEventSummary {
+  event_count?: number
+  last_event_seq?: number
+  thought_characters?: number
+  tool_count?: number
+}
+
+export interface MessageEventDetail extends MessageEventSummary {
+  available?: boolean
+  loaded?: boolean
 }
 
 export interface WorkflowGenHistoryMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  status: 'succeeded' | 'stopped' | 'error'
+  status: 'running' | 'succeeded' | 'stopped' | 'error'
   engine?: string
   model?: string
   created_at?: string
   ended_at?: string
   prompt?: string
   events?: WorkflowGenHistoryEvent[]
+  event_summary?: MessageEventSummary
+  event_detail?: MessageEventDetail
   author_id?: string
   author_name?: string
   author_device_id?: string
@@ -582,6 +598,15 @@ export interface ChatAccepted {
   status: string
 }
 
+export interface ChatMessageEventsPage {
+  message_id: string
+  events: WorkflowGenHistoryEvent[]
+  event_count: number
+  last_event_seq: number
+  next_cursor: number | null
+  complete: boolean
+}
+
 export interface ChatSessionCreateInput {
   project_id: string
   workflow_id?: string
@@ -619,6 +644,16 @@ export const chatSessionApi = {
     request<ChatSessionDetail>(
       `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
     ),
+  messageEvents: (
+    sessionId: string,
+    messageId: string,
+    projectId: string,
+    cursor = 0,
+    limit = 200,
+  ) => request<ChatMessageEventsPage>(
+    `/chat-sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/events`
+    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
+  ),
   rename: (sessionId: string, projectId: string, title: string) =>
     request<ChatSessionSummary>(
       `/chat-sessions/${encodeURIComponent(sessionId)}`,
@@ -1279,6 +1314,7 @@ export const scheduleApi = {
 
 export interface EngineInfo {
   id: string
+  default_model?: string
   installed: boolean
   configured: boolean
   verified: boolean

@@ -35,6 +35,17 @@ def _bind(project_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+async def _run_db(project_id: str, operation):
+    """Run task persistence on the selected project's DB executor."""
+    from main import project_manager
+
+    run_db = getattr(project_manager, "run_db", None)
+    if run_db is not None:
+        return await run_db(project_id, lambda _project: operation())
+    _bind(project_id)
+    return operation()
+
+
 @router.post("/create")
 async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="project_id")):
     """Create a new task."""
@@ -88,9 +99,14 @@ async def update_scheduled_start(
     from main import task_service, event_bus
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
     try:
-        task = task_service.update_scheduled_start(task_id, req.scheduled_start_at)
+        task = await _run_db(
+            pid,
+            lambda: task_service.update_scheduled_start(
+                task_id,
+                req.scheduled_start_at,
+            ),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
@@ -121,8 +137,11 @@ async def list_tasks(
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
-    return {"tasks": task_service.list_tasks(workflow_id=wf, archived=archived)}
+    tasks = await _run_db(
+        pid,
+        lambda: task_service.list_tasks(workflow_id=wf, archived=archived),
+    )
+    return {"tasks": tasks}
 
 
 @router.get("/{task_id}")
@@ -131,8 +150,7 @@ async def get_task(task_id: str, pid: str = Query(..., alias="project_id")):
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
-    task = task_service.get_task(task_id)
+    task = await _run_db(pid, lambda: task_service.get_task(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -148,8 +166,14 @@ async def update_task(
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
-    task = task_service.update_task_description(task_id, req.description, req.review_overrides)
+    task = await _run_db(
+        pid,
+        lambda: task_service.update_task_description(
+            task_id,
+            req.description,
+            req.review_overrides,
+        ),
+    )
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -166,8 +190,14 @@ async def get_task_history(
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
-    history = task_service.get_task_history(task_id, limit=limit, offset=offset)
+    history = await _run_db(
+        pid,
+        lambda: task_service.get_task_history(
+            task_id,
+            limit=limit,
+            offset=offset,
+        ),
+    )
     return {"messages": history, "limit": limit, "offset": offset}
 
 
@@ -466,7 +496,10 @@ async def run_task(req: RunTaskRequest, pid: str = Query(..., alias="project_id"
     try:
         handle = await workflow_runtime.start(pid, req.task_id, req.prompt)
         if task_service and hasattr(task_service, "clear_scheduled_start"):
-            task_service.clear_scheduled_start(req.task_id)
+            await _run_db(
+                pid,
+                lambda: task_service.clear_scheduled_start(req.task_id),
+            )
             await event_bus.publish({
                 "type": "CUSTOM",
                 "name": "workstep.scheduled_start",
@@ -536,9 +569,11 @@ async def delete_task(req: DeleteTaskRequest, pid: str = Query(..., alias="proje
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
     try:
-        deleted = task_service.delete_task(req.task_id, pid)
+        deleted = await _run_db(
+            pid,
+            lambda: task_service.delete_task(req.task_id, pid),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
@@ -556,9 +591,11 @@ async def archive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="pro
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
     try:
-        archived = task_service.archive_task(req.task_id)
+        archived = await _run_db(
+            pid,
+            lambda: task_service.archive_task(req.task_id),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not archived:
@@ -572,9 +609,11 @@ async def unarchive_task(req: ArchiveTaskRequest, pid: str = Query(..., alias="p
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
     try:
-        unarchived = task_service.unarchive_task(req.task_id)
+        unarchived = await _run_db(
+            pid,
+            lambda: task_service.unarchive_task(req.task_id),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not unarchived:
@@ -593,8 +632,10 @@ async def copy_task(req: CopyTaskRequest, pid: str = Query(..., alias="project_i
     from main import task_service
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    _bind(pid)
-    copied = task_service.copy_task(req.task_id, req.newTitle, pid)
+    copied = await _run_db(
+        pid,
+        lambda: task_service.copy_task(req.task_id, req.newTitle, pid),
+    )
     if not copied:
         raise HTTPException(status_code=404, detail="Task not found")
     return copied

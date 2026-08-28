@@ -409,5 +409,5 @@ def seed(project_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    target = Path(sys.argv[1] if len(sys.argv) > 1 else "/Users/xzr/Desktop/test_workstep")
+    target = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/workstep-example")
     seed(target.resolve())

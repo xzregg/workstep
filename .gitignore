@@ -28,4 +28,3 @@ logs/
 .bitfun/
 .playwright-cli/
 .pids/
-apps/daemon/uv.lock

@@ -146,6 +146,14 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         async def shutdown(self):
             events.append("schedules-shutdown")
 
+    class ChatStub:
+        def recover_interrupted_messages(self):
+            events.append("chats-recover")
+            return 1
+
+        async def shutdown(self):
+            events.append("chats-shutdown")
+
     monkeypatch.setattr(main, "event_bus", BusStub())
     monkeypatch.setattr(main, "ensure_global_templates", lambda: None)
     monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
@@ -160,6 +168,11 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
         "ScheduleModule",
         lambda project_manager, task_service, runtime, task_agent=None: ScheduleStub(),
     )
+    monkeypatch.setattr(
+        main,
+        "ChatSessionModule",
+        lambda bus, project_manager: ChatStub(),
+    )
 
     async with main.lifespan(main.app):
         events.append("serving")
@@ -167,9 +180,11 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     assert events == [
         "projects-load",
         "workflows-recover",
+        "chats-recover",
         "schedules-start",
         "serving",
         "schedules-shutdown",
+        "chats-shutdown",
         "runtime-shutdown",
         "bus-close",
         "projects-close",

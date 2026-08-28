@@ -124,6 +124,12 @@ async def lifespan(app: FastAPI):
         task_agent=task_draft_module,
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
+    recovered_chats = chat_session_module.recover_interrupted_messages()
+    if recovered_chats:
+        logger.info(
+            "Recovered %d interrupted chat message(s) from event journals",
+            recovered_chats,
+        )
     await schedule_module.start()
     try:
         yield

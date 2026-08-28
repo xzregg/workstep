@@ -39,12 +39,8 @@ async def create_project_task(
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
         raise ValueError(f"Invalid execution mode: {execution_mode}")
-    context = (
-        project_manager.activate_project_by_id(project_id)
-        if hasattr(project_manager, "activate_project_by_id")
-        else nullcontext(project_manager.bind_project_by_id(project_id))
-    )
-    with context as project:
+
+    def persist(project):
         if workflow_id and hasattr(project, "workflow_by_id"):
             workflow = project.workflow_by_id(workflow_id)
         elif not workflow_id and hasattr(project, "default_workflow"):
@@ -80,6 +76,19 @@ async def create_project_task(
                 and definition.auto_start_enabled(start_step_key)
             )
         )
+        return created, should_start
+
+    if hasattr(project_manager, "run_db"):
+        created, should_start = await project_manager.run_db(project_id, persist)
+    else:
+        context = (
+            project_manager.activate_project_by_id(project_id)
+            if hasattr(project_manager, "activate_project_by_id")
+            else nullcontext(project_manager.bind_project_by_id(project_id))
+        )
+        with context as project:
+            created, should_start = persist(project)
+
     handle = None
     if should_start:
         if workflow_runtime is None:

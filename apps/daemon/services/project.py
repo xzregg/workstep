@@ -5,6 +5,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import peewee as pw
 
@@ -25,9 +26,22 @@ from models import (
     ALL_MODELS,
 )
 from models.fields import utc_now
+from services.project_database import ProjectDatabaseExecutor
 from settings import settings
 
 logger = logging.getLogger(__name__)
+ResultT = TypeVar("ResultT")
+
+
+def _ensure_ignore_rule(project_path: Path, filename: str, rule: str) -> None:
+    """Append an ignore rule without replacing the project's existing entries."""
+    ignore_path = project_path / filename
+    content = ignore_path.read_text() if ignore_path.exists() else ""
+    normalized_rule = rule.rstrip("/")
+    if any(line.strip().rstrip("/") == normalized_rule for line in content.splitlines()):
+        return
+    separator = "" if not content or content.endswith("\n") else "\n"
+    ignore_path.write_text(f"{content}{separator}{rule}\n")
 
 # Global config store — single source of truth for ~/.workstep/config.json
 from services.config import config_store
@@ -100,6 +114,13 @@ class Project:
     workflows: list[dict] = field(default_factory=list)  # [{id, name, is_default, steps, ...}]
     name: str = ""  # Display name, defaults to directory name
     id: str = ""  # Unique project ID
+    database_executor: ProjectDatabaseExecutor = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.database_executor = ProjectDatabaseExecutor(
+            self.db,
+            self.id or self.path.name,
+        )
 
     @property
     def workstep_dir(self) -> Path:
@@ -278,6 +299,22 @@ class ProjectManager:
         if not proj:
             raise ValueError(f"Project not found: {project_id}")
         return ProjectContext(proj)
+
+    async def run_db(
+        self,
+        project_id: str,
+        operation: Callable[[Project], ResultT],
+    ) -> ResultT:
+        """Run one project's complete Peewee work unit off the event loop."""
+        project = self.get_project_by_id(project_id)
+        if project is None:
+            raise ValueError(f"Project not found: {project_id}")
+
+        def execute() -> ResultT:
+            with ProjectContext(project):
+                return operation(project)
+
+        return await project.database_executor.run(execute)
 
     # ── Workflow helpers ──────────────────────────────────────────────
 
@@ -576,10 +613,17 @@ class ProjectManager:
         path_str = str(path)
 
         if path_str in self._projects:
+            ignore_rule = f"{settings.workstep_dir.rstrip('/')}/"
+            _ensure_ignore_rule(path, ".gitignore", ignore_rule)
+            _ensure_ignore_rule(path, ".dockerignore", ignore_rule)
             return self._projects[path_str]
 
         ws_dir = path / settings.workstep_dir
         ws_dir.mkdir(parents=True, exist_ok=True)
+
+        ignore_rule = f"{settings.workstep_dir.rstrip('/')}/"
+        _ensure_ignore_rule(path, ".gitignore", ignore_rule)
+        _ensure_ignore_rule(path, ".dockerignore", ignore_rule)
 
         # Write default steps.json if not exists
         steps_path = ws_dir / "steps.json"
@@ -679,6 +723,7 @@ class ProjectManager:
 
         path_str = str(proj.path)
         self._projects.pop(path_str, None)
+        proj.database_executor.close()
         if not proj.db.is_closed():
             proj.db.close()
 
@@ -733,6 +778,7 @@ class ProjectManager:
     def close_all(self):
         """Close all project DB connections."""
         for proj in self._projects.values():
+            proj.database_executor.close()
             if not proj.db.is_closed():
                 proj.db.close()
         self._projects.clear()

@@ -73,6 +73,197 @@
   --bp-tablet: 920px;
 }
 
+/* ── First-run activation ── */
+.onboarding-checklist {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 260;
+  width: min(368px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 44px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--elev-raised);
+  animation: onboarding-arrive 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes onboarding-arrive {
+  from { transform: translateY(10px); opacity: .72; filter: blur(2px); }
+  to { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+
+.onboarding-checklist-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-checklist-header h2 {
+  margin: 0 0 3px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.onboarding-checklist-header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.onboarding-checklist-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.onboarding-progress-track {
+  height: 3px;
+  margin: 13px 0 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--border-soft);
+}
+
+.onboarding-progress-track > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.onboarding-step-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px 2px 0;
+}
+
+.onboarding-step {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  color: var(--muted);
+}
+
+.onboarding-step-marker {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--meta);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.onboarding-step.is-complete .onboarding-step-marker {
+  border-color: color-mix(in oklab, var(--success), transparent 46%);
+  background: color-mix(in oklab, var(--success), transparent 88%);
+  color: var(--success);
+}
+
+.onboarding-step.is-active { color: var(--fg); }
+.onboarding-step-copy { min-width: 0; }
+.onboarding-step-copy strong { display: block; padding-top: 2px; font-size: 13px; line-height: 1.35; }
+.onboarding-step-path { margin-top: 5px; color: var(--accent); font-size: 11px; line-height: 1.4; }
+.onboarding-step-copy p { margin: 6px 0 10px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.onboarding-step-copy .button { min-height: 32px; }
+.onboarding-step-error { margin: 0 0 9px; color: var(--danger); font-size: 11px; line-height: 1.45; }
+
+.onboarding-complete {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px 10px;
+  padding: 15px 2px 2px;
+  color: var(--success);
+}
+
+.onboarding-complete p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.onboarding-complete .button { grid-column: 2; justify-self: start; }
+
+.onboarding-launcher {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 260;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--fg);
+  color: var(--bg);
+  box-shadow: var(--elev-raised);
+  font: 600 12px/1 var(--font-body);
+}
+
+.onboarding-launcher-progress {
+  color: color-mix(in oklab, var(--bg), transparent 28%);
+  font-variant-numeric: tabular-nums;
+}
+
+.onboarding-canvas-hint {
+  position: absolute;
+  top: 58px;
+  right: 18px;
+  z-index: 32;
+  width: min(360px, calc(100% - 36px));
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--elev-raised);
+  animation: onboarding-arrive 220ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.onboarding-canvas-hint-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.onboarding-canvas-hint strong { display: block; font-size: 13px; }
+.onboarding-canvas-hint p { margin: 5px 0 10px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.onboarding-canvas-hint .button { min-height: 30px; }
+
+@media (max-width: 640px) {
+  .onboarding-checklist {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    max-height: min(620px, calc(100vh - 24px));
+  }
+
+  .onboarding-launcher { right: 12px; bottom: 12px; }
+  .onboarding-canvas-hint { right: 12px; width: calc(100% - 24px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-checklist,
+  .onboarding-canvas-hint { animation: none; }
+  .onboarding-progress-track > span { transition: none; }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1c1c1e;
@@ -494,6 +685,11 @@ details[open] > summary > .process-trace-chevron {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.process-trace-thinking:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .process-trace-tool > summary {
@@ -1172,6 +1368,29 @@ details[open] > summary > .process-trace-chevron {
   margin: 6px 0;
 }
 
+/* User uploads keep the same compact visual footprint before and after send. */
+.user-message-markdown {
+  width: auto;
+  white-space: pre-wrap;
+}
+
+.user-message-markdown img {
+  width: 156px;
+  height: 92px;
+  margin: 5px 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: var(--bg-2);
+  object-fit: cover;
+}
+
+@media (max-width: 520px) {
+  .user-message-markdown img {
+    width: 136px;
+    height: 80px;
+  }
+}
+
 .markdown-message blockquote {
   padding: 2px 0 2px 12px;
   border-left: 3px solid var(--border);
@@ -1487,6 +1706,41 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .task-chat-history-scroll {
   padding-inline: max(20px, calc((100% - 800px) / 2));
+}
+
+.conversation-new-messages-region {
+  position: absolute;
+  inset-inline-end: 12px;
+  bottom: 12px;
+  z-index: 2;
+}
+
+.conversation-new-messages-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in oklab, var(--accent), transparent 55%);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--accent);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.14);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+
+.conversation-new-messages-button:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.conversation-new-messages-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .chat-input-editor {

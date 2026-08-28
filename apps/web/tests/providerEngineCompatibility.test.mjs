@@ -85,3 +85,11 @@ test('provider settings exposes all supported protocols', () => {
     assert.match(providerSource, new RegExp(protocol))
   }
 })
+
+test('provider settings can copy an existing provider into a new configuration', () => {
+  assert.match(providerSource, /providerSettings\.copy/)
+  assert.match(providerSource, /providerSettings\.copyTitle/)
+  assert.match(providerSource, /providerApi\.reveal\(provider\.id\)/)
+  assert.match(providerSource, /setEditingId\(null\)/)
+  assert.match(providerSource, /name: t\('providerSettings\.copyName', \{ name: provider\.name \}\)/)
+})

@@ -220,6 +220,8 @@ export default function ChatPage() {
             author_name: m.author_name,
             author_device_id: m.author_device_id,
             author_device_name: m.author_device_name,
+            event_summary: m.event_summary,
+            event_detail: m.event_detail,
             events: (m.events || []).map((e) => ({
               ...e,
               type: e.type || '',
@@ -321,6 +323,51 @@ export default function ChatPage() {
       setStopping(false)
     }
   }, [sessionId, activeProject?.id, stopping, t])
+
+  const loadMessageEvents = useCallback(async (messageId: string) => {
+    if (!sessionId || !activeProject?.id) return
+    const store = useChatSessionStore.getState()
+    const message = store.sessions[sessionId]?.messages.find((item) => item.id === messageId)
+    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
+    store.setMessageEventLoading(sessionId, messageId, true)
+    try {
+      let cursor = 0
+      let complete = false
+      const events = [] as NonNullable<typeof message.events>
+      while (!complete) {
+        const page = await chatSessionApi.messageEvents(
+          sessionId,
+          messageId,
+          activeProject.id,
+          cursor,
+        )
+        events.push(...page.events.map((event) => ({
+          ...event,
+          type: event.type || '',
+          data: event.data || {},
+        })))
+        complete = page.complete || page.next_cursor === null
+        if (!complete) {
+          const nextCursor = page.next_cursor
+          if (nextCursor === null || nextCursor === cursor) {
+            throw new Error('Event detail cursor did not advance')
+          }
+          cursor = nextCursor
+        }
+      }
+      store.setMessageEventDetails(sessionId, messageId, events, {
+        complete: true,
+        next_cursor: null,
+      })
+    } catch (reason) {
+      store.setMessageEventLoading(
+        sessionId,
+        messageId,
+        false,
+        reason instanceof Error ? reason.message : t('chatSession.loadFailed'),
+      )
+    }
+  }, [sessionId, activeProject?.id, t])
 
   const createSession = useCallback(async () => {
     if (!activeProject?.id || creating) return
@@ -497,6 +544,7 @@ export default function ChatPage() {
         onSend={() => void send()}
         onStop={() => void stop()}
         onAttachmentError={setSendError}
+        onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickButtons.map((button) => ({ label: button.label, prompt: button.prompt }))}
         onQuickPromptSelect={(prompt) => {

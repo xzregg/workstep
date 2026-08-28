@@ -60,9 +60,11 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
 function ExecutionDefaultSettings({
   engines,
   loading,
+  onChanged,
 }: {
   engines: EngineInfo[]
   loading: boolean
+  onChanged?: () => void
 }) {
   const { t } = useI18n()
   const [engine, setEngine] = useState('')
@@ -101,6 +103,7 @@ function ExecutionDefaultSettings({
       const result = await engineApi.setExecutionConfig(engine)
       setEngine(result.engine)
       setNotice(t('settings.saveDefaultSuccess'))
+      onChanged?.()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
     } finally {
@@ -109,7 +112,7 @@ function ExecutionDefaultSettings({
   }
 
   return (
-    <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
+    <div id="settings-default-execution-engine" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
       <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>{t('settings.defaultExecutionEngine')}</div>
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
         {t('settings.defaultEngineHint')}
@@ -703,11 +706,24 @@ interface EnhanceProviderInfo {
   enabled: boolean
 }
 
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'remote' | 'system'
+export type SettingsFocusTarget = 'provider-create' | 'execution-engine'
+
 interface SettingsPageProps {
   onClose: () => void
+  initialSection?: SettingsSection
+  focusTarget?: SettingsFocusTarget
+  preferredProviderId?: string | null
+  onConfigurationChanged?: () => void
 }
 
-export default function SettingsPage({ onClose }: SettingsPageProps) {
+export default function SettingsPage({
+  onClose,
+  initialSection = 'providers',
+  focusTarget,
+  preferredProviderId,
+  onConfigurationChanged,
+}: SettingsPageProps) {
   const { t, locale, setLocale } = useI18n()
   const userName = useUserSettingsStore((state) => state.userName)
   const userSettingsLoading = useUserSettingsStore((state) => state.loading)
@@ -741,7 +757,29 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
   const [inspecting, setInspecting] = useState(false)
   const [inspectResult, setInspectResult] = useState<EngineInspectResult | null>(null)
   const [inspectError, setInspectError] = useState('')
-  const [activeSection, setActiveSection] = useState<'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'remote' | 'system'>('providers')
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
+  const [preferredProviderProtocol, setPreferredProviderProtocol] = useState('')
+
+  useEffect(() => {
+    setActiveSection(initialSection)
+  }, [initialSection])
+
+  useEffect(() => {
+    if (activeSection !== 'engines' || focusTarget !== 'execution-engine') return
+    const timer = window.setTimeout(() => {
+      document.getElementById('settings-default-execution-engine')?.scrollIntoView({ block: 'center' })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [activeSection, focusTarget])
+
+  useEffect(() => {
+    if (!preferredProviderId) { setPreferredProviderProtocol(''); return }
+    providerApi.list().then((result) => {
+      setPreferredProviderProtocol(
+        result.providers.find((provider) => provider.id === preferredProviderId)?.protocol || '',
+      )
+    }).catch(() => setPreferredProviderProtocol(''))
+  }, [preferredProviderId])
 
   useEffect(() => {
     setUserNameDraft(userName)
@@ -763,7 +801,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
       result = {
         engine_id: engineId,
         models: [],
-        default_model: '',
+        default_model: defaultModels[engineId] || '',
         error: modelError instanceof Error ? modelError.message : t('settings.readModelsFailed'),
       }
     }
@@ -829,6 +867,10 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         ? await engineApi.refresh()
         : await engineApi.list()
       setEngines(result.engines)
+      setDefaultModels((current) => ({
+        ...Object.fromEntries(result.engines.map((engine) => [engine.id, engine.default_model || ''])),
+        ...current,
+      }))
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t('settings.readEnginesFailed'))
     } finally {
@@ -1170,7 +1212,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
             </Button>
           </div>
 
-          <ExecutionDefaultSettings engines={sortedEngines} loading={loading} />          <div style={{
+          <ExecutionDefaultSettings engines={sortedEngines} loading={loading} onChanged={onConfigurationChanged} />          <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginBottom: 8,
           }}>
@@ -1213,7 +1255,8 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                 const usesCustomModel = Boolean(
                   customModelMode[engine.id]
                   || (
-                    savedDefaultModel
+                    models[engine.id] !== undefined
+                    && savedDefaultModel
                     && !engineModels.some((model) => model.id === savedDefaultModel)
                   )
                 )
@@ -1233,7 +1276,6 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       title={t('settings.defaultModelTitle')}
                       value={usesCustomModel ? '__custom__' : savedDefaultModel}
                       disabled={Boolean(modelsLoading[engine.id]) || savingModel === engine.id}
-                      onClick={() => void loadEngineModels(engine.id)}
                       onChange={(event) => selectDefaultModel(engine.id, event.target.value)}
                       style={{
                         flex: '0 1 auto', minWidth: 0, maxWidth: 240, width: 'auto', height: 28,
@@ -1242,6 +1284,9 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                       <option value="">
                         {modelsLoading[engine.id] ? t('settings.readingModels') : t('settings.followEngineDefault')}
                       </option>
+                      {savedDefaultModel && !engineModels.some((model) => model.id === savedDefaultModel) && !usesCustomModel && (
+                        <option value={savedDefaultModel}>{savedDefaultModel}</option>
+                      )}
                       {engineModels.map((model) => (
                         <option key={model.id} value={model.id}>{model.label}</option>
                       ))}
@@ -1295,14 +1340,21 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   </>
                 )
                 const isExpanded = expandedConfigs[engine.id] === true
+                const onboardingCompatible = Boolean(
+                  focusTarget === 'execution-engine'
+                  && preferredProviderProtocol
+                  && engine.supports_provider
+                  && engine.provider_protocols.includes(preferredProviderProtocol),
+                )
                 return (
                 <div
                   key={engine.id}
                   data-engine-id={engine.id}
                   data-installed={engine.installed}
+                  data-onboarding-compatible={onboardingCompatible || undefined}
                   style={{
                     borderRadius: 12,
-                    border: `1px solid ${engine.installed ? 'var(--border)' : 'var(--border-soft)'}`,
+                    border: `1px solid ${onboardingCompatible ? 'var(--accent)' : engine.installed ? 'var(--border)' : 'var(--border-soft)'}`,
                     background: 'var(--bg)',
                     opacity: engine.installed ? 1 : 0.62,
                   }}
@@ -1340,6 +1392,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                       <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
+                      {onboardingCompatible && (
+                        <span style={{ padding: '1px 6px', borderRadius: 999, background: 'var(--accent-light)', color: 'var(--accent)', fontSize: 11 }}>
+                          {t('onboarding.compatibleEngine')}
+                        </span>
+                      )}
                       {engine.mode && (
                         <span style={{
                           padding: '1px 6px', borderRadius: 999,
@@ -1486,6 +1543,7 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
                           ))
                         }
                         clearEngineModelCache(engine.id)
+                        onConfigurationChanged?.()
                       }}
                     />
                   )}
@@ -1587,9 +1645,11 @@ export default function SettingsPage({ onClose }: SettingsPageProps) {
         </div>
         ) : activeSection === 'providers' ? (
           <ProviderSettings
+            autoCreate={focusTarget === 'provider-create'}
             onChanged={() => {
               clearEngineModelCache('pydantic_ai')
               void loadEngines(false)
+              onConfigurationChanged?.()
             }}
           />
         ) : activeSection === 'pricing' ? (

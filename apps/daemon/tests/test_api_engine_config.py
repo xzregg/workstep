@@ -829,6 +829,7 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
 
     pydantic = engines["pydantic_ai"]
     assert pydantic["built_in"] is True
+    assert pydantic["default_model"] == "deepseek-chat"
     config = pydantic["config"]
     assert config is not None
     fields = {field["key"]: field for field in config["fields"]}

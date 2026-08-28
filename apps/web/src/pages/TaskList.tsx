@@ -1,6 +1,6 @@
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTaskStore } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
@@ -25,6 +25,7 @@ import SchedulePage from './SchedulePage'
 import { resolveTaskCreationErrors } from '../utils/taskCreationErrors.js'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso } from '../utils/scheduledStart'
 import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
+import { useOnboardingStore } from '../stores/onboardingStore'
 
 /* ── Styles ── */
 const topbarStyle: React.CSSProperties = {
@@ -169,6 +170,7 @@ function deriveTaskLane(
 export default function TaskList() {
   const { t, locale } = useI18n()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const openerDisplayLabel = (opener: DirectoryOpener) =>
     opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
   const {
@@ -378,6 +380,25 @@ export default function TaskList() {
     setShowNewPanel(true)
   }
 
+  useEffect(() => {
+    const command = searchParams.get('onboarding')
+    const taskId = searchParams.get('task')
+    if (command === 'create-task' && activeProject && activeWorkflowId && lanes.length > 0 && !showNewPanel) {
+      openNewPanel()
+      const next = new URLSearchParams(searchParams)
+      next.delete('onboarding')
+      setSearchParams(next, { replace: true })
+      return
+    }
+    if (taskId && activeProject) {
+      setActiveTask(taskId)
+      setSelectedTaskId(taskId)
+      const next = new URLSearchParams(searchParams)
+      next.delete('task')
+      setSearchParams(next, { replace: true })
+    }
+  }, [searchParams, setSearchParams, activeProject, activeWorkflowId, lanes.length, showNewPanel, setActiveTask]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Backend step progress is the source of truth; local assignment is only a
   // temporary override before a task has started executing.
   const getCardLane = useCallback((taskId: string): string => {
@@ -419,7 +440,7 @@ export default function TaskList() {
   const handleCreate = async () => {
     if (!newTitle.trim() || !activeProject || taskAiBusy) return
     try {
-      await createTask(
+      const task = await createTask(
         newTitle.trim(),
         activeProject.path,
         activeProject.id,
@@ -430,6 +451,14 @@ export default function TaskList() {
         newStartMode === 'immediate',
         newStartMode === 'scheduled' ? localDateTimeToIso(newScheduledStart) : null,
       )
+      const onboarding = useOnboardingStore.getState()
+      if (
+        onboarding.status === 'active'
+        && onboarding.currentStep === 'task'
+        && onboarding.workflowId === activeWorkflowId
+      ) {
+        onboarding.recordTask(task.id)
+      }
       setNewTitle('')
       setNewDesc('')
       setNewScheduledStart('')

@@ -408,6 +408,35 @@ async def test_dispatcher_overwrites_project_id_in_json_body():
 
     assert response.status == 200
     assert response.json() == {"project_id": "owner-project", "title": "会话"}
+
+
+async def test_dispatcher_exposes_project_scoped_chat_event_details():
+    app = FastAPI()
+
+    @app.get("/api/chat-sessions/{session_id}/messages/{message_id}/events")
+    async def message_events(session_id: str, message_id: str, project_id: str):
+        return {
+            "project_id": project_id,
+            "session_id": session_id,
+            "message_id": message_id,
+        }
+
+    dispatcher = RemoteRouteDispatcher(app)
+    principal = RemotePrincipal(
+        project_id="owner-project",
+        actor=ActorSnapshot("actor", "用户", "device", "设备", "remote"),
+    )
+    response = await dispatcher.dispatch(
+        RemoteHttpRequest(
+            request_id="req-events",
+            method="GET",
+            path="/api/chat-sessions/s1/messages/m1/events",
+            query={"project_id": "forged-project"},
+        ),
+        principal,
+    )
+
+    assert response.json()["project_id"] == "owner-project"
     await dispatcher.aclose()
 
 

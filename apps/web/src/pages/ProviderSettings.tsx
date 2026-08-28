@@ -24,6 +24,7 @@ import {
 interface Props {
   /** 供应商变更后回调（设置页据此刷新引擎列表，同步 Pydantic AI 的供应商下拉） */
   onChanged?: () => void
+  autoCreate?: boolean
 }
 
 interface ProviderForm {
@@ -87,7 +88,7 @@ function ImportCheckboxMark({ checked }: { checked: boolean }) {
   )
 }
 
-export default function ProviderSettings({ onChanged }: Props) {
+export default function ProviderSettings({ onChanged, autoCreate = false }: Props) {
   const { t } = useI18n()
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [types, setTypes] = useState<ProviderTypeMeta[]>([])
@@ -99,6 +100,8 @@ export default function ProviderSettings({ onChanged }: Props) {
   const [formError, setFormError] = useState('')
   const [formSaving, setFormSaving] = useState(false)
   const [keyRevealed, setKeyRevealed] = useState(false)
+  const [copySourceName, setCopySourceName] = useState('')
+  const [copyingId, setCopyingId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({})
@@ -119,6 +122,7 @@ export default function ProviderSettings({ onChanged }: Props) {
   const [importSaving, setImportSaving] = useState(false)
   const [importResult, setImportResult] = useState<ProviderImportResult | null>(null)
   const initialized = useRef(false)
+  const autoCreateHandled = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -165,6 +169,7 @@ export default function ProviderSettings({ onChanged }: Props) {
 
   const openCreate = () => {
     setEditingId(null)
+    setCopySourceName('')
     const typeId = types[0]?.id ?? 'custom'
     setForm({
       ...EMPTY_FORM,
@@ -177,8 +182,15 @@ export default function ProviderSettings({ onChanged }: Props) {
     setFormOpen(true)
   }
 
+  useEffect(() => {
+    if (!autoCreate || loading || autoCreateHandled.current || formOpen) return
+    autoCreateHandled.current = true
+    openCreate()
+  }, [autoCreate, loading, formOpen, types]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const openEdit = (provider: ProviderInfo) => {
     setEditingId(provider.id)
+    setCopySourceName('')
     setForm({
       name: provider.name,
       type: provider.type,
@@ -192,9 +204,37 @@ export default function ProviderSettings({ onChanged }: Props) {
     setFormOpen(true)
   }
 
+  const openCopy = async (provider: ProviderInfo) => {
+    setCopyingId(provider.id)
+    setError('')
+    try {
+      const apiKey = provider.has_key
+        ? (await providerApi.reveal(provider.id)).value || ''
+        : ''
+      setEditingId(null)
+      setCopySourceName(provider.name)
+      setForm({
+        name: t('providerSettings.copyName', { name: provider.name }),
+        type: provider.type,
+        protocol: provider.protocol,
+        base_url: provider.base_url,
+        api_key: apiKey,
+        clear_key: false,
+      })
+      setFormError('')
+      setKeyRevealed(false)
+      setFormOpen(true)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('providerSettings.copyFailed'))
+    } finally {
+      setCopyingId(null)
+    }
+  }
+
   const closeForm = () => {
     setFormOpen(false)
     setEditingId(null)
+    setCopySourceName('')
     setForm(EMPTY_FORM)
     setFormError('')
     setKeyRevealed(false)
@@ -496,7 +536,7 @@ export default function ProviderSettings({ onChanged }: Props) {
                   opacity: provider.enabled ? 1 : 0.72,
                 }}
               >
-                <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                   <span style={{
                     width: 34, height: 34, borderRadius: 9, flexShrink: 0,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -573,55 +613,67 @@ export default function ProviderSettings({ onChanged }: Props) {
                       </div>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
-                    disabled={testingId !== null}
-                    loading={testingId === provider.id}
-                    onClick={() => void testProvider(provider)}
-                  >
-                    {t('providerSettings.test')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
-                    disabled={modelsLoadingId !== null}
-                    loading={modelsLoadingId === provider.id}
-                    onClick={() => void loadModels(provider)}
-                  >
-                    {t('providerSettings.models')}
-                    {modelCount !== undefined && !modelsLoadingId && (
-                      <span style={{ marginLeft: 4, color: 'var(--meta)' }}>{modelCount}</span>
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                    disabled={togglingId !== null}
-                    loading={togglingId === provider.id}
-                    title={t('providerSettings.enabledHint')}
-                    onClick={() => void toggleEnabled(provider)}
-                  >
-                    {provider.enabled ? t('providerSettings.disable') : t('providerSettings.enable')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                    onClick={() => openEdit(provider)}
-                  >
-                    {t('common.edit')}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
-                    onClick={() => {
-                      setDeleteError('')
-                      setDeleting(provider)
-                    }}
-                  >
-                    <Icon name="trash" size={15} strokeWidth={2} />
-                  </Button>
-                  <ProviderBadge verified={provider.verified} enabled={provider.enabled} />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      disabled={testingId !== null}
+                      loading={testingId === provider.id}
+                      onClick={() => void testProvider(provider)}
+                    >
+                      {t('providerSettings.test')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      disabled={modelsLoadingId !== null}
+                      loading={modelsLoadingId === provider.id}
+                      onClick={() => void loadModels(provider)}
+                    >
+                      {t('providerSettings.models')}
+                      {modelCount !== undefined && !modelsLoadingId && (
+                        <span style={{ marginLeft: 4, color: 'var(--meta)' }}>{modelCount}</span>
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
+                      disabled={togglingId !== null}
+                      loading={togglingId === provider.id}
+                      title={t('providerSettings.enabledHint')}
+                      onClick={() => void toggleEnabled(provider)}
+                    >
+                      {provider.enabled ? t('providerSettings.disable') : t('providerSettings.enable')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 54, height: 30, justifyContent: 'center' }}
+                      onClick={() => openEdit(provider)}
+                    >
+                      {t('common.edit')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 76, height: 30, justifyContent: 'center' }}
+                      disabled={copyingId !== null}
+                      loading={copyingId === provider.id}
+                      onClick={() => void openCopy(provider)}
+                    >
+                      {t('providerSettings.copy')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 30, width: 30, height: 30, padding: 0, justifyContent: 'center' }}
+                      aria-label={t('providerSettings.deleteTitle')}
+                      onClick={() => {
+                        setDeleteError('')
+                        setDeleting(provider)
+                      }}
+                    >
+                      <Icon name="trash" size={15} strokeWidth={2} />
+                    </Button>
+                    <ProviderBadge verified={provider.verified} enabled={provider.enabled} />
+                  </div>
                 </div>
               </div>
             )
@@ -931,7 +983,11 @@ export default function ProviderSettings({ onChanged }: Props) {
           className="modal-overlay"
           role="dialog"
           aria-modal="true"
-          aria-label={editingId ? t('providerSettings.editTitle') : t('providerSettings.newTitle')}
+          aria-label={editingId
+            ? t('providerSettings.editTitle')
+            : copySourceName
+              ? t('providerSettings.copyTitle')
+              : t('providerSettings.newTitle')}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) closeForm()
           }}
@@ -944,7 +1000,11 @@ export default function ProviderSettings({ onChanged }: Props) {
           >
             <div className="modal-header" style={{ padding: '16px 20px' }}>
               <span className="modal-title">
-                {editingId ? t('providerSettings.editTitle') : t('providerSettings.newTitle')}
+                {editingId
+                  ? t('providerSettings.editTitle')
+                  : copySourceName
+                    ? t('providerSettings.copyTitle')
+                    : t('providerSettings.newTitle')}
               </span>
               <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeForm}>✕</Button>
             </div>

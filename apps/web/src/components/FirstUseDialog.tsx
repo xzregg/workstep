@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import { useOnboardingStore } from '../stores/onboardingStore'
 import Button from './Button'
 import Input from './Input'
 
@@ -12,6 +13,8 @@ export default function FirstUseDialog() {
   const error = useUserSettingsStore((state) => state.error)
   const load = useUserSettingsStore((state) => state.load)
   const saveUserName = useUserSettingsStore((state) => state.saveUserName)
+  const startOnboarding = useOnboardingStore((state) => state.start)
+  const dismissOnboarding = useOnboardingStore((state) => state.dismiss)
   const [draft, setDraft] = useState('')
 
   useEffect(() => {
@@ -20,8 +23,12 @@ export default function FirstUseDialog() {
 
   if (!loaded || userName.trim()) return null
 
-  const save = async () => {
-    await saveUserName(draft)
+  const startGuide = async () => {
+    if (await saveUserName(draft)) startOnboarding()
+  }
+
+  const skipGuide = async () => {
+    if (await saveUserName(draft)) dismissOnboarding()
   }
 
   return (
@@ -46,7 +53,7 @@ export default function FirstUseDialog() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && draft.trim() && !loading) void save()
+              if (event.key === 'Enter' && draft.trim() && !loading) void startGuide()
             }}
             placeholder={t('settings.userNamePlaceholder')}
             autoFocus
@@ -62,8 +69,11 @@ export default function FirstUseDialog() {
           )}
         </div>
         <div className="modal-footer">
-          <Button variant="primary" loading={loading} disabled={!draft.trim()} onClick={() => void save()}>
-            {t('onboarding.continue')}
+          <Button variant="ghost" disabled={loading || !draft.trim()} onClick={() => void skipGuide()}>
+            {t('onboarding.skipGuide')}
+          </Button>
+          <Button variant="primary" loading={loading} disabled={!draft.trim()} onClick={() => void startGuide()}>
+            {t('onboarding.quickStart')}
           </Button>
         </div>
       </div>

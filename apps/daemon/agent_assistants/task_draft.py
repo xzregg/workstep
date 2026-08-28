@@ -335,7 +335,14 @@ class TaskDraftModule(AssistantRuntime):
             else SYSTEM_PROMPT
         )
         context = json.dumps(self._context(session), ensure_ascii=False, default=str)
-        user_message = session.messages[-1]["content"] if session.messages else ""
+        user_message = next(
+            (
+                str(item.get("content") or "")
+                for item in reversed(session.messages)
+                if item.get("role") == "user"
+            ),
+            "",
+        )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
             head = system if not session.resolved_session_id else ""

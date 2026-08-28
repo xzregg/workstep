@@ -213,11 +213,12 @@ export function pendingAutoApplyProposal<T extends A2uiFlowProposalLike>(
   )
 }
 
-const UPLOAD_RELATIVE = /^[^/]+\/\.workstep\/uploads\/([^/?#]+)$/
+const UPLOAD_RELATIVE = /^(?:[^/]+\/)?\.workstep\/uploads\/([^/?#]+)$/
 
 /**
  * Rewrite `Image.url` project-relative upload paths
- * (`项目名/.workstep/uploads/<uuid>.<ext>`) to the serving endpoint,
+ * (`.workstep/uploads/<uuid>.<ext>`, including the legacy project-name prefix)
+ * to the serving endpoint,
  * mirroring MarkdownMessage's mapping. Literal string URLs only.
  */
 export function normalizeA2uiMessages(

@@ -19,7 +19,9 @@ body:
     validations: { required: true }
   - type: textarea
     id: steps
-    attributes: { label: Reproduction steps, description: Provide the smallest repeatable example. }
+    attributes:
+      label: Reproduction steps
+      description: "Provide the smallest repeatable example."
     validations: { required: true }
   - type: textarea
     id: expected

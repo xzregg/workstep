@@ -5,7 +5,11 @@ import type { AssistantChatMessage } from '../stores/assistantStore'
 import { taskApi, type EngineInputItem } from '../api/client'
 import { stripA2uiBlocks } from '../utils/a2ui'
 import { formatConversationDateTime } from '../utils/datetime'
-import { isNearConversationBottom, conversationBottomScrollTop } from '../pages/taskDetailChat'
+import {
+  isNearConversationBottom,
+  conversationBottomScrollTop,
+  shouldPauseConversationFollow,
+} from '../pages/taskDetailChat'
 import Button from './Button'
 import ChatInput, {
   type ChatContextUsage,
@@ -16,11 +20,13 @@ import ChatInput, {
 } from './ChatInput'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
+import ConversationNewMessagesButton from './ConversationNewMessagesButton'
 import MarkdownMessage from './MarkdownMessage'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
+import { useI18n } from '../i18n'
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -76,6 +82,8 @@ export interface AssistantChatPanelProps {
   a2uiMessages?: Record<string, Record<string, unknown>[]>
   /** 用户消息上方是否显示身份标签（默认隐藏；仅任务详情对话与分享页显示）。 */
   showUserTag?: boolean
+  /** Load one persisted message's JSONL process timeline on demand. */
+  onLoadMessageEvents?: (messageId: string) => void
 }
 
 /** Shared visual shell for session-scoped assistant chats. */
@@ -84,10 +92,13 @@ export default function AssistantChatPanel({
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
+  onLoadMessageEvents,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
+  const { t } = useI18n()
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [awaitingReply, setAwaitingReply] = useState(false)
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const followRef = useRef(true)
@@ -106,15 +117,20 @@ export default function AssistantChatPanel({
   }, [projectId])
 
   useEffect(() => {
-    if (!followRef.current) return
+    if (!followRef.current) {
+      setHasUnreadMessages(true)
+      return
+    }
     const list = listRef.current
     if (!list) return
     const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
     lastProgrammaticScrollTopRef.current = target
     list.scrollTop = target
+    setHasUnreadMessages(false)
   }, [messages.length, lastContent, scrollKey, a2uiMessages])
   useEffect(() => {
     followRef.current = true
+    setHasUnreadMessages(false)
   }, [scrollKey])
   useEffect(() => {
     if (messages.at(-1)?.role === 'assistant' || sendError) {
@@ -154,44 +170,56 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
-      <div
-        className="chat-history-scroll"
-        ref={listRef}
-        onScroll={(event) => {
-          const list = event.currentTarget
-          const nearBottom = isNearConversationBottom(
-            list.scrollHeight,
-            list.scrollTop,
-            list.clientHeight,
-          )
-          // 编程滚动（跟随钉底）会触发 scroll 回显；此时内容可能又长高，
-          // nearBottom 会误判为 false。只有位置偏离编程目标才算用户滚动。
-          const programmaticEcho = Math.abs(
-            list.scrollTop - lastProgrammaticScrollTopRef.current,
-          ) <= 1
-          if (!programmaticEcho) {
-            // 用户向上滚动（scrollTop 减小）立即取消跟随：
-            // 流式输出期间内容持续增长，等滚出阈值就永远滚不动。
-            if (list.scrollTop < lastScrollTopRef.current) {
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div
+          className="chat-history-scroll"
+          ref={listRef}
+          onWheelCapture={(event) => {
+            if (shouldPauseConversationFollow({ type: 'wheel', deltaY: event.deltaY })) {
               followRef.current = false
-            } else if (nearBottom) {
-              followRef.current = true
             }
-          }
-          lastScrollTopRef.current = list.scrollTop
-        }}
-        style={{
-          flex: 1, minHeight: 0, overflowY: 'auto', paddingBlock: 10,
-          display: 'flex', flexDirection: 'column', gap: 8,
-          background: 'var(--bg)',
-        }}
-      >
-        {messages.length === 0 && copy.emptyIntro && (
-          <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
-            {copy.emptyIntro}
-          </div>
-        )}
-        {messages.map((message) => {
+          }}
+          onKeyDownCapture={(event) => {
+            if (shouldPauseConversationFollow({ type: 'key', key: event.key })) {
+              followRef.current = false
+            }
+          }}
+          onScroll={(event) => {
+            const list = event.currentTarget
+            const nearBottom = isNearConversationBottom(
+              list.scrollHeight,
+              list.scrollTop,
+              list.clientHeight,
+            )
+            // 编程滚动（跟随钉底）会触发 scroll 回显；此时内容可能又长高，
+            // nearBottom 会误判为 false。只有位置偏离编程目标才算用户滚动。
+            const programmaticEcho = Math.abs(
+              list.scrollTop - lastProgrammaticScrollTopRef.current,
+            ) <= 1
+            if (!programmaticEcho) {
+              // 用户向上滚动（scrollTop 减小）立即取消跟随：
+              // 流式输出期间内容持续增长，等滚出阈值就永远滚不动。
+              if (list.scrollTop < lastScrollTopRef.current) {
+                followRef.current = false
+              } else if (nearBottom) {
+                followRef.current = true
+                setHasUnreadMessages(false)
+              }
+            }
+            lastScrollTopRef.current = list.scrollTop
+          }}
+          style={{
+            height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
+            display: 'flex', flexDirection: 'column', gap: 8,
+            background: 'var(--bg)',
+          }}
+        >
+          {messages.length === 0 && copy.emptyIntro && (
+            <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
+              {copy.emptyIntro}
+            </div>
+          )}
+          {messages.map((message) => {
           const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
           const userSender = ownUserMessage ? copy.me : (message.author_name || copy.me)
           return (
@@ -234,6 +262,11 @@ export default function AssistantChatPanel({
                 running={message.status === 'running'}
                 status={message.status === 'stopped' ? 'stopped' : message.status === 'error' ? 'failed' : undefined}
                 events={message.events}
+                eventSummary={message.event_summary}
+                eventDetail={message.event_detail}
+                onLoadEventDetails={onLoadMessageEvents
+                  ? () => onLoadMessageEvents(message.id)
+                  : undefined}
                 prompt={message.prompt}
                 onViewPrompt={setViewingPrompt}
               />
@@ -253,16 +286,31 @@ export default function AssistantChatPanel({
             onA2uiAction={onA2uiAction}
           />
           )
-        })}
-        {showThinkingReply && (
-          <AssistantThinkingMessage
-            sender={copy.agent}
-            initials={copy.agentInitials}
-            label={copy.thinking}
-            onViewPrompt={setViewingPrompt}
-          />
-        )}
-        {afterMessages}
+          })}
+          {showThinkingReply && (
+            <AssistantThinkingMessage
+              sender={copy.agent}
+              initials={copy.agentInitials}
+              label={copy.thinking}
+              onViewPrompt={setViewingPrompt}
+            />
+          )}
+          {afterMessages}
+        </div>
+        <ConversationNewMessagesButton
+          visible={hasUnreadMessages}
+          label={t('taskDetail.newMessages')}
+          ariaLabel={t('taskDetail.viewNewMessagesAria')}
+          onClick={() => {
+            followRef.current = true
+            setHasUnreadMessages(false)
+            const list = listRef.current
+            if (!list) return
+            const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
+            lastProgrammaticScrollTopRef.current = target
+            list.scrollTo({ top: target, behavior: 'smooth' })
+          }}
+        />
       </div>
 
       {sendError && <div style={{ padding: '6px 12px', fontSize: 13, color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
@@ -303,6 +351,8 @@ export default function AssistantChatPanel({
           onChange={onInputChange}
           onSend={() => {
             if (!input.trim() || running) return
+            followRef.current = true
+            setHasUnreadMessages(false)
             setAwaitingReply(true)
             onSend()
           }}

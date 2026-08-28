@@ -1,6 +1,7 @@
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
+import MarkdownMessage from './MarkdownMessage'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
 import {
@@ -190,7 +191,11 @@ export default function ChatMessageBubble({
               minWidth: 0, maxWidth: '100%', overflow: 'hidden',
             }}>
               {isUser ? (
-                <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{content}</div>
+                <MarkdownMessage
+                  content={content}
+                  projectId={projectId}
+                  className="user-message-markdown"
+                />
               ) : (
                 <>
                   <MessageTimeline

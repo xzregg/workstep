@@ -26,6 +26,8 @@ import {
 /** A session-scoped WS event — AG-UI 标准事件（无 task_id，按 session_id 分流）。 */
 export interface AssistantChatEvent {
   type: string
+  /** Persisted JSONL sequence number (distinct from AG-UI live sequence). */
+  seq?: number
   data?: Record<string, unknown>
   session_id?: string
   message_id?: string
@@ -74,6 +76,20 @@ export interface AssistantChatMessage {
   author_device_name?: string
   /** Process events (thinking/usage/…), consumed by ProcessTrace + footer. */
   events?: AssistantChatEvent[]
+  event_summary?: {
+    event_count?: number
+    last_event_seq?: number
+    thought_characters?: number
+    tool_count?: number
+  }
+  event_detail?: {
+    available?: boolean
+    loaded?: boolean
+    loading?: boolean
+    complete?: boolean
+    next_cursor?: number | null
+    error?: string
+  }
 }
 
 export interface AssistantProposalCard {
@@ -112,6 +128,18 @@ export interface AssistantStore {
     running?: boolean,
   ) => void
   handleWsEvent: (event: AssistantChatEvent) => void
+  setMessageEventLoading: (
+    sessionId: string,
+    messageId: string,
+    loading: boolean,
+    error?: string,
+  ) => void
+  setMessageEventDetails: (
+    sessionId: string,
+    messageId: string,
+    events: AssistantChatEvent[],
+    detail: { complete: boolean; next_cursor: number | null },
+  ) => void
   markStopped: (sessionId: string) => void
   resetSession: (sessionId: string) => void
 }
@@ -144,6 +172,32 @@ export interface AssistantStoreConfig {
 }
 
 const DEFAULT_MAX_SESSIONS = 30
+
+function eventIdentity(event: AssistantChatEvent): string {
+  const sequence = event.seq ?? event.event_sequence ?? event.sequence
+  if (sequence !== undefined) return `sequence:${sequence}`
+  return JSON.stringify([
+    event.type,
+    event.messageId ?? event.message_id,
+    event.timestamp ?? event.created_at,
+    event.toolCallId,
+    event.name,
+  ])
+}
+
+function mergeMessageEvents(
+  persisted: AssistantChatEvent[],
+  live: AssistantChatEvent[],
+): AssistantChatEvent[] {
+  const merged = new Map<string, AssistantChatEvent>()
+  for (const event of [...persisted, ...live]) merged.set(eventIdentity(event), event)
+  return [...merged.values()].sort((left, right) => {
+    const a = left.seq ?? left.event_sequence ?? left.sequence
+    const b = right.seq ?? right.event_sequence ?? right.sequence
+    if (a === undefined || b === undefined) return 0
+    return a - b
+  })
+}
 
 function emptySession(): AssistantSessionState {
   return {
@@ -544,6 +598,54 @@ export function createAssistantStore(
         }
       })
     },
+
+    setMessageEventLoading: (sessionId, messageId, loading, error = '') =>
+      set((s) => {
+        const session = s.sessions[sessionId]
+        if (!session) return s
+        return {
+          sessions: upsertSession(s.sessions, sessionId, {
+            ...session,
+            messages: session.messages.map((message) => message.id === messageId
+              ? {
+                  ...message,
+                  event_detail: {
+                    ...message.event_detail,
+                    available: true,
+                    loading,
+                    error,
+                  },
+                }
+              : message),
+          }, maxSessions),
+        }
+      }),
+
+    setMessageEventDetails: (sessionId, messageId, events, detail) =>
+      set((s) => {
+        const session = s.sessions[sessionId]
+        if (!session) return s
+        return {
+          sessions: upsertSession(s.sessions, sessionId, {
+            ...session,
+            messages: session.messages.map((message) => message.id === messageId
+              ? {
+                  ...message,
+                  events: mergeMessageEvents(events, message.events ?? []),
+                  event_detail: {
+                    ...message.event_detail,
+                    available: true,
+                    loaded: true,
+                    loading: false,
+                    complete: detail.complete,
+                    next_cursor: detail.next_cursor,
+                    error: '',
+                  },
+                }
+              : message),
+          }, maxSessions),
+        }
+      }),
 
     markStopped: (sessionId) =>
       set((s) => {

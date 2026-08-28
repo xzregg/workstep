@@ -227,6 +227,7 @@ export const zhCN = {
     sourceStep3: '打开 http://localhost:5173',
   },
   footer: {
+    privacy: '隐私',
     tagline: '本地优先 · 多 LLM 引擎 · 工作流编排',
     rights: '© 2026 WorkStep',
   },

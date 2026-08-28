@@ -245,7 +245,7 @@ async def upload_image(
     filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
     if project is not None:
         upload_dir = Path(project.workstep_dir) / "uploads"
-        rel_path = f"{project.name}/.workstep/uploads/{filename}"
+        rel_path = f".workstep/uploads/{filename}"
     else:
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
@@ -300,7 +300,7 @@ async def upload_file(
     filename = f"{prefix}-{uuid.uuid4().hex}{ext}" if prefix else f"{uuid.uuid4().hex}{ext}"
     if project is not None:
         upload_dir = Path(project.workstep_dir) / "uploads"
-        rel_path = f"{project.name}/.workstep/uploads/{filename}"
+        rel_path = f".workstep/uploads/{filename}"
     else:
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"

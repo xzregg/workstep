@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable, TypeVar
 
 from models import (
     Message,
@@ -30,6 +30,7 @@ from engines.core.events import InternalEvent
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
+ResultT = TypeVar("ResultT")
 
 
 def extract_usage_json(events_collected: list[dict]) -> str | None:
@@ -106,14 +107,27 @@ class TaskRunner:
     - Status tracking and event broadcasting
     """
 
-    def __init__(self, event_bus: EventBus, dispatch_service=None, source_project_id=None):
+    def __init__(
+        self,
+        event_bus: EventBus,
+        dispatch_service=None,
+        source_project_id=None,
+        database_executor=None,
+    ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
         self._source_project_id = source_project_id
+        self._database_executor = database_executor
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
+
+    async def _run_db(self, operation: Callable[[], ResultT]) -> ResultT:
+        """Run persistence on the owning project's writer when available."""
+        if self._database_executor is None:
+            return operation()
+        return await self._database_executor.run(operation)
 
     async def run_pipeline(
         self,
@@ -139,51 +153,49 @@ class TaskRunner:
 
         scheduler = DAGScheduler(step_list)
 
-        # Ensure task_steps exist for all steps
-        for step in step_list:
-            TaskStep.get_or_create(
-                task=task,
-                step_key=step.key,
-                defaults={"status": "pending"},
-            )
+        def initialize_pipeline_state() -> set[str]:
+            # Ensure task_steps exist for all steps.
+            for step in step_list:
+                TaskStep.get_or_create(
+                    task=task,
+                    step_key=step.key,
+                    defaults={"status": "pending"},
+                )
 
-        # Mark task as running
-        task.status = "running"
-        task.updated_at = utc_now()
-        task.save()
+            task.status = "running"
+            task.updated_at = utc_now()
+            task.save()
 
-        # Track completed/running steps
-        completed = set()
+            persisted_completed: set[str] = set()
+            # A task may intentionally start from a later stage. Persisted
+            # skipped stages satisfy their DAG dependencies.
+            for ts in TaskStep.select().where(
+                (TaskStep.task == task) & (TaskStep.status == "skipped")
+            ):
+                persisted_completed.add(ts.step_key)
+
+            if workflow_run is not None:
+                for step_run in StepRun.select().where(
+                    (StepRun.run == workflow_run)
+                    & (StepRun.status.in_(["succeeded", "reused"]))
+                ):
+                    reviews = list(
+                        ReviewRun.select()
+                        .where(ReviewRun.step_run == step_run)
+                        .order_by(ReviewRun.attempt.desc())
+                    )
+                    if not reviews or reviews[0].status == "passed":
+                        persisted_completed.add(step_run.step_key)
+            else:
+                for ts in TaskStep.select().where(
+                    (TaskStep.task == task) & (TaskStep.status == "passed")
+                ):
+                    persisted_completed.add(ts.step_key)
+            return persisted_completed
+
+        completed = await self._run_db(initialize_pipeline_state)
         running = set()
         failed = set()
-
-        # A task may intentionally start from a later stage. Persisted skipped
-        # stages satisfy their DAG dependencies without producing artifacts.
-        for ts in TaskStep.select().where(
-            (TaskStep.task == task) & (TaskStep.status == "skipped")
-        ):
-            completed.add(ts.step_key)
-
-        # Completion belongs to a workflow run, not permanently to the task.
-        # Legacy direct calls have no run record, so retain their old TaskStep
-        # resume behavior.
-        if workflow_run is not None:
-            for step_run in StepRun.select().where(
-                (StepRun.run == workflow_run)
-                & (StepRun.status.in_(["succeeded", "reused"]))
-            ):
-                reviews = list(
-                    ReviewRun.select()
-                    .where(ReviewRun.step_run == step_run)
-                    .order_by(ReviewRun.attempt.desc())
-                )
-                if not reviews or reviews[0].status == "passed":
-                    completed.add(step_run.step_key)
-        else:
-            for ts in TaskStep.select().where(
-                (TaskStep.task == task) & (TaskStep.status == "passed")
-            ):
-                completed.add(ts.step_key)
 
         try:
             await self._execute_dag(
@@ -208,7 +220,7 @@ class TaskRunner:
                 task.status = "paused"  # some failed
         finally:
             task.updated_at = utc_now()
-            task.save()
+            await self._run_db(task.save)
 
     async def _execute_dag(
         self,
@@ -277,54 +289,55 @@ class TaskRunner:
             or None
         )
 
-        # Update step status
-        ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == step_key))
-        is_review_retry = (
-            ts.status in ("retrying", "rework_waiting") and ts.started_at is not None
+        def prepare_step_state():
+            ts = TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            is_review_retry = (
+                ts.status in ("retrying", "rework_waiting")
+                and ts.started_at is not None
+            )
+            rework_feedback = ts.rework_feedback
+            if rework_feedback:
+                ts.rework_feedback = None
+            manual_review_feedback = ts.review_feedback
+            if manual_review_feedback:
+                ts.review_feedback = None
+            ts.status = "running"
+            if not is_review_retry:
+                ts.started_at = utc_now()
+            ts.ended_at = None
+            ts.engine = step.engine
+            ts.save()
+
+            step_run = None
+            if workflow_run is not None:
+                attempt = (
+                    StepRun.select()
+                    .where(
+                        (StepRun.run == workflow_run)
+                        & (StepRun.step_key == step_key)
+                    )
+                    .count()
+                    + 1
+                )
+                step_run = StepRun.create(
+                    id=str(uuid.uuid4()),
+                    run=workflow_run,
+                    step_key=step_key,
+                    attempt=attempt,
+                    status="running",
+                    engine=step.engine,
+                    model=resolved_model,
+                    started_at=utc_now(),
+                )
+            return ts, step_run, rework_feedback, manual_review_feedback
+
+        ts, step_run, rework_feedback, manual_review_feedback = (
+            await self._run_db(prepare_step_state)
         )
-        # Consume any rework feedback queued by a downstream verifier.
-        rework_feedback = ts.rework_feedback
-        if rework_feedback:
-            ts.rework_feedback = None
-            ts.save()
-        # Consume human-review rejection reason queued for the next attempt.
-        manual_review_feedback = ts.review_feedback
-        if manual_review_feedback:
-            ts.review_feedback = None
-            ts.save()
-        ts.status = "running"
-        # A review retry is still part of the same stage lifecycle. Preserve the
-        # first attempt's start time so the final duration includes execution,
-        # automatic review, and every retry.
-        if not is_review_retry:
-            ts.started_at = utc_now()
-        ts.ended_at = None
-        ts.engine = step.engine
-        ts.save()
 
         running.add(step_key)
-
-        step_run = None
-        if workflow_run is not None:
-            attempt = (
-                StepRun.select()
-                .where(
-                    (StepRun.run == workflow_run)
-                    & (StepRun.step_key == step_key)
-                )
-                .count()
-                + 1
-            )
-            step_run = StepRun.create(
-                id=str(uuid.uuid4()),
-                run=workflow_run,
-                step_key=step_key,
-                attempt=attempt,
-                status="running",
-                engine=step.engine,
-                model=resolved_model,
-                started_at=utc_now(),
-            )
 
         await self._publish(task.id, step_key, {
             "type": "status",
@@ -371,7 +384,9 @@ class TaskRunner:
 
         # Assemble prompt
         feedback = review_feedback or manual_review_feedback or rework_feedback
-        prompt = assemble_prompt(task, step, artifacts_dir, user_input)
+        prompt = await self._run_db(
+            lambda: assemble_prompt(task, step, artifacts_dir, user_input)
+        )
         if feedback:
             label = (
                 "人工审核反馈"
@@ -387,26 +402,28 @@ class TaskRunner:
         # Ensure artifact output directory (workflow / task / stage)
         wf_name = task.workflow_id or "default"
         out_dir = artifacts_dir / wf_name / task.id / step_key
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create message record
         msg_id = new_message_id()
         message_started_at = utc_now()
-        create_task_message(
-            id=msg_id,
-            task=task,
-            channel="execution",
-            step_key=step_key,
-            role="assistant",
-            engine=step.engine,
-            model=resolved_model,
-            run_id=msg_id,
-            run_status="running",
-            prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
-            position=1,
-            started_at=message_started_at,
-            created_at=message_started_at,
-        )
+
+        def create_message():
+            out_dir.mkdir(parents=True, exist_ok=True)
+            create_task_message(
+                id=msg_id,
+                task=task,
+                channel="execution",
+                step_key=step_key,
+                role="assistant",
+                engine=step.engine,
+                model=resolved_model,
+                run_id=msg_id,
+                run_status="running",
+                prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
+                position=1,
+                started_at=message_started_at,
+                created_at=message_started_at,
+            )
+
+        await self._run_db(create_message)
         await self._publish(task.id, step_key, {
             "channel": "execution",
             "message_id": msg_id,
@@ -637,11 +654,15 @@ class TaskRunner:
 
             if captured_session_id:
                 # 同任务同阶段重跑时复用该会话（session/resume）。
-                ts = TaskStep.get(
-                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
-                )
-                ts.session_id = captured_session_id
-                ts.save()
+                def save_session_id():
+                    current = TaskStep.get(
+                        (TaskStep.task == task) & (TaskStep.step_key == step_key)
+                    )
+                    current.session_id = captured_session_id
+                    current.save()
+                    return current
+
+                ts = await self._run_db(save_session_id)
 
             if run_key in self._cancelled_steps:
                 # 手动停止：阶段状态与普通失败区分，前端显示「手动停止」。
@@ -666,9 +687,13 @@ class TaskRunner:
                 # Missing review means a legacy workflow and retains the old
                 # execution-success-is-passed behavior.
                 if step.review is None or workflow_run is None or step_run is None:
-                    ts.status = "passed"
-                    ts.ended_at = utc_now()
-                    ts.save()
+                    def mark_step_passed():
+                        ts.status = "passed"
+                        ts.ended_at = utc_now()
+                        ts.save()
+                        return ts
+
+                    ts = await self._run_db(mark_step_passed)
                     completed.add(step_key)
                 else:
                     step_run.status = "succeeded"
@@ -896,19 +921,25 @@ class TaskRunner:
             # Update message
             try:
                 if not interrupted_by_shutdown:
-                    msg = Message.get_by_id(msg_id)
-                    msg.events_json = seal_unanswered_interactions(
-                        json.dumps(events_collected, ensure_ascii=False)
-                    )
-                    msg.usage_json = extract_usage_json(events_collected)
-                    msg.content = "".join(content_parts)
-                    if run_key in self._cancelled_steps:
-                        # 手动停止：与普通失败区分，前端显示「已停止」。
-                        msg.run_status = "cancelled"
-                    else:
-                        msg.run_status = "succeeded" if execution_succeeded else "failed"
-                    msg.ended_at = utc_now()
-                    msg.save()
+                    def finalize_message():
+                        msg = Message.get_by_id(msg_id)
+                        msg.events_json = seal_unanswered_interactions(
+                            json.dumps(events_collected, ensure_ascii=False)
+                        )
+                        msg.usage_json = extract_usage_json(events_collected)
+                        msg.content = "".join(content_parts)
+                        if run_key in self._cancelled_steps:
+                            # 手动停止：与普通失败区分，前端显示「已停止」。
+                            msg.run_status = "cancelled"
+                        else:
+                            msg.run_status = (
+                                "succeeded" if execution_succeeded else "failed"
+                            )
+                        msg.ended_at = utc_now()
+                        msg.save()
+                        return msg
+
+                    msg = await self._run_db(finalize_message)
                     await self._publish(task.id, step_key, {
                         "channel": "execution",
                         "message_id": msg_id,
@@ -1020,10 +1051,13 @@ class TaskRunner:
 
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""
-        ts.status = "failed"
-        ts.error = error
-        ts.ended_at = utc_now()
-        ts.save()
+        def persist_failure():
+            ts.status = "failed"
+            ts.error = error
+            ts.ended_at = utc_now()
+            ts.save()
+
+        await self._run_db(persist_failure)
 
         await self._publish(task.id, step_key, {
             "type": "error",

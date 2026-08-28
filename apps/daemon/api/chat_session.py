@@ -173,6 +173,27 @@ async def get_session(
     return session
 
 
+@router.get("/{session_id}/messages/{message_id}/events")
+async def get_message_events(
+    session_id: str,
+    message_id: str,
+    project_id: str = Query(..., alias="project_id"),
+    cursor: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=200),
+):
+    """Return a bounded detail page from the host-side JSONL journal."""
+    try:
+        return _module().message_events(
+            project_id,
+            session_id,
+            message_id,
+            cursor=cursor,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+
+
 @router.patch("/{session_id}")
 async def rename_session(
     session_id: str,

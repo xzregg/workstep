@@ -1,7 +1,7 @@
 import { ArrowRight, Play } from 'lucide-react'
 import { useI18n } from '../i18n'
 
-export function FinalCta() {
+export function FinalCta({ onLaunchFallback }: { onLaunchFallback: () => void }) {
   const { t } = useI18n()
 
   return (
@@ -12,7 +12,7 @@ export function FinalCta() {
           <p>{t('finalCta.lede')}</p>
         </div>
         <div className="final-cta-actions">
-          <a href="/" className="btn btn-primary">
+          <a href="workstep://open" className="btn btn-primary" onClick={onLaunchFallback}>
             {t('finalCta.primary')}
             <ArrowRight size={15} />
           </a>

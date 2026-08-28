@@ -229,6 +229,7 @@ export const enUS: I18nDict = {
     sourceStep3: 'Open http://localhost:5173',
   },
   footer: {
+    privacy: 'Privacy',
     tagline: 'Local-first · Multi-engine · Workflow orchestration',
     rights: '© 2026 WorkStep',
   },

@@ -25,6 +25,7 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent
+from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.registry import create_engine
 from engines.core.schema import EngineImage
 from models.fields import utc_now
@@ -67,10 +68,16 @@ def extract_uploaded_images(project, cwd: str, content: str) -> list[EngineImage
     seen: set[str] = set()
     for alt, target in candidates:
         resolved: Path | None = None
+        candidate_paths: list[Path] = []
+        legacy_prefix = f"{project.name}/.workstep/uploads/"
+        if target.startswith(legacy_prefix):
+            candidate_paths.append(uploads / target[len(legacy_prefix):])
         for base in (root, root.parent):
             candidate = Path(target)
             if not candidate.is_absolute():
                 candidate = base / candidate
+            candidate_paths.append(candidate)
+        for candidate in candidate_paths:
             try:
                 candidate = candidate.resolve()
                 candidate.relative_to(uploads)
@@ -585,7 +592,7 @@ def default_history_message(item: dict) -> dict:
         "content": item.get("content", ""),
         "status": (
             item.get("status")
-            if item.get("status") in ("error", "stopped")
+            if item.get("status") in ("running", "error", "stopped")
             else "succeeded"
         ),
         "engine": item.get("engine"),
@@ -598,6 +605,9 @@ def default_history_message(item: dict) -> dict:
         "author_name": item.get("author_name"),
         "author_device_id": item.get("author_device_id"),
         "author_device_name": item.get("author_device_name"),
+        "event_summary": item.get("event_summary") or {},
+        "event_detail": item.get("event_detail") or {"available": False},
+        "event_log_path": item.get("event_log_path"),
     }
 
 
@@ -676,6 +686,7 @@ class AssistantConfig:
     max_sessions: int = MAX_SESSIONS
     session_ttl_seconds: int = SESSION_TTL_SECONDS
     persistence: PersistenceAdapter | None = None
+    event_journal: TurnEventJournal | None = None
     # Per-assistant tool loading: when True, this assistant loads the WorkStep
     # internal tools natively (the engine registers the ``workstep_call``
     # function tool; its docstring carries the interface docs). Nothing is
@@ -821,6 +832,17 @@ class AssistantRuntime:
 
         turn_id = str(uuid.uuid4())
         assistant_message_id = str(uuid.uuid4())
+        journal_ref: JournalRef | None = None
+        if self._config.event_journal is not None:
+            try:
+                with self._project_ctx(session.project_id) as project:
+                    journal_ref = self._config.event_journal.start(
+                        project.workstep_dir,
+                        session.session_id,
+                        assistant_message_id,
+                    )
+            except Exception:
+                logger.exception("Failed to start assistant event journal")
         actor = get_effective_actor()
         session.messages.append(
             {
@@ -840,6 +862,31 @@ class AssistantRuntime:
                 ),
             }
         )
+        started_at = utc_now().isoformat()
+        session.messages.append(
+            {
+                "role": "assistant",
+                "content": "",
+                "id": assistant_message_id,
+                "engine": session.engine,
+                "model": session.model,
+                "status": "running",
+                "created_at": started_at,
+                "events": [],
+                **(
+                    {
+                        "event_log_path": journal_ref.relative_path,
+                        "event_summary": {},
+                        "event_detail": {"available": True, "loaded": False},
+                    }
+                    if journal_ref is not None
+                    else {}
+                ),
+            }
+        )
+        if self._config.persistence is not None:
+            with self._project_ctx(session.project_id):
+                self._config.persistence.save(session)
         self._turn_keys[key] = turn_id
         self._turn_states[turn_id] = {
             "status": "queued",
@@ -849,6 +896,8 @@ class AssistantRuntime:
             "permission_mode": normalized_permission or None,
             "plan_mode": bool(plan_mode),
             "provider_id": normalized_provider or None,
+            "engine_overridden": bool(engine),
+            "journal_ref": journal_ref,
         }
         background = asyncio.create_task(
             self._run_turn(session, turn_id, assistant_message_id),
@@ -992,6 +1041,8 @@ class AssistantRuntime:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if self._config.event_journal is not None:
+            self._config.event_journal.close()
         self._sessions.clear()
         self._turn_keys.clear()
         self._turn_states.clear()
@@ -1179,8 +1230,13 @@ class AssistantRuntime:
         if engine is not None and engine.supports_resume:
             # 引擎侧维护会话上下文：历史不拼进 prompt。首轮带完整系统提示，
             # 续轮只发当前用户消息，避免重复污染引擎会话。
-            user_message = (
-                session.messages[-1]["content"] if session.messages else ""
+            user_message = next(
+                (
+                    str(item.get("content") or "")
+                    for item in reversed(session.messages)
+                    if item.get("role") == "user"
+                ),
+                "",
             )
             head = (
                 self._config.system_prompt
@@ -1189,7 +1245,10 @@ class AssistantRuntime:
             )
             return f"{head}\n\n{user_message}"
         # 无引擎侧会话的引擎（不支持 resume）：保留最近对话记录拼接。
-        turns = session.messages[-self._config.max_history_turns * 2:]
+        turns = [
+            item for item in session.messages
+            if not (item.get("role") == "assistant" and item.get("status") == "running")
+        ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
             f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
             for item in turns
@@ -1213,7 +1272,12 @@ class AssistantRuntime:
             seq = 0
             prompt = ""
             _events: list[dict] = []
-            started_at = utc_now().isoformat()
+            assistant_message = next(
+                item for item in session.messages
+                if item.get("id") == assistant_message_id
+            )
+            started_at = str(assistant_message.get("created_at") or utc_now().isoformat())
+            journal_ref = self._turn_states[turn_id].get("journal_ref")
             streamed_reply = ""
             structured_events: list[dict] = []
             try:
@@ -1277,6 +1341,13 @@ class AssistantRuntime:
                             if not delta:
                                 return
                             streamed_reply = partial_reply
+                            self._record_journal_event(
+                                journal_ref,
+                                {
+                                    "type": "agent_message_chunk",
+                                    "data": {"content": {"text": delta}},
+                                },
+                            )
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1286,6 +1357,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "agent_thought_chunk":
+                            self._record_journal_event(journal_ref, event.to_dict())
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1308,6 +1380,11 @@ class AssistantRuntime:
                             "compacted",
                             "session_started",
                         }:
+                            self._record_journal_event(
+                                journal_ref,
+                                event.to_dict(),
+                                force=event.type in {"interaction_request", "session_started"},
+                            )
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1317,6 +1394,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "usage_update":
+                            self._record_journal_event(journal_ref, event.to_dict())
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1325,6 +1403,10 @@ class AssistantRuntime:
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
+                        else:
+                            # Keep the host-side journal complete even when an
+                            # event has no current AG-UI rendering path.
+                            self._record_journal_event(journal_ref, event.to_dict())
 
                     return publish_live_event
 
@@ -1354,6 +1436,7 @@ class AssistantRuntime:
                     session, raw
                 )
                 for extra_event in repair_events:
+                    self._record_journal_event(journal_ref, extra_event)
                     await self._publish(
                         session,
                         assistant_message_id,
@@ -1370,6 +1453,8 @@ class AssistantRuntime:
                         structured,
                         seq_holder[0],
                     )
+                    for structured_event in structured_events:
+                        self._record_journal_event(journal_ref, structured_event)
                 seq_holder[0] = await self._publish(
                     session,
                     assistant_message_id,
@@ -1384,7 +1469,7 @@ class AssistantRuntime:
                     {"status": "succeeded", "content": reply},
                     seq_holder[0],
                 )
-                session.messages.append(
+                assistant_message.update(
                     {
                         "role": "assistant",
                         "content": reply,
@@ -1412,10 +1497,15 @@ class AssistantRuntime:
                         ],
                     }
                 )
+                self._finish_journal(
+                    journal_ref,
+                    assistant_message,
+                    {"type": "status", "data": {"status": "succeeded"}},
+                )
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
                 ended_at = utc_now().isoformat()
-                session.messages.append(
+                assistant_message.update(
                     {
                         "role": "assistant",
                         "content": streamed_reply,
@@ -1428,6 +1518,11 @@ class AssistantRuntime:
                         "prompt": prompt,
                         "events": _prune_events(_events),
                     }
+                )
+                self._finish_journal(
+                    journal_ref,
+                    assistant_message,
+                    {"type": "status", "data": {"status": "stopped"}},
                 )
                 try:
                     await self._publish(
@@ -1450,7 +1545,7 @@ class AssistantRuntime:
                     turn_id,
                     self._config.name,
                 )
-                session.messages.append(
+                assistant_message.update(
                     {
                         "role": "assistant",
                         "content": f"（生成失败：{exc}）",
@@ -1463,6 +1558,11 @@ class AssistantRuntime:
                         "prompt": prompt,
                         "events": _prune_events(_events),
                     }
+                )
+                self._finish_journal(
+                    journal_ref,
+                    assistant_message,
+                    {"type": "error", "data": {"message": str(exc)}},
                 )
                 try:
                     seq = await self._publish(
@@ -1488,6 +1588,41 @@ class AssistantRuntime:
                 if self._config.persistence is not None:
                     with self._project_ctx(session.project_id):
                         self._config.persistence.save(session)
+
+    def _record_journal_event(
+        self,
+        ref: JournalRef | None,
+        event: dict,
+        *,
+        force: bool = False,
+    ) -> None:
+        if ref is None or self._config.event_journal is None:
+            return
+        try:
+            self._config.event_journal.record(ref, event, force=force)
+        except Exception:
+            logger.exception("Failed to append assistant event journal")
+
+    def _finish_journal(
+        self,
+        ref: JournalRef | None,
+        message: dict,
+        terminal_event: dict,
+    ) -> None:
+        if ref is None or self._config.event_journal is None:
+            return
+        try:
+            self._config.event_journal.finish(ref, terminal_event)
+            snapshot = self._config.event_journal.snapshot(ref)
+            message["event_summary"] = snapshot["summary"]
+            message["events"] = snapshot["events"]
+            message["event_detail"] = {
+                "available": True,
+                "loaded": False,
+                **snapshot["summary"],
+            }
+        except Exception:
+            logger.exception("Failed to finalize assistant event journal")
 
     async def await_turn(
         self,
@@ -1581,14 +1716,15 @@ class AssistantRuntime:
             if run_key
             else None
         )
-        turn_provider = (
-            self._turn_states.get(run_key, {}).get("provider_id")
-            if run_key
-            else None
+        turn_state = self._turn_states.get(run_key, {}) if run_key else {}
+        turn_provider = turn_state.get("provider_id")
+        provider_id = turn_provider or (
+            ""
+            if turn_state.get("engine_overridden")
+            else config_store.get_assistant_defaults(self._config.name).get(
+                "provider_id", ""
+            )
         )
-        provider_id = turn_provider or config_store.get_assistant_defaults(
-            self._config.name
-        ).get("provider_id", "")
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )

@@ -2,8 +2,10 @@
 
 from contextlib import AsyncExitStack
 import asyncio
-import json
+import sqlite3
+import threading
 import time
+import json
 import uuid
 from unittest.mock import AsyncMock
 
@@ -159,6 +161,226 @@ async def test_task_creation_binds_selected_workflow(api_context, monkeypatch):
     assert created.json()["engine"] == "pydantic_ai"
     assert created.json()["workflow_id"] == workflow_id
     assert [step["step_key"] for step in created.json()["steps"]] == ["selected"]
+
+
+@pytest.mark.anyio
+async def test_sqlite_write_lock_does_not_block_health_check(api_context):
+    """A busy project writer must not stall unrelated FastAPI requests."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-project-writer"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    database_path = project_dir / ".workstep" / "workstep.db"
+
+    locked = threading.Event()
+
+    def hold_write_lock() -> None:
+        connection = sqlite3.connect(database_path, timeout=1)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            locked.set()
+            time.sleep(0.35)
+            connection.commit()
+        finally:
+            connection.close()
+
+    locker = threading.Thread(target=hold_write_lock)
+    locker.start()
+    assert locked.wait(1)
+
+    started_at = time.perf_counter()
+
+    async def health_canary():
+        await asyncio.sleep(0.05)
+        response = await client.get("/api/health")
+        return response, time.perf_counter() - started_at
+
+    canary_task = asyncio.create_task(health_canary())
+    await asyncio.sleep(0)
+    create_task = asyncio.create_task(client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Writer lock probe",
+            "cwd": str(project_dir),
+            "auto_start": False,
+        },
+    ))
+
+    health, health_completed_at = await canary_task
+    created = await create_task
+    locker.join(timeout=1)
+
+    assert health.status_code == 200
+    assert health_completed_at < 0.2
+    assert created.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_workflow_start_write_lock_does_not_block_health_check(api_context):
+    """Persisting a workflow run must wait outside the FastAPI event loop."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-workflow-start"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Workflow start lock probe",
+            "cwd": str(project_dir),
+            "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    database_path = project_dir / ".workstep" / "workstep.db"
+
+    locked = threading.Event()
+
+    def hold_write_lock() -> None:
+        connection = sqlite3.connect(database_path, timeout=1)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            locked.set()
+            time.sleep(0.35)
+            connection.commit()
+        finally:
+            connection.close()
+
+    locker = threading.Thread(target=hold_write_lock)
+    locker.start()
+    assert locked.wait(1)
+
+    started_at = time.perf_counter()
+
+    async def health_canary():
+        await asyncio.sleep(0.05)
+        response = await client.get("/api/health")
+        return response, time.perf_counter() - started_at
+
+    canary_task = asyncio.create_task(health_canary())
+    await asyncio.sleep(0)
+    run_task = asyncio.create_task(client.post(
+        f"/api/task/run?project_id={project_id}",
+        json={"task_id": task_id, "prompt": "run"},
+    ))
+
+    health, health_completed_at = await canary_task
+    started = await run_task
+    locker.join(timeout=1)
+
+    assert health.status_code == 200
+    assert health_completed_at < 0.2
+    assert started.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_workflow_completion_write_lock_does_not_block_health_check(
+    api_context,
+):
+    """LLM completion persistence must wait outside the FastAPI event loop."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-workflow-completion"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    engine_started = asyncio.Event()
+    release_engine = asyncio.Event()
+
+    class CompletionProbeEngine:
+        supports_resume = False
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            engine_started.set()
+            await release_engine.wait()
+            yield InternalEvent(type="status", data={"status": "done"})
+
+        async def stop(self):
+            return None
+
+    engine_id = "completion-db-probe"
+    original_engine = ENGINE_REGISTRY.get(engine_id)
+    ENGINE_REGISTRY[engine_id] = CompletionProbeEngine
+    try:
+        workflow = await client.post(
+            f"/api/workflow/create?project_id={project_id}",
+            json={
+                "name": "CompletionProbe",
+                "steps": {
+                    "nodes": [{
+                        "id": "complete",
+                        "type": "complete",
+                        "title": "Complete",
+                        "engine": engine_id,
+                    }],
+                    "connections": [],
+                },
+            },
+        )
+        workflow_id = workflow.json()["id"]
+        created = await client.post(
+            f"/api/task/create?project_id={project_id}",
+            json={
+                "title": "Workflow completion lock probe",
+                "cwd": str(project_dir),
+                "workflow_id": workflow_id,
+                "auto_start": False,
+            },
+        )
+        task_id = created.json()["id"]
+        started = await client.post(
+            f"/api/task/run?project_id={project_id}",
+            json={"task_id": task_id, "prompt": "run"},
+        )
+        assert started.status_code == 200
+        await asyncio.wait_for(engine_started.wait(), timeout=1)
+
+        database_path = project_dir / ".workstep" / "workstep.db"
+        locked = threading.Event()
+
+        def hold_write_lock() -> None:
+            connection = sqlite3.connect(database_path, timeout=1)
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                locked.set()
+                time.sleep(0.35)
+                connection.commit()
+            finally:
+                connection.close()
+
+        locker = threading.Thread(target=hold_write_lock)
+        locker.start()
+        assert locked.wait(1)
+        started_at = time.perf_counter()
+
+        async def health_canary():
+            await asyncio.sleep(0.05)
+            response = await client.get("/api/health")
+            return response, time.perf_counter() - started_at
+
+        canary_task = asyncio.create_task(health_canary())
+        await asyncio.sleep(0)
+        release_engine.set()
+        health, health_completed_at = await canary_task
+        locker.join(timeout=1)
+
+        assert health.status_code == 200
+        assert health_completed_at < 0.2
+    finally:
+        if original_engine is None:
+            ENGINE_REGISTRY.pop(engine_id, None)
+        else:
+            ENGINE_REGISTRY[engine_id] = original_engine
 
 
 @pytest.mark.anyio
@@ -394,10 +616,10 @@ async def test_upload_image_returns_project_relative_path(api_context):
     )
     assert uploaded.status_code == 200
     body = uploaded.json()
-    assert body["url"].startswith("test_workstep/.workstep/uploads/")
+    assert body["url"].startswith(".workstep/uploads/")
     assert body["url"].endswith(".png")
     filename = body["filename"]
-    assert body["url"] == f"test_workstep/.workstep/uploads/{filename}"
+    assert body["url"] == f".workstep/uploads/{filename}"
 
     # File physically lands in the project uploads directory
     assert (project_dir / ".workstep" / "uploads" / filename).is_file()
@@ -442,7 +664,7 @@ async def test_upload_file_returns_project_relative_markdown_target(api_context)
 
     assert uploaded.status_code == 200
     body = uploaded.json()
-    assert body["url"].startswith("file_upload_project/.workstep/uploads/task-create-")
+    assert body["url"].startswith(".workstep/uploads/task-create-")
     assert body["url"].endswith(".pdf")
     assert body["size"] == len(content)
     assert (project_dir / ".workstep" / "uploads" / body["filename"]).read_bytes() == content

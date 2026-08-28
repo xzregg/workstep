@@ -46,7 +46,7 @@ else
     rm -rf "$APPDIR"
     mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications"
     cp -R WorkStep/. "$APPDIR/usr/bin/"
-    cp "$DESKTOP_DIR/assets/icon.png" "$APPDIR/workstep.png"
+    cp "$DESKTOP_DIR/../landing/public/favicon.svg" "$APPDIR/workstep.svg"
     cp "$DESKTOP_DIR/workstep.desktop" "$APPDIR/workstep.desktop"
     cp "$DESKTOP_DIR/AppRun" "$APPDIR/AppRun"
     chmod +x "$APPDIR/AppRun"

@@ -384,10 +384,7 @@ button {
 
 .hero h1 em {
   font-style: normal;
-  background: linear-gradient(110deg, var(--accent), var(--accent-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--accent);
 }
 
 .hero-lede {
@@ -1092,7 +1089,7 @@ button {
   gap: 8px;
   padding: 7px 11px;
   border-radius: 9px;
-  border-left: 3px solid #f97316;
+  border: 1px solid var(--border-soft);
   background: color-mix(in oklab, var(--bg), transparent 6%);
   box-shadow: var(--elev);
   font-size: 11.5px;
@@ -2343,7 +2340,7 @@ button {
 
 .download-platforms {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
 

@@ -11,6 +11,14 @@ from services.workflow_definition import (
 
 router = APIRouter(prefix="/api/project")
 
+
+async def _run_db(project_id, operation):
+    run_db = getattr(project_manager, "run_db", None)
+    if run_db is not None:
+        return await run_db(project_id, operation)
+    with project_manager.activate_project_by_id(project_id) as project:
+        return operation(project)
+
 @router.post("/init")
 async def init_project(req: InitRequest):
     """Initialize a new WorkStep project."""
@@ -85,12 +93,12 @@ async def delete_project(project_id: str):
 async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project_id"),
                      workflow_id: str | None = Query(None)):
     """Save workflow steps for a project. Defaults to the default workflow."""
-    with project_manager.activate_project_by_id(pid) as proj:
-        try:
-            WorkflowDefinition.load(req.steps).validate()
-        except WorkflowValidationError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        WorkflowDefinition.load(req.steps).validate()
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    def save(proj):
         if workflow_id:
             wf = project_manager.update_workflow(proj, workflow_id, steps=req.steps)
             if wf is None:
@@ -102,6 +110,8 @@ async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project
             project_manager.update_workflow(proj, default["id"], steps=req.steps)
 
         return {"saved": True}
+
+    return await _run_db(pid, save)
 
 
 @router.get("/default-steps")

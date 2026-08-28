@@ -12,6 +12,7 @@ import DirectoryBrowser from './DirectoryBrowser'
 import Field from './Field'
 import Input from './Input'
 import SettingsPage from '../pages/SettingsPage'
+import type { SettingsFocusTarget, SettingsSection } from '../pages/SettingsPage'
 import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
 import ProjectShareDialog from './ProjectShareDialog'
@@ -20,7 +21,11 @@ import type { GenProposalCard } from '../stores/workflowGenStore'
 import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
+import OnboardingChecklist from './OnboardingChecklist'
+import { useOnboardingStore } from '../stores/onboardingStore'
+import { buildStarterWorkflow } from '../utils/onboarding'
 import {
+  fetchEngineModels,
   fetchTemplates,
   templateApi,
   chatSessionApi,
@@ -101,13 +106,16 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [remoteShareString, setRemoteShareString] = useState('')
   const [addingRemote, setAddingRemote] = useState(false)
   const [newPath, setNewPath] = useState('')
-  const [newName, setNewName] = useState('')
   const [error, setError] = useState('')
-  const [showBrowser, setShowBrowser] = useState(false)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [renameError, setRenameError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
+  const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
+  const [onboardingRefreshToken, setOnboardingRefreshToken] = useState(0)
+  const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
+  const [onboardingError, setOnboardingError] = useState('')
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<TemplateInfo[]>([])
   const [addWfTemplateId, setAddWfTemplateId] = useState('')
@@ -490,19 +498,18 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   const handleInit = async () => {
     if (!newPath.trim()) return
-    if (hasWhitespace(newName)) {
-      setError(t('layout.nameWhitespace'))
-      return
-    }
     try {
       setError('')
-      const proj = await initProject(newPath.trim(), newName.trim() || undefined)
+      const proj = await initProject(newPath.trim())
       setActiveProject(proj)
+      const onboarding = useOnboardingStore.getState()
+      if (onboarding.status === 'active' && onboarding.currentStep === 'project') {
+        onboarding.recordProject(proj.id)
+        setOnboardingRefreshToken((value) => value + 1)
+      }
       onSelectProject(proj)
       setShowInitModal(false)
       setNewPath('')
-      setNewName('')
-      setShowBrowser(false)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -527,7 +534,83 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   const handleDirSelect = (path: string) => {
     setNewPath(path)
-    setShowBrowser(false)
+  }
+
+  const closeInitModal = () => {
+    setShowInitModal(false)
+    setNewPath('')
+    setError('')
+  }
+
+  const openLocalProjectModal = () => {
+    setAddProjectMode('local')
+    setNewPath('')
+    setError('')
+    setShowInitModal(true)
+  }
+
+  const openOnboardingSettings = (section: SettingsSection, focus: SettingsFocusTarget) => {
+    setSettingsSection(section)
+    setSettingsFocus(focus)
+    setOnboardingError('')
+    setShowSettings(true)
+  }
+
+  const openOnboardingProject = () => {
+    setOnboardingError('')
+    openLocalProjectModal()
+  }
+
+  const createOnboardingWorkflow = async () => {
+    const onboarding = useOnboardingStore.getState()
+    const project = projects.find((item) => item.id === onboarding.projectId && item.type !== 'remote')
+    if (!project || !onboarding.engineId || onboardingWorkflowBusy) return
+    setOnboardingWorkflowBusy(true)
+    setOnboardingError('')
+    try {
+      let model = ''
+      try {
+        const result = await fetchEngineModels(onboarding.engineId, false, onboarding.providerId || '', project.id)
+        model = result.default_model || ''
+      } catch {
+        // The engine may validly use its own implicit default model.
+      }
+      setActiveProject(project)
+      const workflow = await createWorkflow(
+        project.id,
+        '分析与执行',
+        undefined,
+        buildStarterWorkflow(onboarding.engineId, model),
+      )
+      onboarding.recordWorkflow(workflow.id)
+      await fetchProjects()
+      const refreshedProject = useProjectStore.getState().projects.find((item) => item.id === project.id)
+      if (refreshedProject) setActiveProject(refreshedProject)
+      await setActiveWorkflow(workflow.id)
+      setOnboardingRefreshToken((value) => value + 1)
+      navigate(`/canvas?project=${encodeURIComponent(project.name)}&workflow=${encodeURIComponent(workflow.id)}&onboarding=1`)
+    } catch (reason) {
+      setOnboardingError(reason instanceof Error ? reason.message : t('onboarding.createWorkflowFailed'))
+    } finally {
+      setOnboardingWorkflowBusy(false)
+    }
+  }
+
+  const openOnboardingTask = () => {
+    const onboarding = useOnboardingStore.getState()
+    const project = projects.find((item) => item.id === onboarding.projectId)
+    if (!project || !onboarding.workflowId) return
+    setActiveProject(project)
+    void setActiveWorkflow(onboarding.workflowId)
+    navigate(`/tasks?project=${encodeURIComponent(project.name)}&onboarding=create-task`)
+  }
+
+  const viewOnboardingTask = () => {
+    const onboarding = useOnboardingStore.getState()
+    const project = projects.find((item) => item.id === onboarding.projectId)
+    if (!project || !onboarding.taskId) return
+    setActiveProject(project)
+    navigate(`/tasks?project=${encodeURIComponent(project.name)}&task=${encodeURIComponent(onboarding.taskId)}`)
   }
 
   const handleDeleteProject = async () => {
@@ -1157,12 +1240,24 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        <Button variant="ghost" style={addButtonStyle} onClick={() => { setAddProjectMode('local'); setError(''); setShowInitModal(true) }}>
+        <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
           + {t('nav.addProject')}
         </Button>
         <Button
           variant="ghost"
-          onClick={() => setShowSettings(true)}
+          onClick={() => useOnboardingStore.getState().reopen()}
+          style={{
+            margin: '0 12px 4px', width: 'calc(100% - 24px)', height: 34,
+            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
+            borderRadius: 9, fontSize: 13, color: 'var(--fg-2)',
+          }}
+        >
+          <Icon name="sparkles" size={16} strokeWidth={2} />
+          {t('onboarding.reopen')}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
           aria-current={showSettings ? 'page' : undefined}
           style={{
             margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
@@ -1414,56 +1509,55 @@ export default function Layout({ onSelectProject, children }: Props) {
         {children}
       </main>
 
-      {showSettings && <SettingsPage onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsPage
+          initialSection={settingsSection}
+          focusTarget={settingsFocus}
+          preferredProviderId={useOnboardingStore.getState().providerId}
+          onConfigurationChanged={() => setOnboardingRefreshToken((value) => value + 1)}
+          onClose={() => {
+            setShowSettings(false)
+            setSettingsFocus(undefined)
+            setOnboardingRefreshToken((value) => value + 1)
+          }}
+        />
+      )}
+
+      <OnboardingChecklist
+        refreshToken={onboardingRefreshToken}
+        creatingWorkflow={onboardingWorkflowBusy}
+        error={onboardingError}
+        onOpenProvider={() => openOnboardingSettings('providers', 'provider-create')}
+        onOpenEngine={() => openOnboardingSettings('engines', 'execution-engine')}
+        onOpenProject={openOnboardingProject}
+        onCreateWorkflow={() => void createOnboardingWorkflow()}
+        onCreateTask={openOnboardingTask}
+        onViewTask={viewOnboardingTask}
+      />
 
       {/* Init project modal */}
       {showInitModal && (
-        <div className="modal-overlay" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>
-          <div className="modal" style={{ width: showBrowser ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={closeInitModal}>
+          <div className="modal" style={{ width: addProjectMode === 'local' ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{t('layout.initTitle')}</span>
-              <Button variant="icon" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>✕</Button>
+              <Button variant="icon" onClick={closeInitModal}>✕</Button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
                 <Button variant={addProjectMode === 'local' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('local'); setError('') }}>
                   {t('layout.localProject')}
                 </Button>
-                <Button variant={addProjectMode === 'remote' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('remote'); setError(''); setShowBrowser(false) }}>
+                <Button variant={addProjectMode === 'remote' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('remote'); setNewPath(''); setError('') }}>
                   {t('layout.remoteProject')}
                 </Button>
               </div>
               {addProjectMode === 'local' ? <>
-              <Field label={t('layout.projectPath')} htmlFor="init-path">
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Input
-                    id="init-path"
-                    style={{ flex: 1 }}
-                    placeholder="/Users/me/my-app"
-                    value={newPath}
-                    onChange={(e) => setNewPath(e.target.value)}
-                  />
-                  <Button variant="ghost" onClick={() => setShowBrowser(!showBrowser)}>
-                    {showBrowser ? t('layout.collapse') : t('layout.browse')}
-                  </Button>
+                <div style={{ marginBottom: 8, color: 'var(--fg-2)', fontSize: 13 }}>
+                  {t('browser.selectHint')}
                 </div>
-              </Field>
-
-              {showBrowser && (
-                <div style={{ marginTop: 8 }}>
-                  <DirectoryBrowser onSelect={handleDirSelect} />
-                </div>
-              )}
-
-              <Field label={t('layout.projectNameOptional')} htmlFor="init-name" error={error}>
-                <Input
-                  id="init-name"
-                  placeholder={t('layout.defaultDirName')}
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleInit()}
-                />
-              </Field>
+                <DirectoryBrowser onSelect={handleDirSelect} selectedPath={newPath} />
+                {error && <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
               </> : (
                 <Field label={t('layout.remoteShareString')} htmlFor="remote-share-string" error={error}>
                   <textarea
@@ -1480,7 +1574,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               )}
             </div>
             <div className="modal-footer">
-              <Button variant="ghost" onClick={() => { setShowInitModal(false); setShowBrowser(false) }}>{t('common.cancel')}</Button>
+              <Button variant="ghost" onClick={closeInitModal}>{t('common.cancel')}</Button>
               {addProjectMode === 'local' ? (
                 <Button variant="primary" disabled={!newPath.trim()} onClick={handleInit}>{t('layout.init')}</Button>
               ) : (

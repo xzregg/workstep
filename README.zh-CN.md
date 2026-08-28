@@ -10,6 +10,8 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](apps/daemon/pyproject.toml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](apps/web/package.json)
 
+![WorkStep 工作流工作台](apps/web/src/assets/hero.png)
+
 WorkStep 将项目和执行数据保留在本机，同时为任务提供结构化流程、实时 Agent 输出、审批边界与可恢复上下文。仓库包含 FastAPI 后台、React 前端及 macOS、Windows、Linux 桌面应用。
 
 ## 核心能力

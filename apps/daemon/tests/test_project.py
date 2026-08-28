@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 import pytest
 from pathlib import Path
 from unittest.mock import patch
@@ -51,6 +52,19 @@ def test_init_project_creates_workstep_dir(tmp_path, manager):
 
     steps = json.loads((ws_dir / "steps.json").read_text())
     assert steps == DEFAULT_STEPS
+
+
+def test_init_project_adds_workstep_to_git_and_docker_ignore_files(tmp_path, manager):
+    """Project initialization keeps WorkStep runtime data out of Git and Docker contexts."""
+    m, _, _ = manager
+    (tmp_path / ".gitignore").write_text("dist\n")
+    (tmp_path / ".dockerignore").write_text("node_modules")
+
+    m.init_project(tmp_path)
+    m.init_project(tmp_path)
+
+    assert (tmp_path / ".gitignore").read_text() == "dist\n.workstep/\n"
+    assert (tmp_path / ".dockerignore").read_text() == "node_modules\n.workstep/\n"
 
 
 def test_init_project_returns_project(tmp_path, manager):
@@ -135,6 +149,56 @@ def test_close_all(tmp_path, manager):
     m.close_all()
 
     assert m.list_projects() == []
+
+
+async def test_database_work_runs_concurrently_across_projects(tmp_path, manager):
+    """Independent project databases do not share a global writer."""
+    m, _, _ = manager
+    first_path = tmp_path / "writer-a"
+    second_path = tmp_path / "writer-b"
+    first_path.mkdir()
+    second_path.mkdir()
+    first = m.init_project(first_path)
+    second = m.init_project(second_path)
+    both_writers_started = threading.Barrier(2)
+
+    def identify(project):
+        both_writers_started.wait(timeout=1)
+        return project.id
+
+    results = await asyncio.gather(
+        m.run_db(first.id, identify),
+        m.run_db(second.id, identify),
+    )
+
+    assert results == [first.id, second.id]
+
+
+async def test_database_work_is_ordered_within_one_project(tmp_path, manager):
+    """One project's complete database work units never interleave."""
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+
+    def first(_project):
+        first_started.set()
+        assert release_first.wait(timeout=1)
+        return "first"
+
+    def second(_project):
+        second_started.set()
+        return "second"
+
+    first_task = asyncio.create_task(m.run_db(project.id, first))
+    assert await asyncio.to_thread(first_started.wait, 1)
+    second_task = asyncio.create_task(m.run_db(project.id, second))
+    await asyncio.sleep(0.05)
+    assert not second_started.is_set()
+
+    release_first.set()
+    assert await asyncio.gather(first_task, second_task) == ["first", "second"]
 
 
 async def test_bind_project_is_isolated_between_interleaved_async_tasks(tmp_path, manager):

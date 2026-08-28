@@ -5,11 +5,15 @@ labels: ["enhancement", "needs-triage"]
 body:
   - type: textarea
     id: problem
-    attributes: { label: Problem, description: What user problem or workflow limitation are you facing? }
+    attributes:
+      label: Problem
+      description: "What user problem or workflow limitation are you facing?"
     validations: { required: true }
   - type: textarea
     id: scenario
-    attributes: { label: User scenario, description: Who needs this and when? }
+    attributes:
+      label: User scenario
+      description: "Who needs this and when?"
     validations: { required: true }
   - type: textarea
     id: solution
