@@ -765,7 +765,13 @@ class PydanticAIEngine(AcpEngineBase):
             return prompt
         from pydantic_ai.messages import ImageUrl
 
-        parts = [prompt]
+        multimodal_note = (
+            "[Multimodal input: Actual image data is attached to this message. "
+            "Inspect the attached image directly; do not treat the Markdown "
+            "file path as the only image input, use file-reading tools, or "
+            "claim that only a path was provided.]"
+        )
+        parts = [f"{prompt}\n\n{multimodal_note}"]
         for image in images:
             parts.append(ImageUrl(url=image.to_data_url()))
         return parts

@@ -232,7 +232,9 @@ async def test_pydantic_ai_run_agent_builds_image_user_content(monkeypatch):
 
     parts = captured["prompt"]
     assert isinstance(parts, list)
-    assert parts[0] == "看图说话"
+    assert parts[0].startswith("看图说话\n\n")
+    assert "Actual image data is attached" in parts[0]
+    assert "do not treat the Markdown file path as the only image input" in parts[0]
     assert parts[1].url == "https://example.com/x.png"
     assert parts[1].kind == "image-url"
 
