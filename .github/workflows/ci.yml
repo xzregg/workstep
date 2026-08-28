@@ -33,10 +33,10 @@ jobs:
         run: |
           uv run --frozen --group dev pytest \
             --deselect='tests/test_acp_command_inspection.py::test_hermes_inspection_discovers_and_caches_acp_commands[asyncio]' \
-            --deselect='tests/test_assistant_api.py::test_assistant_set_and_read_config[asyncio]' \
-            --deselect='tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults[asyncio]' \
-            --deselect='tests/test_assistant_api.py::test_assistant_config_accepts_auto_and_xhigh[asyncio]' \
-            --deselect='tests/test_assistant_api.py::test_assistant_config_accepts_compatible_external_engine_provider[asyncio]' \
+            --deselect=tests/test_assistant_api.py::test_assistant_set_and_read_config \
+            --deselect=tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults \
+            --deselect=tests/test_assistant_api.py::test_assistant_config_accepts_auto_and_xhigh \
+            --deselect=tests/test_assistant_api.py::test_assistant_config_accepts_compatible_external_engine_provider \
             --deselect=tests/test_deepseek_harness_engine.py::test_deepseek_harness_rejects_unknown_preset \
             --deselect=tests/test_engine_base_hierarchy.py::test_acp_native_engine_declares_full_vocabulary \
             --deselect='tests/test_engine_live_injection.py::test_qoder_sdk_client_injects_live_message[asyncio]' \
