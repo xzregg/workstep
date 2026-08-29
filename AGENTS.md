@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件为 Codex 在本项目中工作时提供指引。
+本文件为 AI 开发 在本项目中工作时提供指引。
 
 ## 文档导航与权威来源
 
@@ -166,3 +166,4 @@ Pydantic AI 的 harness 扩展不暴露用户配置（引擎动态配置不含 `
 事件数量/末序号及 `event_log_path` 查询投影。历史接口默认返回摘要，详细时间线通过
 `GET /api/task/{task_id}/messages/{message_id}/events` 分页读取；无 `event_log_path` 的旧
 `events_json` 消息继续兼容回放。
+

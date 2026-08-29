@@ -13,6 +13,10 @@ yarn test       # vitest：i18n 键集一致性 + 时间轴工具
 yarn lint       # oxlint
 yarn build      # tsc -b + vite build，产物在 dist/
 ```
+生产模式下 Daemon 会托管官网与 Web 应用：`./start.sh prod` 会同时构建
+`apps/landing`（→ `http://<host>:8765/landing`，构建时使用
+`LANDING_BASE=/landing/` 使静态资源位于 `/landing` 子路径）与 `apps/web`
+（→ `http://<host>:8765/`，保持 home 不变）。
 
 ## 页面结构
 
@@ -31,3 +35,12 @@ yarn build      # tsc -b + vite build，产物在 dist/
   `src/i18n/zh-CN.ts` 与 `src/i18n/en-US.ts` 文案。
 - 文案：新增任何展示文案必须同时写入中英两本词典，键集合一致性由
   `tests/i18n.test.ts` 保证。
+
+
+### 产品介绍页
+
+```bash
+cd apps/landing
+yarn install
+yarn dev        # http://localhost:5174
+```
