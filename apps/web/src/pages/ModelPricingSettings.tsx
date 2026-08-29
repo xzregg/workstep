@@ -183,8 +183,8 @@ export default function ModelPricingSettingsPage() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.pricingTitle')}</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('settings.pricingIntro')}</p>
+          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.pricingTitle')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('settings.pricingIntro')}</p>
         </div>
         <Button variant="primary" onClick={() => void save()} disabled={loading || saving} loading={saving}>
           {t('common.save')}
@@ -192,25 +192,25 @@ export default function ModelPricingSettingsPage() {
       </div>
 
       <div style={{ display: 'flex', gap: 14, alignItems: 'end', padding: 14, marginBottom: 14, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg)' }}>
-        <label style={{ fontSize: 12, color: 'var(--muted)' }}>
+        <label style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
           {t('settings.pricingCurrency')}
           <Select value={settings.currency} onChange={(event) => changeCurrency(event.target.value as 'USD' | 'CNY')} style={{ display: 'block', width: 130, marginTop: 6 }}>
             <option value="USD">USD ($)</option>
             <option value="CNY">CNY (¥)</option>
           </Select>
         </label>
-        <label style={{ fontSize: 12, color: 'var(--muted)' }}>
+        <label style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
           {t('settings.pricingRate')}
           <Input type="number" min="0.000001" step="0.01" value={settings.usd_to_cny_rate} onChange={(event) => {
             setSettings((current) => ({ ...current, usd_to_cny_rate: Math.max(0.000001, Number(event.target.value) || 0.000001) }))
             setSaved(false)
           }} style={{ display: 'block', width: 150, marginTop: 6 }} />
         </label>
-        <span style={{ color: 'var(--meta)', fontSize: 11, paddingBottom: 9 }}>{t('settings.pricingUnit', { currency: settings.currency })}</span>
+        <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', paddingBottom: 9 }}>{t('settings.pricingUnit', { currency: settings.currency })}</span>
       </div>
 
-      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 10 }}>{error}</div>}
-      {saved && <div role="status" style={{ color: 'var(--success)', fontSize: 12, marginBottom: 10 }}>{t('settings.pricingSaved')}</div>}
+      {error && <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>{error}</div>}
+      {saved && <div role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>{t('settings.pricingSaved')}</div>}
       {loading ? (
         <div style={{ padding: 28, textAlign: 'center', color: 'var(--meta)' }}>{t('common.loading')}</div>
       ) : rows.length === 0 ? (
@@ -226,7 +226,7 @@ export default function ModelPricingSettingsPage() {
               aria-label={t('settings.pricingFilterPlaceholder')}
               style={{ width: 'min(360px, 100%)' }}
             />
-            <span style={{ color: 'var(--meta)', fontSize: 11 }}>
+            <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>
               {t('settings.pricingFilterCount', { count: filteredRows.length })}
             </span>
           </div>
@@ -236,7 +236,7 @@ export default function ModelPricingSettingsPage() {
             borderRadius: 10, background: 'var(--surface)',
           }}>
             {(['input_price', 'output_price', 'cache_price'] as const).map((field) => (
-              <label key={field} style={{ fontSize: 11, color: 'var(--muted)' }}>
+              <label key={field} style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)' }}>
                 {t(field === 'input_price' ? 'settings.pricingInput' : field === 'output_price' ? 'settings.pricingOutput' : 'settings.pricingCache')}
                 <Input
                   type="number"
@@ -297,7 +297,7 @@ export default function ModelPricingSettingsPage() {
                     />
                   </td>
                   <td>{row.group}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{row.model}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}>{row.model}</td>
                   {(['input_price', 'output_price', 'cache_price'] as const).map((field) => (
                     <td key={field}><Input type="number" min="0" step="0.000001" value={price[field]} onChange={(event) => updatePrice(row, field, event.target.value)} style={{ width: 120, textAlign: 'right' }} /></td>
                   ))}

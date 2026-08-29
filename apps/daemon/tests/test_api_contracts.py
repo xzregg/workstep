@@ -1791,13 +1791,16 @@ async def test_step_history_binds_the_requested_project(api_context):
     task_id = created.json()["id"]
     with project_api.project_manager.activate_project_by_id(first_id):
         Message.create(
-            id=str(uuid.uuid4()),
+            id=(legacy_message_id := str(uuid.uuid4())),
             task=task_id,
             step_key="do",
             role="assistant",
             content="persisted output",
             run_status="succeeded",
-            events_json=json.dumps([{"type": "text_delta"}]),
+            events_json=json.dumps([{
+                "type": "thinking_delta",
+                "data": {"delta": "legacy thought"},
+            }]),
             prompt_json=json.dumps({"prompt": "complete stage prompt"}),
             usage_json=json.dumps({"input_tokens": 12, "output_tokens": 3}),
             position=1,
@@ -1830,6 +1833,144 @@ async def test_step_history_binds_the_requested_project(api_context):
         "input_tokens": 12,
         "output_tokens": 3,
     }
+
+    legacy_events = await client.get(
+        f"/api/task/{task_id}/messages/{legacy_message_id}/events",
+        params={"project_id": first_id},
+    )
+    assert legacy_events.status_code == 200
+    assert legacy_events.json()["events"][0]["type"] == "REASONING_MESSAGE_CHUNK"
+    assert legacy_events.json()["events"][0]["delta"] == "legacy thought"
+
+
+@pytest.mark.anyio
+async def test_step_history_returns_jsonl_summary_without_detailed_thoughts(api_context):
+    client, tmp_path = api_context
+    import api.project as project_api
+    from agent_assistants.event_journal import TurnEventJournal
+    from models import Message
+
+    project_dir = tmp_path / "journal-history"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Journal history", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    project = project_api.project_manager.get_project_by_id(project_id)
+    journal = TurnEventJournal()
+    message_id = str(uuid.uuid4())
+    ref = journal.start(project.workstep_dir, f"task-{task_id}", message_id)
+    journal.record(ref, {
+        "type": "agent_thought_chunk",
+        "data": {"content": {"text": "不应进入历史摘要"}},
+    })
+    journal.record(ref, {
+        "type": "agent_message_chunk",
+        "data": {"content": {"text": "可见回复"}},
+    })
+    journal.finish(ref)
+    snapshot = journal.snapshot(ref)
+    with project_api.project_manager.activate_project_by_id(project_id):
+        Message.create(
+            id=message_id,
+            task=task_id,
+            step_key="do",
+            role="assistant",
+            content="",
+            run_status="running",
+            event_log_path=ref.relative_path,
+            event_summary_json=json.dumps(snapshot["summary"]),
+            event_count=snapshot["summary"]["event_count"],
+            last_event_seq=snapshot["summary"]["last_event_seq"],
+            position=1,
+            created_at=int(time.time()),
+        )
+
+    response = await client.get(
+        f"/api/task/{task_id}/step/do/history",
+        params={"project_id": project_id},
+    )
+
+    assert response.status_code == 200
+    message = response.json()["messages"][0]
+    assert message["content"] == "可见回复"
+    assert message["events"] == []
+    assert message["event_detail"] == {
+        "available": True,
+        "loaded": False,
+        "event_count": 2,
+        "last_event_seq": 2,
+        "thought_characters": 8,
+        "tool_count": 0,
+    }
+    assert "不应进入历史摘要" not in response.text
+
+
+@pytest.mark.anyio
+async def test_task_message_events_pages_detailed_jsonl_timeline(api_context):
+    client, tmp_path = api_context
+    import api.project as project_api
+    from agent_assistants.event_journal import TurnEventJournal
+    from models import Message
+
+    project_dir = tmp_path / "journal-detail"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Journal detail", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    project = project_api.project_manager.get_project_by_id(project_id)
+    journal = TurnEventJournal()
+    message_id = str(uuid.uuid4())
+    ref = journal.start(project.workstep_dir, f"task-{task_id}", message_id)
+    journal.record(ref, {
+        "type": "agent_thought_chunk",
+        "data": {"content": {"text": "详细思考"}},
+    })
+    journal.record(ref, {
+        "type": "agent_message_chunk",
+        "data": {"content": {"text": "详细回复"}},
+    })
+    journal.finish(ref)
+    with project_api.project_manager.activate_project_by_id(project_id):
+        Message.create(
+            id=message_id,
+            task=task_id,
+            step_key="do",
+            channel="execution",
+            role="assistant",
+            content="详细回复",
+            event_log_path=ref.relative_path,
+            event_count=2,
+            last_event_seq=2,
+            position=1,
+            created_at=int(time.time()),
+        )
+
+    first = await client.get(
+        f"/api/task/{task_id}/messages/{message_id}/events",
+        params={"project_id": project_id, "limit": 1},
+    )
+    assert first.status_code == 200
+    page = first.json()
+    assert page["event_count"] == 2
+    assert page["next_cursor"] == 1
+    assert page["events"][0]["type"] == "REASONING_MESSAGE_CHUNK"
+    assert page["events"][0]["delta"] == "详细思考"
+
+    second = await client.get(
+        f"/api/task/{task_id}/messages/{message_id}/events",
+        params={"project_id": project_id, "cursor": page["next_cursor"], "limit": 1},
+    )
+    assert second.status_code == 200
+    assert second.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
+    assert second.json()["complete"] is True
 
 
 @pytest.mark.anyio

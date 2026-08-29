@@ -964,6 +964,16 @@ export const taskApi = {
     request<{ messages: any[]; limit: number; offset: number }>(
       `/task/${taskId}/history?project_id=${encodeURIComponent(projectId)}&limit=${limit}&offset=${offset}`
     ),
+  messageEvents: (
+    taskId: string,
+    messageId: string,
+    projectId: string,
+    cursor = 0,
+    limit = 200,
+  ) => request<ChatMessageEventsPage>(
+    `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/events`
+    + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
+  ),
   respondInteraction: (interactionId: string, data: Record<string, unknown>, projectId?: string) =>
     request<{ delivered: boolean }>(`/intervention/respond${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`, {
       method: 'POST',

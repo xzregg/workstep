@@ -247,14 +247,14 @@ export default function AiTaskCreateChat({
       onA2uiAction={handleA2uiAction}
       afterMessages={latestResult ? (
         <div style={{ marginTop: 2 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
+          <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', margin: '2px 2px 8px' }}>
             {t('taskList.aiDraftTitle')}
           </div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)', padding: '9px 11px' }}>
             {typeof latestResult.title === 'string' && latestResult.title.trim() && (
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{latestResult.title}</div>
+              <div style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{latestResult.title}</div>
             )}
-            <div style={{ marginTop: typeof latestResult.title === 'string' && latestResult.title.trim() ? 6 : 0, fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ marginTop: typeof latestResult.title === 'string' && latestResult.title.trim() ? 6 : 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
               <MarkdownMessage content={String(latestResult.description || '')} projectId={projectId} />
             </div>
           </div>

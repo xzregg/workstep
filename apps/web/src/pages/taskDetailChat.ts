@@ -44,6 +44,49 @@ interface ConversationMessage {
   author_device_name?: string | null
 }
 
+function eventSequence(event: any): number | null {
+  const value = event?.event_sequence ?? event?.sequence ?? event?.seq
+  return typeof value === 'number' ? value : null
+}
+
+export function mergeLoadedTaskMessageEvents(
+  messages: any[],
+  messageId: string,
+  loadedEvents: any[],
+  detail: { complete: boolean; next_cursor: number | null },
+): any[] {
+  return messages.map((message) => {
+    if (message.id !== messageId) return message
+    const merged = [...loadedEvents, ...(message.events ?? [])]
+    const seen = new Set<string>()
+    const events = merged.filter((event) => {
+      const sequence = eventSequence(event)
+      const key = sequence === null
+        ? JSON.stringify(event)
+        : `sequence:${sequence}:${event.type ?? ''}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).sort((left, right) => (
+      (eventSequence(left) ?? Number.MAX_SAFE_INTEGER)
+      - (eventSequence(right) ?? Number.MAX_SAFE_INTEGER)
+    ))
+    return {
+      ...message,
+      events,
+      event_detail: {
+        ...message.event_detail,
+        available: true,
+        loaded: true,
+        loading: false,
+        complete: detail.complete,
+        next_cursor: detail.next_cursor,
+        error: '',
+      },
+    }
+  })
+}
+
 interface MessageReview {
   id: string
   step_key: string

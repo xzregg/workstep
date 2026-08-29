@@ -7,6 +7,8 @@ __pycache__/
 # Node
 node_modules/
 apps/web/dist/
+build-artifacts/
+apps/desktop/.nuitka-venv/
 
 # OS
 .DS_Store

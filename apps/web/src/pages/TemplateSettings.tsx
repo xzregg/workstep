@@ -191,10 +191,10 @@ export default function TemplateSettings() {
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('templateSettings.title')}</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-            {t('templateSettings.introPart1')} <code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>~/.workstep/data/templates/</code>{' '}
-            {t('templateSettings.introPart2')}<code style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>default: true</code>{t('templateSettings.introPart3')}
+          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('templateSettings.title')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
+            {t('templateSettings.introPart1')} <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))' }}>~/.workstep/data/templates/</code>{' '}
+            {t('templateSettings.introPart2')}<code style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))' }}>default: true</code>{t('templateSettings.introPart3')}
           </p>
         </div>
         <Button variant="primary" onClick={() => { setCreateOpen(true); setCreateError('') }}>
@@ -203,13 +203,13 @@ export default function TemplateSettings() {
       </div>
 
       {error && (
-        <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--danger)' }}>{error}</div>
+        <div style={{ marginBottom: 12, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
       )}
 
       {loading ? (
-        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('templateSettings.loading')}</div>
+        <div style={{ padding: '18px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('templateSettings.loading')}</div>
       ) : templates.length === 0 ? (
-        <div style={{ padding: '18px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('templateSettings.noTemplates')}</div>
+        <div style={{ padding: '18px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('templateSettings.noTemplates')}</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {templates.map((template) => (
@@ -219,9 +219,9 @@ export default function TemplateSettings() {
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{template.name}</span>
+                  <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{template.name}</span>
                   <span style={{
-                    fontSize: 11, padding: '1px 7px', borderRadius: 99, flexShrink: 0,
+                    fontSize: 'calc(11px * var(--font-scale))', padding: '1px 7px', borderRadius: 99, flexShrink: 0,
                     background: template.custom
                       ? (template.default
                         ? 'color-mix(in oklab, var(--success), transparent 90%)'
@@ -234,17 +234,17 @@ export default function TemplateSettings() {
                   </span>
                 </div>
                 {template.description && (
-                  <div style={{ fontSize: 13, color: 'var(--meta)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {template.description}
                   </div>
                 )}
               </div>
-              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('templateSettings.nodeCount', { count: template.nodeCount })}</span>
-              <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13 }} onClick={() => void openEditor(template)}>
+              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('templateSettings.nodeCount', { count: template.nodeCount })}</span>
+              <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 'calc(13px * var(--font-scale))' }} onClick={() => void openEditor(template)}>
                 {t('common.edit')}
               </Button>
               {template.custom && !template.default && (
-                <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 13, color: 'var(--danger)' }} onClick={() => setDeleting(template)}>
+                <Button variant="ghost" style={{ height: 28, padding: '0 10px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }} onClick={() => setDeleting(template)}>
                   {t('common.delete')}
                 </Button>
               )}
@@ -315,13 +315,13 @@ export default function TemplateSettings() {
             >
               {t('templateSettings.back')}
             </Button>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>
               {t('templateSettings.metaTitle')}
             </span>
             {editing.default ? (
-              <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('templateSettings.defaultMetaHint')}</span>
+              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('templateSettings.defaultMetaHint')}</span>
             ) : (
-              <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('templateSettings.customMetaHint')}</span>
+              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('templateSettings.customMetaHint')}</span>
             )}
             <div style={{ flex: 1 }} />
             <Input
@@ -346,11 +346,11 @@ export default function TemplateSettings() {
               title={t('templateSettings.descTitle')}
               style={{ width: 220, height: 28 }}
             />
-            {metaDirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, whiteSpace: 'nowrap' }}>{t('templateSettings.metaUnsaved')}</span>}
+            {metaDirty && <span style={{ color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', whiteSpace: 'nowrap' }}>{t('templateSettings.metaUnsaved')}</span>}
           </div>
           {metaError && (
             <div style={{
-              padding: '6px 14px', fontSize: 13, color: 'var(--danger)', flexShrink: 0,
+              padding: '6px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', flexShrink: 0,
               background: 'color-mix(in oklab, var(--danger), transparent 92%)',
               borderBottom: '1px solid var(--border-soft)',
             }}>
@@ -374,7 +374,7 @@ export default function TemplateSettings() {
                     title={t('templateSettings.aiEditTitle')}
                     aria-expanded={aiPanelOpen}
                     onClick={toggleAiPanel}
-                    style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
+                    style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
                   >
                     {t('canvas.aiEdit')}
                   </Button>

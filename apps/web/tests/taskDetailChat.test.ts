@@ -15,6 +15,7 @@ import {
   isMessageReviewActionable,
   isStageResumableWithMessage,
   liveExecutionStatus,
+  mergeLoadedTaskMessageEvents,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
@@ -22,6 +23,36 @@ import {
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../src/pages/taskDetailChat.ts'
+
+test('loads task JSONL details without dropping newer live events', () => {
+  const messages = [{
+    id: 'message-1',
+    role: 'assistant',
+    content: '回答',
+    events: [{ type: 'TEXT_MESSAGE_CHUNK', event_sequence: 3, delta: '实时尾部' }],
+    event_detail: { available: true, loaded: false, loading: true },
+  }]
+
+  const merged = mergeLoadedTaskMessageEvents(
+    messages,
+    'message-1',
+    [
+      { type: 'REASONING_MESSAGE_CHUNK', event_sequence: 1, delta: '历史思考' },
+      { type: 'TEXT_MESSAGE_CHUNK', event_sequence: 2, delta: '历史回答' },
+    ],
+    { complete: true, next_cursor: null },
+  )
+
+  assert.deepEqual(merged[0].events.map((event: any) => event.event_sequence), [1, 2, 3])
+  assert.deepEqual(merged[0].event_detail, {
+    available: true,
+    loaded: true,
+    loading: false,
+    complete: true,
+    next_cursor: null,
+    error: '',
+  })
+})
 
 test('matches each historical review message to its own review attempt', () => {
   const reviews = [

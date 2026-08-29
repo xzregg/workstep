@@ -1,8 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=WorkStep
-Exec=WorkStep %u
-Icon=workstep
-Terminal=false
-MimeType=x-scheme-handler/workstep;
-Categories=Development;

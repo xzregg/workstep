@@ -21,8 +21,8 @@ import ChatInput, {
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
 import ConversationNewMessagesButton from './ConversationNewMessagesButton'
-import MarkdownMessage from './MarkdownMessage'
 import MessageMetaBar from './MessageMetaBar'
+import PromptViewerDialog from './PromptViewerDialog'
 import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
@@ -159,9 +159,9 @@ export default function AssistantChatPanel({
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13 }}>{title}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{title}</span>
         {running && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--meta)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
             <span className="task-status-spinner" aria-hidden="true" /> {copy.thinking}
           </span>
         )}
@@ -215,7 +215,7 @@ export default function AssistantChatPanel({
           }}
         >
           {messages.length === 0 && copy.emptyIntro && (
-            <div style={{ fontSize: 13, color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
+            <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
               {copy.emptyIntro}
             </div>
           )}
@@ -247,7 +247,7 @@ export default function AssistantChatPanel({
                   <span
                     title={copy.userTagTitle}
                     style={{
-                      padding: '1px 6px', borderRadius: 999, fontSize: 11,
+                      padding: '1px 6px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))',
                       border: '1px solid var(--border-soft)',
                       background: 'rgba(124,58,237,0.08)', color: 'var(--ai-assistant)',
                     }}
@@ -313,7 +313,7 @@ export default function AssistantChatPanel({
         />
       </div>
 
-      {sendError && <div style={{ padding: '6px 12px', fontSize: 13, color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
+      {sendError && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
       <div style={{
         flexShrink: 0, padding: '10px 12px',
         borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
@@ -371,31 +371,14 @@ export default function AssistantChatPanel({
       </div>
 
       {viewingPrompt && (
-        <div
-          role="dialog" aria-modal="true" aria-label={copy.fullPrompt}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1450, background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-          }}
-          onClick={() => setViewingPrompt(null)}
-        >
-          <div
-            style={{
-              width: 'min(860px, 92vw)', maxHeight: '84vh', background: 'var(--bg)',
-              borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <strong style={{ flex: 1, fontSize: 13 }}>{copy.fullPrompt}</strong>
-              <Button variant="icon" aria-label={copy.closePrompt} onClick={() => setViewingPrompt(null)}>✕</Button>
-            </div>
-            <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
-              <MarkdownMessage content={viewingPrompt} />
-            </div>
-          </div>
-        </div>
+        <PromptViewerDialog
+          prompt={viewingPrompt}
+          projectId={projectId}
+          title={copy.fullPrompt}
+          closeLabel={copy.closePrompt}
+          zIndex={1450}
+          onClose={() => setViewingPrompt(null)}
+        />
       )}
     </div>
   )

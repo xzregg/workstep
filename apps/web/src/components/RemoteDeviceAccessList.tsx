@@ -94,7 +94,7 @@ export default function RemoteDeviceAccessList({ devices, onDeviceChange, onErro
 
   if (devices.length === 0) {
     return (
-      <div style={{ padding: '18px 0', color: 'var(--meta)', fontSize: 12 }}>
+      <div style={{ padding: '18px 0', color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>
         {t('settings.noAuthorizedDevices')}
       </div>
     )
@@ -136,15 +136,15 @@ export default function RemoteDeviceAccessList({ devices, onDeviceChange, onErro
                     aria-hidden="true"
                     style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: statusColor }}
                   />
-                  <span style={{ color: 'var(--fg)', fontSize: 12, fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--fg)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {device.user_name || t('common.unknown')}
                   </span>
-                  <span style={{ color: 'var(--muted)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {device.device_name}
                   </span>
-                  <span style={{ color: statusColor, fontSize: 11, flexShrink: 0 }}>{statusLabel}</span>
+                  <span style={{ color: statusColor, fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}>{statusLabel}</span>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 14px', marginTop: 5, color: 'var(--meta)', fontSize: 11, lineHeight: 1.45 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px 14px', marginTop: 5, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.45 }}>
                   <span>
                     {device.expires_at === null
                       ? t('settings.accessPermanent')

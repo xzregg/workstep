@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { createAssistantStore } from '../src/stores/assistantStore.ts'
+import { buildMessageTimeline } from '../src/utils/messageTimeline.ts'
 
 test('keeps text and tool events on assistant messages for ordered rendering', () => {
   const store = createAssistantStore({ channel: 'flow' })
@@ -102,6 +103,48 @@ test('loads persisted event details lazily and preserves newer live events', () 
   assert.equal(message.event_detail?.loaded, true)
   assert.equal(message.event_detail?.loading, false)
   assert.equal(message.event_detail?.complete, true)
+})
+
+test('keeps tool name and arguments translated from the same persisted event', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().hydrateSession('session-tools', [{
+    id: 'message-tools',
+    role: 'assistant',
+    content: '检查完成',
+    status: 'succeeded',
+    event_detail: { available: true, loaded: false },
+  }])
+
+  store.getState().setMessageEventDetails('session-tools', 'message-tools', [
+    {
+      type: 'TOOL_CALL_START',
+      sequence: 19,
+      toolCallId: 'call-1',
+      name: 'read_file',
+    },
+    {
+      type: 'TOOL_CALL_ARGS',
+      sequence: 19,
+      toolCallId: 'call-1',
+      args: '{"path":"README.md"}',
+    },
+    {
+      type: 'TOOL_CALL_RESULT',
+      sequence: 20,
+      toolCallId: 'call-1',
+      output: 'file contents',
+    },
+  ], { complete: true, next_cursor: null })
+
+  const message = store.getState().sessions['session-tools'].messages[0]
+  assert.deepEqual(message.events?.map((event) => event.type), [
+    'TOOL_CALL_START', 'TOOL_CALL_ARGS', 'TOOL_CALL_RESULT',
+  ])
+  const timeline = buildMessageTimeline(message.events ?? [])
+  const tool = timeline[0]
+  assert.equal(tool?.type, 'tool')
+  assert.equal(tool?.type === 'tool' && tool.activity.name, 'read_file')
+  assert.equal(tool?.type === 'tool' && tool.activity.input, '{"path":"README.md"}')
 })
 
 test('hydrateSession restores flow proposals from persisted history', () => {

@@ -52,8 +52,9 @@ jobs:
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_maps_real_sdk_blocks_without_type_field \
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_real_task_tools_produce_plan_events
       - name: Desktop protocol tests
-        working-directory: apps/daemon
-        run: uv run --frozen --group dev pytest ../desktop/tests
+        run: |
+          uv run --project apps/daemon --frozen --group dev pytest apps/desktop/tests/test_backend_entry.py
+          node --test apps/desktop/tests/sidecar.test.cjs
       - name: Web tests and build
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build

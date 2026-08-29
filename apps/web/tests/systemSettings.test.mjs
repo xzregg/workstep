@@ -22,6 +22,8 @@ test('language and user name live together under system settings', () => {
   assert.match(settingsSource, /activeSection === 'system'/)
   assert.match(settingsSource, /settings\.systemNav/)
   assert.match(settingsSource, /settings\.userName/)
+  assert.match(settingsSource, /settings\.fontSize/)
+  assert.match(settingsSource, /<SegmentedControl/)
   assert.doesNotMatch(settingsSource, /activeSection === 'language'/)
 })
 

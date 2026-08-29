@@ -73,7 +73,7 @@ export default function DateTimePicker({ value, min, onChange, disabled }: DateT
                 key={preset.label}
                 type="button"
                 onClick={() => handleChange(preset.value)}
-                style={{ border: 0, padding: '2px 4px', color: 'var(--accent)', background: 'transparent', cursor: 'pointer', fontSize: 12 }}
+                style={{ border: 0, padding: '2px 4px', color: 'var(--accent)', background: 'transparent', cursor: 'pointer', fontSize: 'calc(12px * var(--font-scale))' }}
               >
                 {preset.label}
               </button>

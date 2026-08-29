@@ -9,6 +9,7 @@ import {
 } from 'react'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
+import ImagePreview from './ImagePreview'
 import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
@@ -344,15 +345,6 @@ export default function ChatInput({
 
   const buttonDisabled = stopped ? stopping : !canSend
   const engineId = config?.engine || config?.defaultEngine || 'claude'
-
-  useEffect(() => {
-    if (!previewImage) return
-    const closePreview = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPreviewImage(null)
-    }
-    window.addEventListener('keydown', closePreview)
-    return () => window.removeEventListener('keydown', closePreview)
-  }, [previewImage])
 
   const applySelection = (item: Pick<EngineInputItem, 'insert_text'>) => {
     const selection = applySlashInputItem(value, slashCursor, item)
@@ -952,29 +944,12 @@ export default function ChatInput({
         </div>
       </div>
       {previewImage && (
-        <div
-          className="chat-input-image-preview"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${t('md.preview')}：${previewImage.alt || imageAlt}`}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPreviewImage(null)
-          }}
-        >
-          <button
-            type="button"
-            className="chat-input-image-preview-close"
-            aria-label={t('common.close')}
-            title={t('common.close')}
-            onClick={() => setPreviewImage(null)}
-          >
-            <Icon name="x" size={16} strokeWidth={2} />
-          </button>
-          <img
-            src={resolveMarkdownImageSrc(previewImage.url, imageAttach?.projectId)}
-            alt={previewImage.alt || imageAlt}
-          />
-        </div>
+        <ImagePreview
+          src={previewImage.url}
+          alt={previewImage.alt}
+          projectId={imageAttach?.projectId}
+          onClose={() => setPreviewImage(null)}
+        />
       )}
     </div>
   )

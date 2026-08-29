@@ -50,7 +50,7 @@ function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: bool
   if (!enabled) {
     return (
       <span style={{
-        padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+        padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
         background: 'var(--surface)', color: 'var(--meta)',
       }}>
         {t('providerSettings.disabledBadge')}
@@ -59,7 +59,7 @@ function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: bool
   }
   return (
     <span style={{
-      padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+      padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
       color: verified ? 'var(--success)' : 'var(--warn)',
       background: verified
         ? 'color-mix(in oklab, var(--success), transparent 88%)'
@@ -77,7 +77,7 @@ function ImportCheckboxMark({ checked }: { checked: boolean }) {
       style={{
         width: 16, height: 16, flexShrink: 0,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 4, fontSize: 12, fontWeight: 800, lineHeight: 1,
+        borderRadius: 4, fontSize: 'calc(12px * var(--font-scale))', fontWeight: 800, lineHeight: 1,
         color: '#fff',
         background: checked ? 'var(--accent)' : 'var(--bg)',
         border: checked ? '1px solid var(--accent)' : '1px solid var(--border)',
@@ -479,8 +479,8 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('providerSettings.title')}</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 13 }}>{t('providerSettings.intro')}</p>
+          <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('providerSettings.title')}</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('providerSettings.intro')}</p>
         </div>
         <Button variant="ghost" onClick={() => void refresh()} disabled={loading}>
           {t('settings.refresh')}
@@ -499,7 +499,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         <div role="alert" style={{
           padding: '10px 12px', marginBottom: 12, borderRadius: 8,
           background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-          color: 'var(--danger)', fontSize: 13,
+          color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))',
         }}>
           {error}
         </div>
@@ -542,22 +542,22 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     background: 'color-mix(in oklab, var(--accent), transparent 86%)',
                     border: '1px solid color-mix(in oklab, var(--accent), transparent 72%)',
-                    color: 'var(--accent)', fontSize: 12, fontWeight: 700,
+                    color: 'var(--accent)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 700,
                   }}>
                     {provider.name.slice(0, 2).toUpperCase()}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{provider.name}</span>
+                      <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{provider.name}</span>
                       <span style={{
                         padding: '1px 6px', borderRadius: 999,
                         background: 'var(--surface)', color: 'var(--muted)',
-                        fontSize: 11, textTransform: 'uppercase',
+                        fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
                       }}>
                         {typeLabel(provider.type)}
                       </span>
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 11, overflowWrap: 'anywhere' }}>
+                    <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
                       {provider.base_url}
                       <span style={{ marginLeft: 8 }}>
                         {provider.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}
@@ -567,7 +567,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       <div
                         role="status"
                         style={{
-                          marginTop: 7, fontSize: 11,
+                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
                           color: testResult.success ? 'var(--success)' : 'var(--danger)',
                         }}
                       >
@@ -575,18 +575,18 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       </div>
                     )}
                     {modelErrors[provider.id] && (
-                      <div role="status" style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)' }}>
+                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
                         × {t('providerSettings.modelsFailed')}: {modelErrors[provider.id]}
                       </div>
                     )}
                     {modelFetchedAt[provider.id] ? (
-                      <div role="status" style={{ marginTop: 4, fontSize: 11, color: 'var(--success)' }}>
+                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--success)' }}>
                         ✓ {t('providerSettings.modelsFetched', { count: modelCounts[provider.id] ?? 0 })}
                         {' · '}
                         {t('providerSettings.modelsFetchedAt', { time: modelFetchedAt[provider.id] ?? '' })}
                       </div>
                     ) : (
-                      <div role="status" style={{ marginTop: 4, fontSize: 11, color: 'var(--meta)' }}>
+                      <div role="status" style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
                         {t('providerSettings.modelsNotFetched')}
                       </div>
                     )}
@@ -600,7 +600,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                             style={{
                               padding: '2px 8px',
                               borderRadius: 999,
-                              fontSize: 11,
+                              fontSize: 'calc(11px * var(--font-scale))',
                               background: 'var(--surface)',
                               color: 'var(--text)',
                               border: '1px solid var(--border)',
@@ -702,7 +702,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
               <Button variant="icon" aria-label={t('settings.closeSettings')} onClick={closeImport}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: '18px 20px 20px' }}>
-              <p style={{ color: 'var(--muted)', fontSize: 12, margin: '0 0 14px' }}>
+              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', margin: '0 0 14px' }}>
                 {t('providerSettings.importIntro')}
               </p>
               {!importSourceId ? (
@@ -745,20 +745,20 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             background: 'color-mix(in oklab, var(--accent), transparent 86%)',
                             border: '1px solid color-mix(in oklab, var(--accent), transparent 72%)',
-                            color: 'var(--accent)', fontSize: 12, fontWeight: 700,
+                            color: 'var(--accent)', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 700,
                           }}>
                             {source.name.slice(0, 2).toUpperCase()}
                           </span>
                           <span style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>
+                            <span style={{ display: 'block', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
                               {source.name}
                             </span>
-                            <span style={{ display: 'block', color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+                            <span style={{ display: 'block', color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2 }}>
                               {source.description}
                             </span>
                           </span>
                           <span style={{
-                            padding: '2px 8px', borderRadius: 999, fontSize: 11,
+                            padding: '2px 8px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))',
                             background: 'var(--surface)', color: 'var(--meta)',
                           }}>
                             {source.provider_count}
@@ -810,7 +810,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                               style={{
                                 flexShrink: 0, height: 30, padding: '0 10px',
                                 borderRadius: 8, cursor: 'pointer', font: 'inherit',
-                                fontSize: 12, fontWeight: active ? 650 : 500,
+                                fontSize: 'calc(12px * var(--font-scale))', fontWeight: active ? 650 : 500,
                                 color: active ? 'var(--accent)' : 'var(--muted)',
                                 background: active
                                   ? 'color-mix(in oklab, var(--accent), transparent 88%)'
@@ -838,7 +838,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                         ))}
                         style={{
                         display: 'flex', alignItems: 'center', gap: 8,
-                        marginBottom: 8, color: 'var(--muted)', fontSize: 12,
+                        marginBottom: 8, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))',
                           width: 'auto', height: 'auto', padding: 0,
                           border: 0, background: 'transparent',
                           cursor: selectableImportIds.length === 0 ? 'not-allowed' : 'pointer',
@@ -871,18 +871,18 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                             <ImportCheckboxMark checked={checked} />
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                <span style={{ fontSize: 13, fontWeight: 600 }}>{candidate.name}</span>
+                                <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{candidate.name}</span>
                                 <span style={{
                                   padding: '1px 6px', borderRadius: 999,
                                   background: 'var(--surface)', color: 'var(--muted)',
-                                  fontSize: 11, textTransform: 'uppercase',
+                                  fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
                                 }}>
                                   {typeLabel(candidate.type)}
                                 </span>
                                 <span style={{
                                   padding: '1px 6px', borderRadius: 999,
                                   background: 'color-mix(in oklab, var(--accent), transparent 90%)',
-                                  color: 'var(--accent)', fontSize: 11,
+                                  color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))',
                                 }}>
                                   {candidate.source_type}
                                 </span>
@@ -890,20 +890,20 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                                   <span style={{
                                     padding: '1px 6px', borderRadius: 999,
                                     background: 'var(--surface)', color: 'var(--meta)',
-                                    fontSize: 11,
+                                    fontSize: 'calc(11px * var(--font-scale))',
                                   }}>
                                     {t('providerSettings.importAlready')}
                                   </span>
                                 )}
                               </div>
-                              <div style={{ color: 'var(--muted)', fontSize: 11, overflowWrap: 'anywhere' }}>
+                              <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
                                 {candidate.base_url}
                                 <span style={{ marginLeft: 8 }}>
                                   {candidate.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}
                                 </span>
                               </div>
                               {candidate.error && (
-                                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)' }}>
+                                <div style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
                                   {candidate.error}
                                 </div>
                               )}
@@ -916,7 +916,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                   )}
                   <div className="field-hint" style={{ minHeight: 18, marginTop: 10 }} aria-live="polite">
                     {importResult && (
-                      <span style={{ fontSize: 12 }}>
+                      <span style={{ fontSize: 'calc(12px * var(--font-scale))' }}>
                         {importResult.imported.length > 0 && (
                           <span style={{ color: 'var(--success)' }}>
                             {t('providerSettings.importImported', { count: importResult.imported.length })}
@@ -935,7 +935,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       </span>
                     )}
                     {importError && (
-                      <span style={{ color: 'var(--danger)', fontSize: 12 }}>{importError}</span>
+                      <span style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{importError}</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginTop: 4 }}>
@@ -1092,7 +1092,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       title={t('providerSettings.clearKey')}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
-                        flexShrink: 0, cursor: 'pointer', fontSize: 11,
+                        flexShrink: 0, cursor: 'pointer', fontSize: 'calc(11px * var(--font-scale))',
                         color: 'var(--muted)', whiteSpace: 'nowrap',
                       }}
                     >
@@ -1116,7 +1116,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
               </Field>
               <div className="field-hint" style={{ minHeight: 18, marginBottom: 12 }} aria-live="polite">
                 {formError ? (
-                  <span style={{ color: 'var(--danger)', fontSize: 12 }}>{formError}</span>
+                  <span style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{formError}</span>
                 ) : null}
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
@@ -1144,7 +1144,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       />
       {deleteError && (
         <div role="alert" style={{
-          marginTop: 10, padding: '9px 12px', borderRadius: 8, fontSize: 12,
+          marginTop: 10, padding: '9px 12px', borderRadius: 8, fontSize: 'calc(12px * var(--font-scale))',
           background: 'color-mix(in oklab, var(--danger), transparent 90%)',
           color: 'var(--danger)',
         }}>

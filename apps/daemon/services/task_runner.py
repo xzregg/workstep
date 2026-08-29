@@ -23,6 +23,7 @@ from services.review_gate import ReviewGate
 from services.config import config_store
 from services.messages import create_task_message, new_message_id
 from services.intervention import intervention_manager, seal_unanswered_interactions
+from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
 from engines.core.agui import AGUIContext, to_agui_events
@@ -122,6 +123,23 @@ class TaskRunner:
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
+        self._event_journal = TurnEventJournal()
+
+    def _journal_snapshot(self, ref: JournalRef) -> dict:
+        snapshot = self._event_journal.snapshot(ref)
+        return {
+            "events": snapshot["events"],
+            "events_json": (
+                json.dumps(snapshot["events"], ensure_ascii=False)
+                if snapshot["events"] else None
+            ),
+            "event_summary_json": json.dumps(
+                snapshot["summary"], ensure_ascii=False
+            ),
+            "event_count": snapshot["summary"]["event_count"],
+            "last_event_seq": snapshot["summary"]["last_event_seq"],
+            "content": snapshot["content"],
+        }
 
     async def _run_db(self, operation: Callable[[], ResultT]) -> ResultT:
         """Run persistence on the owning project's writer when available."""
@@ -404,6 +422,11 @@ class TaskRunner:
         out_dir = artifacts_dir / wf_name / task.id / step_key
         msg_id = new_message_id()
         message_started_at = utc_now()
+        journal_ref = self._event_journal.start(
+            artifacts_dir.parent,
+            f"task-{task.id}",
+            msg_id,
+        )
 
         def create_message():
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -417,6 +440,7 @@ class TaskRunner:
                 model=resolved_model,
                 run_id=msg_id,
                 run_status="running",
+                event_log_path=journal_ref.relative_path,
                 prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
                 position=1,
                 started_at=message_started_at,
@@ -441,10 +465,16 @@ class TaskRunner:
             error = f"Engine '{step.engine}' not available"
             await self._fail_step(ts, task, step_key, error)
             failed.add(step_key)
+            error_event = InternalEvent(
+                type="error", data={"message": error}
+            ).to_dict()
+            self._event_journal.finish(journal_ref, error_event)
+            snapshot = self._journal_snapshot(journal_ref)
             message = Message.get_by_id(msg_id)
-            message.events_json = json.dumps([
-                InternalEvent(type="error", data={"message": error}).to_dict()
-            ])
+            message.events_json = snapshot["events_json"]
+            message.event_summary_json = snapshot["event_summary_json"]
+            message.event_count = snapshot["event_count"]
+            message.last_event_seq = snapshot["last_event_seq"]
             message.run_status = "failed"
             message.ended_at = utc_now()
             message.save()
@@ -516,6 +546,7 @@ class TaskRunner:
                     # race the in-memory intervention broker.
                     await asyncio.sleep(0)
                 events_collected.append(event.to_dict())
+                self._event_journal.record(journal_ref, event.to_dict())
                 if event.type == "agent_message_chunk":
                     content = event.data.get("content") or {}
                     content_parts.append(content.get("text", ""))
@@ -550,8 +581,13 @@ class TaskRunner:
                         seal_time = utc_now()
                         try:
                             sealed = Message.get_by_id(msg_id)
-                            sealed.content = "".join(content_parts)
-                            sealed.events_json = json.dumps(list(events_collected))
+                            self._event_journal.finish(journal_ref)
+                            snapshot = self._journal_snapshot(journal_ref)
+                            sealed.content = snapshot["content"]
+                            sealed.events_json = snapshot["events_json"]
+                            sealed.event_summary_json = snapshot["event_summary_json"]
+                            sealed.event_count = snapshot["event_count"]
+                            sealed.last_event_seq = snapshot["last_event_seq"]
                             sealed.usage_json = extract_usage_json(events_collected)
                             sealed.run_status = "succeeded"
                             sealed.ended_at = seal_time
@@ -568,6 +604,11 @@ class TaskRunner:
                         except Message.DoesNotExist:
                             pass
                         new_msg_id = new_message_id()
+                        journal_ref = self._event_journal.start(
+                            artifacts_dir.parent,
+                            f"task-{task.id}",
+                            new_msg_id,
+                        )
                         create_task_message(
                             id=new_msg_id,
                             task=task,
@@ -578,6 +619,7 @@ class TaskRunner:
                             model=resolved_model,
                             run_id=new_msg_id,
                             run_status="running",
+                            event_log_path=journal_ref.relative_path,
                             position=1,
                             started_at=seal_time,
                             created_at=seal_time,
@@ -609,11 +651,13 @@ class TaskRunner:
                     # the active interaction card from normal message history.
                     try:
                         pending_message = Message.get_by_id(msg_id)
-                        pending_message.content = "".join(content_parts)
-                        pending_message.events_json = json.dumps(
-                            events_collected,
-                            ensure_ascii=False,
-                        )
+                        self._event_journal.sync(journal_ref, durable=True)
+                        snapshot = self._journal_snapshot(journal_ref)
+                        pending_message.content = snapshot["content"]
+                        pending_message.events_json = snapshot["events_json"]
+                        pending_message.event_summary_json = snapshot["event_summary_json"]
+                        pending_message.event_count = snapshot["event_count"]
+                        pending_message.last_event_seq = snapshot["last_event_seq"]
                         pending_message.save()
                     except Message.DoesNotExist:
                         pass
@@ -634,6 +678,7 @@ class TaskRunner:
                         },
                     )
                     events_collected.append(response_event.to_dict())
+                    self._event_journal.record(journal_ref, response_event.to_dict())
                     await self._publish(task.id, step_key, {
                         "channel": "execution",
                         "message_id": msg_id,
@@ -818,6 +863,18 @@ class TaskRunner:
                 ):
                     rmsg_id = new_message_id()
                     rnow = utc_now()
+                    review_journal_ref = self._event_journal.start(
+                        artifacts_dir.parent,
+                        f"task-{task.id}",
+                        rmsg_id,
+                    )
+                    for review_event in outcome.events:
+                        self._event_journal.record(
+                            review_journal_ref,
+                            review_event,
+                        )
+                    self._event_journal.finish(review_journal_ref)
+                    review_snapshot = self._journal_snapshot(review_journal_ref)
                     rsummary = outcome.report.get("summary", "")
                     rissues = outcome.report.get("issues", [])
                     ritems = "".join(
@@ -851,6 +908,7 @@ class TaskRunner:
                         model=outcome.review_run.model,
                         run_id=rmsg_id,
                         run_status="completed",
+                        event_log_path=review_journal_ref.relative_path,
                         prompt_json=outcome.review_run.prompt_json,
                         events_json=json.dumps(
                             [{
@@ -858,9 +916,12 @@ class TaskRunner:
                                 "data": {
                                     "review_run_id": outcome.review_run.id,
                                 },
-                            }, *outcome.events],
+                            }, *review_snapshot["events"]],
                             ensure_ascii=False,
                         ),
+                        event_summary_json=review_snapshot["event_summary_json"],
+                        event_count=review_snapshot["event_count"],
+                        last_event_seq=review_snapshot["last_event_seq"],
                         usage_json=extract_usage_json(list(outcome.events)),
                         position=0,
                         started_at=outcome.review_run.started_at,
@@ -914,7 +975,11 @@ class TaskRunner:
             logger.exception("Step %s failed", step_key)
             await self._fail_step(ts, task, step_key, str(e))
             failed.add(step_key)
-            events_collected.append(InternalEvent(type="error", data={"message": str(e)}).to_dict())
+            error_event = InternalEvent(
+                type="error", data={"message": str(e)}
+            ).to_dict()
+            events_collected.append(error_event)
+            self._event_journal.record(journal_ref, error_event)
 
         finally:
             interrupted_by_shutdown = interrupted and self._graceful_shutdown
@@ -923,11 +988,16 @@ class TaskRunner:
                 if not interrupted_by_shutdown:
                     def finalize_message():
                         msg = Message.get_by_id(msg_id)
+                        self._event_journal.finish(journal_ref)
+                        snapshot = self._journal_snapshot(journal_ref)
                         msg.events_json = seal_unanswered_interactions(
-                            json.dumps(events_collected, ensure_ascii=False)
+                            snapshot["events_json"]
                         )
+                        msg.event_summary_json = snapshot["event_summary_json"]
+                        msg.event_count = snapshot["event_count"]
+                        msg.last_event_seq = snapshot["last_event_seq"]
                         msg.usage_json = extract_usage_json(events_collected)
-                        msg.content = "".join(content_parts)
+                        msg.content = snapshot["content"]
                         if run_key in self._cancelled_steps:
                             # 手动停止：与普通失败区分，前端显示「已停止」。
                             msg.run_status = "cancelled"

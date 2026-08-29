@@ -47,7 +47,15 @@ interface ProcessTraceProps {
   onLoadDetails?: () => void
 }
 
-function ThinkingTimelineItem({ content, active }: { content: string; active: boolean }) {
+function ThinkingTimelineItem({
+  content,
+  active,
+  duration,
+}: {
+  content: string
+  active: boolean
+  duration: string
+}) {
   const { t } = useI18n()
   const [open, setOpen] = useState(active)
   const thinkingRef = useRef<HTMLDivElement>(null)
@@ -100,7 +108,12 @@ function ThinkingTimelineItem({ content, active }: { content: string; active: bo
         <span className={active ? 'process-trace-thinking-label is-shimmer' : 'process-trace-thinking-label'}>
           {active
             ? t('trace.thinking')
-            : t('trace.thoughtCharacters', { count: characterCount(content) })}
+            : duration
+              ? t('trace.thoughtCharactersDuration', {
+                count: characterCount(content),
+                duration,
+              })
+              : t('trace.thoughtCharacters', { count: characterCount(content) })}
         </span>
         <svg className="process-trace-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
           <path
@@ -272,23 +285,30 @@ export default function ProcessTrace({
             <div className="engine-loading-message" role="status">{t('trace.loadingDetails')}</div>
           )}
           {!detailsLoading && detailsError && (
-            <div style={{ color: 'var(--danger)', fontSize: 12 }}>{detailsError}</div>
+            <div style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{detailsError}</div>
           )}
           {!detailsLoading && !detailsError && detailsAvailable && !detailsLoaded && (
-            <div style={{ color: 'var(--meta)', fontSize: 12 }}>
+            <div style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>
               {eventSummary?.thought_characters
                 ? t('trace.thoughtCharacters', { count: eventSummary.thought_characters })
                 : t('trace.loadDetails')}
             </div>
           )}
           {!detailsLoading && detailsLoaded && processItems.length === 0 && (
-            <div style={{ color: 'var(--meta)', fontSize: 12 }}>{t('trace.noDetails')}</div>
+            <div style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>{t('trace.noDetails')}</div>
           )}
           {processItems.map((item) => item.type === 'thinking' ? (
             <ThinkingTimelineItem
               key={item.id}
               content={item.content}
               active={running && item === lastProcessItem}
+              duration={formatDuration(
+                durationMilliseconds(
+                  item.startedAt,
+                  running && item === lastProcessItem ? now : item.endedAt,
+                ) ?? Number.NaN,
+                t,
+              )}
             />
           ) : item.type === 'subagent' ? (
             <SubagentTimelineItem key={item.id} item={item} messageRunning={running} />

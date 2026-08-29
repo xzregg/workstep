@@ -44,7 +44,7 @@ export default function FirstUseDialog() {
           <span id="first-use-title" className="modal-title">{t('onboarding.title')}</span>
         </div>
         <div className="modal-body">
-          <p style={{ margin: '0 0 16px', color: 'var(--muted)', fontSize: 13 }}>
+          <p style={{ margin: '0 0 16px', color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
             {t('onboarding.intro')}
           </p>
           <label className="field-label" htmlFor="first-use-name">{t('settings.userName')}</label>
@@ -59,11 +59,11 @@ export default function FirstUseDialog() {
             autoFocus
             maxLength={80}
           />
-          <div style={{ marginTop: 6, color: 'var(--meta)', fontSize: 11 }}>
+          <div style={{ marginTop: 6, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>
             {t('onboarding.nameHint')}
           </div>
           {error && (
-            <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 11 }}>
+            <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
               {error}
             </div>
           )}

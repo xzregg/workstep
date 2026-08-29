@@ -15,6 +15,7 @@ from services.workflow_definition import WorkflowDefinition, WorkflowValidationE
 from services.task_runner import extract_usage_json
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.messages import create_task_message, new_message_id
+from services.history import event_detail, restore_running_projection
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -205,7 +206,13 @@ class TaskService:
         task.save()
         return self._task_to_dict(task)
 
-    def get_task_history(self, task_id: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    def get_task_history(
+        self,
+        task_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        workstep_dir: str | None = None,
+    ) -> list[dict]:
         """Get chat history for a task with pagination."""
         try:
             Task.get_by_id(task_id)
@@ -250,6 +257,10 @@ class TaskService:
                     entry["events"] = json_mod.loads(msg.events_json)
                 except Exception:
                     pass
+            detail = event_detail(msg)
+            if detail is not None:
+                entry["event_detail"] = detail
+            restore_running_projection(entry, msg, workstep_dir)
             if msg.prompt_json:
                 try:
                     prompt_data = json_mod.loads(msg.prompt_json)

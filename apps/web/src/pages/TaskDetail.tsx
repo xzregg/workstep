@@ -28,7 +28,7 @@ import ArtifactPreview from '../components/ArtifactPreview'
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import MarkdownEditor from '../components/MarkdownEditor'
-import MarkdownMessage from '../components/MarkdownMessage'
+import PromptViewerDialog from '../components/PromptViewerDialog'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
 import TaskDetailView from '../components/TaskDetailView'
@@ -39,6 +39,7 @@ import {
   isTaskCompleted,
   isTaskNotStarted,
   isStageResumableWithMessage,
+  mergeLoadedTaskMessageEvents,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
@@ -505,6 +506,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       .catch(() => setHistoryMessages([]))
       .finally(() => setHistoryLoading(false))
   }, [taskId, projectId])
+
+  const loadMessageEvents = useCallback(async (messageId: string) => {
+    if (!taskId || !projectId) return
+    const message = historyMessages.find((item) => item.id === messageId)
+    if (!message?.event_detail?.available || message.event_detail.loaded || message.event_detail.loading) return
+    setHistoryMessages((current) => current.map((item) => item.id === messageId
+      ? { ...item, event_detail: { ...item.event_detail, loading: true, error: '' } }
+      : item))
+    try {
+      let cursor = 0
+      let complete = false
+      const loadedEvents: any[] = []
+      let nextCursor: number | null = null
+      while (!complete) {
+        const page = await taskApi.messageEvents(taskId, messageId, projectId, cursor)
+        loadedEvents.push(...page.events)
+        complete = page.complete || page.next_cursor === null
+        nextCursor = page.next_cursor
+        if (!complete && page.next_cursor !== null) cursor = page.next_cursor
+      }
+      setHistoryMessages((current) => mergeLoadedTaskMessageEvents(
+        current,
+        messageId,
+        loadedEvents,
+        { complete, next_cursor: nextCursor },
+      ))
+    } catch (reason) {
+      const error = reason instanceof Error ? reason.message : String(reason)
+      setHistoryMessages((current) => current.map((item) => item.id === messageId
+        ? { ...item, event_detail: { ...item.event_detail, loading: false, error } }
+        : item))
+    }
+  }, [historyMessages, projectId, taskId])
 
   // A remote peer can send a user message while this detail is open. The
   // store deliberately does not render user messages as live bubbles (they
@@ -1563,6 +1597,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         selectedStage={selectedStage}
         onStageClick={handleStageClick}
         historyMessages={historyMessages}
+        onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
         liveMessages={liveMessages}
         availableCommands={availableCommands}
         events={events}
@@ -1628,7 +1663,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 380, maxWidth: '100%' }}>
             <span
               style={{
-                fontSize: 12,
+                fontSize: 'calc(12px * var(--font-scale))',
                 fontWeight: 600,
                 color: task.scheduled_start_state === 'pending'
                   ? 'var(--accent)'
@@ -1691,7 +1726,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               }}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                minHeight: 22, padding: '0 7px', fontSize: 11, color: 'var(--meta)',
+                minHeight: 22, padding: '0 7px', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)',
                 marginLeft: 'auto', order: 98,
               }}
             >
@@ -1709,7 +1744,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 window.setTimeout(() => setTaskIdCopied(false), 1500)
               }}
               style={{
-                fontFamily: 'var(--font-mono)', fontSize: 11,
+                fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))',
                 color: taskIdCopied ? 'var(--success)' : 'var(--meta)',
                 minHeight: 22, padding: '0 5px', order: 99,
               }}
@@ -1767,7 +1802,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         <div style={{
           position: 'fixed', top: 18, left: '50%', transform: 'translateX(-50%)',
           zIndex: 1300, padding: '8px 16px', borderRadius: 6,
-          background: 'var(--fg)', color: 'var(--bg)', fontSize: 13,
+          background: 'var(--fg)', color: 'var(--bg)', fontSize: 'calc(13px * var(--font-scale))',
           boxShadow: 'var(--elev-raised)',
         }}>
           {artifactNotice}
@@ -1775,36 +1810,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       )}
 
       {viewingPrompt && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('aiFlow.fullPrompt')}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1350,
-            background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24,
-          }}
-          onClick={() => setViewingPrompt(null)}
-        >
-          <div
-            style={{
-              width: 'min(860px, 92vw)', maxHeight: '84vh',
-              background: 'var(--bg)', borderRadius: 12,
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header">
-              <strong style={{ flex: 1, fontSize: 13 }}>{t('aiFlow.fullPrompt')}</strong>
-              <Button variant="icon" aria-label={t('aiFlow.closePrompt')} onClick={() => setViewingPrompt(null)}>✕</Button>
-            </div>
-            <div style={{ padding: 18, overflow: 'auto', fontSize: 13, lineHeight: 1.65 }}>
-              <MarkdownMessage content={viewingPrompt} />
-            </div>
-          </div>
-        </div>
+        <PromptViewerDialog
+          prompt={viewingPrompt}
+          projectId={projectId || undefined}
+          onClose={() => setViewingPrompt(null)}
+        />
       )}
 
       {showPromptEditor && (
@@ -1831,8 +1841,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <div className="dialog-header">
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
-                <div style={{ marginTop: 2, fontSize: 11, color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
+                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
+                <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
               </div>
               <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
             </div>
@@ -1848,7 +1858,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 ariaLabel={t('taskDetail.stagePromptAria', { stage: currentStage.label })}
               />
               {promptSaveError && (
-                <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 13 }}>
+                <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>
                   {promptSaveError}
                 </div>
               )}
@@ -1885,10 +1895,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           >
             <div className="dialog-header" style={{ padding: '12px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
                   {previewArtifact.logical_name || previewArtifact.name}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--meta)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {previewArtifact.path}
                 </div>
               </div>

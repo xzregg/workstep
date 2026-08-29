@@ -482,6 +482,72 @@ class PipelinePlanEngine(PipelineFakeEngine):
         yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "done"}})
 
 
+class PipelineJournalEngine(PipelineFakeEngine):
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield InternalEvent(
+            type="agent_thought_chunk",
+            data={"content": {"text": "先分析"}},
+        )
+        yield InternalEvent(
+            type="tool_call",
+            data={"tool_call_id": "read-1", "title": "Read"},
+        )
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "最终回复"}},
+        )
+
+
+@pytest.mark.anyio
+async def test_task_runner_persists_detailed_stage_events_to_jsonl(tmp_path):
+    """Stage history keeps its full process stream out of SQLite."""
+    from models import init_db, Message, Task
+    from engines.core.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    workstep_dir = tmp_path / ".workstep"
+    artifacts_dir = workstep_dir / "artifacts"
+    workstep_dir.mkdir()
+    db = init_db(str(workstep_dir / "workstep.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Journal",
+        cwd=str(tmp_path),
+        engine="journal",
+        created_at=int(time.time()),
+        updated_at=int(time.time()),
+    )
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["journal"] = PipelineJournalEngine
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {"steps": [{
+                "key": "a", "label": "A", "engine": "journal", "prompt": "Do A",
+            }]},
+            artifacts_dir,
+        )
+
+        message = Message.get((Message.task == task) & (Message.step_key == "a"))
+        assert message.content == "最终回复"
+        assert not message.events_json
+        assert message.event_count == 3
+        assert json.loads(message.event_summary_json)["thought_characters"] == 3
+
+        event_log = workstep_dir / message.event_log_path
+        records = [json.loads(line) for line in event_log.read_text().splitlines()]
+        assert [record["type"] for record in records] == [
+            "agent_thought_chunk",
+            "tool_call",
+            "agent_message_chunk",
+        ]
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
 @pytest.mark.anyio
 async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
     from models import init_db, Message, Task
@@ -556,11 +622,19 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
         assert [event["type"] for event in persisted] == [
             "interaction_request",
             "interaction_response",
-            "agent_message_chunk",
-            "status",
         ]
         assert persisted[1]["data"]["response"] == response
         assert message.content == "answered"
+        journal_events = [
+            json.loads(line)
+            for line in (tmp_path / message.event_log_path).read_text().splitlines()
+        ]
+        assert [event["type"] for event in journal_events] == [
+            "interaction_request",
+            "interaction_response",
+            "agent_message_chunk",
+            "status",
+        ]
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
@@ -593,8 +667,15 @@ async def test_task_runner_persists_base_normalized_plan_snapshots(tmp_path):
 
         message = Message.get((Message.task == task) & (Message.step_key == "a"))
         events = json.loads(message.events_json)
-        assert [event["type"] for event in events] == ["plan", "agent_message_chunk"]
+        assert [event["type"] for event in events] == ["plan"]
         assert events[0]["data"]["entries"][0]["status"] == "in_progress"
+        journal_events = [
+            json.loads(line)
+            for line in (tmp_path / message.event_log_path).read_text().splitlines()
+        ]
+        assert [event["type"] for event in journal_events] == [
+            "plan", "agent_message_chunk",
+        ]
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

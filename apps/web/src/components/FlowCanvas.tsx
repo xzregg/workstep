@@ -48,7 +48,7 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
   return (
     <button
       onClick={onClick}
-      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', fontSize: 13, border: 'none', background: 'transparent', color: 'var(--fg)', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap' }}
+      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', fontSize: 'calc(13px * var(--font-scale))', border: 'none', background: 'transparent', color: 'var(--fg)', cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-body)', whiteSpace: 'nowrap' }}
     >
       {children}
     </button>
@@ -357,15 +357,15 @@ function StepNode({ data }: { data: StepNodeData }) {
 
       {/* Header */}
       <div style={{ height: HEADER_H, padding: '0 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
           {data.label.charAt(0)}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>{data.label}</span>
-          <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
+        <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, flex: 1 }}>{data.label}</span>
+          <span style={{ fontSize: 'calc(11px * var(--font-scale))', padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
       </div>
 
       {hasPrompt && (
-        <div style={{ height: PROMPT_H, padding: '0 12px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+        <div style={{ height: PROMPT_H, padding: '0 12px', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
           {data.prompt.substring(0, 50)}{data.prompt.length > 50 ? '...' : ''}
         </div>
       )}
@@ -376,20 +376,20 @@ function StepNode({ data }: { data: StepNodeData }) {
         return (
           <div key={`inp-${i}`}>
             {/* Input row */}
-            <div style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--muted)' }}>
+            <div style={{ position: 'absolute', top: labelTop, left: 14, right: 14, height: PORT_ROW_H, display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)' }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inp.name}</span>
-              <span style={{ fontSize: 11, color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
+              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', background: 'var(--surface)', padding: '0 3px', borderRadius: 2 }}>{inp.type}</span>
             </div>
             {/* Sub-output rows */}
             {inp.outputs.map((sub, j) => {
               let subTop = labelTop + PORT_ROW_H
               for (let k = 0; k < j; k++) subTop += SUB_ROW_H
               return (
-                <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: 'var(--meta)' }}>
+                <div key={`sub-${j}`} style={{ position: 'absolute', top: subTop, left: 28, right: 14, height: SUB_ROW_H, display: 'flex', alignItems: 'center', gap: 3, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
                   <span>↳</span>
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
-                  <span style={{ fontSize: 11, background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
+                  <span style={{ fontSize: 'calc(11px * var(--font-scale))', background: 'var(--surface)', padding: '0 2px', borderRadius: 2 }}>{sub.type}</span>
                   <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', flexShrink: 0 }} />
                 </div>
               )
@@ -407,7 +407,7 @@ const nodeTypes: NodeTypes = { step: StepNode }
    Section title style
    ══════════════════════════════════════════ */
 const sectionTitle: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
+  fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
 }
 
@@ -447,25 +447,25 @@ function InputEditor({ inputs, onChange }: { inputs: InputField[]; onChange: (v:
         {inputs.map((inp, i) => (
           <div key={i} style={{ background: 'var(--surface)', borderRadius: 6, padding: 8, border: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 13 }} />
-              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 13, border: '1px solid var(--border)', borderRadius: 4 }} />
-              <Button variant="icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 13 }}>×</Button>
+              <Input value={inp.name} onChange={(e) => updateInput(i, 'name', e.target.value)} placeholder={t('flow.name')} style={{ flex: 1, height: 28, fontSize: 'calc(13px * var(--font-scale))' }} />
+              <Combobox value={inp.type} options={OUTPUT_TYPES} onChange={(v) => updateInput(i, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 28, fontSize: 'calc(13px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 4 }} />
+              <Button variant="icon" onClick={() => removeInput(i)} style={{ width: 22, height: 22, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
             </div>
             {/* Sub-outputs */}
             {inp.outputs.map((sub, j) => (
               <div key={j} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4, marginLeft: 14 }}>
-                <span style={{ color: 'var(--meta)', fontSize: 11 }}>↳</span>
-                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder={t('flow.outputName')} style={{ flex: 1, height: 24, fontSize: 11 }} />
-                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 24, fontSize: 11, border: '1px solid var(--border)', borderRadius: 3 }} />
-                <Button variant="icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 13 }}>×</Button>
+                <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>↳</span>
+                <Input value={sub.name} onChange={(e) => updateSubOutput(i, j, 'name', e.target.value)} placeholder={t('flow.outputName')} style={{ flex: 1, height: 24, fontSize: 'calc(11px * var(--font-scale))' }} />
+                <Combobox value={sub.type} options={OUTPUT_TYPES} onChange={(v) => updateSubOutput(i, j, 'type', v)} placeholder={t('flow.type')} style={{ width: 80, height: 24, fontSize: 'calc(11px * var(--font-scale))', border: '1px solid var(--border)', borderRadius: 3 }} />
+                <Button variant="icon" onClick={() => removeSubOutput(i, j)} style={{ width: 20, height: 20, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>×</Button>
               </div>
             ))}
-            <button onClick={() => addSubOutput(i)} style={{ fontSize: 11, color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
+            <button onClick={() => addSubOutput(i)} style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--success)', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4, marginLeft: 14, padding: '2px 0' }}>
               {t('flow.addSubOutput')}
             </button>
           </div>
         ))}
-        <button onClick={addInput} style={{ fontSize: 13, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
+        <button onClick={addInput} style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}>
           {t('flow.addInput')}
         </button>
       </div>
@@ -678,17 +678,17 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     return (
       <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>{draft.label.charAt(0)}</div><span style={{ fontSize: 13, fontWeight: 600 }}>{draft.label}</span></div>
-          <div style={{ display: 'flex', gap: 6 }}><Button variant="primary" style={{ fontSize: 13, padding: '4px 12px' }} disabled={Boolean(keyError) || !dispatchConfig.targetProjectId || !dispatchConfig.targetWorkflowId || !dispatchConfig.targetStartStepKey} onClick={() => onSave({ ...draft, key: normalizedKey })}>{t('flow.stash')}</Button><Button variant="icon" onClick={onClose}>✕</Button></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{draft.label.charAt(0)}</div><span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{draft.label}</span></div>
+          <div style={{ display: 'flex', gap: 6 }}><Button variant="primary" style={{ fontSize: 'calc(13px * var(--font-scale))', padding: '4px 12px' }} disabled={Boolean(keyError) || !dispatchConfig.targetProjectId || !dispatchConfig.targetWorkflowId || !dispatchConfig.targetStartStepKey} onClick={() => onSave({ ...draft, key: normalizedKey })}>{t('flow.stash')}</Button><Button variant="icon" onClick={onClose}>✕</Button></div>
         </div>
-        <div><div style={sectionTitle}>{t('flow.basicInfo')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><label style={{ fontSize: 13 }}>{t('flow.name')}<Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} style={{ marginTop: 4 }} /></label><label style={{ fontSize: 13 }}>{t('flow.stageKey')}<Input value={draft.key} onChange={(e) => updateDraft('key', e.target.value)} style={{ marginTop: 4 }} /></label></div></div>
+        <div><div style={sectionTitle}>{t('flow.basicInfo')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.name')}<Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} style={{ marginTop: 4 }} /></label><label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.stageKey')}<Input value={draft.key} onChange={(e) => updateDraft('key', e.target.value)} style={{ marginTop: 4 }} /></label></div></div>
         <div><div style={sectionTitle}>{t('flow.dispatchTarget')}</div><div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <label style={{ fontSize: 13 }}>{t('flow.targetProject')}<Select value={dispatchConfig.targetProjectId} onChange={(e) => { updateDraft('dispatch', { ...dispatchConfig, targetProjectId: e.target.value, targetWorkflowId: '', targetStartStepKey: '' }) }} style={{ marginTop: 4 }}><option value="">{t('flow.selectTarget')}</option>{dispatchProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.type === 'remote' ? ' · 远程' : ''}</option>)}</Select></label>
-          <label style={{ fontSize: 13 }}>{t('flow.targetWorkflow')}<Select value={dispatchConfig.targetWorkflowId} onChange={(e) => updateDraft('dispatch', { ...dispatchConfig, targetWorkflowId: e.target.value, targetStartStepKey: '' })} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetProjectId}><option value="">{t('flow.selectTarget')}</option>{dispatchWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</Select></label>
-          <label style={{ fontSize: 13 }}>{t('flow.targetStartStage')}<Select value={dispatchConfig.targetStartStepKey} onChange={(e) => updateDispatch('targetStartStepKey', e.target.value)} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetWorkflowId}><option value="">{t('flow.selectTarget')}</option>{dispatchStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}（{stage.key}）</option>)}</Select></label>
-          <label style={{ fontSize: 13 }}>{t('flow.startMode')}<Select value={dispatchConfig.startMode || 'inherit'} onChange={(e) => updateDispatch('startMode', e.target.value)} style={{ marginTop: 4 }}><option value="inherit">{t('flow.inheritAutoStart')}</option><option value="immediate">{t('flow.immediateStart')}</option></Select></label>
+          <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetProject')}<Select value={dispatchConfig.targetProjectId} onChange={(e) => { updateDraft('dispatch', { ...dispatchConfig, targetProjectId: e.target.value, targetWorkflowId: '', targetStartStepKey: '' }) }} style={{ marginTop: 4 }}><option value="">{t('flow.selectTarget')}</option>{dispatchProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.type === 'remote' ? ' · 远程' : ''}</option>)}</Select></label>
+          <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetWorkflow')}<Select value={dispatchConfig.targetWorkflowId} onChange={(e) => updateDraft('dispatch', { ...dispatchConfig, targetWorkflowId: e.target.value, targetStartStepKey: '' })} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetProjectId}><option value="">{t('flow.selectTarget')}</option>{dispatchWorkflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</Select></label>
+          <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.targetStartStage')}<Select value={dispatchConfig.targetStartStepKey} onChange={(e) => updateDispatch('targetStartStepKey', e.target.value)} style={{ marginTop: 4 }} disabled={!dispatchConfig.targetWorkflowId}><option value="">{t('flow.selectTarget')}</option>{dispatchStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}（{stage.key}）</option>)}</Select></label>
+          <label style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('flow.startMode')}<Select value={dispatchConfig.startMode || 'inherit'} onChange={(e) => updateDispatch('startMode', e.target.value)} style={{ marginTop: 4 }}><option value="inherit">{t('flow.inheritAutoStart')}</option><option value="immediate">{t('flow.immediateStart')}</option></Select></label>
         </div></div>
-        <div style={{ fontSize: 12, color: 'var(--meta)', lineHeight: 1.5 }}>{t('flow.dispatchTerminalHint')}</div>
+        <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', lineHeight: 1.5 }}>{t('flow.dispatchTerminalHint')}</div>
       </div>
     )
   }
@@ -697,19 +697,19 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
     <div style={{ width: '50vw', minWidth: 420, maxWidth: '50vw', flexShrink: 0, background: 'var(--bg)', borderLeft: '1px solid var(--border-soft)', overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: `${draft.color}20`, color: draft.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
             {draft.label.charAt(0)}
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{draft.label}</span>
+          <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{draft.label}</span>
           <button onClick={onRequestDelete}
-            style={{ fontSize: 13, color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
+            style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', border: '1px solid var(--danger)', background: 'transparent', padding: '2px 8px', borderRadius: 'var(--radius-sm)', marginLeft: 8 }}>
             {t('common.delete')}
           </button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Button
             variant="primary"
-            style={{ fontSize: 13, padding: '4px 12px' }}
+            style={{ fontSize: 'calc(13px * var(--font-scale))', padding: '4px 12px' }}
             disabled={Boolean(keyError)}
             onClick={() => {
               const stageConfirm = stageConfirmValues(draft.config || {}, stageFields)
@@ -736,11 +736,11 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.name')}</label>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.name')}</label>
               <Input value={draft.label} onChange={(e) => updateDraft('label', e.target.value)} />
             </div>
             <div style={{ width: 116 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.color')}</label>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.color')}</label>
               <div style={{ display: 'flex', gap: 5 }}>
                 <input
                   type="color"
@@ -754,7 +754,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   aria-label={t('flow.randomColor')}
                   title={t('flow.randomColor')}
                   onClick={() => updateDraft('color', randomStageColor(draft.color))}
-                  style={{ height: 32, flex: 1, padding: '0 7px', fontSize: 11 }}
+                  style={{ height: 32, flex: 1, padding: '0 7px', fontSize: 'calc(11px * var(--font-scale))' }}
                 >
                   {t('flow.random')}
                 </Button>
@@ -762,7 +762,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           </div>
           <div>
-            <label htmlFor="step-type" style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+            <label htmlFor="step-type" style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
               {t('flow.stageKey')}<span style={{ color: 'var(--danger)' }}> *</span>
             </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -776,7 +776,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 style={{ flex: 1, ...(keyError ? { borderColor: 'var(--danger)' } : {}) }}
                 placeholder="frontend"
               />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
                 type="checkbox"
                 checked={Boolean(draft.autoStart)}
@@ -792,13 +792,13 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
             <div
               id={keyError ? 'step-type-error' : 'step-type-help'}
-              style={{ marginTop: 4, fontSize: 11, color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
+              style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: keyError ? 'var(--danger)' : 'var(--fg-3)', lineHeight: 1.4 }}
             >
               {keyError || t('flow.keyHelp')}
             </div>
           </div>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.prompt')}</label>
+            <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.prompt')}</label>
             <MarkdownEditor
               value={draft.prompt}
               onChange={(v) => updateDraft('prompt', v)}
@@ -810,7 +810,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
               <EngineSelect
                 engines={engines}
                 value={draft.engine}
@@ -827,7 +827,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 style={{ height: 32 }}
               />
               <div style={{
-                marginTop: 4, fontSize: 11, lineHeight: 1.4,
+                marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.4,
                 color: enginesError
                   ? 'var(--danger)'
                   : currentEngineSelectable
@@ -844,7 +844,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               </div>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
               <Select
                 value={draft.model}
                 disabled={stageModelsLoading}
@@ -867,7 +867,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
           </div>
           {stageFields.length > 0 && (
             <div>
-              <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
                 {t('flow.stageConfig')}
               </label>
               <StageConfigFields
@@ -896,7 +896,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   type="button"
                   onClick={() => updateReview('mode', value)}
                   style={{
-                    padding: '3px 10px', fontSize: 12, borderRadius: 999,
+                    padding: '3px 10px', fontSize: 'calc(12px * var(--font-scale))', borderRadius: 999,
                     border: review.mode === value ? '1px solid var(--accent)' : '1px solid var(--border)',
                     background: review.mode === value ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
                     color: review.mode === value ? 'var(--accent)' : 'var(--fg-2)',
@@ -908,7 +908,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               ))}
             </div>
             {review.mode === 'auto' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(13px * var(--font-scale))' }}>
                 <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
                 <Input
                   type="number"
@@ -919,17 +919,17 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     'maxRetries',
                     Math.max(0, Number.parseInt(e.target.value || '0', 10)),
                   )}
-                  style={{ width: 48, height: 24, fontSize: 13, padding: '0 6px' }}
+                  style={{ width: 48, height: 24, fontSize: 'calc(13px * var(--font-scale))', padding: '0 6px' }}
                 />
               </div>
             )}
             {review.mode === 'skip' && (
-              <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+              <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
                 {t('flow.reviewSkipHint')}
               </div>
             )}
             {review.mode === 'manual' && (
-              <div style={{ fontSize: 11, color: 'var(--meta)' }}>
+              <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
                 {t('flow.reviewPauseHint')}
               </div>
             )}
@@ -938,7 +938,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             <>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewEngine')}</label>
+                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewEngine')}</label>
                   <EngineSelect
                     engines={engines}
                     value={review.engine}
@@ -956,7 +956,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewModel')}</label>
+                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewModel')}</label>
                   <Select
                     value={review.model}
                     disabled={reviewModelsLoading}
@@ -982,7 +982,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               </div>
               {reviewFields.length > 0 && (
                 <div>
-                  <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewConfig')}</label>
+                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewConfig')}</label>
                   <StageConfigFields
                     engineId={reviewEngine}
                     fields={reviewFields}
@@ -992,7 +992,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                 </div>
               )}
               <div>
-                <label style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
+                <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
                 <MarkdownEditor
                   value={review.prompt}
                   onChange={(v) => updateReview('prompt', v)}
@@ -1629,7 +1629,7 @@ function FlowCanvasInner({
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 600,
           padding: '8px 20px', borderRadius: 'var(--radius-sm)',
           background: saveMsgKind === 'success' ? 'var(--success)' : 'var(--danger)',
-          color: 'var(--accent-fg)', fontSize: 13, fontWeight: 500,
+          color: 'var(--accent-fg)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500,
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}>
           {saveMsg}
@@ -1639,11 +1639,11 @@ function FlowCanvasInner({
       {/* Toolbar */}
       <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
         {toolbarLeft}
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{title ?? t('flow.editorTitle')}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>{title ?? t('flow.editorTitle')}</span>
         {toolbarMid}
         <div style={{ flex: 1 }} />
-        {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 11, marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
-         {hint !== undefined && <span style={{ fontSize: 13, color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
+        {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
+         {hint !== undefined && <span style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
         {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>{t('flow.templates')}</Button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
@@ -1714,13 +1714,13 @@ function FlowCanvasInner({
       {contextMenu && (
         <div style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)', padding: '4px 0', zIndex: 500, minWidth: 140 }}>
           <div onClick={() => { const n = nodes.find((nd) => nd.id === contextMenu.nodeId); if (n) { setSelectedNode(n.data as StepNodeData); setNodeConfigDirty(false); } setContextMenu(null) }}
-            style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}
+            style={{ padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             {t('flow.editStage')}
           </div>
           <div onClick={() => { setConfirmDeleteId(contextMenu.nodeId); setContextMenu(null) }}
-            style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+            style={{ padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
             🗑 {t('common.delete')}
@@ -1746,7 +1746,7 @@ function FlowCanvasInner({
               />
               {showTemplateSave && (
                 <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12, marginBottom: 10, background: 'var(--surface)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{t('flow.saveCanvasAsTemplate')}</div>
+                  <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 8 }}>{t('flow.saveCanvasAsTemplate')}</div>
                   <Input
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
@@ -1767,7 +1767,7 @@ function FlowCanvasInner({
                 </div>
               )}
               {templates.length === 0 && (
-                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.noTemplates')}</div>
+                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.noTemplates')}</div>
               )}
               {(() => {
                 const query = templateSearch.trim().toLowerCase()
@@ -1778,21 +1778,21 @@ function FlowCanvasInner({
                   t.id.toLowerCase().includes(query),
                 )
                 if (templates.length > 0 && filtered.length === 0) {
-                  return <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.noMatchingTemplates')}</div>
+                  return <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.noMatchingTemplates')}</div>
                 }
                 return filtered.map((template) => (
                 <button
                   key={template.id}
                   onClick={() => { setShowTemplateModal(false); setPendingTemplate(template) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 6, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
                 >
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ fontWeight: 500 }}>{template.name}</span>
                     {template.description && (
-                      <span style={{ display: 'block', fontSize: 13, color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{template.description}</span>
+                      <span style={{ display: 'block', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{template.description}</span>
                     )}
                   </span>
-                  <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: template.nodeCount })}</span>
+                  <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: template.nodeCount })}</span>
                 </button>
                 ))
               })()}
@@ -1815,20 +1815,20 @@ function FlowCanvasInner({
             </div>
             <div className="modal-body" style={{ padding: '8px 16px 16px', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               {copyProjectsLoading ? (
-                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
                 </div>
               ) : copyProjectsError ? (
-                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--danger)' }}>{copyProjectsError}</div>
+                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{copyProjectsError}</div>
               ) : copyProjects.length === 0 ? (
-                <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+                <div style={{ padding: '12px 4px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
               ) : (
                 <>
-                  <div style={{ fontSize: 12, color: 'var(--meta)', marginBottom: 6 }}>{t('flow.copyNodeSelectHint')}</div>
+                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', marginBottom: 6 }}>{t('flow.copyNodeSelectHint')}</div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'stretch', flex: 1, minHeight: 0 }}>
                     {/* Lane 1: projects */}
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnProjects')}</div>
+                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnProjects')}</div>
                       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                         {copyProjects.map((proj) => {
                           const active = copyActiveProjectId === proj.id
@@ -1837,11 +1837,11 @@ function FlowCanvasInner({
                             <button
                               key={proj.id}
                               onClick={() => selectCopyProject(proj)}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
                             >
                               <span style={{ flexShrink: 0 }}>📁</span>
                               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.name}</span>
-                              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.workflowCount', { count: wfs.length })}</span>
+                              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.workflowCount', { count: wfs.length })}</span>
                             </button>
                           )
                         })}
@@ -1849,13 +1849,13 @@ function FlowCanvasInner({
                     </div>
                     {/* Lane 2: workflows */}
                     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnWorkflows')}</div>
+                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnWorkflows')}</div>
                       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                         {(() => {
                           const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
-                          if (!proj) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
+                          if (!proj) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
                           const wfs = (proj.workflows || []).filter((w) => !w.deleted)
-                          if (wfs.length === 0) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+                          if (wfs.length === 0) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
                           return wfs.map((wf) => {
                             const key = `${proj.id}/${wf.id}`
                             const active = copyActiveWorkflowKey === key
@@ -1863,11 +1863,11 @@ function FlowCanvasInner({
                               <button
                                 key={wf.id}
                                 onClick={() => selectCopyWorkflow(proj, wf)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13 }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)', background: active ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent', color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))' }}
                               >
                                 <span style={{ flexShrink: 0 }}>📂</span>
                                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.name}{wf.is_default ? ` ${t('canvas.defaultSuffix')}` : ''}</span>
-                                <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                                <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                               </button>
                             )
                           })
@@ -1876,24 +1876,24 @@ function FlowCanvasInner({
                     </div>
                     {/* Lane 3: stages */}
                     <div style={{ flex: 1.2, minWidth: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', overflow: 'hidden' }}>
-                      <div style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnStages')}</div>
+                      <div style={{ padding: '7px 10px', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)' }}>{t('flow.copyNodeColumnStages')}</div>
                       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                         {(() => {
                           const proj = copyProjects.find((p) => p.id === copyActiveProjectId)
-                          if (!proj) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
+                          if (!proj) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickProjectHint')}</div>
                           const activeWfKey = copyActiveWorkflowKey
                           const activeWf = (proj.workflows || []).find((w) => !w.deleted && `${proj.id}/${w.id}` === activeWfKey)
-                          if (!activeWf || !activeWfKey) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodePickWorkflowHint')}</div>
+                          if (!activeWf || !activeWfKey) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodePickWorkflowHint')}</div>
                           const loading = copyWfLoading === activeWfKey
                           const err = copyWfErrors[activeWfKey]
                           const nodesList = copyNodesByWf[activeWfKey]
                           if (loading) return (
-                            <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span className="task-status-spinner" aria-hidden="true" />{t('flow.copyNodeLoading')}
                             </div>
                           )
-                          if (err) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--danger)' }}>{err}</div>
-                          if (!nodesList || nodesList.length === 0) return <div style={{ padding: '10px', fontSize: 12, color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
+                          if (err) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{err}</div>
+                          if (!nodesList || nodesList.length === 0) return <div style={{ padding: '10px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>{t('flow.copyNodeEmpty')}</div>
                           return nodesList.map((node) => {
                             const srcKey = `${proj.id}/${activeWf.id}/${node.nodeId}`
                             const selected = copySelected && copySelected.srcKey === srcKey
@@ -1907,17 +1907,17 @@ function FlowCanvasInner({
                                   display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
                                   padding: '7px 10px', border: 'none', borderBottom: '1px solid var(--border-soft)',
                                   background: selected ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'transparent',
-                                  color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 13,
+                                  color: 'var(--fg)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: 'calc(13px * var(--font-scale))',
                                 }}
                               >
                                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: node.color, flexShrink: 0 }} />
                                 <span style={{ flex: 1, minWidth: 0 }}>
                                   <span style={{ fontWeight: 500 }}>{node.label}</span>
-                                  <span style={{ display: 'block', fontSize: 12, color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  <span style={{ display: 'block', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {node.key}{node.engine ? ` · ${node.engine}${node.model ? ` / ${node.model}` : ''}` : ''}
                                   </span>
                                 </span>
-                                <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>{t('flow.portCount', { in: node.inputs.length, out: ports })}</span>
+                                <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>{t('flow.portCount', { in: node.inputs.length, out: ports })}</span>
                               </button>
                             )
                           })
@@ -1945,7 +1945,7 @@ function FlowCanvasInner({
               <Button variant="icon" onClick={() => setShowJson(false)}>✕</Button>
             </div>
             <div className="modal-body" style={{ padding: 0 }}>
-              <pre style={{ margin: 0, padding: 16, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', overflow: 'auto', maxHeight: '60vh', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <pre style={{ margin: 0, padding: 16, fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, background: 'var(--surface)', color: 'var(--fg)', overflow: 'auto', maxHeight: '60vh', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {JSON.stringify(buildCanvasJson(), null, 2)}
               </pre>
             </div>
@@ -1971,9 +1971,9 @@ function FlowCanvasInner({
                 onChange={(e) => { setImportText(e.target.value); setImportError('') }}
                 placeholder={t('flow.importPlaceholder')}
                 spellCheck={false}
-                style={{ height: 320, fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.6, background: 'var(--surface)', resize: 'vertical' }}
+                style={{ height: 320, fontFamily: 'var(--font-mono)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, background: 'var(--surface)', resize: 'vertical' }}
               />
-              {importError && <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>{importError}</p>}
+              {importError && <p style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 8 }}>{importError}</p>}
             </div>
             <div className="modal-footer">
               <Button variant="ghost" onClick={() => setShowImport(false)}>{t('common.cancel')}</Button>

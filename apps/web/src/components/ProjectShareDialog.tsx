@@ -123,7 +123,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
               </Button>
             </div>
           </Field>
-          <p style={{ margin: '8px 0 12px', color: 'var(--muted)', fontSize: 11 }}>
+          <p style={{ margin: '8px 0 12px', color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
             {access === 'external' ? t('layout.externalAccessHint') : t('layout.internalAccessHint')}
           </p>
           <Field label={t('layout.deviceAccessDuration')} error={error || undefined}>
@@ -159,9 +159,9 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
                 readOnly
                 value={shareValue}
                 rows={6}
-                style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 11 }}
+                style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}
               />
-              <div style={{ display: 'grid', gap: 3, marginTop: 7, color: 'var(--muted)', fontSize: 11 }}>
+              <div style={{ display: 'grid', gap: 3, marginTop: 7, color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
                 {inviteExpiresAt !== null && (
                   <span>{t('layout.inviteExpiresAt', { time: formatTime(inviteExpiresAt) })}</span>
                 )}
@@ -174,7 +174,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
             </Field>
           )}
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-soft)' }}>
-            <div style={{ fontSize: 12, fontWeight: 650, marginBottom: 7 }}>
+            <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 650, marginBottom: 7 }}>
               {t('layout.remoteDevices', { count: devices.filter((device) => device.connected).length })}
             </div>
             <RemoteDeviceAccessList
@@ -182,7 +182,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
               onDeviceChange={handleDeviceChange}
               onError={setDeviceError}
             />
-            {deviceError && <div role="status" style={{ color: 'var(--danger)', fontSize: 12 }}>{deviceError}</div>}
+            {deviceError && <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{deviceError}</div>}
           </div>
         </div>
         <div className="modal-footer">

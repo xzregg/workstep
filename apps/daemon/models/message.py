@@ -27,6 +27,10 @@ class Message(BaseModel):
     run_id = pw.TextField(null=True)
     run_status = pw.TextField(null=True)  # running / succeeded / failed
     events_json = pw.TextField(null=True)  # JSON array of InternalEvents
+    event_log_path = pw.TextField(null=True)
+    event_summary_json = pw.TextField(null=True)
+    event_count = pw.IntegerField(default=0)
+    last_event_seq = pw.IntegerField(default=0)
     prompt_json = pw.TextField(null=True)
     usage_json = pw.TextField(null=True)
     position = pw.IntegerField()

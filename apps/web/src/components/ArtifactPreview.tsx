@@ -179,7 +179,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
         {view.kind === 'file' && view.parent ? backButton : null}
-        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {label}
         </div>
       </div>
@@ -195,7 +195,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
   )
 
   const fileFooter = (content_type: string, content: string) => (
-    <div style={{ marginTop: 8, fontSize: 13, color: 'var(--meta)' }}>
+    <div style={{ marginTop: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
       {content_type} | {(content.length / 1024).toFixed(2)} KB
     </div>
   )
@@ -215,7 +215,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
           >
             <Icon name="undo-2" size={14} />
           </Button>
-          <div style={{ flex: 1, fontSize: 13, color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ flex: 1, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {listing?.path || t('common.loading')}
           </div>
           {onClose && (
@@ -256,7 +256,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '7px 10px', borderRadius: 6,
-                cursor: 'pointer', fontSize: 13,
+                cursor: 'pointer', fontSize: 'calc(13px * var(--font-scale))',
                 color: entry.type === 'directory' ? 'var(--fg)' : 'var(--fg-2)',
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-hover, var(--border-soft))' }}
@@ -270,7 +270,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {entry.name}
               </span>
-              <span style={{ fontSize: 11, color: 'var(--meta)', flexShrink: 0 }}>
+              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', flexShrink: 0 }}>
                 {entry.type === 'directory' ? t('artifact.directory') : t('artifact.previewFile')}
               </span>
             </div>
@@ -350,7 +350,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 background: 'var(--accent)', color: '#fff',
                 padding: '5px 12px', borderRadius: 'var(--radius-sm)',
-                fontSize: 13, fontWeight: 500, textDecoration: 'none',
+                fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, textDecoration: 'none',
                 whiteSpace: 'nowrap',
                 transition: 'background var(--motion-fast) var(--ease)',
               }}
@@ -383,7 +383,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.codeFile', { extension }), <CopyTextButton content={content} />)}
         <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8 }}>
-          <pre style={{ padding: 16, margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          <pre style={{ padding: 16, margin: 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {content}
           </pre>
         </div>
@@ -397,7 +397,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
       {fileHeader(t('artifact.textPreview', { name: extension || t('artifact.file') }), <CopyTextButton content={content} />)}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 16 }}>
-        <pre style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        <pre style={{ margin: 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {content}
         </pre>
       </div>

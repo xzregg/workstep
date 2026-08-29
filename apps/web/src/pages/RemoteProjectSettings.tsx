@@ -87,9 +87,9 @@ export default function RemoteProjectSettings() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <section style={{ paddingBottom: 24, borderBottom: '1px solid var(--border-soft)' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.remoteAccessTitle')}</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 18 }}>{t('settings.remoteAccessIntro')}</p>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 16 }}>
+        <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.remoteAccessTitle')}</h1>
+        <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', marginBottom: 18 }}>{t('settings.remoteAccessIntro')}</p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', marginBottom: 16 }}>
           <input
             type="checkbox"
             checked={settings.enabled}
@@ -124,18 +124,18 @@ export default function RemoteProjectSettings() {
             placeholder="https://workstep.example.com"
           />
         </Field>
-        <p style={{ color: 'var(--muted)', fontSize: 11, margin: '4px 0 12px' }}>{t('settings.externalAddressHint')}</p>
+        <p style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', margin: '4px 0 12px' }}>{t('settings.externalAddressHint')}</p>
         <Button variant="primary" loading={saving} disabled={loading} onClick={() => void handleSave()}>
           {t('common.save')}
         </Button>
-        {saved && <span role="status" style={{ marginLeft: 8, color: 'var(--success)', fontSize: 11 }}>{t('settings.remoteSaved')}</span>}
-        {error && <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
+        {saved && <span role="status" style={{ marginLeft: 8, color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>{t('settings.remoteSaved')}</span>}
+        {error && <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
       </section>
 
       <section style={{ paddingTop: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 650 }}>{t('settings.authorizedDevices')}</h2>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>
+          <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650 }}>{t('settings.authorizedDevices')}</h2>
+          <span style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
             {t('layout.remoteDevices', { count: devices.filter((device) => device.connected).length })}
           </span>
         </div>

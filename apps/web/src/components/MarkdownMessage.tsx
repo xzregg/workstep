@@ -1,6 +1,7 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
+import { useI18n } from '../i18n'
 
 interface MarkdownMessageProps {
   content: string
@@ -8,6 +9,8 @@ interface MarkdownMessageProps {
   /** Project id used to resolve `.workstep/uploads/...` relative image paths. */
   projectId?: string
   className?: string
+  /** When set, images render as clickable thumbnails calling this with (src, alt). */
+  onImageClick?: (src: string, alt: string) => void
 }
 
 function closeStreamingFence(markdown: string): string {
@@ -30,16 +33,31 @@ export default function MarkdownMessage({
   streaming = false,
   projectId,
   className,
+  onImageClick,
 }: MarkdownMessageProps) {
+  const { t } = useI18n()
   const markdown = streaming ? closeStreamingFence(content) : content
 
   const components = {
-    img: (props: { src?: string; alt?: string }) => (
-      <img
-        src={props.src ? resolveMarkdownImageSrc(props.src, projectId) : undefined}
-        alt={props.alt ?? ''}
-      />
-    ),
+    img: (props: { src?: string; alt?: string }) => {
+      const alt = props.alt ?? ''
+      if (!props.src) return <img alt={alt} />
+      const resolved = resolveMarkdownImageSrc(props.src, projectId)
+      if (!onImageClick) {
+        return <img src={resolved} alt={alt} />
+      }
+      return (
+        <button
+          type="button"
+          className="markdown-image-click"
+          title={t('md.preview')}
+          aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
+          onClick={() => onImageClick(props.src as string, alt)}
+        >
+          <img src={resolved} alt={alt} />
+        </button>
+      )
+    },
   }
 
   return (

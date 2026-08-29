@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
+import ImagePreview from './ImagePreview'
 import MarkdownMessage from './MarkdownMessage'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
@@ -108,6 +110,7 @@ export default function ChatMessageBubble({
 }: ChatMessageBubbleProps) {
   const { t } = useI18n()
   const isUser = role === 'user'
+  const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
   const interactions = pendingInteractionItems(events)
   const plan = latestPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
@@ -129,7 +132,7 @@ export default function ChatMessageBubble({
     <div {...rootProps} style={rootStyle} className="chat-message-row">
       {isUser && header && (
         <div style={{
-          fontSize: 11, color: 'var(--meta)', textAlign: 'right',
+          fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',
           display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6,
         }}>
           {header}
@@ -149,7 +152,7 @@ export default function ChatMessageBubble({
             width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
             background: color, color: 'var(--accent-fg)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 600, position: 'relative',
+            fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, position: 'relative',
           }}
         >
           {initials}
@@ -160,7 +163,7 @@ export default function ChatMessageBubble({
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: 'var(--ai-assistant)', color: 'var(--accent-fg)',
               border: '2px solid var(--bg)',
-              fontSize: 11, fontWeight: 800, lineHeight: 1,
+              fontSize: 'calc(11px * var(--font-scale))', fontWeight: 800, lineHeight: 1,
             }}>
               {badge}
             </span>
@@ -180,7 +183,7 @@ export default function ChatMessageBubble({
           )}
           {(content || hasToolActivity) ? (
             <div style={{
-              fontSize: 13, lineHeight: 1.6,
+              fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--surface)' : 'var(--bg)',
               border: !isUser && variant === 'bg' ? '1px solid var(--border-soft)' : 'none',
@@ -195,6 +198,7 @@ export default function ChatMessageBubble({
                   content={content}
                   projectId={projectId}
                   className="user-message-markdown"
+                  onImageClick={(src, alt) => setPreviewImage({ src, alt })}
                 />
               ) : (
                 <>
@@ -271,7 +275,7 @@ export default function ChatMessageBubble({
             </div>
           )}
           {!isUser && error && (
-            <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: 4 }}>{error}</div>
+            <div style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 4 }}>{error}</div>
           )}
           {!isUser && plan && <PlanChecklist plan={plan} />}
           {!isUser && onInteractionRespond && interactions.map((item) => (
@@ -286,6 +290,14 @@ export default function ChatMessageBubble({
           {children}
         </div>
       </div>
+      {isUser && previewImage && (
+        <ImagePreview
+          src={previewImage.src}
+          alt={previewImage.alt}
+          projectId={projectId}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   )
 }

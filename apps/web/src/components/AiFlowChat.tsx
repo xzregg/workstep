@@ -420,7 +420,7 @@ export default function AiFlowChat({
         afterMessages={<>
         {rejectionMessage && latestProposals.length === 0 && (
           <div style={{
-            marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 13,
+            marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))',
             color: 'var(--danger)',
             background: 'color-mix(in oklab, var(--danger), transparent 94%)',
             border: '1px solid color-mix(in oklab, var(--danger), transparent 75%)',

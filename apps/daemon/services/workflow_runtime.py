@@ -24,6 +24,7 @@ from services.task_dispatch import TaskDispatchService
 from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message, new_message_id
 from services.intervention import seal_unanswered_interactions
+from agent_assistants.event_journal import TurnEventJournal
 from services.pipeline import DAGScheduler, Step
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -699,9 +700,35 @@ class WorkflowRuntime:
                 for stale_message in stale_messages:
                     stale_message.run_status = "failed"
                     stale_message.ended_at = now
-                    stale_message.events_json = seal_unanswered_interactions(
-                        stale_message.events_json
-                    )
+                    if stale_message.event_log_path:
+                        journal = TurnEventJournal()
+                        ref = journal.reopen(
+                            project.workstep_dir,
+                            stale_message.event_log_path,
+                        )
+                        snapshot = journal.snapshot(ref)
+                        summary_events = snapshot["events"]
+                        sealed_json = seal_unanswered_interactions(
+                            json.dumps(summary_events, ensure_ascii=False)
+                        )
+                        sealed_events = json.loads(sealed_json or "[]")
+                        for response_event in sealed_events[len(summary_events):]:
+                            journal.record(ref, response_event)
+                        journal.finish(ref)
+                        snapshot = journal.snapshot(ref)
+                        stale_message.content = snapshot["content"]
+                        stale_message.events_json = json.dumps(
+                            snapshot["events"], ensure_ascii=False
+                        ) if snapshot["events"] else None
+                        stale_message.event_summary_json = json.dumps(
+                            snapshot["summary"], ensure_ascii=False
+                        )
+                        stale_message.event_count = snapshot["summary"]["event_count"]
+                        stale_message.last_event_seq = snapshot["summary"]["last_event_seq"]
+                    else:
+                        stale_message.events_json = seal_unanswered_interactions(
+                            stale_message.events_json
+                        )
                     stale_message.save()
             task.status = "running"
             task.updated_at = now

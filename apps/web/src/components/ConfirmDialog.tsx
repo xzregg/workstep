@@ -50,11 +50,11 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
       >
         {/* Header */}
         <div style={{ padding: '16px 20px 0' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
+          <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
             {title}
           </div>
           {message && (
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
               {message}
             </div>
           )}
@@ -68,7 +68,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
             variant={danger ? 'danger' : 'primary'}
             loading={loading}
             onClick={onConfirm}
-            style={{ fontSize: 13, fontWeight: 500, padding: '6px 16px' }}
+            style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, padding: '6px 16px' }}
           >
             {confirmText ?? t('common.confirm')}
           </Button>

@@ -52,6 +52,10 @@ _ADDITIVE_COLUMNS = {
         "author_name": "TEXT",
         "author_device_id": "TEXT",
         "author_device_name": "TEXT",
+        "event_log_path": "TEXT",
+        "event_summary_json": "TEXT",
+        "event_count": "INTEGER DEFAULT 0",
+        "last_event_seq": "INTEGER DEFAULT 0",
     },
     "chat_messages": {
         "author_id": "TEXT",

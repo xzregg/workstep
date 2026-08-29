@@ -45,7 +45,7 @@ const StageConfigFields = ({
           >
             <label
               htmlFor={`stage-config-${engineId}-${field.key}`}
-              style={{ display: 'block', marginBottom: 4, fontSize: 11, fontWeight: 600 }}
+              style={{ display: 'block', marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600 }}
             >
               {field.label}
               {field.required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
@@ -78,7 +78,7 @@ const StageConfigFields = ({
                     accentColor: 'var(--accent)',
                   }}
                 />
-                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)' }}>
                   {field.placeholder || field.label}
                 </span>
               </div>

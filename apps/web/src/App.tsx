@@ -63,8 +63,8 @@ function WelcomeView() {
       color: 'var(--meta)', gap: 12,
     }}>
       <Icon name="layers" size={48} strokeWidth={1.5} />
-      <div style={{ fontSize: 16, fontWeight: 500, color: 'var(--fg-2)' }}>{t('welcome.title')}</div>
-      <div style={{ fontSize: 13 }}>{t('welcome.subtitle')}</div>
+      <div style={{ fontSize: 'calc(16px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>{t('welcome.title')}</div>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('welcome.subtitle')}</div>
     </div>
   )
 }

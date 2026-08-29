@@ -734,13 +734,13 @@ export default function TaskList() {
             if (activeWorkflowId) params.set('workflow', activeWorkflowId)
             navigate(`/canvas?${params.toString()}`)
           }}
-          style={{ fontSize: 13, gap: 5 }}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="table" size={14} strokeWidth={2} />
           {t('taskList.stageEdit')}
         </Button>
         {!showArchived && (
-          <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 13, gap: 5 }}>
+          <Button variant="primary" onClick={() => openNewPanel()} style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}>
             <Icon name="plus" size={14} strokeWidth={2.5} />
             {t('taskList.new')}
           </Button>
@@ -750,7 +750,7 @@ export default function TaskList() {
             title={activeWorkflowName}
             style={{
               display: 'flex', alignItems: 'center', gap: 6,
-              fontSize: 13, color: 'var(--fg-2)', fontWeight: 500,
+              fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)', fontWeight: 500,
               maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}
           >
@@ -765,7 +765,7 @@ export default function TaskList() {
             aria-label={t('taskList.copyWorkflowIdAria')}
             onClick={() => void copyWorkflowId()}
             style={{
-              color: 'var(--meta)', fontSize: 11, fontFamily: 'var(--font-mono)',
+              color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', fontFamily: 'var(--font-mono)',
               whiteSpace: 'nowrap', background: 'none', border: 'none',
               padding: '4px 6px', borderRadius: 'var(--radius-sm)',
               cursor: 'pointer',
@@ -780,7 +780,7 @@ export default function TaskList() {
             role="status"
             style={{
               maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap', color: 'var(--meta)', fontSize: 13,
+              whiteSpace: 'nowrap', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))',
             }}
             title={directoryNotice}
           >
@@ -792,7 +792,7 @@ export default function TaskList() {
             variant="ghost"
             onClick={() => setShowShareDialog(true)}
             title={t('layout.remoteShareTitle')}
-            style={{ fontSize: 13, gap: 5 }}
+            style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
           >
             <Icon name="share" size={13} strokeWidth={2} />
             {t('layout.remoteShareTitle')}
@@ -803,7 +803,7 @@ export default function TaskList() {
           onClick={() => setShowScheduleDialog(true)}
           disabled={!activeProject}
           title={t('schedules.openTitle')}
-          style={{ fontSize: 13, gap: 5 }}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="clock" size={13} strokeWidth={2} />
           {t('schedules.title')}{scheduleCount > 0 && `(${scheduleCount})`}
@@ -813,7 +813,7 @@ export default function TaskList() {
           onClick={() => void openMemoryPanel()}
           disabled={!activeProject}
           title={t('taskList.memoryButtonTitle')}
-          style={{ fontSize: 13, gap: 5 }}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="book" size={13} strokeWidth={2} />
           {t('taskList.memory')}
@@ -823,7 +823,7 @@ export default function TaskList() {
           onClick={() => setShowArchived((value) => !value)}
           disabled={!activeProject}
           title={showArchived ? t('canvas.backBoardTitle') : t('taskList.viewArchivedTitle')}
-          style={{ fontSize: 13, gap: 5 }}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
         >
           <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? t('taskList.backBoard') : t('taskList.viewArchived')}
@@ -845,7 +845,7 @@ export default function TaskList() {
                 })
               : t('taskList.selectProjectFirst')}
             style={{
-              fontSize: 13, gap: 6, borderTopRightRadius: 0,
+              fontSize: 'calc(13px * var(--font-scale))', gap: 6, borderTopRightRadius: 0,
               borderBottomRightRadius: 0, paddingRight: 10,
             }}
           >
@@ -885,7 +885,7 @@ export default function TaskList() {
                     width: '100%', height: 40, padding: '0 10px', gap: 10,
                     justifyContent: 'flex-start', borderRadius: 9,
                     background: opener.id === selectedOpener ? 'var(--surface)' : 'transparent',
-                    color: 'var(--fg)', fontSize: 13,
+                    color: 'var(--fg)', fontSize: 'calc(13px * var(--font-scale))',
                   }}
                 >
                   <OpenerIcon id={opener.id} />
@@ -904,13 +904,13 @@ export default function TaskList() {
       {showArchived && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
-          padding: '8px 20px', fontSize: 13, color: 'var(--meta)',
+          padding: '8px 20px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)',
           background: 'color-mix(in oklab, var(--accent), transparent 94%)',
           borderBottom: '1px solid var(--border-soft)',
         }}>
           <Icon name="archive" size={13} strokeWidth={2} />
           {t('taskList.viewingArchived')}
-          <span style={{ marginLeft: 'auto', fontSize: 13 }}>
+          <span style={{ marginLeft: 'auto', fontSize: 'calc(13px * var(--font-scale))' }}>
             {t('taskList.taskCount', { count: visibleTasks.length })}
           </span>
         </div>
@@ -937,10 +937,10 @@ export default function TaskList() {
           return (
             <div key={lane.key} style={laneStyle}>
               <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, fontFamily: 'var(--font-display)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color }} />
                   {lane.label}
-                  <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
+                  <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 400, color: 'var(--meta)' }}>({laneTasks.length})</span>
                 </div>
                 {!showArchived && (
                   <Button
@@ -948,7 +948,7 @@ export default function TaskList() {
                     aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
                     title={t('taskList.addTaskToLane', { lane: lane.label })}
                     onClick={() => openNewPanel(lane.key)}
-                    style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 11, flexShrink: 0 }}
+                    style={{ marginLeft: 'auto', height: 24, padding: '0 7px', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}
                   >
                     {t('taskList.add')}
                   </Button>
@@ -1016,7 +1016,7 @@ export default function TaskList() {
                         <span
                           title={task.title}
                           style={{
-                            fontSize: 13, fontWeight: 600, color: 'var(--fg)', flex: 1,
+                            fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)', flex: 1,
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}
                         >
@@ -1060,7 +1060,7 @@ export default function TaskList() {
                             title={t('taskList.recoveredTitle', { count: task.recovered_count })}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: 4,
-                              fontSize: 11, fontWeight: 600, padding: '2px 7px',
+                              fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, padding: '2px 7px',
                               borderRadius: 'var(--radius-pill)', whiteSpace: 'nowrap',
                               color: 'var(--accent)',
                               background: 'color-mix(in oklab, var(--accent), transparent 88%)',
@@ -1074,7 +1074,7 @@ export default function TaskList() {
                       {task.description && (
                         <div style={{
                           display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
-                          overflow: 'hidden', fontSize: 13, color: 'var(--muted)',
+                          overflow: 'hidden', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)',
                           lineHeight: 1.4, marginBottom: 8,
                         }}>
                           {task.description}
@@ -1126,7 +1126,7 @@ export default function TaskList() {
                 title={t('taskList.tokensTitle')}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+                  fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', whiteSpace: 'nowrap',
                 }}
               >
                 {formatTokenTotal(task.total_tokens as number, locale)} {t('taskList.tokens')}
@@ -1135,7 +1135,7 @@ export default function TaskList() {
             {cardDurationMs !== null && cardDurationMs > 0 && (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontSize: 11, color: 'var(--meta)', whiteSpace: 'nowrap',
+                fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', whiteSpace: 'nowrap',
               }}>
                 <Icon name="clock" size={11} strokeWidth={2} />
                 {t('taskList.duration')} {formatDuration(cardDurationMs, t)}
@@ -1184,7 +1184,7 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div className="panel-header">
-          <span style={{ fontWeight: 600, fontSize: 13 }}>{t('taskList.newTaskTitle', { lane: createLane?.label || t('taskList.requirement') })}</span>
+          <span style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{t('taskList.newTaskTitle', { lane: createLane?.label || t('taskList.requirement') })}</span>
           <Button variant="icon" onClick={closeNewPanel} aria-label={t('common.close')}>✕</Button>
         </div>
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -1194,7 +1194,7 @@ export default function TaskList() {
           <button
             onClick={() => setActiveTab('content')}
             style={{
-              padding: '10px 16px', fontSize: 13, fontWeight: activeTab === 'content' ? 600 : 400,
+              padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: activeTab === 'content' ? 600 : 400,
               border: 'none', borderBottom: activeTab === 'content' ? '2px solid var(--accent)' : '2px solid transparent',
               background: 'none', cursor: 'pointer',
               color: activeTab === 'content' ? 'var(--fg)' : 'var(--meta)',
@@ -1204,7 +1204,7 @@ export default function TaskList() {
           <button
             onClick={() => setActiveTab('review')}
             style={{
-              padding: '10px 16px', fontSize: 13, fontWeight: activeTab === 'review' ? 600 : 400,
+              padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: activeTab === 'review' ? 600 : 400,
               border: 'none', borderBottom: activeTab === 'review' ? '2px solid var(--accent)' : '2px solid transparent',
               background: 'none', cursor: 'pointer',
               color: activeTab === 'review' ? 'var(--fg)' : 'var(--meta)',
@@ -1221,7 +1221,7 @@ export default function TaskList() {
               marginBottom: 10, padding: '11px 12px', borderRadius: 8,
               background: `color-mix(in oklab, ${createLane?.color || 'var(--accent)'}, transparent 91%)`,
               borderLeft: `3px solid ${createLane?.color || 'var(--accent)'}`,
-              color: 'var(--fg-2)', fontSize: 13, lineHeight: 1.55,
+              color: 'var(--fg-2)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.55,
             }}>
               {t('taskList.startAtStage', { label: createLane?.label })}
               <br />
@@ -1267,7 +1267,7 @@ export default function TaskList() {
               </Button>
             </div>
           </Field>
-          <label style={{ fontSize: 13, fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>{t('taskList.taskDescription')}</label>
+          <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--muted)', marginTop: 8 }}>{t('taskList.taskDescription')}</label>
           <MarkdownEditor
             value={newDesc}
             onChange={setNewDesc}
@@ -1284,7 +1284,7 @@ export default function TaskList() {
                   ['immediate', t('taskList.startModeImmediate')],
                   ['scheduled', t('taskList.startModeScheduled')],
                 ] as const).map(([mode, label]) => (
-                  <label key={mode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' }}>
+                  <label key={mode} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}>
                     <input
                       type="radio"
                       name="new-task-start-mode"
@@ -1324,7 +1324,7 @@ export default function TaskList() {
 
         {/* ── Error & Footer ── */}
         {taskCreationErrors.panelError && (
-          <div style={{ padding: '8px 16px 0', fontSize: 13, color: 'var(--danger)' }}>{taskCreationErrors.panelError}</div>
+          <div style={{ padding: '8px 16px 0', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{taskCreationErrors.panelError}</div>
         )}
         <div className="panel-footer">
           <Button variant="ghost" onClick={closeNewPanel}>{t('common.cancel')}</Button>
@@ -1505,15 +1505,15 @@ export default function TaskList() {
         transition: 'transform 0.3s ease',
       }}>
         <div className="panel-header">
-          <span style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', display: 'flex', alignItems: 'center', gap: 8 }}>
             {t('taskList.editMemory')}
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', fontWeight: 400 }}>.workstep/MEMORY.md</span>
           </span>
           <Button variant="icon" onClick={closeMemoryPanel} aria-label={t('common.close')}>✕</Button>
         </div>
         {memoryError && (
           <div style={{
-            padding: '8px 16px', fontSize: 13, color: 'var(--danger)',
+            padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
             background: 'color-mix(in oklab, var(--danger), transparent 90%)',
           }}>
             {memoryError}
@@ -1521,7 +1521,7 @@ export default function TaskList() {
         )}
         <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {memoryLoading ? (
-            <div style={{ color: 'var(--meta)', fontSize: 13 }}>{t('common.loading')}</div>
+            <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>{t('common.loading')}</div>
           ) : (
             <MarkdownEditor
               value={memoryContent}
@@ -1533,7 +1533,7 @@ export default function TaskList() {
         </div>
         <div className="panel-footer" style={{ alignItems: 'center' }}>
           {memoryNotice && (
-            <span style={{ color: 'var(--success)', fontSize: 13, marginRight: 'auto' }} role="status">
+            <span style={{ color: 'var(--success)', fontSize: 'calc(13px * var(--font-scale))', marginRight: 'auto' }} role="status">
               {memoryNotice}
             </span>
           )}

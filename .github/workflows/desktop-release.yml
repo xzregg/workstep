@@ -30,14 +30,40 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with: { node-version: "20", cache: npm, cache-dependency-path: apps/web/package-lock.json }
-      - name: Build unsigned DMG
-        env: { WORKSTEP_ARCH: "${{ matrix.arch }}" }
-        run: ./apps/desktop/build.sh
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build Nuitka backend
+        env: { BUILD_PLATFORM: mac }
+        run: ./apps/desktop/build-backend.sh
+      - name: Build macOS package and update metadata
+        working-directory: apps/desktop
+        env:
+          BUILD_PLATFORM: mac
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          version="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.tag }}" ]; then version="${{ inputs.tag }}"; version="${version#v}"; fi
+          npm version "$version" --no-git-tag-version --allow-same-version
+          ./inject-backend.sh
+          yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.publish.channel=latest-${{ matrix.arch }}
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-macos-${{ matrix.arch }}
-          path: apps/desktop/dist/WorkStep-macos-${{ matrix.arch }}.dmg
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
           if-no-files-found: error
 
   windows:
@@ -49,18 +75,42 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with: { node-version: "20", cache: npm, cache-dependency-path: apps/web/package-lock.json }
-      - name: Build unsigned ZIP
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build Nuitka backend
         shell: pwsh
-        run: ./apps/desktop/build.ps1
+        run: ./apps/desktop/build-backend.ps1
+      - name: Build Windows installer and update metadata
+        shell: pwsh
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          $version = "${{ inputs.tag || github.ref_name }}".TrimStart("v")
+          npm version $version --no-git-tag-version --allow-same-version
+          ./inject-backend.ps1
+          yarn electron-builder --win nsis --x64 --publish never
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-windows-x64
-          path: apps/desktop/dist/WorkStep-windows-x64.zip
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
           if-no-files-found: error
 
   linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with: { ref: "${{ inputs.tag || github.ref }}" }
@@ -68,23 +118,40 @@ jobs:
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with: { node-version: "20", cache: npm, cache-dependency-path: apps/web/package-lock.json }
-      - name: Install AppImage tooling
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build Nuitka backend
+        env: { BUILD_PLATFORM: linux }
+        run: ./apps/desktop/build-backend.sh
+      - name: Build AppImage and update metadata
+        working-directory: apps/desktop
+        env:
+          BUILD_PLATFORM: linux
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0
-          curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-          sudo install -m 0755 /tmp/appimagetool /usr/local/bin/appimagetool
-      - name: Build AppImage
-        env: { APPIMAGE_EXTRACT_AND_RUN: "1" }
-        run: ./apps/desktop/build.sh
+          corepack enable
+          yarn install --frozen-lockfile
+          version="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.tag }}" ]; then version="${{ inputs.tag }}"; version="${version#v}"; fi
+          npm version "$version" --no-git-tag-version --allow-same-version
+          ./inject-backend.sh
+          yarn electron-builder --linux AppImage --x64 --publish never
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-linux-x64
-          path: apps/desktop/dist/WorkStep-linux-x64.AppImage
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
           if-no-files-found: error
 
-  publish:
+  publish-draft:
     needs: [macos, windows, linux]
     runs-on: ubuntu-24.04
     permissions:
@@ -95,8 +162,8 @@ jobs:
       - name: Create checksums
         working-directory: release
         run: sha256sum WorkStep-* > SHA256SUMS.txt
-      - name: Publish GitHub Release
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-        run: gh release create "$RELEASE_TAG" release/* --verify-tag --generate-notes --title "$RELEASE_TAG"
+        run: gh release create "$RELEASE_TAG" release/* --draft --verify-tag --generate-notes --title "$RELEASE_TAG"

@@ -131,7 +131,7 @@ export function MessageCopyButton({
           : copyState === 'copied'
             ? 'var(--success)'
             : 'var(--muted)',
-        fontSize: 11,
+        fontSize: 'calc(11px * var(--font-scale))',
       }}
     >
       {copyState === 'copied' ? (
@@ -173,7 +173,7 @@ export default function MessageResponseFooter({
   return (
     <div style={{
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
-      color: 'var(--meta)', fontSize: 11,
+      color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
     }}>
       <span className="footer-usage-summary" style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
         {usageSummary}
@@ -191,7 +191,7 @@ export default function MessageResponseFooter({
           onClick={onContinueStage}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
-            fontSize: 11, color: 'var(--accent)',
+            fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)',
             background: 'none', border: 'none', padding: 0, cursor: 'pointer',
             whiteSpace: 'nowrap', minHeight: 24, flexShrink: 0,
           }}

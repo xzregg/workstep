@@ -117,13 +117,13 @@ export default function MessageMetaBar({
     <div style={{
       width: '100%', minHeight: 30,
       padding: '6px 0',
-      color: 'var(--meta)', fontSize: 11,
+      color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
       borderBottom: '1px solid var(--border-soft)',
       display: 'flex', alignItems: 'center', gap: 8,
       fontVariantNumeric: 'tabular-nums',
     }}>
       {!running && endedAt && (
-        <span style={{ color: 'var(--meta)', fontSize: 11, flexShrink: 0 }}>
+        <span style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}>
           {t('taskDetail.reviewDuration', {
             duration: formatDurationBetween(displayStartedAt, endedAt, t) || '',
           })}
@@ -136,7 +136,7 @@ export default function MessageMetaBar({
           ? 'rgba(46,160,67,0.08)'
           : 'rgba(217,45,32,0.08)',
         color: reviewStatus === 'passed' ? 'var(--success)' : 'var(--danger)',
-        fontSize: 11, flexShrink: 0,
+        fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
         whiteSpace: 'nowrap',
       }}>
         <Icon name={reviewStatus === 'passed' ? 'check' : 'x'} size={11} strokeWidth={2.2} />
@@ -153,7 +153,7 @@ export default function MessageMetaBar({
     <div style={{
       width: '100%', minHeight: 30,
       paddingBottom: 6,
-      color: 'var(--meta)', fontSize: 11,
+      color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
       borderBottom: '1px solid var(--border-soft)',
     }}>
       <ProcessTrace
@@ -187,7 +187,7 @@ export default function MessageMetaBar({
                   height: 18, padding: '0 7px', borderRadius: 9,
                   border: '1px solid rgba(217,45,32,0.45)',
                   background: 'rgba(217,45,32,0.08)',
-                  color: 'var(--danger)', fontSize: 11, flexShrink: 0,
+                  color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -202,7 +202,7 @@ export default function MessageMetaBar({
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                   height: 18, padding: '0 7px', borderRadius: 9,
                   background: 'color-mix(in oklab, var(--warn), transparent 86%)',
-                  color: 'var(--warn-text)', fontSize: 11, flexShrink: 0,
+                  color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -217,7 +217,7 @@ export default function MessageMetaBar({
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                   height: 18, padding: '0 7px', borderRadius: 9,
                   background: 'color-mix(in oklab, var(--accent), transparent 88%)',
-                  color: 'var(--accent)', fontSize: 11, flexShrink: 0,
+                  color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -232,7 +232,7 @@ export default function MessageMetaBar({
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                   height: 18, padding: '0 7px', borderRadius: 9,
                   background: 'color-mix(in oklab, var(--meta), transparent 88%)',
-                  color: 'var(--meta)', fontSize: 11, flexShrink: 0,
+                  color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0,
                   whiteSpace: 'nowrap',
                 }}
               >
@@ -250,7 +250,7 @@ export default function MessageMetaBar({
                 aria-label={t('meta.copySessionAria')}
                 onClick={() => void copySessionId()}
                 style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 11,
+                  fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))',
                   color: sessionCopied ? 'var(--success)' : 'var(--meta)',
                   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
                 }}
@@ -265,7 +265,7 @@ export default function MessageMetaBar({
                 title={t('meta.viewPromptTitle')}
                 onClick={() => onViewPrompt(prompt)}
                 style={{
-                  fontSize: 11, color: 'var(--accent)',
+                  fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)',
                   display: 'inline-flex', alignItems: 'center',
                   minHeight: 24, flexShrink: 0,
                 }}

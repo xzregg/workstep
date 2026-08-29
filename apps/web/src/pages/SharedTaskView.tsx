@@ -538,7 +538,7 @@ export default function SharedTaskView() {
             padding: '32px 24px',
             textAlign: 'center',
             color: 'var(--danger)',
-            fontSize: 14,
+            fontSize: 'calc(14px * var(--font-scale))',
           }}
         >
           {phase.message || t('share.shareNotFound')}
@@ -563,10 +563,10 @@ export default function SharedTaskView() {
             boxShadow: 'var(--elev-raised), 0 0 0 1px var(--border-soft)',
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+          <div style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600, marginBottom: 6 }}>
             {t('share.enterPassword')}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
+          <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)', marginBottom: 16 }}>
             {m.title || t('share.viewerSubtitle', { title: t('share.viewerTitle') })}
           </div>
           <Input
@@ -582,7 +582,7 @@ export default function SharedTaskView() {
             style={{ marginBottom: 12 }}
           />
           {error && (
-            <div style={{ fontSize: 12, color: 'var(--danger)', marginBottom: 8 }}>
+            <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)', marginBottom: 8 }}>
               {error}
             </div>
           )}
@@ -590,7 +590,7 @@ export default function SharedTaskView() {
             variant="primary"
             loading={unlocking}
             onClick={handleUnlock}
-            style={{ width: '100%', fontSize: 13, justifyContent: 'center' }}
+            style={{ width: '100%', fontSize: 'calc(13px * var(--font-scale))', justifyContent: 'center' }}
           >
             {unlocking ? t('share.unlocking') : t('share.unlock')}
           </Button>
@@ -627,7 +627,7 @@ export default function SharedTaskView() {
           display: 'inline-flex',
           alignItems: 'center',
           gap: 6,
-          fontSize: 11,
+          fontSize: 'calc(11px * var(--font-scale))',
           color: wsColor,
         }}
       >
@@ -656,7 +656,7 @@ export default function SharedTaskView() {
             role="status"
             style={{
               padding: '8px 16px',
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--font-scale))',
               color: 'var(--warn, var(--meta))',
               background: 'color-mix(in oklab, var(--warn, var(--border)), transparent 90%)',
               borderBottom: '1px solid var(--border-soft)',
@@ -728,12 +728,12 @@ export default function SharedTaskView() {
           >
             <div className="dialog-header" style={{ padding: '12px 16px' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
                   {previewArtifact.logical_name || previewArtifact.name}
                 </div>
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: 'calc(11px * var(--font-scale))',
                     color: 'var(--meta)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -791,7 +791,7 @@ function LoadingHint({ children }: { children: React.ReactNode }) {
         justifyContent: 'center',
         gap: 10,
         color: 'var(--muted)',
-        fontSize: 13,
+        fontSize: 'calc(13px * var(--font-scale))',
       }}
     >
       <Spinner size={14} />

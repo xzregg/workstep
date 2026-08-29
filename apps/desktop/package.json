@@ -1,0 +1,70 @@
+{
+  "name": "workstep-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell for the WorkStep FastAPI sidecar",
+  "main": "src/main.cjs",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "dist": "electron-builder --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3"
+  },
+  "volta": {
+    "node": "22.22.2",
+    "yarn": "1.22.22"
+  },
+  "build": {
+    "appId": "com.workstep.desktop",
+    "productName": "WorkStep",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources-placeholder/backend",
+        "to": "backend"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "WorkStep",
+        "schemes": ["workstep"]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "xzregg",
+      "repo": "workstep"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": ["dmg", "zip"],
+      "artifactName": "WorkStep-${version}-macos-${arch}.${ext}"
+    },
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "WorkStep-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Development",
+      "artifactName": "WorkStep-${version}-linux-${arch}.${ext}"
+    }
+  }
+}

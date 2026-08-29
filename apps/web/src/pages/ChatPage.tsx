@@ -686,7 +686,7 @@ export default function ChatPage() {
             placeholder={t('chatSession.renamePlaceholder')}
             style={{ width: '100%' }}
           />
-          {renameError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{renameError}</div>}
+          {renameError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{renameError}</div>}
         </div>
       </ConfirmDialog>
 
@@ -755,7 +755,7 @@ export default function ChatPage() {
               </Button>
             </div>
           ))}
-          {quickError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{quickError}</div>}
+          {quickError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{quickError}</div>}
           <Button variant="ghost" size="sm" onClick={() => {
             setQuickDraft([...quickDraft, { id: randomId(), label: '', prompt: '' }])
             setQuickError('')
@@ -786,8 +786,8 @@ export default function ChatPage() {
             minHeight={420}
             maxHeight="55vh"
           />
-          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
-          {promptError && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{promptError}</div>}
+          <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
+          {promptError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{promptError}</div>}
         </div>
       </ConfirmDialog>
 

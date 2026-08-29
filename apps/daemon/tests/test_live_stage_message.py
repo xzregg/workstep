@@ -349,7 +349,7 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path):
         assert post_insert.run_status == "succeeded"
         assert pre_insert.sequence < inserted.sequence < post_insert.sequence
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
-        assert "第二段" not in pre_insert.events_json
+        assert "第二段" not in (tmp_path / pre_insert.event_log_path).read_text()
     finally:
         await bus.close()
         from engines.core.registry import ENGINE_REGISTRY

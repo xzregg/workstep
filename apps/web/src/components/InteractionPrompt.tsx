@@ -47,7 +47,7 @@ function InteractionOptionButton({
         borderRadius: 7, padding: '6px 9px',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1,
-        fontSize: 12, textAlign: 'left',
+        fontSize: 'calc(12px * var(--font-scale))', textAlign: 'left',
       }}
     >
       {option.label}
@@ -121,7 +121,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.06em',
+          fontSize: 'calc(10px * var(--font-scale))', fontWeight: 700, letterSpacing: '0.06em',
           color: 'var(--accent)', textTransform: 'uppercase',
         }}>
           {request.method === 'session/request_permission'
@@ -129,13 +129,13 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
             : t('interaction.question')}
         </span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--fg)' }}>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 650, color: 'var(--fg)' }}>
         {form.title}
       </div>
       {request.tool_call?.raw_input !== undefined && (
         <pre style={{
           margin: 0, padding: 8, borderRadius: 6, overflowX: 'auto',
-          background: 'var(--bg)', color: 'var(--muted)', fontSize: 11,
+          background: 'var(--bg)', color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))',
           whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
         }}>
           {typeof request.tool_call.raw_input === 'string'
@@ -145,7 +145,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
       )}
       {request.method === 'session/request_permission' ? (
         <>
-          {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
+          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>}
           {permissionOptions.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6 }}>
               {permissionOptions.map((option) => (
@@ -178,16 +178,16 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
             return (
               <div key={field.id} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>
+                  <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, color: 'var(--fg-2)' }}>
                     {field.title}
                   </span>
                   {!field.required && (
-                    <span style={{ marginLeft: 5, color: 'var(--meta)', fontSize: 11 }}>
+                    <span style={{ marginLeft: 5, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>
                       {t('common.optional')}
                     </span>
                   )}
                   {field.description && (
-                    <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+                    <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2 }}>
                       {field.description}
                     </div>
                   )}
@@ -223,7 +223,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
                   </div>
                 )}
                 {field.type === 'boolean' && (
-                  <label style={{ display: 'flex', gap: 7, alignItems: 'center', fontSize: 12 }}>
+                  <label style={{ display: 'flex', gap: 7, alignItems: 'center', fontSize: 'calc(12px * var(--font-scale))' }}>
                     <input
                       type="checkbox"
                       checked={Boolean(selected)}
@@ -249,7 +249,7 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
               </div>
             )
           })}
-          {error && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>}
+          {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button
               variant="ghost"

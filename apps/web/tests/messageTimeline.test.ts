@@ -85,6 +85,18 @@ test('keeps thinking and tool calls in event order and lets thinking break tool 
   assert.equal(timeline[2]?.type === 'thinking' && timeline[2].content, '继续判断。')
 })
 
+test('tracks the elapsed time of each thinking segment from event timestamps', () => {
+  const timeline = buildMessageTimeline([
+    { type: 'thinking_delta', timestamp: '2026-08-29T10:00:00Z', data: { delta: '先分析。' } },
+    { type: 'thinking_delta', timestamp: '2026-08-29T10:00:42Z', data: { delta: '继续判断。' } },
+    { type: 'tool_use', timestamp: '2026-08-29T10:01:12Z', data: { id: 'read-1', name: 'Read' } },
+  ])
+
+  const thinking = timeline[0]
+  assert.equal(thinking?.type === 'thinking' && thinking.startedAt, 1_787_997_600_000)
+  assert.equal(thinking?.type === 'thinking' && thinking.endedAt, 1_787_997_672_000)
+})
+
 test('tracks subagent lifecycle as one timeline item updated in place', () => {
   const timeline = buildMessageTimeline([
     { type: 'text_delta', data: { delta: '开始委托子代理。' } },

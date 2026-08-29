@@ -159,7 +159,7 @@ export default function ShareDialog({
               gap: 8,
             }}>
               <div style={{
-                fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)',
+                fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)',
               }}>
                 {t('share.dialogTitle')}
               </div>
@@ -168,7 +168,7 @@ export default function ShareDialog({
               </Button>
             </div>
             <div style={{
-              fontSize: 12, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5,
+              fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)', marginTop: 6, lineHeight: 1.5,
             }}>
               {t('share.dialogSubtitle')}
             </div>
@@ -177,12 +177,12 @@ export default function ShareDialog({
           {/* Body */}
           <div style={{ padding: '16px 20px 20px', overflow: 'auto' }}>
             {loading ? (
-              <div style={{ fontSize: 13, color: 'var(--muted)', padding: '8px 0' }}>
+              <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)', padding: '8px 0' }}>
                 {t('common.loading')}
               </div>
             ) : share ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                <div style={{ fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, color: 'var(--muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   {t('share.currentLink')}
                 </div>
                 <div style={{
@@ -197,19 +197,19 @@ export default function ShareDialog({
                     onFocus={(e) => e.currentTarget.select()}
                     style={{
                       flex: 1, minWidth: 0, border: 0, background: 'transparent',
-                      fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--fg)',
+                      fontSize: 'calc(12px * var(--font-scale))', fontFamily: 'var(--font-mono)', color: 'var(--fg)',
                       outline: 'none',
                     }}
                   />
-                  <Button variant="ghost" onClick={handleCopy} style={{ fontSize: 12, height: 28 }}>
+                  <Button variant="ghost" onClick={handleCopy} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
                     <Icon name={copied ? 'check' : 'copy'} size={13} />
                     {copied ? t('share.linkCopied') : t('share.copyLink')}
                   </Button>
                 </div>
                 {share.title && (
-                  <div style={{ fontSize: 12, color: 'var(--fg-2)' }}>{share.title}</div>
+                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--fg-2)' }}>{share.title}</div>
                 )}
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)' }}>
                   {t('share.createdAt', {
                     time: share.created_at ? new Date(share.created_at).toLocaleString() : '',
                   })}
@@ -219,7 +219,7 @@ export default function ShareDialog({
                     variant="danger"
                     loading={revoking}
                     onClick={() => setConfirmRevoke(true)}
-                    style={{ fontSize: 13 }}
+                    style={{ fontSize: 'calc(13px * var(--font-scale))' }}
                   >
                     <Icon name="trash" size={13} />
                     {t('share.revoke')}
@@ -229,7 +229,7 @@ export default function ShareDialog({
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)' }}>
+                  <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.passwordLabel')} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({t('common.optional')})</span>
                   </span>
                   <Input
@@ -244,7 +244,7 @@ export default function ShareDialog({
                   />
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-2)' }}>
+                  <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
                     {t('share.titleLabel')}
                   </span>
                   <Input
@@ -259,7 +259,7 @@ export default function ShareDialog({
                     loading={creating}
                     disabled={password.length > 0 && password.length < 4}
                     onClick={handleCreate}
-                    style={{ fontSize: 13 }}
+                    style={{ fontSize: 'calc(13px * var(--font-scale))' }}
                   >
                     <Icon name="share" size={13} />
                     {t('share.create')}
@@ -270,7 +270,7 @@ export default function ShareDialog({
 
             {error && (
               <div style={{
-                marginTop: 12, fontSize: 12, color: 'var(--danger)',
+                marginTop: 12, fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)',
                 padding: '8px 10px', borderRadius: 'var(--radius-sm)',
                 background: 'color-mix(in oklab, var(--danger), transparent 92%)',
                 border: '1px solid color-mix(in oklab, var(--danger), transparent 80%)',

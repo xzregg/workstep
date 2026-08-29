@@ -10,4 +10,8 @@ test('uses duration wording for completed and stopped LLM messages', () => {
 
 test('describes collapsed thinking with its character count', () => {
   assert.equal(zhCN.trace.thoughtCharacters, '思考了 {count} 字符')
+  assert.equal(
+    zhCN.trace.thoughtCharactersDuration,
+    '思考了 {count} 字符，{duration}',
+  )
 })

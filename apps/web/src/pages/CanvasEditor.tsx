@@ -133,7 +133,7 @@ function CanvasEditorInner() {
               disabled={!activeProject?.id}
               aria-expanded={aiPanelOpen}
               onClick={toggleAiPanel}
-              style={{ height: 28, fontSize: 13, whiteSpace: 'nowrap' }}
+              style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
             >
               {t('canvas.aiEdit')}
             </Button>

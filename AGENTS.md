@@ -157,6 +157,12 @@ Pydantic AI 的 harness 扩展不暴露用户配置（引擎动态配置不含 `
 每个项目一个 `.workstep/workstep.db`，核心表：
 - `tasks` — 任务（对应前端"卡片"）
 - `task_steps` — 每阶段进度（支持并行分支）
-- `messages` — LLM 消息 + events_json 事件流
+- `messages` — LLM 消息正文、事件摘要与 JSONL 日志索引
 - `agent_sessions` — 引擎会话（Codex --resume 用）
 - `artifacts` — 产物记录
+
+任务阶段执行与审核的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<message_id>.jsonl`
+为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、
+事件数量/末序号及 `event_log_path` 查询投影。历史接口默认返回摘要，详细时间线通过
+`GET /api/task/{task_id}/messages/{message_id}/events` 分页读取；无 `event_log_path` 的旧
+`events_json` 消息继续兼容回放。

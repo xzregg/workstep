@@ -184,7 +184,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
       <div key={field.key} style={{ minWidth: 0 }}>
         <label
           htmlFor={`engine-config-${engineId}-${field.key}`}
-          style={{ display: 'block', marginBottom: 4, fontSize: 11, fontWeight: 600 }}
+          style={{ display: 'block', marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600 }}
         >
           {field.label}
           {field.required && <span style={{ color: 'var(--danger)', marginLeft: 2 }}>*</span>}
@@ -232,7 +232,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
                 title={t('engineForm.clearSavedWithLabel', { label: field.label })}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
-                  flexShrink: 0, cursor: 'pointer', fontSize: 11,
+                  flexShrink: 0, cursor: 'pointer', fontSize: 'calc(11px * var(--font-scale))',
                   color: 'var(--muted)', whiteSpace: 'nowrap',
                 }}
               >
@@ -272,7 +272,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
                 accentColor: 'var(--accent)',
               }}
             />
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+            <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)' }}>
               {field.placeholder || field.label}
             </span>
           </div>
@@ -300,7 +300,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
           <label
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              marginTop: 4, cursor: 'pointer', fontSize: 11,
+              marginTop: 4, cursor: 'pointer', fontSize: 'calc(11px * var(--font-scale))',
               color: 'var(--muted)',
             }}
           >
@@ -324,12 +324,12 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
           </label>
         )}
         {field.help && (
-          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--meta)' }}>
+          <div style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
             {field.help}
           </div>
         )}
         {field.required && !value.trim() && (
-          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--danger)' }}>
+          <div style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
             {t('engineForm.requiredField')}
           </div>
         )}
@@ -351,7 +351,7 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
       <div style={{
         marginTop: 8, display: 'flex', alignItems: 'center', gap: 8,
         flexWrap: 'wrap', rowGap: 8,
-        color: 'var(--muted)', fontSize: 11,
+        color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))',
       }}>
         <div style={{
           flex: '0 1 auto', minWidth: 0,

@@ -1,72 +1,56 @@
 # WorkStep Desktop
 
-桌面版 WorkStep —— 用 [pywebview](https://pywebview.flowrl.com/)（原生 WebView 窗口）+ [PyInstaller](https://pyinstaller.org/)（Python 打包）把后端 daemon、已编译前端和模板数据打成一个跨平台绿色应用。
+Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 由 Nuitka 编译为 standalone sidecar，用户机器无需安装 Python。
 
 ```text
-WorkStep.app / WorkStep.exe（原生窗口）
-  └─ 内嵌 daemon（FastAPI，127.0.0.1:<port>）
-       ├─ 前端静态资源（apps/web 编译产物，随包分发）
-       ├─ data/templates 等种子数据（写入 ~/.workstep/data/templates/）
-       └─ 引擎（SDK 引擎随包，CLI 引擎运行时检测）
+Electron
+  └─ resources/backend/main(.exe|.bin) --port <port>
+       └─ stdout: PORT:<实际端口>
+            └─ BrowserWindow 加载 http://127.0.0.1:<实际端口>/
 ```
 
-## 特性
+## 端口
 
-- **单进程**：daemon 在应用内线程运行，关闭窗口即优雅退出；日志写入 `~/.workstep/logs/desktop.log`。
-- **单实例**：默认端口 8765；若已有 WorkStep daemon 在运行则复用，否则自动换用空闲端口。
-- **数据安全**：所有数据/配置写 `~/.workstep/`，应用包本身只读。
-- **引擎**：Codex SDK 运行时（约 300MB）随包内置，开箱可用；`codex`/`claude` CLI 等外部命令引擎需用户自行安装，应用运行时自动检测。
+生产版默认传入 `--port 0`，由操作系统分配空闲端口，不依赖固定的 8765。需要固定端口时可用：
 
-## 构建
+```bash
+WorkStep --backend-port=43123
+WorkStep --port 43123
+WORKSTEP_DESKTOP_PORT=43123 WorkStep
+```
 
-PyInstaller 不支持交叉编译：**macOS 包在 macOS 构建，Windows 包在 Windows 构建**。
+启动参数优先于环境变量。固定端口被占用时，应用显示启动失败，不会错误连接到占用该端口的其他服务。后台只绑定 `127.0.0.1`。
 
-macOS / Linux：
+开发模式不启动二进制 sidecar，默认连接 `http://127.0.0.1:8765`；也可设置 `WORKSTEP_DEV_SERVER_URL`，或使用相同的 `--backend-port` 参数。
+
+## 本地开发
+
+先分别启动 daemon 和 Web 开发服务，再启动 Electron：
 
 ```bash
 cd apps/desktop
-./build.sh
-# 产物：apps/desktop/dist/WorkStep-macOS-<版本>.zip（.app 应用）
+yarn install
+WORKSTEP_DEV_SERVER_URL=http://127.0.0.1:5173 yarn start
 ```
 
-Windows（PowerShell）：
-
-```powershell
-cd apps\desktop
-.\build.ps1
-# 产物：apps\desktop\dist\WorkStep-Windows-<版本>.zip（免安装目录）
-```
-
-脚本内部流程：`npm ci && npm run build`（编译前端）→ `uv sync --group desktop`（安装 pywebview / pyinstaller）→ PyInstaller 打包 → 压缩产物。
-
-## 运行
-
-- 解压后双击 `WorkStep.app`（macOS）或 `WorkStep.exe`（Windows）。
-- 首次启动 macOS 未签名应用：右键应用 → 打开（或系统设置 → 隐私与安全性 → 仍要打开）；Windows SmartScreen 选择「更多信息 → 仍要运行」。
-- 窗口加载 `http://127.0.0.1:<port>/`，同时可直接在浏览器访问同一地址。
-
-## 开发与冒烟
-
-无窗口启动 daemon（打包后验证用）：
+生产安装包只在 GitHub Actions 对应平台 Runner 上构建。本地测试不会启动常驻服务：
 
 ```bash
-cd apps/desktop
-dist/WorkStep.app/Contents/MacOS/WorkStep --serve-only --port 18765
-curl http://127.0.0.1:18765/api/health
+cd apps/desktop && yarn test
+uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_entry.py
 ```
 
-源码模式（不打包，直接跑窗口）：
+## 发布
 
-```bash
-cd apps/daemon && uv sync --group desktop
-uv run python ../desktop/desktop_main.py            # 打开窗口
-uv run python ../desktop/desktop_main.py --serve-only --port 18765
-```
+推送 `v*` tag 后，CI 在 Windows、macOS 和 Linux 分别完成以下流程：
 
-`--port` 覆盖端口；`--host` 覆盖绑定地址（默认 `127.0.0.1`）。
+1. 构建 React 前端。
+2. 在干净 venv 中安装锁定的 `requirements-prod.txt` 与 Nuitka。
+3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`。
+4. 把完整 standalone 目录注入 Electron 的 `resources/backend/`。
+5. 生成 NSIS `.exe`、`.dmg`/更新用 `.zip`、`.AppImage` 和更新元数据。
+6. 创建草稿 GitHub Release；人工发布后客户端才会收到更新。
 
-## 说明
+更新安装严格执行：停止 sidecar → 等待进程退出 → 额外等待 500ms → `quitAndInstall`。macOS 自动更新要求正式发布包完成代码签名。
 
-- 前端与 daemon 业务代码零改动：前端本就同源相对路径 `/api`、`/ws`，由 daemon 静态托管。
-- 打包体积主要来自随包的 Codex CLI 运行时（`codex_cli_bin`，约 300MB）；不需要 Codex SDK 引擎时可在 `workstep_desktop.spec` 的 `collect_all` 列表中移除 `codex_cli_bin` 以显著减小体积。
-- 未签名、未公证，适用于内部分发；正式分发请另行配置签名（Apple Developer ID / Windows 证书）。
+Windows 构建使用 `--windows-console-mode=attach`，由 Electron 的 `windowsHide` 隐藏窗口并保留 stdout 管道；若使用 `disable`，`PORT:<port>` 就绪协议无法可靠传回主进程。

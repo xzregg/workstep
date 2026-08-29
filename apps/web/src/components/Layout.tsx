@@ -43,7 +43,7 @@ const sidebarStyle: React.CSSProperties = {
 
 const sectionLabel: React.CSSProperties = {
   padding: '14px 14px 6px',
-  fontSize: 11, fontWeight: 600,
+  fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
   color: 'var(--muted)',
   fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
@@ -54,7 +54,7 @@ const sectionLabel: React.CSSProperties = {
 
 const nestedSectionLabel: React.CSSProperties = {
   margin: '10px 12px 2px 28px',
-  fontSize: 14, fontWeight: 600,
+  fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600,
   color: 'var(--muted)',
   fontFamily: 'var(--font-mono)',
   textTransform: 'uppercase' as const,
@@ -67,7 +67,7 @@ const nestedSectionLabel: React.CSSProperties = {
 const projectItemStyle = (active: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10,
   padding: '9px 12px', borderRadius: 10,
-  cursor: 'pointer', fontSize: 14,
+  cursor: 'pointer', fontSize: 'calc(14px * var(--font-scale))',
   color: active ? 'var(--fg)' : 'var(--fg-2)',
   background: active ? 'var(--surface)' : 'transparent',
   fontWeight: active ? 500 : 400,
@@ -82,7 +82,7 @@ const addButtonStyle: React.CSSProperties = {
   borderRadius: 'var(--radius-sm)',
   textAlign: 'center' as const,
   cursor: 'pointer', color: 'var(--meta)',
-  fontSize: 13, background: 'transparent',
+  fontSize: 'calc(13px * var(--font-scale))', background: 'transparent',
   width: 'calc(100% - 24px)',
   fontFamily: 'var(--font-body)',
 }
@@ -710,7 +710,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       {/* Sidebar */}
       <aside style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 13, fontFamily: 'var(--font-display)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', fontFamily: 'var(--font-display)' }}>
             <Icon name="layers" size={18} strokeWidth={2} color="var(--accent)" />
             WorkStep
             <a
@@ -718,7 +718,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               style={{
                 marginLeft: 'auto',
                 padding: '2px 8px',
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 500,
                 borderRadius: 6,
                 color: 'var(--fg-2)',
@@ -747,7 +747,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           style={{
             margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
             padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 13,
+            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
             color: location.pathname === '/statistics' ? 'var(--fg)' : 'var(--fg-2)',
             background: location.pathname === '/statistics' ? 'var(--surface)' : 'transparent',
           }}
@@ -858,7 +858,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       setRenameId(null)
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ flex: 1, height: 30, fontSize: 14, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                    style={{ flex: 1, height: 30, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                   />
                 ) : (
                   <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -881,7 +881,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             : p.access_status === 'expired'
                               ? 'var(--status-paused)'
                               : 'var(--meta)',
-                          fontSize: 10,
+                          fontSize: 'calc(10px * var(--font-scale))',
                           lineHeight: '16px',
                           verticalAlign: 1,
                         }}
@@ -909,12 +909,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
-                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 13, lineHeight: '18px', padding: 0, flexShrink: 0 }}
+                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
                 >⋯</Button>
               </div>
 
               {renameId === p.path && renameError && (
-                <div style={{ marginLeft: 38, marginBottom: 4, fontSize: 11, color: 'var(--danger)' }}>{renameError}</div>
+                <div style={{ marginLeft: 38, marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{renameError}</div>
               )}
 
               {/* Workflow list + sessions under the selected project */}
@@ -1016,7 +1016,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       style={{
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
-                        fontSize: 14,
+                        fontSize: 'calc(14px * var(--font-scale))',
                         color: deleted ? 'var(--meta)' : (activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
                         background: isDropTarget
                           ? 'var(--accent-light)'
@@ -1046,7 +1046,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameWfId(null)
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ flex: 1, height: 28, fontSize: 14, padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
+                          style={{ flex: 1, height: 28, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                         />
                       ) : (
                         <span
@@ -1057,16 +1057,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                       {wf.running && !deleted && (
                         <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
                       )}
-                      {deleted && <span style={{ fontSize: 11.6, color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
-                      {wf.is_default ? <span style={{ fontSize: 11.6, opacity: 0.6 }}>{t('layout.default')}</span> : null}
-                      <span style={{ fontSize: 11.6, opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
+                      {deleted && <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
+                      {wf.is_default ? <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.6 }}>{t('layout.default')}</span> : null}
+                      <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
                       <Button
                         variant="icon"
                         className="ws-more-btn"
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '26px', padding: 0, flexShrink: 0 }}
+                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -1177,7 +1177,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '3px 8px', borderRadius: 6,
-                            cursor: 'pointer', fontSize: 12.8,
+                            cursor: 'pointer', fontSize: 'calc(12.8px * var(--font-scale))',
                             color: location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
                             background: isDropTarget
                               ? 'var(--accent-light)'
@@ -1208,7 +1208,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               }}
                               onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue) }}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ flex: 1, height: 25, fontSize: 12.8, padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
+                              style={{ flex: 1, height: 25, fontSize: 'calc(12.8px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
                             />
                           ) : (
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
@@ -1219,7 +1219,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             onClick={(e) => openSessionMenu(e, session.id, session.title)}
                             title={t('layout.moreActions')}
                             aria-label={t('layout.moreActions')}
-                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 14, lineHeight: '26px', padding: 0, flexShrink: 0 }}
+                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
                           >⋯</Button>
                         </div>
                         )
@@ -1234,7 +1234,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             </div>
           ))}
           {projects.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--meta)', fontStyle: 'italic' }}>
+            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
               {t('nav.noProjects')}
             </div>
           )}
@@ -1249,7 +1249,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           style={{
             margin: '0 12px 4px', width: 'calc(100% - 24px)', height: 34,
             padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 13, color: 'var(--fg-2)',
+            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)',
           }}
         >
           <Icon name="sparkles" size={16} strokeWidth={2} />
@@ -1262,7 +1262,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           style={{
             margin: '0 12px 12px', width: 'calc(100% - 24px)', height: 36,
             padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 13,
+            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
             color: showSettings ? 'var(--fg)' : 'var(--fg-2)',
             background: showSettings ? 'var(--surface)' : 'transparent',
           }}
@@ -1304,7 +1304,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
             >
               <Icon name="share" size={14} />
               {t('layout.remoteShareTitle')}
@@ -1318,7 +1318,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
           >
             <Icon name="trash" size={14} />
             {t('layout.deleteProjectTitle')}
@@ -1344,7 +1344,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={() => { setRenameId(menuTarget.path); setRenameName(menuTarget.name); setRenameError(''); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="pencil" size={14} />
                   {t('common.edit')}
@@ -1354,7 +1354,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onClick={() => { openAddWorkflow(menuTarget.id); setMoreMenu(null) }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
                 <Icon name="plus" size={14} />
                 {t('layout.addWorkflowTitle')}
@@ -1366,7 +1366,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
               >
                 <Icon name="bot" size={14} />
                 {t('chatSession.addSessionTitle')}
@@ -1376,7 +1376,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={() => { setShareProject(menuTarget); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="share" size={14} />
                   {t('layout.remoteShareTitle')}
@@ -1386,7 +1386,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onClick={() => { setDeleteProjectError(''); setDeleteProjectTarget(menuTarget); setMoreMenu(null) }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+                style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
               >
                 <Icon name="trash" size={14} />
                 {t('layout.deleteProjectTitle')}
@@ -1400,7 +1400,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={() => { restoreWorkflow(menuTarget.workflow.id, menuTarget.project.id); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="rotate-ccw" size={14} />
                   {t('layout.restoreFlow')}
@@ -1410,7 +1410,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: true }); setMoreMenu(null) }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
                     <Icon name="trash" size={14} />
                     {t('nav.deletePermanent')}
@@ -1423,7 +1423,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={() => { setRenameWfId(menuTarget.workflow.id); setRenameWfName(menuTarget.workflow.name); setMoreMenu(null) }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+                  style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="pencil" size={14} />
                   {t('common.edit')}
@@ -1433,7 +1433,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     onClick={() => { setDeleteWf({ id: menuTarget.workflow.id, projectId: menuTarget.project.id, name: menuTarget.workflow.name, soft: false }); setMoreMenu(null) }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
                   >
                     <Icon name="trash" size={14} />
                     {t('common.delete')}
@@ -1464,7 +1464,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}
+            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
             <Icon name="pencil" size={14} />
             {t('common.edit')}
@@ -1477,7 +1477,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', color: 'var(--danger)' }}
+            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
           >
             <Icon name="trash" size={14} />
             {t('common.delete')}
@@ -1497,7 +1497,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       {sessionDeleteError && (
         <div style={{
           position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 2200,
-          padding: '8px 14px', borderRadius: 8, fontSize: 13, color: 'var(--danger)',
+          padding: '8px 14px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
           background: 'var(--bg)', border: '1px solid var(--danger)', boxShadow: 'var(--elev-raised)',
         }}>
           {sessionDeleteError}
@@ -1553,11 +1553,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                 </Button>
               </div>
               {addProjectMode === 'local' ? <>
-                <div style={{ marginBottom: 8, color: 'var(--fg-2)', fontSize: 13 }}>
+                <div style={{ marginBottom: 8, color: 'var(--fg-2)', fontSize: 'calc(13px * var(--font-scale))' }}>
                   {t('browser.selectHint')}
                 </div>
                 <DirectoryBrowser onSelect={handleDirSelect} selectedPath={newPath} />
-                {error && <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
+                {error && <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
               </> : (
                 <Field label={t('layout.remoteShareString')} htmlFor="remote-share-string" error={error}>
                   <textarea
@@ -1567,9 +1567,9 @@ export default function Layout({ onSelectProject, children }: Props) {
                     placeholder="workstep://remote-project/v1/..."
                     rows={6}
                     autoFocus
-                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'calc(12px * var(--font-scale))' }}
                   />
-                  <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 11 }}>{t('layout.remoteShareHint')}</div>
+                  <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>{t('layout.remoteShareHint')}</div>
                 </Field>
               )}
             </div>
@@ -1671,14 +1671,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                 {(() => {
                   const selected = templates.find((t) => t.id === addWfTemplateId)
                   return selected?.description ? (
-                    <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
+                    <p style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
                   ) : null
                 })()}
               </div>
             </div>
             {addWfError && (
               <div style={{
-                flexShrink: 0, padding: '5px 18px', fontSize: 13, color: 'var(--danger)',
+                flexShrink: 0, padding: '5px 18px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
                 background: 'color-mix(in oklab, var(--danger), transparent 94%)',
                 borderBottom: '1px solid var(--border-soft)',
               }}>{addWfError}</div>

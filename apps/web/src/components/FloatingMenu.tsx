@@ -162,7 +162,7 @@ export default function FloatingMenu({
                 {option.label}
               </span>
               {option.description && (
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ display: 'block', fontSize: 'calc(10px * var(--font-scale))', color: 'var(--meta)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {option.description}
                 </span>
               )}

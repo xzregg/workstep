@@ -175,7 +175,7 @@ const DEFAULT_MAX_SESSIONS = 30
 
 function eventIdentity(event: AssistantChatEvent): string {
   const sequence = event.seq ?? event.event_sequence ?? event.sequence
-  if (sequence !== undefined) return `sequence:${sequence}`
+  if (sequence !== undefined) return `sequence:${sequence}:${event.type}`
   return JSON.stringify([
     event.type,
     event.messageId ?? event.message_id,

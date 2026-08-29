@@ -82,7 +82,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
         padding: '8px 12px',
         background: 'var(--surface)',
         borderBottom: '1px solid var(--border-soft)',
-        fontSize: 13, color: 'var(--fg-2)',
+        fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)',
       }}>
         <Button
           variant="icon"
@@ -99,7 +99,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
           variant="ghost"
           onClick={() => setCreating(true)}
           disabled={!current}
-          style={{ fontSize: 11, padding: '4px 10px' }}
+          style={{ fontSize: 'calc(11px * var(--font-scale))', padding: '4px 10px' }}
         >
           ＋ {t('browser.newFolder')}
         </Button>
@@ -122,27 +122,27 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
                 if (e.key === 'Escape') resetCreate()
               }}
               placeholder={t('browser.folderName')}
-              style={{ flex: 1, height: 28, fontSize: 13 }}
+              style={{ flex: 1, height: 28, fontSize: 'calc(13px * var(--font-scale))' }}
             />
             <Button
               variant="primary"
               loading={creatingBusy}
               disabled={!newName.trim()}
               onClick={() => void handleCreate()}
-              style={{ fontSize: 11, padding: '4px 10px' }}
+              style={{ fontSize: 'calc(11px * var(--font-scale))', padding: '4px 10px' }}
             >
               {t('browser.createFolder')}
             </Button>
             <Button
               variant="ghost"
               onClick={resetCreate}
-              style={{ fontSize: 11, padding: '4px 10px' }}
+              style={{ fontSize: 'calc(11px * var(--font-scale))', padding: '4px 10px' }}
             >
               {t('common.cancel')}
             </Button>
           </div>
           {createError && (
-            <div style={{ marginTop: 6, color: 'var(--danger)', fontSize: 12 }}>
+            <div style={{ marginTop: 6, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
               {createError}
             </div>
           )}
@@ -155,12 +155,12 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
         padding: 4,
       }} role="listbox" aria-label={t('browser.directoryList')}>
         {loading && (
-          <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
+          <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>
             {t('common.loading')}
           </div>
         )}
         {!loading && current?.entries.length === 0 && (
-          <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
+          <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>
             {t('browser.emptyDir')}
           </div>
         )}
@@ -184,7 +184,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
               padding: '6px 10px',
               borderRadius: 6,
               cursor: entry.type === 'directory' ? 'pointer' : 'default',
-              fontSize: 13,
+              fontSize: 'calc(13px * var(--font-scale))',
               color: selectedPath === entry.path ? 'var(--accent-fg)' : entry.type === 'directory' ? 'var(--fg)' : 'var(--muted)',
               background: selectedPath === entry.path ? 'var(--accent)' : 'transparent',
               transition: 'background var(--motion-fast)',
@@ -192,7 +192,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
             onMouseEnter={(e) => { if (entry.type === 'directory' && selectedPath !== entry.path) e.currentTarget.style.background = 'var(--surface)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = selectedPath === entry.path ? 'var(--accent)' : 'transparent' }}
           >
-            <span style={{ fontSize: 13 }}>
+            <span style={{ fontSize: 'calc(13px * var(--font-scale))' }}>
               {entry.type === 'directory' ? '📁' : '📄'}
             </span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

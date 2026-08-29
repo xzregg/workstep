@@ -271,6 +271,64 @@ async def test_recovery_marks_stale_messages_failed(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_recovery_projects_interrupted_jsonl_message_back_to_sqlite(tmp_path):
+    from agent_assistants.event_journal import TurnEventJournal
+    from models import Message
+
+    original, pm, project, _ = _project_with_run(tmp_path)
+    journal = TurnEventJournal()
+    ref = journal.start(project.workstep_dir, "task-task-rec", "msg-jsonl")
+    journal.record(ref, {
+        "type": "agent_message_chunk",
+        "data": {"content": {"text": "中断前回复"}},
+    })
+    journal.record(ref, {
+        "type": "interaction_request",
+        "data": {
+            "interaction_id": "ask-jsonl",
+            "method": "session/request_permission",
+        },
+    })
+    journal.sync(ref, durable=True)
+    with pm.activate_project(project.path):
+        task = Task.get_by_id("task-rec")
+        now = utc_now()
+        Message.create(
+            id="msg-jsonl",
+            task=task,
+            channel="execution",
+            step_key="b",
+            role="assistant",
+            run_id="msg-jsonl",
+            run_status="running",
+            event_log_path=ref.relative_path,
+            position=0,
+            started_at=now,
+            created_at=now,
+        )
+
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        await runtime.recover_running_workflows()
+        with pm.activate_project(project.path):
+            message = Message.get_by_id("msg-jsonl")
+            assert message.run_status == "failed"
+            assert message.content == "中断前回复"
+            assert message.event_count == 3
+            sealed = json.loads(message.events_json)
+            assert [event["type"] for event in sealed] == [
+                "interaction_request",
+                "interaction_response",
+            ]
+    finally:
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
 async def test_recovery_skips_paused_runs(tmp_path):
     original, pm, project, run_id = _project_with_run(
         tmp_path, run_status="paused", task_status="paused"

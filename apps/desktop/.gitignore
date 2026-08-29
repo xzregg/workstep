@@ -1,4 +1,4 @@
-# PyInstaller output
-build/
+node_modules/
 dist/
+resources-placeholder/backend/
 *.log

@@ -188,14 +188,19 @@ async def get_task_history(
 ):
     """Get chat history (messages) for a task with pagination."""
     from main import task_service
+    from main import project_manager
     if not task_service:
         raise HTTPException(status_code=503, detail="Service not initialized")
+    project = project_manager.get_project_by_id(pid) if project_manager else None
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
     history = await _run_db(
         pid,
         lambda: task_service.get_task_history(
             task_id,
             limit=limit,
             offset=offset,
+            workstep_dir=str(project.workstep_dir),
         ),
     )
     return {"messages": history, "limit": limit, "offset": offset}

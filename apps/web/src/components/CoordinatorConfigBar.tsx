@@ -65,7 +65,7 @@ export interface CoordinatorConfigBarProps {
 }
 
 const selectStyle: CSSProperties = {
-  fontSize: 11, border: '1px solid var(--border)',
+  fontSize: 'calc(11px * var(--font-scale))', border: '1px solid var(--border)',
   borderRadius: 6, background: 'var(--bg)', color: 'var(--fg)', padding: '2px 5px',
 }
 
@@ -143,10 +143,10 @@ function MenuField({
           }
         }}
       >
-        <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--meta)' }}>{label}</span>
+        <span style={{ flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{label}</span>
         <span style={{
           flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap', textAlign: 'right', fontSize: 12, fontWeight: 500,
+          whiteSpace: 'nowrap', textAlign: 'right', fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500,
         }}>
           {current?.label ?? placeholder}
         </span>
@@ -234,7 +234,7 @@ export default function CoordinatorConfigBar({
     ? { ...selectStyle, width: '100%', maxWidth: 'none' }
     : { ...selectStyle, maxWidth: 170 }
   const statusStyle: CSSProperties = {
-    fontSize: 11,
+    fontSize: 'calc(11px * var(--font-scale))',
     ...(isMenu ? { marginTop: 2 } : {}),
   }
   return (
@@ -246,7 +246,7 @@ export default function CoordinatorConfigBar({
       }}
     >
       {!isMenu && (
-        <span style={{ fontSize: 11, color: 'var(--meta)' }}>{t('coord.engineModel')}</span>
+        <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{t('coord.engineModel')}</span>
       )}
       {isMenu ? (
         <>

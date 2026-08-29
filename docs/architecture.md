@@ -1,6 +1,6 @@
 # Architecture
 
-WorkStep is a local-first system with three distributable surfaces: `apps/daemon` is the Python/FastAPI orchestration and persistence service; `apps/web` is the React/TypeScript application; `apps/desktop` is a pywebview/PyInstaller shell bundling both. The marketing site is in `apps/landing`, while early static prototypes remain in `ui`.
+WorkStep is a local-first system with three distributable surfaces: `apps/daemon` is the Python/FastAPI orchestration and persistence service; `apps/web` is the React/TypeScript application; `apps/desktop` is an Electron shell that starts a Nuitka standalone daemon sidecar. The sidecar binds only to `127.0.0.1`, uses port `0` by default, and reports the operating-system-selected port through the `PORT:<port>` stdout protocol. The marketing site is in `apps/landing`, while early static prototypes remain in `ui`.
 
 ## Data ownership
 

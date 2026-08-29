@@ -8,12 +8,15 @@ import {
   toolName,
   toolOutput,
 } from './agui.ts'
+import { toMilliseconds, type DateTimeValue } from './datetime'
 
 export type MessageTimelineEvent = {
   type?: string
   data?: Record<string, unknown>
   delta?: string
   isError?: boolean
+  timestamp?: unknown
+  created_at?: string
 }
 
 export type ToolActivity = {
@@ -34,7 +37,7 @@ export type SubagentActivity = {
 
 export type MessageTimelineItem =
   | { type: 'text'; id: string; content: string }
-  | { type: 'thinking'; id: string; content: string }
+  | { type: 'thinking'; id: string; content: string; startedAt?: number; endedAt?: number }
   | { type: 'tool'; id: string; activity: ToolActivity }
   | { type: 'tool-group'; id: string; activities: ToolActivity[] }
   | { type: 'subagent'; id: string; activity: SubagentActivity }
@@ -72,14 +75,30 @@ export function buildMessageTimeline(
 
   events.forEach((event, index) => {
     const data = event.data || {}
+    const timestamp = toMilliseconds(
+      (event.timestamp ?? event.created_at) as DateTimeValue,
+    )
+    const thinkingEvent = isReasoningEvent(event) || event.type === 'thinking_delta'
+    const previous = timeline[timeline.length - 1]
+    if (!thinkingEvent && timestamp !== null && previous?.type === 'thinking') {
+      previous.endedAt = timestamp
+    }
     if (isReasoningEvent(event)) {
       const delta = eventText(event.delta ?? data.delta ?? data.text)
       if (!delta) return
-      const previous = timeline[timeline.length - 1]
       if (previous?.type === 'thinking') {
         previous.content += delta
+        if (timestamp !== null) {
+          previous.startedAt ??= timestamp
+          previous.endedAt = timestamp
+        }
       } else {
-        timeline.push({ type: 'thinking', id: `thinking-${index}`, content: delta })
+        timeline.push({
+          type: 'thinking',
+          id: `thinking-${index}`,
+          content: delta,
+          ...(timestamp !== null ? { startedAt: timestamp, endedAt: timestamp } : {}),
+        })
       }
       return
     }
@@ -87,11 +106,19 @@ export function buildMessageTimeline(
     if (event.type === 'thinking_delta') {
       const delta = eventText(data.delta ?? data.text)
       if (!delta) return
-      const previous = timeline[timeline.length - 1]
       if (previous?.type === 'thinking') {
         previous.content += delta
+        if (timestamp !== null) {
+          previous.startedAt ??= timestamp
+          previous.endedAt = timestamp
+        }
       } else {
-        timeline.push({ type: 'thinking', id: `thinking-${index}`, content: delta })
+        timeline.push({
+          type: 'thinking',
+          id: `thinking-${index}`,
+          content: delta,
+          ...(timestamp !== null ? { startedAt: timestamp, endedAt: timestamp } : {}),
+        })
       }
       return
     }

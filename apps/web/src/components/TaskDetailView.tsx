@@ -179,6 +179,7 @@ export interface TaskDetailViewProps {
 
   // ── Messages ──
   historyMessages: any[]
+  onLoadMessageEvents?: (messageId: string) => void
   liveMessages: Record<string, LiveMessage>
   events: any[]
   content: string
@@ -326,6 +327,7 @@ export default function TaskDetailView({
   selectedStage,
   onStageClick,
   historyMessages,
+  onLoadMessageEvents,
   liveMessages,
   events,
   content,
@@ -472,7 +474,7 @@ export default function TaskDetailView({
   const stageTabStyle = (stageColor: string, selected: boolean) => ({
     padding: '4px 10px',
     borderRadius: 6,
-    fontSize: 11,
+    fontSize: 'calc(11px * var(--font-scale))',
     fontWeight: 600,
     border: selected ? `1px solid ${stageColor}` : '1px solid transparent',
     cursor: 'pointer',
@@ -746,7 +748,7 @@ export default function TaskDetailView({
               alignItems: 'center',
             }}
           >
-            <span style={{ fontSize: 20, fontWeight: 600, lineHeight: 1.4 }}>
+            <span style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 600, lineHeight: 1.4 }}>
               {task.title}
             </span>
             {headerActions}
@@ -756,7 +758,7 @@ export default function TaskDetailView({
                 display: 'inline-flex',
                 alignItems: 'center',
                 minHeight: 22,
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 500,
                 padding: '0 8px',
                 borderRadius: 4,
@@ -772,7 +774,7 @@ export default function TaskDetailView({
                 display: 'inline-flex',
                 alignItems: 'center',
                 minHeight: 22,
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 500,
                 padding: '0 8px',
                 borderRadius: 4,
@@ -804,7 +806,7 @@ export default function TaskDetailView({
                 display: 'inline-flex',
                 alignItems: 'center',
                 minHeight: 22,
-                fontSize: 13,
+                fontSize: 'calc(13px * var(--font-scale))',
                 lineHeight: 1,
                 color: 'var(--meta)',
               }}
@@ -834,7 +836,7 @@ export default function TaskDetailView({
           alignItems: 'center',
           gap: 8,
           padding: '8px 16px',
-          fontSize: 13,
+          fontSize: 'calc(13px * var(--font-scale))',
           lineHeight: 1.4,
           color: 'var(--accent)',
           background: 'color-mix(in oklab, var(--accent), transparent 92%)',
@@ -885,7 +887,7 @@ export default function TaskDetailView({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 'calc(11px * var(--font-scale))',
                   fontWeight: 600,
                   color: 'var(--muted)',
                   fontFamily: 'var(--font-mono)',
@@ -902,7 +904,7 @@ export default function TaskDetailView({
                     alignItems: 'center',
                     gap: 4,
                     color: 'var(--meta)',
-                    fontSize: 11,
+                    fontSize: 'calc(11px * var(--font-scale))',
                     whiteSpace: 'nowrap',
                   }}
                 >
@@ -916,7 +918,7 @@ export default function TaskDetailView({
                 variant="ghost"
                 aria-label={t('taskDetail.editDescriptionAria')}
                 onClick={onOpenDescriptionEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 11, gap: 4 }}
+                style={{ height: 28, padding: '0 9px', fontSize: 'calc(11px * var(--font-scale))', gap: 4 }}
               >
                 <span aria-hidden="true">✎</span>
                 {t('common.edit')}
@@ -942,7 +944,7 @@ export default function TaskDetailView({
                   style={{
                     marginTop: 6,
                     color: 'var(--danger)',
-                    fontSize: 11,
+                    fontSize: 'calc(11px * var(--font-scale))',
                   }}
                 >
                   {descriptionError}
@@ -986,7 +988,7 @@ export default function TaskDetailView({
                 padding: '10px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--border-soft)',
-                fontSize: 13,
+                fontSize: 'calc(13px * var(--font-scale))',
                 lineHeight: 1.6,
                 overflowWrap: 'anywhere',
                 maxHeight: '33vh',
@@ -1024,7 +1026,7 @@ export default function TaskDetailView({
           >
             <div
               style={{
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 700,
                 color: 'var(--muted)',
                 fontFamily: 'var(--font-mono)',
@@ -1037,7 +1039,7 @@ export default function TaskDetailView({
             {(task?.run_round ?? 1) > 1 && (
               <span
                 style={{
-                  fontSize: 11,
+                  fontSize: 'calc(11px * var(--font-scale))',
                   fontWeight: 600,
                   padding: '3px 8px',
                   borderRadius: 999,
@@ -1196,7 +1198,7 @@ export default function TaskDetailView({
                       alignItems: 'center',
                       justifyContent: 'center',
                       color: 'var(--accent-fg)',
-                      fontSize: 13,
+                      fontSize: 'calc(13px * var(--font-scale))',
                       fontWeight: 700,
                       boxShadow: isSelected
                         ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
@@ -1224,7 +1226,7 @@ export default function TaskDetailView({
                         top: 5,
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        fontSize: 11,
+                        fontSize: 'calc(11px * var(--font-scale))',
                         padding: '2px 6px',
                         borderRadius: 999,
                         color: stateColor,
@@ -1248,7 +1250,7 @@ export default function TaskDetailView({
                   >
                     <span
                       style={{
-                        fontSize: 13,
+                        fontSize: 'calc(13px * var(--font-scale))',
                         textAlign: 'center',
                         whiteSpace: 'nowrap',
                         color: stageLabelColor,
@@ -1280,7 +1282,7 @@ export default function TaskDetailView({
                     {currentRound > 1 && (
                       <span
                         style={{
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           padding: '2px 6px',
                           borderRadius: 999,
                           background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
@@ -1306,7 +1308,7 @@ export default function TaskDetailView({
                     {finishedDuration && (
                       <div
                         style={{
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           color: 'var(--meta)',
                           textAlign: 'center',
                           lineHeight: 1.5,
@@ -1321,7 +1323,7 @@ export default function TaskDetailView({
                     {isCurrentActive && (
                       <div
                         style={{
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           color: 'var(--meta)',
                           textAlign: 'center',
                           lineHeight: 1.5,
@@ -1383,7 +1385,7 @@ export default function TaskDetailView({
             >
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 'calc(11px * var(--font-scale))',
                   fontWeight: 600,
                   color: 'var(--muted)',
                   fontFamily: 'var(--font-mono)',
@@ -1396,7 +1398,7 @@ export default function TaskDetailView({
               <Button
                 variant="ghost"
                 onClick={onOpenPromptEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 13, gap: 4 }}
+                style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
               >
                 <span aria-hidden="true">✎</span>
                 {t('taskDetail.quickEdit')}
@@ -1407,7 +1409,7 @@ export default function TaskDetailView({
                 padding: '10px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--border-soft)',
-                fontSize: 13,
+                fontSize: 'calc(13px * var(--font-scale))',
                 lineHeight: 1.6,
                 overflowWrap: 'anywhere',
                 maxHeight: '33vh',
@@ -1420,7 +1422,7 @@ export default function TaskDetailView({
                   projectId={projectId}
                 />
               ) : (
-                <div style={{ fontSize: 13, color: 'var(--meta)' }}>
+                <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
                   {t('taskDetail.noStagePrompt')}
                 </div>
               )}
@@ -1431,7 +1433,7 @@ export default function TaskDetailView({
         {/* I/O section */}
         <div>
           <div
-            style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}
+            style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 8 }}
           >
             {t('taskDetail.stageIo')}
           </div>
@@ -1441,7 +1443,7 @@ export default function TaskDetailView({
             >
               <div
                 style={{
-                  fontSize: 13,
+                  fontSize: 'calc(13px * var(--font-scale))',
                   fontWeight: 600,
                   color: 'var(--muted)',
                   display: 'flex',
@@ -1523,7 +1525,7 @@ export default function TaskDetailView({
                           />
                           <span
                             style={{
-                              fontSize: 13,
+                              fontSize: 'calc(13px * var(--font-scale))',
                               fontWeight: 500,
                               flex: 1,
                             }}
@@ -1532,7 +1534,7 @@ export default function TaskDetailView({
                           </span>
                           <span
                             style={{
-                              fontSize: 11,
+                              fontSize: 'calc(11px * var(--font-scale))',
                               color: 'var(--accent)',
                             }}
                           >
@@ -1540,7 +1542,7 @@ export default function TaskDetailView({
                           </span>
                           <span
                             style={{
-                              fontSize: 11,
+                              fontSize: 'calc(11px * var(--font-scale))',
                               color: 'var(--meta)',
                               background: 'var(--surface)',
                               border: '1px solid var(--border-soft)',
@@ -1603,7 +1605,7 @@ export default function TaskDetailView({
                                 <span
                                   style={{
                                     color: 'var(--meta)',
-                                    fontSize: 11,
+                                    fontSize: 'calc(11px * var(--font-scale))',
                                   }}
                                 >
                                   ↳
@@ -1628,7 +1630,7 @@ export default function TaskDetailView({
                                 )}
                                 <span
                                   style={{
-                                    fontSize: 13,
+                                    fontSize: 'calc(13px * var(--font-scale))',
                                     flex: 1,
                                   }}
                                 >
@@ -1636,7 +1638,7 @@ export default function TaskDetailView({
                                 </span>
                                 <span
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: 'calc(11px * var(--font-scale))',
                                     color: 'var(--accent)',
                                   }}
                                 >
@@ -1644,7 +1646,7 @@ export default function TaskDetailView({
                                 </span>
                                 <span
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: 'calc(11px * var(--font-scale))',
                                     color: 'var(--meta)',
                                     background: 'var(--surface)',
                                     border: '1px solid var(--border-soft)',
@@ -1656,7 +1658,7 @@ export default function TaskDetailView({
                                 </span>
                                 <span
                                   style={{
-                                    fontSize: 11,
+                                    fontSize: 'calc(11px * var(--font-scale))',
                                     fontWeight: 500,
                                     padding: '1px 5px',
                                     borderRadius: 3,
@@ -1678,7 +1680,7 @@ export default function TaskDetailView({
                                 {nextInput && (
                                   <span
                                     style={{
-                                      fontSize: 11,
+                                      fontSize: 'calc(11px * var(--font-scale))',
                                       color: 'var(--muted)',
                                       display: 'flex',
                                       alignItems: 'center',
@@ -1688,7 +1690,7 @@ export default function TaskDetailView({
                                     <span
                                       style={{
                                         color: 'var(--meta)',
-                                        fontSize: 11,
+                                        fontSize: 'calc(11px * var(--font-scale))',
                                       }}
                                     >
                                       →
@@ -1715,7 +1717,7 @@ export default function TaskDetailView({
           <div>
             <div
               style={{
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 600,
                 color: 'var(--muted)',
                 fontFamily: 'var(--font-mono)',
@@ -1744,7 +1746,7 @@ export default function TaskDetailView({
                   gap: 8,
                 }}
               >
-                <strong style={{ fontSize: 13 }}>
+                <strong style={{ fontSize: 'calc(13px * var(--font-scale))' }}>
                   {selectedReview.mode === 'auto'
                     ? t('taskDetail.autoReview')
                     : t('taskDetail.manualReview')}
@@ -1770,7 +1772,7 @@ export default function TaskDetailView({
               </div>
               {selectedReview.report && (
                 <>
-                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
                     {selectedReview.report.score !== null && (
                       <strong>
                         {t('taskDetail.scorePoints', {
@@ -1785,7 +1787,7 @@ export default function TaskDetailView({
                       <div
                         key={`${issue.category}-${index}`}
                         style={{
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           lineHeight: 1.5,
                           padding: '7px 9px',
                           borderRadius: 6,
@@ -1879,7 +1881,7 @@ export default function TaskDetailView({
                 border: 'none',
                 cursor: 'pointer',
                 color: 'var(--muted)',
-                fontSize: 11,
+                fontSize: 'calc(11px * var(--font-scale))',
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 letterSpacing: '0.08em',
@@ -1894,7 +1896,7 @@ export default function TaskDetailView({
                     : 'none',
                   transition: 'transform 150ms',
                   display: 'inline-block',
-                  fontSize: 11,
+                  fontSize: 'calc(11px * var(--font-scale))',
                 }}
               >
                 &#9654;
@@ -1941,7 +1943,7 @@ export default function TaskDetailView({
                         }
                         style={{
                           padding: '3px 10px',
-                          fontSize: 12,
+                          fontSize: 'calc(12px * var(--font-scale))',
                           borderRadius: 999,
                           border:
                             editReviewMode === value
@@ -1968,7 +1970,7 @@ export default function TaskDetailView({
                         display: 'flex',
                         alignItems: 'center',
                         gap: 8,
-                        fontSize: 13,
+                        fontSize: 'calc(13px * var(--font-scale))',
                       }}
                     >
                       <span
@@ -1998,7 +2000,7 @@ export default function TaskDetailView({
                         style={{
                           width: 40,
                           height: 22,
-                          fontSize: 13,
+                          fontSize: 'calc(13px * var(--font-scale))',
                           padding: '0 6px',
                           border: '1px solid var(--border)',
                           borderRadius: 4,
@@ -2008,7 +2010,7 @@ export default function TaskDetailView({
                       />
                       <span
                         style={{
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           color: 'var(--meta)',
                         }}
                       >
@@ -2019,7 +2021,7 @@ export default function TaskDetailView({
                   {editReviewMode === 'skip' && (
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 'calc(11px * var(--font-scale))',
                         color: 'var(--meta)',
                       }}
                     >
@@ -2029,7 +2031,7 @@ export default function TaskDetailView({
                   {editReviewMode === 'manual' && (
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 'calc(11px * var(--font-scale))',
                         color: 'var(--meta)',
                       }}
                     >
@@ -2060,7 +2062,7 @@ export default function TaskDetailView({
                     variant="ghost"
                     onClick={onSaveReviewConfig}
                     style={{
-                      fontSize: 11,
+                      fontSize: 'calc(11px * var(--font-scale))',
                       padding: '3px 10px',
                     }}
                   >
@@ -2101,12 +2103,12 @@ export default function TaskDetailView({
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>
+          <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)' }}>
             {t('taskDetail.conversation')}
           </span>
           <span
             style={{
-              fontSize: 11,
+              fontSize: 'calc(11px * var(--font-scale))',
               fontWeight: 600,
               color: currentStageColor,
               background: `color-mix(in oklab, ${currentStageColor}, transparent 88%)`,
@@ -2186,7 +2188,7 @@ export default function TaskDetailView({
                     textAlign: 'center',
                     color: 'var(--meta)',
                     padding: 40,
-                    fontSize: 13,
+                    fontSize: 'calc(13px * var(--font-scale))',
                   }}
                 >
                   {t('taskDetail.conversationEmpty')}
@@ -2468,7 +2470,7 @@ export default function TaskDetailView({
                                       padding:
                                         '1px 6px',
                                       borderRadius: 999,
-                                      fontSize: 11,
+                                      fontSize: 'calc(11px * var(--font-scale))',
                                       border:
                                         isLiveInsert
                                           ? 'none'
@@ -2514,6 +2516,17 @@ export default function TaskDetailView({
                                   }
                                   events={
                                     processEvents
+                                  }
+                                  eventSummary={
+                                    msg.event_detail
+                                  }
+                                  eventDetail={
+                                    msg.event_detail
+                                  }
+                                  onLoadEventDetails={
+                                    msg.event_detail?.available && onLoadMessageEvents
+                                      ? () => onLoadMessageEvents(msg.id)
+                                      : undefined
                                   }
                                   pendingInserts={
                                     (stageInserts ?? [])
@@ -2711,7 +2724,7 @@ export default function TaskDetailView({
                                     >
                                       <div
                                         style={{
-                                          fontSize: 11,
+                                          fontSize: 'calc(11px * var(--font-scale))',
                                           fontWeight: 600,
                                           color: 'var(--muted)',
                                           fontFamily:
@@ -2787,7 +2800,7 @@ export default function TaskDetailView({
                                                 '1px solid var(--border-soft)',
                                               cursor:
                                                 'pointer',
-                                              fontSize: 13,
+                                              fontSize: 'calc(13px * var(--font-scale))',
                                             }}
                                           >
                                             {artifact.is_dir
@@ -2828,7 +2841,7 @@ export default function TaskDetailView({
                                             </span>
                                             <span
                                               style={{
-                                                fontSize: 11,
+                                                fontSize: 'calc(11px * var(--font-scale))',
                                                 color: 'var(--accent)',
                                               }}
                                             >
@@ -3264,7 +3277,7 @@ export default function TaskDetailView({
                       },
                     )}
                     style={{
-                      fontSize: 11,
+                      fontSize: 'calc(11px * var(--font-scale))',
                       fontWeight: 600,
                       color: 'var(--meta)',
                       display: 'flex',
@@ -3275,7 +3288,7 @@ export default function TaskDetailView({
                     {t('taskDetail.insertMessages')}
                     <span
                       style={{
-                        fontSize: 11,
+                        fontSize: 'calc(11px * var(--font-scale))',
                         fontWeight: 400,
                         color: 'var(--muted)',
                       }}
@@ -3335,7 +3348,7 @@ export default function TaskDetailView({
                             style={{
                               flex: 1,
                               minWidth: 0,
-                              fontSize: 11,
+                              fontSize: 'calc(11px * var(--font-scale))',
                               lineHeight: 1.4,
                               color: 'var(--fg)',
                               background:
@@ -3366,7 +3379,7 @@ export default function TaskDetailView({
                               style={{
                                 flex: 1,
                                 minWidth: 0,
-                                fontSize: 13,
+                                fontSize: 'calc(13px * var(--font-scale))',
                                 lineHeight: 1.4,
                                 color: 'var(--fg)',
                                 whiteSpace:
@@ -3406,7 +3419,7 @@ export default function TaskDetailView({
                                   padding:
                                     '2px 8px',
                                   borderRadius: 6,
-                                  fontSize: 11,
+                                  fontSize: 'calc(11px * var(--font-scale))',
                                   border: 'none',
                                   background:
                                     'var(--accent)',
@@ -3432,7 +3445,7 @@ export default function TaskDetailView({
                                   padding:
                                     '2px 8px',
                                   borderRadius: 6,
-                                  fontSize: 11,
+                                  fontSize: 'calc(11px * var(--font-scale))',
                                   border:
                                     '1px solid var(--border)',
                                   background:
@@ -3463,7 +3476,7 @@ export default function TaskDetailView({
                                 style={{
                                   padding:
                                     '2px 6px',
-                                  fontSize: 11,
+                                  fontSize: 'calc(11px * var(--font-scale))',
                                   border: 'none',
                                   background:
                                     'transparent',
@@ -3568,7 +3581,7 @@ export default function TaskDetailView({
                         )}
                         style={{
                           padding: '2px 8px',
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           borderRadius: 6,
                           border: 'none',
                           background:
@@ -3595,7 +3608,7 @@ export default function TaskDetailView({
                         )}
                         style={{
                           padding: '2px 8px',
-                          fontSize: 11,
+                          fontSize: 'calc(11px * var(--font-scale))',
                           borderRadius: 6,
                           border:
                             '1px solid var(--border)',
@@ -3654,7 +3667,7 @@ export default function TaskDetailView({
                   style={{
                     padding: '4px 10px',
                     borderRadius: 6,
-                    fontSize: 11,
+                    fontSize: 'calc(11px * var(--font-scale))',
                     fontWeight: 600,
                     border: 'none',
                     cursor: 'pointer',
@@ -3733,7 +3746,7 @@ export default function TaskDetailView({
               {resumableTarget && (
                 <span
                   style={{
-                    fontSize: 11,
+                    fontSize: 'calc(11px * var(--font-scale))',
                     color: 'var(--warn)',
                   }}
                 >
@@ -3752,7 +3765,7 @@ export default function TaskDetailView({
                 runningStages.length === 0 && (
                   <span
                     style={{
-                      fontSize: 11,
+                      fontSize: 'calc(11px * var(--font-scale))',
                       color: 'var(--warn)',
                     }}
                   >
@@ -3767,7 +3780,7 @@ export default function TaskDetailView({
               <div
                 role="alert"
                 style={{
-                  fontSize: 13,
+                  fontSize: 'calc(13px * var(--font-scale))',
                   color: 'var(--danger)',
                   padding: '6px 10px',
                   borderRadius: 6,
@@ -4042,7 +4055,7 @@ export default function TaskDetailView({
               left: '50%',
               transform: 'translate(-50%, -50%)',
               color: 'var(--meta)',
-              fontSize: 11,
+              fontSize: 'calc(11px * var(--font-scale))',
               opacity: 0.5,
             }}
           >
@@ -4149,10 +4162,10 @@ function CoordinatorProposalCard({
         gap: 8,
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 700 }}>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 700 }}>
         {t('taskDetail.proposalTitle', { type: current.type })}
       </div>
-      <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)' }}>
         {current.impact?.summary ||
           t('taskDetail.proposalTargetStage', {
             step: current.target_step_key || t('common.none'),
@@ -4160,7 +4173,7 @@ function CoordinatorProposalCard({
       </div>
       <div
         style={{
-          fontSize: 11,
+          fontSize: 'calc(11px * var(--font-scale))',
           color:
             current.status === 'failed' ? 'var(--danger)' : 'var(--meta)',
         }}
@@ -4169,7 +4182,7 @@ function CoordinatorProposalCard({
         {current.error ? ` · ${current.error}` : ''}
       </div>
       {error && (
-        <div style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</div>
+        <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>
       )}
       {(current.status === 'pending' || retryable) && (
         <div style={{ display: 'flex', gap: 8 }}>

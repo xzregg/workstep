@@ -4,6 +4,7 @@ import Button from '../components/Button'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Input from '../components/Input'
 import Select from '../components/Select'
+import SegmentedControl from '../components/SegmentedControl'
 import {
   assistantApi,
   engineApi,
@@ -35,6 +36,11 @@ import {
 import { useI18n, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import {
+  loadFontSizePreference,
+  saveFontSizePreference,
+  type FontSizePreference,
+} from '../utils/fontSizePreference'
 
 
 function EngineIcon({ engine }: { engine: EngineInfo }) {
@@ -50,7 +56,7 @@ function EngineIcon({ engine }: { engine: EngineInfo }) {
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       background: `color-mix(in oklab, ${color}, transparent 86%)`,
       border: `1px solid color-mix(in oklab, ${color}, transparent 72%)`,
-      color, fontSize: 13, fontWeight: 700,
+      color, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 700,
     }}>
       {initials}
     </span>
@@ -113,8 +119,8 @@ function ExecutionDefaultSettings({
 
   return (
     <div id="settings-default-execution-engine" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginBottom: 14 }}>
-      <div style={{ fontSize: 13, fontWeight: 650, marginBottom: 4 }}>{t('settings.defaultExecutionEngine')}</div>
-      <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
+      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 650, marginBottom: 4 }}>{t('settings.defaultExecutionEngine')}</div>
+      <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginBottom: 10 }}>
         {t('settings.defaultEngineHint')}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -132,7 +138,7 @@ function ExecutionDefaultSettings({
         </Button>
       </div>
       {(error || notice) && (
-        <div style={{ marginTop: 6, fontSize: 11, color: error ? 'var(--danger)' : 'var(--success)' }}>
+        <div style={{ marginTop: 6, fontSize: 'calc(11px * var(--font-scale))', color: error ? 'var(--danger)' : 'var(--success)' }}>
           {error || notice}
         </div>
       )}
@@ -308,8 +314,8 @@ function AgentAssistantSettings() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.assistantTitle')}</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+        <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.assistantTitle')}</h1>
+        <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
           {t('settings.assistantIntro')}
         </p>
       </div>
@@ -332,7 +338,7 @@ function AgentAssistantSettings() {
                   borderRadius: 999, cursor: loading || saving ? 'default' : 'pointer',
                   background: active ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
                   color: active ? 'var(--accent)' : 'var(--fg-2)',
-                  fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-body)',
+                  fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-body)',
                 }}
               >
                 {assistantLabel(item)}
@@ -341,7 +347,7 @@ function AgentAssistantSettings() {
           })}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+          <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
             {t('settings.assistantEngine')}
           </label>
           <EngineSelect
@@ -358,7 +364,7 @@ function AgentAssistantSettings() {
         </div>
         {engineSupportsProvider && fields.includes('provider_id') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
               {t('settings.assistantProvider')}
             </label>
             <Select
@@ -393,7 +399,7 @@ function AgentAssistantSettings() {
         )}
         {fields.includes('model') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
               {t('settings.reasoningModel')}
             </label>
             <Select
@@ -418,7 +424,7 @@ function AgentAssistantSettings() {
             {engine && (
               <Button
                 variant="ghost"
-                style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
+                style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
                 disabled={modelsLoading || saving}
                 onClick={() => void loadAssistantModels(engine, true)}
               >
@@ -429,7 +435,7 @@ function AgentAssistantSettings() {
         )}
         {fields.includes('fast_model') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
               {t('settings.fastModel')}
             </label>
             <Select
@@ -455,7 +461,7 @@ function AgentAssistantSettings() {
         )}
         {fields.includes('thinking_effort') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
               {t('coord.thinkingEffort')}
             </label>
             <Select
@@ -476,7 +482,7 @@ function AgentAssistantSettings() {
         )}
         {fields.includes('vision_model') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+            <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
               {t('settings.visionModel')}
             </label>
             <Select
@@ -500,16 +506,16 @@ function AgentAssistantSettings() {
             </Select>
           </div>
         )}
-        <div style={{ marginBottom: 12, fontSize: 11, color: 'var(--meta)' }}>
+        <div style={{ marginBottom: 12, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
           {t('settings.modelRolesHint')}
         </div>
         {modelError && (
-          <div style={{ marginTop: 7, fontSize: 11, color: 'var(--warn)' }}>
+          <div style={{ marginTop: 7, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--warn)' }}>
             {t('settings.modelErrorHint', { error: modelError })}
           </div>
         )}
         <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
+          <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
             {error || notice || t('settings.inProgressHint')}
           </div>
           <Button variant="primary" disabled={loading || saving} loading={saving} onClick={() => void save()}>
@@ -610,12 +616,12 @@ function PromptEnhanceSettings() {
 
   return (
     <div style={{ padding: 20, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', marginTop: 14 }}>
-      <div style={{ fontSize: 14, fontWeight: 650, marginBottom: 4 }}>{t('settings.enhanceTitle')}</div>
-      <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 14 }}>
+      <div style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 4 }}>{t('settings.enhanceTitle')}</div>
+      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 14 }}>
         {t('settings.enhanceIntro')}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+        <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
           {t('settings.enhanceProvider')}
         </label>
         <Select
@@ -635,7 +641,7 @@ function PromptEnhanceSettings() {
         </Select>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <label style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, width: 84 }}>
+        <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
           {t('settings.enhanceModel')}
         </label>
         <Select
@@ -658,7 +664,7 @@ function PromptEnhanceSettings() {
         {providerId && (
           <Button
             variant="ghost"
-            style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 11 }}
+            style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
             disabled={modelsLoading || saving}
             onClick={() => {
               setModelsLoading(true)
@@ -677,12 +683,12 @@ function PromptEnhanceSettings() {
         )}
       </div>
       {modelError && (
-        <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--warn)' }}>
+        <div style={{ marginBottom: 8, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--warn)' }}>
           {t('settings.enhanceModelErrorHint', { error: modelError })}
         </div>
       )}
       <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <div style={{ fontSize: 11, color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
+        <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: error ? 'var(--danger)' : notice ? 'var(--success)' : 'var(--meta)' }}>
           {error || notice}
         </div>
         <Button
@@ -731,6 +737,7 @@ export default function SettingsPage({
   const saveUserName = useUserSettingsStore((state) => state.saveUserName)
   const [userNameDraft, setUserNameDraft] = useState(userName)
   const [userNameSaved, setUserNameSaved] = useState(false)
+  const [fontSize, setFontSize] = useState(loadFontSizePreference)
   const initialized = useRef(false)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -789,6 +796,11 @@ export default function SettingsPage({
     if (!await saveUserName(userNameDraft)) return
     setUserNameDraft(userNameDraft.trim())
     setUserNameSaved(true)
+  }
+
+  const handleFontSizeChange = (value: FontSizePreference) => {
+    setFontSize(value)
+    saveFontSizePreference(value)
   }
 
   const loadEngineModels = async (engineId: string, force = false) => {
@@ -1094,7 +1106,7 @@ export default function SettingsPage({
       }}>
         <div style={{
           padding: '0 10px 8px', color: 'var(--meta)',
-          fontSize: 11, fontWeight: 600, letterSpacing: '0.4px',
+          fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, letterSpacing: '0.4px',
         }}>
           {t('nav.settings')}
         </div>
@@ -1105,7 +1117,7 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px',
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'providers' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'providers' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'providers' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
           <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
@@ -1118,7 +1130,7 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'engines' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'engines' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
           <Icon name="sliders-horizontal" size={16} strokeWidth={2} />
@@ -1131,7 +1143,7 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'pricing' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'pricing' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'pricing' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
           <span aria-hidden="true" style={{ width: 16, textAlign: 'center' }}>$</span>
@@ -1144,10 +1156,10 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'assistants' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'assistants' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'assistants' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
-          <span aria-hidden="true" style={{ fontSize: 16 }}>✦</span>
+          <span aria-hidden="true" style={{ fontSize: 'calc(16px * var(--font-scale))' }}>✦</span>
           {t('settings.assistantNav')}
         </button>
         <button
@@ -1157,7 +1169,7 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'templates' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'templates' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
           <Icon name="layout-grid" size={16} strokeWidth={2} />
@@ -1170,7 +1182,7 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'remote' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'remote' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'remote' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
           <Icon name="share" size={16} strokeWidth={2} />
@@ -1183,10 +1195,10 @@ export default function SettingsPage({
             width: '100%', height: 38, padding: '0 11px', marginTop: 5,
             display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
             gap: 9, borderRadius: 8, background: activeSection === 'system' ? 'var(--bg)' : 'transparent',
-            color: activeSection === 'system' ? 'var(--fg)' : 'var(--muted)', fontSize: 13, fontWeight: 600,
+            color: activeSection === 'system' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
-          <span aria-hidden="true" style={{ fontSize: 15 }}>文</span>
+          <span aria-hidden="true" style={{ fontSize: 'calc(15px * var(--font-scale))' }}>文</span>
           {t('settings.systemNav')}
         </button>
       </aside>
@@ -1196,8 +1208,8 @@ export default function SettingsPage({
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
-              <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.enginesTitle')}</h1>
-              <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+              <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.enginesTitle')}</h1>
+              <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))' }}>
                 {t('settings.enginesIntro')}
               </p>
             </div>
@@ -1216,11 +1228,11 @@ export default function SettingsPage({
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             marginBottom: 8,
           }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>
+            <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
               {t('settings.enginesConfig')}
               {!loading && <span style={{ marginLeft: 6, color: 'var(--meta)', fontWeight: 400 }}>({installedCount}/{sortedEngines.length})</span>}
             </span>
-            <span style={{ fontSize: 11, color: 'var(--meta)' }}>
+            <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
               {t('settings.configFormHint')}
             </span>
           </div>
@@ -1229,7 +1241,7 @@ export default function SettingsPage({
             <div role="alert" style={{
               padding: '10px 12px', marginBottom: 12, borderRadius: 8,
               background: 'color-mix(in oklab, var(--danger), transparent 90%)',
-              color: 'var(--danger)', fontSize: 13,
+              color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))',
             }}>
               {t('settings.scanFailed', { error })}
             </div>
@@ -1264,7 +1276,7 @@ export default function SettingsPage({
                   <>
                     <span
                       style={{
-                        flexShrink: 0, fontSize: 11, fontWeight: 600,
+                        flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
                         color: 'var(--muted)',
                       }}
                     >
@@ -1293,7 +1305,7 @@ export default function SettingsPage({
                       <option value="__custom__">{t('settings.customModelOption')}</option>
                     </Select>
                     {savingModel === engine.id && (
-                      <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 11 }}>
+                      <span style={{ flexShrink: 0, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))' }}>
                         {t('settings.saving')}
                       </span>
                     )}
@@ -1301,7 +1313,7 @@ export default function SettingsPage({
                       <>
                         <span
                           style={{
-                            flexShrink: 0, fontSize: 11,
+                            flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))',
                             color: 'var(--muted)',
                           }}
                         >
@@ -1331,7 +1343,7 @@ export default function SettingsPage({
                     {!modelsLoading[engine.id] && (
                       <Button
                         variant="ghost"
-                        style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                        style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
                         onClick={() => void loadEngineModels(engine.id, true)}
                       >
                         {t('settings.refresh')}
@@ -1391,9 +1403,9 @@ export default function SettingsPage({
                     style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
+                      <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{engineLabel(engine.id, t)}</span>
                       {onboardingCompatible && (
-                        <span style={{ padding: '1px 6px', borderRadius: 999, background: 'var(--accent-light)', color: 'var(--accent)', fontSize: 11 }}>
+                        <span style={{ padding: '1px 6px', borderRadius: 999, background: 'var(--accent-light)', color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))' }}>
                           {t('onboarding.compatibleEngine')}
                         </span>
                       )}
@@ -1401,13 +1413,13 @@ export default function SettingsPage({
                         <span style={{
                           padding: '1px 6px', borderRadius: 999,
                           background: 'var(--surface)', color: 'var(--muted)',
-                          fontSize: 11, textTransform: 'uppercase',
+                          fontSize: 'calc(11px * var(--font-scale))', textTransform: 'uppercase',
                         }}>
                           {engine.mode}
                         </span>
                       )}
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 11, overflowWrap: 'anywhere' }}>
+                    <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
                       {engineDescription(engine.id, t)}
                       {engine.version && <span> · {versionSummary(engine.version)}</span>}
                     </div>
@@ -1415,7 +1427,7 @@ export default function SettingsPage({
                       <div
                         role="status"
                         style={{
-                          marginTop: 7, fontSize: 11,
+                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
                           color: testResult.success ? 'var(--success)' : 'var(--danger)',
                         }}
                       >
@@ -1427,7 +1439,7 @@ export default function SettingsPage({
                       <div
                         role="status"
                         style={{
-                          marginTop: 7, fontSize: 11,
+                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
                           color: installResult.success ? 'var(--success)' : 'var(--danger)',
                           overflowWrap: 'anywhere',
                         }}
@@ -1483,7 +1495,7 @@ export default function SettingsPage({
 
                   <span style={{
                     minWidth: 60, textAlign: 'center', padding: '3px 8px',
-                    borderRadius: 999, fontSize: 11, fontWeight: 600,
+                    borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600,
                     color: engine.verified
                       ? 'var(--success)'
                       : engine.installed ? 'var(--warn)' : 'var(--meta)',
@@ -1524,7 +1536,7 @@ export default function SettingsPage({
                           {engine.id !== 'pydantic_ai' && (
                             <Button
                               variant="ghost"
-                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
                               onClick={() => openPathEditor(engine)}
                             >
                               {t('settings.editPath')}
@@ -1562,7 +1574,7 @@ export default function SettingsPage({
                           {engine.id !== 'pydantic_ai' && (
                             <Button
                               variant="ghost"
-                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 11 }}
+                              style={{ flexShrink: 0, height: 24, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
                               onClick={() => openPathEditor(engine)}
                             >
                               {t('settings.editPath')}
@@ -1572,7 +1584,7 @@ export default function SettingsPage({
                       )}
                       {modelErrors[engine.id] && (
                         <div style={{
-                          marginTop: 4, color: 'var(--meta)', fontSize: 11,
+                          marginTop: 4, color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
                         }}>
                           {t('settings.modelErrorHint2', { error: modelErrors[engine.id] })}
                         </div>
@@ -1586,7 +1598,7 @@ export default function SettingsPage({
                     }}>
                       <Button
                         variant="ghost"
-                        style={{ height: 28, padding: '0 10px', fontSize: 12 }}
+                        style={{ height: 28, padding: '0 10px', fontSize: 'calc(12px * var(--font-scale))' }}
                         onClick={() => openPathEditor(engine)}
                       >
                         {t('settings.editPath')}
@@ -1598,7 +1610,7 @@ export default function SettingsPage({
                       padding: '10px 14px 12px', borderTop: '1px solid var(--border-soft)',
                       background: 'var(--surface)', borderRadius: '0 0 12px 12px',
                     }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
+                      <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
                         {t('settings.binaryPath')}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1629,7 +1641,7 @@ export default function SettingsPage({
                         </Button>
                       </div>
                       <div style={{
-                        marginTop: 6, fontSize: 11,
+                        marginTop: 6, fontSize: 'calc(11px * var(--font-scale))',
                         color: pathError ? 'var(--danger)' : 'var(--meta)',
                       }}>
                         {pathError || t('settings.pathHint')}
@@ -1660,13 +1672,13 @@ export default function SettingsPage({
           <RemoteProjectSettings />
         ) : activeSection === 'system' ? (
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
-            <h1 style={{ fontSize: 20, fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>
-            <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 22 }}>
+            <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>
+            <p style={{ color: 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', marginBottom: 22 }}>
               {t('settings.systemIntro')}
             </p>
             <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
-              <h2 style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>{t('settings.userName')}</h2>
-              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 10 }}>
+              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.userName')}</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 10 }}>
                 {t('settings.userNameIntro')}
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}>
@@ -1694,48 +1706,50 @@ export default function SettingsPage({
                 </Button>
               </div>
               {userNameSaved && (
-                <div role="status" style={{ marginTop: 7, color: 'var(--success)', fontSize: 11 }}>
+                <div role="status" style={{ marginTop: 7, color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>
                   {t('settings.userNameSaved')}
                 </div>
               )}
               {userSettingsError && (
-                <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 11 }}>
+                <div role="status" style={{ marginTop: 7, color: 'var(--danger)', fontSize: 'calc(11px * var(--font-scale))' }}>
                   {userSettingsError}
                 </div>
               )}
             </div>
-            <h2 style={{ fontSize: 14, fontWeight: 650, marginBottom: 5 }}>{t('nav.language')}</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
+            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
+              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.fontSize')}</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
+                {t('settings.fontSizeIntro')}
+              </p>
+              <SegmentedControl
+                ariaLabel={t('settings.fontSize')}
+                value={fontSize}
+                onChange={handleFontSizeChange}
+                options={[
+                  { value: 'small', label: t('settings.fontSizeSmall') },
+                  { value: 'standard', label: t('settings.fontSizeStandard') },
+                  { value: 'large', label: t('settings.fontSizeLarge') },
+                  { value: 'extraLarge', label: t('settings.fontSizeExtraLarge') },
+                ]}
+                style={{ maxWidth: 360 }}
+              />
+            </div>
+            <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('nav.language')}</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
               {t('settings.languageIntro')}
             </p>
-            <div
-              role="group"
-              aria-label={t('nav.language')}
-              style={{
-                display: 'flex', maxWidth: 320,
-                border: '1px solid var(--border-soft)', borderRadius: 10,
-                overflow: 'hidden', background: 'var(--bg)',
-              }}
-            >
-              {(['zh-CN', 'zh-TW', 'en-US', 'ja-JP'] as const).map((lang) => (
-                <button
-                  key={lang}
-                  type="button"
-                  onClick={() => setLocale(lang)}
-                  style={{
-                    flex: 1, height: 38, border: 'none', cursor: 'pointer',
-                    background: locale === lang ? 'var(--accent)' : 'transparent',
-                    color: locale === lang ? 'var(--accent-fg)' : 'var(--fg-2)',
-                    fontSize: 13, fontWeight: 600, fontFamily: 'var(--font-body)',
-                  }}
-                >
-                  {lang === 'zh-CN' ? '简体中文'
-                    : lang === 'zh-TW' ? '繁體中文'
-                      : lang === 'ja-JP' ? '日本語'
-                        : 'English'}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              ariaLabel={t('nav.language')}
+              value={locale}
+              onChange={setLocale}
+              options={[
+                { value: 'zh-CN', label: '简体中文' },
+                { value: 'zh-TW', label: '繁體中文' },
+                { value: 'en-US', label: 'English' },
+                { value: 'ja-JP', label: '日本語' },
+              ]}
+              style={{ maxWidth: 320 }}
+            />
           </div>
         ) : (
           <AgentAssistantSettings />
@@ -1759,7 +1773,7 @@ export default function SettingsPage({
             href={termsEngine.third_party_terms_url}
             target="_blank"
             rel="noreferrer"
-            style={{ display: 'inline-block', marginTop: 10, fontSize: 12 }}
+            style={{ display: 'inline-block', marginTop: 10, fontSize: 'calc(12px * var(--font-scale))' }}
           >
             {t('settings.reviewThirdPartyTerms')}
           </a>
@@ -1799,29 +1813,29 @@ export default function SettingsPage({
             </div>
             <div className="modal-body" style={{ padding: '18px 20px 20px', overflowY: 'auto' }}>
               {inspecting ? (
-                <div style={{ padding: 24, textAlign: 'center', color: 'var(--meta)', fontSize: 13 }}>
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>
                   {t('settings.inspectLoading')}
                 </div>
               ) : inspectError ? (
-                <div role="status" style={{ color: 'var(--danger)', fontSize: 13, overflowWrap: 'anywhere' }}>
+                <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', overflowWrap: 'anywhere' }}>
                   × {inspectError}
                 </div>
               ) : inspectResult ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div style={{ fontSize: 12, color: 'var(--meta)', overflowWrap: 'anywhere' }}>
+                  <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)', overflowWrap: 'anywhere' }}>
                     {inspectResult.project_root
                       ? t('settings.inspectProject', { path: inspectResult.project_root })
                       : t('settings.inspectProjectNone')}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
+                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
                       {t('settings.inspectSkills')}
                       <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
                         {' '}· {inspectResult.skills.length}
                       </span>
                     </div>
                     {inspectResult.skills.length === 0 ? (
-                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
                         {t('settings.inspectSkillsEmpty')}
                       </div>
                     ) : (
@@ -1834,13 +1848,13 @@ export default function SettingsPage({
                               padding: '8px 10px', background: 'var(--surface)',
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 600 }}>{skill.name}</div>
+                            <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{skill.name}</div>
                             {skill.description && (
-                              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                              <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)', marginTop: 2 }}>
                                 {skill.description}
                               </div>
                             )}
-                            <div style={{ fontSize: 11, color: 'var(--meta)', marginTop: 4, overflowWrap: 'anywhere' }}>
+                            <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', marginTop: 4, overflowWrap: 'anywhere' }}>
                               {skill.source_dir}
                             </div>
                           </div>
@@ -1849,23 +1863,23 @@ export default function SettingsPage({
                     )}
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 7 }}>
+                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 7 }}>
                       {t('settings.inspectMcp')}
                       <span style={{ color: 'var(--meta)', fontWeight: 400 }}>
                         {' '}· {inspectResult.mcp_servers.length}
                       </span>
                     </div>
                     {inspectResult.mcp_supported ? (
-                      <div style={{ fontSize: 12, color: 'var(--success)', marginBottom: 6 }}>
+                      <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--success)', marginBottom: 6 }}>
                         ✓ {t('settings.inspectMcpSupported')}
                       </div>
                     ) : (
-                      <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 6, overflowWrap: 'anywhere' }}>
+                      <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--warn)', marginBottom: 6, overflowWrap: 'anywhere' }}>
                         {inspectResult.mcp_error || t('settings.inspectMcpUnsupported')}
                       </div>
                     )}
                     {inspectResult.mcp_servers.length === 0 ? (
-                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
                         {t('settings.inspectMcpEmpty')}
                       </div>
                     ) : (
@@ -1878,8 +1892,8 @@ export default function SettingsPage({
                               padding: '8px 10px', background: 'var(--surface)',
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 600 }}>{server.name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
+                            <div style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600 }}>{server.name}</div>
+                            <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
                               {server.command} {server.args.join(' ')}
                             </div>
                           </div>

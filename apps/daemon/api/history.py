@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 
 from schemas.base import BaseSchema
-from services.history import get_step_history
+from services.history import get_message_events, get_step_history
 from services.intervention import intervention_manager
 
 router = APIRouter(prefix="/api")
@@ -22,11 +22,37 @@ async def step_history(
     project_id: str = Query(...),
 ):
     """Get execution history for a specific step."""
-    if not project_manager.get_project_by_id(project_id):
+    project = project_manager.get_project_by_id(project_id)
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     with project_manager.activate_project_by_id(project_id):
-        history = get_step_history(task_id, step_key)
+        history = get_step_history(task_id, step_key, project.workstep_dir)
     return {"task_id": task_id, "step_key": step_key, "messages": history}
+
+
+@router.get("/task/{task_id}/messages/{message_id}/events")
+async def task_message_events(
+    task_id: str,
+    message_id: str,
+    project_id: str = Query(...),
+    cursor: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=200),
+):
+    """Return a bounded detail page from a task message's JSONL journal."""
+    project = project_manager.get_project_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        with project_manager.activate_project_by_id(project_id):
+            return get_message_events(
+                task_id,
+                message_id,
+                project.workstep_dir,
+                cursor=cursor,
+                limit=limit,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # --- Intervention ---

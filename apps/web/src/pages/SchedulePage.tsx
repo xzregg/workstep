@@ -306,23 +306,23 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
       <div style={{ height: 52, padding: '0 18px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border-soft)' }}>
         {!onClose && <Button variant="ghost" onClick={() => navigate('/tasks')}><Icon name="chevron-right" size={14} style={{ transform: 'rotate(180deg)' }} /> {t('schedules.back')}</Button>}
-        <strong style={{ fontSize: 14 }}>{t('schedules.title')}</strong>
-        <span style={{ color: 'var(--meta)', fontSize: 12 }}>{activeProject?.name}</span>
+        <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.title')}</strong>
+        <span style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>{activeProject?.name}</span>
         <div style={{ flex: 1 }} />
         <Button variant="primary" onClick={() => { setSelectedId(null); fill(null) }}><Icon name="plus" size={13} /> {t('schedules.new')}</Button>
         {onClose && <Button variant="ghost" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}><Icon name="x" size={14} /></Button>}
       </div>
-      {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 12 }}>{error}</div>}
+      {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
       <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: `${asideWidth}px ${SPLIT_HANDLE_WIDTH}px minmax(0, 1fr) ${SPLIT_HANDLE_WIDTH}px ${sectionWidth}px` }}>
         <aside style={{ overflow: 'auto', padding: 10 }}>
           {loading && <div className="task-status-spinner" style={{ margin: 16 }} />}
-          {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 13 }}>{t('schedules.empty')}</div>}
+          {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t('schedules.empty')}</div>}
           {items.map((item) => (
             <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><strong style={{ flex: 1, fontSize: 13 }}>{item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}</strong><span style={{ color: statusColors[item.status], fontSize: 11 }}>{t(`schedules.status_${item.status}` as any)}</span></div>
-              <div style={{ color: 'var(--meta)', fontSize: 11, marginTop: 5 }}>{formatDate(item.next_run_at)}</div>
-              <div style={{ color: 'var(--meta)', fontSize: 11, marginTop: 2 }}>{item.summary}</div>
-              {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 11, marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><strong style={{ flex: 1, fontSize: 'calc(13px * var(--font-scale))' }}>{item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}</strong><span style={{ color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span></div>
+              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 5 }}>{formatDate(item.next_run_at)}</div>
+              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2 }}>{item.summary}</div>
+              {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
           ))}
         </aside>
@@ -331,7 +331,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
 
         <main style={{ overflow: 'auto', padding: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <strong style={{ fontSize: 14 }}>{selectedId ? t('schedules.edit') : t('schedules.create')}</strong><div style={{ flex: 1 }} />
+            <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{selectedId ? t('schedules.edit') : t('schedules.create')}</strong><div style={{ flex: 1 }} />
             {selected && selected.status === 'active' && <Button onClick={() => void changeStatus('pause')}>{t('schedules.pause')}</Button>}
             {selected && selected.status !== 'active' && selected.status !== 'completed' && <Button onClick={() => void changeStatus('resume')}>{t('schedules.resume')}</Button>}
             {selected && <Button variant="danger" onClick={() => setDeleteId(selected.id)}>{t('common.delete')}</Button>}
@@ -346,7 +346,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
               type="button"
               onClick={() => setTaskConfigTab('content')}
               style={{
-                padding: '10px 16px', fontSize: 13, fontWeight: taskConfigTab === 'content' ? 600 : 400,
+                padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: taskConfigTab === 'content' ? 600 : 400,
                 border: 'none', borderBottom: taskConfigTab === 'content' ? '2px solid var(--accent)' : '2px solid transparent',
                 background: 'none', cursor: 'pointer', color: taskConfigTab === 'content' ? 'var(--fg)' : 'var(--meta)',
                 fontFamily: 'var(--font-body)',
@@ -357,7 +357,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
                 type="button"
                 onClick={() => setTaskConfigTab('review')}
                 style={{
-                  padding: '10px 16px', fontSize: 13, fontWeight: taskConfigTab === 'review' ? 600 : 400,
+                  padding: '10px 16px', fontSize: 'calc(13px * var(--font-scale))', fontWeight: taskConfigTab === 'review' ? 600 : 400,
                   border: 'none', borderBottom: taskConfigTab === 'review' ? '2px solid var(--accent)' : '2px solid transparent',
                   background: 'none', cursor: 'pointer', color: taskConfigTab === 'review' ? 'var(--fg)' : 'var(--meta)',
                   fontFamily: 'var(--font-body)',
@@ -480,7 +480,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             <Field label={t('schedules.execution')}><Select value={execution} onChange={(event) => setExecution(event.target.value as ProjectSchedule['execution_mode'])}><option value="workflow">{t('schedules.followWorkflow')}</option><option value="immediate">{t('schedules.immediate')}</option><option value="manual">{t('schedules.manual')}</option></Select></Field>
             <Field label={t('schedules.overlap')}><Select value={overlap} onChange={(event) => setOverlap(event.target.value as ProjectSchedule['overlap_policy'])}><option value="skip">{t('schedules.skip')}</option><option value="parallel">{t('schedules.parallel')}</option><option value="queue">{t('schedules.queue')}</option></Select></Field>
           </div>
-          <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--surface)', fontSize: 12, color: 'var(--fg-2)' }}>
+          <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--surface)', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--fg-2)' }}>
             {preview.cron && <div>Cron: <code>{preview.cron}</code></div>}
             <div style={{ marginTop: 5 }}>{t('schedules.nextRuns')}: {preview.next.slice(0, 3).map(formatDate).join(' · ') || '—'}</div>
           </div>
@@ -511,9 +511,9 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 14 }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
-              {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 13, padding: 16 }}>{t('schedules.noRuns')}</div>}
-              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 12 }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}><strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.runs')}</strong><div style={{ flex: 1 }} /><Select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} style={{ width: 130 }}><option value="all">{t('schedules.all')}</option>{['queued', 'running', 'created', 'succeeded', 'failed', 'skipped'].map((status) => <option key={status} value={status}>{t(`schedules.status_${status}` as any)}</option>)}</Select></div>
+              {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
+              {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
             </>
           )}
         </section>
