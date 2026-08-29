@@ -4044,6 +4044,7 @@ export default function TaskDetailView({
             background: 'var(--border-soft)',
             cursor: 'col-resize',
             position: 'relative',
+            width: "2px",
           }}
           onPointerDown={beginSplitResize}
         >

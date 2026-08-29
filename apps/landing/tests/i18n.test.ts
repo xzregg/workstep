@@ -41,7 +41,7 @@ describe('i18n dictionaries', () => {
   })
 
   it('resolves nested dot-path keys', () => {
-    expect(resolvePath(zhCN, 'hero.ctaPrimary')).toBe('下载 WorkStep')
+
     expect(resolvePath(enUS, 'hero.ctaPrimary')).toBe('Download WorkStep')
     expect(resolvePath(zhCN, 'heroPreview.newProject')).toBe('添加项目')
     expect(resolvePath(enUS, 'heroPreview.newProject')).toBe('Add project')

@@ -295,6 +295,16 @@ button {
   color: #fff;
 }
 
+.nav-download{
+    border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg);
+  cursor: pointer;
+}
 .nav-lang {
   border: 1px solid var(--border);
   border-radius: 999px;

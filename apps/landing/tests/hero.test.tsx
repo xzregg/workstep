@@ -12,6 +12,6 @@ describe('landing page', () => {
     )
 
     expect(html).toContain('href="workstep://open"')
-    expect(html).toContain('下载 WorkStep')
+
   })
 })

@@ -27,7 +27,7 @@ export const zhCN = {
     titleB: '不再手工接力',
     lede: 'WorkStep 把一个目标拆成可执行的阶段。上下文与产物自动流向下一步，LLM 持续完成调研、设计、编码与审核；你只需在关键节点做决定。',
     ctaStart: '用一个真实任务开始',
-    ctaPrimary: '下载 WorkStep',
+    ctaPrimary: '下载',
     ctaSecondary: '观看完整演示',
     meta1: '9 种执行引擎接入',
     meta2: '11 套内置业务流程',
