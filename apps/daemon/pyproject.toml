@@ -15,7 +15,7 @@ dependencies = [
     "claude-agent-sdk>=0.1.0",
     "openai-codex>=0.144.4",
     "croniter>=6.0",
-    "pydantic-ai-harness==0.18.1",
+    "pydantic-ai-harness==0.27.0",
 ]
 
 [dependency-groups]
