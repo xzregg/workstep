@@ -204,6 +204,7 @@ def get_available_engines() -> list[dict]:
                 "requires_third_party_terms_acceptance": resolved.requires_third_party_terms_acceptance(),
                 "third_party_terms_url": resolved.third_party_terms_url(),
                 "supports_resume": instance.supports_resume,
+                "supports_session_fork": instance.supports_session_fork,
                 "supports_coordinator": caps.supports_coordinator,
                 "supports_tool_disable": caps.supports_tool_disable,
                 "supports_native_schema": caps.supports_native_schema,
@@ -211,6 +212,8 @@ def get_available_engines() -> list[dict]:
                 "supports_sessions": caps.supports_sessions,
                 "supports_tool_approval": caps.supports_tool_approval,
                 "supports_workstep_tools": caps.supports_workstep_tools,
+                "skill_policy": instance.skill_policy.value,
+                "supports_controlled_skills": instance.supports_controlled_skills,
                 "binary_path": (
                     resolved.resolve_binary()
                     if backend != "pydantic_ai"
@@ -241,6 +244,7 @@ def get_available_engines() -> list[dict]:
                 ),
                 "third_party_terms_url": target.third_party_terms_url() if target else None,
                 "supports_resume": False,
+                "supports_session_fork": False,
                 "supports_coordinator": False,
                 "supports_tool_disable": False,
                 "supports_native_schema": False,
@@ -248,6 +252,8 @@ def get_available_engines() -> list[dict]:
                 "supports_sessions": False,
                 "supports_tool_approval": False,
                 "supports_workstep_tools": False,
+                "skill_policy": target().skill_policy.value if target else "unsupported",
+                "supports_controlled_skills": bool(target and target().supports_controlled_skills),
                 "binary_path": target.resolve_binary() if target else None,
                 "configured_path": configured_path or None,
             })

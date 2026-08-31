@@ -652,6 +652,9 @@ class QoderSDKEngine(AcpEngineBase):
         else:
             auth = qodercli_auth()
 
+        from services.skill_runtime import prepare_qoder_plugin
+
+        plugin_dir, skill_names = prepare_qoder_plugin(self.project_skills(cwd))
         options = QoderAgentOptions(
             auth=auth,
             cwd=cwd,
@@ -661,6 +664,9 @@ class QoderSDKEngine(AcpEngineBase):
             include_partial_messages=bool(config["include_partial_messages"]),
             can_use_tool=can_use_tool,
             on_elicitation=on_elicitation,
+            plugins=[{"type": "local", "path": str(plugin_dir)}],
+            skills=skill_names,
+            setting_sources=[],
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)

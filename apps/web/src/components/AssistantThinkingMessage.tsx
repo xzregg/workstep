@@ -1,24 +1,20 @@
 import ChatMessageBubble from './ChatMessageBubble'
-import MessageMetaBar from './MessageMetaBar'
+import StreamingStatusText from './StreamingStatusText'
+import { useI18n } from '../i18n'
 
 interface AssistantThinkingMessageProps {
   sender: string
   initials: string
-  label: string
   color?: string
-  onViewPrompt?: (prompt: string) => void
 }
-
-const ignorePrompt = () => undefined
 
 /** Shared optimistic assistant reply shown before the first live LLM event. */
 export default function AssistantThinkingMessage({
   sender,
   initials,
-  label,
   color = 'var(--ai-assistant)',
-  onViewPrompt = ignorePrompt,
 }: AssistantThinkingMessageProps) {
+  const { t } = useI18n()
   return (
     <ChatMessageBubble
       role="assistant"
@@ -28,23 +24,8 @@ export default function AssistantThinkingMessage({
       content=""
       streaming
       variant="bg"
-      header={
-        <MessageMetaBar
-          running
-          events={[]}
-          onViewPrompt={onViewPrompt}
-        />
-      }
       showLoading
-      loading={
-        <div
-          className="engine-loading-message"
-          role="status"
-          aria-live="polite"
-        >
-          {label}
-        </div>
-      }
+      loading={<StreamingStatusText label={t('bubble.thinking')} />}
     />
   )
 }

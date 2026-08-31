@@ -279,6 +279,47 @@ async def test_create_task_api_initializes_steps_from_project_workflow(
     db.close()
 
 
+@pytest.mark.anyio
+async def test_create_task_api_derives_missing_title_from_description(
+    tmp_path,
+    monkeypatch,
+):
+    """A task title is optional when the description can provide one."""
+    import main
+    from main import app
+
+    db = init_db(str(tmp_path / "derived-title-task.db"))
+    bus = EventBus()
+    service = TaskService(bus)
+
+    class ProjectManagerStub:
+        def bind_project_by_id(self, project_id):
+            if project_id != "project-1":
+                raise ValueError("Project not found")
+            return SimpleNamespace(
+                steps={"nodes": [], "connections": []},
+                path=tmp_path,
+            )
+
+    monkeypatch.setattr(main, "project_manager", ProjectManagerStub())
+    monkeypatch.setattr(main, "task_service", service)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/task/create?project_id=project-1",
+            json={
+                "cwd": str(tmp_path),
+                "description": "这是一个超过十个字的任务内容",
+                "auto_start": False,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "这是一个超过十个字的..."
+    db.close()
+
+
 def test_copy_task_resets_workflow_steps_to_pending(db_and_service):
     """A copied task keeps its stages but starts with no execution history."""
     from models import TaskStep
@@ -394,7 +435,7 @@ def test_get_task_exposes_step_session_id(db_and_service):
 
 
 @pytest.mark.anyio
-async def test_run_task_success(subscriber):
+async def test_run_task_success(subscriber, tmp_path):
     """run_task spawns engine and publishes events to bus."""
     q, service, bus = subscriber
 
@@ -402,6 +443,10 @@ async def test_run_task_success(subscriber):
     from engines import registry
     original = registry.ENGINE_REGISTRY.copy()
     registry.ENGINE_REGISTRY["pydantic_ai"] = lambda: MockEngine(events=[
+        InternalEvent(
+            type="agent_thought_chunk",
+            data={"content": {"text": "legacy 内部思考"}},
+        ),
         InternalEvent(type="agent_message_chunk", data={"content": {"text": "Hello"}}),
         InternalEvent(type="agent_message_chunk", data={"content": {"text": " world"}}),
         InternalEvent(type="usage_update", data={
@@ -413,7 +458,7 @@ async def test_run_task_success(subscriber):
     ])
 
     try:
-        task = service.create_task(title="Run test", cwd="/tmp")
+        task = service.create_task(title="Run test", cwd=str(tmp_path))
         await service.run_task(task["id"], "Say hello")
 
         # Collect events from bus
@@ -441,6 +486,15 @@ async def test_run_task_success(subscriber):
         assert usage["output_tokens"] == 5
         assert usage["cache_creation_input_tokens"] == 6
         assert usage["cache_read_input_tokens"] == 7
+        assert "legacy 内部思考" not in (msg.events_json or "")
+        assert msg.event_log_path
+        records = [
+            _json.loads(line)
+            for line in (tmp_path / ".workstep" / msg.event_log_path)
+            .read_text()
+            .splitlines()
+        ]
+        assert "agent_thought_chunk" in {record["type"] for record in records}
 
     finally:
         registry.ENGINE_REGISTRY.clear()

@@ -12,6 +12,7 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import suppress
 from dataclasses import dataclass, field
+from enum import Enum
 import importlib.util
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -135,10 +136,24 @@ class EngineCapabilities:
     supports_native_schema: bool
     supports_live_stage_message: bool
     supports_sessions: bool = False
+    supports_session_fork: bool = False
     supports_tool_approval: bool = False
     supports_vision: bool = False
     supports_workstep_tools: bool = False
     supports_thinking_effort: bool = False
+
+
+class EngineSkillPolicy(str, Enum):
+    """How an adapter enforces WorkStep's project skill whitelist."""
+
+    CODEX_CONFIG = "codex_config"
+    CLAUDE_PLUGIN = "claude_plugin"
+    QODER_PLUGIN = "qoder_plugin"
+    HERMES_PROFILE = "hermes_profile"
+    OPENCLAW_CONFIG = "openclaw_config"
+    FILESYSTEM_PROVIDER = "filesystem_provider"
+    PROJECT_REGISTRY = "project_registry"
+    UNSUPPORTED = "unsupported"
 
 
 @dataclass(frozen=True)
@@ -507,21 +522,19 @@ class BaseLLMEngine(ABC):
         Returns ``None`` when the engine has nothing to inspect. The settings
         page uses this to show loaded skills and MCP servers per engine.
         """
-        from engines.pydantic_ai.skills import Skills, project_skill_directories
+        from services.skill_center import skill_center
 
         resolved_root = Path(project_root).expanduser().resolve() if project_root else None
         skills = []
         if resolved_root is not None:
-            registry = Skills(
-                directories=project_skill_directories(resolved_root, self.ENGINE_ID),
-            )
+            selection = skill_center.runtime_selection(resolved_root)
             skills = [
                 {
                     "name": skill.name,
                     "description": skill.description,
-                    "source_dir": str(skill.skill_dir),
+                    "source_dir": str(skill.runtime_path),
                 }
-                for skill in registry.list_skills()
+                for skill in selection.enabled
             ]
         input_items = [dict(item) for item in self.input_commands()]
         known_names = {str(item.get("name") or "") for item in input_items}
@@ -543,7 +556,46 @@ class BaseLLMEngine(ABC):
             "mcp_servers": [],
             "mcp_supported": False,
             "mcp_error": None,
+            "skill_policy": self.skill_policy.value,
+            "supports_controlled_skills": self.supports_controlled_skills,
         }
+
+    @property
+    def skill_policy(self) -> EngineSkillPolicy:
+        policies = {
+            "codex": EngineSkillPolicy.CODEX_CONFIG,
+            "codex_sdk": EngineSkillPolicy.CODEX_CONFIG,
+            "claude": EngineSkillPolicy.CLAUDE_PLUGIN,
+            "claude_agent_sdk": EngineSkillPolicy.CLAUDE_PLUGIN,
+            "qoder_sdk": EngineSkillPolicy.QODER_PLUGIN,
+            "hermes": EngineSkillPolicy.HERMES_PROFILE,
+            "openclaw": EngineSkillPolicy.OPENCLAW_CONFIG,
+            "deepseek_harness": EngineSkillPolicy.FILESYSTEM_PROVIDER,
+            "pydantic_ai": EngineSkillPolicy.PROJECT_REGISTRY,
+        }
+        return policies.get(self.ENGINE_ID, EngineSkillPolicy.UNSUPPORTED)
+
+    @property
+    def supports_controlled_skills(self) -> bool:
+        return self.skill_policy is not EngineSkillPolicy.UNSUPPORTED
+
+    def project_skills(self, cwd: str):
+        """Resolve and refresh the project whitelist immediately before spawn."""
+        from services.skill_center import ProjectSkillSelection, skill_center
+
+        root = Path(cwd).expanduser().resolve()
+        if not root.is_dir():
+            return ProjectSkillSelection(
+                project_root=root,
+                skills=(),
+                enabled=(),
+                disabled_source_paths=(),
+            )
+        return skill_center.runtime_selection(root)
+
+    def project_skill_env(self, cwd: str) -> dict[str, str]:
+        """Environment additions for adapters that isolate skills by profile."""
+        return {}
 
     @property
     def skill_invocation_prefix(self) -> str:
@@ -668,11 +720,17 @@ class BaseLLMEngine(ABC):
             supports_native_schema=False,
             supports_live_stage_message=self.supports_live_stage_message,
             supports_sessions=self.supports_sessions,
+            supports_session_fork=self.supports_session_fork,
             supports_tool_approval=self.supports_tool_approval,
             supports_vision=self.supports_vision,
             supports_workstep_tools=self.supports_workstep_tools,
             supports_thinking_effort=self.supports_thinking_effort,
         )
+
+    @property
+    def supports_session_fork(self) -> bool:
+        """Whether the engine can create an independent native session fork."""
+        return False
 
 
     @property

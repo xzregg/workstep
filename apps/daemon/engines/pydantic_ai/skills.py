@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-PROJECT_SKILL_DIRS = [".claude/skills", ".codex/skills", ".workstep/skills"]
+PROJECT_SKILL_DIRS = [".workstep/skills"]
 
 ENGINE_PROJECT_SKILL_DIRS = {
     "codex": [".agents/skills", ".codex/skills", ".workstep/skills"],
@@ -100,9 +100,8 @@ class Skill:
 class Skills:
     """Registry over project-scoped SKILL.md directories.
 
-    By default only the active project's ``.claude/skills``, ``.codex/skills``
-    and ``.workstep/skills`` are loaded — personal/home skill directories are not scanned, keeping the
-    agent scoped to the project. Explicit ``directories`` overrides the default.
+    By default only the SkillCenter-managed ``.workstep/skills`` mirror is
+    loaded. Explicit ``directories`` overrides the default for isolated tests.
     """
 
     def __init__(
@@ -114,7 +113,6 @@ class Skills:
         """Scan the given directories, defaulting to the project's skill dirs.
 
         When ``directories`` is given it wins; otherwise scan
-        ``<project_root>/.claude/skills``, ``<project_root>/.codex/skills`` and
         ``<project_root>/.workstep/skills``.
         Later directories override earlier ones with the same skill name.
         """

@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -129,7 +130,10 @@ def test_deepseek_harness_uses_workstep_standard_composition(
     )
 
     composition = captured["cordis"]
-    assert composition.endswith("data/deepseek-harness/standard.cordis.yml")
+    assert composition.endswith(".workstep/runtime/deepseek/controlled-skills.cordis.yml")
+    controlled = Path(composition).read_text(encoding="utf-8")
+    assert "includeDefaultRoots: false" in controlled
+    assert str(tmp_path / ".workstep" / "skills") in controlled
     assert captured["provider"] == "deepseek-official"
     assert captured["cwd"] == str(tmp_path)
 

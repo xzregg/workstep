@@ -97,15 +97,21 @@ class OpenClawEngine(AcpEngineBase):
             return
 
         cmd = self.build_command(binary, prompt, cwd, model=model)
+        from services.skill_runtime import write_openclaw_config
+
+        openclaw_config = write_openclaw_config(self.project_skills(cwd))
 
         logger.info("Spawning: %s (cwd=%s)", " ".join(cmd), cwd)
 
+        process_env = dict(os.environ)
+        process_env["OPENCLAW_CONFIG_PATH"] = str(openclaw_config)
         self._process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            env=process_env,
         )
         self._running = True
 

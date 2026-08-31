@@ -266,6 +266,8 @@ class ClaudeCodeEngine(AcpEngineBase):
         session_id: str | None = None,
         add_dirs: list[str] | None = None,
         live_mode: bool = False,
+        plugin_dir: str | None = None,
+        skill_settings: str | None = None,
     ) -> list[str]:
         cmd = [
             binary,
@@ -286,6 +288,10 @@ class ClaudeCodeEngine(AcpEngineBase):
         if add_dirs:
             for directory in add_dirs:
                 cmd.extend(["--add-dir", directory])
+        if plugin_dir:
+            cmd.extend(["--plugin-dir", plugin_dir, "--setting-sources", ""])
+        if skill_settings:
+            cmd.extend(["--settings", skill_settings])
         return cmd
 
     async def spawn(
@@ -331,6 +337,12 @@ class ClaudeCodeEngine(AcpEngineBase):
         self._permission_details.clear()
         self._session_allow.clear()
         self._session_reject.clear()
+        from services.skill_runtime import prepare_claude_plugin
+
+        plugin_dir, skill_names = prepare_claude_plugin(self.project_skills(cwd))
+        skill_settings = json.dumps({
+            "skillOverrides": {name: "on" for name in skill_names},
+        })
         cmd = self.build_command(
             binary,
             permission_mode,
@@ -338,6 +350,8 @@ class ClaudeCodeEngine(AcpEngineBase):
             session_id=session_id,
             add_dirs=add_dirs,
             live_mode=self._live_mode,
+            plugin_dir=str(plugin_dir),
+            skill_settings=skill_settings,
         )
 
         command_text = shlex.join(cmd)

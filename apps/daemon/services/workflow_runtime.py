@@ -137,8 +137,12 @@ class WorkflowRuntime:
         run_db = getattr(self._project_manager, "run_db", None)
         if run_db is not None:
             return await run_db(project_id, operation)
-        with self._project_manager.activate_project_by_id(project_id) as project:
-            return operation(project)
+
+        def execute():
+            with self._project_manager.activate_project_by_id(project_id) as project:
+                return operation(project)
+
+        return await asyncio.to_thread(execute)
 
     def _start_in_project(
         self,
@@ -247,21 +251,17 @@ class WorkflowRuntime:
         )
         self._runners[task.id] = runner
 
-        # asyncio tasks copy ContextVars at creation time. Activate the project
-        # here so the long-running pipeline keeps its database routing after
-        # this method returns to an unbound request context.
-        with self._project_manager.activate_project_by_id(prepared.project_id):
-            completion = asyncio.create_task(
-                self._execute(
-                    task=task,
-                    runner=runner,
-                    workflow_run=workflow_run,
-                    steps_config=prepared.steps_config,
-                    artifacts_dir=prepared.artifacts_dir,
-                    user_input=user_input,
-                ),
-                name=f"workflow-run:{workflow_run.id}",
-            )
+        completion = asyncio.create_task(
+            self._execute(
+                task=task,
+                runner=runner,
+                workflow_run=workflow_run,
+                steps_config=prepared.steps_config,
+                artifacts_dir=prepared.artifacts_dir,
+                user_input=user_input,
+            ),
+            name=f"workflow-run:{workflow_run.id}",
+        )
         self._active_tasks.add(completion)
         completion.add_done_callback(
             functools.partial(
@@ -315,16 +315,15 @@ class WorkflowRuntime:
         as_guidance: bool = False,
     ) -> dict:
         """Inject an ordinary user message into a running stage."""
-        with self._project_manager.activate_project_by_id(project_id):
-            runner = self._runners.get(task_id)
-            if runner is None:
-                raise ValueError("任务没有正在执行的阶段")
-            return await runner.send_live_message(
-                task_id,
-                step_key,
-                content,
-                as_guidance=as_guidance,
-            )
+        runner = self._runners.get(task_id)
+        if runner is None:
+            raise ValueError("任务没有正在执行的阶段")
+        return await runner.send_live_message(
+            task_id,
+            step_key,
+            content,
+            as_guidance=as_guidance,
+        )
 
     async def cancel_step(
         self,
@@ -333,11 +332,10 @@ class WorkflowRuntime:
         step_key: str,
     ) -> bool:
         """Stop a running stage engine."""
-        with self._project_manager.activate_project_by_id(project_id):
-            runner = self._runners.get(task_id)
-            if runner is None:
-                raise ValueError("任务没有正在执行的阶段")
-            return await runner.cancel_step(task_id, step_key)
+        runner = self._runners.get(task_id)
+        if runner is None:
+            raise ValueError("任务没有正在执行的阶段")
+        return await runner.cancel_step(task_id, step_key)
 
     async def resume_stage_with_message(
         self,
@@ -357,7 +355,7 @@ class WorkflowRuntime:
         normalized = content.strip()
         if not normalized:
             raise ValueError("消息内容不能为空")
-        with self._project_manager.activate_project_by_id(project_id):
+        def persist_message():
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
                 raise ValueError(f"Task not found: {task_id}")
@@ -423,6 +421,12 @@ class WorkflowRuntime:
             )
             task.state_version += 1
             task.save()
+            return user_message, pending_review.id if pending_review else None
+
+        user_message, pending_review_id = await self._run_db(
+            project_id, lambda _project: persist_message()
+        )
+        message_id = user_message.id
         handle = await self.restart_from_stage(project_id, task_id, step_key)
         await self._publish_user_message(
             task_id,
@@ -430,21 +434,20 @@ class WorkflowRuntime:
             "message_started",
             {"content": normalized, "status": "completed"},
         )
-        if pending_review is not None:
+        if pending_review_id is not None:
             await self._skip_manual_review(
                 project_id,
                 task_id,
                 step_key,
-                pending_review.id,
+                pending_review_id,
             )
-        message = Message.get_by_id(message_id)
         return {
             "message_id": message_id,
             "step_key": step_key,
             "run_id": handle.id,
             "status": "queued",
-            "sequence": message.sequence,
-            "created_at": message.created_at.isoformat(),
+            "sequence": user_message.sequence,
+            "created_at": user_message.created_at.isoformat(),
         }
 
     async def _skip_manual_review(
@@ -456,7 +459,7 @@ class WorkflowRuntime:
     ) -> None:
         """Close one superseded manual review and hide its prompt message."""
         now = utc_now()
-        with self._project_manager.activate_project_by_id(project_id):
+        def persist_skip():
             review = ReviewRun.get_or_none(
                 (ReviewRun.id == review_run_id)
                 & (ReviewRun.task == task_id)
@@ -495,6 +498,8 @@ class WorkflowRuntime:
                     review_message.save()
                     break
 
+        await self._run_db(project_id, lambda _project: persist_skip())
+
         event = {
             "task_id": task_id,
             "step_key": step_key,
@@ -520,82 +525,97 @@ class WorkflowRuntime:
         comment: str | None = None,
     ) -> WorkflowRunHandle | None:
         """Persist a manual decision and resume the same workflow when approved."""
-        with self._project_manager.activate_project_by_id(project_id) as project:
-            review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
-            if (
-                review is None
-                or review.task_id != task_id
-                or review.step_key != step_key
-            ):
-                raise ValueError("Review not found for the requested task step")
-            if review.status == "skipped":
-                raise RuntimeError("Review has been skipped by a newer stage message")
-            latest = (
-                ReviewRun.select()
-                .where(
-                    (ReviewRun.task == task_id)
-                    & (ReviewRun.step_key == step_key)
-                )
-                .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
-                .first()
+        decision_data = await self._run_db(
+            project_id,
+            lambda _project: self._persist_review_decision_sync(
+                task_id, step_key, review_run_id, decision, comment
+            ),
+        )
+        if decision_data is None:
+            return None
+        task, workflow_run = decision_data
+        for _ in range(100):
+            if task.id not in self._runners:
+                break
+            await asyncio.sleep(0.01)
+        if task.id in self._runners:
+            raise RuntimeError("Task is still finishing the current stage")
+        project = await self._run_db(project_id, lambda project: project)
+        return self._resume_in_project(project, task, workflow_run)
+
+    def _persist_review_decision_sync(
+        self, task_id, step_key, review_run_id, decision, comment
+    ):
+        review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
+        if (
+            review is None
+            or review.task_id != task_id
+            or review.step_key != step_key
+        ):
+            raise ValueError("Review not found for the requested task step")
+        if review.status == "skipped":
+            raise RuntimeError("Review has been skipped by a newer stage message")
+        latest = (
+            ReviewRun.select()
+            .where(
+                (ReviewRun.task == task_id)
+                & (ReviewRun.step_key == step_key)
             )
-            if latest is None or latest.id != review.id:
-                raise RuntimeError("Review has been superseded by a newer attempt")
-            if review.decision:
-                if review.decision == decision:
-                    return None
-                raise RuntimeError("Review already has a different decision")
+            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
+            .first()
+        )
+        if latest is None or latest.id != review.id:
+            raise RuntimeError("Review has been superseded by a newer attempt")
+        if review.decision:
+            if review.decision == decision:
+                return None
+            raise RuntimeError("Review already has a different decision")
 
-            now = utc_now()
-            approved = decision in {"approve", "force_approve"}
-            review.decision = decision
-            review.decision_comment = comment
-            review.decided_at = now
-            review.ended_at = review.ended_at or now
-            review.status = "passed" if approved else "rejected"
-            review.save()
+        now = utc_now()
+        approved = decision in {"approve", "force_approve"}
+        review.decision = decision
+        review.decision_comment = comment
+        review.decided_at = now
+        review.ended_at = review.ended_at or now
+        review.status = "passed" if approved else "rejected"
+        review.save()
 
-            # 人工审核完成后，同步审核消息的结束时间，前端据此显示审核耗时。
-            Message.update(
-                ended_at=review.ended_at,
-                run_status="completed",
-            ).where(
-                (Message.task == task_id)
-                & (Message.channel == "review")
-                & (Message.step_key == step_key)
-                & (Message.ended_at.is_null())
-            ).execute()
+        # 人工审核完成后，同步审核消息的结束时间，前端据此显示审核耗时。
+        Message.update(
+            ended_at=review.ended_at,
+            run_status="completed",
+        ).where(
+            (Message.task == task_id)
+            & (Message.channel == "review")
+            & (Message.step_key == step_key)
+            & (Message.ended_at.is_null())
+        ).execute()
 
-            task_step = TaskStep.get(
-                (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
-            )
-            if approved:
-                task_step.status = "passed"
-                task_step.error = None
-                task_step.ended_at = now
-                task_step.review_feedback = None
-            else:
-                # 人工审核不通过：保存原因，带反馈自动重跑当前阶段。
-                task_step.status = "retrying"
-                task_step.error = comment or "用户驳回审核"
-                task_step.review_feedback = comment or ""
-                task_step.ended_at = None
-            task_step.save()
-            task = Task.get_by_id(task_id)
-            task.status = "running"
-            task.state_version += 1
-            task.updated_at = now
-            task.save()
-            # The awaiting-review event can reach the UI just before the
-            # scheduler retires. Wait briefly so an immediate click resumes
-            # instead of racing the still-active runner.
-            for _ in range(100):
-                if task.id not in self._runners:
-                    break
-                await asyncio.sleep(0.01)
-            if task.id in self._runners:
-                raise RuntimeError("Task is still finishing the current stage")
-            return self._resume_in_project(project, task, review.workflow_run)
+        task_step = TaskStep.get(
+            (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+        )
+        if approved:
+            task_step.status = "passed"
+            task_step.error = None
+            task_step.ended_at = now
+            task_step.review_feedback = None
+        else:
+            # 人工审核不通过：保存原因，带反馈自动重跑当前阶段。
+            task_step.status = "retrying"
+            task_step.error = comment or "用户驳回审核"
+            task_step.review_feedback = comment or ""
+            task_step.ended_at = None
+        task_step.save()
+        task = Task.get_by_id(task_id)
+        task.status = "running"
+        task.state_version += 1
+        task.updated_at = now
+        task.save()
+        workflow_run = review.workflow_run
+        workflow_run.status = "running"
+        workflow_run.ended_at = None
+        workflow_run.save()
+        return task, workflow_run
 
     def _resume_in_project(
         self,
@@ -608,9 +628,6 @@ class WorkflowRuntime:
             raise RuntimeError(f"Task is already running: {task.id}")
         snapshot = json.loads(workflow_run.workflow_snapshot_json)
         compiled = WorkflowDefinition.load(snapshot).compile()
-        workflow_run.status = "running"
-        workflow_run.ended_at = None
-        workflow_run.save()
         runner = TaskRunner(
             self._event_bus,
             dispatch_service=self._dispatch_service,
@@ -650,18 +667,50 @@ class WorkflowRuntime:
         """
         recovered = 0
         for project in self._project_manager.iter_projects():
-            with self._project_manager.activate_project_by_id(project.id):
-                try:
-                    recovered += await self._recover_project_runs(project)
-                except Exception:
-                    logger.exception(
-                        "Failed to recover interrupted workflows for project %s",
-                        project.id,
-                    )
+            try:
+                recovered += await self._recover_project_runs(project)
+            except Exception:
+                logger.exception(
+                    "Failed to recover interrupted workflows for project %s",
+                    project.id,
+                )
         return recovered
 
     async def _recover_project_runs(self, project) -> int:
+        prepared = await self._run_db(
+            project.id,
+            lambda _project: self._prepare_project_recovery_sync(project),
+        )
         recovered = 0
+        for task, workflow_run, stale_keys, now in prepared:
+            try:
+                self._resume_in_project(project, task, workflow_run)
+            except RuntimeError:
+                logger.warning(
+                    "Skipping recovery of run %s (task %s already active)",
+                    workflow_run.id,
+                    task.id,
+                )
+                continue
+            recovered_event = {
+                "task_id": task.id,
+                "step_key": next(iter(stale_keys), None),
+                "type": "run_recovered",
+                "data": {
+                    "task_id": task.id,
+                    "workflow_run_id": workflow_run.id,
+                    "recovered_at": now,
+                    "recovered_count": workflow_run.recovered_count,
+                },
+            }
+            ctx = AGUIContext.from_event(recovered_event)
+            for agui_event in to_agui_events(recovered_event, ctx):
+                await self._event_bus.publish(agui_event)
+            recovered += 1
+        return recovered
+
+    def _prepare_project_recovery_sync(self, project):
+        prepared = []
         interrupted = list(
             WorkflowRun.select().where(WorkflowRun.status == "running")
         )
@@ -738,31 +787,8 @@ class WorkflowRuntime:
                 workflow_run.recovered_count or 0
             ) + 1
             workflow_run.save()
-            try:
-                self._resume_in_project(project, task, workflow_run)
-            except RuntimeError:
-                logger.warning(
-                    "Skipping recovery of run %s (task %s already active)",
-                    workflow_run.id,
-                    task.id,
-                )
-                continue
-            recovered_event = {
-                "task_id": task.id,
-                "step_key": next(iter(stale_keys), None),
-                "type": "run_recovered",
-                "data": {
-                    "task_id": task.id,
-                    "workflow_run_id": workflow_run.id,
-                    "recovered_at": now,
-                    "recovered_count": workflow_run.recovered_count,
-                },
-            }
-            ctx = AGUIContext.from_event(recovered_event)
-            for agui_event in to_agui_events(recovered_event, ctx):
-                await self._event_bus.publish(agui_event)
-            recovered += 1
-        return recovered
+            prepared.append((task, workflow_run, stale_keys, now))
+        return prepared
 
     async def restart_from_stage(
         self,
@@ -775,17 +801,13 @@ class WorkflowRuntime:
         """Stop the current runner and start a child run from one DAG stage."""
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
-            with self._project_manager.activate_project_by_id(project_id) as project:
+            def inspect_restart(project):
                 task = Task.get_or_none(Task.id == task_id)
                 if task is None:
                     raise ValueError(f"Task not found: {task_id}")
                 parent_run_id = expected_run_id or task.active_workflow_run_id
                 if not parent_run_id:
-                    return self._start_from_stage_without_parent(
-                        project,
-                        task,
-                        step_key,
-                    )
+                    return {"without_parent": True}
                 parent = WorkflowRun.get_or_none(
                     (WorkflowRun.id == parent_run_id)
                     & (WorkflowRun.task == task)
@@ -813,6 +835,25 @@ class WorkflowRuntime:
                         )
                     )
                 }
+                return {
+                    "without_parent": False,
+                    "parent_run_id": parent_run_id,
+                    "compiled": compiled,
+                    "steps_config": steps_config,
+                    "affected": affected,
+                    "interrupted": interrupted,
+                }
+
+            inspected = await self._run_db(project_id, inspect_restart)
+            if inspected["without_parent"]:
+                return await self._start_from_stage_without_parent_async(
+                    project_id, task_id, step_key
+                )
+            parent_run_id = inspected["parent_run_id"]
+            compiled = inspected["compiled"]
+            steps_config = inspected["steps_config"]
+            affected = inspected["affected"]
+            interrupted = inspected["interrupted"]
 
             runner = self._runners.get(task_id)
             if runner is not None:
@@ -824,7 +865,7 @@ class WorkflowRuntime:
                 if task_id in self._runners:
                     raise RuntimeError("Task runner did not stop in time")
 
-            with self._project_manager.activate_project_by_id(project_id) as project:
+            def persist_restart(project):
                 task = Task.get_by_id(task_id)
                 parent = WorkflowRun.get_by_id(parent_run_id)
                 execution_keys = affected | interrupted
@@ -845,41 +886,40 @@ class WorkflowRuntime:
                 except Exception:
                     self._restore_archived_artifacts(archived)
                     raise
-                new_runner = TaskRunner(
-                    self._event_bus,
-                    dispatch_service=self._dispatch_service,
-                    source_project_id=project.id,
+                return _PreparedWorkflowRun(
+                    project_id=project.id,
                     database_executor=getattr(project, "database_executor", None),
+                    task=task,
+                    workflow_run=child,
+                    steps_config=steps_config,
+                    artifacts_dir=Path(project.workstep_dir) / "artifacts",
+                    user_message=None,
                 )
-                self._runners[task.id] = new_runner
-                completion = asyncio.create_task(
-                    self._execute(
-                        task=task,
-                        runner=new_runner,
-                        workflow_run=child,
-                        steps_config=steps_config,
-                        artifacts_dir=Path(project.workstep_dir) / "artifacts",
-                        user_input="",
-                    ),
-                    name=f"workflow-run:{child.id}:restart",
-                )
-                self._active_tasks.add(completion)
-                completion.add_done_callback(
-                    functools.partial(
-                        self._consume_completion,
-                        task_id=task.id,
-                        runner=new_runner,
-                        workflow_run=child,
-                    )
-                )
-                return WorkflowRunHandle(child.id, completion)
 
-    def _start_from_stage_without_parent(
+            prepared = await self._run_db(project_id, persist_restart)
+            return self._launch_prepared_run(prepared, "")
+
+    async def _start_from_stage_without_parent_async(
         self,
-        project,
-        task: Task,
+        project_id: str,
+        task_id: str,
         step_key: str,
     ) -> WorkflowRunHandle:
+        prepared = await self._run_db(
+            project_id,
+            lambda project: self._prepare_start_from_stage_without_parent(
+                project, task_id, step_key
+            ),
+        )
+        return self._launch_prepared_run(prepared, "")
+
+    def _prepare_start_from_stage_without_parent(
+        self,
+        project,
+        task_id: str,
+        step_key: str,
+    ) -> _PreparedWorkflowRun:
+        task = Task.get_by_id(task_id)
         workflow_data = project.steps
         if task.workflow_id:
             selected_workflow = project.workflow_by_id(task.workflow_id)
@@ -928,9 +968,9 @@ class WorkflowRuntime:
             task.updated_at = utc_now()
             task.save()
 
-        handle = self._start_in_project(project, task.id, "")
+        prepared = self._prepare_start_in_project(project, task.id, "")
         now = utc_now()
-        workflow_run = WorkflowRun.get_by_id(handle.id)
+        workflow_run = prepared.workflow_run
         workflow_run.restart_from_step_key = step_key
         workflow_run.save(only=[WorkflowRun.restart_from_step_key])
         for reusable_key in reusable_keys:
@@ -946,7 +986,7 @@ class WorkflowRuntime:
                 started_at=now,
                 ended_at=now,
             )
-        return handle
+        return prepared
 
     def _create_restart_run(
         self,
@@ -1098,15 +1138,7 @@ class WorkflowRuntime:
     ) -> None:
         """Retire a task and retrieve its outcome for fire-and-forget callers."""
         self._active_tasks.discard(completion)
-        if completion.cancelled():
-            if (
-                workflow_run.status == "running"
-                and not self._graceful_shutdown
-            ):
-                workflow_run.status = "failed"
-                workflow_run.ended_at = utc_now()
-                workflow_run.save()
-        else:
+        if not completion.cancelled():
             completion.exception()
         if self._runners.get(task_id) is runner:
             self._runners.pop(task_id, None)

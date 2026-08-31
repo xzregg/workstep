@@ -13,6 +13,10 @@ yarn test       # vitest：i18n 键集一致性 + 时间轴工具
 yarn lint       # oxlint
 yarn build      # tsc -b + vite build，产物在 dist/
 ```
+
+`yarn build` 会把脚本、样式和品牌图标内联到 `dist/index.html`。构建完成后可直接双击
+该文件离线预览，不需要本地服务器，也不会触发 `file://` 跨域限制。
+
 生产模式下 Daemon 会托管官网与 Web 应用：`./start.sh prod` 会同时构建
 `apps/landing`（→ `http://<host>:8765/landing`，构建时使用
 `LANDING_BASE=/landing/` 使静态资源位于 `/landing` 子路径）与 `apps/web`

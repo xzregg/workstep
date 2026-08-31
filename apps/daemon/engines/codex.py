@@ -279,6 +279,9 @@ class CodexEngine(AcpEngineBase):
             model=model,
         )
         model = provider_runtime.model
+        from services.skill_runtime import codex_skills_config
+
+        skill_override = codex_skills_config(self.project_skills(cwd))
         run_prompt = prompt
         resume_session = session_id or None
         self._escalate_sandbox = False
@@ -327,6 +330,7 @@ class CodexEngine(AcpEngineBase):
                 cmd.extend(["-c", f"approval_policy={codex_config['approval_policy']}"])
             for item in provider_runtime.engine_config:
                 cmd.extend(["-c", item])
+            cmd.extend(["-c", skill_override])
 
             logger.info("Spawning: %s", " ".join(cmd))
 

@@ -1672,7 +1672,7 @@ function FlowCanvasInner({
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
             onConnect={onConnect} onNodeDoubleClick={onNodeDoubleClick}
             onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
-            nodeTypes={nodeTypes} fitView deleteKeyCode={null}
+            nodeTypes={nodeTypes} fitView minZoom={0.1} deleteKeyCode={null}
             connectionLineStyle={{ stroke: 'var(--meta)', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>
             <Controls position="top-right" /><Background gap={20} size={1} color="var(--border)" />

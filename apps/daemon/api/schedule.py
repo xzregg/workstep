@@ -15,9 +15,14 @@ def _module():
     return schedule_module
 
 
-def _call(operation, *args, **kwargs):
+async def _call(project_id, operation, *args, **kwargs):
+    from main import project_manager
+
     try:
-        return operation(*args, **kwargs)
+        return await project_manager.run_db(
+            project_id,
+            lambda _project: operation(project_id, *args, **kwargs),
+        )
     except ScheduleValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
@@ -34,17 +39,17 @@ async def preview_schedule(rule: dict = Body(...)):
 
 @router.get("/list")
 async def list_schedules(project_id: str = Query(...)):
-    return {"schedules": _call(_module().list, project_id)}
+    return {"schedules": await _call(project_id, _module().list)}
 
 
 @router.post("/create")
 async def create_schedule(req: CreateScheduleRequest, project_id: str = Query(...)):
-    return _call(_module().create, project_id, **req.model_dump())
+    return await _call(project_id, _module().create, **req.model_dump())
 
 
 @router.get("/{schedule_id}")
 async def get_schedule(schedule_id: str, project_id: str = Query(...)):
-    return _call(_module().get, project_id, schedule_id)
+    return await _call(project_id, _module().get, schedule_id)
 
 
 @router.patch("/{schedule_id}")
@@ -53,9 +58,9 @@ async def update_schedule(
     req: UpdateScheduleRequest,
     project_id: str = Query(...),
 ):
-    return _call(
-        _module().update,
+    return await _call(
         project_id,
+        _module().update,
         schedule_id,
         **req.model_dump(exclude_unset=True),
     )
@@ -63,18 +68,18 @@ async def update_schedule(
 
 @router.delete("/{schedule_id}")
 async def delete_schedule(schedule_id: str, project_id: str = Query(...)):
-    _call(_module().delete, project_id, schedule_id)
+    await _call(project_id, _module().delete, schedule_id)
     return {"deleted": True, "id": schedule_id}
 
 
 @router.post("/{schedule_id}/pause")
 async def pause_schedule(schedule_id: str, project_id: str = Query(...)):
-    return _call(_module().pause, project_id, schedule_id)
+    return await _call(project_id, _module().pause, schedule_id)
 
 
 @router.post("/{schedule_id}/resume")
 async def resume_schedule(schedule_id: str, project_id: str = Query(...)):
-    return _call(_module().resume, project_id, schedule_id)
+    return await _call(project_id, _module().resume, schedule_id)
 
 
 @router.get("/{schedule_id}/runs")
@@ -85,7 +90,9 @@ async def list_schedule_runs(
     offset: int = Query(0, ge=0),
 ):
     return {
-        "runs": _call(_module().list_runs, project_id, schedule_id, limit, offset),
+        "runs": await _call(
+            project_id, _module().list_runs, schedule_id, limit, offset
+        ),
         "limit": limit,
         "offset": offset,
     }

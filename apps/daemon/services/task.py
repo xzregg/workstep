@@ -5,7 +5,9 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
+from agent_assistants.event_journal import TurnEventJournal
 from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, WorkflowRun
 from models.base import db_proxy
 from models.fields import utc_now
@@ -28,6 +30,7 @@ class TaskService:
         self._event_bus = event_bus
         self._running_engines: dict[str, object] = {}  # task_id → engine
         self._cancelled_tasks: set[str] = set()
+        self._event_journal = TurnEventJournal()
 
     def create_task(
         self,
@@ -302,46 +305,18 @@ class TaskService:
         This is the core execution loop. Runs as an async task
         so the caller can await it or fire-and-forget.
         """
-        try:
-            task = Task.get_by_id(task_id)
-        except Task.DoesNotExist:
+        prepared = await asyncio.to_thread(self._prepare_legacy_run, task_id)
+        if prepared is None:
             logger.error("Task not found: %s", task_id)
             return
-
-        engine = create_engine(task.engine or DEFAULT_EXECUTION_ENGINE)
+        engine_id, cwd, msg_id, journal_ref = prepared
+        engine = create_engine(engine_id)
         if not engine:
             await self._publish(task_id, "do", {
                 "type": "error",
-                "data": {"message": f"Unknown engine: {task.engine}"},
+                "data": {"message": f"Unknown engine: {engine_id}"},
             })
             return
-
-        # Update task status
-        task.status = "running"
-        task.updated_at = utc_now()
-        task.save()
-
-        # Update step status
-        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
-        step.status = "running"
-        step.started_at = utc_now()
-        step.save()
-
-        # Create message record
-        msg_id = new_message_id()
-        message_started_at = utc_now()
-        create_task_message(
-            id=msg_id,
-            task=task,
-            channel="execution",
-            step_key="do",
-            role="assistant",
-            run_id=msg_id,
-            run_status="running",
-            position=1,
-            started_at=message_started_at,
-            created_at=message_started_at,
-        )
 
         await self._publish(task_id, "do", {
             "type": "status",
@@ -357,13 +332,14 @@ class TaskService:
         reported_error: str | None = None
 
         try:
-            async for event in engine.spawn(prompt=prompt, cwd=task.cwd):
+            async for event in engine.spawn(prompt=prompt, cwd=cwd):
                 normalize_event = getattr(engine, "normalize_event", None)
                 if normalize_event is not None:
                     event = normalize_event(event)
                 if event is None:
                     continue
                 events_collected.append(event.to_dict())
+                self._event_journal.record(journal_ref, event.to_dict())
 
                 # Collect text content
                 if event.type == "agent_message_chunk":
@@ -386,40 +362,41 @@ class TaskService:
                 "type": "error",
                 "data": {"message": str(e)},
             })
-            step.status = "failed"
-            step.error = str(e)
-            task.status = "stopped"
+            step_status = "failed"
+            step_error = str(e)
+            task_status = "stopped"
         else:
             if task_id in self._cancelled_tasks:
                 # 手动停止：与普通失败区分，前端显示「手动停止」。
-                step.status = "cancelled"
-                step.error = "手动停止"
-                task.status = "paused"
+                step_status = "cancelled"
+                step_error = "手动停止"
+                task_status = "paused"
             elif reported_error is not None:
-                step.status = "failed"
-                step.error = reported_error
-                task.status = "stopped"
+                step_status = "failed"
+                step_error = reported_error
+                task_status = "stopped"
             else:
-                step.status = "passed"
-                task.status = "ready"
+                step_status = "passed"
+                step_error = None
+                task_status = "ready"
         finally:
-            step.ended_at = utc_now()
-            step.save()
-            task.updated_at = utc_now()
-            task.save()
-
-            # Update message with collected events and content
             try:
-                msg = Message.get_by_id(msg_id)
-                msg.events_json = json.dumps(events_collected)
-                msg.usage_json = extract_usage_json(events_collected)
-                msg.content = "".join(content_parts)
-                if step.status == "cancelled":
-                    msg.run_status = "cancelled"
-                else:
-                    msg.run_status = "succeeded" if step.status == "passed" else "failed"
-                msg.ended_at = utc_now()
-                msg.save()
+                self._event_journal.finish(
+                    journal_ref,
+                    {"type": "status", "data": {"status": step_status}},
+                )
+                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                await asyncio.to_thread(
+                    self._finish_legacy_run,
+                    task_id,
+                    msg_id,
+                    step_status,
+                    step_error,
+                    task_status,
+                    events_collected,
+                    content_parts,
+                    journal_snapshot,
+                )
             except Exception:
                 logger.exception("Failed to update message %s", msg_id)
 
@@ -429,8 +406,77 @@ class TaskService:
 
             await self._publish(task_id, "do", {
                 "type": "status",
-                "data": {"status": step.status, "task_id": task_id},
+                "data": {"status": step_status, "task_id": task_id},
             })
+
+    def _prepare_legacy_run(self, task_id: str):
+        try:
+            task = Task.get_by_id(task_id)
+        except Task.DoesNotExist:
+            return None
+        task.status = "running"
+        task.updated_at = utc_now()
+        task.save()
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        step.status = "running"
+        step.started_at = utc_now()
+        step.save()
+        msg_id = new_message_id()
+        message_started_at = utc_now()
+        journal_ref = self._event_journal.start(
+            Path(task.cwd) / ".workstep",
+            f"task-{task.id}",
+            msg_id,
+        )
+        create_task_message(
+            id=msg_id,
+            task=task,
+            channel="execution",
+            step_key="do",
+            role="assistant",
+            run_id=msg_id,
+            run_status="running",
+            event_log_path=journal_ref.relative_path,
+            position=1,
+            started_at=message_started_at,
+            created_at=message_started_at,
+        )
+        return task.engine or DEFAULT_EXECUTION_ENGINE, task.cwd, msg_id, journal_ref
+
+    @staticmethod
+    def _finish_legacy_run(
+        task_id, msg_id, step_status, step_error, task_status,
+        events_collected, content_parts, journal_snapshot,
+    ):
+        task = Task.get_by_id(task_id)
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        step.status = step_status
+        step.error = step_error
+        step.ended_at = utc_now()
+        step.save()
+        task.status = task_status
+        task.updated_at = utc_now()
+        task.save()
+        msg = Message.get_by_id(msg_id)
+        summary_events = journal_snapshot["events"]
+        msg.events_json = (
+            json.dumps(summary_events, ensure_ascii=False)
+            if summary_events else None
+        )
+        msg.event_summary_json = json.dumps(
+            journal_snapshot["summary"], ensure_ascii=False
+        )
+        msg.event_count = journal_snapshot["summary"]["event_count"]
+        msg.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
+        msg.usage_json = extract_usage_json(events_collected)
+        msg.content = "".join(content_parts)
+        msg.run_status = (
+            "cancelled" if step_status == "cancelled"
+            else "succeeded" if step_status == "passed"
+            else "failed"
+        )
+        msg.ended_at = utc_now()
+        msg.save()
 
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task (idempotent)."""
@@ -448,6 +494,10 @@ class TaskService:
 
     async def pause_task(self, task_id: str) -> bool:
         """Pause a running task."""
+        return await asyncio.to_thread(self._pause_task_sync, task_id)
+
+    @staticmethod
+    def _pause_task_sync(task_id: str) -> bool:
         try:
             task = Task.get_by_id(task_id)
         except Task.DoesNotExist:

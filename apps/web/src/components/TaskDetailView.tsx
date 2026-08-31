@@ -25,6 +25,7 @@ import Input from './Input'
 import Textarea from './Textarea'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
+import StreamingStatusText from './StreamingStatusText'
 import ConversationNewMessagesButton from './ConversationNewMessagesButton'
 import ChatInput, { type ChatInputEngineConfig } from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
@@ -2577,28 +2578,13 @@ export default function TaskDetailView({
                               msg.run_status ===
                                 'running'
                                 ? (
-                                  <div
-                                    className="engine-loading-message"
-                                    role="status"
-                                    aria-live="polite"
-                                  >
-                                    <span>
-                                      {liveExecutionStatus(
-                                        processEvents,
-                                        t,
-                                        (stageInserts ?? [])
-                                          .length > 0,
-                                      )}
-                                    </span>
-                                    <span
-                                      className="engine-loading-dots"
-                                      aria-hidden="true"
-                                    >
-                                      <i />
-                                      <i />
-                                      <i />
-                                    </span>
-                                  </div>
+                                  <StreamingStatusText
+                                    label={liveExecutionStatus(
+                                      processEvents,
+                                      t,
+                                      (stageInserts ?? []).length > 0,
+                                    )}
+                                  />
                                 )
                                 : undefined
                             }
@@ -2968,8 +2954,6 @@ export default function TaskDetailView({
               <AssistantThinkingMessage
                 sender={t('aiFlow.agent')}
                 initials={t('aiFlow.agentInitials')}
-                label={t('aiFlow.thinking')}
-                onViewPrompt={onViewingPromptChange}
               />
             )}
 
@@ -3034,12 +3018,7 @@ export default function TaskDetailView({
                     message.status === 'running'
                   }
                   loading={
-                    <div
-                      className="engine-loading-message"
-                      role="status"
-                    >
-                      {t('aiFlow.thinking')}
-                    </div>
+                    <StreamingStatusText label={t('bubble.thinking')} />
                   }
                   footer={
                     message.content ? (
@@ -3155,20 +3134,7 @@ export default function TaskDetailView({
                   !hasProcessEvents(events)
                 }
                 loading={
-                  <div
-                    className="engine-loading-message"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <span>
-                      {t('chat.processing')}
-                    </span>
-                    <span className="engine-loading-dots">
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                  </div>
+                  <StreamingStatusText label={t('chat.processing')} />
                 }
                 footer={
                   content ? (

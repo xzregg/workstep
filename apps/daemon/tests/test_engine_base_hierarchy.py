@@ -103,6 +103,16 @@ def test_non_acp_engine_keeps_safe_protocol_defaults():
     assert asyncio.run(engine.load_session("s1", "/tmp")) is False
     assert asyncio.run(engine.list_sessions()) == []
     assert asyncio.run(engine.resume_session("s1", "/tmp")) is False
+    assert engine.supports_session_fork is False
+    assert asyncio.run(engine.fork_session("s1", "/tmp")) is None
+
+
+def test_engine_capabilities_expose_native_session_fork_support():
+    """调用方可仅通过公共 capability 判断是否能原生分叉。"""
+    from engines.codex_sdk import CodexSDKEngine
+
+    assert CodexSDKEngine().capabilities.supports_session_fork is True
+    assert _NonAcpEngine().capabilities.supports_session_fork is False
 
 
 class _NonAcpEngine(AcpEngineBase):

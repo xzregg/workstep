@@ -1,10 +1,12 @@
 """WorkStep Daemon — FastAPI entry point."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from settings import settings
 from streaming.bus import EventBus
@@ -28,6 +30,7 @@ from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
+from api.skills import router as skills_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
 from services.project import project_manager
@@ -101,7 +104,7 @@ async def lifespan(app: FastAPI):
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     config_store.migrate_legacy_config()
     ensure_global_templates()
-    project_manager._load_saved_projects()
+    await asyncio.to_thread(project_manager._load_saved_projects)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
     recovered = await workflow_runtime.recover_running_workflows()
@@ -124,7 +127,9 @@ async def lifespan(app: FastAPI):
         task_agent=task_draft_module,
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
-    recovered_chats = chat_session_module.recover_interrupted_messages()
+    recovered_chats = await asyncio.to_thread(
+        chat_session_module.recover_interrupted_messages
+    )
     if recovered_chats:
         logger.info(
             "Recovered %d interrupted chat message(s) from event journals",
@@ -147,10 +152,11 @@ async def lifespan(app: FastAPI):
         await coordinator_module.shutdown()
         await workflow_runtime.shutdown()
         await event_bus.close()
-        project_manager.close_all()
+        await asyncio.to_thread(project_manager.close_all)
 
 
-app = FastAPI(title="WorkStep Daemon", lifespan=lifespan)
+app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     RemoteProjectProxyMiddleware,
     registry=remote_project_registry,
@@ -177,6 +183,7 @@ app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
 app.include_router(system_settings_router)
+app.include_router(skills_router)
 app.include_router(remote_project_router)
 
 

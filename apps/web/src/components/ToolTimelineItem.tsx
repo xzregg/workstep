@@ -20,11 +20,9 @@ export default function ToolTimelineItem({ item, streaming }: ToolTimelineItemPr
     <details className={`llm-tool-group llm-tool-group-${running ? 'running' : failed ? 'failed' : 'done'}`}>
       <summary>
         <span className="llm-tool-call-icon" aria-hidden="true">
-          {running
-            ? <span className="task-status-spinner" />
-            : <Icon name="terminal" size={13} strokeWidth={1.7} />}
+          <Icon name="terminal" size={13} strokeWidth={1.7} />
         </span>
-        <span className="llm-tool-call-summary">
+        <span className={`llm-tool-call-summary${running ? ' is-shimmer' : ''}`}>
           {t('trace.commandGroup', { count: item.activities.length })}
         </span>
         {failed && <span className="process-trace-error">{t('trace.failed')}</span>}

@@ -1,5 +1,6 @@
 """Workflow CRUD API — multiple named workflows per project."""
 
+import asyncio
 import json
 import logging
 
@@ -20,8 +21,11 @@ async def _run_db(project_id, operation):
     run_db = getattr(project_manager, "run_db", None)
     if run_db is not None:
         return await run_db(project_id, operation)
-    with project_manager.activate_project_by_id(project_id) as project:
-        return operation(project)
+    def execute():
+        with project_manager.activate_project_by_id(project_id) as project:
+            return operation(project)
+
+    return await asyncio.to_thread(execute)
 
 
 def _resolve_template_steps(template_id: str) -> dict | None:

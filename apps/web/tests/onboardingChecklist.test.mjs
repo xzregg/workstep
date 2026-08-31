@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const checklistSource = await readFile(new URL('../src/components/OnboardingChecklist.tsx', import.meta.url), 'utf8')
 const layoutSource = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
 const canvasSource = await readFile(new URL('../src/pages/CanvasEditor.tsx', import.meta.url), 'utf8')
 
@@ -35,4 +36,11 @@ test('the starter canvas explanation is contextual and dismissible', () => {
   assert.match(canvasSource, /searchParams\.get\('onboarding'\) === '1'/)
   assert.match(canvasSource, /markCanvasHintSeen/)
   assert.match(canvasSource, /onboarding\.canvasHintBody/)
+})
+
+test('completed onboarding disappears from the workspace and remains available in settings', () => {
+  assert.match(checklistSource, /state\.status === 'dismissed' \|\| state\.status === 'completed'/)
+  assert.match(layoutSource, /onboardingStatus !== 'completed'/)
+  assert.match(settingsSource, /useOnboardingStore\.getState\(\)\.reopen\(\)/)
+  assert.match(settingsSource, /t\('settings\.onboardingTitle'\)/)
 })

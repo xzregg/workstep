@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
+import StreamingStatusText from './StreamingStatusText'
 import ToolTimelineItem from './ToolTimelineItem'
 import {
   durationMilliseconds,
@@ -57,6 +58,7 @@ function ThinkingTimelineItem({
   duration: string
 }) {
   const { t } = useI18n()
+  const displayDuration = duration || formatDuration(0, t)
   const [open, setOpen] = useState(active)
   const thinkingRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
@@ -107,7 +109,10 @@ function ThinkingTimelineItem({
         </span>
         <span className={active ? 'process-trace-thinking-label is-shimmer' : 'process-trace-thinking-label'}>
           {active
-            ? t('trace.thinking')
+            ? t('trace.thinkingProgress', {
+              count: characterCount(content),
+              duration: displayDuration,
+            })
             : duration
               ? t('trace.thoughtCharactersDuration', {
                 count: characterCount(content),
@@ -282,7 +287,7 @@ export default function ProcessTrace({
         </summary>
         <div className="process-trace-body">
           {detailsLoading && (
-            <div className="engine-loading-message" role="status">{t('trace.loadingDetails')}</div>
+            <StreamingStatusText label={t('trace.loadingDetails')} />
           )}
           {!detailsLoading && detailsError && (
             <div style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{detailsError}</div>

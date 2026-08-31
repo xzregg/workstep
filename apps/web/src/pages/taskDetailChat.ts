@@ -87,6 +87,26 @@ export function mergeLoadedTaskMessageEvents(
   })
 }
 
+export function mergeRefreshedTaskHistory(current: any[], refreshed: any[]): any[] {
+  const currentById = new Map(current.map((message) => [message.id, message]))
+  const merged = refreshed.map((message) => {
+    const existing = currentById.get(message.id)
+    if (!existing?.event_detail?.loaded) return message
+    return {
+      ...message,
+      events: existing.events,
+      event_detail: existing.event_detail,
+    }
+  })
+  const refreshedIds = new Set(refreshed.map((message) => message.id))
+  return [
+    ...merged,
+    ...current.filter((message) => (
+      String(message.id).startsWith('pending-') && !refreshedIds.has(message.id)
+    )),
+  ]
+}
+
 interface MessageReview {
   id: string
   step_key: string

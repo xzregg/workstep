@@ -16,6 +16,7 @@ import {
   isStageResumableWithMessage,
   liveExecutionStatus,
   mergeLoadedTaskMessageEvents,
+  mergeRefreshedTaskHistory,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
@@ -23,6 +24,27 @@ import {
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../src/pages/taskDetailChat.ts'
+
+test('history refresh preserves already loaded detail events', () => {
+  const current = [{
+    id: 'message-1',
+    content: '旧回答',
+    events: [{ type: 'REASONING_MESSAGE_CHUNK', event_sequence: 1, delta: '完整思考' }],
+    event_detail: { available: true, loaded: true, loading: false, complete: true },
+  }]
+  const refreshed = [{
+    id: 'message-1',
+    content: '新回答',
+    events: [],
+    event_detail: { available: true, loaded: false, loading: false },
+  }]
+
+  const merged = mergeRefreshedTaskHistory(current, refreshed)
+
+  assert.equal(merged[0].content, '新回答')
+  assert.deepEqual(merged[0].events, current[0].events)
+  assert.deepEqual(merged[0].event_detail, current[0].event_detail)
+})
 
 test('loads task JSONL details without dropping newer live events', () => {
   const messages = [{

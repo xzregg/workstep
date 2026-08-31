@@ -9,7 +9,7 @@ export { usageFromEvents } from '../utils/contextUsage.js'
 
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
-   (usage / engine / model summary + copy button).
+   (usage / engine / model summary + response actions).
    Used by the task conversation and the AI flow-design
    chat so both render replies with the same footer.
    ══════════════════════════════════════════ */
@@ -154,6 +154,8 @@ export interface MessageResponseFooterProps {
   /** 该阶段被手动停止：悬停消息时显示「重启」。 */
   stopped?: boolean
   onContinueStage?: () => void
+  /** Create an independent chat branch from this completed response. */
+  onFork?: () => void
 }
 
 export default function MessageResponseFooter({
@@ -166,6 +168,7 @@ export default function MessageResponseFooter({
   running = false,
   stopped = false,
   onContinueStage,
+  onFork,
 }: MessageResponseFooterProps) {
   const { t, locale } = useI18n()
   const usageSummary = running ? '' : formatTokenUsage(usage, t, locale)
@@ -199,6 +202,21 @@ export default function MessageResponseFooter({
           <Icon name="rotate-ccw" size={11} strokeWidth={2.2} />
           {t('footer.restart')}
         </button>
+      )}
+      {!running && onFork && (
+        <Button
+          variant="ghost"
+          aria-label={t('chatSession.forkAction')}
+          title={t('chatSession.forkTitle')}
+          onClick={onFork}
+          className="chat-message-action"
+          style={{
+            width: 24, height: 24, minWidth: 24, padding: 0,
+            justifyContent: 'center', color: 'var(--muted)',
+          }}
+        >
+          <Icon name="git-fork" size={12} strokeWidth={2} />
+        </Button>
       )}
       <MessageCopyButton
         content={content}

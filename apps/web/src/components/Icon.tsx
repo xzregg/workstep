@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
   Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
-  ExternalLink, FileText, Folder, FolderOpen, Image as ImageIcon, Layers, LayoutGrid, List,
+  ExternalLink, FileText, Folder, FolderOpen, GitFork, Image as ImageIcon, Layers, LayoutGrid, List,
   Lightbulb, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
 } from 'lucide-react'
@@ -25,6 +25,7 @@ const glyphs = {
   file: FileText,
   folder: Folder,
   'folder-open': FolderOpen,
+  'git-fork': GitFork,
   image: ImageIcon,
   layers: Layers,
   'layout-grid': LayoutGrid,
@@ -50,7 +51,7 @@ const glyphs = {
 } as const
 
 /** 自定义字形（viewBox 0 0 24 24），fill 字形用 `fill` prop 开启 */
-const customGlyphs: Record<string, { viewBox: string; node: ReactNode }> = {
+const customGlyphs = {
   send: {
     viewBox: '0 0 24 24',
     node: (
@@ -68,7 +69,7 @@ const customGlyphs: Record<string, { viewBox: string; node: ReactNode }> = {
     viewBox: '0 0 11 11',
     node: <path d="M10.5 0.5v10h-10" />,
   },
-}
+} satisfies Record<string, { viewBox: string; node: ReactNode }>
 
 export type IconName = keyof typeof glyphs | keyof typeof customGlyphs
 
@@ -92,7 +93,7 @@ export default function Icon({
   style,
 }: IconProps) {
   if (name in customGlyphs) {
-    const { viewBox, node } = customGlyphs[name]
+    const { viewBox, node } = customGlyphs[name as keyof typeof customGlyphs]
     return (
       <svg
         width={size}

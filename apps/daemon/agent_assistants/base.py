@@ -747,6 +747,7 @@ class AssistantRuntime:
         provider_id: str | None = None,
         steps: dict | None = None,
         extra: dict | None = None,
+        schedule: bool = True,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -898,7 +899,29 @@ class AssistantRuntime:
             "provider_id": normalized_provider or None,
             "engine_overridden": bool(engine),
             "journal_ref": journal_ref,
+            "memory_key": memory_key,
         }
+        if schedule:
+            self.start_queued_turn(turn_id)
+        return AcceptedTurn(
+            session_id=session.session_id,
+            turn_id=turn_id,
+            assistant_message_id=assistant_message_id,
+            status="queued",
+        )
+
+    def start_queued_turn(self, turn_id: str) -> None:
+        """Start a persisted assistant turn on the current event loop."""
+        existing = self._turn_tasks.get(turn_id)
+        if existing is not None and not existing.done():
+            return
+        state = self._turn_states.get(turn_id)
+        if state is None:
+            raise ValueError("Assistant turn not found")
+        session = self._sessions.get(state.get("memory_key"))
+        if session is None:
+            raise ValueError("Assistant session not found")
+        assistant_message_id = str(state.get("assistant_message_id") or "")
         background = asyncio.create_task(
             self._run_turn(session, turn_id, assistant_message_id),
             name=f"assistant-{self._config.name}:{turn_id}",
@@ -909,12 +932,6 @@ class AssistantRuntime:
             lambda task, active_turn_id=turn_id: self._consume_background(
                 task, active_turn_id
             )
-        )
-        return AcceptedTurn(
-            session_id=session.session_id,
-            turn_id=turn_id,
-            assistant_message_id=assistant_message_id,
-            status="queued",
         )
 
     async def stop_current(self, session_id: str) -> bool:
@@ -1076,6 +1093,7 @@ class AssistantRuntime:
             messages: list[dict] = []
             resolved: str | None = None
             restored_engine_state: Any = None
+            restored_extra: dict = {}
             restored_engine, restored_model, restored_fast, restored_vision = (
                 engine_id,
                 model,
@@ -1099,6 +1117,7 @@ class AssistantRuntime:
                 messages = candidate.messages
                 resolved = candidate.resolved_session_id
                 restored_engine_state = candidate.engine_state
+                restored_extra = dict(candidate.extra)
                 restored_engine = candidate.engine or engine_id
                 restored_model = (
                     candidate.model if candidate.model is not None else model
@@ -1134,13 +1153,14 @@ class AssistantRuntime:
                 steps=steps,
                 messages=messages,
                 resolved_session_id=resolved,
-                extra=dict(extra or {}),
+                extra={**restored_extra, **dict(extra or {})},
                 engine_state=restored_engine_state,
             )
             self._sessions[memory_key] = session
         else:
             if session.engine != (engine_override or engine_id):
                 session.resolved_session_id = None
+                session.engine_state = None
             session.engine = engine_override or engine_id
             session.model = (
                 model_override if model_override is not None else model
@@ -1326,11 +1346,13 @@ class AssistantRuntime:
                     or (lambda raw: raw)
                 )
 
-                def make_live_callback():
+                def make_live_callback(journaled_events: list[dict]):
                     raw_content = ""
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply
+                        event_dict = event.to_dict()
+                        journaled_events.append(event_dict)
                         if event.type == "agent_message_chunk":
                             content_block = event.data.get("content") or {}
                             raw_content += str(content_block.get("text", ""))
@@ -1357,7 +1379,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "agent_thought_chunk":
-                            self._record_journal_event(journal_ref, event.to_dict())
+                            self._record_journal_event(journal_ref, event_dict)
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1382,7 +1404,7 @@ class AssistantRuntime:
                         }:
                             self._record_journal_event(
                                 journal_ref,
-                                event.to_dict(),
+                                event_dict,
                                 force=event.type in {"interaction_request", "session_started"},
                             )
                             await self._publish(
@@ -1394,7 +1416,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "usage_update":
-                            self._record_journal_event(journal_ref, event.to_dict())
+                            self._record_journal_event(journal_ref, event_dict)
                             await self._publish(
                                 session,
                                 assistant_message_id,
@@ -1406,10 +1428,11 @@ class AssistantRuntime:
                         else:
                             # Keep the host-side journal complete even when an
                             # event has no current AG-UI rendering path.
-                            self._record_journal_event(journal_ref, event.to_dict())
+                            self._record_journal_event(journal_ref, event_dict)
 
                     return publish_live_event
 
+                journaled_events: list[dict] = []
                 invoke_kwargs = {"message_history": session.engine_state}
                 if images:
                     invoke_kwargs["images"] = images
@@ -1419,8 +1442,11 @@ class AssistantRuntime:
                     session.cwd,
                     prompt,
                     session.resolved_session_id,
-                    make_live_callback(),
+                    make_live_callback(journaled_events),
                     **invoke_kwargs,
+                )
+                self._record_unstreamed_journal_events(
+                    journal_ref, _events, journaled_events
                 )
                 if self._turn_states[turn_id]["status"] == "stopping":
                     raise asyncio.CancelledError
@@ -1586,8 +1612,10 @@ class AssistantRuntime:
             finally:
                 session.last_active = time.monotonic()
                 if self._config.persistence is not None:
-                    with self._project_ctx(session.project_id):
-                        self._config.persistence.save(session)
+                    await self._project_manager.run_db(
+                        session.project_id,
+                        lambda _project: self._config.persistence.save(session),
+                    )
 
     def _record_journal_event(
         self,
@@ -1602,6 +1630,20 @@ class AssistantRuntime:
             self._config.event_journal.record(ref, event, force=force)
         except Exception:
             logger.exception("Failed to append assistant event journal")
+
+    def _record_unstreamed_journal_events(
+        self,
+        ref: JournalRef | None,
+        returned_events: list[dict],
+        journaled_events: list[dict],
+    ) -> None:
+        """Persist events returned by adapters that skipped the live callback."""
+        unmatched = list(journaled_events)
+        for event in returned_events:
+            if event in unmatched:
+                unmatched.remove(event)
+            else:
+                self._record_journal_event(ref, event)
 
     def _finish_journal(
         self,

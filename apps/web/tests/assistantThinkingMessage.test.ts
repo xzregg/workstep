@@ -12,6 +12,10 @@ const taskDetailSource = await readFile(
   new URL('../src/components/TaskDetailView.tsx', import.meta.url),
   'utf8',
 )
+const thinkingMessageSource = await readFile(
+  new URL('../src/components/AssistantThinkingMessage.tsx', import.meta.url),
+  'utf8',
+)
 
 test('shows a thinking reply until the running assistant message arrives', () => {
   assert.equal(shouldShowAssistantThinking(true, []), true)
@@ -39,4 +43,12 @@ test('shows a thinking reply until the running assistant message arrives', () =>
 test('all editable conversation containers use the shared thinking reply', () => {
   assert.match(assistantPanelSource, /<AssistantThinkingMessage/)
   assert.match(taskDetailSource, /<AssistantThinkingMessage/)
+})
+
+test('optimistic assistant reply aligns a shared processing label directly with the avatar', () => {
+  assert.match(thinkingMessageSource, /<StreamingStatusText label=\{t\('bubble\.thinking'\)\} \/>/)
+  assert.doesNotMatch(thinkingMessageSource, /MessageMetaBar/)
+  assert.doesNotMatch(thinkingMessageSource, /label:\s*string/)
+  assert.doesNotMatch(assistantPanelSource, /<AssistantThinkingMessage[\s\S]*?label=\{copy\.thinking\}/)
+  assert.doesNotMatch(taskDetailSource, /<AssistantThinkingMessage[\s\S]*?label=\{t\('aiFlow\.thinking'\)\}/)
 })

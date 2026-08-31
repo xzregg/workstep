@@ -6,6 +6,7 @@ import ImagePreview from './ImagePreview'
 import MarkdownMessage from './MarkdownMessage'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
+import StreamingStatusText from './StreamingStatusText'
 import {
   hasA2uiBlocks,
   isHiddenA2uiActionMessage,
@@ -222,12 +223,7 @@ export default function ChatMessageBubble({
           ) : (
             !isUser && showLoading && streaming && interactions.length === 0 && !plan && (
               loading ?? (
-                <div className="engine-loading-message" role="status" aria-live="polite">
-                  <span>{t('bubble.thinking')}</span>
-                  <span className="engine-loading-dots" aria-hidden="true">
-                    <i /><i /><i />
-                  </span>
-                </div>
+                <StreamingStatusText label={t('bubble.thinking')} />
               )
             )
           )}

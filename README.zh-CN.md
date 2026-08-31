@@ -10,7 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](apps/daemon/pyproject.toml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](apps/web/package.json)
 
-![WorkStep 工作流工作台](apps/web/src/assets/hero.png)
+![WorkStep 工作流工作台](apps/web/src/assets/hero.svg)
 
 > 本地优先 · 多 LLM 引擎 · 工作流编排工具
 

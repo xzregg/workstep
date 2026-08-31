@@ -37,27 +37,33 @@ async def task_draft_chat(
     if not task_draft_module:
         raise HTTPException(status_code=503, detail="Task creation is not initialized")
     try:
-        accepted = task_draft_module.submit_message(
+        from main import project_manager
+        accepted = await project_manager.run_db(
             req.project_id,
-            req.session_id,
-            req.content,
-            idempotency_key,
-            title=req.title,
-            description=req.description,
-            workflow_id=req.workflow_id,
-            start_step_key=req.start_step_key,
-            engine=req.engine,
-            model=req.model,
-            fast_model=req.fast_model,
-            vision_model=req.vision_model,
-            provider_id=req.provider_id,
-            thinking_effort=req.thinking_effort,
-            instruction=req.instruction,
-            candidate_workflow_ids=req.candidate_workflow_ids,
-            allow_generate_title=req.allow_generate_title,
+            lambda _project: task_draft_module.submit_message(
+                req.project_id,
+                req.session_id,
+                req.content,
+                idempotency_key,
+                title=req.title,
+                description=req.description,
+                workflow_id=req.workflow_id,
+                start_step_key=req.start_step_key,
+                engine=req.engine,
+                model=req.model,
+                fast_model=req.fast_model,
+                vision_model=req.vision_model,
+                provider_id=req.provider_id,
+                thinking_effort=req.thinking_effort,
+                instruction=req.instruction,
+                candidate_workflow_ids=req.candidate_workflow_ids,
+                allow_generate_title=req.allow_generate_title,
+                schedule=False,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    task_draft_module.start_queued_turn(accepted.turn_id)
     return accepted.to_dict()
 
 

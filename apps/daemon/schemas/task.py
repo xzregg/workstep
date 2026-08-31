@@ -6,7 +6,7 @@ from schemas.base import BaseSchema
 
 
 class CreateTaskRequest(BaseSchema):
-    title: str
+    title: str = ""
     cwd: str
     description: str | None = None
     engine: str | None = None

@@ -19,6 +19,7 @@ interface MarkdownEditorProps {
   disabled?: boolean
   autoFocus?: boolean
   ariaLabel?: string
+  maxLength?: number
   /** Show the compact paste/drop capability hint above the editor. */
   showAttachmentHint?: boolean
 }
@@ -44,6 +45,7 @@ export default function MarkdownEditor({
   disabled = false,
   autoFocus = false,
   ariaLabel,
+  maxLength,
   showAttachmentHint = false,
 }: MarkdownEditorProps) {
   const { t } = useI18n()
@@ -183,6 +185,7 @@ export default function MarkdownEditor({
             className="markdown-editor-input"
             aria-label={ariaLabel ?? t('md.ariaLabel')}
             value={value}
+            maxLength={maxLength}
             disabled={disabled}
             onChange={(event) => {
               valueRef.current = event.target.value

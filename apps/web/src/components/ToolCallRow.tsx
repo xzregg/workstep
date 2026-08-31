@@ -90,11 +90,9 @@ export default function ToolCallRow({
     <details className={`llm-tool-call llm-tool-call-${isRunning ? 'running' : activity.isError ? 'failed' : 'done'}`}>
       <summary title={toolTarget(activity) || undefined}>
         <span className="llm-tool-call-icon" aria-hidden="true">
-          {isRunning
-            ? <span className="task-status-spinner" />
-            : <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />}
+          <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />
         </span>
-        <span className="llm-tool-call-summary">{summary}</span>
+        <span className={`llm-tool-call-summary${isRunning ? ' is-shimmer' : ''}`}>{summary}</span>
         {activity.isError && <span className="process-trace-error">{t('trace.failed')}</span>}
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>

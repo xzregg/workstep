@@ -124,6 +124,30 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
     assert resumed["next_run_at"] is not None
 
 
+def test_user_can_create_schedule_without_a_task_title(tmp_path):
+    from services.project import ProjectManager
+    from services.schedule import ScheduleModule
+
+    manager = ProjectManager()
+    project = manager.init_project(tmp_path / "project")
+    workflow_id = project.default_workflow()["id"]
+    module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
+
+    created = module.create(
+        project.id,
+        name="Daily task",
+        workflow_id=workflow_id,
+        task_template={"description": "这是一个超过十个字的任务内容"},
+        rule={
+            "kind": "daily",
+            "time": "09:00",
+            "timezone": "Asia/Shanghai",
+        },
+    )
+
+    assert created["task_template"]["title"] == "这是一个超过十个字的..."
+
+
 @pytest.mark.anyio
 async def test_schedule_api_creates_and_previews_through_the_module(monkeypatch):
     import main
@@ -135,7 +159,11 @@ async def test_schedule_api_creates_and_previews_through_the_module(monkeypatch)
             calls.append((project_id, payload))
             return {"id": "schedule-1", "status": "active"}
 
+    async def run_db(project_id, operation):
+        return operation(object())
+
     monkeypatch.setattr(main, "schedule_module", ModuleStub(), raising=False)
+    monkeypatch.setattr(main.project_manager, "run_db", run_db)
     async with AsyncClient(
         transport=ASGITransport(app=main.app), base_url="http://test"
     ) as client:

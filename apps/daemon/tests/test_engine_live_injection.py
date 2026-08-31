@@ -576,6 +576,11 @@ class _FakeAsyncCodex:
         self.threads[session_id] = thread
         return thread
 
+    async def thread_fork(self, session_id, **kwargs):
+        thread = _FakeSdkThread(f"{session_id}-fork")
+        self.threads[thread.id] = thread
+        return thread
+
     async def close(self):
         self.closed = True
 
@@ -599,6 +604,16 @@ def _patch_codex_sdk(monkeypatch):
             "sandbox": "workspace-write",
         },
     )
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_forks_to_an_independent_thread(monkeypatch):
+    _patch_codex_sdk(monkeypatch)
+
+    forked = await CodexSDKEngine().fork_session("thread-source", "/tmp")
+
+    assert forked == "thread-source-fork"
+    assert _FakeAsyncCodex.instances[0].closed is True
 
 
 @pytest.mark.anyio

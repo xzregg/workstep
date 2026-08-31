@@ -24,8 +24,10 @@ async def test_engine_inspection_only_lists_its_project_skills(tmp_path):
     codex = await CodexEngine().inspect_capabilities(str(tmp_path))
     claude = await ClaudeCodeEngine().inspect_capabilities(str(tmp_path))
 
-    assert {skill["name"] for skill in codex["skills"]} == {"research", "deploy", "shared"}
-    assert {skill["name"] for skill in claude["skills"]} == {"review", "shared"}
+    # Inspection reports the SkillCenter whitelist, not each engine's native
+    # project discovery roots. Existing .workstep skills are adopted enabled.
+    assert {skill["name"] for skill in codex["skills"]} == {"shared"}
+    assert {skill["name"] for skill in claude["skills"]} == {"shared"}
 
 
 @pytest.mark.asyncio
@@ -48,11 +50,11 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
         "insert_text": "/goal ",
         "action": "prompt",
     }
-    assert next(item for item in codex["input_items"] if item["name"] == "deploy")["insert_text"] == "$deploy "
+    assert next(item for item in codex["input_items"] if item["name"] == "shared")["insert_text"] == "$shared "
     assert [item["name"] for item in claude["input_items"][:4]] == [
         "goal", "plan", "reasoning", "status",
     ]
-    assert next(item for item in claude["input_items"] if item["name"] == "review")["insert_text"] == "/review "
+    assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/shared "
     assert [item["name"] for item in openclaw["input_items"]] == [
         "goal", "plan", "reasoning", "status", "shared",
     ]

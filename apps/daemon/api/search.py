@@ -1,5 +1,7 @@
 """Search API - search tasks by various criteria."""
 
+import asyncio
+
 from fastapi import APIRouter, Query
 from services.project import project_manager
 
@@ -35,7 +37,7 @@ async def search_tasks(
     projects = (
         [project_manager.get_project_by_id(project_id)]
         if project_id
-        else project_manager.list_projects()
+        else list(project_manager.iter_projects())
     )
     if not projects or projects == [None]:
         return {"tasks": [], "limit": limit, "offset": offset, "total": 0}
@@ -61,49 +63,52 @@ async def search_tasks(
         except ValueError:
             pass
 
-    tasks = []
-    for project in projects:
-        project_id_for_context = (
-            project.id if hasattr(project, "id") else project["id"]
+    def load_project_tasks():
+        conditions = []
+        if query:
+            conditions.append(
+                (Task.title.contains(query)) | (Task.description.contains(query))
+            )
+        if status:
+            conditions.append(Task.status == status)
+        if engine:
+            conditions.append(Task.engine == engine)
+        if start_datetime is not None:
+            conditions.append(Task.created_at >= start_datetime)
+        if end_datetime is not None:
+            conditions.append(Task.created_at <= end_datetime)
+
+        task_query = Task.select()
+        if conditions:
+            task_query = task_query.where(*conditions)
+        return [
+            {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "cwd": task.cwd,
+                "status": task.status,
+                "engine": task.engine,
+                "created_at": task.created_at,
+                "updated_at": task.updated_at,
+            }
+            for task in task_query
+        ]
+
+    batches = await asyncio.gather(*(
+        project_manager.run_db(
+            project.id if hasattr(project, "id") else project["id"],
+            lambda _project: load_project_tasks(),
         )
-        with project_manager.activate_project_by_id(project_id_for_context):
-            conditions = []
-            if query:
-                conditions.append(
-                    (Task.title.contains(query)) | (Task.description.contains(query))
-                )
-            if status:
-                conditions.append(Task.status == status)
-            if engine:
-                conditions.append(Task.engine == engine)
-            if start_datetime is not None:
-                conditions.append(Task.created_at >= start_datetime)
-            if end_datetime is not None:
-                conditions.append(Task.created_at <= end_datetime)
-
-            task_query = Task.select()
-            if conditions:
-                task_query = task_query.where(*conditions)
-            tasks.extend(list(task_query))
-
-    tasks.sort(key=lambda task: task.updated_at, reverse=True)
+        for project in projects
+    ))
+    tasks = [item for batch in batches for item in batch]
+    tasks.sort(key=lambda task: task["updated_at"], reverse=True)
     total = len(tasks)
     tasks = tasks[offset:offset + limit]
 
     return {
-        "tasks": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "description": t.description,
-                "cwd": t.cwd,
-                "status": t.status,
-                "engine": t.engine,
-                "created_at": t.created_at,
-                "updated_at": t.updated_at,
-            }
-            for t in tasks
-        ],
+        "tasks": tasks,
         "limit": limit,
         "offset": offset,
         "total": total,

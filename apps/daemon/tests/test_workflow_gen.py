@@ -1297,7 +1297,14 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
 
-    accepted = module.submit_message(project.id, None, "设计一个流程", "idem-think-1")
+    workflow_id = "wf-thinking-journal"
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "设计一个流程",
+        "idem-think-1",
+        workflow_id=workflow_id,
+    )
     status = await _wait_turn(module, accepted.turn_id)
     assert status == "completed"
 
@@ -1317,6 +1324,23 @@ async def test_thinking_and_usage_events_are_streamed(gen_module, monkeypatch):
         assert event["session_id"] == accepted.session_id
         assert event["messageId"]
         assert "task_id" not in event
+
+    from models.gen_session import WorkflowGenSession
+
+    with manager.activate_project_by_id(project.id):
+        row = WorkflowGenSession.get(
+            WorkflowGenSession.workflow_id == workflow_id
+        )
+        assert "先分析用户需求" not in row.messages_json
+    assistant = module.history(project.id, workflow_id)["messages"][-1]
+    assert assistant["event_log_path"]
+    records = [
+        json.loads(line)
+        for line in (project.workstep_dir / assistant["event_log_path"])
+        .read_text()
+        .splitlines()
+    ]
+    assert "agent_thought_chunk" in {record["type"] for record in records}
 
 
 @pytest.mark.anyio
@@ -1590,9 +1614,17 @@ async def test_workflow_history_persists_prompt_events_and_session_id(
     event_types = [e["type"] for e in msg["events"]]
     # agent_message_chunk is not persisted (content is already in the message).
     assert "agent_message_chunk" not in event_types
-    assert set(event_types) == {
+    assert set(event_types) == {"session_started", "usage_update"}
+    records = [
+        json.loads(line)
+        for line in (project.workstep_dir / msg["event_log_path"])
+        .read_text()
+        .splitlines()
+    ]
+    assert {record["type"] for record in records} >= {
         "session_started",
         "status",
+        "agent_message_chunk",
         "usage_update",
         "engine_state",
     }
@@ -1640,7 +1672,7 @@ async def test_workflow_history_persists_error_message_prompt(
     assert len(assistants) == 1
     assert assistants[0]["status"] == "error"
     assert assistants[0]["prompt"] and "设计一个流程" in assistants[0]["prompt"]
-    assert assistants[0]["events"] == []
+    assert [event["type"] for event in assistants[0]["events"]] == ["error"]
 
 
 @pytest.mark.anyio

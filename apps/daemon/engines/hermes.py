@@ -77,7 +77,23 @@ class HermesEngine(AcpEngineBase):
 
     def get_command(self) -> list[str]:
         binary = self.resolve_binary()
-        return [binary, "acp", "--accept-hooks"] if binary else []
+        if not binary:
+            return []
+        command = [binary]
+        preload = getattr(self, "_workstep_preload_skills", [])
+        if preload:
+            command.extend(["--skills", ",".join(preload)])
+        return [*command, "acp", "--accept-hooks"]
+
+    def project_skill_env(self, cwd: str) -> dict[str, str]:
+        from hashlib import sha256
+        from services.skill_runtime import prepare_hermes_home
+
+        project_id = sha256(str(os.path.realpath(cwd)).encode()).hexdigest()[:16]
+        selection = self.project_skills(cwd)
+        self._workstep_preload_skills = [skill.name for skill in selection.enabled]
+        home = prepare_hermes_home(selection, project_id)
+        return {"HERMES_HOME": str(home)}
 
     def get_permission_mode(self) -> str:
         """ACP permissions must be decided by the user, never auto-approved."""

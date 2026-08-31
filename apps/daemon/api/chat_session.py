@@ -29,6 +29,19 @@ class ChatSessionRenameRequest(BaseSchema):
     title: str
 
 
+class ChatSessionForkRequest(BaseSchema):
+    project_id: str
+    title: str
+    engine: str
+    context_mode: str
+    model: str | None = None
+    fast_model: str | None = None
+    vision_model: str | None = None
+    provider_id: str | None = None
+    permission_mode: str | None = None
+    fork_message_id: str | None = None
+
+
 class ChatMessageRequest(BaseSchema):
     project_id: str
     content: str
@@ -83,19 +96,35 @@ def _error_status(exc: ValueError) -> int:
     return 400
 
 
+async def _run_db(project_id: str, operation):
+    from main import project_manager
+
+    return await project_manager.run_db(
+        project_id,
+        lambda _project: operation(),
+    )
+
+
 @router.get("/quick-buttons")
 async def get_quick_buttons(project_id: str = Query(..., alias="project_id")):
     """Return the per-project chat quick buttons (defaults when unset)."""
-    return {"buttons": _module().get_quick_buttons(project_id)}
+    return {
+        "buttons": await _run_db(
+            project_id, lambda: _module().get_quick_buttons(project_id)
+        )
+    }
 
 
 @router.put("/quick-buttons")
 async def set_quick_buttons(req: QuickButtonsRequest):
     """Persist the per-project chat quick buttons."""
     try:
-        buttons = _module().set_quick_buttons(
+        buttons = await _run_db(
             req.project_id,
-            [item.model_dump() for item in req.buttons],
+            lambda: _module().set_quick_buttons(
+                req.project_id,
+                [item.model_dump() for item in req.buttons],
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -105,14 +134,21 @@ async def set_quick_buttons(req: QuickButtonsRequest):
 @router.get("/system-prompt")
 async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
     """Return the project's configured chat system prompt (default when unset)."""
-    return {"prompt": _module().get_system_prompt(project_id)}
+    return {
+        "prompt": await _run_db(
+            project_id, lambda: _module().get_system_prompt(project_id)
+        )
+    }
 
 
 @router.put("/system-prompt")
 async def set_system_prompt(req: SystemPromptRequest):
     """Persist the project's chat system prompt; empty restores the default."""
     try:
-        prompt = _module().set_system_prompt(req.project_id, req.prompt)
+        prompt = await _run_db(
+            req.project_id,
+            lambda: _module().set_system_prompt(req.project_id, req.prompt),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"prompt": prompt}
@@ -135,7 +171,10 @@ async def list_sessions(
 ):
     """List all chat sessions of a project (newest first)."""
     try:
-        sessions = _module().list_sessions(project_id, workflow_id)
+        sessions = await _run_db(
+            project_id,
+            lambda: _module().list_sessions(project_id, workflow_id),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"sessions": sessions}
@@ -145,16 +184,19 @@ async def list_sessions(
 async def create_session(req: ChatSessionCreateRequest):
     """Create one chat session for a project."""
     try:
-        session = _module().create_session(
+        session = await _run_db(
             req.project_id,
-            req.workflow_id,
-            title=req.title,
-            engine=req.engine,
-            model=req.model,
-            fast_model=req.fast_model,
-            vision_model=req.vision_model,
-            provider_id=req.provider_id,
-            permission_mode=req.permission_mode,
+            lambda: _module().create_session(
+                req.project_id,
+                req.workflow_id,
+                title=req.title,
+                engine=req.engine,
+                model=req.model,
+                fast_model=req.fast_model,
+                vision_model=req.vision_model,
+                provider_id=req.provider_id,
+                permission_mode=req.permission_mode,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -167,7 +209,9 @@ async def get_session(
     project_id: str = Query(..., alias="project_id"),
 ):
     """Return one chat session with its full message history."""
-    session = _module().get_session(project_id, session_id)
+    session = await _run_db(
+        project_id, lambda: _module().get_session(project_id, session_id)
+    )
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
     return session
@@ -183,12 +227,15 @@ async def get_message_events(
 ):
     """Return a bounded detail page from the host-side JSONL journal."""
     try:
-        return _module().message_events(
+        return await _run_db(
             project_id,
-            session_id,
-            message_id,
-            cursor=cursor,
-            limit=limit,
+            lambda: _module().message_events(
+                project_id,
+                session_id,
+                message_id,
+                cursor=cursor,
+                limit=limit,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
@@ -201,12 +248,36 @@ async def rename_session(
 ):
     """Rename one chat session."""
     try:
-        session = _module().rename_session(req.project_id, session_id, req.title)
+        session = await _run_db(
+            req.project_id,
+            lambda: _module().rename_session(req.project_id, session_id, req.title),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
     return session
+
+
+@router.post("/{session_id}/fork")
+async def fork_session(session_id: str, req: ChatSessionForkRequest):
+    """Create an independent native or history-backed chat-session fork."""
+    try:
+        return await _module().fork_session(
+            req.project_id,
+            session_id,
+            title=req.title,
+            engine=req.engine,
+            context_mode=req.context_mode,
+            model=req.model,
+            fast_model=req.fast_model,
+            vision_model=req.vision_model,
+            provider_id=req.provider_id,
+            permission_mode=req.permission_mode,
+            fork_message_id=req.fork_message_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
 
 @router.delete("/{session_id}")
@@ -216,7 +287,9 @@ async def delete_session(
 ):
     """Delete one chat session and all of its messages."""
     try:
-        deleted = _module().delete_session(project_id, session_id)
+        deleted = await _run_db(
+            project_id, lambda: _module().delete_session(project_id, session_id)
+        )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     if not deleted:
@@ -232,22 +305,27 @@ async def chat_message(
 ):
     """Queue one chat turn for a session; events stream over WebSocket."""
     try:
-        accepted = _module().submit_message(
+        accepted = await _run_db(
             req.project_id,
-            session_id,
-            req.content,
-            idempotency_key,
-            engine=req.engine,
-            model=req.model,
-            fast_model=req.fast_model,
-            vision_model=req.vision_model,
-            provider_id=req.provider_id,
-            thinking_effort=req.thinking_effort,
-            permission_mode=req.permission_mode,
-            plan_mode=req.plan_mode,
+            lambda: _module().submit_message(
+                req.project_id,
+                session_id,
+                req.content,
+                idempotency_key,
+                engine=req.engine,
+                model=req.model,
+                fast_model=req.fast_model,
+                vision_model=req.vision_model,
+                provider_id=req.provider_id,
+                thinking_effort=req.thinking_effort,
+                permission_mode=req.permission_mode,
+                plan_mode=req.plan_mode,
+                schedule=False,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+    _module().start_queued_turn(accepted.turn_id)
     return accepted.to_dict()
 
 
@@ -258,7 +336,7 @@ async def reorder_sessions(
 ):
     """Persist a new display order for a project's chat sessions."""
     try:
-        _module().reorder_sessions(pid, ordered_ids)
+        await _run_db(pid, lambda: _module().reorder_sessions(pid, ordered_ids))
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     return {"ok": True}

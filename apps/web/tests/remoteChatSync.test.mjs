@@ -16,16 +16,13 @@ test('task store surfaces remote user-message events without rendering live user
 test('open task details refresh persisted history when a user message arrives', () => {
   assert.match(detailSource, /s\.userMessageEvents\[taskId\]/)
   assert.match(detailSource, /taskApi\.history\(taskId, projectId, 50, 0\)/)
-  assert.match(detailSource, /setHistoryMessages\(response\.messages \|\| \[\]\)/)
+  assert.match(detailSource, /mergeRefreshedTaskHistory\(current, response\.messages \|\| \[\]\)/)
 })
 
-test('open task details recover messages when a realtime event is missed', () => {
-  assert.match(detailSource, /REMOTE_CHAT_HISTORY_SYNC_MS/)
-  assert.match(detailSource, /window\.setInterval/)
-  assert.match(detailSource, /document\.visibilityState !== 'visible'/)
-  assert.match(detailSource, /startsWith\('pending-'\)/)
-  assert.match(detailSource, /window\.clearInterval/)
-  assert.match(detailSource, /taskApi\.history\(taskId, projectId, 50, 0\)/)
+test('open task details do not poll history and overwrite loaded message details', () => {
+  assert.doesNotMatch(detailSource, /REMOTE_CHAT_HISTORY_SYNC_MS/)
+  assert.doesNotMatch(detailSource, /window\.setInterval\(syncHistory/)
+  assert.match(detailSource, /mergeRefreshedTaskHistory/)
 })
 
 test('assistant chat adopts optimistic user bubbles and carries sender identity', () => {

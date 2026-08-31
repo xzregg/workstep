@@ -26,6 +26,7 @@ from agent_assistants.base import (
     extract_streaming_reply,  # re-exported for back-compat
     invoke_engine,
 )
+from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from models import (
     ActionProposal,
     CoordinatorSession,
@@ -77,6 +78,10 @@ assistant_registry.register(COORDINATOR_CONFIG)
 ALLOWED_ACTIONS = {"supplement_stage", "rerun_from_stage", "review_decision"}
 
 
+class ArchiveExperienceStopped(RuntimeError):
+    """Raised when the user stops an in-flight archive experience draft."""
+
+
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
     turn_id: str
@@ -105,6 +110,350 @@ class CoordinatorModule:
         self._active_tasks: set[asyncio.Task] = set()
         self._running_engines: dict[str, object] = {}
         self._cancelled_turns: set[str] = set()
+        self._active_archive_experience_runs: set[str] = set()
+        self._cancelled_archive_experience_runs: set[str] = set()
+        self._completed_archive_experience_journals: dict[str, dict] = {}
+        self._event_journal = TurnEventJournal()
+
+    async def _run_db(self, project_id: str, operation):
+        """Serialize project Peewee work outside the event loop."""
+        return await self._project_manager.run_db(
+            project_id, lambda _project: operation()
+        )
+
+    async def draft_archive_experience(
+        self,
+        project_id: str,
+        task_id: str,
+        message_id: str | None = None,
+    ) -> str:
+        """Generate a reviewable task-experience draft without persisting it."""
+        progress_message_id = message_id or str(uuid.uuid4())
+        loaded = await self._run_db(
+            project_id,
+            lambda: self._load_archive_evidence_sync(project_id, task_id),
+        )
+        engine_id = loaded["engine_id"]
+        model = loaded["model"]
+        fast_model = loaded["fast_model"]
+        thinking_effort = loaded["thinking_effort"]
+        provider_id = loaded["provider_id"]
+        coordinator_root = loaded["coordinator_root"]
+        steps = loaded["steps"]
+        reviews = loaded["reviews"]
+        messages = loaded["messages"]
+        evidence = loaded["evidence"]
+
+        schema = {
+            "version": 1,
+            "reply": "Markdown experience draft",
+            "intent": "answer",
+            "target_step_key": None,
+            "artifact_requests": [],
+            "proposal": None,
+        }
+        prompt = (
+            "你正在为归档任务提炼可复用的错误经验，这不是任务总结。"
+            "只记录有直接证据的错误、失误或踩坑；成功过程、任务概述、成果、客套话都不要写。"
+            "最多 3 条，每条只写一行，格式为“- 错误：…；原因：…；纠正：…”。"
+            "合计不超过 600 个汉字；没有错误证据时回复“- 未发现值得记录的错误经验。”。"
+            "不要猜测，也不要执行任何操作。内容将先由用户审阅，当前绝不能写入 Memory。"
+            f"返回符合以下结构的 JSON：{json.dumps(schema, ensure_ascii=False)}\n\n"
+            f"任务全过程证据：\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
+        )
+        run_key = self._archive_experience_run_key(
+            project_id,
+            task_id,
+            progress_message_id,
+        )
+        journal_ref = self._event_journal.start(
+            loaded["workstep_dir"],
+            f"task-{task_id}",
+            progress_message_id,
+        )
+        journal_finished = False
+        self._active_archive_experience_runs.add(run_key)
+        event_sequence = 0
+        raw_content = ""
+        streamed_reply = ""
+
+        async def publish(event_type: str, data: dict) -> None:
+            nonlocal event_sequence
+            self._event_journal.record(
+                journal_ref,
+                {"type": event_type, "data": data},
+            )
+            await self._publish_archive_experience_event(
+                project_id,
+                task_id,
+                progress_message_id,
+                engine_id,
+                model,
+                event_type,
+                data,
+                event_sequence,
+            )
+            event_sequence += 1
+
+        async def publish_engine_event(event: InternalEvent) -> None:
+            nonlocal raw_content, streamed_reply
+            if event.type == "agent_message_chunk":
+                content = event.data.get("content") or {}
+                raw_content += str(content.get("text", ""))
+                partial_reply = extract_streaming_reply(raw_content)
+                if not partial_reply.startswith(streamed_reply):
+                    return
+                delta = partial_reply[len(streamed_reply):]
+                if not delta:
+                    return
+                streamed_reply = partial_reply
+                await publish(
+                    "agent_message_chunk",
+                    {"content": {"text": delta}},
+                )
+            elif event.type in {
+                "agent_thought_chunk",
+                "tool_call",
+                "tool_call_update",
+                "plan",
+                "plan_update",
+                "plan_removed",
+                "usage_update",
+                "subagent",
+                "compacted",
+            }:
+                await publish(event.type, event.data)
+
+        await publish(
+            "message_started",
+            {"role": "assistant", "prompt": prompt},
+        )
+        await publish(
+            "agent_thought_chunk",
+            {
+                "content": {
+                    "text": (
+                        f"已读取任务记录：{len(steps)} 个阶段、"
+                        f"{len(reviews)} 次审核、{len(messages)} 条消息。"
+                    )
+                }
+            },
+        )
+        await publish(
+            "agent_thought_chunk",
+            {"content": {"text": "已提交给协调助手，等待协调助手响应。"}},
+        )
+        try:
+            if run_key in self._cancelled_archive_experience_runs:
+                raise ArchiveExperienceStopped("Archive experience generation stopped")
+            raw, _, _ = await self._invoke(
+                engine_id,
+                model,
+                coordinator_root,
+                prompt,
+                None,
+                on_event=publish_engine_event,
+                turn_id=run_key,
+                thinking_effort=thinking_effort,
+                provider_id=provider_id,
+            )
+            if run_key in self._cancelled_archive_experience_runs:
+                raise ArchiveExperienceStopped("Archive experience generation stopped")
+            result, repair_events = await self._parse_or_repair(
+                engine_id,
+                fast_model,
+                coordinator_root,
+                raw,
+                run_key,
+            )
+            for repair_event in repair_events:
+                event_type = str(repair_event.get("type") or "")
+                if event_type:
+                    await publish(event_type, repair_event.get("data") or {})
+            experience = str(result.get("reply") or "").strip()
+            if not experience:
+                raise RuntimeError("Coordinator returned an empty experience draft")
+            if len(experience) > 800:
+                raise RuntimeError("Coordinator experience draft exceeds 800 characters")
+            await publish("message_snapshot", {"content": experience})
+            await publish("message_completed", {"status": "succeeded"})
+            self._event_journal.finish(journal_ref)
+            journal_finished = True
+            self._completed_archive_experience_journals[run_key] = {
+                "event_log_path": journal_ref.relative_path,
+                "snapshot": self._event_journal.snapshot(journal_ref),
+                "prompt": prompt,
+                "engine": engine_id,
+                "model": model,
+            }
+            return experience
+        except ArchiveExperienceStopped:
+            await publish("message_completed", {"status": "stopped"})
+            raise
+        except Exception as exc:
+            if run_key in self._cancelled_archive_experience_runs:
+                await publish("message_completed", {"status": "stopped"})
+                raise ArchiveExperienceStopped(
+                    "Archive experience generation stopped"
+                ) from exc
+            await publish(
+                "message_completed",
+                {"status": "failed", "error": str(exc)},
+            )
+            raise
+        finally:
+            if not journal_finished:
+                self._event_journal.finish(journal_ref)
+            self._active_archive_experience_runs.discard(run_key)
+            self._cancelled_archive_experience_runs.discard(run_key)
+
+    def _load_archive_evidence_sync(self, project_id: str, task_id: str) -> dict:
+        project = self._project_manager.get_project_by_id(project_id)
+        task = Task.get_or_none(Task.id == task_id)
+        if task is None:
+            raise ValueError(f"Task not found: {task_id}")
+        engine_id, model, fast_model, _ = self._resolve_engine_models(task)
+        thinking_effort = self._resolve_thinking_effort(task)
+        provider_id = self._resolve_provider_id(task)
+        coordinator_root = self._coordinator_root(project, task)
+        steps = [
+            {
+                "step_key": step.step_key,
+                "status": step.status,
+                "engine": step.engine,
+                "error": step.error,
+                "rework_feedback": step.rework_feedback,
+                "review_feedback": step.review_feedback,
+            }
+            for step in TaskStep.select().where(TaskStep.task == task)
+        ]
+        reviews = [
+            {
+                "step_key": review.step_key,
+                "attempt": review.attempt,
+                "status": review.status,
+                "decision": review.decision,
+                "decision_comment": review.decision_comment,
+                "error": review.error,
+                "report": review.report_json,
+            }
+            for review in ReviewRun.select()
+            .where(ReviewRun.task == task)
+            .order_by(ReviewRun.started_at)
+        ]
+        messages = [
+            {
+                "step_key": message.step_key,
+                "channel": message.channel,
+                "role": message.role,
+                "run_status": message.run_status,
+                "content": (message.content or "")[:8000],
+                "event_summary": message.event_summary_json,
+            }
+            for message in Message.select()
+            .where(Message.task == task)
+            .order_by(Message.sequence, Message.created_at)
+            .limit(200)
+        ]
+        evidence = {
+            "task": {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "status": task.status,
+            },
+            "steps": steps,
+            "reviews": reviews,
+            "messages": messages,
+            "artifacts": [
+                metadata[0]
+                for metadata in self._artifact_index(project, task).values()
+            ],
+        }
+        return {
+            "engine_id": engine_id,
+            "model": model,
+            "fast_model": fast_model,
+            "thinking_effort": thinking_effort,
+            "provider_id": provider_id,
+            "coordinator_root": coordinator_root,
+            "steps": steps,
+            "reviews": reviews,
+            "messages": messages,
+            "evidence": evidence,
+            "workstep_dir": project.workstep_dir,
+        }
+
+    @staticmethod
+    def _archive_experience_run_key(
+        project_id: str,
+        task_id: str,
+        message_id: str,
+    ) -> str:
+        return f"archive-experience:{project_id}:{task_id}:{message_id}"
+
+    def take_archive_experience_journal(
+        self,
+        project_id: str,
+        task_id: str,
+        message_id: str,
+    ) -> dict | None:
+        """Take the completed journal metadata for durable draft persistence."""
+        return self._completed_archive_experience_journals.pop(
+            self._archive_experience_run_key(project_id, task_id, message_id),
+            None,
+        )
+
+    async def stop_archive_experience(
+        self,
+        project_id: str,
+        task_id: str,
+        message_id: str,
+    ) -> bool:
+        """Stop a visible archive experience draft without persisting anything."""
+        run_key = self._archive_experience_run_key(project_id, task_id, message_id)
+        if run_key not in self._active_archive_experience_runs:
+            return False
+        self._cancelled_archive_experience_runs.add(run_key)
+        engine = self._running_engines.get(run_key)
+        if engine is not None:
+            try:
+                await engine.stop()
+            except Exception:
+                logger.exception(
+                    "Engine stop raised while stopping archive experience %s",
+                    run_key,
+                )
+        return True
+
+    async def _publish_archive_experience_event(
+        self,
+        project_id: str,
+        task_id: str,
+        message_id: str,
+        engine: str,
+        model: str | None,
+        event_type: str,
+        data: dict,
+        event_sequence: int,
+    ) -> None:
+        payload = {
+            "event_id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "task_id": task_id,
+            "channel": "archive_experience",
+            "message_id": message_id,
+            "engine": engine,
+            "model": model,
+            "event_sequence": event_sequence,
+            "type": event_type,
+            "data": data,
+            "created_at": utc_now().isoformat(),
+            **current_actor_event_fields(),
+        }
+        context = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, context):
+            await self._event_bus.publish(agui_event)
 
     async def submit_message(
         self,
@@ -119,17 +468,52 @@ class CoordinatorModule:
         if not idempotency_key.strip():
             raise ValueError("Idempotency-Key is required")
 
+        persisted = await self._run_db(
+            project_id,
+            lambda: self._persist_submission(
+                project_id, task_id, normalized, idempotency_key
+            ),
+        )
+        accepted, user_message, created = persisted
+        if not created:
+            return accepted
+        await self._publish_message_event(
+            task_id,
+            user_message,
+            "message_started",
+            {"content": normalized, "status": "completed", "role": "user"},
+            0,
+        )
+        background = asyncio.create_task(
+            self._run_turn(project_id, task_id, accepted.turn_id),
+            name=f"coordinator-turn:{accepted.turn_id}",
+        )
+        self._active_tasks.add(background)
+        background.add_done_callback(self._consume_background)
+        return accepted
+
+    def _persist_submission(
+        self,
+        project_id: str,
+        task_id: str,
+        normalized: str,
+        idempotency_key: str,
+    ):
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
                 (CoordinatorTurn.task == task_id)
                 & (CoordinatorTurn.idempotency_key == idempotency_key)
             )
             if existing is not None:
-                return ChatAccepted(
-                    turn_id=existing.id,
-                    user_message_id=existing.user_message_id,
-                    assistant_message_id=existing.assistant_message_id,
-                    status=existing.status,
+                return (
+                    ChatAccepted(
+                        turn_id=existing.id,
+                        user_message_id=existing.user_message_id,
+                        assistant_message_id=existing.assistant_message_id,
+                        status=existing.status,
+                    ),
+                    None,
+                    False,
                 )
 
             task = Task.get_or_none(Task.id == task_id)
@@ -141,6 +525,11 @@ class CoordinatorModule:
             turn_id = str(uuid.uuid4())
             user_message_id = new_message_id()
             assistant_message_id = new_message_id()
+            journal_ref = self._event_journal.start(
+                project.workstep_dir,
+                f"task-{task.id}",
+                assistant_message_id,
+            )
 
             with db_proxy.atomic():
                 current = Task.get_by_id(task.id)
@@ -180,6 +569,7 @@ class CoordinatorModule:
                     model=model,
                     run_id=turn_id,
                     run_status="queued",
+                    event_log_path=journal_ref.relative_path,
                     position=1,
                     created_at=now,
                 )
@@ -195,28 +585,23 @@ class CoordinatorModule:
                     created_at=now,
                 )
 
-            await self._publish_message_event(
-                task_id,
+            return (
+                ChatAccepted(
+                    turn_id=turn_id,
+                    user_message_id=user_message_id,
+                    assistant_message_id=assistant_message_id,
+                    status="queued",
+                ),
                 user_message,
-                "message_started",
-                {"content": normalized, "status": "completed", "role": "user"},
-                0,
-            )
-
-            background = asyncio.create_task(
-                self._run_turn(project_id, task_id, turn_id),
-                name=f"coordinator-turn:{turn_id}",
-            )
-            self._active_tasks.add(background)
-            background.add_done_callback(self._consume_background)
-            return ChatAccepted(
-                turn_id=turn_id,
-                user_message_id=user_message_id,
-                assistant_message_id=assistant_message_id,
-                status="queued",
+                True,
             )
 
     async def get_config(self, project_id: str, task_id: str) -> dict:
+        return await self._run_db(
+            project_id, lambda: self._get_config_sync(project_id, task_id)
+        )
+
+    def _get_config_sync(self, project_id: str, task_id: str) -> dict:
         with self._project_manager.activate_project_by_id(project_id):
             task = Task.get_or_none(Task.id == task_id)
             if task is None:
@@ -260,6 +645,31 @@ class CoordinatorModule:
             }
 
     async def update_config(
+        self,
+        project_id: str,
+        task_id: str,
+        engine_id: str | None,
+        model: str | None,
+        fast_model: str | None,
+        vision_model: str | None,
+        thinking_effort: str | None = None,
+        provider_id: str | None = None,
+    ) -> dict:
+        return await self._run_db(
+            project_id,
+            lambda: self._update_config_sync(
+                project_id,
+                task_id,
+                engine_id,
+                model,
+                fast_model,
+                vision_model,
+                thinking_effort,
+                provider_id,
+            ),
+        )
+
+    def _update_config_sync(
         self,
         project_id: str,
         task_id: str,
@@ -394,82 +804,53 @@ class CoordinatorModule:
             asyncio.Lock(),
         )
         async with lock:
-            with self._project_manager.activate_project_by_id(project_id):
-                proposal = ActionProposal.get_or_none(
-                    (ActionProposal.id == proposal_id)
-                    & (ActionProposal.task == task_id)
-                )
-                if proposal is None:
-                    raise ValueError("Action proposal not found")
-                if proposal.status == "succeeded":
-                    if proposal.confirm_idempotency_key == idempotency_key:
-                        return self._proposal_to_dict(proposal)
-                    raise RuntimeError("Action proposal has already executed")
-                if proposal.status == "failed" and proposal.type == "rerun_from_stage":
-                    proposal.status = "pending"
-                    proposal.error = None
-                if proposal.status != "pending":
-                    raise RuntimeError(
-                        f"Action proposal is not pending: {proposal.status}"
-                    )
-                task = Task.get_by_id(task_id)
-                if task.state_version != proposal.expected_task_version:
-                    proposal.status = "expired"
-                    proposal.error = "Task state changed after this proposal"
-                    proposal.updated_at = utc_now()
-                    proposal.save()
-                    raise RuntimeError(proposal.error)
-                proposal.status = "executing"
-                proposal.confirm_idempotency_key = idempotency_key
-                proposal.confirmed_at = utc_now()
-                proposal.updated_at = proposal.confirmed_at
-                proposal.save()
-                proposal_type = proposal.type
-                payload = json.loads(proposal.payload_json)
+            action = await self._run_db(
+                project_id,
+                lambda: self._begin_action_sync(
+                    task_id, proposal_id, idempotency_key
+                ),
+            )
+            if "completed" in action:
+                return action["completed"]
+            proposal_type = action["type"]
+            payload = action["payload"]
 
             try:
                 if proposal_type == "supplement_stage":
-                    result = self._execute_supplement(
+                    result = await self._run_db(
                         project_id,
-                        task_id,
-                        proposal_id,
-                        payload,
+                        lambda: self._execute_supplement(
+                            project_id, task_id, proposal_id, payload
+                        ),
                     )
                 elif proposal_type == "review_decision":
                     result = await self._execute_review_decision(
                         project_id,
                         task_id,
-                        proposal,
+                        action,
                         payload,
                     )
                 elif proposal_type == "rerun_from_stage":
                     handle = await self._workflow_runtime.restart_from_stage(
                         project_id,
                         task_id,
-                        proposal.target_step_key or "",
-                        expected_run_id=proposal.expected_workflow_run_id,
+                        action["target_step_key"] or "",
+                        expected_run_id=action["expected_workflow_run_id"],
                     )
                     result = {"run_id": handle.id, "status": "started"}
                 else:
                     raise RuntimeError(f"Unsupported action: {proposal_type}")
             except Exception as exc:
-                with self._project_manager.activate_project_by_id(project_id):
-                    failed = ActionProposal.get_by_id(proposal_id)
-                    failed.status = "failed"
-                    failed.error = str(exc)
-                    failed.updated_at = utc_now()
-                    failed.save()
+                await self._run_db(
+                    project_id,
+                    lambda: self._mark_action_failed_sync(proposal_id, str(exc)),
+                )
                 raise
 
-            with self._project_manager.activate_project_by_id(project_id):
-                completed = ActionProposal.get_by_id(proposal_id)
-                completed.status = "succeeded"
-                completed.result_json = json.dumps(result, ensure_ascii=False)
-                completed.executed_at = utc_now()
-                completed.updated_at = completed.executed_at
-                completed.error = None
-                completed.save()
-                return self._proposal_to_dict(completed)
+            return await self._run_db(
+                project_id,
+                lambda: self._complete_action_sync(proposal_id, result),
+            )
 
     async def cancel_action(
         self,
@@ -477,21 +858,10 @@ class CoordinatorModule:
         task_id: str,
         proposal_id: str,
     ) -> dict:
-        with self._project_manager.activate_project_by_id(project_id):
-            proposal = ActionProposal.get_or_none(
-                (ActionProposal.id == proposal_id)
-                & (ActionProposal.task == task_id)
-            )
-            if proposal is None:
-                raise ValueError("Action proposal not found")
-            if proposal.status != "pending":
-                raise RuntimeError(
-                    f"Action proposal is not pending: {proposal.status}"
-                )
-            proposal.status = "cancelled"
-            proposal.updated_at = utc_now()
-            proposal.save()
-            return self._proposal_to_dict(proposal)
+        return await self._run_db(
+            project_id,
+            lambda: self._cancel_action_sync(task_id, proposal_id),
+        )
 
     async def shutdown(self) -> None:
         tasks = tuple(self._active_tasks)
@@ -500,7 +870,11 @@ class CoordinatorModule:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._cancelled_turns.clear()
+        self._active_archive_experience_runs.clear()
+        self._cancelled_archive_experience_runs.clear()
+        self._completed_archive_experience_journals.clear()
         self._running_engines.clear()
+        self._event_journal.close()
 
     async def _run_turn(self, project_id: str, task_id: str, turn_id: str) -> None:
         lock = self._turn_locks.setdefault((project_id, task_id), asyncio.Lock())
@@ -508,40 +882,23 @@ class CoordinatorModule:
             if turn_id in self._cancelled_turns:
                 await self._mark_turn_stopped(project_id, task_id, turn_id)
                 return
-            with self._project_manager.activate_project_by_id(project_id) as project:
-                turn = CoordinatorTurn.get_by_id(turn_id)
-                task = Task.get_by_id(task_id)
-                assistant = Message.get_by_id(turn.assistant_message_id)
-                coordinator_root = self._coordinator_root(project, task)
-                turn.status = "running"
-                turn.started_at = utc_now()
-                turn.save()
-                assistant.run_status = "running"
-                assistant.started_at = turn.started_at
-                assistant.save()
-                session = self._prepare_session(task, turn.engine or "", turn.model)
-                engine_state = None
-                if session.engine_state_json:
-                    try:
-                        engine_state = json.loads(session.engine_state_json)
-                    except json.JSONDecodeError:
-                        engine_state = None
-                _, _, fast_model, vision_model = self._resolve_engine_models(task)
-                provider_id = self._resolve_provider_id(task)
-                thinking_effort = self._resolve_thinking_effort(task)
-                prompt, artifacts = self._assemble_context(
-                    project, task, turn, root_dir=coordinator_root
-                )
-                user_message = Message.get_by_id(turn.user_message_id)
-                images = extract_uploaded_images(
-                    project, task.cwd, user_message.content or ""
-                )
-                turn_model = (vision_model or turn.model) if images else turn.model
-                assistant.prompt_json = json.dumps(
-                    {"prompt": prompt},
-                    ensure_ascii=False,
-                )
-                assistant.save(only=[Message.prompt_json])
+            prepared = await self._run_db(
+                project_id,
+                lambda: self._prepare_turn_sync(project_id, task_id, turn_id),
+            )
+            turn = prepared["turn"]
+            assistant = prepared["assistant"]
+            coordinator_root = prepared["coordinator_root"]
+            session_id_before = prepared["session_id"]
+            engine_state = prepared["engine_state"]
+            fast_model = prepared["fast_model"]
+            provider_id = prepared["provider_id"]
+            thinking_effort = prepared["thinking_effort"]
+            prompt = prepared["prompt"]
+            artifacts = prepared["artifacts"]
+            images = prepared["images"]
+            turn_model = prepared["turn_model"]
+            journal_ref = prepared["journal_ref"]
 
             try:
                 await self._publish_message_event(
@@ -553,12 +910,19 @@ class CoordinatorModule:
                 )
                 live_event_sequence = 1
 
-                def make_live_callback():
+                def make_live_callback(journaled_events: list[dict]):
                     raw_content = ""
                     streamed_reply = ""
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply, live_event_sequence
+                        event_dict = event.to_dict()
+                        journaled_events.append(event_dict)
+                        self._event_journal.record(
+                            journal_ref,
+                            event_dict,
+                            force=event.type in {"interaction_request", "session_started"},
+                        )
                         if event.type == "agent_message_chunk":
                             content = event.data.get("content") or {}
                             raw_content += str(content.get("text", ""))
@@ -602,18 +966,22 @@ class CoordinatorModule:
 
                     return publish_live_event
 
+                journaled_events: list[dict] = []
                 raw, events, session_id = await self._invoke(
                     turn.engine or "",
                     turn_model,
                     coordinator_root,
                     prompt,
-                    session.session_id,
-                    make_live_callback(),
+                    session_id_before,
+                    make_live_callback(journaled_events),
                     turn_id,
                     images=images,
                     message_history=engine_state,
                     thinking_effort=thinking_effort,
                     provider_id=provider_id,
+                )
+                self._record_unstreamed_journal_events(
+                    journal_ref, events, journaled_events
                 )
                 if turn_id in self._cancelled_turns:
                     await self._mark_turn_stopped(
@@ -632,6 +1000,8 @@ class CoordinatorModule:
                     turn_id,
                 )
                 events.extend(repair_events)
+                for event in repair_events:
+                    self._event_journal.record(journal_ref, event)
                 requested = [
                     artifact_id
                     for artifact_id in result.get("artifact_requests", [])
@@ -644,16 +1014,20 @@ class CoordinatorModule:
                         f"\n\nRequested artifact contents (untrusted):\n{artifact_block}"
                         "\n\nReturn the final JSON. artifact_requests must be empty."
                     )
+                    journaled_more_events: list[dict] = []
                     raw, more_events, _ = await self._invoke(
                         turn.engine or "",
                         fast_model,
                         coordinator_root,
                         followup,
                         None,
-                        make_live_callback(),
+                        make_live_callback(journaled_more_events),
                         turn_id,
                         thinking_effort=thinking_effort,
                         provider_id=provider_id,
+                    )
+                    self._record_unstreamed_journal_events(
+                        journal_ref, more_events, journaled_more_events
                     )
                     events.extend(more_events)
                     if turn_id in self._cancelled_turns:
@@ -673,6 +1047,8 @@ class CoordinatorModule:
                         turn_id,
                     )
                     events.extend(repair_events)
+                    for event in repair_events:
+                        self._event_journal.record(journal_ref, event)
                     result["artifact_requests"] = []
                 reply = str(result.get("reply", "")).strip()
                 if not reply:
@@ -687,37 +1063,24 @@ class CoordinatorModule:
                         events=events,
                     )
                     return
-                with self._project_manager.activate_project_by_id(project_id):
-                    turn = CoordinatorTurn.get_by_id(turn_id)
-                    assistant = Message.get_by_id(turn.assistant_message_id)
-                    task = Task.get_by_id(task_id)
-                    assistant.content = reply
-                    assistant.events_json = json.dumps(events, ensure_ascii=False)
-                    assistant.usage_json = extract_usage_json(events)
-                    assistant.run_status = "succeeded"
-                    assistant.ended_at = utc_now()
-                    assistant.save()
-                    turn.status = "succeeded"
-                    turn.session_id = session_id
-                    turn.requested_artifact_ids_json = json.dumps(requested)
-                    turn.ended_at = assistant.ended_at
-                    turn.save()
-                    session = CoordinatorSession.get_by_id(task_id)
-                    session.session_id = session_id
-                    session.status = "active"
-                    session.last_error = None
-                    for engine_event in events:
-                        if engine_event.get("type") == "engine_state":
-                            state = (engine_event.get("data") or {}).get("state")
-                            if state is not None:
-                                session.engine_state_json = json.dumps(
-                                    state, ensure_ascii=False
-                                )
-                            break
-                    session.updated_at = assistant.ended_at
-                    session.save()
-                    self._refresh_summary(task, session)
-                    proposal = self._create_proposal(task, turn, assistant, result)
+                self._event_journal.finish(
+                    journal_ref,
+                    {"type": "status", "data": {"status": "succeeded"}},
+                )
+                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                assistant, proposal = await self._run_db(
+                    project_id,
+                    lambda: self._finish_turn_sync(
+                        task_id,
+                        turn_id,
+                        reply,
+                        events,
+                        session_id,
+                        requested,
+                        result,
+                        journal_snapshot,
+                    ),
+                )
 
                 await self._publish_message_event(
                     task_id,
@@ -749,7 +1112,7 @@ class CoordinatorModule:
                         task_id,
                         assistant,
                         "action_proposal",
-                        self._proposal_to_dict(proposal),
+                        proposal,
                         next_event_sequence,
                     )
                     next_event_sequence += 1
@@ -767,17 +1130,17 @@ class CoordinatorModule:
                     await self._mark_turn_stopped(project_id, task_id, turn_id)
                     return
                 logger.exception("Coordinator turn %s failed", turn_id)
-                with self._project_manager.activate_project_by_id(project_id):
-                    turn = CoordinatorTurn.get_by_id(turn_id)
-                    assistant = Message.get_by_id(turn.assistant_message_id)
-                    turn.status = "failed"
-                    turn.error = str(exc)
-                    turn.ended_at = utc_now()
-                    turn.save()
-                    assistant.run_status = "failed"
-                    assistant.content = str(exc)
-                    assistant.ended_at = turn.ended_at
-                    assistant.save()
+                self._event_journal.finish(
+                    journal_ref,
+                    {"type": "error", "data": {"message": str(exc)}},
+                )
+                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                assistant = await self._run_db(
+                    project_id,
+                    lambda: self._fail_turn_sync(
+                        turn_id, str(exc), journal_snapshot
+                    ),
+                )
                 await self._publish_message_event(
                     task_id,
                     assistant,
@@ -792,6 +1155,145 @@ class CoordinatorModule:
                     {"status": "failed", "error": str(exc)},
                     2,
                 )
+
+    def _record_unstreamed_journal_events(
+        self,
+        journal_ref: JournalRef,
+        returned_events: list[dict],
+        journaled_events: list[dict],
+    ) -> None:
+        unmatched = list(journaled_events)
+        for event in returned_events:
+            if event in unmatched:
+                unmatched.remove(event)
+            else:
+                self._event_journal.record(journal_ref, event)
+
+    def _prepare_turn_sync(self, project_id, task_id, turn_id):
+        project = self._project_manager.get_project_by_id(project_id)
+        turn = CoordinatorTurn.get_by_id(turn_id)
+        task = Task.get_by_id(task_id)
+        assistant = Message.get_by_id(turn.assistant_message_id)
+        coordinator_root = self._coordinator_root(project, task)
+        turn.status = "running"
+        turn.started_at = utc_now()
+        turn.save()
+        assistant.run_status = "running"
+        assistant.started_at = turn.started_at
+        assistant.save()
+        session = self._prepare_session(task, turn.engine or "", turn.model)
+        engine_state = None
+        if session.engine_state_json:
+            try:
+                engine_state = json.loads(session.engine_state_json)
+            except json.JSONDecodeError:
+                engine_state = None
+        _, _, fast_model, vision_model = self._resolve_engine_models(task)
+        provider_id = self._resolve_provider_id(task)
+        thinking_effort = self._resolve_thinking_effort(task)
+        prompt, artifacts = self._assemble_context(
+            project, task, turn, root_dir=coordinator_root
+        )
+        user_message = Message.get_by_id(turn.user_message_id)
+        images = extract_uploaded_images(
+            project, task.cwd, user_message.content or ""
+        )
+        turn_model = (vision_model or turn.model) if images else turn.model
+        assistant.prompt_json = json.dumps({"prompt": prompt}, ensure_ascii=False)
+        assistant.save(only=[Message.prompt_json])
+        journal_ref = self._event_journal.reopen(
+            project.workstep_dir,
+            assistant.event_log_path,
+        )
+        return {
+            "turn": turn,
+            "assistant": assistant,
+            "coordinator_root": coordinator_root,
+            "session_id": session.session_id,
+            "engine_state": engine_state,
+            "fast_model": fast_model,
+            "provider_id": provider_id,
+            "thinking_effort": thinking_effort,
+            "prompt": prompt,
+            "artifacts": artifacts,
+            "images": images,
+            "turn_model": turn_model,
+            "journal_ref": journal_ref,
+        }
+
+    def _finish_turn_sync(
+        self,
+        task_id,
+        turn_id,
+        reply,
+        events,
+        session_id,
+        requested,
+        result,
+        journal_snapshot,
+    ):
+        turn = CoordinatorTurn.get_by_id(turn_id)
+        assistant = Message.get_by_id(turn.assistant_message_id)
+        task = Task.get_by_id(task_id)
+        assistant.content = reply
+        summary_events = journal_snapshot["events"]
+        assistant.events_json = (
+            json.dumps(summary_events, ensure_ascii=False)
+            if summary_events else None
+        )
+        assistant.event_summary_json = json.dumps(
+            journal_snapshot["summary"], ensure_ascii=False
+        )
+        assistant.event_count = journal_snapshot["summary"]["event_count"]
+        assistant.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
+        assistant.usage_json = extract_usage_json(events)
+        assistant.run_status = "succeeded"
+        assistant.ended_at = utc_now()
+        assistant.save()
+        turn.status = "succeeded"
+        turn.session_id = session_id
+        turn.requested_artifact_ids_json = json.dumps(requested)
+        turn.ended_at = assistant.ended_at
+        turn.save()
+        session = CoordinatorSession.get_by_id(task_id)
+        session.session_id = session_id
+        session.status = "active"
+        session.last_error = None
+        for engine_event in events:
+            if engine_event.get("type") == "engine_state":
+                state = (engine_event.get("data") or {}).get("state")
+                if state is not None:
+                    session.engine_state_json = json.dumps(state, ensure_ascii=False)
+                break
+        session.updated_at = assistant.ended_at
+        session.save()
+        self._refresh_summary(task, session)
+        proposal = self._create_proposal(task, turn, assistant, result)
+        return assistant, self._proposal_to_dict(proposal) if proposal else None
+
+    @staticmethod
+    def _fail_turn_sync(turn_id, error, journal_snapshot):
+        turn = CoordinatorTurn.get_by_id(turn_id)
+        assistant = Message.get_by_id(turn.assistant_message_id)
+        turn.status = "failed"
+        turn.error = error
+        turn.ended_at = utc_now()
+        turn.save()
+        assistant.run_status = "failed"
+        assistant.content = error
+        summary_events = journal_snapshot["events"]
+        assistant.events_json = (
+            json.dumps(summary_events, ensure_ascii=False)
+            if summary_events else None
+        )
+        assistant.event_summary_json = json.dumps(
+            journal_snapshot["summary"], ensure_ascii=False
+        )
+        assistant.event_count = journal_snapshot["summary"]["event_count"]
+        assistant.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
+        assistant.ended_at = turn.ended_at
+        assistant.save()
+        return assistant
 
     def _resolve_engine_models(
         self,
@@ -1377,6 +1879,73 @@ class CoordinatorModule:
             task.save()
             return {"supplement_id": supplement.id, "status": "saved"}
 
+    def _begin_action_sync(self, task_id, proposal_id, idempotency_key):
+        proposal = ActionProposal.get_or_none(
+            (ActionProposal.id == proposal_id)
+            & (ActionProposal.task == task_id)
+        )
+        if proposal is None:
+            raise ValueError("Action proposal not found")
+        if proposal.status == "succeeded":
+            if proposal.confirm_idempotency_key == idempotency_key:
+                return {"completed": self._proposal_to_dict(proposal)}
+            raise RuntimeError("Action proposal has already executed")
+        if proposal.status == "failed" and proposal.type == "rerun_from_stage":
+            proposal.status = "pending"
+            proposal.error = None
+        if proposal.status != "pending":
+            raise RuntimeError(f"Action proposal is not pending: {proposal.status}")
+        task = Task.get_by_id(task_id)
+        if task.state_version != proposal.expected_task_version:
+            proposal.status = "expired"
+            proposal.error = "Task state changed after this proposal"
+            proposal.updated_at = utc_now()
+            proposal.save()
+            raise RuntimeError(proposal.error)
+        proposal.status = "executing"
+        proposal.confirm_idempotency_key = idempotency_key
+        proposal.confirmed_at = utc_now()
+        proposal.updated_at = proposal.confirmed_at
+        proposal.save()
+        return {
+            "type": proposal.type,
+            "payload": json.loads(proposal.payload_json),
+            "target_step_key": proposal.target_step_key,
+            "expected_workflow_run_id": proposal.expected_workflow_run_id,
+        }
+
+    @staticmethod
+    def _mark_action_failed_sync(proposal_id, error):
+        failed = ActionProposal.get_by_id(proposal_id)
+        failed.status = "failed"
+        failed.error = error
+        failed.updated_at = utc_now()
+        failed.save()
+
+    def _complete_action_sync(self, proposal_id, result):
+        completed = ActionProposal.get_by_id(proposal_id)
+        completed.status = "succeeded"
+        completed.result_json = json.dumps(result, ensure_ascii=False)
+        completed.executed_at = utc_now()
+        completed.updated_at = completed.executed_at
+        completed.error = None
+        completed.save()
+        return self._proposal_to_dict(completed)
+
+    def _cancel_action_sync(self, task_id, proposal_id):
+        proposal = ActionProposal.get_or_none(
+            (ActionProposal.id == proposal_id)
+            & (ActionProposal.task == task_id)
+        )
+        if proposal is None:
+            raise ValueError("Action proposal not found")
+        if proposal.status != "pending":
+            raise RuntimeError(f"Action proposal is not pending: {proposal.status}")
+        proposal.status = "cancelled"
+        proposal.updated_at = utc_now()
+        proposal.save()
+        return self._proposal_to_dict(proposal)
+
     async def _execute_review_decision(
         self,
         project_id,
@@ -1387,7 +1956,7 @@ class CoordinatorModule:
         handle = await self._workflow_runtime.decide_review(
             project_id,
             task_id,
-            proposal.target_step_key or "",
+            proposal["target_step_key"] or "",
             payload["review_run_id"],
             payload["decision"],
             payload.get("comment"),
@@ -1473,7 +2042,7 @@ class CoordinatorModule:
 
     async def stop_current(self, project_id: str, task_id: str) -> bool:
         """Stop the newest queued/running coordinator turn for a task."""
-        with self._project_manager.activate_project_by_id(project_id):
+        def find_turn_id():
             turn = (
                 CoordinatorTurn.select()
                 .where(
@@ -1483,23 +2052,24 @@ class CoordinatorModule:
                 .order_by(CoordinatorTurn.created_at.desc())
                 .first()
             )
-            if turn is None:
-                return False
-            if turn.id in self._cancelled_turns:
-                # 已在停止流程中：重复点击直接视为成功。
-                return True
-            self._cancelled_turns.add(turn.id)
-            engine = self._running_engines.get(turn.id)
-            if engine is not None:
-                try:
-                    await engine.stop()
-                except Exception:
-                    # 引擎可能已停止/已退出：标记已取消即可，不让错误冒泡。
-                    logger.exception(
-                        "Engine stop raised while stopping coordinator turn %s",
-                        turn.id,
-                    )
+            return turn.id if turn is not None else None
+
+        turn_id = await self._run_db(project_id, find_turn_id)
+        if turn_id is None:
+            return False
+        if turn_id in self._cancelled_turns:
             return True
+        self._cancelled_turns.add(turn_id)
+        engine = self._running_engines.get(turn_id)
+        if engine is not None:
+            try:
+                await engine.stop()
+            except Exception:
+                logger.exception(
+                    "Engine stop raised while stopping coordinator turn %s",
+                    turn_id,
+                )
+        return True
 
     async def _mark_turn_stopped(
         self,
@@ -1510,9 +2080,19 @@ class CoordinatorModule:
         events: list[dict] | None = None,
     ) -> None:
         """Persist a stopped turn and notify listeners."""
-        with self._project_manager.activate_project_by_id(project_id):
+        def persist_stopped():
             turn = CoordinatorTurn.get_by_id(turn_id)
             assistant = Message.get_by_id(turn.assistant_message_id)
+            project = self._project_manager.get_project_by_id(project_id)
+            journal_ref = self._event_journal.reopen(
+                project.workstep_dir,
+                assistant.event_log_path,
+            )
+            self._event_journal.finish(
+                journal_ref,
+                {"type": "status", "data": {"status": "stopped"}},
+            )
+            journal_snapshot = self._event_journal.snapshot(journal_ref)
             now = utc_now()
             turn.status = "stopped"
             turn.ended_at = now
@@ -1520,8 +2100,16 @@ class CoordinatorModule:
             assistant.run_status = "stopped"
             if content:
                 assistant.content = content
-            if events is not None:
-                assistant.events_json = json.dumps(events, ensure_ascii=False)
+            summary_events = journal_snapshot["events"]
+            assistant.events_json = (
+                json.dumps(summary_events, ensure_ascii=False)
+                if summary_events else None
+            )
+            assistant.event_summary_json = json.dumps(
+                journal_snapshot["summary"], ensure_ascii=False
+            )
+            assistant.event_count = journal_snapshot["summary"]["event_count"]
+            assistant.last_event_seq = journal_snapshot["summary"]["last_event_seq"]
             assistant.ended_at = now
             assistant.save()
             session = CoordinatorSession.get_or_none(CoordinatorSession.task == task_id)
@@ -1529,6 +2117,9 @@ class CoordinatorModule:
                 session.last_error = None
                 session.updated_at = now
                 session.save()
+            return assistant
+
+        assistant = await self._run_db(project_id, persist_stopped)
         self._cancelled_turns.discard(turn_id)
         await self._publish_message_event(
             task_id,

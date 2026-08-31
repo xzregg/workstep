@@ -14,7 +14,7 @@ export interface TaskEvent {
   data?: Record<string, unknown>
   task_id?: string
   step_key?: string
-  channel?: 'coordinator' | 'execution' | 'review'
+  channel?: 'coordinator' | 'execution' | 'review' | 'archive_experience'
   message_id?: string
   engine?: string
   model?: string
@@ -43,7 +43,7 @@ export interface TaskEvent {
 
 export interface LiveMessage {
   id: string
-  channel: 'coordinator' | 'execution' | 'review'
+  channel: 'coordinator' | 'execution' | 'review' | 'archive_experience'
   step_key?: string
   content: string
   events: TaskEvent[]
@@ -58,6 +58,13 @@ export interface LiveMessage {
   author_device_id?: string
   author_device_name?: string
   proposals: Array<Record<string, unknown>>
+}
+
+export interface ArchiveExperienceDraft {
+  found: boolean
+  message_id: string | null
+  experience: string
+  has_experience: boolean
 }
 
 interface TaskState {
@@ -99,6 +106,10 @@ interface TaskState {
   updateScheduledStart: (taskId: string, scheduledStartAt: string | null, projectId: string) => Promise<Task>
   deleteTask: (taskId: string, projectId: string) => Promise<void>
   archiveTask: (taskId: string, projectId: string) => Promise<void>
+  getArchiveExperienceDraft: (taskId: string, projectId: string) => Promise<ArchiveExperienceDraft>
+  prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<ArchiveExperienceDraft>
+  stopArchiveExperience: (taskId: string, projectId: string, messageId: string) => Promise<boolean>
+  confirmArchiveExperience: (taskId: string, projectId: string, experience: string) => Promise<void>
   unarchiveTask: (taskId: string, projectId: string) => Promise<void>
   copyTask: (taskId: string, newTitle: string, projectId: string) => Promise<void>
   handleWsEvent: (event: TaskEvent) => void
@@ -202,6 +213,26 @@ export const useTaskStore = create<TaskState>((set) => ({
 
   archiveTask: async (taskId, projectId) => {
     await taskApi.archive(taskId, projectId)
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: true } : t)),
+    }))
+  },
+
+  getArchiveExperienceDraft: async (taskId, projectId) =>
+    taskApi.getArchiveExperienceDraft(taskId, projectId),
+
+  prepareArchiveExperience: async (taskId, projectId, messageId) => {
+    const result = await taskApi.prepareArchiveExperience(taskId, projectId, messageId)
+    return { ...result, found: true }
+  },
+
+  stopArchiveExperience: async (taskId, projectId, messageId) => {
+    const result = await taskApi.stopArchiveExperience(taskId, projectId, messageId)
+    return result.stopped
+  },
+
+  confirmArchiveExperience: async (taskId, projectId, experience) => {
+    await taskApi.confirmArchiveExperience(taskId, projectId, experience)
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, archived: true } : t)),
     }))

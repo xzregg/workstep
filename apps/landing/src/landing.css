@@ -195,47 +195,17 @@ button {
 }
 
 .brand-mark {
-  position: relative;
   width: 26px;
   height: 26px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: url('/brand-mark.svg') center / contain no-repeat;
   flex: none;
-}
-
-.brand-mark::before {
-  content: "";
-  position: absolute;
-  left: 5px;
-  right: 5px;
-  top: 6px;
-  height: 4px;
-  border-radius: 2px;
-  background: #fff;
-  opacity: 0.95;
-  box-shadow: 0 8px 0 rgba(255, 255, 255, 0.78), 0 16px 0 rgba(255, 255, 255, 0.58);
 }
 
 .brand-mark-sm {
-  position: relative;
   width: 20px;
   height: 20px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: url('/brand-mark.svg') center / contain no-repeat;
   flex: none;
-}
-
-.brand-mark-sm::before {
-  content: "";
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  top: 5px;
-  height: 3px;
-  border-radius: 2px;
-  background: #fff;
-  opacity: 0.95;
-  box-shadow: 0 6px 0 rgba(255, 255, 255, 0.78), 0 12px 0 rgba(255, 255, 255, 0.58);
 }
 
 .nav-links {

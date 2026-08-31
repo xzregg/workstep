@@ -278,6 +278,18 @@ flowchart TD
 
 复用触发场景：自动审核失败重试、人工驳回、下游 rework 触发上游重跑、手动重跑同一阶段。各引擎的 resume 实现：Codex CLI `codex exec resume <session_id>`、Codex SDK `thread_resume`、Claude Agent SDK `resume=`、Hermes/ACP `session/resume`；无状态引擎（如 `pydantic_ai`）没有原生会话，每次执行从零重建上下文。
 
+### 会话聊天的分叉与跨引擎交接
+
+会话聊天把“恢复”“原生分叉”和“跨引擎交接”视为三种不同操作：
+
+- 恢复：同一个 WorkStep 会话继续使用自己的 `engine_session_id`。
+- 原生分叉：仅当同一引擎声明 `supports_session_fork` 时调用 `fork_session`；当前 Codex SDK adapter 映射到官方 `thread_fork`，新旧引擎会话 ID 不同。
+- 跨引擎交接：目标引擎建立全新会话，用户明确选择智能交接、完整记录或不载入。旧引擎 session ID、私有 `engine_state`、思考和工具事件不会传给新引擎。
+
+智能交接由 `agent_assistants/context_handoff.py` 生成确定性的引擎无关载荷，包含原目标、最新请求、决定、约束、文件引用和最近可见消息。载荷只在目标分支首次成功调用前注入；失败可重试，成功后标记为已消费。完整记录超过保守预算时直接拒绝，避免静默截断。
+
+`chat_sessions` 通过 `parent_session_id`、`forked_from_message_id`、`fork_context_mode`、`fork_context_json` 和 `fork_status` 保存分叉关系及稳定快照。原生引擎操作使用本地 `pending` → `ready` 两阶段创建，列表不展示未完成分支。
+
 ---
 
 ## 阶段之间如何衔接
@@ -333,4 +345,3 @@ flowchart TD
 分支阶段通过 `asyncio.gather` 并发启动多个引擎子进程；汇合阶段依赖多个上游，只有所有上游都 `passed` 才会进入 ready 集合，天然形成「等待所有分支完成」的汇合语义。
 
 ---
-

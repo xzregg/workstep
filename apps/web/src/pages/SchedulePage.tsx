@@ -40,6 +40,12 @@ function formatDate(value?: string | null) {
   return value ? new Date(value).toLocaleString() : '—'
 }
 
+function ScheduleSummary({ summary }: { summary: string }) {
+  const oncePrefix = 'Once at '
+  if (!summary.startsWith(oncePrefix)) return <>{summary}</>
+  return <>{oncePrefix.trim()}<br />{summary.slice(oncePrefix.length)}</>
+}
+
 interface SchedulePageProps {
   onClose?: () => void
   onCountChange?: (count: number) => void
@@ -57,6 +63,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
 
   const [items, setItems] = useState<ProjectSchedule[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [runs, setRuns] = useState<ScheduleRun[]>([])
   const [runFilter, setRunFilter] = useState('all')
   const [loading, setLoading] = useState(false)
@@ -102,7 +109,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
       const result = await scheduleApi.list(projectId)
       setItems(result.schedules)
       onCountChange?.(result.schedules.length)
-      setSelectedId((current) => current && result.schedules.some((item) => item.id === current) ? current : result.schedules[0]?.id || null)
+      setSelectedId((current) => current && result.schedules.some((item) => item.id === current) ? current : null)
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -257,9 +264,12 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
   const save = async () => {
     const agentMode = generation === 'agent'
     if (preview.next.length === 0) return
-    if (agentMode ? !instruction.trim() : (!title.trim() || !workflowId)) return
+    if (agentMode ? !instruction.trim() : !workflowId) return
+    const derivedTitle = title.trim() || `${description.trim().slice(0, 10)}...`
     const payload: SchedulePayload = {
-      name: title.trim() || (instruction.trim().slice(0, 30) || t('schedules.title')),
+      name: agentMode
+        ? title.trim() || (instruction.trim().slice(0, 30) || t('schedules.title'))
+        : derivedTitle,
       workflow_id: agentMode ? '' : workflowId,
       task_template: agentMode
         ? {
@@ -270,7 +280,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             retry_count: retryCount,
           }
         : {
-            title: title.trim(), description: description.trim() || undefined,
+            title: derivedTitle, description: description.trim() || undefined,
             start_step_key: startStep || undefined, review_overrides: reviewOverrides,
           },
       rule: buildRule(), execution_mode: execution, overlap_policy: overlap,
@@ -280,7 +290,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
       const saved = selectedId
         ? await scheduleApi.update(projectId, selectedId, payload)
         : await scheduleApi.create(projectId, payload)
-      await load(); setSelectedId(saved.id)
+      await load(); setCreating(false); setSelectedId(saved.id)
     } catch (cause) { setError((cause as Error).message) }
     finally { setSaving(false) }
   }
@@ -309,7 +319,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
         <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{t('schedules.title')}</strong>
         <span style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>{activeProject?.name}</span>
         <div style={{ flex: 1 }} />
-        <Button variant="primary" onClick={() => { setSelectedId(null); fill(null) }}><Icon name="plus" size={13} /> {t('schedules.new')}</Button>
+        <Button variant="primary" onClick={() => { setCreating(true); setSelectedId(null); fill(null) }}><Icon name="plus" size={13} /> {t('schedules.new')}</Button>
         {onClose && <Button variant="ghost" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}><Icon name="x" size={14} /></Button>}
       </div>
       {error && <div role="alert" style={{ padding: '8px 18px', color: 'var(--danger)', background: 'var(--danger-soft)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
@@ -318,10 +328,10 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
           {loading && <div className="task-status-spinner" style={{ margin: 16 }} />}
           {!loading && items.length === 0 && <div style={{ color: 'var(--meta)', padding: 18, fontSize: 'calc(13px * var(--font-scale))' }}>{t('schedules.empty')}</div>}
           {items.map((item) => (
-            <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
+            <button key={item.id} onClick={() => { setCreating(false); setSelectedId(item.id) }} style={{ width: '100%', border: 0, borderRadius: 8, padding: 12, marginBottom: 6, textAlign: 'left', cursor: 'pointer', background: selectedId === item.id ? 'var(--accent-light)' : 'transparent', color: 'var(--fg)' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><strong style={{ flex: 1, fontSize: 'calc(13px * var(--font-scale))' }}>{item.task_template.title || (item.task_template.mode === 'agent' ? t('schedules.agentTask') : '')}</strong><span style={{ color: statusColors[item.status], fontSize: 'calc(11px * var(--font-scale))' }}>{t(`schedules.status_${item.status}` as any)}</span></div>
               <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 5 }}>{formatDate(item.next_run_at)}</div>
-              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2 }}>{item.summary}</div>
+              <div style={{ color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.45, marginTop: 2 }}><ScheduleSummary summary={item.summary} /></div>
               {item.task_template.mode === 'agent' && <div style={{ color: 'var(--accent)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 4 }}>{item.task_template.candidate_workflow_ids?.length ? t('schedules.agentCandidates', { count: item.task_template.candidate_workflow_ids.length }) : t('schedules.allWorkflows')}</div>}
             </button>
           ))}
@@ -330,6 +340,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'aside')} onKeyDown={dividerKeyDown('aside')} />
 
         <main style={{ overflow: 'auto', padding: 18 }}>
+          {(selected || creating) && (<>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <strong style={{ fontSize: 'calc(14px * var(--font-scale))' }}>{selectedId ? t('schedules.edit') : t('schedules.create')}</strong><div style={{ flex: 1 }} />
             {selected && selected.status === 'active' && <Button onClick={() => void changeStatus('pause')}>{t('schedules.pause')}</Button>}
@@ -485,13 +496,14 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
             <div style={{ marginTop: 5 }}>{t('schedules.nextRuns')}: {preview.next.slice(0, 3).map(formatDate).join(' · ') || '—'}</div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : (!title.trim() || !workflowId))} onClick={() => void save()}>{t('common.save')}</Button></div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}><Button variant="primary" loading={saving} disabled={preview.next.length === 0 || (generation === 'agent' ? !instruction.trim() : !workflowId)} onClick={() => void save()}>{t('common.save')}</Button></div>
+          </>)}
         </main>
 
         <div className="schedule-split-handle" role="separator" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => beginDividerDrag(event, 'section')} onKeyDown={dividerKeyDown('section')} />
 
         <section style={{ overflow: 'hidden', padding: 18, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {testOpen && generation === 'agent' ? (
+          {(selected || creating) && (testOpen && generation === 'agent' ? (
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', border: '1px solid var(--border-soft)', borderRadius: 8, overflow: 'hidden', background: 'var(--surface)' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
                 <AiTaskCreateChat
@@ -515,10 +527,10 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
               {filteredRuns.length === 0 && <div style={{ color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', padding: 16 }}>{t('schedules.noRuns')}</div>}
               {filteredRuns.map((run) => <div key={run.id} style={{ border: '1px solid var(--border-soft)', borderRadius: 8, padding: 11, marginBottom: 8, fontSize: 'calc(12px * var(--font-scale))' }}><div style={{ display: 'flex', alignItems: 'center' }}><span style={{ color: statusColors[run.status], fontWeight: 600 }}>{t(`schedules.status_${run.status}` as any)}</span><span style={{ flex: 1 }} /><span style={{ color: 'var(--meta)' }}>{formatDate(run.scheduled_for)}</span></div>{run.reason && <div style={{ color: 'var(--danger)', marginTop: 6 }}>{run.reason}</div>}{run.task_id && <Button size="sm" style={{ marginTop: 7 }} onClick={async () => { await fetchTasks(projectId, selected?.workflow_id); setTaskId(run.task_id || null) }}>{t('schedules.openTask')}</Button>}</div>)}
             </>
-          )}
+          ))}
         </section>
       </div>
-      <ConfirmDialog open={deleteId !== null} title={t('schedules.deleteTitle')} message={t('schedules.deleteMessage')} danger confirmText={t('common.delete')} onCancel={() => setDeleteId(null)} onConfirm={() => { if (!deleteId) return; setSaving(true); scheduleApi.delete(projectId, deleteId).then(() => { setDeleteId(null); setSelectedId(null); fill(null); return load() }).catch((cause) => setError((cause as Error).message)).finally(() => setSaving(false)) }} />
+      <ConfirmDialog open={deleteId !== null} title={t('schedules.deleteTitle')} message={t('schedules.deleteMessage')} danger confirmText={t('common.delete')} onCancel={() => setDeleteId(null)} onConfirm={() => { if (!deleteId) return; setSaving(true); scheduleApi.delete(projectId, deleteId).then(() => { setDeleteId(null); setCreating(false); setSelectedId(null); fill(null); return load() }).catch((cause) => setError((cause as Error).message)).finally(() => setSaving(false)) }} />
       {taskId && <><div onClick={() => setTaskId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.2)', zIndex: 999 }} /><TaskDetail taskId={taskId} onClose={() => setTaskId(null)} /></>}
     </div>
   )

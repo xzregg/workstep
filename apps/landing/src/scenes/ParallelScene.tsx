@@ -88,7 +88,7 @@ export function ParallelScene({ time }: { time: number }) {
                     className={`board-card${isRunning ? ' is-running' : ''}`}
                     style={{
                       opacity: arrive(time, 200 + index * 140, 420),
-                      borderLeft: `3px solid ${STATUS_COLORS[status]}`,
+                      borderColor: `color-mix(in srgb, ${STATUS_COLORS[status]} 38%, var(--border-soft))`,
                     }}
                   >
                     <div className="card-title-row">

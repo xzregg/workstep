@@ -14,3 +14,7 @@ test('project rows show a running spinner when any workflow is running', () => {
   assert.match(source, /p\.workflows\?\.some\(\(workflow\) => workflow\.running\)/)
   assert.match(source, /title=\{t\('layout\.flowRunning'\)\}/)
 })
+
+test('remote projects refresh from websocket status events instead of polling the project list', () => {
+  assert.doesNotMatch(source, /window\.setInterval\(\(\) => \{ void fetchProjects\(\) \}, 3000\)/)
+})

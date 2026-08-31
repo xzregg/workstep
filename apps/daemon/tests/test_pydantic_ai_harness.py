@@ -136,3 +136,23 @@ async def test_run_agent_passes_conversation_id_when_harness_on(monkeypatch, tmp
 
 def test_acp_events_declares_compacted():
     assert "compacted" in PydanticAIEngine().acp_events
+
+
+@pytest.mark.anyio
+async def test_harness_store_bounded_snapshots(tmp_path):
+    """max_snapshots_per_run=30：超出保留集的旧快照在每次写入后被修剪。"""
+    from pydantic_ai_harness.step_persistence import ContinuableSnapshot
+
+    store = PydanticAIEngine._harness_store(tmp_path)
+    for i in range(35):
+        await store.save_snapshot(
+            ContinuableSnapshot(run_id="workstep-abcd1234", step_index=i, messages=[])
+        )
+    conn = store._open()
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM snapshots WHERE run_id = 'workstep-abcd1234'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 30

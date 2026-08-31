@@ -361,14 +361,17 @@ class AcpEngineBase(BaseLLMEngine):
         commands: list[dict[str, str]] = []
         session_id: str | None = None
         handler = _StreamingClient(self.get_permission_mode())
+        skill_env = self.project_skill_env(cwd)
         cmd = self.get_command()
         try:
+            process_env = dict(os.environ)
+            process_env.update(skill_env)
             async with acp.spawn_agent_process(
                 handler,
                 cmd[0],
                 *cmd[1:],
                 cwd=cwd,
-                env=os.environ,
+                env=process_env,
             ) as (client, process):
                 self._process = process
                 self._running = True
@@ -456,6 +459,7 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
+        skill_env = self.project_skill_env(cwd)
         cmd = self.get_command()
         if not cmd:
             return []
@@ -623,6 +627,18 @@ class AcpEngineBase(BaseLLMEngine):
             return response is not None
 
         return await self._with_agent(cwd, action)
+
+    async def fork_session(
+        self,
+        session_id: str,
+        cwd: str,
+        *,
+        fork_point: str | None = None,
+        model: str | None = None,
+        provider_id: str | None = None,
+    ) -> str | None:
+        """Create an independent native session fork when the adapter supports it."""
+        return None
 
     async def close_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/close — close a session and release its resources."""
@@ -821,6 +837,7 @@ class AcpEngineBase(BaseLLMEngine):
             model=model,
         )
         model = provider_runtime.model
+        skill_env = self.project_skill_env(cwd)
         cmd = self.get_command()
         if not cmd:
             yield InternalEvent(type="error", data={"message": f"{self.ENGINE_ID}: no command configured"})
@@ -840,12 +857,18 @@ class AcpEngineBase(BaseLLMEngine):
         self._handler = handler
         self._last_cwd = cwd
         try:
+            process_env = (
+                provider_runtime.child_env()
+                if provider_runtime.provider_id
+                else dict(os.environ)
+            )
+            process_env.update(skill_env)
             async with acp.spawn_agent_process(
                 handler,
                 cmd[0],
                 *cmd[1:],
                 cwd=cwd,
-                env=(provider_runtime.child_env() if provider_runtime.provider_id else os.environ),
+                env=process_env,
             ) as (client, process):
                 self._process = process
                 self._running = True

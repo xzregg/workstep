@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from engines.core.events import InternalEvent
 from engines.core.registry import ENGINE_REGISTRY
 from services.project import ProjectManager
+from services.schedule import ScheduleModule
 from services.task import TaskService
 from services.workflow_runtime import WorkflowRuntime
 from agent_assistants.coordinator import CoordinatorModule
@@ -85,6 +86,7 @@ async def api_context(tmp_path, monkeypatch):
     task_service = TaskService(bus)
     runtime = WorkflowRuntime(bus, manager)
     coordinator = CoordinatorModule(bus, manager, runtime)
+    schedule = ScheduleModule(manager, task_service, runtime)
 
     monkeypatch.setattr(project_service, "config_store", config_store)
     monkeypatch.setattr(engine_api, "config_store", config_store)
@@ -97,6 +99,7 @@ async def api_context(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "task_service", task_service)
     monkeypatch.setattr(main, "workflow_runtime", runtime)
     monkeypatch.setattr(main, "coordinator_module", coordinator)
+    monkeypatch.setattr(main, "schedule_module", schedule)
 
     transport = ASGITransport(app=main.app)
     async with AsyncExitStack() as stack:
@@ -213,6 +216,63 @@ async def test_sqlite_write_lock_does_not_block_health_check(api_context):
     health, health_completed_at = await canary_task
     created = await create_task
     locker.join(timeout=1)
+
+    assert health.status_code == 200
+    assert health_completed_at < 0.2
+    assert created.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_schedule_write_does_not_block_health_check(api_context, monkeypatch):
+    """Schedule persistence must run outside the FastAPI event loop."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-schedule-writer"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflows = await client.get(
+        "/api/workflow/list",
+        params={"project_id": project_id},
+    )
+    workflow_id = workflows.json()["workflows"][0]["id"]
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+
+    def slow_schedule_insert(sql, params=None, commit=None):
+        if 'INSERT INTO "schedules"' in sql:
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_schedule_insert)
+    started_at = time.perf_counter()
+
+    async def health_canary():
+        await asyncio.sleep(0.05)
+        response = await client.get("/api/health")
+        return response, time.perf_counter() - started_at
+
+    canary_task = asyncio.create_task(health_canary())
+    await asyncio.sleep(0)
+    create_schedule = asyncio.create_task(client.post(
+        "/api/schedule/create",
+        params={"project_id": project_id},
+        json={
+            "name": "Non-blocking schedule",
+            "workflow_id": workflow_id,
+            "task_template": {"title": "Scheduled task"},
+            "rule": {
+                "kind": "once",
+                "run_at": "2099-01-01T00:00:00+00:00",
+                "timezone": "UTC",
+            },
+        },
+    ))
+
+    health, health_completed_at = await canary_task
+    created = await create_schedule
 
     assert health.status_code == 200
     assert health_completed_at < 0.2
@@ -934,6 +994,178 @@ async def test_task_archive_contract(api_context):
 
     listed_again = await client.get(f"/api/task/list?project_id={project_id}")
     assert [task["id"] for task in listed_again.json()["tasks"]] == [task_id]
+
+
+@pytest.mark.anyio
+async def test_archive_experience_is_not_persisted_before_user_confirmation(
+    api_context, monkeypatch
+):
+    """Preparing a draft does not write Memory or archive before confirmation."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-experience-draft"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Review before writing", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    monkeypatch.setattr(
+        main.coordinator_module,
+        "draft_archive_experience",
+        AsyncMock(return_value="- 问题：测试失败\n- 经验：先复现再修复"),
+        raising=False,
+    )
+
+    prepared = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare"
+        f"?project_id={project_id}&message_id=read-only-draft"
+    )
+
+    assert prepared.status_code == 200
+    assert prepared.json() == {
+        "message_id": "read-only-draft",
+        "experience": "- 问题：测试失败\n- 经验：先复现再修复",
+        "has_experience": True,
+        "cached": False,
+    }
+    assert not (project_dir / ".workstep" / "MEMORY.md").exists()
+    listed = await client.get(f"/api/task/list?project_id={project_id}")
+    assert [task["id"] for task in listed.json()["tasks"]] == [task_id]
+
+
+@pytest.mark.anyio
+async def test_archive_experience_reuses_the_previous_draft(api_context, monkeypatch):
+    """Opening archive again returns the prior draft without another LLM call."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-experience-reuse"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Reuse draft", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    draft = AsyncMock(return_value="- 错误：跳过复现；原因：误判；纠正：先写失败测试。")
+    monkeypatch.setattr(
+        main.coordinator_module,
+        "draft_archive_experience",
+        draft,
+        raising=False,
+    )
+
+    first = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare"
+        f"?project_id={project_id}&message_id=first-draft"
+    )
+    reopened = await client.get(
+        f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}"
+    )
+
+    assert first.status_code == 200
+    assert first.json()["cached"] is False
+    assert reopened.status_code == 200
+    assert reopened.json() == {
+        "found": True,
+        "message_id": "first-draft",
+        "experience": "- 错误：跳过复现；原因：误判；纠正：先写失败测试。",
+        "has_experience": True,
+        "events": [],
+        "prompt": "",
+    }
+    draft.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_archive_with_no_worthy_experience_skips_memory(api_context, monkeypatch):
+    """A verified empty result archives the task without creating Memory content."""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-experience-empty"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Nothing to record", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    monkeypatch.setattr(
+        main.coordinator_module,
+        "draft_archive_experience",
+        AsyncMock(return_value="- 未发现值得记录的错误经验。"),
+        raising=False,
+    )
+
+    prepared = await client.post(
+        f"/api/task/{task_id}/archive-experience/prepare"
+        f"?project_id={project_id}&message_id=empty-draft"
+    )
+    confirmed = await client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": ""},
+    )
+
+    assert prepared.status_code == 200
+    assert prepared.json()["experience"] == ""
+    assert prepared.json()["has_experience"] is False
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"archived": True, "memory_saved": False}
+    assert not (project_dir / ".workstep" / "MEMORY.md").exists()
+
+
+@pytest.mark.anyio
+async def test_confirmed_archive_experience_is_appended_to_memory(api_context):
+    """Only the reviewed experience submitted at confirmation is persisted."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "archive-experience-confirm"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Confirmed lesson", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+    await client.put(
+        f"/api/fs/memory?project_id={project_id}",
+        json={"content": "# 项目记忆\n\n已有经验"},
+    )
+
+    confirmed = await client.post(
+        f"/api/task/{task_id}/archive-experience/confirm?project_id={project_id}",
+        json={"experience": "- 问题：接口超时\n- 经验：为慢请求保留重试入口"},
+    )
+
+    assert confirmed.status_code == 200
+    assert confirmed.json() == {"archived": True, "memory_saved": True}
+    memory = await client.get(f"/api/fs/memory?project_id={project_id}")
+    assert memory.json()["content"] == (
+        "# 项目记忆\n\n已有经验\n\n"
+        "## 错误经验：Confirmed lesson\n\n"
+        "- 问题：接口超时\n- 经验：为慢请求保留重试入口\n"
+    )
+    listed = await client.get(f"/api/task/list?project_id={project_id}")
+    assert listed.json()["tasks"] == []
 
 
 @pytest.mark.anyio

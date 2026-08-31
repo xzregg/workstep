@@ -27,6 +27,7 @@ import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
 import RemoteProjectSettings from './RemoteProjectSettings'
 import ModelPricingSettings from './ModelPricingSettings'
+import SkillCenterSettings from './SkillCenterSettings'
 import {
   ENGINE_COLORS,
   engineLabel,
@@ -35,6 +36,7 @@ import {
 } from '../engineMeta'
 import { useI18n, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
+import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import {
   loadFontSizePreference,
@@ -712,7 +714,7 @@ interface EnhanceProviderInfo {
   enabled: boolean
 }
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'remote' | 'system'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'skills' | 'remote' | 'system'
 export type SettingsFocusTarget = 'provider-create' | 'execution-engine'
 
 interface SettingsPageProps {
@@ -766,6 +768,7 @@ export default function SettingsPage({
   const [inspectError, setInspectError] = useState('')
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection)
   const [preferredProviderProtocol, setPreferredProviderProtocol] = useState('')
+  const activeProject = useProjectStore((state) => state.activeProject)
 
   useEffect(() => {
     setActiveSection(initialSection)
@@ -1176,6 +1179,19 @@ export default function SettingsPage({
           {t('settings.templatesNav')}
         </button>
         <button
+          aria-current={activeSection === 'skills' ? 'page' : undefined}
+          onClick={() => setActiveSection('skills')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'skills' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'skills' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
+          }}
+        >
+          <Icon name="sparkles" size={16} strokeWidth={2} />
+          {t('skillCenter.nav')}
+        </button>
+        <button
           aria-current={activeSection === 'remote' ? 'page' : undefined}
           onClick={() => setActiveSection('remote')}
           style={{
@@ -1204,7 +1220,9 @@ export default function SettingsPage({
       </aside>
 
       <section className="settings-content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '24px 28px 40px' }}>
-        {activeSection === 'engines' ? (
+        {activeSection === 'skills' ? (
+          <SkillCenterSettings project={activeProject} />
+        ) : activeSection === 'engines' ? (
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 18 }}>
             <div style={{ flex: 1 }}>
@@ -1733,6 +1751,22 @@ export default function SettingsPage({
                 ]}
                 style={{ maxWidth: 360 }}
               />
+            </div>
+            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
+              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.onboardingTitle')}</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>
+                {t('settings.onboardingIntro')}
+              </p>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  useOnboardingStore.getState().reopen()
+                  onClose()
+                }}
+              >
+                <Icon name="sparkles" size={16} strokeWidth={2} />
+                {t('onboarding.reopen')}
+              </Button>
             </div>
             <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('nav.language')}</h2>
             <p style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))', marginBottom: 12 }}>

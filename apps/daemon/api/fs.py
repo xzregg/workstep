@@ -21,6 +21,18 @@ router = APIRouter(prefix="/api/fs")
 uploads_router = APIRouter()
 
 
+def _project(project_id: str):
+    """Resolve project paths without opening or rebinding its database."""
+    from main import project_manager
+
+    if not project_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    return project
+
+
 class OpenDirectoryRequest(BaseModel):
     path: str
     opener: str = "file_manager"
@@ -167,7 +179,7 @@ async def read_memory(pid: str = Query(..., alias="project_id")):
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        project = project_manager.bind_project_by_id(pid)
+        project = _project(pid)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     memory_path = project.workstep_dir / "MEMORY.md"
@@ -185,7 +197,7 @@ async def write_memory(
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        project = project_manager.bind_project_by_id(pid)
+        project = _project(pid)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     if len(req.content) > 500_000:
@@ -213,7 +225,7 @@ async def upload_image(
         if not project_manager:
             raise HTTPException(status_code=503, detail="Service not initialized")
         try:
-            project = project_manager.bind_project_by_id(pid)
+            project = _project(pid)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
@@ -271,7 +283,7 @@ async def upload_file(
         if not project_manager:
             raise HTTPException(status_code=503, detail="Service not initialized")
         try:
-            project = project_manager.bind_project_by_id(pid)
+            project = _project(pid)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
 
@@ -337,7 +349,7 @@ async def serve_upload(
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
     try:
-        project = project_manager.bind_project_by_id(pid)
+        project = _project(pid)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return _serve_upload_file(Path(project.workstep_dir) / "uploads", filename)

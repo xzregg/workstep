@@ -8,18 +8,24 @@ interface Props {
   message?: string
   confirmText?: string
   cancelText?: string
+  secondaryText?: string
   danger?: boolean
   /** Optional body content rendered below the message (e.g. forms). */
   children?: ReactNode
   /** Disable the confirm button while an async action is in flight. */
   loading?: boolean
+  /** Disable confirmation until the dialog content is valid. */
+  confirmDisabled?: boolean
+  secondaryLoading?: boolean
+  secondaryDisabled?: boolean
   /** Override the default dialog width (px). */
   width?: number
   onConfirm: () => void
+  onSecondary?: () => void
   onCancel: () => void
 }
 
-export default function ConfirmDialog({ open, title, message, confirmText, cancelText, danger, children, loading, width = 380, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({ open, title, message, confirmText, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, onConfirm, onSecondary, onCancel }: Props) {
   const { t } = useI18n()
   // Close on Escape
   useEffect(() => {
@@ -62,16 +68,27 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <div style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
           <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
             loading={loading}
+            disabled={confirmDisabled}
             onClick={onConfirm}
             style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, padding: '6px 16px' }}
           >
             {confirmText ?? t('common.confirm')}
           </Button>
+          {secondaryText && onSecondary && (
+            <Button
+              variant="ghost"
+              loading={secondaryLoading}
+              disabled={secondaryDisabled}
+              onClick={onSecondary}
+            >
+              {secondaryText}
+            </Button>
+          )}
         </div>
       </div>
     </div>

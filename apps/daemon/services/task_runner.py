@@ -144,7 +144,7 @@ class TaskRunner:
     async def _run_db(self, operation: Callable[[], ResultT]) -> ResultT:
         """Run persistence on the owning project's writer when available."""
         if self._database_executor is None:
-            return operation()
+            return await asyncio.to_thread(operation)
         return await self._database_executor.run(operation)
 
     async def run_pipeline(
@@ -379,21 +379,19 @@ class TaskRunner:
                 failed.add(step_key)
                 running.discard(step_key)
                 if step_run is not None:
-                    step_run.status = "failed"
-                    step_run.error = error
-                    step_run.ended_at = utc_now()
-                    step_run.save()
+                    await self._persist_step_run_status(
+                        step_run.id, "failed", error, utc_now()
+                    )
             else:
-                ts.status = "passed"
-                ts.ended_at = utc_now()
-                ts.error = None
-                ts.save()
+                await self._persist_step_status(
+                    task.id, step_key, "passed", None, utc_now()
+                )
                 completed.add(step_key)
                 running.discard(step_key)
                 if step_run is not None:
-                    step_run.status = "succeeded"
-                    step_run.ended_at = utc_now()
-                    step_run.save()
+                    await self._persist_step_run_status(
+                        step_run.id, "succeeded", None, utc_now()
+                    )
                 await self._publish(task.id, step_key, {
                     "type": "status",
                     "data": {"status": "passed", "step_key": step_key},
@@ -470,19 +468,22 @@ class TaskRunner:
             ).to_dict()
             self._event_journal.finish(journal_ref, error_event)
             snapshot = self._journal_snapshot(journal_ref)
-            message = Message.get_by_id(msg_id)
-            message.events_json = snapshot["events_json"]
-            message.event_summary_json = snapshot["event_summary_json"]
-            message.event_count = snapshot["event_count"]
-            message.last_event_seq = snapshot["last_event_seq"]
-            message.run_status = "failed"
-            message.ended_at = utc_now()
-            message.save()
-            if step_run is not None:
-                step_run.status = "failed"
-                step_run.error = error
-                step_run.ended_at = utc_now()
-                step_run.save()
+            def persist_unavailable_engine():
+                message = Message.get_by_id(msg_id)
+                message.events_json = snapshot["events_json"]
+                message.event_summary_json = snapshot["event_summary_json"]
+                message.event_count = snapshot["event_count"]
+                message.last_event_seq = snapshot["last_event_seq"]
+                message.run_status = "failed"
+                message.ended_at = utc_now()
+                message.save()
+                if step_run is not None:
+                    step_run.status = "failed"
+                    step_run.error = error
+                    step_run.ended_at = utc_now()
+                    step_run.save()
+
+            await self._run_db(persist_unavailable_engine)
             running.discard(step_key)
             return
 
@@ -564,7 +565,7 @@ class TaskRunner:
                     live_data = event.data or {}
                     live_message_id = live_data.get("message_id")
                     if live_message_id:
-                        try:
+                        def finish_live_message():
                             live_message = Message.get_by_id(live_message_id)
                             live_message.run_status = (
                                 "succeeded"
@@ -573,13 +574,15 @@ class TaskRunner:
                             )
                             live_message.ended_at = utc_now()
                             live_message.save()
+                        try:
+                            await self._run_db(finish_live_message)
                         except Message.DoesNotExist:
                             pass
                     if live_data.get("status") == "delivered":
                         # 引擎确认收到插入消息：封口当前执行段并开启新的响应段，
                         # 历史消息呈现「阶段输出 → 用户插入 → 阶段响应」的分段结构。
                         seal_time = utc_now()
-                        try:
+                        def seal_current_message():
                             sealed = Message.get_by_id(msg_id)
                             self._event_journal.finish(journal_ref)
                             snapshot = self._journal_snapshot(journal_ref)
@@ -592,11 +595,17 @@ class TaskRunner:
                             sealed.run_status = "succeeded"
                             sealed.ended_at = seal_time
                             sealed.save()
+                            return sealed.engine, sealed.model
+
+                        try:
+                            sealed_engine, sealed_model = await self._run_db(
+                                seal_current_message
+                            )
                             await self._publish(task.id, step_key, {
                                 "channel": "execution",
                                 "message_id": msg_id,
-                                "engine": sealed.engine,
-                                "model": sealed.model,
+                                "engine": sealed_engine,
+                                "model": sealed_model,
                                 "event_sequence": len(events_collected) + 1,
                                 "type": "message_completed",
                                 "data": {"status": "succeeded"},
@@ -609,21 +618,21 @@ class TaskRunner:
                             f"task-{task.id}",
                             new_msg_id,
                         )
-                        create_task_message(
-                            id=new_msg_id,
-                            task=task,
-                            channel="execution",
-                            step_key=step_key,
-                            role="assistant",
-                            engine=step.engine,
-                            model=resolved_model,
-                            run_id=new_msg_id,
-                            run_status="running",
-                            event_log_path=journal_ref.relative_path,
-                            position=1,
-                            started_at=seal_time,
-                            created_at=seal_time,
-                        )
+                        await self._run_db(lambda: create_task_message(
+                                id=new_msg_id,
+                                task=task,
+                                channel="execution",
+                                step_key=step_key,
+                                role="assistant",
+                                engine=step.engine,
+                                model=resolved_model,
+                                run_id=new_msg_id,
+                                run_status="running",
+                                event_log_path=journal_ref.relative_path,
+                                position=1,
+                                started_at=seal_time,
+                                created_at=seal_time,
+                            ))
                         msg_id = new_msg_id
                         content_parts.clear()
                         events_collected.clear()
@@ -649,7 +658,7 @@ class TaskRunner:
                 if interaction_waiter is not None:
                     # Persist before blocking so navigation/reload can rebuild
                     # the active interaction card from normal message history.
-                    try:
+                    def persist_pending_interaction():
                         pending_message = Message.get_by_id(msg_id)
                         self._event_journal.sync(journal_ref, durable=True)
                         snapshot = self._journal_snapshot(journal_ref)
@@ -659,6 +668,9 @@ class TaskRunner:
                         pending_message.event_count = snapshot["event_count"]
                         pending_message.last_event_seq = snapshot["last_event_seq"]
                         pending_message.save()
+
+                    try:
+                        await self._run_db(persist_pending_interaction)
                     except Message.DoesNotExist:
                         pass
                     response = await interaction_waiter
@@ -711,10 +723,9 @@ class TaskRunner:
 
             if run_key in self._cancelled_steps:
                 # 手动停止：阶段状态与普通失败区分，前端显示「手动停止」。
-                ts.status = "cancelled"
-                ts.error = "手动停止"
-                ts.ended_at = utc_now()
-                ts.save()
+                ts = await self._persist_step_status(
+                    task.id, step_key, "cancelled", "手动停止", utc_now()
+                )
                 await self._publish(task.id, step_key, {
                     "type": "status",
                     "data": {
@@ -741,9 +752,9 @@ class TaskRunner:
                     ts = await self._run_db(mark_step_passed)
                     completed.add(step_key)
                 else:
-                    step_run.status = "succeeded"
-                    step_run.ended_at = utc_now()
-                    step_run.save()
+                    step_run = await self._persist_step_run_status(
+                        step_run.id, "succeeded", None, utc_now()
+                    )
                     # Merge task-level review overrides with stage config
                     review_config = dict(step.review or {})
                     if task.review_overrides_json:
@@ -757,18 +768,19 @@ class TaskRunner:
                     review_mode = _effective_review_mode(review_config)
                     if review_mode == "skip":
                         # 跳过审核：阶段执行完成后直接通过，不创建审核记录。
-                        ts.status = "passed"
-                        ts.ended_at = utc_now()
-                        ts.error = None
-                        ts.save()
+                        ts = await self._persist_step_status(
+                            task.id, step_key, "passed", None, utc_now()
+                        )
                         completed.add(step_key)
                         outcome = None
                     else:
-                        if review_mode == "auto":
-                            ts.status = "reviewing"
-                        else:
-                            ts.status = "awaiting_review"
-                        ts.save()
+                        review_status = (
+                            "reviewing" if review_mode == "auto"
+                            else "awaiting_review"
+                        )
+                        ts = await self._persist_step_status(
+                            task.id, step_key, review_status, ts.error, ts.ended_at
+                        )
                         await self._publish(task.id, step_key, {
                             "type": "status",
                             "data": {
@@ -778,7 +790,8 @@ class TaskRunner:
                             },
                         })
                         gate = ReviewGate(
-                            lambda event: self._publish(task.id, step_key, event)
+                            lambda event: self._publish(task.id, step_key, event),
+                            self._run_db,
                         )
                         outcome = await gate.evaluate(
                             task=task,
@@ -792,22 +805,15 @@ class TaskRunner:
                         )
                         # 重新加载最新 ts：gate 在审核期间写入了 review_session_id，
                         # 用旧实例整行 save 会把它覆盖回 None。
-                        ts = TaskStep.get(
-                            (TaskStep.task == task)
-                            & (TaskStep.step_key == step_key)
-                        )
                         if outcome.status == "passed":
-                            ts.status = "passed"
-                            ts.ended_at = utc_now()
-                            ts.error = None
-                            ts.save()
+                            ts = await self._persist_step_status(
+                                task.id, step_key, "passed", None, utc_now()
+                            )
                             completed.add(step_key)
                         elif outcome.status == "awaiting_review":
-                            ts.status = "awaiting_review"
-                            # The stage remains open until the reviewer decides.
-                            # decide_review() records the actual lifecycle end.
-                            ts.ended_at = None
-                            ts.save()
+                            ts = await self._persist_step_status(
+                                task.id, step_key, "awaiting_review", ts.error, None
+                            )
                             failed.add(step_key)
                         elif step_run.attempt <= int(review_config.get("maxRetries", 1)):
                             if step.rework_upstream:
@@ -819,15 +825,22 @@ class TaskRunner:
                                     outcome.feedback,
                                     step_run.attempt,
                                 )
-                                ts.status = "rework_waiting"
-                                ts.error = outcome.feedback
-                                ts.ended_at = None
-                                ts.save()
+                                ts = await self._persist_step_status(
+                                    task.id,
+                                    step_key,
+                                    "rework_waiting",
+                                    outcome.feedback,
+                                    None,
+                                )
                             else:
                                 retry_feedback = outcome.feedback
-                                ts.status = "retrying"
-                                ts.error = outcome.feedback
-                                ts.save()
+                                ts = await self._persist_step_status(
+                                    task.id,
+                                    step_key,
+                                    "retrying",
+                                    outcome.feedback,
+                                    ts.ended_at,
+                                )
                                 await self._publish(task.id, step_key, {
                                     "type": "step_retrying",
                                     "data": {
@@ -849,10 +862,13 @@ class TaskRunner:
                                 review_config=review_config,
                                 mode="manual",
                             )
-                            ts.status = "awaiting_review"
-                            ts.error = outcome.feedback
-                            ts.ended_at = None
-                            ts.save()
+                            ts = await self._persist_step_status(
+                                task.id,
+                                step_key,
+                                "awaiting_review",
+                                outcome.feedback,
+                                None,
+                            )
                             failed.add(step_key)
 
                 if (
@@ -897,36 +913,36 @@ class TaskRunner:
                             f"{verdict}**\n"
                             f"{rsummary}\n{ritems}"
                         )
-                    create_task_message(
-                        id=rmsg_id,
-                        task=task,
-                        channel="review",
-                        step_key=step_key,
-                        role="assistant",
-                        content=rcontent,
-                        engine=outcome.review_run.engine,
-                        model=outcome.review_run.model,
-                        run_id=rmsg_id,
-                        run_status="completed",
-                        event_log_path=review_journal_ref.relative_path,
-                        prompt_json=outcome.review_run.prompt_json,
-                        events_json=json.dumps(
-                            [{
-                                "type": "review_context",
-                                "data": {
-                                    "review_run_id": outcome.review_run.id,
-                                },
-                            }, *review_snapshot["events"]],
-                            ensure_ascii=False,
-                        ),
-                        event_summary_json=review_snapshot["event_summary_json"],
-                        event_count=review_snapshot["event_count"],
-                        last_event_seq=review_snapshot["last_event_seq"],
-                        usage_json=extract_usage_json(list(outcome.events)),
-                        position=0,
-                        started_at=outcome.review_run.started_at,
-                        ended_at=outcome.review_run.ended_at,
-                        created_at=rnow,
+                    await self._run_db(
+                        lambda: create_task_message(
+                            id=rmsg_id,
+                            task=task,
+                            channel="review",
+                            step_key=step_key,
+                            role="assistant",
+                            content=rcontent,
+                            engine=outcome.review_run.engine,
+                            model=outcome.review_run.model,
+                            run_id=rmsg_id,
+                            run_status="completed",
+                            event_log_path=review_journal_ref.relative_path,
+                            prompt_json=outcome.review_run.prompt_json,
+                            events_json=json.dumps(
+                                [{
+                                    "type": "review_context",
+                                    "data": {"review_run_id": outcome.review_run.id},
+                                }, *review_snapshot["events"]],
+                                ensure_ascii=False,
+                            ),
+                            event_summary_json=review_snapshot["event_summary_json"],
+                            event_count=review_snapshot["event_count"],
+                            last_event_seq=review_snapshot["last_event_seq"],
+                            usage_json=extract_usage_json(list(outcome.events)),
+                            position=0,
+                            started_at=outcome.review_run.started_at,
+                            ended_at=outcome.review_run.ended_at,
+                            created_at=rnow,
+                        )
                     )
                     # 审核消息已持久化：实时推送完整消息事件，前端据此刷新
                     # reviews / history（否则打开面板期间不会显示审核消息）。
@@ -1037,13 +1053,9 @@ class TaskRunner:
                 while not live_queue.empty():
                     pending.append(live_queue.get_nowait())
                 for message_id, _ in pending:
-                    try:
-                        live_message = Message.get_by_id(message_id)
-                        live_message.run_status = "failed"
-                        live_message.ended_at = utc_now()
-                        live_message.save()
-                    except Message.DoesNotExist:
-                        pass
+                    await self._run_db(
+                        lambda mid=message_id: self._fail_live_message(mid)
+                    )
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
             if step_run is not None:
@@ -1051,12 +1063,12 @@ class TaskRunner:
                     step_run.status == "running"
                     and not interrupted_by_shutdown
                 ):
-                    step_run.status = (
-                        "succeeded" if execution_succeeded else "failed"
+                    step_run = await self._persist_step_run_status(
+                        step_run.id,
+                        "succeeded" if execution_succeeded else "failed",
+                        None if execution_succeeded else ts.error,
+                        utc_now(),
                     )
-                    step_run.error = None if execution_succeeded else ts.error
-                    step_run.ended_at = utc_now()
-                    step_run.save()
 
         if retry_feedback is not None:
             await self._run_step(
@@ -1094,15 +1106,21 @@ class TaskRunner:
             rewind.update(scheduler.get_all_downstream(upstream_key))
 
         targets = set(step.rework_upstream)
-        for key in sorted(rewind):
-            if key == step.key:
-                continue  # verifier status is handled by the caller
-            completed.discard(key)
-            ts = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == key))
-            ts.status = "rework"
-            ts.rework_feedback = feedback if key in targets else None
-            ts.ended_at = None
-            ts.save()
+        rework_keys = [key for key in sorted(rewind) if key != step.key]
+        completed.difference_update(rework_keys)
+
+        def persist_rework():
+            for key in rework_keys:
+                ts = TaskStep.get(
+                    (TaskStep.task == task) & (TaskStep.step_key == key)
+                )
+                ts.status = "rework"
+                ts.rework_feedback = feedback if key in targets else None
+                ts.ended_at = None
+                ts.save()
+
+        await self._run_db(persist_rework)
+        for key in rework_keys:
             await self._publish(task.id, key, {
                 "type": "status",
                 "data": {"status": "rework", "task_id": task.id, "step_key": key},
@@ -1118,6 +1136,42 @@ class TaskRunner:
                 "max_retries": int((step.review or {}).get("maxRetries", 1)),
             },
         })
+
+    async def _persist_step_status(
+        self, task_id, step_key, status, error, ended_at
+    ):
+        def persist():
+            row = TaskStep.get(
+                (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+            )
+            row.status = status
+            row.error = error
+            row.ended_at = ended_at
+            row.save()
+            return row
+
+        return await self._run_db(persist)
+
+    async def _persist_step_run_status(self, step_run_id, status, error, ended_at):
+        def persist():
+            row = StepRun.get_by_id(step_run_id)
+            row.status = status
+            row.error = error
+            row.ended_at = ended_at
+            row.save()
+            return row
+
+        return await self._run_db(persist)
+
+    @staticmethod
+    def _fail_live_message(message_id):
+        try:
+            live_message = Message.get_by_id(message_id)
+        except Message.DoesNotExist:
+            return
+        live_message.run_status = "failed"
+        live_message.ended_at = utc_now()
+        live_message.save()
 
     async def _fail_step(self, ts: TaskStep, task: Task, step_key: str, error: str):
         """Mark a step as failed."""
@@ -1183,41 +1237,45 @@ class TaskRunner:
         queue = self._live_message_queues.get(run_key)
         if queue is None:
             raise ValueError("阶段消息队列不可用")
-        try:
-            task = Task.get_by_id(task_id)
-        except Task.DoesNotExist:
-            raise ValueError(f"任务不存在: {task_id}")
         now = utc_now()
         message_id = new_message_id()
-        message = create_task_message(
-            id=message_id,
-            task=task,
-            channel="execution",
-            step_key=step_key,
-            role="user",
-            content=normalized,
-            run_id=message_id,
-            run_status="running",
-            position=0,
-            started_at=now,
-            created_at=now,
-        )
-        if as_guidance:
-            StageSupplement.create(
-                id=str(uuid.uuid4()),
+        def persist_live_message():
+            try:
+                task = Task.get_by_id(task_id)
+            except Task.DoesNotExist:
+                raise ValueError(f"任务不存在: {task_id}")
+            message = create_task_message(
+                id=message_id,
                 task=task,
+                channel="execution",
                 step_key=step_key,
+                role="user",
                 content=normalized,
-                source_proposal=None,
-                created_sequence=(
-                    task.next_message_sequence - 1
-                    if task.next_message_sequence > 0
-                    else 0
-                ),
+                run_id=message_id,
+                run_status="running",
+                position=0,
+                started_at=now,
                 created_at=now,
             )
-            task.state_version += 1
-            task.save()
+            if as_guidance:
+                StageSupplement.create(
+                    id=str(uuid.uuid4()),
+                    task=task,
+                    step_key=step_key,
+                    content=normalized,
+                    source_proposal=None,
+                    created_sequence=(
+                        task.next_message_sequence - 1
+                        if task.next_message_sequence > 0
+                        else 0
+                    ),
+                    created_at=now,
+                )
+                task.state_version += 1
+                task.save()
+            return message.sequence
+
+        sequence = await self._run_db(persist_live_message)
         await self._publish(task_id, step_key, {
             "channel": "execution",
             "message_id": message_id,
@@ -1234,7 +1292,7 @@ class TaskRunner:
             "message_id": message_id,
             "step_key": step_key,
             "status": "queued",
-            "sequence": message.sequence,
+            "sequence": sequence,
             "created_at": now.isoformat(),
         }
 

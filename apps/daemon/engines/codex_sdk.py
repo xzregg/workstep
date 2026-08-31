@@ -577,10 +577,13 @@ class CodexSDKEngine(AcpEngineBase):
             # thread_start 的 approval_mode 不接受 None（默认 auto_review）
             thread_kwargs["approval_mode"] = approval_mode
         override = self.get_binary_override()
+        from services.skill_runtime import codex_skills_config
+
+        skill_override = codex_skills_config(self.project_skills(cwd))
         client_config = CodexConfig(
             codex_bin=override or None,
             cwd=cwd or None,
-            config_overrides=provider_runtime.engine_config,
+            config_overrides=provider_runtime.engine_config + (skill_override,),
             env=(provider_runtime.child_env() if provider_runtime.provider_id else None),
         )
 
@@ -860,6 +863,49 @@ class CodexSDKEngine(AcpEngineBase):
     def supports_sessions(self) -> bool:
         """SDK 的 thread_resume 原生支持按 thread_id 恢复会话。"""
         return True
+
+    @property
+    def supports_session_fork(self) -> bool:
+        """The official SDK exposes ``thread_fork`` as a native primitive."""
+        return True
+
+    async def fork_session(
+        self,
+        session_id: str,
+        cwd: str,
+        *,
+        fork_point: str | None = None,
+        model: str | None = None,
+        provider_id: str | None = None,
+    ) -> str | None:
+        """Fork a persisted Codex thread and return the new thread id."""
+        if not session_id:
+            return None
+        from openai_codex import AsyncCodex, CodexConfig
+
+        override = self.get_binary_override()
+        provider_runtime = self.resolve_provider_runtime(
+            provider_id=provider_id or "",
+            model=model,
+        )
+        client = AsyncCodex(config=CodexConfig(
+            codex_bin=override or None,
+            cwd=cwd or None,
+            config_overrides=provider_runtime.engine_config,
+            env=(provider_runtime.child_env() if provider_runtime.provider_id else None),
+        ))
+        try:
+            thread = await client.thread_fork(
+                session_id,
+                cwd=cwd or None,
+                model=provider_runtime.model or None,
+            )
+            forked_id = str(thread.id)
+            return forked_id if forked_id and forked_id != session_id else None
+        finally:
+            close = getattr(client, "close", None)
+            if callable(close):
+                await close()
 
     @property
     def supports_tool_approval(self) -> bool:

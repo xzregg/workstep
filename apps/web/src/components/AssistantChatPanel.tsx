@@ -20,6 +20,7 @@ import ChatInput, {
 } from './ChatInput'
 import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
+import StreamingStatusText from './StreamingStatusText'
 import ConversationNewMessagesButton from './ConversationNewMessagesButton'
 import MessageMetaBar from './MessageMetaBar'
 import PromptViewerDialog from './PromptViewerDialog'
@@ -84,6 +85,8 @@ export interface AssistantChatPanelProps {
   showUserTag?: boolean
   /** Load one persisted message's JSONL process timeline on demand. */
   onLoadMessageEvents?: (messageId: string) => void
+  /** Optional message-level fork action, shown on completed assistant replies. */
+  onForkMessage?: (messageId: string) => void
 }
 
 /** Shared visual shell for session-scoped assistant chats. */
@@ -92,7 +95,7 @@ export default function AssistantChatPanel({
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents,
+  onLoadMessageEvents, onForkMessage,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const { t } = useI18n()
@@ -239,7 +242,7 @@ export default function AssistantChatPanel({
             error={message.role === 'assistant' ? message.error : undefined}
             showLoading={message.role === 'assistant' && message.status === 'running'}
             loading={message.role === 'assistant'
-              ? <div className="engine-loading-message" role="status">{copy.thinking}</div>
+              ? <StreamingStatusText label={t('bubble.thinking')} />
               : undefined}
             header={message.role === 'user' ? (
               <>
@@ -277,6 +280,9 @@ export default function AssistantChatPanel({
                 usage={usageFromEvents(message.events ?? [])}
                 engine={message.engine}
                 model={message.model}
+                onFork={message.status === 'succeeded' && onForkMessage
+                  ? () => onForkMessage(message.id)
+                  : undefined}
               />
             ) : undefined}
             onSendToInput={(content) => {
@@ -291,8 +297,6 @@ export default function AssistantChatPanel({
             <AssistantThinkingMessage
               sender={copy.agent}
               initials={copy.agentInitials}
-              label={copy.thinking}
-              onViewPrompt={setViewingPrompt}
             />
           )}
           {afterMessages}

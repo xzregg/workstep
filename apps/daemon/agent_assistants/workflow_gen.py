@@ -27,6 +27,7 @@ from agent_assistants.base import (
     assistant_registry,
     extract_streaming_reply,
 )
+from agent_assistants.event_journal import TurnEventJournal
 from services.config import CONFIG_DIR, config_store
 from services.workflow_definition import (
     WorkflowDefinition,
@@ -97,6 +98,7 @@ class WorkflowGenModule(AssistantRuntime):
     """The AI flow-design assistant — config + flow-specific hooks."""
 
     def __init__(self, event_bus, project_manager):
+        self._event_journal = TurnEventJournal()
         config = AssistantConfig(
             name="workflow_gen",
             channel=GEN_CHANNEL,
@@ -120,6 +122,7 @@ class WorkflowGenModule(AssistantRuntime):
             history_message=self._history_message,
             validate_engine=self._validate_engine,
             cwd_resolver=self._resolve_cwd,
+            event_journal=self._event_journal,
         )
         self._workflow_gen_config = config
         super().__init__(config, event_bus, project_manager)
@@ -143,6 +146,7 @@ class WorkflowGenModule(AssistantRuntime):
         workflow_name: str | None = None,
         context_mode: str | None = None,
         workflow_id: str | None = None,
+        schedule: bool = True,
     ) -> ChatAccepted:
         """Queue one generation turn; returns immediately with an accepted turn.
 
@@ -177,6 +181,7 @@ class WorkflowGenModule(AssistantRuntime):
                 "workflow_name": (workflow_name or "").strip(),
                 "context_mode": resolved_context_mode,
             },
+            schedule=schedule,
         )
         return ChatAccepted(
             session_id=accepted.session_id,

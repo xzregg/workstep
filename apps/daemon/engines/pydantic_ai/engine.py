@@ -537,6 +537,9 @@ class PydanticAIEngine(AcpEngineBase):
                 allowed_roots.append(resolved)
 
         file_system = FileSystem(allowed_roots)
+        # Refresh the fail-closed mirror before building the progressive
+        # list_skills/load_skill registry for this turn.
+        self.project_skills(str(root))
         skills = Skills(project_root=root)
 
         harness_capabilities = self._harness_capabilities(root, session_id)
@@ -912,7 +915,10 @@ class PydanticAIEngine(AcpEngineBase):
 
         workstep_dir = root / ".workstep"
         workstep_dir.mkdir(parents=True, exist_ok=True)
-        return SqliteStepStore(database=workstep_dir / "harness_runs.db")
+        return SqliteStepStore(
+            database=workstep_dir / "harness_runs.db",
+            max_snapshots_per_run=30,
+        )
 
     @classmethod
     def _harness_capabilities(

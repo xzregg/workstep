@@ -2,6 +2,7 @@
 
 - [Architecture](architecture.md) — components, storage, engine boundary, and event flow.
 - [Development](development.md) — setup, test commands, coding conventions, and pull-request checks.
+- [Project skill center](skill-center.md) — discovery, project selection, mirroring, API, and engine isolation.
 - [GitHub settings](github-settings.md) — repository features, rulesets, security, Pages, and analytics.
 - [Product requirements](../PRODUCT.md) and [design system](../DESIGN.md) — product and visual decisions.
 

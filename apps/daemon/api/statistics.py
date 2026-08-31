@@ -1,5 +1,6 @@
 """Statistics dashboard API."""
 
+import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
@@ -22,14 +23,17 @@ async def overview(
 ):
     """Return one global, project, or workflow statistics report."""
     try:
-        return StatisticsModule(project_manager).overview(StatisticsQuery(
-            project_id=project_id,
-            workflow_id=workflow_id,
-            range_key=range_key,
-            start=start,
-            end=end,
-            timezone=timezone,
-        ))
+        return await asyncio.to_thread(
+            StatisticsModule(project_manager).overview,
+            StatisticsQuery(
+                project_id=project_id,
+                workflow_id=workflow_id,
+                range_key=range_key,
+                start=start,
+                end=end,
+                timezone=timezone,
+            ),
+        )
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if "not found" in detail.lower() else 422

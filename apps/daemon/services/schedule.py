@@ -261,6 +261,13 @@ class ScheduleModule:
         while self._workers:
             await asyncio.gather(*list(self._workers), return_exceptions=True)
 
+    async def _run_db(self, project_id: str, operation):
+        """Serialize project Peewee work outside the event loop."""
+        return await self._projects.run_db(
+            project_id,
+            lambda _project: operation(),
+        )
+
     @staticmethod
     def _to_dict(row: Schedule) -> dict:
         rule = json.loads(row.rule_json)
@@ -293,6 +300,17 @@ class ScheduleModule:
     def _template_mode(task_template: dict) -> str:
         return str(task_template.get("mode") or "static")
 
+    @classmethod
+    def _normalize_template(cls, task_template: dict) -> dict:
+        normalized = dict(task_template)
+        if (
+            cls._template_mode(normalized) != AGENT_MODE
+            and not str(normalized.get("title") or "").strip()
+        ):
+            description = str(normalized.get("description") or "").strip()
+            normalized["title"] = f"{description[:10]}..."
+        return normalized
+
     def _validate_template(
         self,
         project,
@@ -320,8 +338,6 @@ class ScheduleModule:
                         f"candidate workflow not found: {missing}"
                     )
             return
-        if not str(task_template.get("title") or "").strip():
-            raise ScheduleValidationError("task_template.title is required")
         start_key = task_template.get("start_step_key")
         if not start_key or workflow is None:
             return
@@ -347,6 +363,7 @@ class ScheduleModule:
         execution_mode: str = "workflow",
         overlap_policy: str = "skip",
     ) -> dict:
+        task_template = self._normalize_template(task_template)
         if execution_mode not in {"workflow", "immediate", "manual"}:
             raise ScheduleValidationError("Invalid execution_mode")
         if overlap_policy not in {"skip", "parallel", "queue"}:
@@ -405,6 +422,7 @@ class ScheduleModule:
             task_template = changes.get(
                 "task_template", json.loads(row.task_template_json)
             )
+            task_template = self._normalize_template(task_template)
             if self._template_mode(task_template) == AGENT_MODE:
                 workflow_id = str(workflow_id or "").strip()
                 self._validate_template(project, task_template)
@@ -489,9 +507,9 @@ class ScheduleModule:
         if current.tzinfo is None:
             current = current.replace(tzinfo=timezone.utc)
         for project in list(self._projects.iter_projects()):
-            due_ids: list[str] = []
-            queued_schedule_ids: set[str] = set()
-            with self._projects.activate_project_by_id(project.id):
+            def claim_due():
+                due_ids: list[str] = []
+                queued_schedule_ids: set[str] = set()
                 self._reconcile_running_rows()
                 active_rows = list(Schedule.select().where(Schedule.status == "active"))
                 for row in active_rows:
@@ -546,6 +564,11 @@ class ScheduleModule:
                         ScheduleRun.status == "queued"
                     )
                 )
+                return due_ids, queued_schedule_ids
+
+            due_ids, queued_schedule_ids = await self._run_db(
+                project.id, claim_due
+            )
             for run_id in due_ids:
                 self._spawn(
                     self._execute_run(project.id, run_id),
@@ -559,7 +582,7 @@ class ScheduleModule:
         self, project_id: str, current: datetime, *, startup: bool,
     ) -> None:
         """Start one-shot task timers, or mark missed timers during recovery."""
-        with self._projects.activate_project_by_id(project_id):
+        def claim_tasks():
             rows = list(Task.select().where(
                 Task.scheduled_start_at.is_null(False),
                 Task.scheduled_start_at <= current,
@@ -578,20 +601,26 @@ class ScheduleModule:
                     task.scheduled_start_state = "dispatching"
                     task.updated_at = current
                     task.save()
-                    self._spawn(
-                        self._execute_scheduled_task(project_id, task.id),
-                        name=f"scheduled-task:{task.id}",
-                    )
+            return missed, [task.id for task in rows] if not startup else []
+
+        missed, dispatch_ids = await self._run_db(project_id, claim_tasks)
+        for task_id in dispatch_ids:
+            self._spawn(
+                self._execute_scheduled_task(project_id, task_id),
+                name=f"scheduled-task:{task_id}",
+            )
         for task_id, scheduled_at in missed:
             await self._publish_scheduled_event(
                 task_id, "missed", scheduled_at, "应用未运行，错过了定时启动时间"
             )
 
     async def _execute_scheduled_task(self, project_id: str, task_id: str) -> None:
-        with self._projects.activate_project_by_id(project_id):
+        def load_scheduled_at():
             task = Task.get_or_none(Task.id == task_id)
-            scheduled_at = task.scheduled_start_at if task else None
-        if task is None or scheduled_at is None:
+            return task.scheduled_start_at if task else None
+
+        scheduled_at = await self._run_db(project_id, load_scheduled_at)
+        if scheduled_at is None:
             return
         try:
             await self._runtime.start(project_id, task_id, "")
@@ -599,14 +628,21 @@ class ScheduleModule:
             # A user stop cancels the workflow coroutine. The one-shot timer
             # must be consumed as well, otherwise the next polling tick sees
             # the stale dispatching row and starts the same task again.
-            self._tasks.clear_scheduled_start(task_id)
+            await self._run_db(
+                project_id, lambda: self._tasks.clear_scheduled_start(task_id)
+            )
             await self._publish_scheduled_event(task_id, None, scheduled_at, None)
             return
         except Exception as exc:
-            self._tasks.mark_scheduled_start(task_id, "failed", str(exc))
+            await self._run_db(
+                project_id,
+                lambda: self._tasks.mark_scheduled_start(task_id, "failed", str(exc)),
+            )
             await self._publish_scheduled_event(task_id, "failed", scheduled_at, str(exc))
             return
-        self._tasks.clear_scheduled_start(task_id)
+        await self._run_db(
+            project_id, lambda: self._tasks.clear_scheduled_start(task_id)
+        )
         await self._publish_scheduled_event(task_id, None, scheduled_at, None)
 
     async def _publish_scheduled_event(
@@ -644,13 +680,14 @@ class ScheduleModule:
     async def _drain_queue(self, project_id: str, schedule_id: str) -> None:
         if self._closing:
             return
-        with self._projects.activate_project_by_id(project_id):
+
+        def next_queued_run():
             running = ScheduleRun.select().where(
                 (ScheduleRun.schedule == schedule_id)
                 & (ScheduleRun.status == "running")
             ).exists()
             if running:
-                return
+                return None
             queued = (
                 ScheduleRun.select()
                 .where(
@@ -661,8 +698,12 @@ class ScheduleModule:
                 .first()
             )
             if queued is None:
-                return
-            run_id = queued.id
+                return None
+            return queued.id
+
+        run_id = await self._run_db(project_id, next_queued_run)
+        if run_id is None:
+            return
         if any(task.get_name() == f"schedule-run:{run_id}" for task in self._workers):
             return
         self._spawn(
@@ -673,16 +714,23 @@ class ScheduleModule:
     async def _execute_run(self, project_id: str, run_id: str) -> None:
         schedule_id = ""
         try:
-            with self._projects.activate_project_by_id(project_id):
+            def start_run():
                 run = ScheduleRun.get_by_id(run_id)
                 schedule = Schedule.get_by_id(run.schedule_id)
-                schedule_id = schedule.id
                 template = json.loads(schedule.task_template_json)
                 run.status = "running"
                 run.started_at = utc_now()
                 run.save()
-                workflow_id = schedule.workflow_id
-                execution_mode = schedule.execution_mode
+                return (
+                    schedule.id,
+                    template,
+                    schedule.workflow_id,
+                    schedule.execution_mode,
+                )
+
+            schedule_id, template, workflow_id, execution_mode = await self._run_db(
+                project_id, start_run
+            )
             from services.task_creation import create_project_task
             if self._template_mode(template) == AGENT_MODE:
                 result = await self._run_agent_attempts(
@@ -706,7 +754,8 @@ class ScheduleModule:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            with self._projects.activate_project_by_id(project_id):
+            def fail_run():
+                nonlocal schedule_id
                 run = ScheduleRun.get_or_none(ScheduleRun.id == run_id)
                 if run is not None:
                     schedule_id = schedule_id or run.schedule_id
@@ -721,6 +770,8 @@ class ScheduleModule:
                     schedule.next_run_at = None
                     schedule.updated_at = utc_now()
                     schedule.save()
+
+            await self._run_db(project_id, fail_run)
         finally:
             if schedule_id:
                 await self._drain_queue(project_id, schedule_id)
@@ -795,23 +846,27 @@ class ScheduleModule:
 
     async def _attach_task_result(self, project_id, run_id, result) -> None:
         task = result.task
-        with self._projects.activate_project_by_id(project_id):
+
+        def attach_task():
             run = ScheduleRun.get_by_id(run_id)
             run.task_id = task["id"]
             if result.run_handle is None:
                 run.status = "created"
                 run.ended_at = utc_now()
                 run.save()
-                return
-        handle = result.run_handle
-        with self._projects.activate_project_by_id(project_id):
-            run = ScheduleRun.get_by_id(run_id)
-            run.workflow_run_id = handle.id
+                return True
+            run.workflow_run_id = result.run_handle.id
             run.save()
+            return False
+
+        if await self._run_db(project_id, attach_task):
+            return
+        handle = result.run_handle
         # Stopping the scheduler must not propagate cancellation into the
         # workflow runtime, which owns and recovers the actual execution.
         await asyncio.shield(self._runtime.wait(handle))
-        with self._projects.activate_project_by_id(project_id):
+
+        def finish_run():
             from models import WorkflowRun
             run = ScheduleRun.get_by_id(run_id)
             workflow_run = WorkflowRun.get_by_id(handle.id)
@@ -821,6 +876,8 @@ class ScheduleModule:
             run.reason = None if run.status == "succeeded" else workflow_run.status
             run.ended_at = workflow_run.ended_at or utc_now()
             run.save()
+
+        await self._run_db(project_id, finish_run)
 
     def _get_row(self, project_id: str, schedule_id: str) -> Schedule:
         with self._projects.activate_project_by_id(project_id):

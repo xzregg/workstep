@@ -18,6 +18,7 @@ from agent_assistants.base import (
     assistant_registry,
     extract_streaming_reply,
 )
+from agent_assistants.event_journal import TurnEventJournal
 from services.config import config_store
 from services.workflow_definition import WorkflowDefinition
 
@@ -70,6 +71,7 @@ class TaskDraftModule(AssistantRuntime):
     """Task Agent creation mode backed by an in-memory assistant session."""
 
     def __init__(self, event_bus, project_manager):
+        self._event_journal = TurnEventJournal()
         config = AssistantConfig(
             name="task_create",
             channel=TASK_CREATE_CHANNEL,
@@ -84,6 +86,7 @@ class TaskDraftModule(AssistantRuntime):
             extract_streaming_text=extract_streaming_reply,
             resolve_engine_models=self._resolve_engine_models,
             validate_engine=self._validate_engine,
+            event_journal=self._event_journal,
         )
         super().__init__(config, event_bus, project_manager)
         assistant_registry.register(config)
@@ -109,6 +112,7 @@ class TaskDraftModule(AssistantRuntime):
         candidate_workflow_ids: list[str] | None = None,
         allow_generate_title: bool = False,
         retry_feedback: str | None = None,
+        schedule: bool = True,
     ) -> ChatAccepted:
         schedule_mode = instruction is not None or candidate_workflow_ids is not None
         normalized_title = (title or "").strip()
@@ -156,6 +160,7 @@ class TaskDraftModule(AssistantRuntime):
                 "allow_generate_title": bool(allow_generate_title),
                 "retry_feedback": retry_feedback,
             },
+            schedule=schedule,
         )
         return ChatAccepted(
             session_id=accepted.session_id,
@@ -186,20 +191,25 @@ class TaskDraftModule(AssistantRuntime):
         if not normalized_instruction:
             raise ValueError("Schedule instruction cannot be empty")
         session_id = f"schedule-{uuid.uuid4()}"
-        accepted = self.submit_message(
+        accepted = await self._project_manager.run_db(
             project_id,
-            session_id,
-            normalized_instruction,
-            idempotency_key=str(uuid.uuid4()),
-            title=title or "",
-            description=description,
-            instruction=normalized_instruction,
-            allow_generate_title=True,
-            candidate_workflow_ids=candidate_workflow_ids,
-            retry_feedback=retry_feedback,
-            workflow_id=None,
-            start_step_key=None,
+            lambda _project: self.submit_message(
+                project_id,
+                session_id,
+                normalized_instruction,
+                idempotency_key=str(uuid.uuid4()),
+                title=title or "",
+                description=description,
+                instruction=normalized_instruction,
+                allow_generate_title=True,
+                candidate_workflow_ids=candidate_workflow_ids,
+                retry_feedback=retry_feedback,
+                workflow_id=None,
+                start_step_key=None,
+                schedule=False,
+            ),
         )
+        self.start_queued_turn(accepted.turn_id)
         try:
             await self.await_turn(accepted.turn_id, timeout=timeout)
         except TimeoutError:

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import Button from '../components/Button'
+import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
@@ -14,6 +15,7 @@ import {
   type AssistantConfigInfo,
   type ChatQuickButton,
   type ProviderInfo,
+  type ChatSessionForkInput,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
@@ -60,6 +62,11 @@ export default function ChatPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [forkOpen, setForkOpen] = useState(false)
+  const [forking, setForking] = useState(false)
+  const [forkError, setForkError] = useState('')
+  const [forkTargetEngine, setForkTargetEngine] = useState('')
+  const [forkMessageId, setForkMessageId] = useState<string | null>(null)
   const [quickEditOpen, setQuickEditOpen] = useState(false)
   const [quickDraft, setQuickDraft] = useState<ChatQuickButton[]>([])
   const [quickError, setQuickError] = useState('')
@@ -103,6 +110,9 @@ export default function ChatPage() {
     () => contextUsageFromMessages(messages),
     [messages],
   )
+  const forkMessageIndex = forkMessageId
+    ? messages.findIndex((message) => message.id === forkMessageId)
+    : -1
   const quickButtons = useChatListStore((s) => s.quickButtons)
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
@@ -404,6 +414,31 @@ export default function ChatPage() {
     }
   }, [activeProject, creating, selectedEngine, selectedModel, selectedFastModel, selectedVisionModel, projectParam, navigate, t])
 
+  const openFork = useCallback((targetEngine = selectedEngine, messageId: string | null = null) => {
+    if (!sessionId || running) return
+    setForkTargetEngine(targetEngine || selectedEngine)
+    setForkMessageId(messageId)
+    setForkError('')
+    setForkOpen(true)
+  }, [sessionId, running, selectedEngine])
+
+  const forkSession = useCallback(async (input: ChatSessionForkInput) => {
+    if (!sessionId || !activeProject?.id || forking) return
+    setForking(true)
+    setForkError('')
+    try {
+      const detail = await chatSessionApi.fork(sessionId, input)
+      useChatListStore.getState().addSession(detail)
+      useChatSessionStore.getState().newSession(detail.id)
+      setForkOpen(false)
+      navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject.name || '')}&session=${encodeURIComponent(detail.id)}`)
+    } catch (reason) {
+      setForkError(reason instanceof Error ? reason.message : t('chatSession.forkFailed'))
+    } finally {
+      setForking(false)
+    }
+  }, [sessionId, activeProject, forking, navigate, projectParam, t])
+
   const renameSession = useCallback(async () => {
     const title = renameValue.trim()
     if (!title) {
@@ -545,6 +580,7 @@ export default function ChatPage() {
         onStop={() => void stop()}
         onAttachmentError={setSendError}
         onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
+        onForkMessage={(messageId) => openFork(selectedEngine, messageId)}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickButtons.map((button) => ({ label: button.label, prompt: button.prompt }))}
         onQuickPromptSelect={(prompt) => {
@@ -625,6 +661,10 @@ export default function ChatPage() {
           hint: assistantConfig ? t('chatSession.sessionHint') : '',
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
+            if (messages.length > 0 && engineId !== selectedEngine) {
+              openFork(engineId)
+              return
+            }
             setSelectedEngine(engineId)
             setSelectedProvider('')
             setSelectedModel('')
@@ -664,6 +704,34 @@ export default function ChatPage() {
         }}
         enhance={enhance}
         context={context}
+      />
+
+      <ChatSessionForkDialog
+        open={forkOpen}
+        projectId={activeProject.id}
+        sourceTitle={sessionTitle || t('chatSession.title')}
+        sourceEngine={selectedEngine || assistantConfig?.configured.engine || 'claude'}
+        sourceModel={selectedModel}
+        sourceFastModel={selectedFastModel}
+        sourceVisionModel={selectedVisionModel}
+        sourceProviderId={selectedProvider}
+        permissionMode={permissionMode}
+        messageCount={forkMessageIndex >= 0 ? forkMessageIndex + 1 : messages.length}
+        forkMessageId={forkMessageId}
+        forkAtTail={forkMessageIndex < 0 || forkMessageIndex === messages.length - 1}
+        engines={assistantConfig?.available_engines || []}
+        providers={providers}
+        defaultEngine={assistantConfig?.configured.engine || 'claude'}
+        initialTargetEngine={forkTargetEngine}
+        loading={forking}
+        error={forkError}
+        onConfirm={(input) => void forkSession(input)}
+        onCancel={() => {
+          if (!forking) {
+            setForkOpen(false)
+            setForkMessageId(null)
+          }
+        }}
       />
 
       {/* Rename session */}

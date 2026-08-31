@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import base64
 import shutil
@@ -20,6 +21,17 @@ class TaskDispatchService:
         self._project_manager = project_manager
         self._task_service = TaskService(event_bus)
         self._workflow_runtime = workflow_runtime
+
+    async def _run_db(self, project_id: str, operation):
+        run_db = getattr(self._project_manager, "run_db", None)
+        if run_db is not None:
+            return await run_db(project_id, operation)
+
+        def execute():
+            with self._project_manager.activate_project_by_id(project_id) as project:
+                return operation(project)
+
+        return await asyncio.to_thread(execute)
 
     async def dispatch(
         self,
@@ -67,7 +79,8 @@ class TaskDispatchService:
         if target_start_step_key not in valid_keys:
             raise ValueError(f"目标阶段不存在: {target_start_step_key}")
 
-        manifest = self._copy_inputs(
+        manifest = await asyncio.to_thread(
+            self._copy_inputs,
             source_task=task,
             source_workflow=source_workflow,
             source_project_id=source_project_id,
@@ -82,7 +95,8 @@ class TaskDispatchService:
             if config.get("startMode", "inherit") == "immediate"
             else "workflow"
         )
-        with self._project_manager.activate_project_by_id(target_project_id) as target_project:
+        def create_or_load():
+            target_project = self._project_manager.get_project_by_id(target_project_id)
             existing = Task.get_or_none(Task.source_dispatch_id == dispatch_id)
             if existing is None:
                 created = self._task_service.create_task(
@@ -101,6 +115,11 @@ class TaskDispatchService:
                 )
             else:
                 created = self._task_service.get_task(existing.id)
+            return created
+
+        created = await self._run_db(
+            target_project_id, lambda _project: create_or_load()
+        )
         if execution_mode == "immediate" or (
             execution_mode == "workflow"
             and definition.auto_start_enabled(target_start_step_key)

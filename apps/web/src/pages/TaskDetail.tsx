@@ -40,6 +40,7 @@ import {
   isTaskNotStarted,
   isStageResumableWithMessage,
   mergeLoadedTaskMessageEvents,
+  mergeRefreshedTaskHistory,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import { useI18n, type TKey } from '../i18n'
@@ -47,7 +48,6 @@ import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLoca
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
-const REMOTE_CHAT_HISTORY_SYNC_MS = 2000
 
 type StageVisualState =
   | 'completed'
@@ -547,44 +547,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (!taskId || !projectId || userMessageEvents === 0) return
     const timer = window.setTimeout(() => {
       taskApi.history(taskId, projectId, 50, 0)
-        .then((response) => setHistoryMessages(response.messages || []))
+        .then((response) => setHistoryMessages((current) => (
+          mergeRefreshedTaskHistory(current, response.messages || [])
+        )))
         .catch(() => undefined)
     }, 50)
     return () => window.clearTimeout(timer)
   }, [projectId, taskId, userMessageEvents])
-
-  // Real-time delivery is the fast path. Periodic history reconciliation is
-  // the recovery path when a peer message lands while either WebSocket is
-  // reconnecting, because the in-memory event bus cannot replay that event.
-  useEffect(() => {
-    if (!taskId || !projectId) return
-    let cancelled = false
-    let inFlight = false
-
-    const syncHistory = () => {
-      if (document.visibilityState !== 'visible' || inFlight) return
-      inFlight = true
-      taskApi.history(taskId, projectId, 50, 0)
-        .then((response) => {
-          if (cancelled) return
-          setHistoryMessages((current) => (
-            current.some((message) => String(message.id).startsWith('pending-'))
-              ? current
-              : (response.messages || [])
-          ))
-        })
-        .catch(() => undefined)
-        .finally(() => { inFlight = false })
-    }
-
-    const timer = window.setInterval(syncHistory, REMOTE_CHAT_HISTORY_SYNC_MS)
-    document.addEventListener('visibilitychange', syncHistory)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', syncHistory)
-    }
-  }, [projectId, taskId])
 
   useEffect(() => {
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return
@@ -648,7 +617,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (!taskId || !projectId || !reviewEventSignal) return
     const timer = window.setTimeout(() => {
       taskApi.history(taskId, projectId, 50, 0)
-        .then((response) => setHistoryMessages(response.messages || []))
+        .then((response) => setHistoryMessages((current) => (
+          mergeRefreshedTaskHistory(current, response.messages || [])
+        )))
         .catch(() => undefined)
     }, 50)
     return () => window.clearTimeout(timer)
@@ -694,7 +665,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setActiveCoordinatorMessageId(null)
     if (taskId && projectId) {
       taskApi.history(taskId, projectId)
-        .then((res) => setHistoryMessages(res.messages || []))
+        .then((res) => setHistoryMessages((current) => (
+          mergeRefreshedTaskHistory(current, res.messages || [])
+        )))
         .catch(() => undefined)
     }
   }, [activeCoordinatorMessageId, liveMessages, projectId, taskId])
@@ -976,7 +949,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setCoordinatorRunning(false)
         setActiveCoordinatorMessageId(null)
         taskApi.history(taskId, projectId)
-          .then((res) => setHistoryMessages(res.messages || []))
+          .then((res) => setHistoryMessages((current) => (
+            mergeRefreshedTaskHistory(current, res.messages || [])
+          )))
           .catch(() => undefined)
       }
     } catch (reason) {

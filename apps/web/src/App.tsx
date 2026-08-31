@@ -1,4 +1,4 @@
-import Icon from './components/Icon'
+import { BrandIcon } from './components/BrandIcon'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
@@ -62,7 +62,7 @@ function WelcomeView() {
       alignItems: 'center', justifyContent: 'center',
       color: 'var(--meta)', gap: 12,
     }}>
-      <Icon name="layers" size={48} strokeWidth={1.5} />
+      <BrandIcon size={48} />
       <div style={{ fontSize: 'calc(16px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>{t('welcome.title')}</div>
       <div style={{ fontSize: 'calc(13px * var(--font-scale))' }}>{t('welcome.subtitle')}</div>
     </div>

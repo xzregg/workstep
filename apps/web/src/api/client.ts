@@ -141,6 +141,53 @@ export const projectApi = {
     ),
 }
 
+export type SkillSyncStatus = 'disabled' | 'synced' | 'error' | 'missing'
+
+export interface SkillDescriptor {
+  skill_id: string
+  name: string
+  description: string
+  source: 'agents' | 'claude' | 'codex' | 'project' | string
+  source_path: string
+  valid: boolean
+  error?: string | null
+  enabled: boolean
+  sync_status: SkillSyncStatus
+  sync_error?: string | null
+  conflict: boolean
+  ui?: Record<string, unknown>
+  runtime_path?: string | null
+}
+
+export interface ProjectSkillSelection {
+  project_id: string
+  project_name: string
+  project_path: string
+  skills: SkillDescriptor[]
+  compatible_engines: string[]
+  takes_effect: 'next_run'
+}
+
+export const skillApi = {
+  list: (projectId: string) => request<ProjectSkillSelection>(
+    `/skills?project_id=${encodeURIComponent(projectId)}`,
+  ),
+  rescan: (projectId: string) => request<ProjectSkillSelection>(
+    `/skills/rescan?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
+  ),
+  setEnabled: (projectId: string, skillId: string, enabled: boolean) =>
+    request<ProjectSkillSelection>(`/skills/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ skill_id: skillId, enabled }),
+    }),
+  setEnabledBatch: (projectId: string, skillIds: string[], enabled: boolean) =>
+    request<ProjectSkillSelection>(`/skills/projects/${encodeURIComponent(projectId)}/batch`, {
+      method: 'PUT',
+      body: JSON.stringify({ skill_ids: skillIds, enabled }),
+    }),
+}
+
 export interface RemoteAccessSettings {
   enabled: boolean
   internal_base_url: string
@@ -576,6 +623,11 @@ export interface ChatSessionSummary {
   vision_model?: string | null
   provider_id?: string | null
   permission_mode?: string
+  engine_session_id?: string | null
+  parent_session_id?: string | null
+  forked_from_message_id?: string | null
+  fork_context_mode?: 'native' | 'smart' | 'full' | 'none' | null
+  fork_status?: 'pending' | 'ready' | 'failed'
   message_count: number
   preview?: string
   created_at?: string
@@ -617,6 +669,19 @@ export interface ChatSessionCreateInput {
   vision_model?: string
   provider_id?: string
   permission_mode?: string
+}
+
+export interface ChatSessionForkInput {
+  project_id: string
+  title: string
+  engine: string
+  context_mode: 'native' | 'smart' | 'full' | 'none'
+  model?: string
+  fast_model?: string
+  vision_model?: string
+  provider_id?: string
+  permission_mode?: string
+  fork_message_id?: string
 }
 
 export interface ChatMessageOptions {
@@ -666,6 +731,11 @@ export const chatSessionApi = {
     request<{ deleted: boolean }>(
       `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
       { method: 'DELETE' },
+    ),
+  fork: (sessionId: string, input: ChatSessionForkInput) =>
+    request<ChatSessionDetail>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}/fork`,
+      { method: 'POST', body: JSON.stringify(input) },
     ),
   chat: (
     sessionId: string,
@@ -895,8 +965,11 @@ export interface CoordinatorEngineSummary {
   verified: boolean
   built_in: boolean
   supports_coordinator: boolean
+  supports_session_fork: boolean
   supports_provider: boolean
   provider_protocols: string[]
+  skill_policy?: string
+  supports_controlled_skills?: boolean
 }
 
 export interface CoordinatorSelection {
@@ -1110,6 +1183,28 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ task_id: taskId }),
     }),
+  getArchiveExperienceDraft: (taskId: string, projectId: string) =>
+    request<{ found: boolean; message_id: string | null; experience: string; has_experience: boolean }>(
+      `/task/${encodeURIComponent(taskId)}/archive-experience/draft?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) =>
+    request<{ message_id: string; experience: string; has_experience: boolean; cached: boolean }>(
+      `/task/${encodeURIComponent(taskId)}/archive-experience/prepare?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}`,
+      { method: 'POST' },
+    ),
+  stopArchiveExperience: (taskId: string, projectId: string, messageId: string) =>
+    request<{ stopped: boolean }>(
+      `/task/${encodeURIComponent(taskId)}/archive-experience/stop?project_id=${encodeURIComponent(projectId)}&message_id=${encodeURIComponent(messageId)}`,
+      { method: 'POST' },
+    ),
+  confirmArchiveExperience: (taskId: string, projectId: string, experience: string) =>
+    request<{ archived: boolean; memory_saved: boolean }>(
+      `/task/${encodeURIComponent(taskId)}/archive-experience/confirm?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ experience }),
+      },
+    ),
   unarchive: (taskId: string, projectId: string) =>
     request<{ unarchived: boolean }>(`/task/unarchive?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
@@ -1337,6 +1432,7 @@ export interface EngineInfo {
   requires_third_party_terms_acceptance: boolean
   third_party_terms_url: string | null
   supports_resume: boolean
+  supports_session_fork: boolean
   supports_coordinator: boolean
   supports_tool_disable: boolean
   supports_native_schema: boolean

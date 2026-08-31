@@ -69,6 +69,11 @@ _ADDITIVE_COLUMNS = {
     },
     "chat_sessions": {
         "vision_model": "TEXT",
+        "parent_session_id": "TEXT",
+        "forked_from_message_id": "TEXT",
+        "fork_context_mode": "TEXT",
+        "fork_context_json": "TEXT",
+        "fork_status": "TEXT DEFAULT 'ready'",
     },
     "gen_sessions": {
         "vision_model": "TEXT",

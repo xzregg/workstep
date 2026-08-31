@@ -1,4 +1,5 @@
 import Icon from './Icon'
+import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
@@ -6,6 +7,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import { useTaskStore } from '../stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import Button from './Button'
 import DirectoryBrowser from './DirectoryBrowser'
@@ -113,6 +115,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
+  const onboardingStatus = useOnboardingStore((state) => state.status)
   const [onboardingRefreshToken, setOnboardingRefreshToken] = useState(0)
   const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
   const [onboardingError, setOnboardingError] = useState('')
@@ -152,6 +155,10 @@ export default function Layout({ onSelectProject, children }: Props) {
     ),
   )
   const activeSessionId = location.pathname === '/chat' ? searchParams.get('session') : null
+  const completedWorkflows = useSidebarActivityStore((s) => s.completedWorkflows)
+  const completedSessions = useSidebarActivityStore((s) => s.completedSessions)
+  const workflowRunningRef = useRef<Record<string, boolean> | null>(null)
+  const sessionRunningRef = useRef<Record<string, boolean> | null>(null)
   const [dragWfId, setDragWfId] = useState<string | null>(null)
   const [dropWfId, setDropWfId] = useState<string | null>(null)
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
@@ -170,6 +177,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; title: string } | null>(null)
   const [sessionDeleteError, setSessionDeleteError] = useState('')
   const [storedSidebarSections] = useState(loadSidebarSectionState)
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(
+    storedSidebarSections.expandedProjectId,
+  )
   const [sessionSectionOpen, setSessionSectionOpen] = useState<Record<string, boolean>>(
     storedSidebarSections.conversationsByProject,
   )
@@ -244,18 +254,60 @@ export default function Layout({ onSelectProject, children }: Props) {
   useEffect(() => { fetchProjects() }, [fetchProjects])
 
   useEffect(() => {
+    const current: Record<string, boolean> = {}
+    const workflowProjects: Record<string, string> = {}
+    for (const project of projects) {
+      for (const workflow of project.workflows || []) {
+        current[workflow.id] = !!workflow.running
+        workflowProjects[workflow.id] = project.id
+      }
+    }
+    const previous = workflowRunningRef.current
+    if (previous) {
+      for (const [workflowId, running] of Object.entries(current)) {
+        if (running && previous[workflowId] === false) {
+          useSidebarActivityStore.getState().markWorkflowRead(workflowId)
+        } else if (!running && previous[workflowId] === true) {
+          const alreadyViewing = location.pathname === '/tasks'
+            && activeProject?.id === workflowProjects[workflowId]
+            && activeWorkflowId === workflowId
+          if (!alreadyViewing) {
+            useSidebarActivityStore.getState().markWorkflowCompleted(
+              workflowProjects[workflowId],
+              workflowId,
+            )
+          }
+        }
+      }
+    }
+    workflowRunningRef.current = current
+  }, [activeProject?.id, activeWorkflowId, location.pathname, projects])
+
+  useEffect(() => {
+    const previous = sessionRunningRef.current
+    if (previous) {
+      for (const [sessionId, running] of Object.entries(runningChatSessions)) {
+        if (running && previous[sessionId] === false) {
+          useSidebarActivityStore.getState().markSessionRead(sessionId)
+        } else if (!running && previous[sessionId] === true && activeSessionId !== sessionId) {
+          useSidebarActivityStore.getState().markSessionCompleted(sessionId)
+        }
+      }
+    }
+    sessionRunningRef.current = runningChatSessions
+  }, [activeSessionId, runningChatSessions])
+
+  useEffect(() => {
+    if (activeSessionId) useSidebarActivityStore.getState().markSessionRead(activeSessionId)
+  }, [activeSessionId])
+
+  useEffect(() => {
     saveSidebarSectionState({
-      expandedProjectId: activeProject?.id ?? storedSidebarSections.expandedProjectId,
+      expandedProjectId,
       flowsByProject: flowSectionOpen,
       conversationsByProject: sessionSectionOpen,
     })
-  }, [activeProject?.id, flowSectionOpen, sessionSectionOpen, storedSidebarSections.expandedProjectId])
-
-  useEffect(() => {
-    if (!projects.some((project) => project.type === 'remote')) return
-    const timer = window.setInterval(() => { void fetchProjects() }, 3000)
-    return () => window.clearInterval(timer)
-  }, [projects, fetchProjects])
+  }, [expandedProjectId, flowSectionOpen, sessionSectionOpen])
 
   // Re-focus inputs each time they open (autoFocus only fires on first mount)
   useEffect(() => {
@@ -344,7 +396,12 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }, [projectName, projects, activeProject, setActiveProject])
 
+  useEffect(() => {
+    if (activeProject?.id) setExpandedProjectId(activeProject.id)
+  }, [activeProject?.id])
+
   const handleSelectProject = (p: Project) => {
+    setExpandedProjectId(p.id)
     setActiveProject(p)
     onSelectProject(p)
   }
@@ -605,14 +662,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     navigate(`/tasks?project=${encodeURIComponent(project.name)}&onboarding=create-task`)
   }
 
-  const viewOnboardingTask = () => {
-    const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId)
-    if (!project || !onboarding.taskId) return
-    setActiveProject(project)
-    navigate(`/tasks?project=${encodeURIComponent(project.name)}&task=${encodeURIComponent(onboarding.taskId)}`)
-  }
-
   const handleDeleteProject = async () => {
     if (!deleteProjectTarget) return
     const wasActive = activeProject?.id === deleteProjectTarget.id
@@ -711,7 +760,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       <aside style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', fontFamily: 'var(--font-display)' }}>
-            <Icon name="layers" size={18} strokeWidth={2} color="var(--accent)" />
+            <BrandIcon size={18} />
             WorkStep
             <a
               href="/landing"
@@ -756,13 +805,20 @@ export default function Layout({ onSelectProject, children }: Props) {
           {t('nav.statistics')}
         </Button>
 
+        <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
+          + {t('nav.addProject')}
+        </Button>
+
         <div style={sectionLabel}>{t('layout.projects')}</div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
           {projects.map((p) => (
             <div key={p.id}>
               <div
-                onClick={() => handleSelectProject(p)}
+                onClick={() => {
+                  useSidebarActivityStore.getState().markProjectRead(p.id)
+                  handleSelectProject(p)
+                }}
                 onDoubleClick={(e) => {
                   if (p.type === 'remote') return
                   e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('')
@@ -826,10 +882,28 @@ export default function Layout({ onSelectProject, children }: Props) {
                   ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
                 }}
               >
-                <Icon
-                  name={p.type === 'remote' ? 'external-link' : activeProject?.id === p.id ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
-                  style={{ flexShrink: 0, color: activeProject?.id === p.id ? 'var(--accent)' : 'var(--meta)' }}
-                />
+                <Button
+                  variant="icon"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setExpandedProjectId((current) => current === p.id ? null : p.id)
+                    if (expandedProjectId !== p.id) {
+                      useSidebarActivityStore.getState().markProjectRead(p.id)
+                      handleSelectProject(p)
+                    }
+                  }}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  aria-expanded={expandedProjectId === p.id}
+                  aria-controls={`sidebar-project-${p.id}`}
+                  aria-label={t(expandedProjectId === p.id ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
+                  title={t(expandedProjectId === p.id ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
+                  style={{ width: 20, height: 20, padding: 0, flexShrink: 0, color: expandedProjectId === p.id ? 'var(--accent)' : 'var(--meta)' }}
+                >
+                  <Icon
+                    name={p.type === 'remote' ? 'external-link' : expandedProjectId === p.id ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
+                  />
+                </Button>
                 {renameId === p.path ? (
                   <Input
                     ref={renameInputRef}
@@ -895,14 +969,20 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}
                   </span>
                 )}
-                {p.workflows?.some((workflow) => workflow.running) && (
+                {p.workflows?.some((workflow) => workflow.running) ? (
                   <span
                     className="task-status-spinner"
                     style={{ color: 'var(--accent)', flexShrink: 0 }}
                     title={t('layout.flowRunning')}
                     aria-hidden="true"
                   />
-                )}
+                ) : Object.values(completedWorkflows).includes(p.id) ? (
+                  <span
+                    className="sidebar-completion-dot"
+                    title={t('layout.completedUnread')}
+                    aria-label={t('layout.completedUnread')}
+                  />
+                ) : null}
                 <Button
                   variant="icon"
                   className="ws-more-btn"
@@ -918,8 +998,8 @@ export default function Layout({ onSelectProject, children }: Props) {
               )}
 
               {/* Workflow list + sessions under the selected project */}
-              {activeProject?.id === p.id && (
-                <>
+              {expandedProjectId === p.id && (
+                <div id={`sidebar-project-${p.id}`}>
                   {(() => {
                     const flowOpen = flowSectionOpen[p.id] !== false
                     return (
@@ -962,6 +1042,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       onClick={async (e) => {
                         e.stopPropagation()
                         if (deleted) return
+                        useSidebarActivityStore.getState().markWorkflowRead(wf.id)
                         const dirty = useProjectStore.getState().canvasDirty
                         if (location.pathname === '/canvas' && dirty) {
                           setPendingWfSwitch({ project: p, workflowId: wf.id })
@@ -1054,9 +1135,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) { setRenameWfId(wf.id); setRenameWfName(wf.name) } }}
                         >{wf.name}</span>
                       )}
-                      {wf.running && !deleted && (
+                      {wf.running && !deleted ? (
                         <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
-                      )}
+                      ) : completedWorkflows[wf.id] && !deleted ? (
+                        <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
+                      ) : null}
                       {deleted && <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
                       {wf.is_default ? <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.6 }}>{t('layout.default')}</span> : null}
                       <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
@@ -1128,6 +1211,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           onClick={(e) => {
                             e.stopPropagation()
                             if (renameSessionId === session.id) return
+                            useSidebarActivityStore.getState().markSessionRead(session.id)
                             navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`)
                           }}
                           onDoubleClick={(e) => {
@@ -1194,6 +1278,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                               title={t('chatSession.runningHint')}
                               aria-hidden="true"
                             />
+                          ) : completedSessions[session.id] ? (
+                            <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
                           ) : (
                             <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
                           )}
@@ -1229,7 +1315,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   </>
                 )
               })()}
-              </>
+                </div>
               )}
             </div>
           ))}
@@ -1240,21 +1326,20 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
-          + {t('nav.addProject')}
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => useOnboardingStore.getState().reopen()}
-          style={{
-            margin: '0 12px 4px', width: 'calc(100% - 24px)', height: 34,
-            padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-            borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)',
-          }}
-        >
-          <Icon name="sparkles" size={16} strokeWidth={2} />
-          {t('onboarding.reopen')}
-        </Button>
+        {onboardingStatus !== 'completed' && (
+          <Button
+            variant="ghost"
+            onClick={() => useOnboardingStore.getState().reopen()}
+            style={{
+              margin: '0 12px 4px', width: 'calc(100% - 24px)', height: 34,
+              padding: '0 10px', justifyContent: 'flex-start', gap: 9,
+              borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)',
+            }}
+          >
+            <Icon name="sparkles" size={16} strokeWidth={2} />
+            {t('onboarding.reopen')}
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
@@ -1532,7 +1617,6 @@ export default function Layout({ onSelectProject, children }: Props) {
         onOpenProject={openOnboardingProject}
         onCreateWorkflow={() => void createOnboardingWorkflow()}
         onCreateTask={openOnboardingTask}
-        onViewTask={viewOnboardingTask}
       />
 
       {/* Init project modal */}

@@ -235,6 +235,10 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             raise FileNotFoundError(f"DeepSeek Harness composition not found: {composition}")
 
         project_root = Path(cwd).expanduser().resolve()
+        from services.skill_runtime import prepare_deepseek_composition
+
+        controlled_skills = self.project_skills(str(project_root))
+        composition = prepare_deepseek_composition(controlled_skills, composition)
         session_root = project_root / ".workstep" / "deepseek-harness" / "sessions"
         session_root.mkdir(parents=True, exist_ok=True)
         kwargs: dict[str, Any] = {

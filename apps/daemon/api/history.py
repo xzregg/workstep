@@ -1,5 +1,7 @@
 """History and intervention API routes."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query
 
 from schemas.base import BaseSchema
@@ -25,8 +27,12 @@ async def step_history(
     project = project_manager.get_project_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    with project_manager.activate_project_by_id(project_id):
-        history = get_step_history(task_id, step_key, project.workstep_dir)
+    history = await project_manager.run_db(
+        project_id,
+        lambda _project: get_step_history(
+            task_id, step_key, project.workstep_dir
+        ),
+    )
     return {"task_id": task_id, "step_key": step_key, "messages": history}
 
 
@@ -43,14 +49,16 @@ async def task_message_events(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     try:
-        with project_manager.activate_project_by_id(project_id):
-            return get_message_events(
+        return await project_manager.run_db(
+            project_id,
+            lambda _project: get_message_events(
                 task_id,
                 message_id,
                 project.workstep_dir,
                 cursor=cursor,
                 limit=limit,
-            )
+            ),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -86,39 +94,48 @@ async def list_sessions(project_id: str | None = None, limit: int = 50, offset: 
     """
     from models import Task
 
+    def load_project_tasks(pid: str, *, bounded: bool) -> list[dict]:
+        query = Task.select().order_by(Task.updated_at.desc())
+        if bounded:
+            query = query.limit(limit).offset(offset)
+        return [
+            {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "status": task.status,
+                "engine": task.engine,
+                "created_at": task.created_at,
+                "updated_at": task.updated_at,
+            }
+            for task in query
+        ]
+
     if project_id:
         # Get sessions for specific project
         proj = project_manager.get_project_by_id(project_id)
         if not proj:
             raise HTTPException(status_code=404, detail="Project not found")
 
-        with project_manager.activate_project_by_id(project_id):
-            tasks = list(
-                Task.select()
-                .order_by(Task.updated_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
+        sessions = await project_manager.run_db(
+            project_id,
+            lambda _project: load_project_tasks(project_id, bounded=True),
+        )
     else:
         # Cross-project session list. Each project owns a separate database, so
         # query under its context and merge before applying global pagination.
-        all_tasks = []
-        for project in project_manager.list_projects():
-            with project_manager.activate_project_by_id(project["id"]):
-                all_tasks.extend(list(Task.select()))
-        all_tasks.sort(key=lambda task: task.updated_at, reverse=True)
-        tasks = all_tasks[offset:offset + limit]
-
-    sessions = []
-    for task in tasks:
-        sessions.append({
-            "id": task.id,
-            "title": task.title,
-            "description": task.description,
-            "status": task.status,
-            "engine": task.engine,
-            "created_at": task.created_at,
-            "updated_at": task.updated_at,
-        })
+        projects = tuple(project_manager.iter_projects())
+        batches = await asyncio.gather(*(
+            project_manager.run_db(
+                project.id,
+                lambda _project, pid=project.id: load_project_tasks(
+                    pid, bounded=False
+                ),
+            )
+            for project in projects
+        ))
+        sessions = [item for batch in batches for item in batch]
+        sessions.sort(key=lambda task: task["updated_at"], reverse=True)
+        sessions = sessions[offset:offset + limit]
 
     return {"sessions": sessions, "limit": limit, "offset": offset}

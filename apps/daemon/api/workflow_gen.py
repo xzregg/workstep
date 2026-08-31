@@ -39,7 +39,11 @@ async def workflow_gen_history(
             status_code=503,
             detail="Workflow generation is not initialized",
         )
-    return workflow_gen_module.history(project_id, workflow_id)
+    from main import project_manager
+    return await project_manager.run_db(
+        project_id,
+        lambda _project: workflow_gen_module.history(project_id, workflow_id),
+    )
 
 
 @router.delete("/history")
@@ -56,7 +60,13 @@ async def reset_workflow_gen_history(
             detail="Workflow generation is not initialized",
         )
     try:
-        reset = workflow_gen_module.reset_session(project_id, workflow_id)
+        from main import project_manager
+        reset = await project_manager.run_db(
+            project_id,
+            lambda _project: workflow_gen_module.reset_session(
+                project_id, workflow_id
+            ),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
@@ -79,24 +89,30 @@ async def workflow_gen_chat(
             detail="Workflow generation is not initialized",
         )
     try:
-        accepted = workflow_gen_module.submit_message(
+        from main import project_manager
+        accepted = await project_manager.run_db(
             req.project_id,
-            req.session_id,
-            req.content,
-            idempotency_key,
-            engine=req.engine,
-            model=req.model,
-            fast_model=req.fast_model,
-            vision_model=req.vision_model,
-            provider_id=req.provider_id,
-            thinking_effort=req.thinking_effort,
-            steps=req.steps,
-            workflow_name=req.workflow_name,
-            context_mode=req.context_mode,
-            workflow_id=req.workflow_id,
+            lambda _project: workflow_gen_module.submit_message(
+                req.project_id,
+                req.session_id,
+                req.content,
+                idempotency_key,
+                engine=req.engine,
+                model=req.model,
+                fast_model=req.fast_model,
+                vision_model=req.vision_model,
+                provider_id=req.provider_id,
+                thinking_effort=req.thinking_effort,
+                steps=req.steps,
+                workflow_name=req.workflow_name,
+                context_mode=req.context_mode,
+                workflow_id=req.workflow_id,
+                schedule=False,
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    workflow_gen_module.start_queued_turn(accepted.turn_id)
     return accepted.to_dict()
 
 

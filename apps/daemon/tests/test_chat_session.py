@@ -3,7 +3,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -113,6 +113,13 @@ def test_init_db_records_latest_schema_version(tmp_path):
             row[1] for row in db.execute_sql("PRAGMA table_info(chat_sessions)")
         }
         assert "permission_mode" in columns
+        assert {
+            "parent_session_id",
+            "forked_from_message_id",
+            "fork_context_mode",
+            "fork_context_json",
+            "fork_status",
+        }.issubset(columns)
     finally:
         db.close()
 
@@ -181,6 +188,208 @@ async def test_session_crud_round_trip(chat_module):
     assert module.get_session(project.id, session_id) is None
     with pytest.raises(ValueError):
         module.delete_session(project.id, session_id)
+
+
+@pytest.mark.anyio
+async def test_cross_engine_fork_creates_independent_session_with_smart_handoff(
+    chat_module,
+):
+    module, _bus, _manager, project, _ = chat_module
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    now = utc_now()
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        ChatMessage.create(
+            id="source-user",
+            session=row,
+            role="user",
+            content="请实现登录功能",
+            created_at=now,
+        )
+        ChatMessage.create(
+            id="source-assistant",
+            session=row,
+            role="assistant",
+            content="已决定修改 auth.py",
+            status="succeeded",
+            created_at=now + timedelta(seconds=1),
+            ended_at=now + timedelta(seconds=1),
+        )
+
+    forked = await module.fork_session(
+        project.id,
+        source["id"],
+        title="新引擎分支",
+        engine="pydantic_ai",
+        context_mode="smart",
+    )
+
+    assert forked["id"] != source["id"]
+    assert forked["engine"] == "pydantic_ai"
+    assert forked["parent_session_id"] == source["id"]
+    assert forked["fork_context_mode"] == "smart"
+    assert [item["content"] for item in forked["messages"]] == [
+        "请实现登录功能",
+        "已决定修改 auth.py",
+    ]
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(forked["id"])
+        assert row.engine_session_id is None
+        assert row.engine_state_json is None
+
+
+@pytest.mark.anyio
+async def test_message_fork_only_copies_history_through_selected_reply(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    now = utc_now()
+    messages = [
+        ("turn-1-user", "user", "第一问"),
+        ("turn-1-assistant", "assistant", "第一答"),
+        ("turn-2-user", "user", "第二问"),
+        ("turn-2-assistant", "assistant", "第二答"),
+    ]
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        for index, (message_id, role, content) in enumerate(messages):
+            ChatMessage.create(
+                id=message_id,
+                session=row,
+                role=role,
+                content=content,
+                status="succeeded",
+                created_at=now + timedelta(seconds=index),
+            )
+
+    forked = await module.fork_session(
+        project.id,
+        source["id"],
+        title="从第一答分叉",
+        engine="pydantic_ai",
+        context_mode="smart",
+        fork_message_id="turn-1-assistant",
+    )
+
+    assert forked["forked_from_message_id"] == "turn-1-assistant"
+    assert [item["content"] for item in forked["messages"]] == ["第一问", "第一答"]
+
+
+@pytest.mark.anyio
+async def test_native_fork_rejects_an_earlier_message(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+
+    class NativeForkEngine(FakeEngine):
+        supports_session_fork = True
+
+    monkeypatch.setattr(
+        "agent_assistants.chat_session.create_engine",
+        lambda engine_id: NativeForkEngine(),
+    )
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    now = utc_now()
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        row.engine_session_id = "engine-source"
+        row.save()
+        for index, message_id in enumerate(("first", "latest")):
+            ChatMessage.create(
+                id=message_id,
+                session=row,
+                role="assistant",
+                content=message_id,
+                status="succeeded",
+                created_at=now + timedelta(seconds=index),
+            )
+
+    with pytest.raises(ValueError, match="latest message"):
+        await module.fork_session(
+            project.id,
+            source["id"],
+            title="旧消息原生分叉",
+            engine="claude",
+            context_mode="native",
+            fork_message_id="first",
+        )
+
+
+@pytest.mark.anyio
+async def test_same_engine_uses_native_session_fork(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+
+    class NativeForkEngine(FakeEngine):
+        supports_resume = True
+        supports_session_fork = True
+
+        async def fork_session(
+            self, session_id, cwd, *, fork_point=None, model=None, provider_id=None
+        ):
+            assert session_id == "engine-source"
+            return "engine-fork"
+
+    monkeypatch.setattr(
+        "agent_assistants.chat_session.create_engine",
+        lambda engine_id: NativeForkEngine(),
+    )
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    with module._project_ctx(project.id):
+        ChatSession.update(engine_session_id="engine-source").where(
+            ChatSession.id == source["id"]
+        ).execute()
+
+    forked = await module.fork_session(
+        project.id,
+        source["id"],
+        title="原生分支",
+        engine="claude",
+        context_mode="native",
+    )
+
+    assert forked["engine_session_id"] == "engine-fork"
+    assert forked["parent_session_id"] == source["id"]
+
+
+@pytest.mark.anyio
+async def test_cross_engine_handoff_is_injected_once(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+    source = module.create_session(project.id, title="原会话", engine="claude")
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        ChatMessage.create(
+            id="handoff-source-user",
+            session=row,
+            role="user",
+            content="旧目标：完成登录",
+            created_at=utc_now(),
+        )
+    forked = await module.fork_session(
+        project.id,
+        source["id"],
+        title="交接分支",
+        engine="pydantic_ai",
+        context_mode="smart",
+    )
+    prompts: list[str] = []
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        prompts.append(prompt)
+        return "完成", [], f"target-{len(prompts)}"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    first = module.submit_message(
+        project.id, forked["id"], "继续补测试", "handoff-first"
+    )
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    second = module.submit_message(
+        project.id, forked["id"], "再检查边界", "handoff-second"
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+
+    assert "<workstep_context_handoff>" in prompts[0]
+    assert "旧目标：完成登录" in prompts[0]
+    assert "继续补测试" in prompts[0]
+    assert "<workstep_context_handoff>" not in prompts[1]
 
 
 @pytest.mark.anyio
@@ -732,6 +941,19 @@ def test_startup_recovery_finalizes_interrupted_running_message(chat_module):
     assert recovered["event_detail"]["available"] is True
 
 
+def test_startup_recovery_removes_incomplete_fork(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    pending = module.create_session(project.id, title="未完成分支")
+    with module._project_ctx(project.id):
+        ChatSession.update(fork_status="pending").where(
+            ChatSession.id == pending["id"]
+        ).execute()
+
+    module.recover_interrupted_messages()
+
+    assert module.get_session(project.id, pending["id"]) is None
+
+
 @pytest.mark.anyio
 async def test_legacy_messages_without_ended_at_are_repaired_on_read(chat_module):
     """旧数据回补：成功回合没有 ended_at、created_at 为完成时刻时，读取历史补全起止时间。"""
@@ -1073,6 +1295,22 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             assert resp.status_code == 200
             assert resp.json()["id"] == session_id
+
+            # fork with explicit history handoff
+            resp = await client.post(
+                f"/api/chat-sessions/{session_id}/fork",
+                json={
+                    "project_id": project.id,
+                    "title": "HTTP 分支",
+                    "engine": session["engine"],
+                    "context_mode": "smart",
+                },
+            )
+            assert resp.status_code == 200
+            forked = resp.json()
+            assert forked["id"] != session_id
+            assert forked["parent_session_id"] == session_id
+            assert forked["fork_context_mode"] == "smart"
 
             # rename
             resp = await client.patch(

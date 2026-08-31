@@ -16,7 +16,6 @@ interface Props {
   onOpenProject: () => void
   onCreateWorkflow: () => void
   onCreateTask: () => void
-  onViewTask: () => void
 }
 
 const STEP_ORDER: OnboardingStep[] = ['provider', 'engine', 'project', 'workflow', 'task']
@@ -38,7 +37,6 @@ export default function OnboardingChecklist({
   onOpenProject,
   onCreateWorkflow,
   onCreateTask,
-  onViewTask,
 }: Props) {
   const { t } = useI18n()
   const state = useOnboardingStore()
@@ -48,7 +46,7 @@ export default function OnboardingChecklist({
   const checkingRef = useRef(false)
 
   const refresh = useCallback(async () => {
-    if (state.status === 'dismissed' || checkingRef.current) return
+    if (state.status === 'dismissed' || state.status === 'completed' || checkingRef.current) return
     checkingRef.current = true
     setChecking(true)
     try {
@@ -133,7 +131,7 @@ export default function OnboardingChecklist({
     task: onCreateTask,
   }
 
-  if (state.status === 'dismissed') return null
+  if (state.status === 'dismissed' || state.status === 'completed') return null
 
   if (state.collapsed) {
     return (
@@ -149,7 +147,7 @@ export default function OnboardingChecklist({
     <section className="onboarding-checklist" role="region" aria-label={t('onboarding.checklistTitle')}>
       <div className="onboarding-checklist-header">
         <div>
-          <h2>{state.status === 'completed' ? t('onboarding.completeTitle') : t('onboarding.checklistTitle')}</h2>
+          <h2>{t('onboarding.checklistTitle')}</h2>
           <span>{t('onboarding.progress', { completed: completedCount, total: STEP_ORDER.length })}</span>
         </div>
         <div className="onboarding-checklist-actions">
@@ -165,43 +163,35 @@ export default function OnboardingChecklist({
         <span style={{ transform: `scaleX(${completedCount / STEP_ORDER.length})` }} />
       </div>
 
-      {state.status === 'completed' ? (
-        <div className="onboarding-complete">
-          <Icon name="check" size={20} strokeWidth={2.4} />
-          <p>{t('onboarding.completeDescription')}</p>
-          <Button variant="primary" onClick={onViewTask}>{t('onboarding.viewTask')}</Button>
-        </div>
-      ) : (
-        <div className="onboarding-step-list">
-          {STEP_ORDER.map((step, index) => {
-            const done = completed[step]
-            const active = step === currentStep
-            return (
-              <div key={step} className={`onboarding-step${done ? ' is-complete' : ''}${active ? ' is-active' : ''}`}>
-                <span className="onboarding-step-marker" aria-hidden="true">
-                  {done ? <Icon name="check" size={13} strokeWidth={2.5} /> : index + 1}
-                </span>
-                <div className="onboarding-step-copy">
-                  <strong>{t(COPY[step].title)}</strong>
-                  {active && <div className="onboarding-step-path">{t(COPY[step].path)}</div>}
-                  {active && <p>{t(COPY[step].description)}</p>}
-                  {active && error && <div className="onboarding-step-error" role="status">{error}</div>}
-                  {active && (
-                    <Button
-                      variant="primary"
-                      loading={step === 'workflow' && creatingWorkflow}
-                      disabled={checking || (step === 'workflow' && creatingWorkflow)}
-                      onClick={actions[step]}
-                    >
-                      {step === 'workflow' && creatingWorkflow ? t('onboarding.createWorkflowBusy') : t(COPY[step].action)}
-                    </Button>
-                  )}
-                </div>
+      <div className="onboarding-step-list">
+        {STEP_ORDER.map((step, index) => {
+          const done = completed[step]
+          const active = step === currentStep
+          return (
+            <div key={step} className={`onboarding-step${done ? ' is-complete' : ''}${active ? ' is-active' : ''}`}>
+              <span className="onboarding-step-marker" aria-hidden="true">
+                {done ? <Icon name="check" size={13} strokeWidth={2.5} /> : index + 1}
+              </span>
+              <div className="onboarding-step-copy">
+                <strong>{t(COPY[step].title)}</strong>
+                {active && <div className="onboarding-step-path">{t(COPY[step].path)}</div>}
+                {active && <p>{t(COPY[step].description)}</p>}
+                {active && error && <div className="onboarding-step-error" role="status">{error}</div>}
+                {active && (
+                  <Button
+                    variant="primary"
+                    loading={step === 'workflow' && creatingWorkflow}
+                    disabled={checking || (step === 'workflow' && creatingWorkflow)}
+                    onClick={actions[step]}
+                  >
+                    {step === 'workflow' && creatingWorkflow ? t('onboarding.createWorkflowBusy') : t(COPY[step].action)}
+                  </Button>
+                )}
               </div>
-            )
-          })}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }

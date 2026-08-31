@@ -44,8 +44,9 @@ class ReviewOutcome:
 class ReviewGate:
     """Hide review execution, parsing and persistence behind one interface."""
 
-    def __init__(self, publish: Publish):
+    def __init__(self, publish: Publish, run_db):
         self._publish = publish
+        self._run_db = run_db
 
     async def evaluate(
         self,
@@ -79,25 +80,32 @@ class ReviewGate:
         now = utc_now()
         # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，
         # attempt 按已有记录递增，避免 (step_run, attempt) 唯一约束冲突。
-        existing_attempts = [
-            review.attempt
-            for review in ReviewRun.select().where(ReviewRun.step_run == step_run)
-        ]
-        attempt = max(existing_attempts, default=0) + 1
-        review_run = ReviewRun.create(
-            id=str(uuid.uuid4()),
-            workflow_run=workflow_run,
-            step_run=step_run,
-            task=task,
-            step_key=step.key,
-            attempt=attempt,
-            mode=mode,
-            status="pending" if mode == "manual" else "running",
-            engine=engine_id if mode == "auto" else None,
-            model=model if mode == "auto" else None,
-            prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
-            started_at=now,
-        )
+        def create_review():
+            existing_attempts = [
+                review.attempt
+                for review in ReviewRun.select().where(ReviewRun.step_run == step_run)
+            ]
+            attempt = max(existing_attempts, default=0) + 1
+            review_run = ReviewRun.create(
+                id=str(uuid.uuid4()),
+                workflow_run=workflow_run,
+                step_run=step_run,
+                task=task,
+                step_key=step.key,
+                attempt=attempt,
+                mode=mode,
+                status="pending" if mode == "manual" else "running",
+                engine=engine_id if mode == "auto" else None,
+                model=model if mode == "auto" else None,
+                prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
+                started_at=now,
+            )
+            ts = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step.key)
+            )
+            return review_run, ts.review_session_id if ts is not None else None
+
+        review_run, review_session_id = await self._run_db(create_review)
 
         if mode == "manual":
             report = {
@@ -106,20 +114,20 @@ class ReviewGate:
                 "summary": "阶段执行完成，等待用户审核。",
                 "issues": [],
             }
-            review_run.report_json = json.dumps(report, ensure_ascii=False)
-            # 人工审核没有运行任何引擎：不保留提示词，前端不显示「查看提示词」。
-            review_run.prompt_json = None
-            review_run.status = "pending"
-            review_run.save()
+            def finish_manual_review():
+                row = ReviewRun.get_by_id(review_run.id)
+                row.report_json = json.dumps(report, ensure_ascii=False)
+                row.prompt_json = None
+                row.status = "pending"
+                row.save()
+                return row
+
+            review_run = await self._run_db(finish_manual_review)
             await self._emit(task, step, step_run, review_run, "awaiting_review", report)
             return ReviewOutcome("awaiting_review", review_run, report)
 
         await self._emit(task, step, step_run, review_run, "reviewing")
         engine = create_engine(engine_id)
-        ts = TaskStep.get_or_none(
-            (TaskStep.task == task) & (TaskStep.step_key == step.key)
-        )
-        review_session_id = ts.review_session_id if ts is not None else None
         response_parts: list[str] = []
         events_collected: list[dict] = []
         error: str | None = None
@@ -174,10 +182,6 @@ class ReviewGate:
             except Exception as exc:
                 error = str(exc)
 
-        if review_session_id and ts is not None:
-            ts.review_session_id = review_session_id
-            ts.save(only=[TaskStep.review_session_id])
-
         response = "".join(response_parts)
         try:
             report = self._parse_report(response) if error is None else self._error_report(error)
@@ -186,12 +190,24 @@ class ReviewGate:
             report = self._error_report(error)
 
         passed = bool(report.get("passed", False))
-        review_run.response_text = response
-        review_run.report_json = json.dumps(report, ensure_ascii=False)
-        review_run.status = "passed" if passed else "rejected"
-        review_run.error = error
-        review_run.ended_at = utc_now()
-        review_run.save()
+        def finish_review():
+            if review_session_id:
+                ts = TaskStep.get_or_none(
+                    (TaskStep.task == task) & (TaskStep.step_key == step.key)
+                )
+                if ts is not None:
+                    ts.review_session_id = review_session_id
+                    ts.save(only=[TaskStep.review_session_id])
+            row = ReviewRun.get_by_id(review_run.id)
+            row.response_text = response
+            row.report_json = json.dumps(report, ensure_ascii=False)
+            row.status = "passed" if passed else "rejected"
+            row.error = error
+            row.ended_at = utc_now()
+            row.save()
+            return row
+
+        review_run = await self._run_db(finish_review)
         await self._emit(
             task, step, step_run, review_run,
             "passed" if passed else "rejected", report,

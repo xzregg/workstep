@@ -1,6 +1,7 @@
 """ClaudeAgentSDKEngine — Claude Code via the official claude-agent-sdk."""
 
 import asyncio
+import json
 import logging
 import os
 from pathlib import Path
@@ -528,6 +529,9 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             model=model,
         )
         model = provider_runtime.model
+        from services.skill_runtime import prepare_claude_plugin
+
+        plugin_dir, skill_names = prepare_claude_plugin(self.project_skills(cwd))
         options = ClaudeAgentOptions(
             cwd=cwd,
             model=model or None,
@@ -537,6 +541,12 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             include_partial_messages=True,
             can_use_tool=can_use_tool,
             env=(provider_runtime.child_env() if provider_runtime.provider_id else {}),
+            plugins=[{"type": "local", "path": str(plugin_dir)}],
+            skills=skill_names,
+            setting_sources=[],
+            settings=json.dumps({
+                "skillOverrides": {name: "on" for name in skill_names},
+            }),
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)
