@@ -173,7 +173,7 @@ function ThinkingTimelineItem({
           lastScrollTopRef.current = container.scrollTop
         }}
       >
-        {content}
+        {content.trimStart()}
       </div>
     </details>
   )

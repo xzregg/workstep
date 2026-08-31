@@ -915,10 +915,7 @@ class PydanticAIEngine(AcpEngineBase):
 
         workstep_dir = root / ".workstep"
         workstep_dir.mkdir(parents=True, exist_ok=True)
-        return SqliteStepStore(
-            database=workstep_dir / "harness_runs.db",
-            max_snapshots_per_run=30,
-        )
+        return SqliteStepStore(database=workstep_dir / "harness_runs.db")
 
     @classmethod
     def _harness_capabilities(

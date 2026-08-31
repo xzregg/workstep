@@ -629,8 +629,6 @@ details[open] > summary > .process-trace-chevron {
 .process-trace-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 0 4px;
 }
 
 .process-trace-section-title {
@@ -701,7 +699,7 @@ details[open] > summary > .process-trace-chevron {
 .process-trace-thinking,
 .process-trace-tools {
   margin-left: 12px;
-  padding: 6px 0 8px 14px;
+  padding: 0px 0 4px 14px;
   border-left: 1px solid var(--border);
 }
 
@@ -710,7 +708,7 @@ details[open] > summary > .process-trace-chevron {
   overflow: auto;
   color: var(--muted);
   font-size: calc(11px * var(--font-scale));
-  line-height: 1.65;
+  line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -1156,7 +1154,6 @@ details[open] > summary > .process-trace-chevron {
 .llm-message-timeline {
   display: flex;
   flex-direction: column;
-  gap: 10px;
   min-width: 0;
 }
 
