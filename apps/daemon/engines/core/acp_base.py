@@ -1016,6 +1016,7 @@ class AcpEngineBase(BaseLLMEngine):
         self,
         cwd: str,
         timeout_seconds: float = 30,
+        config_overrides: dict | None = None,
     ) -> EngineTestResult:
         """Run a harmless minimal conversation through this engine.
 
@@ -1032,6 +1033,7 @@ class AcpEngineBase(BaseLLMEngine):
                     "Do not use tools and do not modify files."
                 ),
                 cwd=cwd,
+                config_overrides=config_overrides,
             ):
                 if event.type == "agent_message_chunk":
                     content = event.data.get("content") or {}

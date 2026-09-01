@@ -1,7 +1,7 @@
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useTaskStore } from '../stores/taskStore'
+import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
 import { fsApi, scheduleApi, type DirectoryOpener } from '../api/client'
@@ -192,6 +192,7 @@ export default function TaskList() {
   const [archiveExperienceError, setArchiveExperienceError] = useState('')
   const [archiveExperiencePhase, setArchiveExperiencePhase] = useState<'loading' | 'intro' | 'generating' | 'stopping' | 'stopped' | 'review' | 'empty' | 'saving' | 'archiving'>('intro')
   const [archiveExperienceMessageId, setArchiveExperienceMessageId] = useState<string | null>(null)
+  const [archiveExperienceHistory, setArchiveExperienceHistory] = useState<LiveMessage | undefined>()
   const stoppedArchiveMessageIds = useRef(new Set<string>())
   const archiveDraftLookupId = useRef<string | null>(null)
   const archiveProgressMessage = useTaskStore((state) => (
@@ -199,6 +200,7 @@ export default function TaskList() {
       ? state.liveMessages[confirmArchiveTaskId]?.[archiveExperienceMessageId]
       : undefined
   ))
+  const visibleArchiveProgressMessage = archiveProgressMessage || archiveExperienceHistory
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
 
@@ -679,6 +681,7 @@ export default function TaskList() {
     setArchiveExperienceError('')
     setArchiveExperiencePhase('loading')
     setArchiveExperienceMessageId(null)
+    setArchiveExperienceHistory(undefined)
     stoppedArchiveMessageIds.current.clear()
     setConfirmArchiveTaskId(taskId)
     if (!activeProject) {
@@ -696,6 +699,15 @@ export default function TaskList() {
       }
       setArchiveExperience(draft.experience)
       setArchiveExperienceMessageId(draft.message_id)
+      setArchiveExperienceHistory({
+        id: draft.message_id || `archive-experience-${taskId}`,
+        channel: 'archive_experience',
+        content: draft.experience,
+        events: draft.events,
+        status: 'succeeded',
+        prompt: draft.prompt,
+        proposals: [],
+      })
       setArchiveExperiencePhase(draft.has_experience ? 'review' : 'empty')
     } catch {
       if (archiveDraftLookupId.current === lookupId) {
@@ -1634,7 +1646,7 @@ export default function TaskList() {
           || (archiveExperiencePhase === 'archiving' && archiveExperienceMessageId !== null)) && activeProject && (
           <div style={{ marginTop: 14 }}>
             <ArchiveExperienceProgress
-              message={archiveProgressMessage}
+              message={visibleArchiveProgressMessage}
               projectId={activeProject.id}
               running={archiveExperiencePhase === 'generating' || archiveExperiencePhase === 'stopping' || archiveExperiencePhase === 'archiving'}
               agentName={t('taskList.archiveExperienceAgent')}
@@ -1645,7 +1657,7 @@ export default function TaskList() {
         {archiveExperiencePhase === 'empty' && activeProject && (
           <div style={{ marginTop: 14 }}>
             <ArchiveExperienceProgress
-              message={archiveProgressMessage}
+              message={visibleArchiveProgressMessage}
               fallbackContent={t('taskList.archiveExperienceEmptyResult')}
               projectId={activeProject.id}
               running={false}
@@ -1656,7 +1668,7 @@ export default function TaskList() {
         )}
         {(archiveExperiencePhase === 'review' || archiveExperiencePhase === 'saving') && (
           <div style={{ marginTop: 14 }}>
-            {archiveProgressMessage && (
+            {visibleArchiveProgressMessage && (
               <details style={{ marginBottom: 12 }}>
                 <summary style={{
                   cursor: 'pointer',
@@ -1667,7 +1679,7 @@ export default function TaskList() {
                   {t('taskList.archiveExperienceViewProcess')}
                 </summary>
                 <ArchiveExperienceProgress
-                  message={archiveProgressMessage}
+                  message={visibleArchiveProgressMessage}
                   projectId={activeProject?.id || ''}
                   running={false}
                   agentName={t('taskList.archiveExperienceAgent')}

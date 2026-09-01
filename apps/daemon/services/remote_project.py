@@ -1204,6 +1204,9 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
 
         body = await request.body()
         project_id = request.query_params.get("project_id")
+        if not project_id and request.url.path.startswith("/api/fs/project-raw/"):
+            remainder = request.url.path.removeprefix("/api/fs/project-raw/")
+            project_id = remainder.split("/", 1)[0] or None
         if not project_id and "application/json" in request.headers.get("content-type", ""):
             try:
                 payload = json.loads(body or b"{}")

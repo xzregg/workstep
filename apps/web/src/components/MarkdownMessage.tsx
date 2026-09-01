@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
+import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
+import FilePreviewDialog from './FilePreviewDialog'
 
 interface MarkdownMessageProps {
   content: string
@@ -36,12 +39,13 @@ export default function MarkdownMessage({
   onImageClick,
 }: MarkdownMessageProps) {
   const { t } = useI18n()
+  const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
   const markdown = streaming ? closeStreamingFence(content) : content
 
   const components = {
     img: (props: { src?: string; alt?: string }) => {
       const alt = props.alt ?? ''
-      if (!props.src) return <img alt={alt} />
+      if (!props.src) return null
       const resolved = resolveMarkdownImageSrc(props.src, projectId)
       if (!onImageClick) {
         return <img src={resolved} alt={alt} />
@@ -58,17 +62,48 @@ export default function MarkdownMessage({
         </button>
       )
     },
+    a: (props: { href?: string; children?: React.ReactNode; title?: string }) => {
+      const file = classifyProjectFileLink(props.href, projectId)
+      if (!file) {
+        return <a href={props.href} title={props.title}>{props.children}</a>
+      }
+      return (
+        <a
+          href={props.href}
+          title={t('md.previewFile', { name: file.name })}
+          aria-label={t('md.previewFile', { name: file.name })}
+          className="markdown-file-link"
+          data-file-preview="true"
+          onClick={(event) => {
+            event.preventDefault()
+            setPreviewFile(file)
+          }}
+        >
+          {props.children}
+        </a>
+      )
+    },
   }
 
   return (
-    <div
-      className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
-      aria-live={streaming ? 'polite' : undefined}
-    >
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {markdown}
-      </ReactMarkdown>
-      {streaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
-    </div>
+    <>
+      <div
+        className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
+        aria-live={streaming ? 'polite' : undefined}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+          {markdown}
+        </ReactMarkdown>
+        {streaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
+      </div>
+      {previewFile && projectId && (
+        <FilePreviewDialog
+          path={previewFile.path}
+          name={previewFile.name}
+          projectId={projectId}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
+    </>
   )
 }

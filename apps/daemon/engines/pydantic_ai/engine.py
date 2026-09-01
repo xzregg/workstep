@@ -24,12 +24,14 @@ from engines.core.events import (
 from engines.core.interactions import elicitation_request, permission_request
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption
-from engines.pydantic_ai.skills import Skills, project_skill_directories
 from services import providers as provider_service
 from services.config import config_store
 from services.tool_registry import WorkstepClient, workstep_tools_instruction
 
 logger = logging.getLogger(__name__)
+
+PYDANTIC_AI_REQUEST_LIMIT = 100
+PYDANTIC_AI_TOOL_RETRIES = 3
 
 
 class PydanticAIEngine(AcpEngineBase):
@@ -212,16 +214,15 @@ class PydanticAIEngine(AcpEngineBase):
         resolved_root: Path | None = None
         if project_root:
             resolved_root = Path(project_root).expanduser().resolve()
-            registry = Skills(
-                directories=project_skill_directories(resolved_root, "pydantic_ai"),
-            )
+            selection = self.project_skills(str(resolved_root))
             skills = [
                 {
                     "name": skill.name,
                     "description": skill.description,
-                    "source_dir": str(skill.skill_dir),
+                    "source_dir": str(skill.runtime_path),
                 }
-                for skill in registry.list_skills()
+                for skill in selection.enabled
+                if skill.runtime_path is not None
             ]
         input_items = [dict(item) for item in self.input_commands()]
         known_names = {item["name"] for item in input_items}
@@ -354,7 +355,13 @@ class PydanticAIEngine(AcpEngineBase):
         conversation_id: str | None = None,
     ):
         """Run one agent round and forward mapped internal events."""
-        kwargs = {}
+        from pydantic_ai import UsageLimits
+
+        kwargs = {
+            "usage_limits": UsageLimits(
+                request_limit=PYDANTIC_AI_REQUEST_LIMIT,
+            ),
+        }
         if message_history is not None:
             kwargs["message_history"] = message_history
         if model_settings:
@@ -526,40 +533,32 @@ class PydanticAIEngine(AcpEngineBase):
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
-        from engines.pydantic_ai.filesystem import FileSystem
-        from engines.pydantic_ai.skills import Skills
+        from pydantic_ai.capabilities import Thinking
+        from pydantic_ai_harness import Coder, Skills
 
         root = Path(cwd).resolve()
-        allowed_roots = [root]
-        for directory in add_dirs or []:
-            resolved = Path(directory).expanduser().resolve()
-            if resolved not in allowed_roots:
-                allowed_roots.append(resolved)
 
-        file_system = FileSystem(allowed_roots)
-        # Refresh the fail-closed mirror before building the progressive
-        # list_skills/load_skill registry for this turn.
+        # Refresh the fail-closed SkillCenter mirror before handing that single
+        # project-owned library to the harness Skills capability.
         self.project_skills(str(root))
-        skills = Skills(project_root=root)
 
         harness_capabilities = self._harness_capabilities(root, session_id)
+        effort = resolve_thinking_effort(thinking_effort)
+        capabilities = [
+            Coder(root),
+        ]
+        skill_library = root / ".workstep" / "skills"
+        if skill_library.is_dir():
+            capabilities.append(Skills(skill_library))
+        if effort:
+            capabilities.append(Thinking(effort=effort))
+        capabilities.extend(harness_capabilities or [])
         agent = Agent(
             model,
             instructions=self._compose_instructions(root),
-            capabilities=harness_capabilities or [],
+            capabilities=capabilities,
+            retries={"tools": PYDANTIC_AI_TOOL_RETRIES, "output": 1},
         )
-
-        def guard_plain(return_type):
-            """Wrap a plain tool so failures become model-visible error values."""
-            def decorate(func):
-                @functools.wraps(func)
-                def wrapped(*args, **kwargs):
-                    try:
-                        return func(*args, **kwargs)
-                    except Exception as exc:
-                        return self._tool_error_value(return_type, exc)
-                return wrapped
-            return decorate
 
         def guard_async(return_type):
             """Wrap an async tool so failures become model-visible error values."""
@@ -572,80 +571,6 @@ class PydanticAIEngine(AcpEngineBase):
                         return self._tool_error_value(return_type, exc)
                 return wrapped
             return decorate
-
-        @agent.tool_plain
-        @guard_plain(list[str])
-        def list_files(path: str = ".", recursive: bool = False) -> list[str]:
-            """List files below a project directory, capped at 500 entries."""
-            return file_system.list_files(path, recursive=recursive)
-
-        @agent.tool_plain
-        @guard_plain(str)
-        def read_file(
-            path: str,
-            start_line: int = 1,
-            end_line: int = 400,
-        ) -> str:
-            """Read a UTF-8 project file within an inclusive line range."""
-            return file_system.read(path, start_line=start_line, end_line=end_line)
-
-        @agent.tool_plain
-        @guard_plain(list[str])
-        def search_files(query: str, path: str = ".") -> list[str]:
-            """Search text in project files and return up to 100 line matches."""
-            return file_system.search(query, path=path)
-
-        @agent.tool_plain
-        @guard_async(str)
-        async def write_file(path: str, content: str) -> str:
-            """Create or overwrite a UTF-8 project file (creates parent dirs)."""
-            allowed = await self._request_permission(
-                on_event,
-                tool_name="write_file",
-                title=f"写入 {path}",
-                kind="edit",
-                tool_input={"path": path},
-            )
-            if not allowed:
-                return "用户拒绝写入文件"
-            return file_system.write(path, content)
-
-        @agent.tool_plain
-        @guard_async(str)
-        async def edit_file(
-            path: str,
-            old_string: str,
-            new_string: str,
-            replace_all: bool = False,
-        ) -> str:
-            """Replace old_string with new_string in a project file."""
-            allowed = await self._request_permission(
-                on_event,
-                tool_name="edit_file",
-                title=f"编辑 {path}",
-                kind="edit",
-                tool_input={"path": path, "replace_all": replace_all},
-            )
-            if not allowed:
-                return "用户拒绝编辑文件"
-            return file_system.edit(
-                path,
-                old_string,
-                new_string,
-                replace_all=replace_all,
-            )
-
-        @agent.tool_plain
-        @guard_plain(list[str])
-        def list_skills() -> list[str]:
-            """List available project skills (SKILL.md in .claude/skills / .codex/skills / .workstep/skills under the project root)."""
-            return [f"{skill.name} — {skill.description}" for skill in skills.list_skills()]
-
-        @agent.tool_plain
-        @guard_plain(str)
-        def load_skill(name: str) -> str:
-            """Load a skill's full instructions (SKILL.md body) by name."""
-            return skills.load(name)
 
         if workstep_tools:
             async def workstep_call(
@@ -710,9 +635,6 @@ class PydanticAIEngine(AcpEngineBase):
                     seeded_history = message_history
                 if seeded_history is not None:
                     stream_kwargs["message_history"] = seeded_history
-                effort = resolve_thinking_effort(thinking_effort)
-                if effort:
-                    stream_kwargs["model_settings"] = {"thinking": effort}
                 result = await self._stream_agent_run(
                     agent,
                     prompt=self._build_user_content(prompt, images),
@@ -746,11 +668,6 @@ class PydanticAIEngine(AcpEngineBase):
                         ),
                         **{
                             **({"message_history": result.all_messages()}),
-                            **(
-                                {"model_settings": {"thinking": effort}}
-                                if effort
-                                else {}
-                            ),
                         },
                     )
                     total_usage = self._accumulate_usage(total_usage, result)
@@ -793,12 +710,11 @@ class PydanticAIEngine(AcpEngineBase):
         parts = [
             "You are the built-in WorkStep agent.",
             f"The active project directory is {root}.",
-            "You can read, search, and MODIFY code inside the project with "
-            "list_files / read_file / search_files / write_file / edit_file.",
+            "Use the Coder capability to inspect, modify, and validate the project.",
             "Project memory from .workstep/MEMORY.md has been injected into "
             "the prompt — treat it as read-only and do not modify the file.",
-            "Use list_skills / load_skill for project skills — SKILL.md under "
-            "the active project's .claude/skills, .codex/skills and .workstep/skills.",
+            "Project skills are exposed by the Skills capability from the "
+            "SkillCenter-managed .workstep/skills library.",
             "When required information is missing, call ask_user and wait for "
             "the user's structured response instead of guessing.",
             "For multi-step work, call update_plan with the complete task list "
@@ -915,7 +831,10 @@ class PydanticAIEngine(AcpEngineBase):
 
         workstep_dir = root / ".workstep"
         workstep_dir.mkdir(parents=True, exist_ok=True)
-        return SqliteStepStore(database=workstep_dir / "harness_runs.db")
+        return SqliteStepStore(
+            database=workstep_dir / "harness_runs.db",
+            max_snapshots_per_run=30,
+        )
 
     @classmethod
     def _harness_capabilities(
@@ -974,9 +893,14 @@ class PydanticAIEngine(AcpEngineBase):
 
             store = cls._harness_store(root)
             runs = await store.list_runs(conversation_id=session_id)
-            if not runs:
-                return None
-            return list(await continue_run(store, run_id=runs[-1].run_id))
+            # StepPersistence registers the new retry run before WorkStep asks
+            # for continuation history. That newest run has no snapshot yet;
+            # walk backwards so a failed turn resumes from its last durable
+            # step instead of falling back to the previous successful turn.
+            for run in reversed(runs):
+                if await store.latest_snapshot(run_id=run.run_id) is not None:
+                    return list(await continue_run(store, run_id=run.run_id))
+            return None
         except Exception:
             return None
 
@@ -1198,7 +1122,7 @@ class PydanticAIEngine(AcpEngineBase):
 
     @property
     def supports_thinking_effort(self) -> bool:
-        """``model_settings.thinking`` maps to a per-turn reasoning effort."""
+        """Per-turn effort is provided by Pydantic AI's Thinking capability."""
         return True
 
     @property

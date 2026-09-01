@@ -29,6 +29,8 @@ router = APIRouter(prefix="/api/engine")
 class EngineTestRequest(BaseModel):
     engine_id: str = Field(min_length=1)
     timeout_seconds: float = Field(default=30, ge=3, le=120)
+    values: dict = Field(default_factory=dict)
+    clear: dict[str, bool] = Field(default_factory=dict)
 
 
 class DefaultModelRequest(BaseModel):
@@ -185,10 +187,17 @@ async def test_engine(req: EngineTestRequest):
             "duration_ms": 0,
         }
 
-    result = await engine.test_connection(
-        cwd=str(Path.cwd()),
-        timeout_seconds=req.timeout_seconds,
-    )
+    test_kwargs = {
+        "cwd": str(Path.cwd()),
+        "timeout_seconds": req.timeout_seconds,
+    }
+    config_overrides = dict(req.values)
+    clear_keys = [key for key, should_clear in req.clear.items() if should_clear]
+    if clear_keys:
+        config_overrides["__workstep_clear_keys__"] = clear_keys
+    if config_overrides:
+        test_kwargs["config_overrides"] = config_overrides
+    result = await engine.test_connection(**test_kwargs)
     config_store.set_engine_verified(req.engine_id, result.success)
     engine_info = next(
         item for item in get_available_engines()

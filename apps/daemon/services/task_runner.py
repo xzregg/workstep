@@ -159,7 +159,7 @@ class TaskRunner:
 
         Args:
             task: The Task model instance.
-            steps_config: Parsed steps.json {"steps": [...]}.
+            steps_config: Compiled workflow definition {"steps": [...]}.
             artifacts_dir: Path to .workstep/artifacts/.
             user_input: Optional user supplementary input.
         """
@@ -691,6 +691,25 @@ class TaskRunner:
                     )
                     events_collected.append(response_event.to_dict())
                     self._event_journal.record(journal_ref, response_event.to_dict())
+                    # Make the response visible to history before notifying
+                    # the UI. Otherwise the live card disappears immediately,
+                    # but a reload while the engine is still running rebuilds
+                    # the stale request-only projection from SQLite.
+                    def persist_interaction_response():
+                        response_message = Message.get_by_id(msg_id)
+                        self._event_journal.sync(journal_ref, durable=True)
+                        snapshot = self._journal_snapshot(journal_ref)
+                        response_message.content = snapshot["content"]
+                        response_message.events_json = snapshot["events_json"]
+                        response_message.event_summary_json = snapshot["event_summary_json"]
+                        response_message.event_count = snapshot["event_count"]
+                        response_message.last_event_seq = snapshot["last_event_seq"]
+                        response_message.save()
+
+                    try:
+                        await self._run_db(persist_interaction_response)
+                    except Message.DoesNotExist:
+                        pass
                     await self._publish(task.id, step_key, {
                         "channel": "execution",
                         "message_id": msg_id,

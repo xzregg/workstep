@@ -2,11 +2,13 @@ export const ONBOARDING_STORAGE_KEY = 'workstep:onboarding:v1'
 
 export type OnboardingStep = 'provider' | 'engine' | 'project' | 'workflow' | 'task'
 export type OnboardingStatus = 'active' | 'dismissed' | 'completed'
+export type OnboardingSetupMode = 'provider' | 'local'
 
 export interface OnboardingState {
   status: OnboardingStatus
   currentStep: OnboardingStep
   collapsed: boolean
+  setupMode: OnboardingSetupMode | null
   providerId: string | null
   engineId: string | null
   projectId: string | null
@@ -24,6 +26,7 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   status: 'dismissed',
   currentStep: 'provider',
   collapsed: false,
+  setupMode: null,
   providerId: null,
   engineId: null,
   projectId: null,
@@ -34,6 +37,7 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
 
 const statuses = new Set<OnboardingStatus>(['active', 'dismissed', 'completed'])
 const steps = new Set<OnboardingStep>(['provider', 'engine', 'project', 'workflow', 'task'])
+const setupModes = new Set<OnboardingSetupMode>(['provider', 'local'])
 const nullableString = (value: unknown): string | null => typeof value === 'string' && value ? value : null
 
 export function loadOnboardingState(storage: StorageLike | null = typeof window === 'undefined' ? null : window.localStorage): OnboardingState {
@@ -49,6 +53,9 @@ export function loadOnboardingState(storage: StorageLike | null = typeof window 
       status: value.status as OnboardingStatus,
       currentStep: value.currentStep as OnboardingStep,
       collapsed: typeof value.collapsed === 'boolean' ? value.collapsed : false,
+      setupMode: setupModes.has(value.setupMode as OnboardingSetupMode)
+        ? value.setupMode as OnboardingSetupMode
+        : null,
       providerId: nullableString(value.providerId),
       engineId: nullableString(value.engineId),
       projectId: nullableString(value.projectId),
@@ -99,6 +106,7 @@ export interface OnboardingEngine {
   id: string
   installed: boolean
   configured: boolean
+  verified: boolean
   supports_provider: boolean
   provider_protocols: string[]
 }
@@ -111,6 +119,7 @@ export function isEngineReady(
     execution.engine === engine.id
     && engine.installed
     && engine.configured
+    && engine.verified
   )
 }
 

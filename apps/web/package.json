@@ -17,6 +17,7 @@
     "@ag-ui/core": "^0.0.57",
     "@xyflow/react": "^12.11.2",
     "antd": "^6.6.1",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^1.29.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

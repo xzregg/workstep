@@ -40,7 +40,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ loading: true })
     try {
       const { projects } = await projectApi.list()
-      set({ projects, loading: false })
+      set((state) => ({
+        projects,
+        activeProject: state.activeProject
+          ? projects.find((project) => project.id === state.activeProject?.id)
+            ?? state.activeProject
+          : null,
+        loading: false,
+      }))
     } catch {
       set({ loading: false })
     }

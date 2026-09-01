@@ -4,6 +4,7 @@ import {
   loadOnboardingState,
   saveOnboardingState,
   type OnboardingState,
+  type OnboardingSetupMode,
   type OnboardingStep,
 } from '../utils/onboarding'
 
@@ -12,6 +13,7 @@ interface OnboardingStore extends OnboardingState {
   reopen: () => void
   dismiss: () => void
   setCollapsed: (collapsed: boolean) => void
+  chooseSetupMode: (mode: OnboardingSetupMode) => void
   recordProvider: (providerId: string) => void
   recordEngine: (engineId: string) => void
   recordProject: (projectId: string) => void
@@ -31,6 +33,7 @@ const snapshot = (state: OnboardingStore): OnboardingState => ({
   status: state.status,
   currentStep: state.currentStep,
   collapsed: state.collapsed,
+  setupMode: state.setupMode,
   providerId: state.providerId,
   engineId: state.engineId,
   projectId: state.projectId,
@@ -57,8 +60,15 @@ export const useOnboardingStore = create<OnboardingStore>((set) => ({
     collapsed: false,
   })),
   setCollapsed: (collapsed) => set((current) => persist({ ...snapshot(current), collapsed })),
+  chooseSetupMode: (setupMode) => set((current) => persist({
+    ...snapshot(current),
+    setupMode,
+    providerId: setupMode === 'local' ? null : current.providerId,
+    currentStep: setupMode === 'local' ? 'engine' : 'provider',
+    status: 'active',
+  })),
   recordProvider: (providerId) => set((current) => persist({
-    ...snapshot(current), providerId, currentStep: 'engine', status: 'active',
+    ...snapshot(current), setupMode: 'provider', providerId, currentStep: 'engine', status: 'active',
   })),
   recordEngine: (engineId) => set((current) => persist({
     ...snapshot(current), engineId, currentStep: 'project', status: 'active',
@@ -79,7 +89,7 @@ export const useOnboardingStore = create<OnboardingStore>((set) => ({
   })),
   rollback: (step) => set((current) => {
     const next = { ...snapshot(current), status: 'active' as const, currentStep: step }
-    if (step === 'provider') Object.assign(next, { providerId: null, engineId: null, projectId: null, workflowId: null, taskId: null })
+    if (step === 'provider') Object.assign(next, { setupMode: null, providerId: null, engineId: null, projectId: null, workflowId: null, taskId: null })
     if (step === 'engine') Object.assign(next, { engineId: null, projectId: null, workflowId: null, taskId: null })
     if (step === 'project') Object.assign(next, { projectId: null, workflowId: null, taskId: null })
     if (step === 'workflow') Object.assign(next, { workflowId: null, taskId: null })

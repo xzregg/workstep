@@ -126,7 +126,7 @@ export default function FloatingMenu({
       className="chat-input-menu"
       role="dialog"
       style={{
-        position: 'fixed', left: position.left, top: position.top, zIndex: 1450, width,
+        position: 'fixed', left: position.left, top: position.top, zIndex: 2101, width,
         transformOrigin: side === 'top' ? 'bottom right' : 'top left',
       }}
       onMouseEnter={() => onHoverChange?.(true)}

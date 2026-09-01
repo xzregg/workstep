@@ -44,6 +44,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         position: 'fixed', inset: 0, zIndex: 2000,
         background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16, boxSizing: 'border-box',
       }}
     >
       <div
@@ -51,11 +52,12 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
         style={{
           background: 'var(--bg)', borderRadius: 'var(--radius-md)',
           boxShadow: 'var(--elev-raised), 0 0 0 1px var(--border-soft)',
-          width, maxWidth: '92vw', overflow: 'hidden',
+          width, maxWidth: '100%', maxHeight: 'calc(100dvh - 32px)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
         {/* Header */}
-        <div style={{ padding: '16px 20px 0' }}>
+        <div style={{ flexShrink: 0, padding: '16px 20px 0' }}>
           <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--fg)' }}>
             {title}
           </div>
@@ -64,11 +66,19 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
               {message}
             </div>
           )}
-          {children}
         </div>
 
+        {children && (
+          <div
+            data-confirm-dialog-body="true"
+            style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '0 20px' }}
+          >
+            {children}
+          </div>
+        )}
+
         {/* Footer */}
-        <div style={{ padding: '16px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <div style={{ flexShrink: 0, padding: '16px 20px', display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
           <Button variant="ghost" onClick={onCancel}>{cancelText ?? t('common.cancel')}</Button>
           <Button
             variant={danger ? 'danger' : 'primary'}

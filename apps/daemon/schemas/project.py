@@ -57,7 +57,7 @@ class ReorderProjectsRequest(BaseSchema):
 
 
 class SaveStepsRequest(BaseSchema):
-    steps: dict[str, Any]  # The full steps.json content
+    steps: dict[str, Any]  # The full workflow definition
 
 
 class CreateWorkflowRequest(BaseSchema):

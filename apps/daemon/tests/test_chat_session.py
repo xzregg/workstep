@@ -393,6 +393,60 @@ async def test_cross_engine_handoff_is_injected_once(chat_module, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_cross_engine_handoff_continues_the_same_session(chat_module, monkeypatch):
+    module, _bus, _manager, project, _ = chat_module
+    source = module.create_session(project.id, title="同一会话", engine="claude")
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        ChatMessage.create(
+            id="same-session-user",
+            session=row,
+            role="user",
+            content="旧目标：完成登录",
+            created_at=utc_now(),
+        )
+
+    prompts: list[str] = []
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        prompts.append(prompt)
+        return "继续完成", [], "target-engine-session"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    handed_off = module.handoff_session(
+        project.id,
+        source["id"],
+        engine="pydantic_ai",
+        context_mode="smart",
+    )
+    assert handed_off["id"] == source["id"]
+    assert handed_off["engine"] == "pydantic_ai"
+
+    accepted = module.submit_message(
+        project.id,
+        source["id"],
+        "请继续",
+        "same-session-handoff",
+    )
+    assert accepted.session_id == source["id"]
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    detail = module.get_session(project.id, source["id"])
+    assert detail is not None
+    assert detail["engine"] == "pydantic_ai"
+    assert len(module.list_sessions(project.id)) == 1
+    assert [item["content"] for item in detail["messages"]] == [
+        "旧目标：完成登录",
+        "请继续",
+        "继续完成",
+    ]
+    assert "<workstep_context_handoff>" in prompts[0]
+    assert "旧目标：完成登录" in prompts[0]
+
+
+@pytest.mark.anyio
 async def test_new_session_uses_chat_assistant_defaults(chat_module):
     """A new project chat inherits its own assistant settings, not coordinator settings."""
     module, _bus, _manager, project, config_store = chat_module

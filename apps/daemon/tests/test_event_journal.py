@@ -53,6 +53,32 @@ def test_journal_ignores_an_incomplete_trailing_line(tmp_path):
     assert timeline["events"][0]["type"] == "usage_update"
 
 
+def test_journal_finish_cancels_unanswered_interactions(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "session-stop", "message-stop")
+    journal.record(ref, {
+        "type": "interaction_request",
+        "data": {
+            "interaction_id": "permission-stop",
+            "method": "session/request_permission",
+        },
+    })
+
+    journal.finish(ref, {"type": "status", "data": {"status": "stopped"}})
+
+    events = journal.timeline(ref)["events"]
+    assert [event["type"] for event in events] == [
+        "interaction_request",
+        "interaction_response",
+        "status",
+    ]
+    assert events[1]["data"] == {
+        "interaction_id": "permission-stop",
+        "method": "session/request_permission",
+        "response": {"outcome": {"outcome": "cancelled"}},
+    }
+
+
 async def test_journal_flushes_a_quiet_tail_after_the_buffer_interval(tmp_path):
     journal = TurnEventJournal(flush_interval=0.01)
     ref = journal.start(tmp_path, "session-quiet", "message-quiet")

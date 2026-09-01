@@ -389,8 +389,6 @@ async def test_project_rejects_an_invalid_workflow_before_saving(
     workstep_dir = tmp_path / ".workstep"
     workstep_dir.mkdir()
     original = {"nodes": [], "connections": []}
-    steps_path = workstep_dir / "steps.json"
-    steps_path.write_text("{}")
     project = SimpleNamespace(
         id="project-1",
         workstep_dir=workstep_dir,
@@ -409,9 +407,6 @@ async def test_project_rejects_an_invalid_workflow_before_saving(
 
         def update_workflow(self, proj, workflow_id, steps):
             proj.steps = steps
-            (proj.workstep_dir / "steps.json").write_text(
-                json.dumps(steps, ensure_ascii=False, indent=2)
-            )
             return {"id": workflow_id}
 
     project.default_workflow = lambda: {"id": "default-wf", "steps": project.steps}
@@ -435,7 +430,6 @@ async def test_project_rejects_an_invalid_workflow_before_saving(
     assert response.status_code == 422
     assert "duplicate step key" in response.json()["detail"]
     assert project.steps is original
-    assert steps_path.read_text() == "{}"
 
 
 @pytest.mark.anyio
@@ -449,8 +443,6 @@ async def test_saved_workflow_becomes_the_project_runtime_definition(
 
     workstep_dir = tmp_path / ".workstep"
     workstep_dir.mkdir()
-    steps_path = workstep_dir / "steps.json"
-    steps_path.write_text('{"nodes": [], "connections": []}')
     project = SimpleNamespace(
         id="project-1",
         workstep_dir=workstep_dir,
@@ -478,9 +470,6 @@ async def test_saved_workflow_becomes_the_project_runtime_definition(
 
         def update_workflow(self, proj, workflow_id, steps):
             proj.steps = steps
-            (proj.workstep_dir / "steps.json").write_text(
-                json.dumps(steps, ensure_ascii=False, indent=2)
-            )
             return {"id": workflow_id}
 
     project.default_workflow = lambda: {"id": "default-wf", "steps": project.steps}
@@ -495,7 +484,6 @@ async def test_saved_workflow_becomes_the_project_runtime_definition(
 
     assert response.status_code == 200
     assert project.steps == saved
-    assert json.loads(steps_path.read_text()) == saved
 
 
 def test_stage_config_passthrough_and_defaults():

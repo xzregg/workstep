@@ -65,6 +65,8 @@ export interface ArchiveExperienceDraft {
   message_id: string | null
   experience: string
   has_experience: boolean
+  events: TaskEvent[]
+  prompt: string
 }
 
 interface TaskState {
@@ -139,7 +141,9 @@ export const useTaskStore = create<TaskState>((set) => ({
   refreshTask: async (taskId, projectId) => {
     const task = await taskApi.get(taskId, projectId)
     set((s) => ({
-      tasks: s.tasks.map((item) => item.id === taskId ? task : item),
+      tasks: s.tasks.some((item) => item.id === taskId)
+        ? s.tasks.map((item) => item.id === taskId ? task : item)
+        : [...s.tasks, task],
     }))
     return task
   },
@@ -218,12 +222,17 @@ export const useTaskStore = create<TaskState>((set) => ({
     }))
   },
 
-  getArchiveExperienceDraft: async (taskId, projectId) =>
-    taskApi.getArchiveExperienceDraft(taskId, projectId),
+  getArchiveExperienceDraft: async (taskId, projectId) => {
+    const result = await taskApi.getArchiveExperienceDraft(taskId, projectId)
+    return {
+      ...result,
+      events: result.events as unknown as TaskEvent[],
+    }
+  },
 
   prepareArchiveExperience: async (taskId, projectId, messageId) => {
     const result = await taskApi.prepareArchiveExperience(taskId, projectId, messageId)
-    return { ...result, found: true }
+    return { ...result, found: true, events: [], prompt: '' }
   },
 
   stopArchiveExperience: async (taskId, projectId, messageId) => {

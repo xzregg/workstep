@@ -672,6 +672,43 @@ class ChatSessionModule(AssistantRuntime):
             self._event_journal.delete_session(project.workstep_dir, session_id)
         return removed
 
+    def bulk_delete_sessions(
+        self,
+        project_id: str,
+        session_ids: list[str],
+    ) -> dict:
+        """Delete multiple sessions; skip (don't error on) running sessions."""
+        if not session_ids:
+            raise ValueError("session_ids must not be empty")
+        deleted: list[str] = []
+        skipped: list[str] = []
+        for session_id in session_ids:
+            # Skip sessions that are actively running
+            if any(
+                state.get("session_id") == session_id
+                and state.get("status") in {"queued", "running", "stopping"}
+                for state in self._turn_states.values()
+            ):
+                skipped.append(session_id)
+                continue
+            with self._project_ctx(project_id):
+                row = ChatSession.get_or_none(ChatSession.id == session_id)
+                if row is None:
+                    skipped.append(session_id)
+                    continue
+                if ChatMessage.select().where(
+                    ChatMessage.session == row,
+                    ChatMessage.status == "running",
+                ).exists():
+                    skipped.append(session_id)
+                    continue
+            memory_key, sid = self._session_identity(project_id, session_id)
+            self.reset_scoped_session(project_id, session_id, memory_key, sid)
+            with self._project_ctx(project_id) as project:
+                self._event_journal.delete_session(project.workstep_dir, session_id)
+            deleted.append(session_id)
+        return {"deleted": deleted, "skipped": skipped}
+
 
     def reorder_sessions(
         self,
@@ -736,6 +773,102 @@ class ChatSessionModule(AssistantRuntime):
             "created_at": _iso(row.created_at),
             "updated_at": _iso(row.updated_at),
         }
+
+    def handoff_session(
+        self,
+        project_id: str,
+        session_id: str,
+        *,
+        engine: str,
+        context_mode: str,
+        model: str | None = None,
+        fast_model: str | None = None,
+        vision_model: str | None = None,
+        provider_id: str | None = None,
+        permission_mode: str | None = None,
+    ) -> dict:
+        """Switch engines while keeping the same visible chat session."""
+        if context_mode not in {"smart", "full", "none"}:
+            raise ValueError(f"Unsupported handoff context mode: {context_mode}")
+        if any(
+            state.get("session_id") == session_id
+            and state.get("status") in {"queued", "running", "stopping"}
+            for state in self._turn_states.values()
+        ):
+            raise ValueError("Chat session is running")
+        self._validate_engine(engine)
+        permission_mode = (permission_mode or "").strip()
+        if permission_mode and not is_valid_permission_mode(permission_mode):
+            raise ValueError(f"Unsupported permission mode: {permission_mode}")
+
+        default_engine, default_model, default_fast_model = self._resolve_engine_models()
+        default_vision_model = config_store.get_assistant_defaults(
+            "chat_session"
+        ).get("vision_model", "") or None
+        if engine != default_engine:
+            default_model = config_store.get_engine_default_model(engine) or None
+            default_fast_model = default_model
+            default_vision_model = None
+        defaults = config_store.get_assistant_defaults("chat_session")
+        default_provider = (
+            defaults.get("provider_id", "")
+            if engine == (defaults.get("engine") or default_engine)
+            else ""
+        )
+        normalized_provider = validate_provider_override(
+            provider_id or default_provider,
+            engine,
+        )
+
+        with self._project_ctx(project_id):
+            row = ChatSession.get_or_none(
+                ChatSession.id == session_id,
+                ChatSession.project_id == project_id,
+            )
+            if row is None:
+                raise ValueError("Chat session not found")
+            if row.engine == engine:
+                raise ValueError("Target engine is already active")
+            if ChatMessage.select().where(
+                ChatMessage.session == row,
+                ChatMessage.status == "running",
+            ).exists():
+                raise ValueError("Chat session is running")
+            messages = ChatRowPersistence()._load_messages(row)
+            package = compile_handoff(
+                messages,
+                context_mode,
+                source_session_id=session_id,
+                forked_from_message_id=messages[-1].get("id") if messages else None,
+            )
+            row.engine = engine
+            row.model = model or default_model
+            row.fast_model = fast_model or default_fast_model
+            row.vision_model = vision_model or default_vision_model
+            row.provider_id = normalized_provider or None
+            if permission_mode:
+                row.permission_mode = permission_mode
+            row.engine_session_id = None
+            row.engine_state_json = None
+            row.fork_context_mode = context_mode
+            row.fork_context_json = json.dumps(package, ensure_ascii=False)
+            row.updated_at = utc_now()
+            row.save()
+
+        memory_key, _ = self._session_identity(project_id, session_id)
+        session = self._sessions.get(memory_key)
+        if session is not None:
+            session.engine = engine
+            session.model = model or default_model
+            session.fast_model = fast_model or default_fast_model
+            session.vision_model = vision_model or default_vision_model
+            session.resolved_session_id = None
+            session.engine_state = None
+            session.extra["pending_handoff"] = package
+        result = self.get_session(project_id, session_id)
+        if result is None:
+            raise ValueError("Chat session not found")
+        return result
 
     async def fork_session(
         self,

@@ -62,7 +62,7 @@ test('active thinking disclosure reports elapsed time and character count', () =
   )
 
   assert.match(html, /思考中 · \d+秒 · 9 字符/)
-  assert.match(html, /class="process-trace-thinking-block" open=""/)
+  assert.match(html, /class="process-trace-thinking-block"[^>]*open=""/)
 })
 
 test('running tool uses a static icon and shimmering text instead of a spinner', () => {

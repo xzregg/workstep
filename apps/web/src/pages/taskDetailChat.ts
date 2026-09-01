@@ -388,6 +388,32 @@ export function shouldPauseConversationFollow(
   return intent.key === 'ArrowUp' || intent.key === 'PageUp' || intent.key === 'Home'
 }
 
+interface TaskComposerStateInput {
+  target: 'coordinator' | 'stage'
+  stageRunning?: boolean
+  stageResuming?: boolean
+  coordinatorRunning?: boolean
+  prompt?: string
+}
+
+/** Keep the stage insert/send state and the stop-button state on one condition. */
+export function resolveTaskComposerState({
+  target,
+  stageRunning = false,
+  stageResuming = false,
+  coordinatorRunning = false,
+  prompt = '',
+}: TaskComposerStateInput): { disabled: boolean; running: boolean } {
+  if (target === 'coordinator') {
+    return { disabled: coordinatorRunning, running: coordinatorRunning }
+  }
+  if (stageResuming) return { disabled: true, running: true }
+  return {
+    disabled: false,
+    running: stageRunning && prompt.trim().length === 0,
+  }
+}
+
 export function shouldRenderLegacyExecution(
   running: boolean,
   hasProcessEvents: boolean,

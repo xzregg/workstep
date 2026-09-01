@@ -181,7 +181,9 @@ function schemaOptions(
  */
 export function pendingInteractionItems(
   events: InteractionEvent[],
+  enabled = true,
 ): InteractionItem[] {
+  if (!enabled) return []
   return interactionItemsFromEvents(events).filter((item) => !item.response)
 }
 

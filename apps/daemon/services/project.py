@@ -110,7 +110,7 @@ class Project:
 
     path: Path
     db: pw.SqliteDatabase
-    steps: dict  # Cached steps from the default workflow (backward compatible)
+    steps: dict  # Cached steps from the default workflow
     workflows: list[dict] = field(default_factory=list)  # [{id, name, is_default, steps, ...}]
     name: str = ""  # Display name, defaults to directory name
     id: str = ""  # Unique project ID
@@ -129,10 +129,6 @@ class Project:
     @property
     def db_path(self) -> Path:
         return self.workstep_dir / "workstep.db"
-
-    @property
-    def steps_path(self) -> Path:
-        return self.workstep_dir / "steps.json"
 
     def default_workflow(self) -> dict | None:
         for wf in self.workflows:
@@ -187,7 +183,7 @@ class ProjectContext:
 class ProjectManager:
     """Manages multiple project workspaces.
 
-    Each project has its own .workstep/ directory with steps.json and workstep.db.
+    Each project has its own .workstep/ directory with workstep.db.
     The manager holds open DB connections for all registered projects.
     """
 
@@ -338,23 +334,21 @@ class ProjectManager:
             })
         return result
 
-    def _maybe_migrate_steps_json(self, proj: Project) -> None:
-        """If workflows table is empty, seed it from the legacy steps.json file."""
+    def _ensure_default_workflow(self, proj: Project) -> None:
+        """Seed the database with the built-in default workflow when empty."""
         if Workflow.select().count() > 0:
             return
-        steps_path = proj.steps_path
-        steps = json.loads(steps_path.read_text()) if steps_path.exists() else dict(DEFAULT_STEPS)
         now = utc_now()
         wf_id = str(uuid.uuid4())[:8]
         Workflow.create(
             id=wf_id,
             name="默认流程",
-            steps_json=json.dumps(steps, ensure_ascii=False),
+            steps_json=json.dumps(DEFAULT_STEPS, ensure_ascii=False),
             is_default=1,
             created_at=now,
             updated_at=now,
         )
-        logger.info("Migrated steps.json to workflows table for %s", proj.path)
+        logger.info("Created default workflow for %s", proj.path)
 
     def _sync_project_workflows(self, proj: Project) -> None:
         """Load workflows from DB into the Project dataclass and update cached steps."""
@@ -600,7 +594,6 @@ class ProjectManager:
 
         Creates:
         - .workstep/ directory
-        - .workstep/steps.json (default template)
         - .workstep/workstep.db (SQLite with schema)
 
         Args:
@@ -625,24 +618,16 @@ class ProjectManager:
         _ensure_ignore_rule(path, ".gitignore", ignore_rule)
         _ensure_ignore_rule(path, ".dockerignore", ignore_rule)
 
-        # Write default steps.json if not exists
-        steps_path = ws_dir / "steps.json"
-        if not steps_path.exists():
-            steps_path.write_text(json.dumps(DEFAULT_STEPS, ensure_ascii=False, indent=2))
-
         # Initialize SQLite DB
         db_path = ws_dir / "workstep.db"
         db = init_db(str(db_path))
 
-        # Read steps from steps.json for initial seed
-        steps = json.loads(steps_path.read_text())
-
-        project = Project(path=path, db=db, steps=steps, name=name or path.name, id=str(uuid.uuid4())[:8])
+        project = Project(path=path, db=db, steps={}, name=name or path.name, id=str(uuid.uuid4())[:8])
         self._projects[path_str] = project
 
-        # Seed workflows table from steps.json
+        # Seed the canonical workflows table directly.
         with ProjectContext(project):
-            self._maybe_migrate_steps_json(project)
+            self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
         self._save_config()
@@ -669,15 +654,12 @@ class ProjectManager:
             raise ValueError(f"No workstep.db at {db_path}")
 
         db = init_db(str(db_path))
-        steps_path = ws_dir / "steps.json"
-        steps = json.loads(steps_path.read_text()) if steps_path.exists() else dict(DEFAULT_STEPS)
-
-        project = Project(path=path, db=db, steps=steps, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
+        project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
         self._projects[path_str] = project
 
-        # Auto-migrate legacy steps.json → workflows table, then sync
+        # Ensure the canonical workflows table is usable, then sync the cache.
         with ProjectContext(project):
-            self._maybe_migrate_steps_json(project)
+            self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
         logger.info("Registered project: %s (id=%s)", path_str, project.id)

@@ -84,7 +84,7 @@ def compile_handoff(
         "decisions": decisions if mode == "smart" else [],
         "constraints": constraints if mode == "smart" else [],
         "messages": selected,
-        "consumed": mode == "none",
+        "consumed": False,
     }
 
 

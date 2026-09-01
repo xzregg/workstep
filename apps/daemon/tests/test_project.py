@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from models import (
+    init_db,
     Task,
     TaskStep,
     Message,
@@ -40,18 +41,17 @@ def manager(tmp_path):
     m.close_all()
 
 
-def test_init_project_creates_workstep_dir(tmp_path, manager):
-    """init_project creates .workstep/ with steps.json and workstep.db."""
+def test_init_project_persists_default_workflow_without_steps_json(tmp_path, manager):
+    """init_project stores the default workflow only in workstep.db."""
     m, _, _ = manager
     proj = m.init_project(tmp_path)
 
     ws_dir = tmp_path / ".workstep"
     assert ws_dir.exists()
-    assert (ws_dir / "steps.json").exists()
+    assert not (ws_dir / "steps.json").exists()
     assert (ws_dir / "workstep.db").exists()
-
-    steps = json.loads((ws_dir / "steps.json").read_text())
-    assert steps == DEFAULT_STEPS
+    assert proj.default_workflow() is not None
+    assert proj.default_workflow()["steps"] == DEFAULT_STEPS
 
 
 def test_init_project_adds_workstep_to_git_and_docker_ignore_files(tmp_path, manager):
@@ -85,8 +85,8 @@ def test_init_project_idempotent(tmp_path, manager):
     proj2 = m.init_project(tmp_path)
 
     assert proj1 is proj2
-    steps_path = tmp_path / ".workstep" / "steps.json"
-    assert steps_path.exists()
+    assert not (tmp_path / ".workstep" / "steps.json").exists()
+    assert proj1.default_workflow()["steps"] == DEFAULT_STEPS
 
 
 def test_register_existing_project(tmp_path, manager):
@@ -102,6 +102,23 @@ def test_register_existing_project(tmp_path, manager):
         assert proj.path == tmp_path.resolve()
         assert proj.steps == DEFAULT_STEPS
     m2.close_all()
+
+
+def test_register_does_not_import_legacy_steps_json(tmp_path, manager):
+    """Legacy steps.json is no longer a workflow data source."""
+    m, _, _ = manager
+    workstep_dir = tmp_path / ".workstep"
+    workstep_dir.mkdir(exist_ok=True)
+    db = init_db(str(workstep_dir / "workstep.db"))
+    db.close()
+    (workstep_dir / "steps.json").write_text(
+        json.dumps({"nodes": [{"id": "legacy", "type": "legacy"}]}),
+        encoding="utf-8",
+    )
+
+    project = m.register(tmp_path)
+
+    assert project.default_workflow()["steps"] == DEFAULT_STEPS
 
 
 def test_register_nonexistent_raises(tmp_path, manager):
@@ -336,7 +353,7 @@ def test_unregister_project_only_removes_config_entry(tmp_path, manager):
         {"id": second.id, "path": str(second_dir.resolve()), "name": "Second", "sort_order": 0}
     ]
     assert (first_dir / ".workstep" / "workstep.db").exists()
-    assert (first_dir / ".workstep" / "steps.json").exists()
+    assert not (first_dir / ".workstep" / "steps.json").exists()
 
 
 def test_unregister_unknown_project_does_nothing(manager):

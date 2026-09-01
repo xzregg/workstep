@@ -42,6 +42,17 @@ class ChatSessionForkRequest(BaseSchema):
     fork_message_id: str | None = None
 
 
+class ChatSessionHandoffRequest(BaseSchema):
+    project_id: str
+    engine: str
+    context_mode: str
+    model: str | None = None
+    fast_model: str | None = None
+    vision_model: str | None = None
+    provider_id: str | None = None
+    permission_mode: str | None = None
+
+
 class ChatMessageRequest(BaseSchema):
     project_id: str
     content: str
@@ -280,6 +291,28 @@ async def fork_session(session_id: str, req: ChatSessionForkRequest):
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
 
+@router.post("/{session_id}/handoff")
+async def handoff_session(session_id: str, req: ChatSessionHandoffRequest):
+    """Switch engines without creating another visible chat session."""
+    try:
+        return await _run_db(
+            req.project_id,
+            lambda: _module().handoff_session(
+                req.project_id,
+                session_id,
+                engine=req.engine,
+                context_mode=req.context_mode,
+                model=req.model,
+                fast_model=req.fast_model,
+                vision_model=req.vision_model,
+                provider_id=req.provider_id,
+                permission_mode=req.permission_mode,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+
+
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,
@@ -340,6 +373,21 @@ async def reorder_sessions(
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
     return {"ok": True}
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_sessions(
+    pid: str = Query(..., alias="project_id"),
+    session_ids: list[str] = Body(..., embed=True),
+):
+    """Delete multiple chat sessions; running sessions are skipped."""
+    try:
+        result = await _run_db(
+            pid, lambda: _module().bulk_delete_sessions(pid, session_ids)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
+    return result
 
 
 @router.post("/{session_id}/stop")

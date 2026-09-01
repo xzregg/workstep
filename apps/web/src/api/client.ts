@@ -684,6 +684,17 @@ export interface ChatSessionForkInput {
   fork_message_id?: string
 }
 
+export interface ChatSessionHandoffInput {
+  project_id: string
+  engine: string
+  context_mode: 'smart' | 'full' | 'none'
+  model?: string
+  fast_model?: string
+  vision_model?: string
+  provider_id?: string
+  permission_mode?: string
+}
+
 export interface ChatMessageOptions {
   engine?: string
   model?: string
@@ -737,6 +748,11 @@ export const chatSessionApi = {
       `/chat-sessions/${encodeURIComponent(sessionId)}/fork`,
       { method: 'POST', body: JSON.stringify(input) },
     ),
+  handoff: (sessionId: string, input: ChatSessionHandoffInput) =>
+    request<ChatSessionDetail>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}/handoff`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
   chat: (
     sessionId: string,
     projectId: string,
@@ -771,6 +787,14 @@ export const chatSessionApi = {
       {
         method: 'POST',
         body: JSON.stringify({ ordered_ids: orderedIds }),
+      },
+    ),
+  bulkDelete: (projectId: string, sessionIds: string[]) =>
+    request<{ deleted: string[]; skipped: string[] }>(
+      `/chat-sessions/bulk-delete?project_id=${encodeURIComponent(projectId)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ session_ids: sessionIds }),
       },
     ),
   quickButtons: (projectId: string) =>
@@ -1184,7 +1208,14 @@ export const taskApi = {
       body: JSON.stringify({ task_id: taskId }),
     }),
   getArchiveExperienceDraft: (taskId: string, projectId: string) =>
-    request<{ found: boolean; message_id: string | null; experience: string; has_experience: boolean }>(
+    request<{
+      found: boolean
+      message_id: string | null
+      experience: string
+      has_experience: boolean
+      events: Array<Record<string, unknown>>
+      prompt: string
+    }>(
       `/task/${encodeURIComponent(taskId)}/archive-experience/draft?project_id=${encodeURIComponent(projectId)}`,
     ),
   prepareArchiveExperience: (taskId: string, projectId: string, messageId: string) =>
@@ -1785,10 +1816,14 @@ export const engineApi = {
         }),
       },
     ),
-  test: (engineId: string) =>
+  test: (engineId: string, config?: EngineConfigSaveInput) =>
     request<EngineTestResult>('/engine/test', {
       method: 'POST',
-      body: JSON.stringify({ engine_id: engineId }),
+      body: JSON.stringify({
+        engine_id: engineId,
+        values: config?.values ?? {},
+        clear: config?.clear ?? {},
+      }),
     }),
   install: (engineId: string, acceptThirdPartyTerms = false) =>
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {
@@ -1912,6 +1947,7 @@ export interface FilePreview {
   content: string
   file_size: number
   extension?: string
+  relative_path?: string | null
 }
 
 export interface DirectoryOpener {
@@ -2003,6 +2039,15 @@ export const fsApi = {
       .split('/')
       .map(encodeURIComponent)
       .join('/')}${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+  projectFileUrl: (path: string, projectId: string) => {
+    const absolute = path.startsWith('/')
+    const encodedPath = path
+      .replace(/^\/+/, '')
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')
+    return `${BASE}/fs/project-raw/${encodeURIComponent(projectId)}/${encodedPath}?project_id=${encodeURIComponent(projectId)}${absolute ? '&absolute=true' : ''}`
+  },
   directoryOpeners: () =>
     request<{ platform: string; openers: DirectoryOpener[] }>('/fs/directory-openers'),
   openDirectory: (path: string, opener = 'file_manager') =>

@@ -84,6 +84,7 @@ function ThinkingTimelineItem({
   return (
     <details
       className="process-trace-thinking-block"
+      data-active={active ? 'true' : undefined}
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >

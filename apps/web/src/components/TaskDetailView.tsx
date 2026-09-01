@@ -50,6 +50,7 @@ import {
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
+  resolveTaskComposerState,
   resolveMessageReview,
   shouldRenderLegacyExecution,
   stageAvatarText,
@@ -470,6 +471,13 @@ export default function TaskDetailView({
   const resumableTarget = chatTarget !== 'coordinator'
     ? resumableStages.find((stage) => stage.key === chatTarget) ?? null
     : null
+  const composerState = resolveTaskComposerState({
+    target: chatTarget === 'coordinator' ? 'coordinator' : 'stage',
+    stageRunning: runningStages.length > 0,
+    stageResuming: Boolean(resumableTarget && stageResuming),
+    coordinatorRunning: coordinatorRunning ?? false,
+    prompt: prompt ?? '',
+  })
 
   // 「发给谁」阶段 tab 样式：背景色与对应阶段颜色一致（选中加深并加描边）。
   const stageTabStyle = (stageColor: string, selected: boolean) => ({
@@ -2427,6 +2435,7 @@ export default function TaskDetailView({
                                 : undefined
                             }
                             events={processEvents}
+                            interactionsEnabled={msg.run_status === 'running'}
                             onInteractionRespond={
                               !readOnly
                                 ? onInteractionRespond
@@ -2981,6 +2990,7 @@ export default function TaskDetailView({
                       : undefined
                   }
                   events={message.events}
+                  interactionsEnabled={message.status === 'running'}
                   onInteractionRespond={
                     !readOnly
                       ? onInteractionRespond
@@ -3117,6 +3127,7 @@ export default function TaskDetailView({
                     : undefined
                 }
                 events={events}
+                interactionsEnabled={Boolean(running)}
                 onInteractionRespond={
                   !readOnly
                     ? onInteractionRespond
@@ -3877,25 +3888,8 @@ export default function TaskDetailView({
                     ),
                 } as ChatInputEngineConfig
               }
-              disabled={
-                chatTarget !== 'coordinator'
-                  ? (resumableTarget
-                      ? (stageResuming ?? false)
-                      : false)
-                  : (coordinatorRunning ??
-                      false)
-              }
-              running={
-                (chatTarget !== 'coordinator' &&
-                  runningStages.length > 0 &&
-                  (prompt ?? '').trim()
-                    .length === 0) ||
-                (resumableTarget &&
-                  (stageResuming ?? false)) ||
-                (chatTarget === 'coordinator' &&
-                  (coordinatorRunning ??
-                    false))
-              }
+              disabled={composerState.disabled}
+              running={composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? [])

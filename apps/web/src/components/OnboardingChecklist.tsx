@@ -12,6 +12,7 @@ interface Props {
   creatingWorkflow: boolean
   error: string
   onOpenProvider: () => void
+  onOpenLocalAgent: () => void
   onOpenEngine: () => void
   onOpenProject: () => void
   onCreateWorkflow: () => void
@@ -33,6 +34,7 @@ export default function OnboardingChecklist({
   creatingWorkflow,
   error,
   onOpenProvider,
+  onOpenLocalAgent,
   onOpenEngine,
   onOpenProject,
   onCreateWorkflow,
@@ -43,6 +45,7 @@ export default function OnboardingChecklist({
   const projects = useProjectStore((value) => value.projects)
   const fetchProjects = useProjectStore((value) => value.fetchProjects)
   const [checking, setChecking] = useState(false)
+  const [localEngineReady, setLocalEngineReady] = useState(false)
   const checkingRef = useRef(false)
 
   const refresh = useCallback(async () => {
@@ -60,12 +63,24 @@ export default function OnboardingChecklist({
       const readyProviders = providerResult.providers.filter((provider) =>
         isProviderReady(provider, providerResult.types.find((type) => type.id === provider.type)),
       )
-      const provider = readyProviders.find((item) => item.id === latest.providerId) ?? readyProviders[0]
-      if (!provider) {
-        if (latest.providerId || latest.status === 'completed') latest.rollback('provider')
+      const localEngines = engineResult.engines.filter((engine) => (
+        engine.installed
+        && engine.configured
+        && !String(engine.config?.values?.provider_id || '').trim()
+      ))
+      setLocalEngineReady(localEngines.length > 0)
+
+      let setupMode = latest.setupMode
+      if (!setupMode && latest.providerId) setupMode = 'provider'
+      if (!setupMode) return
+
+      if (setupMode === 'provider') {
+        const provider = readyProviders.find((item) => item.id === latest.providerId) ?? readyProviders[0]
+        if (!provider) return
+        if (latest.providerId !== provider.id) latest.recordProvider(provider.id)
+      } else if (localEngines.length === 0) {
         return
       }
-      if (latest.providerId !== provider.id) latest.recordProvider(provider.id)
 
       const engine = engineResult.engines.find((item) => isEngineReady(item, execution))
       if (!engine) {
@@ -114,13 +129,13 @@ export default function OnboardingChecklist({
     const project = projects.find((item) => item.id === state.projectId && item.type !== 'remote')
     const workflow = project?.workflows?.find((item) => item.id === state.workflowId && !item.deleted)
     return {
-      provider: Boolean(state.providerId),
-      engine: Boolean(state.providerId && state.engineId),
+      provider: state.setupMode === 'provider' ? Boolean(state.providerId) : localEngineReady,
+      engine: Boolean(state.engineId),
       project: Boolean(project),
       workflow: Boolean(project && workflow),
       task: Boolean(project && workflow && state.taskId),
     }
-  }, [projects, state.providerId, state.engineId, state.projectId, state.workflowId, state.taskId])
+  }, [projects, localEngineReady, state.setupMode, state.providerId, state.engineId, state.projectId, state.workflowId, state.taskId])
   const completedCount = STEP_ORDER.filter((step) => completed[step]).length
   const currentStep = STEP_ORDER.find((step) => !completed[step]) ?? 'task'
   const actions: Record<OnboardingStep, () => void> = {
@@ -178,14 +193,33 @@ export default function OnboardingChecklist({
                 {active && <p>{t(COPY[step].description)}</p>}
                 {active && error && <div className="onboarding-step-error" role="status">{error}</div>}
                 {active && (
-                  <Button
-                    variant="primary"
-                    loading={step === 'workflow' && creatingWorkflow}
-                    disabled={checking || (step === 'workflow' && creatingWorkflow)}
-                    onClick={actions[step]}
-                  >
-                    {step === 'workflow' && creatingWorkflow ? t('onboarding.createWorkflowBusy') : t(COPY[step].action)}
-                  </Button>
+                  step === 'provider' ? (
+                    <div className="onboarding-setup-actions">
+                      <Button
+                        variant="primary"
+                        disabled={checking}
+                        onClick={onOpenProvider}
+                      >
+                        {t(COPY.provider.action)}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={checking}
+                        onClick={onOpenLocalAgent}
+                      >
+                        {t('onboarding.steps.provider.localAction')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      loading={step === 'workflow' && creatingWorkflow}
+                      disabled={checking || (step === 'workflow' && creatingWorkflow)}
+                      onClick={actions[step]}
+                    >
+                      {step === 'workflow' && creatingWorkflow ? t('onboarding.createWorkflowBusy') : t(COPY[step].action)}
+                    </Button>
+                  )
                 )}
               </div>
             </div>

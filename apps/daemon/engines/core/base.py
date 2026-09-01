@@ -656,8 +656,14 @@ class BaseLLMEngine(ABC):
         callers can keep the explicit ``spawn(model=...)`` argument priority.
         """
         effective = dict(global_config)
+        clear_keys = set((config_overrides or {}).get("__workstep_clear_keys__") or [])
+        for key in clear_keys:
+            effective[str(key)] = ""
         for key, value in (config_overrides or {}).items():
-            if key == "model":
+            if key in {"model", "__workstep_clear_keys__"}:
+                continue
+            if key in clear_keys:
+                effective[key] = ""
                 continue
             if value is None or value == "":
                 continue

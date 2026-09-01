@@ -300,7 +300,7 @@ JSON-RPC 通知，并且暂不支持工具审批，但它实现了统一协调�
 | Codex Agent SDK（`engines/codex_sdk.py`） | `model_reasoning_effort`、`approval_mode`（`auto_review` / `deny_all`）、`sandbox`（`read-only` / `workspace-write` / `danger-full-access`→SDK `full-access`） | `thread_start` / `thread_resume` 的 `config={"model_reasoning_effort": ...}`、`approval_mode=ApprovalMode(...)`、`sandbox=Sandbox(...)`；协调模式强制 `read_only` |
 | Qoder Agent SDK（`engines/qoder_sdk.py`） | `personal_access_token`（PAT，敏感字段）、`permission_mode`（`default` / `acceptEdits` / `bypassPermissions` / `plan` / `dontAsk` / `auto`）、`model`、`allowed_tools`（工具白名单）、`max_turns`、`include_partial_messages`（流式输出） | 写入 `QoderAgentOptions`（`auth=access_token(token)`、`permission_mode`、`model`、`allowed_tools`、`max_turns`、`include_partial_messages`）；`bypassPermissions` 同时置 `allow_dangerously_skip_permissions=True` |
 | DeepSeek Harness（`engines/deepseek_harness.py`） | `provider_id`、`max_tokens`、`preset`（当前为 `standard`） | 复用 DeepSeek 类型供应商的 `base_url` / `api_key`，写入官方 `DeepSeekHarness`；模型沿用通用引擎默认模型；`preset` 解析为我方随版本校验的 Cordis composition |
-| Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；harness 扩展不暴露配置、固定 `auto`：已安装 `pydantic-ai-harness` 时挂载压缩与持久化能力，否则回退 `message_history`（见 4.7） |
+| Pydantic AI（`engines/pydantic_ai/engine.py`） | `provider_id` | 供应商 base_url/key 构建模型（`model` / `thinking_effort` 由助手配置经 `spawn` 参数传入）；`thinking_effort` 映射为 `Thinking` capability；Harness 核心能力固定挂载，压缩与持久化按 `auto` 处理（见 4.7） |
 
 校验规则集中在 `services/config.py`（`set_codex_config` / `set_codex_sdk_config` / `set_claude_agent_sdk_config` / `set_qoder_sdk_config`）：`max_turns` 必须为正整数，枚举值非法时抛中文 `ValueError`。
 
@@ -324,23 +324,29 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
 
 新增 preset 时必须提供一份能由 SDK runtime 独立启动的完整 composition，加入 `PRESET_COMPOSITIONS` 白名单并覆盖启动测试；不能仅把 CLI preset 名称透传给 SDK。插件产生的事件仍需按“声明 = 实际”映射为我方 ACP 事件，未知事件走 `acp_raw`，不得让前端直接消费 Cordis/SDK 通知。
 
-### 4.7 Pydantic AI harness 扩展（上下文压缩与会话持久化）
+### 4.7 Pydantic AI harness 能力
 
-`pydantic-ai-harness` 是 PydanticAI 引擎的**可选扩展**（不是独立引擎、也不替代
-`AcpEngineBase` 的会话/审批缝）：引擎按 `auto` 规则在 `Agent(..., capabilities=[...])` 挂载
-harness 能力，其余协议行为（spawn / interaction / AG-UI 翻译）保持不变。
+`pydantic-ai-harness` 是 PydanticAI 引擎的固定依赖（不是独立引擎、也不替代
+`AcpEngineBase` 的会话/审批缝）。引擎在 `Agent(..., capabilities=[...])` 挂载：
 
-- 开关：动态配置不暴露 `harness` 字段（见 4.6），引擎固定按 `auto` 处理——已安装
-  `pydantic-ai-harness` 且项目根存在时挂载能力；未安装或项目根缺失时回退到原有
-  `message_history` 内存往返，行为不变。保存引擎配置时统一写回 `harness="auto"`。
-- 挂载能力（`_harness_capabilities`）：
+- `Coder(project_root)`；项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有 Memory；
+- `Skills(project_root / ".workstep" / "skills")`，目录内容只来自 SkillCenter 白名单镜像；
+- 有效的 `thinking_effort` 通过 Pydantic AI `Thinking(effort=...)` 挂载，不再传入 `model_settings.thinking`。
+
+- 压缩与持久化开关：动态配置不暴露 `harness` 字段（见 4.6），保存配置时统一写回 `harness="auto"`；旧配置显式为 `off` 时仅停用下列扩展并回退 `message_history`。
+- 扩展能力（`_harness_capabilities`）：
   - `TieredCompaction(target_fraction=0.9, tiers=[ClearToolResults(max_messages=200, keep_pairs=10), SummarizingCompaction(max_messages=120, keep_messages=30, receipts=True)])`：上下文超限时自动压缩；
   - `WarnNearLimits(max_context_fraction=0.85)`：接近上限时告警；
   - `StepPersistence(store, agent_name="workstep")`：会话持久化，store 为
-    `SqliteStepStore(database=<项目根>/.workstep/harness_runs.db)`。
+    `SqliteStepStore(database=<项目根>/.workstep/harness_runs.db, max_snapshots_per_run=30)`。
 - 会话恢复：`spawn(..., session_id=...)` 开启时以 `conversation_id=session_id` 调用
-  `continue_run` 恢复最新 run；无历史 run 时回退 `message_history`。持久化后不再依赖
+  `continue_run` 恢复最近一个有快照的 run（跳过重试时刚注册但尚无快照的新 run）；无可恢复
+  快照时回退 `message_history`。持久化后不再依赖
   `engine_state` 往返携带消息历史（`engine_state` 事件仍保留用于协调只读 turn）。
+- 请求次数保护：每次 `Agent.run_stream_events()` 显式传入
+  `UsageLimits(request_limit=100)`，避免长编码任务撞上 SDK 默认 50 次上限，同时保留循环失控保护。
+- 工具纠错：`Agent` 使用 `retries={"tools": 3, "output": 1}`，允许模型修正 Harness 工具的
+  参数类型错误，同时保持最终输出校验的默认重试强度。
 - `compacted` 事件：本轮压缩接收（receipt）在 run 结束后经 `open_receipt_scope` /
   `drain_receipts` 排空，映射为 `InternalEvent("compacted", {"summary": ...})`
   （`acp_events` 已声明 `compacted`，见 5.2）。
@@ -449,7 +455,8 @@ yield InternalEvent("status", {"status": "done"})
 | `AgentRunResultEvent.result.usage()` | `usage_update` |
 
 启用 harness 时（见 4.7），`run_stream_events` 传 `conversation_id=session_id`，种子历史优先经
-`continue_run` 从 `.workstep/harness_runs.db` 恢复（无历史 run 回退 `message_history`）；
+`continue_run` 从 `.workstep/harness_runs.db` 最近一个有快照的 run 恢复（无快照回退
+`message_history`），并传 `UsageLimits(request_limit=100)`；
 压缩接收经 `drain_receipts` 排空后映射为 `compacted` 事件。
 
 Claude Agent SDK 通过顶层 `query(prompt=..., options=ClaudeAgentOptions(...))` 驱动，`options.cli_path` 指定 `claude` 二进制，逐条产出消息，映射关系：

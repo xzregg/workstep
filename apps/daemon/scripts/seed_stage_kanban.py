@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from models import Message, Task, TaskStep, init_db  # noqa: E402
+from models import Message, Task, TaskStep, Workflow, init_db  # noqa: E402
 
 
 STAGE_CONTENT = {
@@ -51,9 +51,16 @@ LONG_TASK_DESCRIPTION = """这是一个用于验证阶段详情长任务说明�
 验收要求：任务说明在阶段详情中保持固定最大高度；内容超出后可在说明区域内部滚动，并且不能挤压下方的进度时间线、阶段输入输出和阶段提示词区域。"""
 
 
-def load_workflow(project_path: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
-    steps_path = project_path / ".workstep" / "steps.json"
-    steps = json.loads(steps_path.read_text(encoding="utf-8"))
+def load_workflow() -> tuple[list[str], dict[str, str], dict[str, str]]:
+    workflow = (
+        Workflow.select()
+        .where(Workflow.deleted == 0)
+        .order_by(Workflow.is_default.desc(), Workflow.sort_order)
+        .first()
+    )
+    if workflow is None:
+        return [], {}, {}
+    steps = json.loads(workflow.steps_json)
     nodes = steps.get("nodes", [])
     if nodes:
         keys = [str(node.get("type") or node.get("key")) for node in nodes]
@@ -150,7 +157,7 @@ def message_events(
                 "data": {
                     "id": read_id,
                     "name": "Read",
-                    "input": {"path": ".workstep/steps.json"},
+                    "input": {"operation": "get_workflow"},
                 },
                 "timestamp": timestamp + 100,
             },
@@ -172,7 +179,7 @@ def message_events(
                     "data": {
                         "id": search_id,
                         "name": "Grep",
-                        "input": {"pattern": "outputs", "path": ".workstep/steps.json"},
+                        "input": {"operation": "get_workflow_outputs"},
                     },
                     "timestamp": timestamp + 300,
                 },
@@ -224,11 +231,11 @@ def seed(project_path: Path) -> None:
     if not db_path.exists():
         raise SystemExit(f"WorkStep database not found: {db_path}")
 
-    step_keys, labels, engines = load_workflow(project_path)
-    if not step_keys:
-        raise SystemExit("Workflow contains no stages")
-
     db = init_db(str(db_path))
+    step_keys, labels, engines = load_workflow()
+    if not step_keys:
+        db.close()
+        raise SystemExit("Workflow contains no stages")
     now = int(time.time())
     created_tasks = 0
     created_messages = 0

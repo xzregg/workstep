@@ -528,6 +528,13 @@ async def test_archive_experience_streams_visible_coordinator_progress(
     assert [event["type"] for event in history["events"]] == [
         event["type"] for event in events
     ]
+    project = main.project_manager.get_project_by_id(project_id)
+    assert (
+        project.workstep_dir
+        / "event_logs"
+        / f"task-{task_id}"
+        / f"{message_id}.jsonl"
+    ).is_file()
 
 
 @pytest.mark.anyio

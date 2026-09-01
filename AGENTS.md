@@ -143,12 +143,15 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 
 会话分叉能力通过 `supports_session_fork` / `fork_session` 独立声明，不能用 resume 模拟。当前 Codex SDK 使用官方 `thread_fork`；其它没有真实原生入口的引擎声明为不支持，并由会话聊天层使用显式的跨引擎上下文交接。
 
-Pydantic AI 的 harness 扩展不暴露用户配置（引擎动态配置不含 `harness` 字段，固定按 `auto`
-处理）：引擎在 `Agent(..., capabilities=[...])` 挂载 pydantic-ai-harness 扩展（不是独立引擎、
-不替代 `AcpEngineBase` 会话/审批缝）：`TieredCompaction` + `WarnNearLimits` 自动上下文压缩，
-`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`，按 `conversation_id=session_id`
-恢复；压缩发生时经 receipts 排空产出 `compacted` 事件（`acp_events` 已声明）。
-未安装 `pydantic-ai-harness` 时回退 `message_history` 内存往返，行为不变。
+Pydantic AI 固定挂载 harness `Coder` 与 `Skills(<项目>/.workstep/skills)`；Skills 只消费
+SkillCenter 白名单镜像，项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有
+Memory。思考强度通过 Pydantic AI
+`Thinking(effort=...)` capability 传递，不再使用 `model_settings.thinking`。动态配置仍不暴露
+`harness` 字段并固定写回 `auto`；`TieredCompaction` + `WarnNearLimits` 自动上下文压缩，
+`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`（每 run 最多 30 个快照），
+按 `conversation_id=session_id` 从最近一个有快照的 run 恢复；单次 Agent run 的 Pydantic AI
+`request_limit` 固定为 100，工具参数校验重试为 3 次，既容纳长编码任务及非严格模型的参数纠错，
+又保留失控保护。压缩发生时经 receipts 排空产出 `compacted` 事件（`acp_events` 已声明）。
 
 统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
 - 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`

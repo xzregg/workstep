@@ -915,7 +915,8 @@ export default function SettingsPage({
       return next
     })
     try {
-      const result = await engineApi.test(engineId)
+      const testInput = engineFormRefs.current[engineId]?.getTestInput()
+      const result = await engineApi.test(engineId, testInput)
       setTestResults((current) => ({ ...current, [engineId]: result }))
       if (result.engine) {
         setEngines((current) => current.map((engine) =>
@@ -1574,6 +1575,12 @@ export default function SettingsPage({
                         }
                         clearEngineModelCache(engine.id)
                         onConfigurationChanged?.()
+                        // Saving invalidates backend verification. If this draft was
+                        // already tested, verify the just-saved values again so the
+                        // user does not have to repeat the same click.
+                        if (testResults[engine.id]?.success) {
+                          void testEngine(engine.id)
+                        }
                       }}
                     />
                   )}

@@ -66,7 +66,7 @@ class Template(BaseSchema):
     id: str
     name: str
     description: str
-    steps: dict  # The full steps.json content
+    steps: dict  # The full workflow definition
 
 
 @router.get("/list")

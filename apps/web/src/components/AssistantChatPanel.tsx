@@ -50,6 +50,8 @@ export interface AssistantQuickPrompt {
 
 export interface AssistantChatPanelProps {
   projectId: string
+  /** Stable WorkStep conversation id shown in message metadata. */
+  sessionId?: string | null
   title: string
   messages: AssistantChatMessage[]
   running: boolean
@@ -91,7 +93,7 @@ export interface AssistantChatPanelProps {
 
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
-  projectId, title, messages, running, stopping, input, sendError, copy,
+  projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
@@ -235,6 +237,7 @@ export default function AssistantChatPanel({
             color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
             content={message.content}
             events={message.events}
+            interactionsEnabled={message.status === 'running'}
             a2uiMessages={a2uiMessages?.[message.id]}
             onInteractionRespond={respondInteraction}
             streaming={message.status === 'running'}
@@ -262,6 +265,7 @@ export default function AssistantChatPanel({
               <MessageMetaBar
                 createdAt={message.created_at}
                 endedAt={message.ended_at}
+                sessionId={sessionId}
                 running={message.status === 'running'}
                 status={message.status === 'stopped' ? 'stopped' : message.status === 'error' ? 'failed' : undefined}
                 events={message.events}

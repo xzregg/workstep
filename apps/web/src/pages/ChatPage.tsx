@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import Button from '../components/Button'
+import ChatEngineHandoffDialog from '../components/ChatEngineHandoffDialog'
 import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
@@ -14,6 +15,7 @@ import {
   providerApi,
   type AssistantConfigInfo,
   type ChatQuickButton,
+  type ChatSessionHandoffInput,
   type ProviderInfo,
   type ChatSessionForkInput,
 } from '../api/client'
@@ -23,6 +25,7 @@ import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useI18n } from '../i18n'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
+import { requiresEngineHandoff } from '../utils/chatSessionFork'
 
 /* ══════════════════════════════════════════
    ChatPage — Codex-style session chat.
@@ -67,6 +70,10 @@ export default function ChatPage() {
   const [forkError, setForkError] = useState('')
   const [forkTargetEngine, setForkTargetEngine] = useState('')
   const [forkMessageId, setForkMessageId] = useState<string | null>(null)
+  const [handoffOpen, setHandoffOpen] = useState(false)
+  const [handingOff, setHandingOff] = useState(false)
+  const [handoffError, setHandoffError] = useState('')
+  const [handoffTargetEngine, setHandoffTargetEngine] = useState('')
   const [quickEditOpen, setQuickEditOpen] = useState(false)
   const [quickDraft, setQuickDraft] = useState<ChatQuickButton[]>([])
   const [quickError, setQuickError] = useState('')
@@ -439,6 +446,27 @@ export default function ChatPage() {
     }
   }, [sessionId, activeProject, forking, navigate, projectParam, t])
 
+  const handoffSession = useCallback(async (input: ChatSessionHandoffInput) => {
+    if (!sessionId || !activeProject?.id || handingOff) return
+    setHandingOff(true)
+    setHandoffError('')
+    try {
+      const detail = await chatSessionApi.handoff(sessionId, input)
+      setSelectedEngine(detail.engine || '')
+      setSelectedProvider(detail.provider_id || '')
+      setSelectedModel(detail.model || '')
+      setSelectedFastModel(detail.fast_model || '')
+      setSelectedVisionModel(detail.vision_model || '')
+      setSelectedThinkingEffort('')
+      setHandoffOpen(false)
+      await useChatListStore.getState().fetchSessions(activeProject.id)
+    } catch (reason) {
+      setHandoffError(reason instanceof Error ? reason.message : t('chatSession.handoffFailed'))
+    } finally {
+      setHandingOff(false)
+    }
+  }, [sessionId, activeProject?.id, handingOff, t])
+
   const renameSession = useCallback(async () => {
     const title = renameValue.trim()
     if (!title) {
@@ -565,6 +593,7 @@ export default function ChatPage() {
     <>
       <AssistantChatPanel
         projectId={activeProject.id}
+        sessionId={sessionId}
         title={sessionTitle || t('chatSession.title')}
         messages={messages}
         availableCommands={session?.availableCommands}
@@ -661,8 +690,13 @@ export default function ChatPage() {
           hint: assistantConfig ? t('chatSession.sessionHint') : '',
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
-            if (messages.length > 0 && engineId !== selectedEngine) {
-              openFork(engineId)
+            const defaultEngine = assistantConfig?.configured.engine || 'claude'
+            const sourceEngine = selectedEngine || defaultEngine
+            const targetEngine = engineId || defaultEngine
+            if (requiresEngineHandoff(sourceEngine, targetEngine, messages.length)) {
+              setHandoffTargetEngine(targetEngine)
+              setHandoffError('')
+              setHandoffOpen(true)
               return
             }
             setSelectedEngine(engineId)
@@ -731,6 +765,21 @@ export default function ChatPage() {
             setForkOpen(false)
             setForkMessageId(null)
           }
+        }}
+      />
+
+      <ChatEngineHandoffDialog
+        open={handoffOpen}
+        projectId={activeProject.id}
+        sourceEngine={selectedEngine || assistantConfig?.configured.engine || 'claude'}
+        targetEngine={handoffTargetEngine}
+        messageCount={messages.length}
+        permissionMode={permissionMode}
+        loading={handingOff}
+        error={handoffError}
+        onConfirm={(input) => void handoffSession(input)}
+        onCancel={() => {
+          if (!handingOff) setHandoffOpen(false)
         }}
       />
 

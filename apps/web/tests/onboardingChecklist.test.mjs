@@ -7,6 +7,7 @@ const layoutSource = await readFile(new URL('../src/components/Layout.tsx', impo
 const settingsSource = await readFile(new URL('../src/pages/SettingsPage.tsx', import.meta.url), 'utf8')
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
 const canvasSource = await readFile(new URL('../src/pages/CanvasEditor.tsx', import.meta.url), 'utf8')
+const onboardingSource = await readFile(new URL('../src/utils/onboarding.ts', import.meta.url), 'utf8')
 
 test('checklist derives completed steps from real resources without manual checkboxes', () => {
   assert.match(checklistSource, /providerApi\.list\(\)/)
@@ -27,9 +28,16 @@ test('each onboarding step exposes its navigation path', () => {
 
 test('onboarding actions reuse the real settings, project, workflow, and task paths', () => {
   assert.match(layoutSource, /openOnboardingSettings\('providers', 'provider-create'\)/)
+  assert.match(layoutSource, /chooseSetupMode\('local'\)/)
   assert.match(layoutSource, /buildStarterWorkflow\(onboarding\.engineId, model\)/)
   assert.match(layoutSource, /onboarding=create-task/)
   assert.match(taskListSource, /onboarding\.recordTask\(task\.id\)/)
+})
+
+test('onboarding offers provider and local Agent paths and requires an engine test', () => {
+  assert.match(checklistSource, /onboarding\.steps\.provider\.localAction/)
+  assert.match(checklistSource, /isEngineReady\(item, execution\)/)
+  assert.match(onboardingSource, /&& engine\.verified/)
 })
 
 test('the starter canvas explanation is contextual and dismissible', () => {

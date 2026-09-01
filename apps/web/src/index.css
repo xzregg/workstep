@@ -191,6 +191,7 @@
 .onboarding-step-path { margin-top: 5px; color: var(--accent); font-size: calc(11px * var(--font-scale)); line-height: 1.4; }
 .onboarding-step-copy p { margin: 6px 0 10px; color: var(--muted); font-size: calc(12px * var(--font-scale)); line-height: 1.55; }
 .onboarding-step-copy .button { min-height: 32px; }
+.onboarding-setup-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .onboarding-step-error { margin: 0 0 9px; color: var(--danger); font-size: calc(11px * var(--font-scale)); line-height: 1.45; }
 
 .onboarding-launcher {
@@ -699,7 +700,7 @@ details[open] > summary > .process-trace-chevron {
 .process-trace-thinking,
 .process-trace-tools {
   margin-left: 12px;
-  padding: 0px 0 4px 14px;
+  padding: 2px 0 2px 14px;
   border-left: 1px solid var(--border);
 }
 
@@ -712,6 +713,13 @@ details[open] > summary > .process-trace-chevron {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+/* While thought text streams, the conversation owns the only vertical scroll.
+   This avoids a continuously auto-scrolling nested region trapping wheel input. */
+.process-trace-thinking-block[data-active='true'] .process-trace-thinking {
+  max-height: none;
+  overflow: visible;
 }
 
 .process-trace-thinking:focus-visible {
@@ -1398,6 +1406,7 @@ details[open] > summary > .process-trace-chevron {
 .user-message-markdown {
   width: auto;
   white-space: pre-wrap;
+  padding: 4px 8px 4px 8px;
 }
 
 .user-message-markdown img,
@@ -1446,6 +1455,328 @@ details[open] > summary > .process-trace-chevron {
 
 .markdown-message a:hover {
   text-decoration: underline;
+}
+
+.markdown-file-link {
+  display: inline-flex;
+  align-items: baseline;
+  border-radius: 4px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--accent), transparent 58%);
+  text-underline-offset: 3px;
+  cursor: zoom-in;
+}
+
+.markdown-file-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.markdown-file-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.file-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(3px);
+  animation: file-preview-backdrop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.file-preview-dialog {
+  width: min(1080px, 94vw);
+  height: min(800px, 90dvh);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+  animation: file-preview-dialog-in 190ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.file-preview-dialog-header {
+  min-height: 54px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.file-preview-dialog-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.file-preview-dialog-heading {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.file-preview-dialog-heading strong,
+.file-preview-dialog-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-dialog-heading strong {
+  color: var(--fg);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+}
+
+.file-preview-dialog-heading span {
+  color: var(--meta);
+  font-size: calc(11px * var(--font-scale));
+}
+
+.file-preview-dialog-close {
+  flex: 0 0 auto;
+}
+
+.file-preview-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-preview {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--surface), var(--bg) 28%);
+}
+
+.code-preview-language {
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  z-index: 1;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--surface), transparent 8%);
+  color: var(--meta);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+}
+
+.code-preview-scroll {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 12px 0;
+  overflow: auto;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  scrollbar-color: var(--border) transparent;
+}
+
+.code-preview-scroll code {
+  display: table;
+  min-width: 100%;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1.62;
+  tab-size: 2;
+}
+
+.code-preview-line {
+  display: table-row;
+}
+
+.code-preview-line:hover {
+  background: color-mix(in oklab, var(--accent), transparent 95%);
+}
+
+.code-preview-line-number,
+.code-preview-line-content {
+  display: table-cell;
+  white-space: pre;
+}
+
+.code-preview-line-number {
+  width: 1%;
+  padding: 0 14px;
+  border-right: 1px solid var(--border-soft);
+  color: var(--meta);
+  text-align: right;
+  user-select: none;
+}
+
+.code-preview-line-content {
+  padding: 0 56px 0 16px;
+}
+
+.code-preview .hljs-keyword,
+.code-preview .hljs-selector-tag,
+.code-preview .hljs-literal {
+  color: var(--accent);
+}
+
+.code-preview .hljs-string,
+.code-preview .hljs-attr,
+.code-preview .hljs-template-variable {
+  color: var(--success);
+}
+
+.code-preview .hljs-number,
+.code-preview .hljs-built_in,
+.code-preview .hljs-type {
+  color: var(--warning);
+}
+
+.code-preview .hljs-comment,
+.code-preview .hljs-quote {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.code-preview .hljs-title,
+.code-preview .hljs-function,
+.code-preview .hljs-section {
+  color: var(--ai-assistant);
+}
+
+.artifact-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.artifact-open-link:hover {
+  background: var(--accent-hover);
+}
+
+.artifact-open-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.artifact-pdf-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.artifact-binary-state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.artifact-preview-loading {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+
+.artifact-binary-state strong {
+  color: var(--fg);
+  font-size: calc(14px * var(--font-scale));
+}
+
+.artifact-binary-icon {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+@keyframes file-preview-backdrop-in {
+  from { opacity: 0; }
+}
+
+@keyframes file-preview-dialog-in {
+  from {
+    opacity: 0.65;
+    transform: translateY(8px) scale(0.99);
+    filter: blur(2px);
+  }
+}
+
+@media (max-width: 640px) {
+  .file-preview-backdrop {
+    padding: 8px;
+  }
+
+  .file-preview-dialog {
+    width: 100%;
+    height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+
+  .file-preview-dialog-icon {
+    display: none;
+  }
+
+  .code-preview-line-number {
+    padding: 0 9px;
+  }
+
+  .code-preview-line-content {
+    padding-left: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-preview-backdrop,
+  .file-preview-dialog {
+    animation: none;
+  }
 }
 
 .markdown-message table {

@@ -21,7 +21,7 @@ WorkStep 是一个面向小团队 / 独立开发者的 **本地优先 (local-fir
 | 价值 | 说明 |
 |------|------|
 | **多引擎统一定义** | Claude / Codex / Hermes 三种协议（JSONL 流 / 纯文本 / JSON-RPC）统一抽象为同一套内部事件，用户不感知差异 |
-| **流程即代码** | 任意步骤、提示词、I/O 接口、连接条件均可在画布上拖拽编排，存为 `.workstep/steps.json`；内置研发模板只是起点，管道完全由用户定义 |
+| **可视化流程** | 任意步骤、提示词、I/O 接口、连接条件均可在画布上拖拽编排，持久化到项目数据库；内置研发模板只是起点，管道完全由用户定义 |
 | **本地优先 + 数据自主** | LLM 调用、会话历史、产物文件全部留在本地 |
 | **流式可干预** | SSE 推送每一步思考 / 工具调用 / 产物，中途可注入 `tool_result` 或响应权限请求 |
 
@@ -80,7 +80,7 @@ Daemon 把三种引擎的 stdout 事件统一映射为内部事件：
 
 ### 2.6 工作流管道编排
 
-步骤完全可自定义，仅内置一套**研发流程模板**作为默认值。每步骤在 `.workstep/steps.json` 中定义，包含：`key` / `label` / `color` / `prompt` / `inputs` / `outputs` / `dependsOn`（上游依赖列表，用于构建 DAG）。
+步骤完全可自定义，仅内置一套**研发流程模板**作为默认值。每步骤在项目数据库的工作流定义中包含：`key` / `label` / `color` / `prompt` / `inputs` / `outputs` / `dependsOn`（上游依赖列表，用于构建 DAG）。
 
 **内置默认模板**（研发流程，支持并行分支）：
 
@@ -118,7 +118,7 @@ Daemon 把三种引擎的 stdout 事件统一映射为内部事件：
   │    Codex/Hermes: 每轮全量重发                      │
   │    含前序阶段的对话 + 产物路径引用                   │
   ├──────────────────────────────────────────────────┤
-  │ ③ 当前阶段 prompt (from steps.json)               │
+  │ ③ 当前阶段 prompt（来自工作流定义）               │
   ├──────────────────────────────────────────────────┤
   │ ④ 最新请求（用户输入）                              │
   └──────────────────────────────────────────────────┘
@@ -167,7 +167,7 @@ spawn 子进程 → stdin 发送 → 流式输出 → SSE 推前端
    - 内容: 业务需求、用户场景、验收标准
 ```
 
-**③ 阶段专属 Prompt（来自 steps.json）**
+**③ 阶段专属 Prompt（来自工作流定义）**
 
 ```markdown
 ## 任务要求
@@ -327,7 +327,7 @@ agent stdout 事件
 | F1.4 条件路由 | 输出端口可挂条件（如"需求不清晰 → 回到需求"，否则 → UI） | P1 |
 | F1.5 并行分支 | 节点可 fan-out 到多个下游节点并发执行，汇合点等待所有分支完成后继续 | P0 |
 | F1.6 阶段编辑器 | 独立页面编辑单个阶段的 prompt / inputs / outputs / 引擎选择 | P0 |
-| F1.7 管道保存 | 导出为 `.workstep/steps.json`，下次打开恢复 | P0 |
+| F1.7 管道保存 | 保存到项目数据库，下次打开恢复 | P0 |
 | F1.8 模板选择 | 新建管道时可选择内置研发模板，或从空白画布开始 | P1 |
 
 **交互原则**（用户级约束）：编排一条新管道的核心操作不超过 3 步——① 拖入阶段节点，② 连线，③ 保存。
@@ -424,7 +424,7 @@ agent stdout 事件
 | `apps/daemon/src/acp.ts` | Hermes JSON-RPC 解析 |
 | `apps/daemon/src/langfuse-bridge.ts` | 可选 Langfuse 上报 |
 | `.od/runs/<runId>/events.jsonl` | 单 run 事件流日志（每事件一行，永久） |
-| `.workstep/steps.json` | 工作流定义 |
+| `.workstep/workstep.db` 的 `workflows` 表 | 工作流定义 |
 | `.workstep/artifacts/<stepKey>/<cardId>/` | 产物落盘 |
 
 ---
@@ -439,7 +439,7 @@ interface Card {
   title: string;
   desc: string;
   cwd: string;              // 工作目录
-  pipelineId: string;       // 关联的 .workstep/steps.json 版本
+  pipelineId: string;       // 关联的工作流版本
   currentSteps: string[];   // 当前激活的阶段 key 列表（支持并行分支）
   status: 'ready' | 'running' | 'paused' | 'stopped';
   engine: 'claude' | 'codex' | 'hermes';
@@ -452,7 +452,7 @@ interface Card {
 
 ### 5.2 阶段 (Step)
 
-来自 `.workstep/steps.json`，结构见 §2.6。
+来自项目数据库中的工作流定义，结构见 §2.6。
 
 ### 5.3 会话 (agent_sessions)
 
@@ -510,7 +510,7 @@ ORDER BY position;
 
 ```
 .workstep/
-  steps.json                      # 管道编排定义
+  workstep.db                     # 工作流、任务与消息等项目数据
   artifacts/
     req/
       <cardId>/
@@ -571,7 +571,7 @@ ORDER BY position;
 ### 7.3 可扩展
 
 - 新增 LLM 引擎 = 新增 `runtimes/defs/<name>.ts` + 对应流解析器 + `streamFormat` 枚举值
-- 新增阶段类型 = `.workstep/steps.json` 加一条，无需改代码
+- 新增阶段类型 = 在工作流画布增加一个阶段，无需改代码
 - 产物类型由 `outputs[].type` 声明，前端按 type 选预览器
 
 ### 7.4 可观测
@@ -592,8 +592,8 @@ ORDER BY position;
 
 ### 8.1 编排
 
-- [ ] 拖拽默认阶段节点能连成 DAG 管道（含并行分支），保存为 `.workstep/steps.json`
-- [ ] 重新打开应用，画布能从 `.workstep/steps.json` 恢复节点位置与连线
+- [ ] 拖拽默认阶段节点能连成 DAG 管道（含并行分支），保存到项目数据库
+- [ ] 重新打开应用，画布能从项目数据库恢复节点位置与连线
 - [ ] UI 设计完成后，前端 + 后端两个阶段同时 spawn 并发执行
 - [ ] 测试阶段在前端产物和后端产物**均落盘**后才自动启动；任一未完成时保持阻塞
 - [ ] 条件路由：PRD 含"需求不清晰"标记时，连线回到需求阶段而非进入 UI
@@ -627,7 +627,7 @@ ORDER BY position;
 | 里程碑 | 范围 | 预计 |
 |--------|------|------|
 | M1 · 引擎打通 | Daemon + 三引擎 spawn + SSE + 卡片列表 + 详情页 | 2 周 |
-| M2 · 管道编排 | 画布编辑器 + .workstep/steps.json + 阶段流转 + 产物衔接 | 2 周 |
+| M2 · 管道编排 | 画布编辑器 + 数据库工作流定义 + 阶段流转 + 产物衔接 | 2 周 |
 | M3 · 干预与回溯 | AskUserQuestion 回灌 + 会话恢复 + 产物版本 | 1 周 |
 | M4 · 安全加固 | 沙箱 + 凭证剥离 | 3 天 |
 
@@ -637,4 +637,4 @@ ORDER BY position;
 
 - 卡片跨阶段共享上下文时，Codex / Hermes 全量 transcript 的 token 成本如何控制？是否需要摘要压缩？
 - 产物衔接的格式约定（PRD → UI 阶段读什么字段？）是否需要一套约定 schema？
-- 多人场景下 `.workstep/steps.json` 如何版本化与合并？（v1 单机，搁置）
+- 多人场景下工作流如何版本化与合并？（v1 单机，搁置）

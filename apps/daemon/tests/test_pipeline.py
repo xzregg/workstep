@@ -469,6 +469,29 @@ class PipelineInteractionEngine(PipelineFakeEngine):
         return True
 
 
+class PipelinePausedAfterInteractionEngine(PipelineInteractionEngine):
+    def __init__(self):
+        super().__init__()
+        self.continue_after_response = asyncio.Event()
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        yield elicitation_request(
+            interaction_id="ask-pipeline",
+            message="请选择实现范围",
+            requested_schema={
+                "type": "object",
+                "properties": {"scope": {"type": "string"}},
+                "required": ["scope"],
+            },
+            tool_call_id="ask-pipeline",
+        )
+        await self.continue_after_response.wait()
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "answered"}},
+        )
+
+
 class PipelinePlanEngine(PipelineFakeEngine):
     async def spawn(self, prompt, cwd, **kwargs):
         yield InternalEvent(type="tool_call", data={
@@ -639,6 +662,72 @@ async def test_task_runner_pauses_and_persists_interaction_round_trip(tmp_path):
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         intervention_manager.cancel("ask-pipeline")
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_runner_persists_interaction_response_before_engine_continues(tmp_path):
+    """刷新发生在审批后、引擎结束前时，历史也必须已包含响应。"""
+    from models import init_db, Message, Task
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.intervention import intervention_manager
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "interaction-response.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Interaction response persistence",
+        cwd=str(tmp_path),
+        engine="interaction-paused",
+        created_at=int(time.time()),
+        updated_at=int(time.time()),
+    )
+    engine = PipelinePausedAfterInteractionEngine()
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["interaction-paused"] = lambda: engine
+    runner = TaskRunner(EventBus())
+    running = asyncio.create_task(runner.run_pipeline(
+        task,
+        {"steps": [{
+            "key": "a",
+            "label": "A",
+            "engine": "interaction-paused",
+            "prompt": "Do A",
+        }]},
+        tmp_path / "artifacts",
+    ))
+    try:
+        for _ in range(100):
+            if "ask-pipeline" in intervention_manager.list_pending():
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("interaction was not registered")
+
+        response = {"action": "accept", "content": {"scope": "backend"}}
+        assert intervention_manager.deliver_response("ask-pipeline", response)
+        for _ in range(100):
+            if engine.responses:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("engine did not receive interaction response")
+
+        message_events = await runner._run_db(lambda: json.loads(
+            Message.get((Message.task == task) & (Message.step_key == "a")).events_json
+        ))
+        assert [event["type"] for event in message_events] == [
+            "interaction_request",
+            "interaction_response",
+        ]
+        assert message_events[1]["data"]["response"] == response
+    finally:
+        intervention_manager.cancel("ask-pipeline")
+        engine.continue_after_response.set()
+        await running
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
         db.close()
 
 

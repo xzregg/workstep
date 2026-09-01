@@ -6,6 +6,7 @@ import type {
 } from '../api/client'
 import { useI18n } from '../i18n'
 import { resolveForkContextMode, type ForkContextMode } from '../utils/chatSessionFork'
+import ChatHandoffOptions from './ChatHandoffOptions'
 import ConfirmDialog from './ConfirmDialog'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import Input from './Input'
@@ -137,7 +138,7 @@ export default function ChatSessionForkDialog({
         fork_message_id: forkMessageId || undefined,
       })}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 18, paddingRight: 2, maxHeight: 'min(68vh, 640px)', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18, paddingTop: 18, paddingRight: 2 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           <span className="field-label">{t('chatSession.forkName')}</span>
           <Input
@@ -178,47 +179,14 @@ export default function ChatSessionForkDialog({
           </div>
         </div>
 
-        <fieldset style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-          <legend className="field-label" style={{ marginBottom: 8 }}>
-            {t('chatSession.forkContext')}
-          </legend>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {availableModes.map((item) => (
-              <label
-                key={item}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '18px minmax(0, 1fr)',
-                  gap: 10,
-                  alignItems: 'start',
-                  padding: '11px 12px',
-                  border: `1px solid ${mode === item ? 'var(--accent)' : 'var(--border-soft)'}`,
-                  borderRadius: 12,
-                  background: mode === item ? 'var(--accent-soft)' : 'var(--bg)',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="fork-context-mode"
-                  value={item}
-                  checked={mode === item}
-                  disabled={loading}
-                  onChange={() => setMode(item)}
-                  style={{ marginTop: 2 }}
-                />
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg)' }}>
-                    {t(`chatSession.forkMode_${item}`)}
-                  </strong>
-                  <span style={{ display: 'block', marginTop: 3, fontSize: 'calc(12px * var(--font-scale))', lineHeight: 1.5, color: 'var(--muted)' }}>
-                    {t(`chatSession.forkMode_${item}Hint`, { count: messageCount })}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <ChatHandoffOptions
+          modes={availableModes}
+          value={mode}
+          messageCount={messageCount}
+          disabled={loading}
+          name="fork-context-mode"
+          onChange={setMode}
+        />
 
         {error && (
           <div role="alert" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>

@@ -1,7 +1,7 @@
 /** Artifact Preview Component - shows file contents or a directory listing. */
 
 import Icon from './Icon'
-import { useState, useEffect, type ReactNode } from 'react'
+import { lazy, Suspense, useState, useEffect, type ReactNode } from 'react'
 import {
   fsApi,
   type DirectoryBrowseResult,
@@ -10,6 +10,9 @@ import {
 } from '../api/client'
 import Button from './Button'
 import { useI18n } from '../i18n'
+import Spinner from './Spinner'
+
+const CodeFilePreview = lazy(() => import('./CodeFilePreview'))
 
 interface ArtifactPreviewProps {
   path: string
@@ -194,9 +197,9 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
     </div>
   )
 
-  const fileFooter = (content_type: string, content: string) => (
+  const fileFooter = (contentType: string, fileSize: number) => (
     <div style={{ marginTop: 8, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
-      {content_type} | {(content.length / 1024).toFixed(2)} KB
+      {contentType} | {(fileSize / 1024).toFixed(2)} KB
     </div>
   )
 
@@ -293,11 +296,18 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
   }
 
   if (previewError) {
+    const fallbackUrl = projectId
+      ? fsApi.projectFileUrl(view.path, projectId)
+      : fsApi.fileUrl(view.path)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.file'))}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', gap: 12 }}>
           {t('artifact.loadFailed', { error: previewError })}
+          <a className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
+            <Icon name="external-link" size={13} />
+            {t('artifact.openFile')}
+          </a>
           {onClose && (
             <Button variant="ghost" onClick={onClose}>
               {t('common.close')}
@@ -312,12 +322,18 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
     return null
   }
 
-  const { type, content_type, content, extension = '' } = preview
+  const { type, content_type, content, file_size, extension = '' } = preview
   const isImage = type === 'image'
   const isText = type === 'text'
   const ext = extension.slice(1).toLowerCase()
   const isHtml = isText && ['html', 'htm'].includes(ext)
-  const isCode = isText && !isHtml && ['ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'cpp', 'c', 'h', 'json', 'md', 'css'].includes(ext)
+  const isCode = isText && !isHtml && [
+    'bash', 'c', 'cc', 'cpp', 'css', 'go', 'h', 'hpp', 'java', 'js', 'jsx', 'json',
+    'md', 'mjs', 'py', 'rb', 'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'xml', 'yaml', 'yml', 'zsh',
+  ].includes(ext)
+  const rawUrl = projectId
+    ? fsApi.projectFileUrl(preview.relative_path || view.path, projectId)
+    : fsApi.fileUrl(view.path)
 
   if (isImage) {
     return (
@@ -330,20 +346,19 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
           />
         </div>
-        {fileFooter(content_type, content)}
+        {fileFooter(content_type, file_size)}
       </div>
     )
   }
 
   if (isHtml) {
-    const htmlUrl = fsApi.fileUrl(view.path, projectId)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.htmlFile'), (
           <>
             <CopyTextButton content={content} />
             <a
-              href={htmlUrl}
+              href={rawUrl}
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -368,7 +383,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
           display: 'flex', flexDirection: 'column',
         }}>
           <iframe
-            src={htmlUrl}
+            src={rawUrl}
             title={t('artifact.htmlFile')}
             sandbox="allow-scripts allow-popups"
             style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', display: 'block' }}
@@ -378,16 +393,59 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
     )
   }
 
+  if (content_type === 'application/pdf') {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('artifact.pdfFile'), (
+          <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
+            <Icon name="external-link" size={13} />
+            {t('artifact.openFile')}
+          </a>
+        ))}
+        <iframe
+          className="artifact-pdf-frame"
+          src={rawUrl}
+          title={t('artifact.pdfFile')}
+        />
+        {fileFooter(content_type, file_size)}
+      </div>
+    )
+  }
+
   if (isCode) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.codeFile', { extension }), <CopyTextButton content={content} />)}
-        <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8 }}>
-          <pre style={{ padding: 16, margin: 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {content}
-          </pre>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <Suspense fallback={(
+            <div className="artifact-preview-loading">
+              <Spinner size={16} />
+              {t('common.loading')}
+            </div>
+          )}>
+            <CodeFilePreview filename={view.path} content={content} />
+          </Suspense>
         </div>
-        {fileFooter(content_type, content)}
+        {fileFooter(content_type, file_size)}
+      </div>
+    )
+  }
+
+  if (type === 'binary') {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('artifact.file'))}
+        <div className="artifact-binary-state">
+          <span className="artifact-binary-icon" aria-hidden="true">
+            <Icon name="file" size={24} strokeWidth={1.6} />
+          </span>
+          <strong>{t('artifact.cannotPreview')}</strong>
+          <span>{content_type} · {(file_size / 1024).toFixed(2)} KB</span>
+          <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
+            <Icon name="external-link" size={13} />
+            {t('artifact.openFile')}
+          </a>
+        </div>
       </div>
     )
   }
@@ -401,7 +459,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
           {content}
         </pre>
       </div>
-      {fileFooter(content_type, content)}
+      {fileFooter(content_type, file_size)}
     </div>
   )
 }

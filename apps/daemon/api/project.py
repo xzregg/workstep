@@ -126,5 +126,5 @@ async def save_steps(req: SaveStepsRequest, pid: str = Query(..., alias="project
 
 @router.get("/default-steps")
 async def get_default_steps():
-    """Return the default steps.json template."""
+    """Return the built-in default workflow definition."""
     return DEFAULT_STEPS

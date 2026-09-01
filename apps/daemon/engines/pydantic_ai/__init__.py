@@ -3,20 +3,14 @@
 Package layout:
 
 - ``engine.py`` — the PydanticAIEngine adapter (spawn / config / events).
-- ``filesystem.py`` — sandboxed file read/write for the agent's tools.
-- ``memory.py`` — durable project memory persisted as ``.workstep/MEMORY.md``.
-- ``skills.py`` — project-scoped SKILL.md discovery/loading.
+Coding, filesystem, and skills capabilities come from ``pydantic_ai_harness``.
 """
 
 from engines.pydantic_ai.engine import PydanticAIEngine
-from engines.pydantic_ai.filesystem import FileSystem
-from engines.pydantic_ai.memory import Memory
-from engines.pydantic_ai.skills import Skill, Skills
+from pydantic_ai_harness import FileSystem, Skills
 
 __all__ = [
     "PydanticAIEngine",
     "FileSystem",
-    "Memory",
-    "Skill",
     "Skills",
 ]

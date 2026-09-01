@@ -160,6 +160,35 @@ class TurnEventJournal:
         self.sync(ref)
 
     def finish(self, ref: JournalRef, event: dict[str, Any] | None = None) -> None:
+        self.sync(ref)
+        events = self._read(ref)
+        answered = {
+            str((item.get("data") or {}).get("interaction_id") or "")
+            for item in events
+            if item.get("type") == "interaction_response"
+        }
+        for item in events:
+            if item.get("type") != "interaction_request":
+                continue
+            data = item.get("data") or {}
+            interaction_id = str(data.get("interaction_id") or "")
+            if not interaction_id or interaction_id in answered:
+                continue
+            method = data.get("method")
+            response = (
+                {"outcome": {"outcome": "cancelled"}}
+                if method == "session/request_permission"
+                else {"action": "cancel"}
+            )
+            self.record(ref, {
+                "type": "interaction_response",
+                "data": {
+                    "interaction_id": interaction_id,
+                    "method": method,
+                    "response": response,
+                },
+            })
+            answered.add(interaction_id)
         if event is not None:
             self.record(ref, event, force=True)
         else:

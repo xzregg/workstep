@@ -385,6 +385,34 @@ def _assert_project_path(path: Path, project_id: str | None) -> None:
         raise HTTPException(status_code=403, detail="Path is outside the project") from exc
 
 
+def _resolve_project_file(path: str, project_id: str | None) -> Path:
+    """Resolve a user-visible file link without allowing it to escape its project."""
+    candidate = Path(path).expanduser()
+    if not project_id:
+        return candidate.resolve()
+
+    from main import project_manager
+
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project_root = project.path.resolve()
+    target = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
+    _assert_project_path(target, project_id)
+    return target
+
+
+def _project_relative_path(path: Path, project_id: str | None) -> str | None:
+    if not project_id:
+        return None
+    from main import project_manager
+
+    project = project_manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return path.relative_to(project.path.resolve()).as_posix()
+
+
 @router.get("/browse")
 async def browse_directory(path: str | None = None, project_id: str | None = Query(None)):
     """List directory contents for the file picker."""
@@ -480,11 +508,28 @@ async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
     return FileResponse(file_path, media_type=content_type or "application/octet-stream")
 
 
+@router.get("/project-raw/{project_ref}/{full_path:path}")
+async def serve_project_raw_file(
+    project_ref: str,
+    full_path: str,
+    project_id: str | None = Query(None),
+    absolute: bool = Query(False),
+):
+    """Serve a project file from a stable URL so HTML relative assets still work."""
+    requested_path = f"/{full_path}" if absolute else full_path
+    file_path = _resolve_project_file(requested_path, project_id or project_ref)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+    content_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+
+
 @router.get("/preview")
 async def preview_file(path: str, project_id: str | None = Query(None)):
     """Preview a file content for display."""
-    file_path = Path(path).expanduser().resolve()
-    _assert_project_path(file_path, project_id)
+    file_path = _resolve_project_file(path, project_id)
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
@@ -494,6 +539,7 @@ async def preview_file(path: str, project_id: str | None = Query(None)):
 
     content_type, _ = mimetypes.guess_type(str(file_path))
     file_size = file_path.stat().st_size
+    relative_path = _project_relative_path(file_path, project_id)
     max_size = 1024 * 1024
     if file_size > max_size:
         raise HTTPException(
@@ -511,6 +557,8 @@ async def preview_file(path: str, project_id: str | None = Query(None)):
                 "content_type": content_type,
                 "content": f"data:{content_type};base64,{encoded}",
                 "file_size": file_size,
+                "extension": file_path.suffix,
+                "relative_path": relative_path,
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read image: {str(e)}")
@@ -523,6 +571,7 @@ async def preview_file(path: str, project_id: str | None = Query(None)):
             "content": content,
             "file_size": file_size,
             "extension": file_path.suffix,
+            "relative_path": relative_path,
         }
     except UnicodeDecodeError:
         import base64
@@ -533,6 +582,8 @@ async def preview_file(path: str, project_id: str | None = Query(None)):
             "content_type": content_type or "application/octet-stream",
             "content": encoded,
             "file_size": file_size,
+            "extension": file_path.suffix,
+            "relative_path": relative_path,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")

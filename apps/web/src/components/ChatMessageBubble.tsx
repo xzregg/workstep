@@ -78,6 +78,7 @@ export interface ChatMessageBubbleProps {
     interactionId: string,
     response: Record<string, unknown>,
   ) => Promise<void>
+  interactionsEnabled?: boolean
   /** Bubble background: 'surface' (default) or 'bg' (+ border). */
   variant?: 'surface' | 'bg'
   /** Extra props for the root element (ref / data attributes). */
@@ -103,6 +104,7 @@ export default function ChatMessageBubble({
   onEdit,
   onSendToInput,
   onA2uiAction,
+  interactionsEnabled = true,
   events = [],
   a2uiMessages,
   onInteractionRespond,
@@ -112,7 +114,7 @@ export default function ChatMessageBubble({
   const { t } = useI18n()
   const isUser = role === 'user'
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
-  const interactions = pendingInteractionItems(events)
+  const interactions = pendingInteractionItems(events, interactionsEnabled)
   const plan = latestPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
     event.type === 'tool_use' || event.type === 'tool_result'

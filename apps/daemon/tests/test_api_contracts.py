@@ -649,7 +649,7 @@ async def test_delete_project_only_unregisters_it(api_context):
     assert deleted.status_code == 200
     assert deleted.json() == {"deleted": True}
     assert (project_dir / ".workstep" / "workstep.db").exists()
-    assert (project_dir / ".workstep" / "steps.json").exists()
+    assert not (project_dir / ".workstep" / "steps.json").exists()
     listed = await client.get("/api/project/list")
     assert listed.json() == {"projects": []}
     missing = await client.delete(f"/api/project/{project_id}")
@@ -1374,6 +1374,50 @@ async def test_engine_test_runs_a_minimal_prompt(api_context, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
+    client, _ = api_context
+    import api.engine as engine_api
+    from engines.core.base import EngineTestResult
+
+    class FakeEngine:
+        received_overrides = None
+
+        async def test_connection(
+            self,
+            cwd,
+            timeout_seconds,
+            config_overrides=None,
+        ):
+            self.received_overrides = config_overrides
+            return EngineTestResult(True, "连接和对话测试通过", 12)
+
+    fake = FakeEngine()
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+
+    response = await client.post(
+        "/api/engine/test",
+        json={
+            "engine_id": "codex",
+            "timeout_seconds": 3,
+            "values": {
+                "provider_id": "provider-draft",
+                "sandbox_mode": "read-only",
+            },
+            "clear": {"approval_policy": True},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert fake.received_overrides == {
+        "provider_id": "provider-draft",
+        "sandbox_mode": "read-only",
+        "__workstep_clear_keys__": ["approval_policy"],
+    }
+
+
+@pytest.mark.anyio
 async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     client, _ = api_context
     import api.engine as engine_api
@@ -1883,6 +1927,56 @@ async def test_file_browser_and_preview_cover_text_image_binary_and_size_limit(
         "/api/fs/preview", params={"path": str(large_file)}
     )
     assert too_large.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_project_file_preview_resolves_relative_paths_and_scopes_raw_files(
+    api_context,
+):
+    """Message file links stay relative while every read remains project-scoped."""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "message-preview-project"
+    docs_dir = project_dir / "docs"
+    docs_dir.mkdir(parents=True)
+    (docs_dir / "index.html").write_text(
+        '<link rel="stylesheet" href="./theme.css"><h1>Preview</h1>'
+    )
+    (docs_dir / "theme.css").write_text("h1 { color: blue; }")
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("secret")
+
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    preview = await client.get(
+        "/api/fs/preview",
+        params={"path": "docs/index.html", "project_id": project_id},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["extension"] == ".html"
+    assert preview.json()["relative_path"] == "docs/index.html"
+    assert "<h1>Preview</h1>" in preview.json()["content"]
+
+    html = await client.get(
+        f"/api/fs/project-raw/{project_id}/docs/index.html",
+    )
+    assert html.status_code == 200
+    assert html.headers["content-type"].startswith("text/html")
+
+    stylesheet = await client.get(
+        f"/api/fs/project-raw/{project_id}/docs/theme.css",
+    )
+    assert stylesheet.status_code == 200
+    assert stylesheet.text == "h1 { color: blue; }"
+
+    escaped = await client.get(
+        "/api/fs/preview",
+        params={"path": str(outside_file), "project_id": project_id},
+    )
+    assert escaped.status_code == 403
 
 
 @pytest.mark.anyio

@@ -933,6 +933,53 @@ async def test_proxy_middleware_forwards_existing_api_when_project_is_remote():
     assert forwarded.query["project_id"] == "remote:abc"
 
 
+async def test_proxy_middleware_keeps_remote_scope_for_html_relative_assets():
+    config = MemoryConfig()
+    config.set(
+        "remote_projects",
+        [{
+            "id": "remote:abc",
+            "host_project_id": "owner-project",
+            "name": "demo",
+            "endpoint": "ws://host/ws/remote-project",
+        }],
+    )
+    registry = RemoteProjectRegistry(config)
+
+    class FakeManager:
+        def __init__(self):
+            self.requests = []
+
+        async def request(self, project_id, request):
+            self.requests.append((project_id, request))
+            return RemoteHttpResponse(
+                request_id=request.request_id,
+                status=200,
+                headers={"content-type": "text/css"},
+                body=b"body { color: blue; }",
+            )
+
+    manager = FakeManager()
+    app = FastAPI()
+    app.add_middleware(
+        RemoteProjectProxyMiddleware,
+        registry=registry,
+        client_manager=manager,
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            "/api/fs/project-raw/remote%3Aabc/docs/theme.css"
+        )
+
+    assert response.status_code == 200
+    project_id, forwarded = manager.requests[0]
+    assert project_id == "remote:abc"
+    assert forwarded.path == "/api/fs/project-raw/remote:abc/docs/theme.css"
+
+
 async def test_client_manager_reuses_authenticated_socket_for_rpc():
     config = MemoryConfig()
     access = RemoteAccessService(config)

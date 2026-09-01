@@ -4,6 +4,7 @@ import {
   engineApi,
   type EngineConfigField,
   type EngineConfigPayload,
+  type EngineConfigSaveInput,
   type EngineConfigSchema,
 } from '../api/client'
 import Button from './Button'
@@ -15,6 +16,7 @@ import { useI18n } from '../i18n'
 
 export interface EngineConfigFormHandle {
   save: () => void
+  getTestInput: () => EngineConfigSaveInput
 }
 
 interface Props {
@@ -169,7 +171,10 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     }
   })
 
-  useImperativeHandle(ref, () => ({ save }))
+  useImperativeHandle(ref, () => ({
+    save,
+    getTestInput: () => ({ values: { ...values }, clear: { ...clearKeys } }),
+  }))
 
   if (!config || fields.length === 0) return null
 

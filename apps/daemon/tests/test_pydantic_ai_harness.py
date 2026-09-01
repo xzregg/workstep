@@ -36,6 +36,42 @@ async def test_harness_continue_history_none_without_snapshot(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_harness_continue_history_skips_new_run_without_snapshot(tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from pydantic_ai_harness.step_persistence import (
+        ContinuableSnapshot,
+        RunRecord,
+    )
+
+    engine = PydanticAIEngine()
+    store = engine._harness_store(tmp_path)
+    started_at = datetime.now(UTC)
+    await store.register_run(RunRecord(
+        run_id="workstep-with-history",
+        conversation_id="sess-1",
+        started_at=started_at,
+    ))
+    await store.save_snapshot(ContinuableSnapshot(
+        run_id="workstep-with-history",
+        step_index=1,
+        conversation_id="sess-1",
+        messages=[ModelRequest(parts=[UserPromptPart(content="previous work")])],
+    ))
+    await store.register_run(RunRecord(
+        run_id="workstep-empty-retry",
+        conversation_id="sess-1",
+        started_at=started_at + timedelta(seconds=1),
+    ))
+
+    history = await engine._harness_continue_history(tmp_path, "sess-1")
+
+    assert history is not None
+    assert history[0].parts[0].content == "previous work"
+
+
+@pytest.mark.anyio
 async def test_compaction_receipt_emits_compacted_event():
     from pydantic_ai_harness.compaction._receipts import (
         ReceiptInfo,
@@ -98,8 +134,6 @@ async def test_tiered_compaction_triggers_once_when_history_crosses_small_window
 
 @pytest.mark.anyio
 async def test_run_agent_passes_conversation_id_when_harness_on(monkeypatch, tmp_path):
-    from pydantic_ai.models.test import TestModel
-
     captured = {}
 
     class FakeResult:
@@ -127,15 +161,126 @@ async def test_run_agent_passes_conversation_id_when_harness_on(monkeypatch, tmp
         prompt="问题",
         cwd=str(tmp_path),
         add_dirs=None,
-        model=TestModel(),
+        model=None,
         on_event=lambda event: None,
         session_id="sess-1",
     )
     assert captured["conversation_id"] == "sess-1"
 
 
+@pytest.mark.anyio
+async def test_run_agent_uses_harness_capabilities_without_private_memory(
+    monkeypatch,
+    tmp_path,
+):
+    skill_dir = tmp_path / ".workstep" / "skills" / "demo"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: Demo skill\n---\n\nUse the demo skill.\n",
+        encoding="utf-8",
+    )
+    captured = {}
+
+    class FakeResult:
+        usage = None
+
+        def all_messages(self):
+            return []
+
+    async def fake_stream(
+        self,
+        agent,
+        *,
+        prompt,
+        on_event,
+        message_history=None,
+        model_settings=None,
+        conversation_id=None,
+    ):
+        captured["agent"] = agent
+        captured["capabilities"] = agent.root_capability.capabilities
+        captured["model_settings"] = model_settings
+        return FakeResult()
+
+    monkeypatch.setattr(PydanticAIEngine, "_stream_agent_run", fake_stream)
+    engine = PydanticAIEngine()
+    await engine._run_agent(
+        prompt="问题",
+        cwd=str(tmp_path),
+        add_dirs=None,
+        model=None,
+        on_event=lambda event: None,
+        session_id="sess-1",
+        thinking_effort="high",
+    )
+
+    capabilities = captured["capabilities"]
+    capability_names = [type(capability).__name__ for capability in capabilities]
+    assert capability_names[2:12] == [
+        "FileSystem",
+        "Shell",
+        "RepoContext",
+        "Planning",
+        "SubAgents",
+        "ClearToolResults",
+        "WarnNearLimits",
+        "ToolOutputLimits",
+        "Skills",
+        "Thinking",
+    ]
+    assert "WebSearch" not in capability_names
+    assert "Memory" not in capability_names
+    assert capabilities[2].root_dir == tmp_path
+    assert capabilities[10].directories == (tmp_path / ".workstep" / "skills",)
+    assert capabilities[11].effort == "high"
+    assert captured["agent"]._max_tool_retries == 3
+    assert captured["agent"]._max_output_retries == 1
+    assert captured["model_settings"] is None
+
+
 def test_acp_events_declares_compacted():
     assert "compacted" in PydanticAIEngine().acp_events
+
+
+@pytest.mark.anyio
+async def test_stream_agent_run_allows_more_than_fifty_model_requests():
+    from pydantic_ai import Agent
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    requests = 0
+
+    async def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests <= 50:
+            yield {
+                0: DeltaToolCall(
+                    name="continue_work",
+                    json_args="{}",
+                    tool_call_id=f"continue-{requests}",
+                )
+            }
+        else:
+            yield "done"
+
+    agent = Agent(FunctionModel(stream_function=model))
+
+    @agent.tool_plain
+    def continue_work() -> str:
+        return "continue"
+
+    async def ignore_event(event):
+        return None
+
+    engine = PydanticAIEngine()
+    result = await engine._stream_agent_run(
+        agent,
+        prompt="complete a long coding task",
+        on_event=ignore_event,
+    )
+
+    assert requests == 51
+    assert result.output == "done"
 
 
 @pytest.mark.anyio

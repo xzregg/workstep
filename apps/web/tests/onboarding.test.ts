@@ -30,6 +30,7 @@ test('onboarding state round-trips and rejects malformed persisted values', () =
     status: 'active',
     currentStep: 'workflow',
     collapsed: true,
+    setupMode: 'provider',
     providerId: 'provider-1',
     engineId: 'pydantic_ai',
     projectId: 'project-1',
@@ -46,6 +47,7 @@ test('onboarding state round-trips and rejects malformed persisted values', () =
     status: 'dismissed',
     currentStep: 'provider',
     collapsed: false,
+    setupMode: null,
     providerId: null,
     engineId: null,
     projectId: null,
@@ -73,14 +75,27 @@ test('provider readiness requires a usable configuration', () => {
 
 })
 
-test('engine readiness accepts any explicitly saved usable default engine', () => {
+test('engine readiness requires an explicitly saved and tested default engine', () => {
   const engine = {
-    id: 'pydantic_ai', installed: true, configured: true,
+    id: 'pydantic_ai', installed: true, configured: true, verified: true,
     supports_provider: true, provider_protocols: ['openai_responses'],
   }
   assert.equal(isEngineReady(engine, { engine: 'pydantic_ai' }), true)
   assert.equal(isEngineReady({ ...engine, configured: false }, { engine: 'pydantic_ai' }), false)
+  assert.equal(isEngineReady({ ...engine, verified: false }, { engine: 'pydantic_ai' }), false)
   assert.equal(isEngineReady(engine, { engine: 'codex_sdk' }), false)
+})
+
+test('onboarding can choose either a provider or a local Agent setup path', () => {
+  resetOnboardingStoreForTests()
+  useOnboardingStore.getState().chooseSetupMode('local')
+  assert.equal(useOnboardingStore.getState().setupMode, 'local')
+  assert.equal(useOnboardingStore.getState().providerId, null)
+  assert.equal(useOnboardingStore.getState().currentStep, 'engine')
+
+  useOnboardingStore.getState().chooseSetupMode('provider')
+  assert.equal(useOnboardingStore.getState().setupMode, 'provider')
+  assert.equal(useOnboardingStore.getState().currentStep, 'provider')
 })
 
 test('starter workflow connects analysis output to execution input with one engine', () => {

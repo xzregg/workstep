@@ -197,6 +197,18 @@ test('drops answered interaction cards so they disappear after acting', () => {
   assert.equal(items[0].request.interaction_id, 'ask-1')
 })
 
+test('drops unanswered interaction cards after their message stops', () => {
+  const items = pendingInteractionItems(
+    [{ type: 'interaction_request', data: {
+      interaction_id: 'permission-stopped', method: 'session/request_permission',
+      tool_call: { tool_call_id: 'tool-stopped' }, options: [],
+    } }],
+    false,
+  )
+
+  assert.deepEqual(items, [])
+})
+
 test('preserves persisted interaction requests across partial live updates', () => {
   const events = mergeInteractionEvents(
     [{ type: 'interaction_request', data: {

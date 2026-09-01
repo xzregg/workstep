@@ -4049,3 +4049,18 @@ async def test_claude_agent_sdk_injection_keeps_session_alive(monkeypatch):
     ]
     assert len(delivered) == 1
     assert delivered[0].data["message_id"] == "live-1"
+
+def test_config_overrides_can_clear_a_saved_value_for_a_draft_test():
+    effective = CodexEngine.merge_config_overrides(
+        {"approval_policy": "on-request", "sandbox_mode": "workspace-write"},
+        {
+            "approval_policy": "",
+            "sandbox_mode": "read-only",
+            "__workstep_clear_keys__": ["approval_policy"],
+        },
+    )
+
+    assert effective == {
+        "approval_policy": "",
+        "sandbox_mode": "read-only",
+    }

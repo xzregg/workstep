@@ -8,7 +8,7 @@ from models import Task, TaskStep, Message
 project_manager.register('/tmp/workstep-example')
 project_manager.bind_project('/tmp/workstep-example')
 
-# Read actual step keys from steps.json
+# Read actual step keys from the project's default workflow cache.
 proj = project_manager.get_project('/tmp/workstep-example')
 steps_data = proj.steps
 if steps_data.get('nodes'):

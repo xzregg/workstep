@@ -147,6 +147,13 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [dragProjectId, setDragProjectId] = useState<string | null>(null)
   const [dropProjectId, setDropProjectId] = useState<string | null>(null)
   const sessions = useChatListStore((s) => s.sessions)
+  const selectedIds = useChatListStore((s) => s.selectedIds)
+  const bulkDeleting = useChatListStore((s) => s.bulkDeleting)
+  const handleSelect = useChatListStore((s) => s.handleSelect)
+  const clearSelection = useChatListStore((s) => s.clearSelection)
+  const bulkRemove = useChatListStore((s) => s.bulkRemove)
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
+  const [bulkDeleteError, setBulkDeleteError] = useState('')
   const runningChatSessions = useChatSessionStore(
     useShallow((s) =>
       Object.fromEntries(
@@ -404,6 +411,28 @@ export default function Layout({ onSelectProject, children }: Props) {
     setExpandedProjectId(p.id)
     setActiveProject(p)
     onSelectProject(p)
+  }
+
+  // Escape key clears multi-select
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && useChatListStore.getState().selectedIds.size > 0) {
+        clearSelection()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [clearSelection])
+
+  const handleBulkDelete = async () => {
+    if (!activeProject?.id) return
+    try {
+      await bulkRemove(activeProject.id)
+      setBulkDeleteError('')
+    } catch {
+      setBulkDeleteError(t('chatSession.deleteFailed'))
+    }
+    setBulkDeleteConfirm(false)
   }
 
   const openMoreMenu = (e: React.MouseEvent, kind: 'project' | 'workflow', id: string) => {
@@ -1201,27 +1230,67 @@ export default function Layout({ onSelectProject, children }: Props) {
                     </div>
                     {open && (
                     <div style={{ margin: '0 12px 6px 28px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {/* Bulk action bar (visible when 2+ sessions selected) */}
+                      {selectedIds.size >= 2 && (
+                        <div
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '4px 8px', marginBottom: 2,
+                            background: 'var(--accent-light)', borderRadius: 6,
+                            fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--accent)',
+                          }}
+                        >
+                          <span style={{ flex: 1 }}>{t('chatSession.selectedCount', { count: selectedIds.size })}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={bulkDeleting}
+                            disabled={bulkDeleting}
+                            onClick={(e) => { e.stopPropagation(); setBulkDeleteError(''); setBulkDeleteConfirm(true) }}
+                            title={t('chatSession.bulkDelete')}
+                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--danger)', flexShrink: 0 }}
+                          >
+                            <Icon name="trash" size={10} strokeWidth={2} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); clearSelection() }}
+                            title={t('chatSession.deselectAll')}
+                            style={{ width: 20, height: 20, padding: '4px', borderRadius: 4, background: 'transparent', color: 'var(--meta)', flexShrink: 0 }}
+                          >
+                            <Icon name="x" size={10} strokeWidth={2} />
+                          </Button>
+                        </div>
+                      )}
                       {sessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = !!runningChatSessions[session.id]
+                        const isSelected = selectedIds.has(session.id)
+                        const isMultiSelect = selectedIds.size > 1
                         return (
                         <div
                           key={session.id}
                           onClick={(e) => {
                             e.stopPropagation()
                             if (renameSessionId === session.id) return
-                            useSidebarActivityStore.getState().markSessionRead(session.id)
-                            navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`)
+                            handleSelect(session.id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })
+                            // Only navigate on plain click (no modifiers)
+                            if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
+                              useSidebarActivityStore.getState().markSessionRead(session.id)
+                              navigate(`/chat?project=${encodeURIComponent(p.name)}&session=${encodeURIComponent(session.id)}`)
+                            }
                           }}
                           onDoubleClick={(e) => {
                             e.stopPropagation()
+                            clearSelection()
                             setRenameSessionId(session.id)
                             setRenameSessionValue(session.title)
                           }}
                           onContextMenu={(e) => openSessionMenu(e, session.id, session.title)}
                           className="ws-row"
-                          draggable={renameSessionId !== session.id}
+                          draggable={renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
                             e.stopPropagation()
                             e.dataTransfer.effectAllowed = 'move'
@@ -1229,6 +1298,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setDragSessionId(session.id)
                           }}
                           onDragOver={(e) => {
+                            if (isMultiSelect) return
                             e.preventDefault()
                             e.dataTransfer.dropEffect = 'move'
                             if (dropSessionId !== session.id) setDropSessionId(session.id)
@@ -1238,6 +1308,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             if (dropSessionId === session.id) setDropSessionId(null)
                           }}
                           onDrop={(e) => {
+                            if (isMultiSelect) return
                             e.preventDefault()
                             e.stopPropagation()
                             const dragId = dragSessionId || e.dataTransfer.getData('text/plain')
@@ -1257,20 +1328,36 @@ export default function Layout({ onSelectProject, children }: Props) {
                             }
                           }}
                           onDragEnd={() => { setDragSessionId(null); setDropSessionId(null) }}
-                          title={t('layout.dragToReorder')}
+                          title={isMultiSelect ? t('chatSession.multiSelectHint') : t('layout.dragToReorder')}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '3px 8px', borderRadius: 6,
                             cursor: 'pointer', fontSize: 'calc(12.8px * var(--font-scale))',
-                            color: location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
+                            color: isSelected
+                              ? 'var(--accent)'
+                              : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent)' : 'var(--meta)',
                             background: isDropTarget
                               ? 'var(--accent-light)'
+                              : isSelected ? 'var(--accent-light)'
                               : location.pathname === '/chat' && activeSessionId === session.id ? 'var(--accent-light)' : 'transparent',
                             opacity: isDragSource ? 0.4 : 1,
-                            outline: isDropTarget ? '1px solid var(--accent)' : 'none',
+                            outline: isDropTarget || isSelected ? '1px solid var(--accent)' : 'none',
                             overflow: 'hidden',
                           }}
                         >
+                          {/* Checkbox indicator (always shown in multi-select mode) */}
+                          {isMultiSelect && (
+                            <span
+                              style={{
+                                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                                border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                                background: isSelected ? 'var(--accent)' : 'transparent',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              {isSelected && <Icon name="check" size={9} strokeWidth={3} style={{ color: 'var(--bg)' }} />}
+                            </span>
+                          )}
                           {sessionRunning ? (
                             <span
                               className="task-status-spinner"
@@ -1612,7 +1699,14 @@ export default function Layout({ onSelectProject, children }: Props) {
         refreshToken={onboardingRefreshToken}
         creatingWorkflow={onboardingWorkflowBusy}
         error={onboardingError}
-        onOpenProvider={() => openOnboardingSettings('providers', 'provider-create')}
+        onOpenProvider={() => {
+          useOnboardingStore.getState().chooseSetupMode('provider')
+          openOnboardingSettings('providers', 'provider-create')
+        }}
+        onOpenLocalAgent={() => {
+          useOnboardingStore.getState().chooseSetupMode('local')
+          openOnboardingSettings('engines', 'execution-engine')
+        }}
         onOpenEngine={() => openOnboardingSettings('engines', 'execution-engine')}
         onOpenProject={openOnboardingProject}
         onCreateWorkflow={() => void createOnboardingWorkflow()}
@@ -1919,6 +2013,24 @@ export default function Layout({ onSelectProject, children }: Props) {
         }}
         onCancel={() => setPendingWfSwitch(null)}
       />
+
+      {/* Bulk delete confirmation */}
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        title={t('chatSession.bulkDeleteTitle')}
+        message={t('chatSession.bulkDeleteMessage', { count: selectedIds.size })}
+        confirmText={t('common.delete')}
+        danger
+        loading={bulkDeleting}
+        onConfirm={() => void handleBulkDelete()}
+        onCancel={() => { setBulkDeleteConfirm(false); setBulkDeleteError('') }}
+      >
+        {bulkDeleteError && (
+          <div style={{ padding: '8px 0', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>
+            {bulkDeleteError}
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

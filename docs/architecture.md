@@ -34,7 +34,7 @@ WebSocket clients may subscribe by task, session, status-only task, or assistant
 ┌───────────────▼──────────────────────────────────┐
 │ Daemon（FastAPI + Peewee）                        │
 │  ┌─────────────┐  ┌──────────────┐                │
-│  │ TaskRunner  │  │ DAGScheduler │  ← steps.json  │
+│  │ TaskRunner  │  │ DAGScheduler │  ← workflows 表 │
 │  │ 阶段执行     │  │ DAG 调度      │                │
 │  └──────┬──────┘  └──────────────┘                │
 │  ┌──────▼──────────────────────────────────────┐  │
@@ -77,9 +77,9 @@ flowchart LR
 
 除研发流程外，内置还有写作、数据分析、财务、HR、法务等模板（见 `apps/daemon/data/templates/`）；用户可在画布上自由增删、重排阶段，或从空白画布自定义任意管道。
 
-### steps.json 定义
+### 工作流定义
 
-每个项目的管道定义在 `.workstep/steps.json`：
+每个项目的管道定义持久化在 `.workstep/workstep.db` 的 `workflows` 表中，执行时编译为以下结构：
 
 ```json
 {
@@ -166,11 +166,12 @@ flowchart LR
 
 ### 内置 Pydantic 引擎（`pydantic_ai`）
 
-`pydantic_ai` 是进程内引擎：无需子进程，直接用 Pydantic AI 加载已配置的 Provider（Anthropic / OpenAI 兼容），通过 `apps/daemon/engines/pydantic_ai/` 包提供沙箱工具：
+`pydantic_ai` 是进程内引擎：无需子进程，直接用 Pydantic AI 加载已配置的 Provider（Anthropic / OpenAI 兼容），并挂载 Pydantic AI / Harness 原生能力：
 
-- `engines.pydantic_ai.filesystem.FileSystem` — 受允许根目录限制的沙箱文件系统：`list_files` / `read_file` / `search_files` / `write_file` / `edit_file`（支持修改代码，路径逃逸会拒绝）
-- `engines.pydantic_ai.memory.Memory` — 项目记忆，持久化为 `.workstep/MEMORY.md`（`## <key>` 小节，字符串存原文、结构化值存 JSON 代码块）。阶段执行时由流程引擎读取该文件，把内容注入阶段提示词的「项目记忆」区块（所有引擎一致，agent 只读参考，不再引导 agent 自行读写）；前端「编辑记忆」走 `/api/fs/memory`
-- `engines.pydantic_ai.skills.Skills` — 技能注册表，只扫描当前项目下的 `.claude/skills`、`.codex/skills`、`.workstep/skills`（不扫描 home 目录），读取 `SKILL.md`（frontmatter name/description + 正文），工具 `list_skills` / `load_skill`
+- `Coder(<项目根>)` — 组合 Harness `FileSystem`、Shell、仓库上下文、计划与子 Agent 能力。
+- 项目记忆以 `.workstep/MEMORY.md` 为唯一来源，由流程引擎只读注入，前端编辑入口为 `/api/fs/memory`；不挂载 Harness 私有 Memory。
+- `Skills(<项目根>/.workstep/skills)` — 仅加载 SkillCenter 为当前项目生成的白名单镜像，不直接扫描 home 或各引擎的个人技能目录。
+- `Thinking(effort=...)` — 接收 `thinking_effort`，不再写入 `model_settings.thinking`。
 
 引擎指令会自动附加项目根目录的 `agents.md` / `AGENTS.md`，让代理遵守仓库约定。引擎实现在 `apps/daemon/engines/pydantic_ai/engine.py`。设置页「执行引擎 → Pydantic AI」可查看该项目实际加载的技能与配置的 MCP 服务器（`GET /api/engine/pydantic_ai/inspect`）。
 
@@ -303,7 +304,7 @@ flowchart TD
 └── <工作流>/                     # 流程（task.workflow_id，缺省 default）
     └── <任务>/                   # 任务 ID
         └── <阶段>/               # 阶段 key（req / ui / frontend / ...）
-            └── <产物名>/         # 输出点（steps.json 中声明的 outputs 名称）
+            └── <产物名>/         # 输出点（工作流中声明的 outputs 名称）
                 └── xxx.md        # 实际产物文件
 ```
 
@@ -319,7 +320,7 @@ flowchart TD
 │    "以下文件已就绪: .workstep/artifacts/req/…"    │
 │    （从 dependsOn 阶段目录自动扫描生成）           │
 ├────────────────────────────────────────────────┤
-│ ③ 阶段要求（steps.json 的 prompt 字段）           │
+│ ③ 阶段要求（工作流的 prompt 字段）                │
 ├────────────────────────────────────────────────┤
 │ ④ 任务说明 / 用户补充输入                         │
 ├────────────────────────────────────────────────┤
