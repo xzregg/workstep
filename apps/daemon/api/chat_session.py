@@ -66,6 +66,11 @@ class ChatMessageRequest(BaseSchema):
     plan_mode: bool | None = None
 
 
+class ChatLiveMessageRequest(BaseSchema):
+    project_id: str
+    content: str
+
+
 class SystemPromptRequest(BaseSchema):
     project_id: str
     prompt: str
@@ -394,3 +399,16 @@ async def bulk_delete_sessions(
 async def stop_session(session_id: str, project_id: str | None = Query(None)):
     """Stop the running turn of one chat session."""
     return {"stopped": await _module().stop_current(session_id)}
+
+
+@router.post("/{session_id}/live-message")
+async def send_live_message(session_id: str, req: ChatLiveMessageRequest):
+    """Insert a user message into the session's currently running turn."""
+    try:
+        return await _module().send_live_message(
+            session_id,
+            req.content,
+            project_id=req.project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc

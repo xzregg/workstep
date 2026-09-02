@@ -776,6 +776,14 @@ export const chatSessionApi = {
         plan_mode: options.plan_mode || undefined,
       }),
     }),
+  sendLiveMessage: (sessionId: string, projectId: string, content: string) =>
+    request<{ message_id: string; status: string; created_at: string }>(
+      `/chat-sessions/${encodeURIComponent(sessionId)}/live-message`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, content }),
+      },
+    ),
   stop: (sessionId: string, projectId: string) =>
     request<{ stopped: boolean }>(
       `/chat-sessions/${encodeURIComponent(sessionId)}/stop?project_id=${encodeURIComponent(projectId)}`,

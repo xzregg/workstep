@@ -1292,6 +1292,27 @@ details[open] > summary > .process-trace-chevron {
   overflow-wrap: anywhere;
 }
 
+.subagent-last-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.subagent-last-tool code {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale));
+}
+
 /* ── Streaming Markdown messages ── */
 
 .markdown-message {
@@ -2116,6 +2137,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 .chat-input-text-segment {
   display: block;
+  border-radius: 0px;
   width: 100%;
   min-height: 18px;
   padding: 0;

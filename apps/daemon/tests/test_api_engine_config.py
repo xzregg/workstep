@@ -28,7 +28,9 @@ class MemoryEngineConfigStore:
     def __init__(self):
         self.providers: list[dict] = []
         self.provider_models: dict[str, dict] = {}
-        self.pydantic_ai_config = {"provider_id": "", "model": "", "mcp_servers": []}
+        self.pydantic_ai_config = {
+            "provider_id": "", "model": "", "mcp_servers": [], "sandbox": "workspace-write",
+        }
         self.deepseek_harness_config = {
             "provider_id": "",
             "model": "deepseek-v4-flash",
@@ -105,14 +107,16 @@ class MemoryEngineConfigStore:
         if not config.get("model"):
             config["model"] = self.get_engine_default_model("pydantic_ai") or ""
         config.setdefault("harness", "auto")
+        config.setdefault("sandbox", "workspace-write")
         return config
 
-    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None, harness="auto"):
+    def set_pydantic_ai_engine_config(self, *, provider_id, model, mcp_servers=None, harness="auto", sandbox="workspace-write"):
         self.pydantic_ai_config = {
             "provider_id": provider_id,
             "model": model,
             "mcp_servers": list(mcp_servers or []),
             "harness": harness,
+            "sandbox": sandbox,
         }
         self.default_models["pydantic_ai"] = model
 
@@ -833,12 +837,13 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
     config = pydantic["config"]
     assert config is not None
     fields = {field["key"]: field for field in config["fields"]}
-    assert list(fields) == ["provider_id"]
+    assert list(fields) == ["provider_id", "sandbox"]
     assert fields["provider_id"]["type"] == "select"
     option_values = [option["value"] for option in fields["provider_id"]["options"]]
     assert option_values == ["prov_1"]
     assert config["values"] == {
         "provider_id": "",
+        "sandbox": "workspace-write",
     }
     assert config["secrets"] == {}
 
@@ -863,6 +868,7 @@ async def test_pydantic_ai_engine_config_saves_provider_id(engine_client):
     assert store.pydantic_ai_config["provider_id"] == provider["id"]
     assert body["values"] == {
         "provider_id": provider["id"],
+        "sandbox": "workspace-write",
     }
     assert body["secrets"] == {}
     assert body["configured"] is False  # model not set yet
@@ -1100,6 +1106,76 @@ def test_pydantic_ai_builds_model_from_provider():
 
 
 @pytest.mark.anyio
+async def test_pydantic_ai_run_simple_does_not_print_provider_request_in_dev(
+    monkeypatch,
+    capsys,
+):
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    store = MemoryEngineConfigStore()
+    provider = _add_provider(store, name="主账号")
+    store.set_pydantic_ai_engine_config(
+        provider_id=provider["id"],
+        model="agent-model",
+        harness="off",
+    )
+    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+    monkeypatch.setenv("WORKSTEP_ENV", "dev")
+
+    async def respond(messages, info):
+        return ModelResponse(parts=[TextPart("增强结果")])
+
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(
+            lambda *, provider, model_name: FunctionModel(function=respond)
+        ),
+    )
+
+    result = await PydanticAIEngine.run_simple("单轮提示词\n第二行")
+
+    assert result == "增强结果"
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_run_simple_does_not_print_prompt_outside_dev(
+    monkeypatch,
+    capsys,
+):
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    store = MemoryEngineConfigStore()
+    provider = _add_provider(store, name="主账号")
+    store.set_pydantic_ai_engine_config(
+        provider_id=provider["id"],
+        model="agent-model",
+        harness="off",
+    )
+    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+    monkeypatch.setenv("WORKSTEP_ENV", "prod")
+
+    async def respond(messages, info):
+        return ModelResponse(parts=[TextPart("正常结果")])
+
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(
+            lambda *, provider, model_name: FunctionModel(function=respond)
+        ),
+    )
+
+    result = await PydanticAIEngine.run_simple("不应写入日志的提示词")
+
+    assert result == "正常结果"
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.anyio
 async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
     store = MemoryEngineConfigStore()
     provider = _add_provider(store, name="主账号")
@@ -1126,7 +1202,7 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
         usage = FakeUsage()
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None
     ):
         assert prompt == "do work"
         assert cwd == "/tmp/project"
@@ -1162,6 +1238,53 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
         "status",
     ]
     assert events[4].data["cost"] == {"amount": 0.123, "currency": "USD"}
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_spawn_does_not_print_provider_requests_in_dev(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    from pydantic_ai.models.function import FunctionModel
+
+    from engines.core.schema import EngineImage
+
+    store = MemoryEngineConfigStore()
+    provider = _add_provider(store, name="主账号")
+    store.set_pydantic_ai_engine_config(
+        provider_id=provider["id"],
+        model="agent-model",
+        harness="off",
+    )
+    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+    monkeypatch.setenv("WORKSTEP_ENV", "dev")
+
+    async def respond(messages, info):
+        yield "ok"
+
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(
+            lambda *, provider, model_name: FunctionModel(stream_function=respond)
+        ),
+    )
+    queue = asyncio.Queue()
+    queue.put_nowait(("message-1", "补充提示词\n第二行"))
+
+    events = [
+        event
+        async for event in PydanticAIEngine().spawn(
+            prompt="初始提示词\n第二行",
+            cwd=str(tmp_path),
+            live_message_queue=queue,
+            images=[EngineImage(url="data:image/png;base64,c2VjcmV0LWltYWdl")],
+        )
+    ]
+
+    assert capsys.readouterr().out == ""
+    assert events[-1].data["status"] == "done"
 
 
 def test_pydantic_ai_maps_text_thinking_and_tool_events():
@@ -1353,7 +1476,7 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
         usage = None
 
     async def fake_run_agent(
-        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None
+        self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox=None
     ):
         captured["live_message_queue"] = live_message_queue
         return FakeResult(), None
@@ -1412,6 +1535,7 @@ async def test_pydantic_ai_spawn_seeds_history_and_reports_engine_state(monkeypa
     async def fake_run_agent(
         self, *, prompt, cwd, add_dirs, model, on_event,
         live_message_queue=None, images=None, message_history=None, session_id=None,
+        sandbox=None,
     ):
         captured["message_history"] = message_history
         return FakeResult(), None
@@ -1503,6 +1627,7 @@ def test_provider_storage_and_legacy_migration(tmp_path, monkeypatch):
         "model": "deepseek-chat",
         "mcp_servers": [],
         "harness": "auto",
+        "sandbox": "workspace-write",
     }
 
     # Legacy api engine values are cleaned up by migration

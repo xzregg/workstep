@@ -33,6 +33,7 @@ export type SubagentActivity = {
   description: string
   status: string
   summary?: string
+  lastToolName?: string
 }
 
 export type MessageTimelineItem =
@@ -258,11 +259,13 @@ export function buildMessageTimeline(
       const existing = subagentsById.get(taskId)
       const status = String(value.status || 'running')
       const description = eventText(value.description ?? value.subject ?? taskId)
+      const lastToolName = eventText(value.last_tool_name ?? '')
       if (existing) {
         existing.status = status
         if (description && description !== taskId) existing.description = description
         const summary = eventText(value.summary ?? '')
         if (summary) existing.summary = summary
+        if (lastToolName) existing.lastToolName = lastToolName
         return
       }
       const activity: SubagentActivity = {
@@ -270,6 +273,7 @@ export function buildMessageTimeline(
         description,
         status,
         ...(eventText(value.summary ?? '') ? { summary: eventText(value.summary) } : {}),
+        ...(lastToolName ? { lastToolName } : {}),
       }
       subagentsById.set(taskId, activity)
       timeline.push({ type: 'subagent', id: `subagent-${taskId}`, activity })
@@ -281,11 +285,13 @@ export function buildMessageTimeline(
       const existing = subagentsById.get(taskId)
       const status = String(data.status || 'running')
       const description = eventText(data.description ?? data.subject ?? taskId)
+      const lastToolName = eventText(data.last_tool_name ?? '')
       if (existing) {
         existing.status = status
         if (description && description !== taskId) existing.description = description
         const summary = eventText(data.summary ?? '')
         if (summary) existing.summary = summary
+        if (lastToolName) existing.lastToolName = lastToolName
         return
       }
       const activity: SubagentActivity = {
@@ -293,6 +299,7 @@ export function buildMessageTimeline(
         description,
         status,
         ...(eventText(data.summary ?? '') ? { summary: eventText(data.summary) } : {}),
+        ...(lastToolName ? { lastToolName } : {}),
       }
       subagentsById.set(taskId, activity)
       timeline.push({ type: 'subagent', id: `subagent-${taskId}`, activity })

@@ -127,32 +127,38 @@ export function interactionItemsFromEvents(
   events: InteractionEvent[],
 ): InteractionItem[] {
   const responses = new Map<string, Record<string, unknown>>()
+  const requests = new Map<string, InteractionRequestData>()
   for (const event of events) {
     const isResponse = event.type === 'interaction_response'
       || isCustom(event, CUSTOM.interactionResponse)
-    if (!isResponse) continue
-    const data = isCustom(event, CUSTOM.interactionResponse)
-      ? customValue(event)
-      : event.data
-    const id = String(data?.interaction_id || '')
-    const response = data?.response
-    if (id && response && typeof response === 'object') {
-      responses.set(id, response as Record<string, unknown>)
+    if (isResponse) {
+      const data = isCustom(event, CUSTOM.interactionResponse)
+        ? customValue(event)
+        : event.data
+      const id = String(data?.interaction_id || '')
+      const response = data?.response
+      if (id && response && typeof response === 'object') {
+        responses.set(id, response as Record<string, unknown>)
+      }
+      continue
     }
-  }
-  return events.flatMap((event) => {
     if (
       event.type !== 'interaction_request'
       && !isCustom(event, CUSTOM.interactionRequest)
-    ) return []
+    ) continue
     const data = (
       isCustom(event, CUSTOM.interactionRequest)
         ? customValue(event)
         : event.data
     ) as unknown as InteractionRequestData
-    if (!data?.interaction_id || !data.method) return []
-    return [{ request: data, response: responses.get(data.interaction_id) }]
-  })
+    if (data?.interaction_id && data.method) {
+      requests.set(data.interaction_id, data)
+    }
+  }
+  return Array.from(requests.values()).map((request) => ({
+    request,
+    response: responses.get(request.interaction_id),
+  }))
 }
 
 function schemaOptions(

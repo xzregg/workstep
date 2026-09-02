@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -86,7 +87,10 @@ class MemoryConfigStore:
 
 
 class FakeEngine:
-    capabilities = SimpleNamespace(supports_coordinator=True)
+    capabilities = SimpleNamespace(
+        supports_coordinator=True,
+        supports_live_stage_message=True,
+    )
     supports_resume = False
     supports_message_history = False
 
@@ -423,6 +427,14 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
     )
     assert handed_off["id"] == source["id"]
     assert handed_off["engine"] == "pydantic_ai"
+    with module._project_ctx(project.id) as loaded_project:
+        row = ChatSession.get_by_id(source["id"])
+        handoff_meta = json.loads(row.fork_context_json)
+        handoff_path = loaded_project.workstep_dir / handoff_meta["relative_path"]
+    assert len(row.fork_context_json) < 1000
+    assert "旧目标：完成登录" not in row.fork_context_json
+    assert handoff_path.exists()
+    assert "旧目标：完成登录" in handoff_path.read_text(encoding="utf-8")
 
     accepted = module.submit_message(
         project.id,
@@ -443,7 +455,71 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
         "继续完成",
     ]
     assert "<workstep_context_handoff>" in prompts[0]
-    assert "旧目标：完成登录" in prompts[0]
+    assert handoff_meta["relative_path"] in prompts[0]
+    assert "旧目标：完成登录" not in prompts[0]
+    assert detail["messages"][-1]["prompt"] == "请继续"
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        assert row.fork_context_json is None
+
+
+@pytest.mark.anyio
+async def test_repeated_engine_handoffs_append_only_new_visible_messages(
+    chat_module,
+    monkeypatch,
+):
+    module, _bus, _manager, project, _ = chat_module
+    source = module.create_session(project.id, title="多次交接", engine="claude")
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(source["id"])
+        ChatMessage.create(
+            id="handoff-once-user",
+            session=row,
+            role="user",
+            content="第一段历史",
+            created_at=utc_now(),
+        )
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None
+    ):
+        return "新引擎回复", [], f"session-{engine_id}"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    module.handoff_session(
+        project.id,
+        source["id"],
+        engine="pydantic_ai",
+        context_mode="full",
+    )
+    accepted = module.submit_message(
+        project.id, source["id"], "第一次交接请求", "handoff-repeat-1"
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    module.handoff_session(
+        project.id,
+        source["id"],
+        engine="claude",
+        context_mode="smart",
+    )
+    with module._project_ctx(project.id) as loaded_project:
+        row = ChatSession.get_by_id(source["id"])
+        meta = json.loads(row.fork_context_json)
+        records = [
+            json.loads(line)
+            for line in (loaded_project.workstep_dir / meta["relative_path"])
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+
+    message_records = [item for item in records if item.get("type") == "message"]
+    contents = [item["content"] for item in message_records]
+    assert contents.count("第一段历史") == 1
+    assert contents.count("第一次交接请求") == 1
+    assert contents.count("新引擎回复") == 1
+    assert len([item for item in records if item.get("type") == "handoff_start"]) == 2
 
 
 @pytest.mark.anyio
@@ -918,6 +994,116 @@ async def test_submitted_user_message_survives_reload_while_turn_is_running(
 
 
 @pytest.mark.anyio
+async def test_running_chat_accepts_and_persists_live_message(
+    chat_module,
+    monkeypatch,
+):
+    """运行中的会话允许像任务阶段一样插入普通用户消息。"""
+    module, _bus, _manager, project, _ = chat_module
+    invoke_started = asyncio.Event()
+
+    async def blocking_invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+    ):
+        invoke_started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(module, "_invoke", blocking_invoke)
+    session = module.create_session(project.id, "wf-live-message")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "先执行一个长任务",
+        "idem-live-message-1",
+    )
+    await asyncio.wait_for(invoke_started.wait(), timeout=1)
+
+    inserted = await module.send_live_message(session["id"], "改为先补测试")
+
+    assert inserted["status"] == "queued"
+    queue = module._turn_states[accepted.turn_id]["live_message_queue"]
+    assert queue.get_nowait() == (inserted["message_id"], "改为先补测试")
+    detail = module.get_session(project.id, session["id"])
+    assert detail["messages"][-1]["role"] == "user"
+    assert detail["messages"][-1]["content"] == "改为先补测试"
+
+    assert await module.stop_current(session["id"]) is True
+    assert await _wait_turn(module, accepted.turn_id) == "stopped"
+
+
+@pytest.mark.anyio
+async def test_live_message_splits_chat_reply_around_inserted_user_message(
+    chat_module,
+    monkeypatch,
+):
+    """会话顺序与任务阶段一致：第一段输出 → 用户插入 → 第二段输出。"""
+    module, _bus, _manager, project, _ = chat_module
+    first_chunk_sent = asyncio.Event()
+
+    async def injecting_invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+    ):
+        first = InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "第一段输出"}},
+        )
+        await on_event(first)
+        first_chunk_sent.set()
+        state = next(
+            state for state in module._turn_states.values()
+            if state.get("status") == "running"
+        )
+        message_id, _content = await state["live_message_queue"].get()
+        delivered = InternalEvent(
+            type="live_message",
+            data={"message_id": message_id, "status": "delivered"},
+        )
+        await on_event(delivered)
+        second = InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "第二段输出"}},
+        )
+        await on_event(second)
+        return "第一段输出第二段输出", [
+            first.to_dict(), delivered.to_dict(), second.to_dict(),
+        ], None
+
+    monkeypatch.setattr(module, "_invoke", injecting_invoke)
+    session = module.create_session(project.id, "wf-live-order")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "开始执行",
+        "idem-live-order-1",
+    )
+    await asyncio.wait_for(first_chunk_sent.wait(), timeout=1)
+    await module.send_live_message(session["id"], "插入要求")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    detail = module.get_session(project.id, session["id"])
+    assert [item["role"] for item in detail["messages"]] == [
+        "user", "assistant", "user", "assistant",
+    ]
+    assert [item["content"] for item in detail["messages"]] == [
+        "开始执行", "第一段输出", "插入要求", "第二段输出",
+    ]
+    assert detail["messages"][1]["status"] == "succeeded"
+    assert detail["messages"][3]["status"] == "succeeded"
+
+
+@pytest.mark.anyio
 async def test_running_history_uses_journal_snapshot_and_details_are_separate(
     chat_module,
     monkeypatch,
@@ -1210,6 +1396,99 @@ async def test_delete_rejects_running_session(chat_module, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_failed_turn_persists_started_engine_session_for_next_turn(
+    chat_module, monkeypatch
+):
+    """引擎开始后报错，下一轮仍须用同一个引擎会话恢复上下文。"""
+    import agent_assistants.chat_session as chat_service
+
+    module, _bus, _manager, project, _ = chat_module
+    resumable_engine = FakeEngine()
+    resumable_engine.supports_resume = True
+    monkeypatch.setattr(chat_service, "create_engine", lambda _engine_id: resumable_engine)
+
+    calls: list[str | None] = []
+
+    async def failing_then_succeeding_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        calls.append(session_id)
+        resolved = session_id or "engine-session-after-error"
+        await on_event(InternalEvent(
+            type="session_started",
+            data={"session_id": resolved},
+        ))
+        if len(calls) == 1:
+            raise RuntimeError("provider failed after session start")
+        return "继续成功", [], resolved
+
+    monkeypatch.setattr(module, "_invoke", failing_then_succeeding_invoke)
+    session = module.create_session(project.id, engine="pydantic_ai")
+
+    first = module.submit_message(
+        project.id, session["id"], "执行任务", "idem-session-error-1"
+    )
+    assert await _wait_turn(module, first.turn_id) == "error"
+
+    # 模拟 daemon 重载：第二轮必须从项目数据库恢复，而非复用内存对象。
+    module._sessions.clear()
+    second = module.submit_message(
+        project.id, session["id"], "继续上个任务", "idem-session-error-2"
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+    assert calls == [None, "engine-session-after-error"]
+
+
+@pytest.mark.anyio
+async def test_stopped_turn_persists_started_engine_session_for_next_turn(
+    chat_module, monkeypatch
+):
+    """用户停止已开始的引擎回合后，下一轮仍须恢复同一会话。"""
+    import agent_assistants.chat_session as chat_service
+
+    module, _bus, _manager, project, _ = chat_module
+    resumable_engine = FakeEngine()
+    resumable_engine.supports_resume = True
+    monkeypatch.setattr(chat_service, "create_engine", lambda _engine_id: resumable_engine)
+    started = asyncio.Event()
+
+    async def blocking_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        await on_event(InternalEvent(
+            type="session_started",
+            data={"session_id": "engine-session-after-stop"},
+        ))
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(module, "_invoke", blocking_invoke)
+    session = module.create_session(project.id, engine="pydantic_ai")
+    first = module.submit_message(
+        project.id, session["id"], "执行长任务", "idem-session-stop-1"
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+    assert await module.stop_current(session["id"]) is True
+    assert await _wait_turn(module, first.turn_id) == "stopped"
+
+    received_session_ids: list[str | None] = []
+
+    async def succeeding_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
+    ):
+        received_session_ids.append(session_id)
+        return "继续成功", [], session_id
+
+    module._sessions.clear()
+    monkeypatch.setattr(module, "_invoke", succeeding_invoke)
+    second = module.submit_message(
+        project.id, session["id"], "继续上个任务", "idem-session-stop-2"
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+    assert received_session_ids == ["engine-session-after-stop"]
+
+
+@pytest.mark.anyio
 async def test_quick_buttons_defaults_and_validation(chat_module):
     module, bus, manager, project, _ = chat_module
 
@@ -1297,7 +1576,12 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
     bus = EventBus()
     module = ChatSessionModule(bus, manager)
 
+    live_turn_started = asyncio.Event()
+
     async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        if "插入接口长任务" in prompt:
+            live_turn_started.set()
+            await asyncio.Event().wait()
         return "HTTP 回复", [], None
 
     monkeypatch.setattr(module, "_invoke", fake_invoke)
@@ -1385,6 +1669,44 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             assert accepted["session_id"] == session_id
             assert await _wait_turn(module, accepted["turn_id"]) == "completed"
 
+            # switching engines hands off context inside the same conversation
+            original_execute_sql = project.db.execute_sql
+            handoff_write_started = threading.Event()
+            slowed_handoff_write = False
+
+            def slow_handoff_update(sql, params=None, commit=None):
+                nonlocal slowed_handoff_write
+                if not slowed_handoff_write and 'UPDATE "chat_sessions"' in sql:
+                    slowed_handoff_write = True
+                    handoff_write_started.set()
+                    time.sleep(0.35)
+                return original_execute_sql(sql, params)
+
+            monkeypatch.setattr(project.db, "execute_sql", slow_handoff_update)
+            started_at = time.perf_counter()
+            handoff_request = asyncio.create_task(client.post(
+                f"/api/chat-sessions/{session_id}/handoff",
+                json={
+                    "project_id": project.id,
+                    "engine": "pydantic_ai",
+                    "context_mode": "smart",
+                },
+            ))
+
+            async def health_canary():
+                await asyncio.sleep(0.05)
+                response = await client.get("/api/health")
+                return response, time.perf_counter() - started_at
+
+            health, health_completed_at = await health_canary()
+            resp = await handoff_request
+            assert handoff_write_started.is_set()
+            assert health.status_code == 200
+            assert health_completed_at < 0.2
+            assert resp.status_code == 200
+            assert resp.json()["id"] == session_id
+            assert resp.json()["engine"] == "pydantic_ai"
+
             # plan mode is accepted and forwarded to the turn
             resp = await client.post(
                 f"/api/chat-sessions/{session_id}/chat",
@@ -1401,10 +1723,31 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             body = resp.json()
             assert body["title"] == "HTTP 会话"
+            assert body["engine"] == "pydantic_ai"
             assert [item["role"] for item in body["messages"]] == [
                 "user", "assistant", "user", "assistant",
             ]
             assert body["messages"][-1]["content"] == "HTTP 回复"
+
+            # running chat accepts a persisted live message through the API
+            resp = await client.post(
+                f"/api/chat-sessions/{session_id}/chat",
+                json={"project_id": project.id, "content": "插入接口长任务"},
+                headers={"Idempotency-Key": "idem-http-live-turn"},
+            )
+            assert resp.status_code == 200
+            live_turn = resp.json()
+            await asyncio.wait_for(live_turn_started.wait(), timeout=1)
+            resp = await client.post(
+                f"/api/chat-sessions/{session_id}/live-message",
+                json={"project_id": project.id, "content": "运行中追加要求"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "queued"
+            resp = await client.post(f"/api/chat-sessions/{session_id}/stop")
+            assert resp.status_code == 200
+            assert resp.json()["stopped"] is True
+            assert await _wait_turn(module, live_turn["turn_id"]) == "stopped"
 
             # empty content rejected
             resp = await client.post(
@@ -1540,3 +1883,36 @@ async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
     )
     assert "计划模式" not in captured["prompt"]
     assert captured["config_overrides"] is None
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_forwards_live_message_queue(monkeypatch):
+    """共享助手运行时把当前回合的插入队列原样交给引擎。"""
+    import agent_assistants.base as base
+
+    captured: dict = {}
+
+    class LiveEngine:
+        capabilities = SimpleNamespace(
+            supports_thinking_effort=False,
+            supports_live_stage_message=True,
+        )
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, prompt, cwd, model, session_id, **kwargs):
+            captured["queue"] = kwargs.get("live_message_queue")
+            if False:
+                yield None
+
+    queue = asyncio.Queue()
+    monkeypatch.setattr(base, "create_engine", lambda engine_id: LiveEngine())
+    await base.invoke_engine(
+        "codex",
+        None,
+        "/tmp",
+        "执行任务",
+        None,
+        live_message_queue=queue,
+    )
+    assert captured["queue"] is queue

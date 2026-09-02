@@ -1,5 +1,3 @@
-export const FALLBACK_CONTEXT_WINDOW = 200_000
-
 export function usageFromEvents(events) {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
@@ -44,7 +42,8 @@ export function contextUsageFromMessages(messages) {
       ?? usage.modelContextWindow
       ?? usage.contextWindow,
     )
-    const total = reportedSize > 0 ? reportedSize : FALLBACK_CONTEXT_WINDOW
+    if (reportedSize <= 0) continue
+    const total = reportedSize
     return {
       used,
       total,

@@ -61,6 +61,35 @@ test('chat message store only accepts session_chat events', () => {
   assert.equal(session.messages[0].status, 'succeeded')
 })
 
+test('chat session stays running when history or a stream chunk contains a running assistant message', () => {
+  useChatSessionStore.setState({ sessions: {} })
+  const store = useChatSessionStore.getState()
+
+  store.hydrateSession('chat-history-running', [{
+    id: 'm-history',
+    role: 'assistant',
+    content: '仍在处理',
+    status: 'running',
+  }])
+  assert.equal(
+    useChatSessionStore.getState().sessions['chat-history-running'].running,
+    true,
+  )
+
+  store.newSession('chat-chunk-running')
+  store.handleWsEvent({
+    type: 'TEXT_MESSAGE_CHUNK',
+    channel: 'session_chat',
+    session_id: 'chat-chunk-running',
+    messageId: 'm-chunk',
+    delta: '流式回复',
+  })
+  assert.equal(
+    useChatSessionStore.getState().sessions['chat-chunk-running'].running,
+    true,
+  )
+})
+
 test('chat list store tracks the project session list', () => {
   useChatListStore.setState({ sessions: [] })
   const store = useChatListStore.getState()

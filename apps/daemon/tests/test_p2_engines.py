@@ -3043,7 +3043,7 @@ def test_engine_config_schemas_are_declared():
     pydantic_fields = {
         field.key for field in PydanticAIEngine.config_schema()
     }
-    assert pydantic_fields == {"provider_id"}
+    assert pydantic_fields == {"provider_id", "sandbox"}
     assert PydanticAIEngine.config_schema()[0].type == "select"
 
     claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}
@@ -3769,7 +3769,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
 
     async def fake_run_agent(self, *, prompt, cwd, add_dirs, model,
                              on_event, live_message_queue=None, images=None,
-                             session_id=None):
+                             session_id=None, sandbox="workspace-write"):
         return FakeResult(), FakeUsage()
 
     monkeypatch.setattr(pydantic_ai_module, "config_store", FakeStore())
@@ -3790,6 +3790,80 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
     assert usage_event.data["provider_id"] == "prov_1"
     assert events[-1].type == "status"
     assert events[-1].data["status"] == "done"
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_spawn_separates_context_snapshot_from_cumulative_usage(
+    monkeypatch,
+):
+    """A multi-request run must not report cumulative billing as context occupancy."""
+    import engines.pydantic_ai.engine as pydantic_ai_module
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    class FakeStore:
+        def get_pydantic_ai_engine_config(self):
+            return {"provider_id": "prov_1", "model": "unknown-custom-model"}
+
+        def get_provider(self, provider_id):
+            return {
+                "id": provider_id,
+                "name": "主账号",
+                "type": "openai",
+                "base_url": "https://agent-gateway.example.com/v1",
+                "api_key": "k",
+                "enabled": True,
+                "verified": True,
+                "created_at": "",
+            }
+
+    class FakeModel:
+        model_id = "openai:unknown-custom-model"
+
+    class FakeUsage:
+        input_tokens = 280_782
+        output_tokens = 1_978
+        total_tokens = 282_760
+        cache_write_tokens = 0
+        cache_read_tokens = 235_520
+        requests = 12
+        cost = None
+
+    class FakeResult:
+        output = "short answer"
+
+        def all_messages(self):
+            return [
+                ModelRequest(parts=[UserPromptPart(content="short prompt")]),
+                ModelResponse(parts=[TextPart(content="short answer")]),
+            ]
+
+    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model,
+                             on_event, live_message_queue=None, images=None,
+                             session_id=None, sandbox="workspace-write"):
+        return FakeResult(), FakeUsage()
+
+    monkeypatch.setattr(pydantic_ai_module, "config_store", FakeStore())
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(lambda *, provider, model_name: FakeModel()),
+    )
+    monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
+
+    events = [
+        event async for event in PydanticAIEngine().spawn("hi", cwd="/tmp/project")
+    ]
+    usage = next(event.data for event in events if event.type == "usage_update")
+
+    assert usage["total_tokens"] == 282_760
+    assert usage["requests"] == 12
+    assert 0 < usage["used"] < 2_000
+    assert usage["size"] == 200_000
 
 
 class _FakeSDKClient:

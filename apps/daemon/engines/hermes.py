@@ -133,6 +133,7 @@ class HermesEngine(AcpEngineBase):
         add_dirs: list[str] | None = None,
         session_id: str | None = None,
         images: list[EngineImage] | None = None,
+        live_message_queue: asyncio.Queue | None = None,
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
@@ -143,6 +144,7 @@ class HermesEngine(AcpEngineBase):
             add_dirs=add_dirs,
             session_id=session_id,
             images=images,
+            live_message_queue=live_message_queue,
             config_overrides=config_overrides,
             thinking_effort=thinking_effort,
         ):

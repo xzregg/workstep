@@ -78,15 +78,10 @@ const projectItemStyle = (active: boolean): React.CSSProperties => ({
 })
 
 const addButtonStyle: React.CSSProperties = {
-  margin: '8px 12px 8px',
-  padding: 8,
-  border: '1.5px dashed var(--border)',
-  borderRadius: 'var(--radius-sm)',
-  textAlign: 'center' as const,
-  cursor: 'pointer', color: 'var(--meta)',
-  fontSize: 'calc(13px * var(--font-scale))', background: 'transparent',
-  width: 'calc(100% - 24px)',
-  fontFamily: 'var(--font-body)',
+  margin: '10px 12px 0', width: 'calc(100% - 24px)', height: 36,
+  padding: '0 10px', justifyContent: 'flex-start', gap: 9,
+  borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))',
+  color: 'var(--fg-2)', background: 'transparent',
 }
 
 const hasWhitespace = (s: string) => /\s/.test(s)
@@ -835,7 +830,8 @@ export default function Layout({ onSelectProject, children }: Props) {
         </Button>
 
         <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
-          + {t('nav.addProject')}
+          <Icon name="plus" size={17} strokeWidth={2} />
+          {t('nav.addProject')}
         </Button>
 
         <div style={sectionLabel}>{t('layout.projects')}</div>
@@ -911,6 +907,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                   ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
                 }}
               >
+                {expandedProjectId !== p.id && p.workflows?.some((workflow) => workflow.running) ? (
+                  <span
+                    className="task-status-spinner"
+                    style={{ color: 'var(--accent)', flexShrink: 0, marginLeft: 6 }}
+                    title={t('layout.flowRunning')}
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <Button
                   variant="icon"
                   type="button"

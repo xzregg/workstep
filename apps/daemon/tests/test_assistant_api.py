@@ -386,7 +386,7 @@ async def test_invoke_engine_merges_provider_config_overrides(monkeypatch):
         config_overrides={"provider_id": "p-b"},
         plan_mode=True,
     )
-    assert captured["config_overrides"] == {"provider_id": "p-b"}
+    assert captured["config_overrides"] == {"provider_id": "p-b", "sandbox": "read-only"}
 
 
 @pytest.mark.anyio

@@ -209,6 +209,22 @@ test('drops unanswered interaction cards after their message stops', () => {
   assert.deepEqual(items, [])
 })
 
+test('shows one card when history and live events repeat the same interaction', () => {
+  const request = {
+    interaction_id: 'permission-duplicate',
+    method: 'session/request_permission',
+    tool_call: { tool_call_id: 'tool-duplicate', title: '编辑文件' },
+    options: [{ option_id: 'once', name: '允许一次', kind: 'allow_once' }],
+  }
+  const items = pendingInteractionItems([
+    { type: 'interaction_request', data: request },
+    { type: 'CUSTOM', name: 'workstep.interaction_request', value: request },
+  ])
+
+  assert.equal(items.length, 1)
+  assert.equal(items[0].request.interaction_id, 'permission-duplicate')
+})
+
 test('preserves persisted interaction requests across partial live updates', () => {
   const events = mergeInteractionEvents(
     [{ type: 'interaction_request', data: {

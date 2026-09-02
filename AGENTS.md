@@ -151,7 +151,10 @@ Memory。思考强度通过 Pydantic AI
 `StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`（每 run 最多 30 个快照），
 按 `conversation_id=session_id` 从最近一个有快照的 run 恢复；单次 Agent run 的 Pydantic AI
 `request_limit` 固定为 100，工具参数校验重试为 3 次，既容纳长编码任务及非严格模型的参数纠错，
-又保留失控保护。压缩发生时经 receipts 排空产出 `compacted` 事件（`acp_events` 已声明）。
+又保留失控保护。Coder shell 在默认安全命令基础上允许项目构建所需的 `yarn/npm/npx/node`；
+命令固定从项目根执行，不允许用 `cd/bash/sh` 绕过白名单。压缩发生时经 receipts 排空产出
+`compacted` 事件（`acp_events` 已声明）。Shell 命令策略拒绝以普通工具结果返回给模型，不消耗
+Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命令终止整个回合。
 
 统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
 - 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`

@@ -347,6 +347,11 @@ WorkStep 因此定义一个 SDK 可独立启动的 `standard` preset，基于官
   `UsageLimits(request_limit=100)`，避免长编码任务撞上 SDK 默认 50 次上限，同时保留循环失控保护。
 - 工具纠错：`Agent` 使用 `retries={"tools": 3, "output": 1}`，允许模型修正 Harness 工具的
   参数类型错误，同时保持最终输出校验的默认重试强度。
+- Coder shell：在 Harness 默认命令基础上补充 `yarn/npm/npx/node`，满足前端检查和构建；命令
+  固定从项目根执行，提示词明确禁止 `cd/bash/sh`，子目录任务使用 `yarn --cwd apps/web ...` 或
+  `uv --project apps/daemon ...`，不通过 shell 包装器绕过白名单。`WorkStepCoder` 将 Shell 的
+  命令策略拒绝转换为普通模型可见工具结果，不消耗 `run_command` 的工具重试预算；参数 schema
+  错误等真正需要模型修正的调用仍使用上述 3 次重试限制。
 - `compacted` 事件：本轮压缩接收（receipt）在 run 结束后经 `open_receipt_scope` /
   `drain_receipts` 排空，映射为 `InternalEvent("compacted", {"summary": ...})`
   （`acp_events` 已声明 `compacted`，见 5.2）。

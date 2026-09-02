@@ -42,6 +42,7 @@ from agent_assistants.coordinator import CoordinatorModule
 from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
+from services.observability import configure_observability, instrument_fastapi
 from agent_assistants.chat_session import ChatSessionModule
 from streaming.ws import (
     WsSubscription,
@@ -59,6 +60,7 @@ from services.remote_project import (
 )
 
 logger = logging.getLogger(__name__)
+configure_observability()
 
 # Global event bus
 event_bus = EventBus()
@@ -156,6 +158,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
+instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.add_middleware(
     RemoteProjectProxyMiddleware,

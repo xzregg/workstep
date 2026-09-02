@@ -17,6 +17,9 @@ apps/desktop/.nuitka-venv/
 .vscode/
 .idea/
 
+# Local environment secrets
+.env
+
 # Open Design
 .od/
 .od-skills/

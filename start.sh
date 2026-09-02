@@ -23,6 +23,13 @@ MODE=${2:-dev}
 PID_DIR="$SCRIPT_DIR/.pids"
 LOG_DIR="$SCRIPT_DIR/logs"
 
+# 加载本地环境变量（.env 已加入 .gitignore，不提交密钥）
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 # === 清理环境变量 ===
 unset CLAUDECODE
 
@@ -118,7 +125,7 @@ if [ ! -d ".venv" ]; then
     NODE_ENV=development uv sync --group dev 2>&1 | tail -3
 fi
 
-nohup uv run uvicorn main:app \
+nohup env WORKSTEP_ENV="$MODE" uv run uvicorn main:app \
     --host 0.0.0.0 \
     --port "$PORT" \
     > "$LOG_DIR/daemon.log" 2>&1 &

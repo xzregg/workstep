@@ -172,6 +172,7 @@ async def invoke_engine(
     plan_mode: bool | None = None,
     workstep_tools: bool = False,
     config_overrides: dict | None = None,
+    live_message_queue: asyncio.Queue | None = None,
 ) -> tuple[str, list[dict], str | None]:
     """Run one engine turn; stream events; return (text, events, session_id).
 
@@ -215,6 +216,15 @@ async def invoke_engine(
                 spawn_kwargs["report_engine_state"] = True
         if images:
             spawn_kwargs["images"] = images
+        if (
+            live_message_queue is not None
+            and getattr(
+                getattr(engine, "capabilities", None),
+                "supports_live_stage_message",
+                False,
+            )
+        ):
+            spawn_kwargs["live_message_queue"] = live_message_queue
         if (
             getattr(
                 getattr(engine, "capabilities", None),
@@ -900,6 +910,7 @@ class AssistantRuntime:
             "engine_overridden": bool(engine),
             "journal_ref": journal_ref,
             "memory_key": memory_key,
+            "live_message_queue": asyncio.Queue(),
         }
         if schedule:
             self.start_queued_turn(turn_id)
@@ -958,6 +969,79 @@ class AssistantRuntime:
                 cleanup.add_done_callback(self._consume_stop_task)
             return True
         return False
+
+    async def send_live_message(
+        self,
+        session_id: str,
+        content: str,
+        project_id: str | None = None,
+    ) -> dict:
+        """Persist and queue a user message for the active assistant turn."""
+        normalized = content.strip()
+        if not normalized:
+            raise ValueError("消息内容不能为空")
+        active: tuple[str, dict] | None = None
+        for turn_id, state in reversed(self._turn_states.items()):
+            if (
+                state.get("session_id") == session_id
+                and state.get("status") in {"queued", "running"}
+            ):
+                active = (turn_id, state)
+                break
+        if active is None:
+            raise ValueError("Chat session is not running")
+        _turn_id, state = active
+        session = self._sessions.get(state.get("memory_key"))
+        if session is None:
+            raise ValueError("Chat session not found")
+        if project_id is not None and session.project_id != project_id:
+            raise ValueError("Chat session not found")
+        engine = create_engine(session.engine)
+        capabilities = getattr(engine, "capabilities", None)
+        if not getattr(capabilities, "supports_live_stage_message", False):
+            raise ValueError("该引擎不支持执行中消息注入")
+        queue = state.get("live_message_queue")
+        if not isinstance(queue, asyncio.Queue):
+            raise ValueError("会话消息队列不可用")
+
+        message_id = str(uuid.uuid4())
+        created_at = utc_now().isoformat()
+        actor = get_effective_actor()
+        message = {
+            "role": "user",
+            "content": normalized,
+            "id": message_id,
+            "created_at": created_at,
+            **(
+                {
+                    "author_id": actor.actor_id,
+                    "author_name": actor.user_name,
+                    "author_device_id": actor.device_id,
+                    "author_device_name": actor.device_name,
+                }
+                if actor is not None
+                else {}
+            ),
+        }
+        session.messages.append(message)
+        if self._config.persistence is not None:
+            await self._project_manager.run_db(
+                session.project_id,
+                lambda _project: self._config.persistence.save(session),
+            )
+        await self._publish(
+            session,
+            message_id,
+            "message_started",
+            {"content": normalized, "status": "queued", "role": "user"},
+            0,
+        )
+        queue.put_nowait((message_id, normalized))
+        return {
+            "message_id": message_id,
+            "status": "queued",
+            "created_at": created_at,
+        }
 
     async def _stop_engine(
         self,
@@ -1278,6 +1362,14 @@ class AssistantRuntime:
             f"\n\n历史对话：\n{history}\n\n请继续。"
         )
 
+    def _display_prompt(self, session: AssistantSession, prompt: str) -> str:
+        """Return the user-visible prompt projection persisted with a message."""
+        return prompt
+
+    async def _on_engine_session_started(self, session: AssistantSession) -> None:
+        """Assistant-specific hook after the target engine session starts."""
+        return None
+
     # ── turn execution ──────────────────────────────────────────────────
 
     async def _run_turn(
@@ -1300,9 +1392,16 @@ class AssistantRuntime:
             journal_ref = self._turn_states[turn_id].get("journal_ref")
             streamed_reply = ""
             structured_events: list[dict] = []
+            active_message_id = [assistant_message_id]
+            active_message = [assistant_message]
+            active_started_at = [started_at]
+            active_journal_ref = [journal_ref]
+            active_segment_events: list[dict] = []
+            live_split_count = [0]
             try:
                 session.cwd = self._cwd(session.project_id)
                 prompt = self._build_prompt(session)
+                display_prompt = self._display_prompt(session, prompt)
                 user_messages = [
                     message
                     for message in session.messages
@@ -1337,7 +1436,7 @@ class AssistantRuntime:
                     session,
                     assistant_message_id,
                     "message_started",
-                    {"prompt": prompt},
+                    {"prompt": display_prompt},
                     seq,
                 )
                 seq_holder = [seq]
@@ -1351,8 +1450,18 @@ class AssistantRuntime:
 
                     async def publish_live_event(event: InternalEvent) -> None:
                         nonlocal raw_content, streamed_reply
+                        if event.type == "session_started":
+                            resolved = str(event.data.get("session_id") or "")
+                            if resolved:
+                                session.resolved_session_id = resolved
+                                await self._on_engine_session_started(session)
+                        elif event.type == "engine_state":
+                            state = event.data.get("state")
+                            if state is not None:
+                                session.engine_state = state
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
+                        active_segment_events.append(event_dict)
                         if event.type == "agent_message_chunk":
                             content_block = event.data.get("content") or {}
                             raw_content += str(content_block.get("text", ""))
@@ -1364,7 +1473,7 @@ class AssistantRuntime:
                                 return
                             streamed_reply = partial_reply
                             self._record_journal_event(
-                                journal_ref,
+                                active_journal_ref[0],
                                 {
                                     "type": "agent_message_chunk",
                                     "data": {"content": {"text": delta}},
@@ -1372,17 +1481,17 @@ class AssistantRuntime:
                             )
                             await self._publish(
                                 session,
-                                assistant_message_id,
+                                active_message_id[0],
                                 "agent_message_chunk",
                                 {"content": {"text": delta}},
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
                         elif event.type == "agent_thought_chunk":
-                            self._record_journal_event(journal_ref, event_dict)
+                            self._record_journal_event(active_journal_ref[0], event_dict)
                             await self._publish(
                                 session,
-                                assistant_message_id,
+                                active_message_id[0],
                                 "agent_thought_chunk",
                                 {"content": {"text": str(
                                     (event.data.get("content") or {}).get("text", "")
@@ -1403,32 +1512,154 @@ class AssistantRuntime:
                             "session_started",
                         }:
                             self._record_journal_event(
-                                journal_ref,
+                                active_journal_ref[0],
                                 event_dict,
                                 force=event.type in {"interaction_request", "session_started"},
                             )
                             await self._publish(
                                 session,
-                                assistant_message_id,
+                                active_message_id[0],
                                 event.type,
                                 dict(event.data),
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
                         elif event.type == "usage_update":
-                            self._record_journal_event(journal_ref, event_dict)
+                            self._record_journal_event(active_journal_ref[0], event_dict)
                             await self._publish(
                                 session,
-                                assistant_message_id,
+                                active_message_id[0],
                                 "usage_update",
                                 dict(event.data),
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1
+                        elif event.type == "live_message":
+                            live_message_id = str(
+                                event.data.get("message_id") or ""
+                            )
+                            if live_message_id:
+                                inserted = next(
+                                    (
+                                        item for item in session.messages
+                                        if item.get("id") == live_message_id
+                                    ),
+                                    None,
+                                )
+                                if inserted is not None:
+                                    inserted["status"] = (
+                                        "succeeded"
+                                        if event.data.get("status") == "delivered"
+                                        else "error"
+                                    )
+                                    inserted["ended_at"] = utc_now().isoformat()
+                                delivered = event.data.get("status") == "delivered"
+                                if delivered:
+                                    ended_at = utc_now().isoformat()
+                                    sealed = active_message[0]
+                                    sealed.update({
+                                        "role": "assistant",
+                                        "content": streamed_reply,
+                                        "status": "succeeded",
+                                        "ended_at": ended_at,
+                                    })
+                                    self._finish_journal(
+                                        active_journal_ref[0],
+                                        sealed,
+                                        {"type": "status", "data": {"status": "succeeded"}},
+                                    )
+                                    await self._publish(
+                                        session,
+                                        active_message_id[0],
+                                        "message_snapshot",
+                                        {"content": streamed_reply},
+                                        seq_holder[0],
+                                    )
+                                    seq_holder[0] += 1
+                                    await self._publish(
+                                        session,
+                                        active_message_id[0],
+                                        "message_completed",
+                                        {
+                                            "status": "succeeded",
+                                            "content": streamed_reply,
+                                            "ended_at": ended_at,
+                                        },
+                                        seq_holder[0],
+                                    )
+                                    seq_holder[0] += 1
+                                await self._publish(
+                                    session,
+                                    live_message_id,
+                                    "live_message",
+                                    dict(event.data),
+                                    seq_holder[0],
+                                )
+                                seq_holder[0] += 1
+                                if delivered:
+                                    next_message_id = str(uuid.uuid4())
+                                    next_started_at = utc_now().isoformat()
+                                    next_journal_ref = None
+                                    if (
+                                        self._config.event_journal is not None
+                                        and active_journal_ref[0] is not None
+                                    ):
+                                        next_journal_ref = self._config.event_journal.start(
+                                            active_journal_ref[0].root,
+                                            session.session_id,
+                                            next_message_id,
+                                        )
+                                    next_message = {
+                                        "role": "assistant",
+                                        "content": "",
+                                        "id": next_message_id,
+                                        "engine": session.engine,
+                                        "model": session.model,
+                                        "status": "running",
+                                        "created_at": next_started_at,
+                                        "events": [],
+                                        **(
+                                            {
+                                                "event_log_path": next_journal_ref.relative_path,
+                                                "event_summary": {},
+                                                "event_detail": {
+                                                    "available": True,
+                                                    "loaded": False,
+                                                },
+                                            }
+                                            if next_journal_ref is not None
+                                            else {}
+                                        ),
+                                    }
+                                    session.messages.append(next_message)
+                                    active_message_id[0] = next_message_id
+                                    active_message[0] = next_message
+                                    active_started_at[0] = next_started_at
+                                    active_journal_ref[0] = next_journal_ref
+                                    self._turn_states[turn_id][
+                                        "assistant_message_id"
+                                    ] = next_message_id
+                                    raw_content = ""
+                                    streamed_reply = ""
+                                    active_segment_events.clear()
+                                    live_split_count[0] += 1
+                                    if self._config.persistence is not None:
+                                        await self._project_manager.run_db(
+                                            session.project_id,
+                                            lambda _project: self._config.persistence.save(session),
+                                        )
+                                    await self._publish(
+                                        session,
+                                        next_message_id,
+                                        "message_started",
+                                        {"prompt": ""},
+                                        seq_holder[0],
+                                    )
+                                    seq_holder[0] += 1
                         else:
                             # Keep the host-side journal complete even when an
                             # event has no current AG-UI rendering path.
-                            self._record_journal_event(journal_ref, event_dict)
+                            self._record_journal_event(active_journal_ref[0], event_dict)
 
                     return publish_live_event
 
@@ -1446,11 +1677,13 @@ class AssistantRuntime:
                     **invoke_kwargs,
                 )
                 self._record_unstreamed_journal_events(
-                    journal_ref, _events, journaled_events
+                    active_journal_ref[0], _events, journaled_events
                 )
                 if self._turn_states[turn_id]["status"] == "stopping":
                     raise asyncio.CancelledError
                 session.resolved_session_id = resolved
+                if resolved:
+                    await self._on_engine_session_started(session)
                 for engine_event in _events:
                     if engine_event.get("type") == "engine_state":
                         state = (engine_event.get("data") or {}).get("state")
@@ -1461,11 +1694,13 @@ class AssistantRuntime:
                 reply, structured, repair_events = await self._parse_response(
                     session, raw
                 )
+                if live_split_count[0] > 0 and not structured:
+                    reply = streamed_reply
                 for extra_event in repair_events:
-                    self._record_journal_event(journal_ref, extra_event)
+                    self._record_journal_event(active_journal_ref[0], extra_event)
                     await self._publish(
                         session,
-                        assistant_message_id,
+                        active_message_id[0],
                         extra_event.get("type", "status"),
                         extra_event.get("data", {}),
                         seq_holder[0],
@@ -1474,39 +1709,41 @@ class AssistantRuntime:
                 if structured:
                     seq_holder[0], structured_events = await self._publish_structured(
                         session,
-                        assistant_message_id,
+                        active_message_id[0],
                         reply,
                         structured,
                         seq_holder[0],
                     )
                     for structured_event in structured_events:
-                        self._record_journal_event(journal_ref, structured_event)
+                        self._record_journal_event(
+                            active_journal_ref[0], structured_event
+                        )
                 seq_holder[0] = await self._publish(
                     session,
-                    assistant_message_id,
+                    active_message_id[0],
                     "message_snapshot",
                     {"content": reply},
                     seq_holder[0],
                 )
                 seq_holder[0] = await self._publish(
                     session,
-                    assistant_message_id,
+                    active_message_id[0],
                     "message_completed",
                     {"status": "succeeded", "content": reply},
                     seq_holder[0],
                 )
-                assistant_message.update(
+                active_message[0].update(
                     {
                         "role": "assistant",
                         "content": reply,
-                        "id": assistant_message_id,
+                        "id": active_message_id[0],
                         "engine": session.engine,
                         "model": session.model,
                         "status": "succeeded",
-                        "created_at": started_at,
+                        "created_at": active_started_at[0],
                         "ended_at": utc_now().isoformat(),
-                        "prompt": prompt,
-                        "events": _prune_events(_events)
+                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "events": _prune_events(active_segment_events)
                         + [
                             event
                             for event in repair_events
@@ -1524,36 +1761,36 @@ class AssistantRuntime:
                     }
                 )
                 self._finish_journal(
-                    journal_ref,
-                    assistant_message,
+                    active_journal_ref[0],
+                    active_message[0],
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
                 ended_at = utc_now().isoformat()
-                assistant_message.update(
+                active_message[0].update(
                     {
                         "role": "assistant",
                         "content": streamed_reply,
-                        "id": assistant_message_id,
+                        "id": active_message_id[0],
                         "engine": session.engine,
                         "model": session.model,
                         "status": "stopped",
-                        "created_at": started_at,
+                        "created_at": active_started_at[0],
                         "ended_at": ended_at,
-                        "prompt": prompt,
-                        "events": _prune_events(_events),
+                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "events": _prune_events(active_segment_events),
                     }
                 )
                 self._finish_journal(
-                    journal_ref,
-                    assistant_message,
+                    active_journal_ref[0],
+                    active_message[0],
                     {"type": "status", "data": {"status": "stopped"}},
                 )
                 try:
                     await self._publish(
                         session,
-                        assistant_message_id,
+                        active_message_id[0],
                         "message_completed",
                         {
                             "status": "stopped",
@@ -1571,36 +1808,36 @@ class AssistantRuntime:
                     turn_id,
                     self._config.name,
                 )
-                assistant_message.update(
+                active_message[0].update(
                     {
                         "role": "assistant",
                         "content": f"（生成失败：{exc}）",
-                        "id": assistant_message_id,
+                        "id": active_message_id[0],
                         "engine": session.engine,
                         "model": session.model,
                         "status": "error",
-                        "created_at": started_at,
+                        "created_at": active_started_at[0],
                         "ended_at": utc_now().isoformat(),
-                        "prompt": prompt,
-                        "events": _prune_events(_events),
+                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "events": _prune_events(active_segment_events),
                     }
                 )
                 self._finish_journal(
-                    journal_ref,
-                    assistant_message,
+                    active_journal_ref[0],
+                    active_message[0],
                     {"type": "error", "data": {"message": str(exc)}},
                 )
                 try:
                     seq = await self._publish(
                         session,
-                        assistant_message_id,
+                        active_message_id[0],
                         "error",
                         {"message": str(exc)},
                         seq,
                     )
                     await self._publish(
                         session,
-                        assistant_message_id,
+                        active_message_id[0],
                         "message_completed",
                         {"status": "error", "content": str(exc)},
                         seq,
@@ -1788,6 +2025,7 @@ class AssistantRuntime:
             plan_mode=plan_mode,
             workstep_tools=self._config.workstep_tools,
             config_overrides=config_overrides,
+            live_message_queue=turn_state.get("live_message_queue"),
         )
 
     async def _publish(

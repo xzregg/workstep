@@ -128,6 +128,8 @@ export interface ChatInputProps {
   disabled?: boolean
   /** True while an LLM turn is running → button shows a spinner. */
   running?: boolean
+  /** Keep sending enabled while running so the message can steer the active turn. */
+  allowSendWhileRunning?: boolean
   /** Provide to turn the button into a red stop control while running. */
   onStop?: () => void
   /** True while a stop request is in flight → stop button disabled (idempotent). */
@@ -169,6 +171,7 @@ export default function ChatInput({
   placeholder,
   disabled = false,
   running = false,
+  allowSendWhileRunning = false,
   onStop,
   stopping = false,
   stopTitle,
@@ -206,8 +209,13 @@ export default function ChatInput({
   const [skillsError, setSkillsError] = useState(false)
   const [skillIndex, setSkillIndex] = useState(0)
   const attachInputRef = useRef<HTMLInputElement>(null)
-  const canSend = !disabled && !running && !stopping && value.trim().length > 0
-  const stopped = Boolean(running && onStop)
+  const canSend = !disabled
+    && (!running || allowSendWhileRunning)
+    && !stopping
+    && value.trim().length > 0
+  const stopped = Boolean(
+    running && onStop && !(allowSendWhileRunning && value.trim().length > 0),
+  )
   const imageAlt = t('md.image')
   const inputSegments = splitMarkdownImages(value)
   const hasImage = inputSegments.some((segment) => segment.type === 'image')
@@ -326,13 +334,14 @@ export default function ChatInput({
         return
       }
       if (event.key === 'Enter' || event.key === 'Tab') {
+        if (event.nativeEvent.isComposing) return
         event.preventDefault()
         const item = filteredItems[skillIndex] ?? filteredItems[0]
         if (item) selectInputItem(item)
         return
       }
     }
-    if (event.key === 'Enter' && !event.shiftKey && canSend) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && canSend) {
       event.preventDefault()
       onSend()
     }
@@ -913,16 +922,18 @@ export default function ChatInput({
             disabled={buttonDisabled}
             aria-label={stopped
               ? stopping ? t('chatInput.stopping') : t('common.stop')
-              : running
-                ? t('chatInput.generating')
-                : canSend
-                  ? title || t('chatInput.send')
+              : canSend
+                ? title || t('chatInput.send')
+                : running
+                  ? t('chatInput.generating')
                   : t('chatInput.send')}
             title={stopped
               ? stopping ? t('chatInput.stopping') : (stopTitle ?? t('chatInput.stopGenerating'))
-              : running
-                ? t('chatInput.generating')
-                : title || t('chatInput.send')}
+              : canSend
+                ? title || t('chatInput.send')
+                : running
+                  ? t('chatInput.generating')
+                  : title || t('chatInput.send')}
             style={{
               width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
               padding: 0,
@@ -935,7 +946,7 @@ export default function ChatInput({
           >
             {stopped ? (
               <div style={{ width: 12, height: 12, borderRadius: 2, background: 'currentColor' }} />
-            ) : running ? (
+            ) : running && !canSend ? (
               <span className="task-status-spinner" aria-hidden="true" />
             ) : (
               <Icon name="send" size={13} strokeWidth={1.6} style={{ padding: 0 }} />

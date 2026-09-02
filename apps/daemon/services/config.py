@@ -393,6 +393,9 @@ class ConfigStore:
         raw = self.get("pydantic_ai_engine", {})
         if not isinstance(raw, dict):
             raw = {}
+        sandbox = str(raw.get("sandbox") or "workspace-write")
+        if sandbox not in CODEX_SANDBOX_MODES:
+            sandbox = "workspace-write"
         return {
             "provider_id": raw.get("provider_id")
             or os.environ.get("PYDANTIC_AI_PROVIDER_ID", ""),
@@ -401,6 +404,7 @@ class ConfigStore:
             or os.environ.get("PYDANTIC_AI_MODEL", ""),
             "mcp_servers": raw.get("mcp_servers") or [],
             "harness": raw.get("harness") or "auto",
+            "sandbox": sandbox,
         }
 
     def set_pydantic_ai_engine_config(
@@ -410,7 +414,11 @@ class ConfigStore:
         model: str,
         mcp_servers: list | None = None,
         harness: str = "auto",
+        sandbox: str = "",
     ) -> None:
+        sandbox = str(sandbox or "").strip() or "workspace-write"
+        if sandbox not in CODEX_SANDBOX_MODES:
+            sandbox = "workspace-write"
         self.set(
             "pydantic_ai_engine",
             {
@@ -418,6 +426,7 @@ class ConfigStore:
                 "model": model,
                 "mcp_servers": list(mcp_servers or []),
                 "harness": harness,
+                "sandbox": sandbox,
             },
         )
         self.set_engine_default_model("pydantic_ai", model)

@@ -70,12 +70,16 @@ export interface AssistantChatPanelProps {
   onInputChange: (value: string) => void
   onSend: () => void
   onStop: () => void
+  /** Allow messages to be inserted into the active engine turn. */
+  allowSendWhileRunning?: boolean
   onAttachmentError?: (message: string) => void
   onClose?: () => void
   onA2uiAction?: (action: A2uiClientAction) => void
   headerActions?: ReactNode
   /** Assistant-specific controls rendered in the button row above the composer. */
   composerActions?: ReactNode
+  /** Floating content anchored immediately above the composer. */
+  composerOverlay?: ReactNode
   afterMessages?: ReactNode
   scrollKey?: string | number
   quickPrompts?: AssistantQuickPrompt[]
@@ -95,9 +99,9 @@ export interface AssistantChatPanelProps {
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
   locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
-  onA2uiAction, headerActions, composerActions, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
+  onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
-  onLoadMessageEvents, onForkMessage,
+  onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const { t } = useI18n()
@@ -322,10 +326,11 @@ export default function AssistantChatPanel({
       </div>
 
       {sendError && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
-      <div style={{
-        flexShrink: 0, padding: '10px 12px',
-        borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
-      }}>
+          <div style={{
+            position: 'relative', flexShrink: 0, padding: '10px 12px',
+            borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
+          }}>
+            {composerOverlay}
         {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
           <div
             className="chat-quick-prompts"
@@ -358,15 +363,16 @@ export default function AssistantChatPanel({
           value={input}
           onChange={onInputChange}
           onSend={() => {
-            if (!input.trim() || running) return
+            if (!input.trim() || (running && !allowSendWhileRunning)) return
             followRef.current = true
             setHasUnreadMessages(false)
             setAwaitingReply(true)
             onSend()
           }}
           onStop={onStop}
-          disabled={running}
+          disabled={running && !allowSendWhileRunning}
           running={running}
+          allowSendWhileRunning={allowSendWhileRunning}
           stopping={stopping}
           placeholder={copy.placeholder}
           imageAttach={{ projectId, prefix: attachmentPrefix, onError: onAttachmentError }}

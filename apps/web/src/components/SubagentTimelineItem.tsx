@@ -41,13 +41,19 @@ export default function SubagentTimelineItem({
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>
       <div className="llm-tool-call-detail">
+        {activity.lastToolName && (
+          <div className="subagent-last-tool">
+            <span>{t('trace.subagentLastTool')}</span>
+            <code>{activity.lastToolName}</code>
+          </div>
+        )}
         {activity.summary ? (
           <div>
             <span>{t('trace.subagentSummary')}</span>
             <pre>{activity.summary}</pre>
           </div>
         ) : (
-          <div className="process-trace-empty">{t('trace.noDetails')}</div>
+          !activity.lastToolName && <div className="process-trace-empty">{t('trace.noDetails')}</div>
         )}
       </div>
     </details>

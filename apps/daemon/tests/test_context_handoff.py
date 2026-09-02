@@ -1,4 +1,10 @@
-from agent_assistants.context_handoff import compile_handoff, render_handoff
+import json
+
+from agent_assistants.context_handoff import (
+    append_handoff_log,
+    compile_handoff,
+    render_handoff,
+)
 
 
 MESSAGES = [
@@ -32,6 +38,30 @@ def test_none_handoff_contains_no_messages():
 
     assert package["message_count"] == 0
     assert package["messages"] == []
+
+
+def test_none_handoff_log_records_boundary_without_history(tmp_path):
+    messages = [
+        {"id": "hidden-history", "role": "user", "content": "不要交接这段"},
+    ]
+
+    metadata = append_handoff_log(
+        tmp_path,
+        "session-none",
+        messages,
+        source_engine="claude",
+        target_engine="codex",
+        mode="none",
+    )
+    records = [
+        json.loads(line)
+        for line in (tmp_path / metadata["relative_path"])
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert [record["type"] for record in records] == ["handoff_start", "handoff_end"]
+    assert "不要交接这段" not in json.dumps(records, ensure_ascii=False)
 
 
 def test_full_handoff_rejects_silently_truncated_history():

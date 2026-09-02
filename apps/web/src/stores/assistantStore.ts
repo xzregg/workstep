@@ -326,7 +326,9 @@ export function createAssistantStore(
           sessions: upsertSession(s.sessions, sessionId, {
             ...session,
             messages: merged,
-            running: running || session.running,
+            running: running || session.running || merged.some((message) => (
+              message.role === 'assistant' && message.status === 'running'
+            )),
             a2uiMessages,
             latestProposals,
             rejectionMessage,
@@ -456,6 +458,7 @@ export function createAssistantStore(
               events: [...(current.events || []), event],
             }
           }
+          if (event.role !== 'user') running = true
         } else if (event.type === 'TEXT_MESSAGE_CONTENT' && mid) {
           const index = findIndex(mid)
           if (index !== -1) {

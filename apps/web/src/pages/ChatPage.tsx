@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import Button from '../components/Button'
@@ -9,6 +9,9 @@ import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
 import Input from '../components/Input'
 import MarkdownEditor from '../components/MarkdownEditor'
+import PendingMessageInserts, {
+  type PendingMessageInsert,
+} from '../components/PendingMessageInserts'
 import {
   assistantApi,
   chatSessionApi,
@@ -23,6 +26,7 @@ import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStor
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useI18n } from '../i18n'
+import { clearDraft, loadDraft, saveDraft } from '../utils/chatDraft'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
 import { requiresEngineHandoff } from '../utils/chatSessionFork'
@@ -54,9 +58,14 @@ export default function ChatPage() {
   const { activeProject, fetchProjects, setActiveProject, setActiveWorkflow } = useProjectStore()
 
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
+  const prevSessionIdRef = useRef<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
   const [sendError, setSendError] = useState('')
+  const [pendingInserts, setPendingInserts] = useState<PendingMessageInsert[]>([])
+  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
+  const [editingInsertContent, setEditingInsertContent] = useState('')
+  const [sendingInsertIds, setSendingInsertIds] = useState<string[]>([])
   const [stopping, setStopping] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -111,8 +120,12 @@ export default function ChatPage() {
   })
 
   const session = useChatSessionStore((s) => (sessionId ? s.sessions[sessionId] : undefined))
-  const running = session?.running ?? false
   const messages = session?.messages ?? []
+  // A streaming bubble is authoritative too: history hydration or a missed START
+  // event must never let an active turn fall through to the normal /chat endpoint.
+  const running = Boolean(session?.running || messages.some((message) => (
+    message.role === 'assistant' && message.status === 'running'
+  )))
   const context = useMemo(
     () => contextUsageFromMessages(messages),
     [messages],
@@ -262,24 +275,37 @@ export default function ChatPage() {
   }, [activeProject?.id, running])
 
   // Reset transient state when switching sessions.
+  // Save the previous session's input to localStorage before clearing,
+  // then restore the target session's draft (if any).
   useEffect(() => {
-    setInput('')
+    const prevId = prevSessionIdRef.current
+    if (prevId && input.trim()) {
+      saveDraft(activeProject?.id ?? '', prevId, input)
+    }
+    prevSessionIdRef.current = sessionId
+    if (sessionId && activeProject?.id) {
+      const draft = loadDraft(activeProject.id, sessionId)
+      setInput(draft)
+    } else {
+      setInput('')
+    }
     setSendError('')
     setStopping(false)
+    setPendingInserts([])
+    setEditingInsertId(null)
+    setEditingInsertContent('')
+    setSendingInsertIds([])
   }, [sessionId])
 
-  const send = useCallback(async (contentOverride?: string) => {
-    const content = (contentOverride ?? input).trim()
-    if (!content || running || !sessionId) {
+  const sendMessageNow = useCallback(async (content: string): Promise<boolean> => {
+    if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
-      return
+      return false
     }
-    if (!activeProject?.id) return
+    if (!activeProject?.id) return false
     setSendError('')
-    useChatSessionStore.getState().addUserMessage(sessionId, content)
-    setInput('')
-    resetEnhance()
     try {
+      useChatSessionStore.getState().addUserMessage(sessionId, content)
       const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomId(), {
         engine: selectedEngine || undefined,
         provider_id: selectedProvider || undefined,
@@ -312,10 +338,71 @@ export default function ChatPage() {
           useChatListStore.getState().renameSession(finalSessionId, summary.title)
         }
       }
+      return true
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      return false
     }
-  }, [input, running, sessionId, activeProject?.id, selectedEngine, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, t, resetEnhance])
+  }, [sessionId, activeProject?.id, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, t])
+
+  const send = useCallback(async (contentOverride?: string) => {
+    const content = (contentOverride ?? input).trim()
+    if (!content || !sessionId) {
+      if (!sessionId) setSendError(t('chatSession.noSession'))
+      return
+    }
+    if (running) {
+      setPendingInserts((current) => [
+        ...current,
+        { id: `insert-${randomId()}`, content },
+      ])
+      setInput('')
+      clearDraft(activeProject?.id ?? '', sessionId)
+      setSendError('')
+      resetEnhance()
+      return
+    }
+    setInput('')
+    clearDraft(activeProject?.id ?? '', sessionId)
+    resetEnhance()
+    await sendMessageNow(content)
+  }, [input, running, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance])
+
+  const sendPendingInserts = useCallback(async (items: PendingMessageInsert[]) => {
+    if (
+      items.length === 0
+      || sendingInsertIds.length > 0
+      || !sessionId
+      || !activeProject?.id
+    ) return
+    const ids = items.map((item) => item.id)
+    setSendingInsertIds(ids)
+    setSendError('')
+    try {
+      await chatSessionApi.sendLiveMessage(
+        sessionId,
+        activeProject.id,
+        items.map((item) => item.content).join('\n\n'),
+      )
+      setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+      setEditingInsertId(null)
+      setEditingInsertContent('')
+    } catch (reason) {
+      setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+    } finally {
+      setSendingInsertIds([])
+    }
+  }, [activeProject?.id, sendingInsertIds.length, sessionId, t])
+
+  const savePendingInsertEdit = useCallback((insertId: string) => {
+    const content = editingInsertContent.trim()
+    if (!content) return
+    setPendingInserts((current) => current.map((item) => (
+      item.id === insertId ? { ...item, content } : item
+    )))
+    setEditingInsertId(null)
+    setEditingInsertContent('')
+  }, [editingInsertContent])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -419,7 +506,7 @@ export default function ChatPage() {
     } finally {
       setCreating(false)
     }
-  }, [activeProject, creating, selectedEngine, selectedModel, selectedFastModel, selectedVisionModel, projectParam, navigate, t])
+  }, [activeProject, creating, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, projectParam, navigate, t])
 
   const openFork = useCallback((targetEngine = selectedEngine, messageId: string | null = null) => {
     if (!sessionId || running) return
@@ -607,6 +694,33 @@ export default function ChatPage() {
         onInputChange={handleInputChange}
         onSend={() => void send()}
         onStop={() => void stop()}
+        allowSendWhileRunning
+        composerOverlay={(
+          <PendingMessageInserts
+            items={pendingInserts}
+            title={t('chatSession.pendingInsertTitle')}
+            titleTooltip={t('chatSession.pendingInsertHint')}
+            editingId={editingInsertId}
+            editingContent={editingInsertContent}
+            sendingIds={sendingInsertIds}
+            onEditingContentChange={setEditingInsertContent}
+            onEditStart={(item) => {
+              setEditingInsertId(item.id)
+              setEditingInsertContent(item.content)
+            }}
+            onEditSave={savePendingInsertEdit}
+            onEditCancel={() => {
+              setEditingInsertId(null)
+              setEditingInsertContent('')
+            }}
+            onSend={(item) => void sendPendingInserts([item])}
+            onRemove={(id) => setPendingInserts((current) => (
+              current.filter((item) => item.id !== id)
+            ))}
+            onSendAll={() => void sendPendingInserts(pendingInserts)}
+            onClear={() => setPendingInserts([])}
+          />
+        )}
         onAttachmentError={setSendError}
         onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
         onForkMessage={(messageId) => openFork(selectedEngine, messageId)}

@@ -62,7 +62,11 @@ def map_permission_overrides(engine_id: str, mode: str) -> dict:
         return {"permission_mode": _CLAUDE_PERMISSION[mode]}
     if engine_id == "qoder_sdk":
         return {"permission_mode": _QODER_PERMISSION[mode]}
-    # hermes / openclaw / pydantic_ai: no unified permission override.
+    if engine_id == "pydantic_ai":
+        if mode in _SANDBOX_MODES:
+            return {"sandbox": mode}
+        return {}
+    # hermes / openclaw: no unified permission override.
     return {}
 
 
@@ -87,4 +91,6 @@ def map_plan_mode_overrides(engine_id: str) -> dict:
         return {"sandbox": "read-only"}
     if engine_id in ("claude", "claude_agent_sdk", "qoder_sdk"):
         return {"permission_mode": "plan"}
+    if engine_id == "pydantic_ai":
+        return {"sandbox": "read-only"}
     return {}

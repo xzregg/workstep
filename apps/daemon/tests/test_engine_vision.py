@@ -169,7 +169,7 @@ async def test_pydantic_ai_spawn_forwards_images_to_run_agent(monkeypatch):
     def fake_build_model(**config):
         return object()
 
-    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None):
+    async def fake_run_agent(self, *, prompt, cwd, add_dirs, model, on_event, live_message_queue=None, images=None, session_id=None, sandbox="workspace-write"):
         captured["images"] = images
         captured["prompt"] = prompt
         return FakeResult(), FakeUsage()

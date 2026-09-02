@@ -22,8 +22,9 @@ from engines.core.events import (
     usage_update_event,
 )
 from engines.core.interactions import elicitation_request, permission_request
-from engines.core.plans import plan_event
+from engines.core.plans import plan_event, subagent_event
 from engines.core.schema import EngineConfigField, EngineConfigOption
+from engines.pydantic_ai.coder import WorkStepCoder
 from services import providers as provider_service
 from services.config import config_store
 from services.tool_registry import WorkstepClient, workstep_tools_instruction
@@ -32,6 +33,26 @@ logger = logging.getLogger(__name__)
 
 PYDANTIC_AI_REQUEST_LIMIT = 100
 PYDANTIC_AI_TOOL_RETRIES = 3
+PYDANTIC_AI_CODER_COMMANDS = (
+    "git",
+    "rg",
+    "grep",
+    "find",
+    "ls",
+    "cat",
+    "sed",
+    "head",
+    "tail",
+    "python",
+    "uv",
+    "pytest",
+    "ruff",
+    "make",
+    "yarn",
+    "npm",
+    "npx",
+    "node",
+)
 
 
 class PydanticAIEngine(AcpEngineBase):
@@ -163,12 +184,24 @@ class PydanticAIEngine(AcpEngineBase):
                 required=True,
                 help="在设置 → 供应商中管理 API 地址与密钥；本引擎复用所选供应商的凭据。",
             ),
+            EngineConfigField(
+                key="sandbox",
+                label="沙箱模式",
+                type="select",
+                options=tuple(
+                    EngineConfigOption(mode, mode)
+                    for mode in ("read-only", "workspace-write", "danger-full-access")
+                ),
+                default="workspace-write",
+                help="工具执行沙箱；workspace-write 及以上权限允许 cd 等导航命令。",
+            ),
         ]
 
     def get_config_values(self) -> dict:
         config = config_store.get_pydantic_ai_engine_config()
         return {
             "provider_id": config["provider_id"],
+            "sandbox": config["sandbox"],
         }
 
     def get_config_secrets(self) -> dict[str, bool]:
@@ -181,6 +214,7 @@ class PydanticAIEngine(AcpEngineBase):
             model="",
             mcp_servers=current["mcp_servers"],
             harness="auto",
+            sandbox=current["sandbox"],
         )
 
     async def save_config_values(
@@ -203,6 +237,7 @@ class PydanticAIEngine(AcpEngineBase):
             # harness 扩展始终自动：已安装 pydantic-ai-harness 时挂载
             # 压缩与会话持久化，否则回退 message_history，不由用户选择。
             harness="auto",
+            sandbox=str(values.get("sandbox") or current["sandbox"]),
         )
 
     async def inspect_capabilities(
@@ -389,6 +424,24 @@ class PydanticAIEngine(AcpEngineBase):
             return total
         return usage if total is None else total + usage
 
+    @staticmethod
+    def _context_usage_snapshot(result, model) -> tuple[int | None, int | None]:
+        """Return current context occupancy separately from cumulative run usage."""
+        try:
+            from pydantic_ai_harness.compaction import (
+                DEFAULT_CONTEXT_WINDOW,
+                estimate_context_tokens,
+                resolve_context_window,
+            )
+
+            messages = result.all_messages()
+            used = estimate_context_tokens(messages)
+            size = resolve_context_window(model) or DEFAULT_CONTEXT_WINDOW
+            return int(used), int(size)
+        except Exception:
+            logger.exception("Failed to estimate Pydantic AI context usage")
+            return None, None
+
     async def _ask_user(
         self,
         on_event: Callable[[InternalEvent], Awaitable[None]],
@@ -530,11 +583,12 @@ class PydanticAIEngine(AcpEngineBase):
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
         session_id: str | None = None,
+        sandbox: str = "workspace-write",
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
         from pydantic_ai.capabilities import Thinking
-        from pydantic_ai_harness import Coder, Skills
+        from pydantic_ai_harness import Skills
 
         root = Path(cwd).resolve()
 
@@ -544,8 +598,16 @@ class PydanticAIEngine(AcpEngineBase):
 
         harness_capabilities = self._harness_capabilities(root, session_id)
         effort = resolve_thinking_effort(thinking_effort)
+        allowed = list(PYDANTIC_AI_CODER_COMMANDS)
+        if sandbox in ("workspace-write", "danger-full-access"):
+            allowed.append("cd")
+        subagent_handler = self._make_subagent_handler(on_event)
         capabilities = [
-            Coder(root),
+            WorkStepCoder(
+                root,
+                allowed_commands=allowed,
+                subagent_event_handler=subagent_handler,
+            ),
         ]
         skill_library = root / ".workstep" / "skills"
         if skill_library.is_dir():
@@ -585,19 +647,31 @@ class PydanticAIEngine(AcpEngineBase):
 
         async def ask_user(
             question: str,
-            options: list[str] | None = None,
+            options: list[str] | str | None = None,
             multiple: bool = False,
             allow_input: bool = True,
         ) -> dict[str, Any]:
             """Ask the user a required question and wait for their response.
 
             Use options for suggested choices, multiple for multi-select, and
-            allow_input when the user may enter a custom answer.
+            allow_input when the user may enter a custom answer. Options may be
+            a JSON array string when the model cannot emit a native array.
             """
+            normalized_options = options
+            if isinstance(options, str):
+                try:
+                    decoded = json.loads(options)
+                except (TypeError, ValueError):
+                    decoded = None
+                normalized_options = (
+                    [str(option) for option in decoded]
+                    if isinstance(decoded, list)
+                    else [options]
+                )
             return await self._ask_user(
                 on_event,
                 question=question,
-                options=options,
+                options=normalized_options,
                 multiple=multiple,
                 allow_input=allow_input,
             )
@@ -711,6 +785,11 @@ class PydanticAIEngine(AcpEngineBase):
             "You are the built-in WorkStep agent.",
             f"The active project directory is {root}.",
             "Use the Coder capability to inspect, modify, and validate the project.",
+            "The run_command tool already runs from the active project directory. "
+            "Do not use cd, bash, or sh to change directories or wrap commands. "
+            "For this repository, run frontend commands like `yarn --cwd apps/web build` "
+            "and backend commands like `uv --project apps/daemon run pytest`. "
+            "When provided, timeout_seconds must be a JSON number, not a string.",
             "Project memory from .workstep/MEMORY.md has been injected into "
             "the prompt — treat it as read-only and do not modify the file.",
             "Project skills are exposed by the Skills capability from the "
@@ -808,6 +887,79 @@ class PydanticAIEngine(AcpEngineBase):
             )
 
         return None
+
+    def _make_subagent_handler(
+        self,
+        on_event: Callable[[InternalEvent], Awaitable[None]],
+    ):
+        """Build an EventStreamHandler that surfaces sub-agent activity to the parent.
+
+        The handler matches the pydantic-ai-harness ``EventStreamHandler`` signature:
+        ``async def handler(ctx, event_stream)``. Every model/tool event from a
+        sub-agent run is mapped with the same ``_map_stream_event`` logic the parent
+        uses, then wrapped in a ``subagent`` event so it lands in the parent's event
+        stream as a distinct, non-overwriting entry. ``task_id`` is the sub-agent's
+        resolved name so the frontend can fold repeated frames into one subagent row.
+        """
+        async def handler(ctx, event_stream):
+            agent_name = str(getattr(getattr(ctx, "agent", None), "name", "") or "subagent")
+            task_id = f"subagent-{agent_name}"
+            description = str(
+                getattr(getattr(ctx, "agent", None), "description", "") or ""
+            )
+            last_tool: str | None = None
+            has_activity = False
+            completed_normally = False
+            try:
+                async for event in event_stream:
+                    # Emit an initial "running" frame the first time anything surfaces.
+                    if not has_activity:
+                        has_activity = True
+                        await on_event(subagent_event(
+                            task_id=task_id,
+                            status="running",
+                            stage="started",
+                            description=description or None,
+                        ))
+                    internal = self._map_stream_event(event)
+                    if internal is None:
+                        continue
+                    if internal.type == "tool_call":
+                        last_tool = str(internal.data.get("title") or "")
+                        await on_event(subagent_event(
+                            task_id=task_id,
+                            status="running",
+                            stage="progress",
+                            description=description or None,
+                            last_tool_name=last_tool,
+                        ))
+                    elif internal.type == "tool_call_update":
+                        # A tool completed; keep the row alive but don't duplicate
+                        # the raw result into the parent stream (it stays in the
+                        # sub-agent's own run and toolcall part).
+                        pass
+                completed_normally = True
+            finally:
+                # Always close with a lifecycle frame so the UI can settle the row.
+                # A cancelled/errored sub-agent run surfaces as `failed`; a normal
+                # drain of the event stream is `completed`. Cancellation must still
+                # propagate, so a send that would immediately re-raise CancelledError
+                # is tolerated rather than allowed to mask the cancel.
+                try:
+                    await on_event(subagent_event(
+                        task_id=task_id,
+                        status="completed" if completed_normally else "failed",
+                        stage="finished",
+                        description=description or None,
+                        last_tool_name=last_tool,
+                    ))
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # The parent stream may already be closing; don't let a final
+                    # frame failure mask the sub-agent outcome.
+                    pass
+        return handler
 
     # --- pydantic-ai-harness 扩展（上下文压缩 / 会话持久化） ---
 
@@ -1013,6 +1165,7 @@ class PydanticAIEngine(AcpEngineBase):
                 "live_message_queue": live_message_queue,
                 "images": images,
                 "session_id": session_uuid,
+                "sandbox": str(config.get("sandbox") or "workspace-write"),
             }
             if thinking_effort:
                 run_kwargs["thinking_effort"] = thinking_effort
@@ -1087,7 +1240,15 @@ class PydanticAIEngine(AcpEngineBase):
                             "currency": "USD",
                         }
                 usage_data["session_id"] = session_uuid
-                yield usage_update_event(usage_data)
+                context_used, context_size = self._context_usage_snapshot(
+                    result,
+                    loaded_model,
+                )
+                yield usage_update_event(
+                    usage_data,
+                    used=context_used,
+                    size=context_size,
+                )
             yield InternalEvent(type="status", data={"status": "done"})
         except asyncio.CancelledError:
             yield InternalEvent(type="status", data={"status": "cancelled"})

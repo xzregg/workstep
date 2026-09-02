@@ -35,7 +35,13 @@ from agent_assistants.base import (
     validate_provider_override,
 )
 from agent_assistants.event_journal import TurnEventJournal
-from agent_assistants.context_handoff import compile_handoff, render_handoff
+from agent_assistants.context_handoff import (
+    append_handoff_log,
+    compile_handoff,
+    mark_handoff_consumed,
+    render_handoff,
+    render_handoff_reference,
+)
 from engines.core.agui import AGUIContext, to_agui_events
 from services.chat_permissions import is_valid_permission_mode
 from services.config import config_store
@@ -64,13 +70,12 @@ ENHANCE_SYSTEM_PROMPT = (
     "只输出改写后的提示词本身，不要任何解释、前后缀或 Markdown 代码块。"
 )
 
-SYSTEM_PROMPT = """你是 WorkStep 的会话聊天助手（Codex 式通用编码对话）。你以当前项目目录为工作环境，帮助用户完成编程与研发相关任务：回答问题、解释代码与项目结构、生成方案与实现思路、设计单元测试、评审代码质量、排查问题等。
+SYSTEM_PROMPT = """你是 WorkStep 的会话聊天助手。你以当前项目目录为工作环境，帮助用户完成编程与研发相关任务：回答问题、解释代码与项目结构、生成方案与实现思路、设计单元测试、评审代码质量、排查问题等。
 
 工作方式：
 1. 多轮对话保持上下文连贯；信息不足时先简短追问，不要长篇罗列假设。
 2. 回复精炼、直接、可操作；给出代码时使用 Markdown 代码块。
-3. 当前版本你只输出文本回复，不直接创建或修改项目文件；涉及文件改动时给出清晰的改动计划并等待用户确认。
-4. 默认使用与用户相同的语言回复。"""
+3. 默认使用与用户相同的语言回复。"""
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -820,7 +825,7 @@ class ChatSessionModule(AssistantRuntime):
             engine,
         )
 
-        with self._project_ctx(project_id):
+        with self._project_ctx(project_id) as project:
             row = ChatSession.get_or_none(
                 ChatSession.id == session_id,
                 ChatSession.project_id == project_id,
@@ -834,12 +839,15 @@ class ChatSessionModule(AssistantRuntime):
                 ChatMessage.status == "running",
             ).exists():
                 raise ValueError("Chat session is running")
+            source_engine = row.engine
             messages = ChatRowPersistence()._load_messages(row)
-            package = compile_handoff(
+            metadata = append_handoff_log(
+                project.workstep_dir,
+                session_id,
                 messages,
-                context_mode,
-                source_session_id=session_id,
-                forked_from_message_id=messages[-1].get("id") if messages else None,
+                source_engine=source_engine,
+                target_engine=engine,
+                mode=context_mode,
             )
             row.engine = engine
             row.model = model or default_model
@@ -851,7 +859,7 @@ class ChatSessionModule(AssistantRuntime):
             row.engine_session_id = None
             row.engine_state_json = None
             row.fork_context_mode = context_mode
-            row.fork_context_json = json.dumps(package, ensure_ascii=False)
+            row.fork_context_json = json.dumps(metadata, ensure_ascii=False)
             row.updated_at = utc_now()
             row.save()
 
@@ -864,7 +872,7 @@ class ChatSessionModule(AssistantRuntime):
             session.vision_model = vision_model or default_vision_model
             session.resolved_session_id = None
             session.engine_state = None
-            session.extra["pending_handoff"] = package
+            session.extra["pending_handoff"] = metadata
         result = self.get_session(project_id, session_id)
         if result is None:
             raise ValueError("Chat session not found")
@@ -1111,9 +1119,17 @@ class ChatSessionModule(AssistantRuntime):
         permission_mode = (permission_mode or "").strip()
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
+        requested_engine = engine
         with self._project_ctx(project_id):
-            if ChatSession.get_or_none(ChatSession.id == session_id) is None:
+            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            if row is None:
                 raise ValueError("Chat session not found")
+            engine = engine or row.engine
+            if requested_engine is None:
+                model = row.model if model is None else model
+                fast_model = row.fast_model if fast_model is None else fast_model
+                vision_model = row.vision_model if vision_model is None else vision_model
+                provider_id = row.provider_id if provider_id is None else provider_id
             if permission_mode:
                 ChatSession.update(permission_mode=permission_mode).where(
                     ChatSession.id == session_id
@@ -1171,7 +1187,12 @@ class ChatSessionModule(AssistantRuntime):
                 ),
                 "",
             )
-            return f"{prompt}\n\n{render_handoff(pending_handoff)}\n\n当前请求：\n{user_message}"
+            handoff_prompt = (
+                render_handoff_reference(pending_handoff)
+                if pending_handoff.get("relative_path")
+                else render_handoff(pending_handoff)
+            )
+            return f"{prompt}\n\n{handoff_prompt}\n\n当前请求：\n{user_message}"
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
             user_message = next(
@@ -1193,6 +1214,40 @@ class ChatSessionModule(AssistantRuntime):
             for item in turns
         )
         return f"{prompt}\n\n历史对话：\n{history}\n\n请继续。"
+
+    def _display_prompt(self, session, prompt: str) -> str:
+        if not isinstance(session.extra.get("pending_handoff"), dict):
+            return prompt
+        return next(
+            (
+                str(item.get("content") or "")
+                for item in reversed(session.messages)
+                if item.get("role") == "user"
+            ),
+            "",
+        )
+
+    async def _on_engine_session_started(self, session) -> None:
+        metadata = session.extra.get("pending_handoff")
+        if not isinstance(metadata, dict) or not metadata.get("relative_path"):
+            return
+
+        def consume(project):
+            row = ChatSession.get_or_none(ChatSession.id == session.session_id)
+            if row is None:
+                return
+            stored = _load_json(row.fork_context_json, None)
+            if not isinstance(stored, dict):
+                return
+            if stored.get("handoff_id") != metadata.get("handoff_id"):
+                return
+            mark_handoff_consumed(project.workstep_dir, metadata)
+            row.fork_context_json = None
+            row.updated_at = utc_now()
+            row.save()
+
+        await self._project_manager.run_db(session.project_id, consume)
+        session.extra.pop("pending_handoff", None)
 
     def get_system_prompt(self, project_id: str) -> str:
         """Return the project's configured chat prompt or the default."""

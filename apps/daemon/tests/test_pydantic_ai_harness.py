@@ -218,7 +218,7 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     capability_names = [type(capability).__name__ for capability in capabilities]
     assert capability_names[2:12] == [
         "FileSystem",
-        "Shell",
+        "WorkStepShell",
         "RepoContext",
         "Planning",
         "SubAgents",
@@ -231,11 +231,176 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     assert "WebSearch" not in capability_names
     assert "Memory" not in capability_names
     assert capabilities[2].root_dir == tmp_path
+    assert {"yarn", "npm", "npx", "node"}.issubset(
+        set(capabilities[3].allowed_commands)
+    )
     assert capabilities[10].directories == (tmp_path / ".workstep" / "skills",)
     assert capabilities[11].effort == "high"
     assert captured["agent"]._max_tool_retries == 3
     assert captured["agent"]._max_output_retries == 1
     assert captured["model_settings"] is None
+
+
+def test_coder_instructions_explain_project_root_commands(tmp_path):
+    instructions = PydanticAIEngine._compose_instructions(tmp_path)
+
+    assert "Do not use cd, bash, or sh" in instructions
+    assert "yarn --cwd apps/web" in instructions
+    assert "uv --project apps/daemon" in instructions
+    assert "timeout_seconds must be a JSON number" in instructions
+
+
+@pytest.mark.anyio
+async def test_ask_user_accepts_json_encoded_options_and_emits_interaction(
+    monkeypatch,
+    tmp_path,
+):
+    """宽松模型把 options 写成 JSON 字符串时仍应展示提问卡片。"""
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    requests = 0
+    interactions = []
+    engine = PydanticAIEngine()
+
+    async def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            yield {
+                0: DeltaToolCall(
+                    name="ask_user",
+                    json_args=(
+                        '{"question":"需要哪个功能？",'
+                        '"options":"[\\"日期/日历相关功能\\",'
+                        '\\"某个编号/序号功能\\",\\"我来详细描述\\"]",'
+                        '"allow_input":true}'
+                    ),
+                    tool_call_id="ask-user-1",
+                )
+            }
+        else:
+            yield "收到"
+
+    async def on_event(event):
+        if event.type != "interaction_request":
+            return
+        interactions.append(event)
+        await engine.respond_interaction(
+            event.data,
+            {"action": "accept", "content": {"answer": "我来详细描述"}},
+        )
+
+    monkeypatch.setattr(engine, "_harness_capabilities", lambda root, session_id: None)
+    await engine._run_agent(
+        prompt="需求不明确",
+        cwd=str(tmp_path),
+        add_dirs=None,
+        model=FunctionModel(stream_function=model),
+        on_event=on_event,
+    )
+
+    assert len(interactions) == 1
+    answer = interactions[0].data["requested_schema"]["properties"]["answer"]
+    assert [choice["title"] for choice in answer["oneOf"]] == [
+        "日期/日历相关功能",
+        "某个编号/序号功能",
+        "我来详细描述",
+    ]
+
+
+@pytest.mark.anyio
+async def test_pydantic_agent_delivers_message_queued_during_active_run(
+    monkeypatch,
+    tmp_path,
+):
+    """执行中的用户消息应在当前 Pydantic 会话内开启下一轮。"""
+    import asyncio
+
+    from pydantic_ai.models.function import FunctionModel
+
+    first_run_started = asyncio.Event()
+    finish_first_run = asyncio.Event()
+    requests = 0
+    events = []
+    queue = asyncio.Queue()
+    engine = PydanticAIEngine()
+
+    async def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            first_run_started.set()
+            await finish_first_run.wait()
+            yield "第一段"
+        else:
+            yield "第二段"
+
+    async def on_event(event):
+        events.append(event)
+
+    monkeypatch.setattr(engine, "_harness_capabilities", lambda root, session_id: None)
+    run = asyncio.create_task(engine._run_agent(
+        prompt="开始",
+        cwd=str(tmp_path),
+        add_dirs=None,
+        model=FunctionModel(stream_function=model),
+        on_event=on_event,
+        live_message_queue=queue,
+    ))
+    await first_run_started.wait()
+    await queue.put(("insert-1", "补充消息"))
+    finish_first_run.set()
+    await run
+
+    assert requests == 2
+    assert any(
+        event.type == "live_message"
+        and event.data == {
+            "message_id": "insert-1",
+            "status": "delivered",
+            "detail": "",
+        }
+        for event in events
+    )
+
+
+@pytest.mark.anyio
+async def test_coder_rejected_commands_do_not_exhaust_tool_retries(tmp_path):
+    from pydantic_ai import Agent
+    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from engines.pydantic_ai.coder import WorkStepCoder
+
+    requests = 0
+
+    async def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests <= 4:
+            return ModelResponse(parts=[ToolCallPart(
+                "run_command",
+                {"command": "bash -c 'echo blocked'"},
+                tool_call_id=f"blocked-{requests}",
+            )])
+        return ModelResponse(parts=[TextPart("recovered")])
+
+    agent = Agent(
+        FunctionModel(function=model),
+        capabilities=[WorkStepCoder(tmp_path, allowed_commands=("echo",))],
+        retries={"tools": 3, "output": 1},
+    )
+
+    result = await agent.run("keep trying")
+
+    assert requests == 5
+    assert result.output == "recovered"
+    assert sum(
+        "Command 'bash' is not in the allowed list." in str(part.content)
+        for message in result.all_messages()
+        for part in message.parts
+        if hasattr(part, "content")
+    ) == 4
 
 
 def test_acp_events_declares_compacted():
@@ -301,3 +466,153 @@ async def test_harness_store_bounded_snapshots(tmp_path):
     finally:
         conn.close()
     assert count == 30
+
+
+# --- 子 agent 事件转发（对齐其他引擎） ---
+
+
+def test_coder_injects_subagent_event_handler():
+    """WorkStepCoder 将 event_stream_handler 注入 SubAgents capability。"""
+    from pydantic_ai_harness.subagents import SubAgents
+
+    from engines.pydantic_ai.coder import WorkStepCoder
+
+    async def fake_handler(ctx, stream):
+        pass
+
+    coder = WorkStepCoder(
+        ".",
+        allowed_commands=["git"],
+        subagent_event_handler=fake_handler,
+    )
+    subagents = [c for c in coder.capabilities if isinstance(c, SubAgents)]
+    assert subagents, "WorkStepCoder should include a SubAgents capability"
+    assert subagents[0].event_stream_handler is fake_handler
+    # 保留原有子 agent（explorer）
+    assert "explorer" in subagents[0]._by_name
+    # _instruction_sources 同步替换为新实例，避免 CombinedCapability._rebound 断言失败
+    assert subagents[0] in coder._instruction_sources
+
+
+def test_coder_without_handler_keeps_default():
+    """不传 handler 时 SubAgents 保持原样。"""
+    from pydantic_ai_harness.subagents import SubAgents
+
+    from engines.pydantic_ai.coder import WorkStepCoder
+
+    coder = WorkStepCoder(".", allowed_commands=["git"])
+    subagents = [c for c in coder.capabilities if isinstance(c, SubAgents)]
+    assert subagents
+    assert subagents[0].event_stream_handler is None
+
+
+@pytest.mark.anyio
+async def test_subagent_handler_emits_lifecycle_events():
+    """handler 将子 agent 事件流映射为 subagent 生命周期事件。"""
+    from pydantic_ai.messages import (
+        FunctionToolCallEvent,
+        FunctionToolResultEvent,
+        ToolCallPart,
+        ToolReturnPart,
+    )
+
+    from engines.pydantic_ai import PydanticAIEngine
+
+    engine = PydanticAIEngine()
+    collected = []
+
+    async def on_event(event):
+        collected.append(event)
+
+    handler = engine._make_subagent_handler(on_event)
+
+    class FakeAgent:
+        name = "explorer"
+        description = "Explore the codebase"
+
+    class FakeCtx:
+        agent = FakeAgent()
+
+    async def event_stream():
+        yield FunctionToolCallEvent(part=ToolCallPart(
+            tool_call_id="call_1", tool_name="read_file", args={"path": "/tmp/x"},
+        ))
+        yield FunctionToolResultEvent(part=ToolReturnPart(
+            tool_call_id="call_1", tool_name="read_file", content="contents",
+        ))
+
+    await handler(FakeCtx(), event_stream())
+
+    types = [(e.type, e.data.get("status"), e.data.get("stage")) for e in collected]
+    assert types[0] == ("subagent", "running", "started")
+    assert ("subagent", "running", "progress") in types
+    assert types[-1] == ("subagent", "completed", "finished")
+    # task_id 使用子 agent 名字，供前端折叠
+    assert all(e.data.get("task_id") == "subagent-explorer" for e in collected)
+
+
+@pytest.mark.anyio
+async def test_subagent_handler_emits_failed_on_error():
+    """子 agent 事件流异常中断时发 failed 帧，且异常传播。"""
+    from engines.pydantic_ai import PydanticAIEngine
+
+    engine = PydanticAIEngine()
+    collected = []
+
+    async def on_event(event):
+        collected.append(event)
+
+    handler = engine._make_subagent_handler(on_event)
+
+    class FakeAgent:
+        name = "explorer"
+        description = "Explore"
+
+    class FakeCtx:
+        agent = FakeAgent()
+
+    async def failing_stream():
+        yield object()  # 触发 started
+        raise RuntimeError("sub-agent crashed")
+
+    with pytest.raises(RuntimeError, match="sub-agent crashed"):
+        await handler(FakeCtx(), failing_stream())
+
+    statuses = [(e.data.get("status"), e.data.get("stage")) for e in collected]
+    assert statuses[0] == ("running", "started")
+    assert statuses[-1] == ("failed", "finished")
+
+
+@pytest.mark.anyio
+async def test_subagent_events_persist_and_readable(tmp_path):
+    """subagent 事件写入 JSONL 后可通过 timeline 读取（刷新后可见）。"""
+    from agent_assistants.event_journal import TurnEventJournal
+    from engines.core.events import InternalEvent
+    from engines.core.plans import subagent_event
+
+    workstep_dir = tmp_path
+    journal = TurnEventJournal()
+    ref = journal.start(workstep_dir, "session-test", "message-test")
+    for ev in [
+        InternalEvent(type="message_started", data={"role": "assistant"}),
+        subagent_event(
+            task_id="subagent-explorer", status="running", stage="started",
+            description="Explore",
+        ),
+        subagent_event(
+            task_id="subagent-explorer", status="running", stage="progress",
+            last_tool_name="read_file",
+        ),
+        subagent_event(
+            task_id="subagent-explorer", status="completed", stage="finished",
+            last_tool_name="read_file",
+        ),
+    ]:
+        journal.record(ref, {"type": ev.type, "data": ev.data})
+    journal.finish(ref)
+
+    result = journal.timeline(ref, cursor=0, limit=200)
+    subagent_events = [e for e in result["events"] if e["type"] == "subagent"]
+    assert len(subagent_events) == 3
+    assert subagent_events[0]["data"]["stage"] == "started"
+    assert subagent_events[-1]["data"]["status"] == "completed"
