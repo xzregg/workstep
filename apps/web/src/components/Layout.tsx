@@ -161,6 +161,11 @@ export default function Layout({ onSelectProject, children }: Props) {
   const completedSessions = useSidebarActivityStore((s) => s.completedSessions)
   const workflowRunningRef = useRef<Record<string, boolean> | null>(null)
   const sessionRunningRef = useRef<Record<string, boolean> | null>(null)
+  // Chat session id → owning project id, accumulated across project switches
+  // (the sidebar session list only holds the active project's sessions). It
+  // lets a collapsed project row show its spinner from live chat running
+  // state for projects the client has opened.
+  const [sessionProjectMap, setSessionProjectMap] = useState<Record<string, string>>({})
   const [dragWfId, setDragWfId] = useState<string | null>(null)
   const [dropWfId, setDropWfId] = useState<string | null>(null)
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
@@ -367,6 +372,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   // Refresh flow running states whenever a task status event arrives
   const taskStatusEvents = useTaskStore((s) => s.taskStatusEvents)
+  const tasks = useTaskStore((s) => s.tasks)
   useEffect(() => {
     if (!taskStatusEvents) return
     const t = setTimeout(() => { fetchProjects() }, 300)
@@ -378,6 +384,47 @@ export default function Layout({ onSelectProject, children }: Props) {
     if (!activeProject?.id) return
     void useChatListStore.getState().fetchSessions(activeProject.id)
   }, [activeProject?.id])
+
+  // Accumulate chat session → project ownership whenever a project's session
+  // list is loaded, so running sessions stay attributable after the user
+  // collapses the project or switches to another one.
+  useEffect(() => {
+    setSessionProjectMap((prev) => {
+      let changed = false
+      const next = { ...prev }
+      for (const item of sessions) {
+        if (item.project_id && next[item.id] !== item.project_id) {
+          next[item.id] = item.project_id
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sessions])
+
+  // Refresh the project list when chat turns start/finish so the backend
+  // aggregate `has_running_tasks` (which includes live chat turns) stays
+  // fresh — covers collapsed / non-active projects and turn completion.
+  const runningSessionKey = Object.entries(runningChatSessions)
+    .filter(([, running]) => running)
+    .map(([sessionId]) => sessionId)
+    .sort()
+    .join(',')
+  const prevRunningSessionKeyRef = useRef('')
+  useEffect(() => {
+    const previous = prevRunningSessionKeyRef.current
+    prevRunningSessionKeyRef.current = runningSessionKey
+    // Skip the initial empty render; the mount effect already fetches once.
+    if (!previous && !runningSessionKey) return
+    const timer = setTimeout(() => { void fetchProjects() }, 300)
+    return () => clearTimeout(timer)
+  }, [runningSessionKey, fetchProjects])
+
+  // True when the project owns at least one live-running chat session.
+  const projectHasRunningSession = (projectId: string) =>
+    Object.entries(runningChatSessions).some(
+      ([sessionId, running]) => running && sessionProjectMap[sessionId] === projectId,
+    )
 
   // Auto-select project from URL ?project=name (only once)
   const projectName = searchParams.get('project')
@@ -907,14 +954,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
                 }}
               >
-                {expandedProjectId !== p.id && p.workflows?.some((workflow) => workflow.running) ? (
-                  <span
-                    className="task-status-spinner"
-                    style={{ color: 'var(--accent)', flexShrink: 0, marginLeft: 6 }}
-                    title={t('layout.flowRunning')}
-                    aria-hidden="true"
-                  />
-                ) : null}
+
                 <Button
                   variant="icon"
                   type="button"
@@ -1002,14 +1042,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}
                   </span>
                 )}
-                {p.workflows?.some((workflow) => workflow.running) ? (
+                {expandedProjectId !== p.id && (
+                  p.workflows?.some((workflow) => workflow.running)
+                  || p.has_running_tasks
+                  || projectHasRunningSession(p.id)
+                  || (p.id === activeProject?.id && tasks.some((task) => task.status === 'running'))
+                ) ? (
                   <span
                     className="task-status-spinner"
                     style={{ color: 'var(--accent)', flexShrink: 0 }}
-                    title={t('layout.flowRunning')}
+                    title={projectHasRunningSession(p.id) ? t('chatSession.runningHint') : t('layout.flowRunning')}
                     aria-hidden="true"
                   />
-                ) : Object.values(completedWorkflows).includes(p.id) ? (
+                ) : expandedProjectId !== p.id && Object.values(completedWorkflows).includes(p.id) ? (
                   <span
                     className="sidebar-completion-dot"
                     title={t('layout.completedUnread')}
@@ -1362,18 +1407,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               {isSelected && <Icon name="check" size={9} strokeWidth={3} style={{ color: 'var(--bg)' }} />}
                             </span>
                           )}
-                          {sessionRunning ? (
-                            <span
-                              className="task-status-spinner"
-                              style={{ color: 'var(--accent)', flexShrink: 0, width: 11.6, height: 11.6 }}
-                              title={t('chatSession.runningHint')}
-                              aria-hidden="true"
-                            />
-                          ) : completedSessions[session.id] ? (
-                            <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
-                          ) : (
-                            <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
-                          )}
+                          <Icon name="bot" size={11.6} strokeWidth={2} style={{ flexShrink: 0 }} />
                           {renameSessionId === session.id ? (
                             <Input
                               ref={renameSessionInputRef}
@@ -1390,6 +1424,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
                           )}
+                          {sessionRunning ? (
+                            <span
+                              className="task-status-spinner"
+                              style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }}
+                              title={t('chatSession.runningHint')}
+                              aria-hidden="true"
+                            />
+                          ) : completedSessions[session.id] ? (
+                            <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
+                          ) : null}
                           <Button
                             variant="icon"
                             className="ws-more-btn"

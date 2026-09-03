@@ -100,6 +100,11 @@ npm run build
 - **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
 - **i18n**：新增文案先写 `zh-CN.ts`；其他词典可暂用中文占位，但键集合必须一致且非空（由 `apps/web/tests/i18n.test.ts` 校验）。
+- **禁止重复 API 请求**：同一组件内多个 `useEffect` 不得对同一 API 发起可重叠的请求。具体规则：
+  - 新增 `useEffect` 触发 API 调用前，检查同一组件（及父级 Layout 等）是否已有 effect 在相同或更大依赖集上调用同一接口。若有重叠，合并为单一 effect 或移除冗余。
+  - effect 依赖数组中只放**真正影响该请求结果**的变量。例如：加载助手配置的请求结果不随 `sessionParam` 变化，则不应把 `sessionParam` 放入该 effect 的 deps。
+  - 若同一数据需要被多个触发条件刷新（如事件信号 A、B、C 都需刷新列表），合并为一个 effect 以联合信号为 dep，或在 store 层做 in-flight 去重（如 `listLoading` guard），避免同 tick 内多次 fetch。
+  - 新增功能时若需新增数据加载逻辑，优先复用已有 store action（其内部通常已含去重），而非在组件内新写裸 API 调用。
 
 ## 技术架构（已确定）
 

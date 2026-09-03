@@ -190,9 +190,7 @@ export default function ChatMessageBubble({
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--surface)' : 'var(--bg)',
               border: !isUser && variant === 'bg' ? '1px solid var(--border-soft)' : 'none',
-              padding: '0px', borderRadius: 12,
-              borderBottomRightRadius: isUser ? 4 : 12,
-              borderBottomLeftRadius: isUser ? 12 : 4,
+              padding: '0px', borderRadius: isUser ? 12 :0 ,
               width: isUser ? 'fit-content' : undefined,
               minWidth: 0, maxWidth: '100%', overflow: 'hidden',
             }}>

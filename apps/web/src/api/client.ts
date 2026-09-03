@@ -97,6 +97,8 @@ export interface Project {
   name: string
   steps: any
   workflows: WorkflowSummary[]
+  /** Backend aggregate: any running workflow task OR live chat turn. */
+  has_running_tasks?: boolean
   type?: 'local' | 'remote'
   connection_status?: 'local' | 'connecting' | 'connected' | 'disconnected' | 'error'
   access_status?: 'pending' | 'active' | 'expired' | 'revoked'

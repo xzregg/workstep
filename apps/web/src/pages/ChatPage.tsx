@@ -154,6 +154,7 @@ export default function ChatPage() {
   }, [projectParam, workflowParam, fetchProjects, setActiveProject, setActiveWorkflow])
 
   // Engine defaults + per-project quick buttons.
+  // Only re-fetch when the project changes; session switching does not affect config.
   useEffect(() => {
     let active = true
     if (!activeProject?.id) return
@@ -179,7 +180,7 @@ export default function ChatPage() {
         setCoordinatorConfigError(reason instanceof Error ? reason.message : t('chatSession.configLoadFailed'))
       })
     return () => { active = false }
-  }, [activeProject?.id, sessionParam, t])
+  }, [activeProject?.id, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true

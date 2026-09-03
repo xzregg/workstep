@@ -259,14 +259,6 @@ export default function TaskList() {
   const openerMenuRef = useRef<HTMLDivElement>(null)
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
-  const tasksFetchedRef = useRef<string>('')
-
-  useEffect(() => {
-    if (!activeProject?.id) { tasksFetchedRef.current = ''; return }
-    if (tasksFetchedRef.current === activeProject.id) return
-    tasksFetchedRef.current = activeProject.id
-    fetchTasks(activeProject.id, activeWorkflowId, showArchived)
-  }, [fetchTasks, activeProject?.id, showArchived])
 
   useEffect(() => {
     if (activeProject?.id) fetchTasks(activeProject.id, activeWorkflowId, showArchived)
