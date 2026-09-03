@@ -705,7 +705,7 @@ details[open] > summary > .process-trace-chevron {
 }
 
 .process-trace-thinking {
-  max-height: 220px;
+  max-height: 250px;
   overflow: auto;
   color: var(--muted);
   font-size: calc(11px * var(--font-scale));
@@ -713,13 +713,6 @@ details[open] > summary > .process-trace-chevron {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-/* While thought text streams, the conversation owns the only vertical scroll.
-   This avoids a continuously auto-scrolling nested region trapping wheel input. */
-.process-trace-thinking-block[data-active='true'] .process-trace-thinking {
-  max-height: none;
-  overflow: visible;
 }
 
 .process-trace-thinking:focus-visible {

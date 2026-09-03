@@ -1185,6 +1185,48 @@ class PydanticAIEngine(AcpEngineBase):
                         timeout=0.05,
                     )
                 except asyncio.TimeoutError:
+                    # 执行中插入消息：中断当前 run，携带已有 history 重启
+                    if (
+                        live_message_queue is not None
+                        and not live_message_queue.empty()
+                        and not agent_task.done()
+                    ):
+                        live_items = self._take_live_items(
+                            live_message_queue
+                        )
+                        injected = "\n\n".join(
+                            content for _, content in live_items
+                        )
+                        # 先确认送达：runner 收到 delivered 后封口旧段开新段
+                        for message_id, _ in live_items:
+                            yield InternalEvent(
+                                type="live_message",
+                                data={
+                                    "message_id": message_id,
+                                    "status": "delivered",
+                                    "detail": "",
+                                },
+                            )
+                        # 中断当前 run
+                        agent_task.cancel()
+                        try:
+                            await asyncio.gather(
+                                agent_task, return_exceptions=True
+                            )
+                        except asyncio.CancelledError:
+                            pass
+                        # 用 seeded_history + injected 启动新 run
+                        new_kwargs = dict(run_kwargs)
+                        new_kwargs["prompt"] = injected
+                        if seeded_history is not None:
+                            new_kwargs["message_history"] = seeded_history
+                        event_queue = asyncio.Queue()
+                        new_kwargs["on_event"] = event_queue.put
+                        agent_task = asyncio.create_task(
+                            self._run_agent(**new_kwargs)
+                        )
+                        self._run_task = agent_task
+                        emitted_text = False
                     continue
                 if event.type == "agent_message_chunk":
                     emitted_text = True

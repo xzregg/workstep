@@ -379,21 +379,44 @@ export default function ChatPage() {
     const ids = items.map((item) => item.id)
     setSendingInsertIds(ids)
     setSendError('')
+    const content = items.map((item) => item.content).join('\n\n')
+    // 引擎已完成（竞态：用户输入时 running，点击发送时已结束）→ 降级为新 turn
+    if (!running) {
+      const ok = await sendMessageNow(content)
+      if (ok) {
+        setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+        setEditingInsertId(null)
+        setEditingInsertContent('')
+      }
+      setSendingInsertIds([])
+      return
+    }
     try {
       await chatSessionApi.sendLiveMessage(
         sessionId,
         activeProject.id,
-        items.map((item) => item.content).join('\n\n'),
+        content,
       )
       setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
       setEditingInsertId(null)
       setEditingInsertContent('')
     } catch (reason) {
-      setSendError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+      const msg = reason instanceof Error ? reason.message : ''
+      if (msg.includes('not running')) {
+        // 后端也认为已结束 → 降级为新 turn
+        const ok = await sendMessageNow(content)
+        if (ok) {
+          setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+          setEditingInsertId(null)
+          setEditingInsertContent('')
+        }
+      } else {
+        setSendError(msg || t('chatSession.sendFailed'))
+      }
     } finally {
       setSendingInsertIds([])
     }
-  }, [activeProject?.id, sendingInsertIds.length, sessionId, t])
+  }, [activeProject?.id, running, sendingInsertIds.length, sessionId, sendMessageNow, t])
 
   const savePendingInsertEdit = useCallback((insertId: string) => {
     const content = editingInsertContent.trim()
