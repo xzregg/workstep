@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
@@ -15,6 +15,16 @@ interface MarkdownMessageProps {
   /** When set, images render as clickable thumbnails calling this with (src, alt). */
   onImageClick?: (src: string, alt: string) => void
 }
+
+/**
+ * ReactMarkdown's default URL transform strips any scheme outside its
+ * allow-list (http/https/irc/mailto/...), turning `file://` links into empty
+ * hrefs before the custom `a` component ever sees them. Preserve `file://`
+ * so `MarkdownMessage` can resolve it as a previewable project file; defer
+ * every other URL to the default (sanitising) transform.
+ */
+const fileAwareUrlTransform: UrlTransform = (url) =>
+  /^file:\/\//i.test(url) ? url : defaultUrlTransform(url)
 
 function closeStreamingFence(markdown: string): string {
   let openFence = ''
@@ -91,7 +101,7 @@ export default function MarkdownMessage({
         className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
         aria-live={streaming ? 'polite' : undefined}
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
           {markdown}
         </ReactMarkdown>
         {streaming && <span className="markdown-stream-cursor" aria-hidden="true" />}

@@ -1541,9 +1541,10 @@ async def test_system_prompt_defaults_validation_and_restore(chat_module):
     assert stored is not None
     assert json.loads(stored.value_json) == custom
 
-    # Empty input restores the default and removes the row.
-    assert module.set_system_prompt(project.id, "   ") == SYSTEM_PROMPT
+    # Empty input clears the custom prompt and returns "".
+    assert module.set_system_prompt(project.id, "   ") == ""
     assert module.get_system_prompt(project.id) == SYSTEM_PROMPT
+    assert module.get_raw_system_prompt(project.id) == ""
     assert (
         ProjectSetting.get_or_none(
             ProjectSetting.project_id == project.id,
@@ -1800,7 +1801,8 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
                 params={"project_id": project.id},
             )
             assert resp.status_code == 200
-            assert resp.json()["prompt"] == SYSTEM_PROMPT
+            assert resp.json()["prompt"] == ""
+            assert resp.json()["default_prompt"] == SYSTEM_PROMPT
             resp = await client.put(
                 "/api/chat-sessions/system-prompt",
                 json={"project_id": project.id, "prompt": "自定义提示词"},
@@ -1822,7 +1824,7 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
                 json={"project_id": project.id, "prompt": ""},
             )
             assert resp.status_code == 200
-            assert resp.json()["prompt"] == SYSTEM_PROMPT
+            assert resp.json()["prompt"] == ""
 
             # delete
             resp = await client.delete(

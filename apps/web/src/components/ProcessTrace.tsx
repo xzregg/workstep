@@ -12,7 +12,7 @@ import {
 import { useI18n } from '../i18n'
 import {
   buildMessageTimeline,
-  characterCount,
+  estimateTokens,
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
 import { isToolEvent, toolCallId } from '../utils/agui.ts'
@@ -52,10 +52,12 @@ function ThinkingTimelineItem({
   content,
   active,
   duration,
+  elapsedMs,
 }: {
   content: string
   active: boolean
   duration: string
+  elapsedMs?: number
 }) {
   const { t } = useI18n()
   const displayDuration = duration || formatDuration(0, t)
@@ -111,15 +113,18 @@ function ThinkingTimelineItem({
         <span className={active ? 'process-trace-thinking-label is-shimmer' : 'process-trace-thinking-label'}>
           {active
             ? t('trace.thinkingProgress', {
-              count: characterCount(content),
+              count: estimateTokens(content),
               duration: displayDuration,
+              rate: elapsedMs && elapsedMs > 0
+                ? Math.max(1, Math.round(estimateTokens(content) / (elapsedMs / 1000)))
+                : '—',
             })
             : duration
               ? t('trace.thoughtCharactersDuration', {
-                count: characterCount(content),
+                count: estimateTokens(content),
                 duration,
               })
-              : t('trace.thoughtCharacters', { count: characterCount(content) })}
+              : t('trace.thoughtCharacters', { count: estimateTokens(content) })}
         </span>
         <svg className="process-trace-chevron" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
           <path
@@ -267,7 +272,7 @@ export default function ProcessTrace({
         }}
       >
         <summary>
-          <span>
+          <span className={running ? 'process-trace-thinking-label is-shimmer' : undefined}>
             {running ? t('trace.processing') : stopped ? '' : t('trace.processed')}
             {!running && stopped
               ? (duration ? t('trace.stoppedAfter', { duration }) : t('trace.stopped'))
@@ -308,6 +313,10 @@ export default function ProcessTrace({
               key={item.id}
               content={item.content}
               active={running && item === lastProcessItem}
+              elapsedMs={durationMilliseconds(
+                item.startedAt,
+                running && item === lastProcessItem ? now : item.endedAt,
+              ) ?? undefined}
               duration={formatDuration(
                 durationMilliseconds(
                   item.startedAt,

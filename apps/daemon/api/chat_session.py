@@ -149,11 +149,14 @@ async def set_quick_buttons(req: QuickButtonsRequest):
 
 @router.get("/system-prompt")
 async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
-    """Return the project's configured chat system prompt (default when unset)."""
+    """Return the project's configured chat system prompt and the built-in default."""
+    from agent_assistants.chat_session import SYSTEM_PROMPT
+
     return {
         "prompt": await _run_db(
-            project_id, lambda: _module().get_system_prompt(project_id)
-        )
+            project_id, lambda: _module().get_raw_system_prompt(project_id)
+        ),
+        "default_prompt": SYSTEM_PROMPT,
     }
 
 

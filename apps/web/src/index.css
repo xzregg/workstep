@@ -676,7 +676,7 @@ details[open] > summary > .process-trace-chevron {
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: process-trace-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+  animation: process-trace-shine 1.75s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
 }
 
 @keyframes process-trace-shine {

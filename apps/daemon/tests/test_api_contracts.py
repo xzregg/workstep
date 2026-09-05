@@ -1418,6 +1418,60 @@ async def test_engine_test_uses_unsaved_form_values(api_context, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_engine_test_uses_selected_model(api_context, monkeypatch):
+    client, _ = api_context
+    import api.engine as engine_api
+    from engines.core.base import EngineTestResult
+
+    class FakeEngine:
+        received_model = object()
+
+        async def test_connection(
+            self,
+            cwd,
+            timeout_seconds,
+            config_overrides=None,
+            model=None,
+        ):
+            self.received_model = model
+            return EngineTestResult(True, "连接和对话测试通过", 12)
+
+    fake = FakeEngine()
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **kwargs: None)
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: fake)
+
+    response = await client.post(
+        "/api/engine/test",
+        json={
+            "engine_id": "claude",
+            "timeout_seconds": 3,
+            "model": "claude-opus-4-6",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert fake.received_model == "claude-opus-4-6"
+
+    # 未传模型时不应向引擎透传 model 参数
+    class BareEngine:
+        received_model = object()
+
+        async def test_connection(self, cwd, timeout_seconds):
+            self.received_model = None
+            return EngineTestResult(True, "连接和对话测试通过", 12)
+
+    bare = BareEngine()
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: bare)
+    response = await client.post(
+        "/api/engine/test",
+        json={"engine_id": "claude", "timeout_seconds": 3},
+    )
+    assert response.status_code == 200
+    assert bare.received_model is None
+
+
+@pytest.mark.anyio
 async def test_engine_test_reports_unavailable_engine(api_context, monkeypatch):
     client, _ = api_context
     import api.engine as engine_api

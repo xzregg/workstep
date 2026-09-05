@@ -372,6 +372,8 @@ class BaseLLMEngine(ABC):
                 if callable(get_engine_provider)
                 else ""
             )
+        if not model:
+            model = config_store.get_engine_default_model(self.ENGINE_ID) or None
         if not selected:
             if self.provider_required():
                 raise ValueError("该引擎需要先选择供应商")

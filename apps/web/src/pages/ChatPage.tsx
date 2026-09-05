@@ -89,6 +89,7 @@ export default function ChatPage() {
   const [quickSaving, setQuickSaving] = useState(false)
   const [quickRemoveId, setQuickRemoveId] = useState<string | null>(null)
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [defaultPrompt, setDefaultPrompt] = useState('')
   const [promptEditOpen, setPromptEditOpen] = useState(false)
   const [promptDraft, setPromptDraft] = useState('')
   const [promptError, setPromptError] = useState('')
@@ -202,7 +203,12 @@ export default function ChatPage() {
     if (!activeProject?.id) return
     let active = true
     chatSessionApi.getSystemPrompt(activeProject.id)
-      .then((result) => { if (active) setSystemPrompt(result.prompt) })
+      .then((result) => {
+        if (active) {
+          setSystemPrompt(result.prompt)
+          setDefaultPrompt(result.default_prompt)
+        }
+      })
       .catch(() => { /* keep the last known prompt */ })
     return () => { active = false }
   }, [activeProject?.id])
@@ -1041,7 +1047,23 @@ export default function ChatPage() {
             minHeight={420}
             maxHeight="55vh"
           />
-          <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
+            <button
+              onClick={() => { setPromptDraft(defaultPrompt); setPromptError('') }}
+              style={{
+                fontSize: 'calc(12px * var(--font-scale))',
+                color: 'var(--accent)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t('chatSession.loadDefaultPrompt')}
+            </button>
+          </div>
           {promptError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{promptError}</div>}
         </div>
       </ConfirmDialog>

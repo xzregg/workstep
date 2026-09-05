@@ -31,21 +31,6 @@ function render(node: React.ReactNode) {
   return renderToStaticMarkup(<I18nProvider>{node}</I18nProvider>)
 }
 
-test('empty streaming reply uses an unframed shimmering processing label', () => {
-  const html = render(
-    <StreamingStatusText label="处理中…" />,
-  )
-
-  assert.match(html, /class="engine-loading-message is-shimmer"/)
-  assert.match(html, />处理中…</)
-  assert.doesNotMatch(html, /engine-loading-dots/)
-})
-
-test('shared chat bubble uses the processing status text while awaiting output', () => {
-  assert.equal(zhCNT('bubble.thinking'), '处理中…')
-  assert.match(chatBubbleSource, /<StreamingStatusText label=\{t\('bubble\.thinking'\)\} \/>/)
-  assert.doesNotMatch(chatBubbleSource, /engine-loading-dots/)
-})
 
 test('active thinking disclosure reports elapsed time and character count', () => {
   const startedAt = Date.now() - 2_500

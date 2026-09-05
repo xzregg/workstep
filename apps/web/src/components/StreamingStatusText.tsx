@@ -12,8 +12,7 @@ export default function StreamingStatusText({
       className={`engine-loading-message is-shimmer${className ? ` ${className}` : ''}`}
       role="status"
       aria-live="polite"
-    >
-      {label}
-    </div>
+      aria-label={label}
+    />
   )
 }

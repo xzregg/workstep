@@ -31,6 +31,7 @@ class EngineTestRequest(BaseModel):
     timeout_seconds: float = Field(default=30, ge=3, le=120)
     values: dict = Field(default_factory=dict)
     clear: dict[str, bool] = Field(default_factory=dict)
+    model: str = Field(default="", max_length=200)
 
 
 class DefaultModelRequest(BaseModel):
@@ -191,6 +192,9 @@ async def test_engine(req: EngineTestRequest):
         "cwd": str(Path.cwd()),
         "timeout_seconds": req.timeout_seconds,
     }
+    selected_model = req.model.strip()
+    if selected_model:
+        test_kwargs["model"] = selected_model
     config_overrides = dict(req.values)
     clear_keys = [key for key, should_clear in req.clear.items() if should_clear]
     if clear_keys:

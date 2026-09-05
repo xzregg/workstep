@@ -659,7 +659,12 @@ class ClaudeCodeEngine(AcpEngineBase):
 
         if event_type == "result":
             if obj.get("is_error") or str(obj.get("subtype") or "").startswith("error"):
-                message = obj.get("result") or obj.get("error") or obj.get("subtype")
+                _subtype = obj.get("subtype")
+                message = (
+                    obj.get("result")
+                    or obj.get("error")
+                    or (_subtype if _subtype != "success" else None)
+                )
                 events.append(InternalEvent(
                     type="error",
                     data={"message": str(message or "Claude Code 执行失败")},

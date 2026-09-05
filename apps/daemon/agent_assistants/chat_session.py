@@ -1261,8 +1261,20 @@ class ChatSessionModule(AssistantRuntime):
         prompt = _load_json(row.value_json, "")
         return prompt if isinstance(prompt, str) and prompt.strip() else SYSTEM_PROMPT
 
+    def get_raw_system_prompt(self, project_id: str) -> str:
+        """Return the stored raw prompt value ("" if none), without default fallback."""
+        with self._project_ctx(project_id):
+            row = ProjectSetting.get_or_none(
+                ProjectSetting.project_id == project_id,
+                ProjectSetting.key == SYSTEM_PROMPT_KEY,
+            )
+        if row is None:
+            return ""
+        prompt = _load_json(row.value_json, "")
+        return prompt if isinstance(prompt, str) else ""
+
     def set_system_prompt(self, project_id: str, prompt: str) -> str:
-        """Persist the project's chat prompt; empty input restores the default."""
+        """Persist the project's chat prompt; empty input clears the custom prompt."""
         prompt = (prompt or "").strip()
         now = utc_now()
         with self._project_ctx(project_id):
@@ -1273,7 +1285,7 @@ class ChatSessionModule(AssistantRuntime):
             if not prompt:
                 if row is not None:
                     row.delete_instance()
-                return SYSTEM_PROMPT
+                return ""
             if len(prompt) > MAX_SYSTEM_PROMPT_LENGTH:
                 raise ValueError(
                     f"系统提示词不能超过 {MAX_SYSTEM_PROMPT_LENGTH} 字"

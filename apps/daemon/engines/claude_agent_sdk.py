@@ -457,11 +457,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 usage_data["session_id"] = session_id or ""
                 events.append(usage_update_event(usage_data))
             if is_error:
+                _subtype = getattr(msg, "subtype", None) or getattr(result, "subtype", None)
                 message = (
                     getattr(msg, "error", None)
-                    or getattr(msg, "subtype", None)
                     or getattr(result, "error", None)
-                    or getattr(result, "subtype", None)
+                    or (_subtype if _subtype != "success" else None)
                     or "Claude Agent SDK 执行失败"
                 )
                 events.append(

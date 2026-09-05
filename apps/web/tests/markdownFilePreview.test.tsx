@@ -23,6 +23,49 @@ test('classifies project files without intercepting external links', () => {
   assert.equal(classifyProjectFileLink('docs/example.tsx', undefined), null)
 })
 
+test('resolves file:// absolute links to previewable project files', () => {
+  assert.deepEqual(
+    classifyProjectFileLink('file:///Users/xzr/Desktop/workstep/demo-preview.html', 'project-1'),
+    { path: '/Users/xzr/Desktop/workstep/demo-preview.html', name: 'demo-preview.html' },
+  )
+  // Windows file URLs keep the drive letter without the URL's leading slash.
+  assert.deepEqual(
+    classifyProjectFileLink('file:///C:/Users/me/proj/site.html', 'project-1'),
+    { path: 'C:/Users/me/proj/site.html', name: 'site.html' },
+  )
+  // Explicit host form and encoded characters are normalised.
+  assert.deepEqual(
+    classifyProjectFileLink('file://localhost/Users/me/proj/a%20b.html', 'project-1'),
+    { path: '/Users/me/proj/a b.html', name: 'a b.html' },
+  )
+  // Query / fragment are dropped; trailing slash (a directory) is rejected.
+  assert.deepEqual(
+    classifyProjectFileLink('file:///Users/me/proj/site.html?open=1#top', 'project-1'),
+    { path: '/Users/me/proj/site.html', name: 'site.html' },
+  )
+  assert.equal(classifyProjectFileLink('file:///Users/me/proj/', 'project-1'), null)
+  // Still requires a project context to resolve.
+  assert.equal(classifyProjectFileLink('file:///Users/me/proj/site.html', undefined), null)
+})
+
+test('renders file:// project links as preview actions', () => {
+  const html = renderToStaticMarkup(
+    <I18nProvider>
+      <MarkdownMessage
+        content={'[preview](file:///Users/xzr/Desktop/workstep/demo-preview.html) [site](https://example.com)'}
+        projectId="project-1"
+      />
+    </I18nProvider>,
+  )
+
+  // Only the file:// link is marked as a preview action; the https link is not.
+  assert.match(html, /class="markdown-file-link"/)
+  assert.match(html, /data-file-preview="true"/)
+  assert.match(html, /href="file:\/\/\/Users\/xzr\/Desktop\/workstep\/demo-preview\.html"/)
+  assert.match(html, /href="https:\/\/example\.com"/)
+  assert.doesNotMatch(html, /class="markdown-file-link"[^>]*href="https:\/\/example\.com"/)
+})
+
 test('shared markdown marks project file links as preview actions', () => {
   const html = renderToStaticMarkup(
     <I18nProvider>

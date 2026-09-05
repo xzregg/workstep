@@ -327,7 +327,7 @@ export default function AssistantChatPanel({
 
       {sendError && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
           <div style={{
-            position: 'relative', flexShrink: 0, padding: '10px 12px',
+            position: 'relative', flexShrink: 0, padding: '24px 12px',
             borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
           }}>
             {composerOverlay}

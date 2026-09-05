@@ -53,6 +53,31 @@ export function characterCount(content: string): number {
   return Array.from(content).length
 }
 
+/**
+ * 估算 token 数：CJK 字符 ≈ 1 token/字符，ASCII/其他 ≈ 1 token/4 字符。
+ * 适用于流式过程中的轻量实时估算，非精确 tokenizer。
+ */
+export function estimateTokens(content: string): number {
+  if (!content) return 0
+  let cjk = 0
+  let other = 0
+  for (const ch of content) {
+    const code = ch.codePointAt(0)!
+    if (
+      (code >= 0x4e00 && code <= 0x9fff) ||   // CJK Unified
+      (code >= 0x3400 && code <= 0x4dbf) ||   // CJK Extension A
+      (code >= 0x3040 && code <= 0x30ff) ||   // Japanese kana
+      (code >= 0xac00 && code <= 0xd7af) ||   // Korean
+      (code >= 0xf900 && code <= 0xfaff)      // CJK Compatibility
+    ) {
+      cjk++
+    } else {
+      other++
+    }
+  }
+  return Math.max(1, Math.round(cjk + other / 4))
+}
+
 export function buildMessageTimeline(
   events: MessageTimelineEvent[],
 ): MessageTimelineItem[] {

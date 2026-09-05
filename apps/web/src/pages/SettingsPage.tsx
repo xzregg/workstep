@@ -916,7 +916,12 @@ export default function SettingsPage({
     })
     try {
       const testInput = engineFormRefs.current[engineId]?.getTestInput()
-      const result = await engineApi.test(engineId, testInput)
+      const selectedModel = (
+        customModelMode[engineId]
+          ? customModelDrafts[engineId]
+          : defaultModels[engineId]
+      ) || ''
+      const result = await engineApi.test(engineId, testInput, selectedModel)
       setTestResults((current) => ({ ...current, [engineId]: result }))
       if (result.engine) {
         setEngines((current) => current.map((engine) =>
@@ -1575,12 +1580,6 @@ export default function SettingsPage({
                         }
                         clearEngineModelCache(engine.id)
                         onConfigurationChanged?.()
-                        // Saving invalidates backend verification. If this draft was
-                        // already tested, verify the just-saved values again so the
-                        // user does not have to repeat the same click.
-                        if (testResults[engine.id]?.success) {
-                          void testEngine(engine.id)
-                        }
                       }}
                     />
                   )}

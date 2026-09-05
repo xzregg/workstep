@@ -1,5 +1,19 @@
 const EXTERNAL_SCHEME = /^[a-z][a-z\d+.-]*:/i
 const WINDOWS_ABSOLUTE_PATH = /^[a-z]:[\\/]/i
+/** A `file://` URL pointing at a real file, e.g. file:///Users/me/proj/index.html. */
+const FILE_URL = /^file:\/\//i
+
+/**
+ * Reduce a `file://` URL to a filesystem path the preview API can resolve.
+ * macOS/Linux keep their leading slash; Windows `/C:/Users/...` becomes
+ * `C:/Users/...` so pathlib treats it as an absolute drive path.
+ */
+function fileUrlToPath(href: string): string {
+  let path = href.replace(/^file:\/\//i, '')
+  if (path.startsWith('localhost/')) path = path.slice('localhost'.length)
+  path = path.replace(/^\/([a-z]:)/i, '$1')
+  return path
+}
 
 export interface ProjectFileLink {
   path: string
@@ -11,9 +25,19 @@ export function classifyProjectFileLink(
   projectId: string | undefined,
 ): ProjectFileLink | null {
   if (!href || !projectId || href.startsWith('#') || href.startsWith('//')) return null
-  if (EXTERNAL_SCHEME.test(href) && !WINDOWS_ABSOLUTE_PATH.test(href)) return null
 
-  const path = href.split(/[?#]/, 1)[0]
+  // `file://` URLs point at a real file: strip the scheme so the (absolute)
+  // path is handed to the preview API, which resolves it and enforces the
+  // project-boundary check server-side. Other external schemes (http,
+  // mailto, ...) still fall through to a plain link.
+  let candidate = href
+  if (FILE_URL.test(href)) {
+    candidate = fileUrlToPath(href)
+  } else if (EXTERNAL_SCHEME.test(href) && !WINDOWS_ABSOLUTE_PATH.test(href)) {
+    return null
+  }
+
+  const path = candidate.split(/[?#]/, 1)[0]
   if (!path || path.endsWith('/')) return null
   let decoded = path
   try {

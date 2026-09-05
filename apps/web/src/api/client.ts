@@ -817,7 +817,7 @@ export const chatSessionApi = {
       body: JSON.stringify({ project_id: projectId, buttons }),
     }),
   getSystemPrompt: (projectId: string) =>
-    request<{ prompt: string }>(
+    request<{ prompt: string; default_prompt: string }>(
       `/chat-sessions/system-prompt?project_id=${encodeURIComponent(projectId)}`,
     ),
   saveSystemPrompt: (projectId: string, prompt: string) =>
@@ -1826,13 +1826,14 @@ export const engineApi = {
         }),
       },
     ),
-  test: (engineId: string, config?: EngineConfigSaveInput) =>
+  test: (engineId: string, config?: EngineConfigSaveInput, model?: string) =>
     request<EngineTestResult>('/engine/test', {
       method: 'POST',
       body: JSON.stringify({
         engine_id: engineId,
         values: config?.values ?? {},
         clear: config?.clear ?? {},
+        model: model ?? '',
       }),
     }),
   install: (engineId: string, acceptThirdPartyTerms = false) =>
