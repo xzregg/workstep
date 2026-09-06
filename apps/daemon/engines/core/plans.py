@@ -15,9 +15,23 @@ _STATUSES = {
     "inprogress": "in_progress",
     "running": "in_progress",
     "paused": "in_progress",
+    "blocked": "pending",
     "completed": "completed",
     "done": "completed",
+    "cancelled": "completed",
+    "canceled": "completed",
 }
+
+
+def normalize_plan_status(raw: Any) -> str:
+    """Project a provider-specific plan status onto ACP stable values.
+
+    ACP ``PlanEntry.status`` only has ``pending`` / ``in_progress`` /
+    ``completed``; harness-style extras collapse safely: ``blocked`` reads as
+    ``pending`` (it cannot start yet) and ``cancelled`` reads as ``completed``
+    (terminal). Unknown values fall back to ``pending``.
+    """
+    return _STATUSES.get(str(raw or "pending").replace("-", "_").lower(), "pending")
 
 
 def normalize_plan_entries(
@@ -37,11 +51,10 @@ def normalize_plan_entries(
         if not content:
             continue
         raw_priority = str(entry.get("priority") or "medium").lower()
-        raw_status = str(entry.get("status") or "pending").replace("-", "_").lower()
         normalized_entry = {
             "content": content,
             "priority": raw_priority if raw_priority in _PRIORITIES else "medium",
-            "status": _STATUSES.get(raw_status, "pending"),
+            "status": normalize_plan_status(entry.get("status")),
         }
         detail = str(entry.get("detail") or entry.get("details") or "").strip()
         subject = str(entry.get("subject") or "").strip()

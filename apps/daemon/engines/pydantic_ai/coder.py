@@ -6,6 +6,7 @@ from typing import Any, Sequence
 
 from pydantic_ai import ModelRetry
 from pydantic_ai_harness import Coder, Shell
+from pydantic_ai_harness.planning import InMemoryPlanStore, Planning
 from pydantic_ai_harness.shell import ShellToolset
 from pydantic_ai_harness.subagents import SubAgents
 
@@ -74,6 +75,29 @@ class WorkStepCoder(Coder):
             allowed_commands=allowed_commands,
             **kwargs,
         )
+        # Pin the Planning capability to an explicit store so the host engine can
+        # read the authoritative plan state (the capability otherwise creates an
+        # opaque per-run store). ``plan_store`` is exposed for that purpose.
+        self.plan_store: Any = None
+        import dataclasses as _dataclasses
+
+        for index, capability in enumerate(self.capabilities):
+            if not isinstance(capability, Planning):
+                continue
+            replacement = capability
+            if capability.store is None and capability.store_resolver is None:
+                store = InMemoryPlanStore()
+                replacement = _dataclasses.replace(capability, store=store)
+            else:
+                store = capability.store
+            self.plan_store = store
+            if replacement is not capability:
+                self.capabilities[index] = replacement
+                self._instruction_sources = [
+                    replacement if source is capability else source
+                    for source in self._instruction_sources
+                ]
+            break
         # Rebuild the SubAgents capability (if any) with an event-stream handler so
         # sub-agent model/tool events surface into the parent event stream.
         # dataclasses.replace keeps all other fields (agents, models, budgets…).

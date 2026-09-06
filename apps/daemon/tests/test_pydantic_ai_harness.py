@@ -616,3 +616,133 @@ async def test_subagent_events_persist_and_readable(tmp_path):
     assert len(subagent_events) == 3
     assert subagent_events[0]["data"]["stage"] == "started"
     assert subagent_events[-1]["data"]["status"] == "completed"
+
+
+# --- Planning 工具集 → ACP plan 快照（前端 PlanChecklist 渲染兼容） ---
+
+
+def test_coder_pins_planning_store(tmp_path):
+    """WorkStepCoder 固定 Planning 的 InMemoryPlanStore 并暴露给宿主引擎。"""
+    from pydantic_ai_harness.planning import InMemoryPlanStore, Planning
+
+    from engines.pydantic_ai.coder import WorkStepCoder
+
+    coder = WorkStepCoder(tmp_path, allowed_commands=["git"])
+    planning = [c for c in coder.capabilities if isinstance(c, Planning)]
+    assert planning, "WorkStepCoder should include a Planning capability"
+    assert isinstance(coder.plan_store, InMemoryPlanStore)
+    assert planning[0].store is coder.plan_store
+    # _instruction_sources 与替换后的 capability 保持同一对象
+    assert planning[0] in coder._instruction_sources
+
+
+@pytest.mark.anyio
+async def test_publish_plan_snapshot_emits_and_dedupes():
+    """_publish_plan_snapshot 发 plan 事件、去重、并归一化 harness 状态。"""
+    from pydantic_ai_harness.planning import InMemoryPlanStore
+    from pydantic_ai_harness.planning._types import (
+        PlanItem,
+        TaskStatus,
+    )
+
+    engine = PydanticAIEngine()
+    store = InMemoryPlanStore()
+    engine._active_plan_store = store
+    engine._last_plan_snapshot = None
+    events: list = []
+
+    async def record(event):
+        events.append(event)
+
+    await store.set_items([
+        PlanItem(id="a1", content="第一步", status=TaskStatus.in_progress,
+                 active_form="正在做第一步"),
+        PlanItem(id="b2", content="第二步", status=TaskStatus.blocked),
+        PlanItem(id="c3", content="已取消", status=TaskStatus.cancelled),
+    ])
+    await engine._publish_plan_snapshot(record)
+    await engine._publish_plan_snapshot(record)  # 无变化 → 去重
+    assert len(events) == 1
+    entries = events[0].data["entries"]
+    assert events[0].type == "plan"
+    by_content = {e["content"]: e for e in entries}
+    # blocked → pending、cancelled → completed（ACP 稳定三态）
+    assert by_content["第一步"]["status"] == "in_progress"
+    assert by_content["第一步"]["detail"] == "正在做第一步"
+    assert by_content["第二步"]["status"] == "pending"
+    assert by_content["已取消"]["status"] == "completed"
+
+    await store.update_item("a1", status=TaskStatus.completed)
+    await engine._publish_plan_snapshot(record)
+    assert len(events) == 2
+    by_content = {e["content"]: e for e in events[1].data["entries"]}
+    assert by_content["第一步"]["status"] == "completed"
+
+
+@pytest.mark.anyio
+async def test_harness_planning_tools_publish_plan_snapshot(tmp_path):
+    """模型调用 write_plan / update_task_status 后，引擎发布对应 plan 快照。"""
+    import json as jsonlib
+
+    from pydantic_ai import Agent
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    from engines.pydantic_ai.coder import WorkStepCoder
+
+    requests = 0
+
+    async def model(messages, info):
+        nonlocal requests
+        requests += 1
+        if requests == 1:
+            yield {
+                0: DeltaToolCall(
+                    name="write_plan",
+                    json_args=jsonlib.dumps({
+                        "items": [
+                            {"id": "aaaa1111", "content": "实现功能",
+                             "status": "pending"},
+                            {"id": "bbbb2222", "content": "补测试",
+                             "status": "pending"},
+                        ],
+                    }),
+                    tool_call_id="wp-1",
+                )
+            }
+        if requests == 2:
+            yield {
+                0: DeltaToolCall(
+                    name="update_task_status",
+                    json_args=jsonlib.dumps(
+                        {"task_id": "aaaa1111", "status": "in_progress"}
+                    ),
+                    tool_call_id="ut-1",
+                )
+            }
+        yield "完成"
+
+    coder = WorkStepCoder(tmp_path, allowed_commands=["git"])
+    agent = Agent(
+        FunctionModel(stream_function=model),
+        capabilities=[coder],
+        retries={"tools": 3, "output": 1},
+    )
+    engine = PydanticAIEngine()
+    engine._active_plan_store = coder.plan_store
+    engine._last_plan_snapshot = None
+    events: list = []
+
+    async def record(event):
+        events.append(event)
+
+    result = await engine._stream_agent_run(
+        agent, prompt="实现功能并补测试", on_event=record,
+    )
+    assert result.output == "完成"
+
+    plan_events = [e for e in events if e.type == "plan"]
+    assert len(plan_events) == 2
+    first = {e["content"]: e["status"] for e in plan_events[0].data["entries"]}
+    assert first == {"实现功能": "pending", "补测试": "pending"}
+    second = {e["content"]: e["status"] for e in plan_events[1].data["entries"]}
+    assert second == {"实现功能": "in_progress", "补测试": "pending"}

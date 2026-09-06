@@ -1506,38 +1506,25 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_pydantic_ai_spawn_seeds_history_and_reports_engine_state(monkeypatch):
-    """spawn 用序列化历史恢复上下文，并在结束后上报 engine_state。"""
-    from pydantic_ai.messages import (
-        ModelMessagesTypeAdapter,
-        ModelRequest,
-        ModelResponse,
-        TextPart,
-        UserPromptPart,
-    )
-
-    store = MemoryEngineConfigStore()
-    provider = _add_provider(store, name="主账号")
-    store.set_pydantic_ai_engine_config(provider_id=provider["id"], model="agent-model")
-    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
-    captured = {}
+async def test_pydantic_ai_spawn_does_not_roundtrip_engine_state(monkeypatch, tmp_path):
+    """supports_message_history=False：spawn 不回灌 message_history、不上报
+    engine_state，跨轮上下文完全交给 harness StepPersistence。"""
+    calls = []
 
     class FakeResult:
         output = "ok"
         usage = None
 
         def all_messages(self):
-            return [
-                ModelRequest(parts=[UserPromptPart(content="前一问")]),
-                ModelResponse(parts=[TextPart(content="前答")]),
-            ]
+            return []
 
     async def fake_run_agent(
         self, *, prompt, cwd, add_dirs, model, on_event,
-        live_message_queue=None, images=None, message_history=None, session_id=None,
+        live_message_queue=None, images=None, session_id=None,
         sandbox=None,
     ):
-        captured["message_history"] = message_history
+        # 无 message_history 形参：若 spawn 仍回灌外部历史，此处将抛 TypeError。
+        calls.append(prompt)
         return FakeResult(), None
 
     monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
@@ -1547,31 +1534,29 @@ async def test_pydantic_ai_spawn_seeds_history_and_reports_engine_state(monkeypa
         staticmethod(lambda *, provider, model_name: object()),
     )
 
-    prior_state = ModelMessagesTypeAdapter.dump_python(
-        [ModelRequest(parts=[UserPromptPart(content="前一问")])],
-        mode="json",
-    )
+    store = MemoryEngineConfigStore()
+    provider = _add_provider(store, name="主账号")
+    store.set_pydantic_ai_engine_config(provider_id=provider["id"], model="agent-model")
+    monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
+
+    assert PydanticAIEngine().supports_message_history is False
     events = [
         event async for event in PydanticAIEngine().spawn(
             prompt="hi",
-            cwd="/tmp",
+            cwd=str(tmp_path),
             session_id="stable-1",
-            message_history=prior_state,
-            report_engine_state=True,
         )
     ]
 
-    assert captured["message_history"] is not None
-    assert captured["message_history"][0].parts[0].content == "前一问"
+    assert calls == ["hi"]
     assert [event.type for event in events] == [
         "session_started",
         "status",
         "agent_message_chunk",
-        "engine_state",
         "status",
     ]
+    assert "engine_state" not in [event.type for event in events]
     assert events[0].data["session_id"] == "stable-1"
-    assert events[3].data["state"][0]["parts"][0]["content"] == "前一问"
 
 
 # --- Config file persistence ---

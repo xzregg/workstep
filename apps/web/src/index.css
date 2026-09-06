@@ -644,7 +644,6 @@ details[open] > summary > .process-trace-chevron {
 
 .process-trace-thinking-block > summary {
   cursor: pointer;
-  user-select: none;
 }
 
 .process-trace-thinking-copy {
@@ -1179,7 +1178,6 @@ details[open] > summary > .process-trace-chevron {
   max-width: 100%;
   list-style: none;
   cursor: pointer;
-  user-select: none;
 }
 
 .llm-tool-group > summary::-webkit-details-marker {
@@ -1212,7 +1210,6 @@ details[open] > summary > .process-trace-chevron {
   max-width: 100%;
   list-style: none;
   cursor: pointer;
-  user-select: none;
 }
 
 .llm-tool-call > summary::-webkit-details-marker {
@@ -1266,6 +1263,29 @@ details[open] > summary > .process-trace-chevron {
   border-left: 1px solid var(--border);
   color: var(--meta);
   font-size: calc(11px * var(--font-scale));
+}
+
+.llm-tool-call-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.llm-tool-call-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.llm-tool-call-section-header button {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+
+.llm-tool-call-section:hover .llm-tool-call-section-header button,
+.llm-tool-call-section:focus-within .llm-tool-call-section-header button {
+  opacity: 1;
 }
 
 .llm-tool-call-detail pre {
@@ -1474,6 +1494,7 @@ details[open] > summary > .process-trace-chevron {
 .markdown-file-link {
   display: inline-flex;
   align-items: baseline;
+  color: var(--accent);
   border-radius: 4px;
   text-decoration: underline;
   text-decoration-color: color-mix(in oklab, var(--accent), transparent 58%);
@@ -2128,6 +2149,21 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   scrollbar-width: thin;
 }
 
+.chat-composer-resize-handle {
+  outline: none;
+  touch-action: none;
+}
+
+.chat-composer-resize-handle:hover .chat-composer-resize-line,
+.chat-composer-resize-handle:focus-visible .chat-composer-resize-line {
+  background: var(--accent);
+}
+
+.chat-composer-resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .chat-input-text-segment {
   display: block;
   border-radius: 0px;
@@ -2679,6 +2715,43 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 @keyframes task-status-spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── 截断标题走马灯（Codex 风格，MarqueeText 组件） ──
+   外层裁剪容器；未截断时子级 .ws-marquee__ellipsis 显示省略号；
+   截断且悬停时 .is-marquee 让 .ws-marquee__inner 来回滚动展示完整标题。 */
+.ws-marquee {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ws-marquee__ellipsis {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ws-marquee__track {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ws-marquee__inner {
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform;
+}
+.ws-marquee.is-marquee .ws-marquee__inner {
+  animation: ws-marquee-scroll var(--ws-marquee-duration, 6s) linear infinite;
+}
+/* 走→末端停顿→回起点的来回滚动，便于阅读被裁掉的尾部 */
+@keyframes ws-marquee-scroll {
+  0%   { transform: translateX(0); }
+  42%  { transform: translateX(var(--ws-marquee-shift, 0)); }
+  58%  { transform: translateX(var(--ws-marquee-shift, 0)); }
+  100% { transform: translateX(0); }
 }
 
 /* ── Slide-in animation ── */

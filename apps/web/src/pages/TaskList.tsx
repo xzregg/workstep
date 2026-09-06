@@ -16,6 +16,7 @@ import DateTimePicker from '../components/DateTimePicker'
 import MarkdownEditor from '../components/MarkdownEditor'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
+import MarqueeText from '../components/MarqueeText'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
@@ -1160,15 +1161,10 @@ export default function TaskList() {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                        <span
-                          title={task.title}
-                          style={{
-                            fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)', flex: 1,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {task.title.length > 20 ? task.title.slice(0, 20) + '…' : task.title}
-                        </span>
+                        <MarqueeText
+                          text={task.title}
+                          style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'var(--fg)' }}
+                        />
                         {task.scheduled_start_state === 'pending' && task.scheduled_start_at && (
                           <span
                             className="status-badge"

@@ -6,12 +6,13 @@ import type { MessageTimelineItem } from '../utils/messageTimeline'
 interface ToolTimelineItemProps {
   item: Extract<MessageTimelineItem, { type: 'tool' | 'tool-group' }>
   streaming: boolean
+  projectId?: string
 }
 
-export default function ToolTimelineItem({ item, streaming }: ToolTimelineItemProps) {
+export default function ToolTimelineItem({ item, streaming, projectId }: ToolTimelineItemProps) {
   const { t } = useI18n()
   if (item.type === 'tool') {
-    return <ToolCallRow activity={item.activity} messageRunning={streaming} />
+    return <ToolCallRow activity={item.activity} messageRunning={streaming} projectId={projectId} />
   }
 
   const running = streaming && item.activities.some((activity) => !activity.hasResult)
@@ -30,7 +31,7 @@ export default function ToolTimelineItem({ item, streaming }: ToolTimelineItemPr
       </summary>
       <div className="llm-tool-group-items">
         {item.activities.map((activity) => (
-          <ToolCallRow key={activity.id} activity={activity} messageRunning={streaming} />
+          <ToolCallRow key={activity.id} activity={activity} messageRunning={streaming} projectId={projectId} />
         ))}
       </div>
     </details>

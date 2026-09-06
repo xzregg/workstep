@@ -703,12 +703,13 @@ class BaseLLMEngine(ABC):
 
     @property
     def supports_message_history(self) -> bool:
-        """Whether the engine can rebuild context from serialized message history.
+        """Whether the host should round-trip serialized ``message_history``
+        and request an ``engine_state`` report for this engine.
 
         Engines that manage their own conversation context (resume by session
-        id) return False here because context lives engine-side; in-process
-        engines like Pydantic AI return True and accept ``message_history``
-        plus ``report_engine_state`` in :meth:`spawn`.
+        id, or an in-process persistence store such as the Pydantic AI harness
+        StepPersistence) return False: context lives engine-side, so the host
+        passes neither ``message_history`` nor ``report_engine_state``.
         """
         return False
 

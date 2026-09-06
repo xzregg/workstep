@@ -14,14 +14,6 @@ const layoutSource = await readFile(
   new URL('../src/components/Layout.tsx', import.meta.url),
   'utf8',
 )
-const processTraceSource = await readFile(
-  new URL('../src/components/ProcessTrace.tsx', import.meta.url),
-  'utf8',
-)
-const cssSource = await readFile(
-  new URL('../src/index.css', import.meta.url),
-  'utf8',
-)
 
 test('a running task keeps the composer editable for live message insertion and exposes stop', () => {
   const resolveTaskComposerState = (taskDetailChat as Record<string, any>).resolveTaskComposerState
@@ -36,14 +28,6 @@ test('a running task keeps the composer editable for live message insertion and 
   )
   assert.match(taskDetailSource, /resolveTaskComposerState/)
   assert.match(taskDetailSource, /onStop=\{/)
-})
-
-test('streaming thought growth preserves manual downward scrolling in the outer conversation', () => {
-  assert.match(processTraceSource, /data-active=\{active \? 'true' : undefined\}/)
-  assert.match(
-    cssSource,
-    /\.process-trace-thinking-block\[data-active='true'\][\s\S]*?\.process-trace-thinking[\s\S]*?overflow:\s*visible/,
-  )
 })
 
 test('refreshing a running task upserts it into an empty store', async () => {

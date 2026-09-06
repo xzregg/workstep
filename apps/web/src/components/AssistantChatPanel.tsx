@@ -6,6 +6,7 @@ import { taskApi, type EngineInputItem } from '../api/client'
 import { stripA2uiBlocks } from '../utils/a2ui'
 import { formatConversationDateTime } from '../utils/datetime'
 import {
+  isAutoShrinkClamp,
   isNearConversationBottom,
   conversationBottomScrollTop,
   shouldPauseConversationFollow,
@@ -28,6 +29,21 @@ import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { useI18n } from '../i18n'
+
+const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
+const MIN_COMPOSER_HEIGHT = 170
+const MAX_COMPOSER_FRACTION = 0.85
+
+function loadChatComposerHeight(): number | null {
+  try {
+    const raw = window.localStorage.getItem(COMPOSER_HEIGHT_KEY)
+    if (!raw) return null
+    const value = Number(raw)
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
 
 export interface AssistantChatCopy {
   emptyIntro: string
@@ -113,7 +129,13 @@ export default function AssistantChatPanel({
   const followRef = useRef(true)
   const lastProgrammaticScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
+  const lastScrollHeightRef = useRef(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<HTMLDivElement>(null)
+  const composerInnerRef = useRef<HTMLDivElement>(null)
+  const [composerHeight, setComposerHeight] = useState<number | null>(loadChatComposerHeight)
   const lastContent = messages.at(-1)?.content ?? ''
+  const lastEventsCount = messages.at(-1)?.events?.length ?? 0
   const showThinkingReply = shouldShowAssistantThinking(
     awaitingReply || running,
     messages,
@@ -126,17 +148,19 @@ export default function AssistantChatPanel({
   }, [projectId])
 
   useEffect(() => {
+    const list = listRef.current
     if (!followRef.current) {
+      if (list) lastScrollHeightRef.current = list.scrollHeight
       setHasUnreadMessages(true)
       return
     }
-    const list = listRef.current
     if (!list) return
     const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
     lastProgrammaticScrollTopRef.current = target
+    lastScrollHeightRef.current = list.scrollHeight
     list.scrollTop = target
     setHasUnreadMessages(false)
-  }, [messages.length, lastContent, scrollKey, a2uiMessages])
+  }, [messages.length, lastContent, lastEventsCount, scrollKey, a2uiMessages])
   useEffect(() => {
     followRef.current = true
     setHasUnreadMessages(false)
@@ -156,14 +180,73 @@ export default function AssistantChatPanel({
       if (!followRef.current) return
       const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
       lastProgrammaticScrollTopRef.current = target
+      lastScrollHeightRef.current = list.scrollHeight
       list.scrollTop = target
     }
     list.addEventListener('load', onMediaLoad, true)
     return () => list.removeEventListener('load', onMediaLoad, true)
   }, [])
 
+  // 持久化输入区高度；双击重置（null）会清除存储值。
+  useEffect(() => {
+    try {
+      if (composerHeight === null) window.localStorage.removeItem(COMPOSER_HEIGHT_KEY)
+      else window.localStorage.setItem(COMPOSER_HEIGHT_KEY, String(Math.round(composerHeight)))
+    } catch { /* localStorage 不可用 */ }
+  }, [composerHeight])
+
+  const clampComposerHeight = (height: number) => {
+    const containerHeight = rootRef.current?.getBoundingClientRect().height
+    const max = containerHeight
+      ? Math.max(MIN_COMPOSER_HEIGHT, Math.round(containerHeight * MAX_COMPOSER_FRACTION))
+      : height
+    return Math.min(Math.max(MIN_COMPOSER_HEIGHT, height), max)
+  }
+
+  // 拖动中直接写 DOM 高度，避免每帧重渲染整个消息列表；松开时提交状态。
+  const startComposerResize = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const startY = event.clientY
+    const startHeight = composerRef.current?.getBoundingClientRect().height
+      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
+    let latest = startHeight
+    const onMove = (moveEvent: MouseEvent) => {
+      latest = clampComposerHeight(startHeight + (startY - moveEvent.clientY))
+      if (composerRef.current) composerRef.current.style.height = `${latest}px`
+      if (composerInnerRef.current) {
+        composerInnerRef.current.style.height = '100%'
+        composerInnerRef.current.style.overflowY = 'auto'
+      }
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setComposerHeight(latest)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+  }
+
+  const resetComposerHeight = () => setComposerHeight(null)
+
+  const handleComposerResizeKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const base = composerRef.current?.getBoundingClientRect().height
+      ?? composerHeight ?? MIN_COMPOSER_HEIGHT
+    let next: number | null
+    if (event.key === 'ArrowUp') next = base + 8
+    else if (event.key === 'ArrowDown') next = base - 8
+    else if (event.key === 'Escape' || event.key === 'Home') next = null
+    else return
+    event.preventDefault()
+    setComposerHeight(next === null ? null : clampComposerHeight(next))
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div style={{
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
@@ -205,17 +288,32 @@ export default function AssistantChatPanel({
             const programmaticEcho = Math.abs(
               list.scrollTop - lastProgrammaticScrollTopRef.current,
             ) <= 1
+            // 内容变矮（思考块折叠等）时浏览器自动把 scrollTop 钳制到新的底部，
+            // 同样触发 scroll 事件；不能把它误判为用户上滚而取消跟随。
+            const autoShrinkClamp = isAutoShrinkClamp({
+              scrollTop: list.scrollTop,
+              prevScrollTop: lastScrollTopRef.current,
+              scrollHeight: list.scrollHeight,
+              prevScrollHeight: lastScrollHeightRef.current,
+              clientHeight: list.clientHeight,
+            })
             if (!programmaticEcho) {
               // 用户向上滚动（scrollTop 减小）立即取消跟随：
               // 流式输出期间内容持续增长，等滚出阈值就永远滚不动。
               if (list.scrollTop < lastScrollTopRef.current) {
-                followRef.current = false
+                if (autoShrinkClamp) {
+                  // 自动钳制落底：同步基准值，后续回显仍按程序滚动识别。
+                  lastProgrammaticScrollTopRef.current = list.scrollTop
+                } else {
+                  followRef.current = false
+                }
               } else if (nearBottom) {
                 followRef.current = true
                 setHasUnreadMessages(false)
               }
             }
             lastScrollTopRef.current = list.scrollTop
+            lastScrollHeightRef.current = list.scrollHeight
           }}
           style={{
             height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
@@ -280,6 +378,7 @@ export default function AssistantChatPanel({
                   : undefined}
                 prompt={message.prompt}
                 onViewPrompt={setViewingPrompt}
+                projectId={projectId}
               />
             )}
             footer={message.role === 'assistant' && message.status !== 'running' ? (
@@ -326,62 +425,92 @@ export default function AssistantChatPanel({
       </div>
 
       {sendError && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
-          <div style={{
-            position: 'relative', flexShrink: 0, padding: '24px 12px',
-            borderTop: '1px solid var(--border-soft)', background: 'var(--bg)',
-          }}>
-            {composerOverlay}
-        {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
-          <div
-            className="chat-quick-prompts"
-            role="group"
-            aria-label={quickPromptsLabel}
-            style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
-          >
-            {composerActions}
-            {quickPrompts?.map((item) => (
-              <Button
-                key={item.label}
-                type="button"
-                size="sm"
-                disabled={running}
-                onClick={() => {
-                  onQuickPromptSelect?.(item.prompt)
-                  requestAnimationFrame(() => inputRef.current?.focus())
-                }}
-                style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        )}
-        <ChatInput
-          projectId={projectId}
-          availableCommands={availableCommands}
-          inputRef={inputRef}
-          value={input}
-          onChange={onInputChange}
-          onSend={() => {
-            if (!input.trim() || (running && !allowSendWhileRunning)) return
-            followRef.current = true
-            setHasUnreadMessages(false)
-            setAwaitingReply(true)
-            onSend()
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t('layout.dragResizeComposer')}
+        title={t('layout.dragResizeComposer')}
+        tabIndex={0}
+        onMouseDown={startComposerResize}
+        onDoubleClick={resetComposerHeight}
+        onKeyDown={handleComposerResizeKey}
+        className="chat-composer-resize-handle"
+        style={{
+          height: 2, flexShrink: 0, cursor: 'row-resize',
+          background: 'var(--border-soft)', userSelect: 'none',
+        }}
+      />
+
+      <div
+        ref={composerRef}
+        style={{
+          position: 'relative', flexShrink: 0,
+          height: composerHeight ?? 'auto',
+          background: 'var(--bg)',
+        }}
+      >
+        {composerOverlay}
+        <div
+          ref={composerInnerRef}
+          style={{
+            height: composerHeight ?? 'auto',
+            overflowY: composerHeight ? 'auto' : 'visible',
+            display: 'flex', flexDirection: 'column',
+            padding: '24px 12px',
           }}
-          onStop={onStop}
-          disabled={running && !allowSendWhileRunning}
-          running={running}
-          allowSendWhileRunning={allowSendWhileRunning}
-          stopping={stopping}
-          placeholder={copy.placeholder}
-          imageAttach={{ projectId, prefix: attachmentPrefix, onError: onAttachmentError }}
-          config={config}
-          permission={permission}
-          enhance={enhance}
-          context={context}
-          plan={plan}
-        />
+        >
+          {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
+            <div
+              className="chat-quick-prompts"
+              role="group"
+              aria-label={quickPromptsLabel}
+              style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
+            >
+              {composerActions}
+              {quickPrompts?.map((item) => (
+                <Button
+                  key={item.label}
+                  type="button"
+                  size="sm"
+                  disabled={running}
+                  onClick={() => {
+                    onQuickPromptSelect?.(item.prompt)
+                    requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                  style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          )}
+          <ChatInput
+            projectId={projectId}
+            availableCommands={availableCommands}
+            inputRef={inputRef}
+            value={input}
+            onChange={onInputChange}
+            onSend={() => {
+              if (!input.trim() || (running && !allowSendWhileRunning)) return
+              followRef.current = true
+              setHasUnreadMessages(false)
+              setAwaitingReply(true)
+              onSend()
+            }}
+            onStop={onStop}
+            disabled={running && !allowSendWhileRunning}
+            running={running}
+            allowSendWhileRunning={allowSendWhileRunning}
+            stopping={stopping}
+            placeholder={copy.placeholder}
+            imageAttach={{ projectId, prefix: attachmentPrefix, onError: onAttachmentError }}
+            config={config}
+            permission={permission}
+            enhance={enhance}
+            context={context}
+            plan={plan}
+          />
+        </div>
       </div>
 
       {viewingPrompt && (

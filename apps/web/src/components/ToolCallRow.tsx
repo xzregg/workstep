@@ -1,6 +1,10 @@
+import { useState } from 'react'
 import Icon, { type IconName } from './Icon'
+import { MessageCopyButton } from './MessageResponseFooter'
+import FilePreviewDialog from './FilePreviewDialog'
 import { useI18n, type TFunction } from '../i18n'
 import type { ToolActivity } from '../utils/messageTimeline'
+import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 
 type ToolKind = 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other'
 
@@ -56,13 +60,19 @@ function toolIcon(kind: ToolKind): IconName {
   return 'sparkles'
 }
 
-function completedSummary(activity: ToolActivity, t: TFunction): string {
+function completedSummary(
+  activity: ToolActivity,
+  t: TFunction,
+  fileLink: ProjectFileLink | null,
+): string {
   const kind = toolKind(activity.name)
   const target = toolTarget(activity)
   const targetName = target ? ` ${basename(target)}` : ''
   if (kind === 'subagent') return t('trace.calledSubagent')
-  if (kind === 'edit') return t('trace.edited', { target: targetName || t('trace.file') })
-  if (kind === 'read') return t('trace.read', { target: targetName || t('trace.file') })
+  // 文件名以独立的可点击文件链接呈现时，摘要只保留动词，避免文件名重复出现。
+  const fileTarget = fileLink ? '' : targetName || t('trace.file')
+  if (kind === 'edit') return t('trace.edited', { target: fileTarget }).trim()
+  if (kind === 'read') return t('trace.read', { target: fileTarget }).trim()
   if (kind === 'command') return t('trace.ranCommand')
   if (kind === 'search') return t('trace.searched', { target: targetName })
   return t('trace.calledTool', { name: activity.name || t('chat.tool') })
@@ -71,20 +81,30 @@ function completedSummary(activity: ToolActivity, t: TFunction): string {
 interface ToolCallRowProps {
   activity: ToolActivity
   messageRunning?: boolean
+  /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
+  projectId?: string
 }
 
 export default function ToolCallRow({
   activity,
   messageRunning = false,
+  projectId,
 }: ToolCallRowProps) {
   const { t } = useI18n()
+  const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
   const input = textValue(activity.input)
   const result = textValue(activity.result)
   const isRunning = messageRunning && !activity.hasResult
   const kind = toolKind(activity.name)
+  // 读取/编辑目标渲染为 Markdown 风格的文件名链接（复用消息组件的文件预览逻辑）；
+  // 只在工具结束后呈现，避免流式参数尚未传完时预览到不完整路径。
+  const fileLink = !isRunning && (kind === 'read' || kind === 'edit')
+    ? classifyProjectFileLink(toolTarget(activity) || undefined, projectId)
+    : null
   const summary = isRunning
     ? t('chat.toolRunning', { name: activity.name || t('chat.tool') })
-    : completedSummary(activity, t)
+    : completedSummary(activity, t, fileLink)
+  const previewTitle = fileLink ? t('md.previewFile', { name: fileLink.name }) : ''
 
   return (
     <details className={`llm-tool-call llm-tool-call-${isRunning ? 'running' : activity.isError ? 'failed' : 'done'}`}>
@@ -93,24 +113,61 @@ export default function ToolCallRow({
           <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />
         </span>
         <span className={`llm-tool-call-summary${isRunning ? ' is-shimmer' : ''}`}>{summary}</span>
+        {fileLink && (
+          <a
+            className="markdown-file-link"
+            role="button"
+            tabIndex={0}
+            data-file-preview="true"
+            title={previewTitle}
+            aria-label={previewTitle}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              setPreviewFile(fileLink)
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              event.stopPropagation()
+              setPreviewFile(fileLink)
+            }}
+          >
+            {fileLink.name}
+          </a>
+        )}
         {activity.isError && <span className="process-trace-error">{t('trace.failed')}</span>}
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>
       <div className="llm-tool-call-detail">
         {input && (
-          <div>
-            <span>{t('trace.input')}</span>
+          <div className="llm-tool-call-section">
+            <div className="llm-tool-call-section-header">
+              <span>{t('trace.input')}</span>
+              <MessageCopyButton content={input} title={t('trace.copyInput')} />
+            </div>
             <pre>{input}</pre>
           </div>
         )}
         {result && (
-          <div>
-            <span>{t('trace.result')}</span>
+          <div className="llm-tool-call-section">
+            <div className="llm-tool-call-section-header">
+              <span>{t('trace.result')}</span>
+              <MessageCopyButton content={result} title={t('trace.copyResult')} />
+            </div>
             <pre>{result}</pre>
           </div>
         )}
         {!input && !result && <div className="process-trace-empty">{t('trace.noDetails')}</div>}
       </div>
+      {previewFile && projectId && (
+        <FilePreviewDialog
+          path={previewFile.path}
+          name={previewFile.name}
+          projectId={projectId}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </details>
   )
 }

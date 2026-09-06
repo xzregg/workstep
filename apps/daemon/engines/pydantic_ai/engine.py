@@ -22,7 +22,7 @@ from engines.core.events import (
     usage_update_event,
 )
 from engines.core.interactions import elicitation_request, permission_request
-from engines.core.plans import plan_event, subagent_event
+from engines.core.plans import normalize_plan_status, plan_event, subagent_event
 from engines.core.schema import EngineConfigField, EngineConfigOption
 from engines.pydantic_ai.coder import WorkStepCoder
 from services import providers as provider_service
@@ -54,6 +54,20 @@ PYDANTIC_AI_CODER_COMMANDS = (
     "node",
 )
 
+#: pydantic-ai-harness `Planning` toolset tools that mutate the plan store.
+#: After any of them completes, the pinned store is the authoritative plan
+#: state, so the engine republishes an ACP ``plan`` snapshot (the frontend
+#: renders it identically to other engines' plan events).
+PYDANTIC_PLANNING_TOOL_NAMES = frozenset({
+    "write_plan",
+    "add_task",
+    "update_task_status",
+    "update_task_statuses",
+    "remove_task",
+    "add_subtask",
+    "set_dependency",
+})
+
 
 class PydanticAIEngine(AcpEngineBase):
     ENGINE_ID = "pydantic_ai"
@@ -78,6 +92,10 @@ class PydanticAIEngine(AcpEngineBase):
         self._run_task: asyncio.Task | None = None
         self._interaction_permission_grants: set[str] = set()
         self._interaction_permission_rejects: set[str] = set()
+        # Pinned harness Planning store of the current spawn (authoritative
+        # plan source) plus the last published snapshot signature for dedupe.
+        self._active_plan_store: Any = None
+        self._last_plan_snapshot: str | None = None
 
     @property
     def supports_vision(self) -> bool:
@@ -403,6 +421,7 @@ class PydanticAIEngine(AcpEngineBase):
             kwargs["model_settings"] = model_settings
         if conversation_id:
             kwargs["conversation_id"] = conversation_id
+        tool_names: dict[str, str] = {}
         async with agent.run_stream_events(prompt, **kwargs) as stream:
             result = None
             async for event in stream:
@@ -411,10 +430,72 @@ class PydanticAIEngine(AcpEngineBase):
                     continue
                 internal = self._map_stream_event(event)
                 if internal is not None:
+                    if internal.type == "tool_call":
+                        call_id = str(internal.data.get("tool_call_id") or "")
+                        if call_id:
+                            tool_names[call_id] = str(
+                                internal.data.get("title") or ""
+                            )
                     await on_event(internal)
+                    if internal.type == "tool_call_update" and tool_names.get(
+                        str(internal.data.get("tool_call_id") or "")
+                    ) in PYDANTIC_PLANNING_TOOL_NAMES:
+                        await self._publish_plan_snapshot(on_event)
             if result is None:
                 raise RuntimeError("Pydantic AI 未返回执行结果")
             return result
+
+    async def _publish_plan_snapshot(
+        self,
+        on_event: Callable[[InternalEvent], Awaitable[None]],
+    ) -> None:
+        """Republish the harness plan as an ACP ``plan`` snapshot.
+
+        The Pydantic AI Coder's ``Planning`` toolset (``write_plan``,
+        ``update_task_status``/``update_task_statuses``, …) mutates the pinned
+        store directly; those tools are Pydantic-engine-specific and have no
+        ACP plan events of their own, so after each of them completes the
+        store is read back and published as the standard ``plan`` snapshot the
+        frontend already renders. Duplicates of an unchanged plan are skipped.
+        """
+        store = getattr(self, "_active_plan_store", None)
+        if store is None:
+            return
+        try:
+            items = await store.get_items()
+        except Exception:
+            logger.exception("Failed to read harness plan store")
+            return
+        entries = [self._harness_plan_entry(item) for item in items]
+        signature = json.dumps(entries, ensure_ascii=False, sort_keys=True)
+        if signature == getattr(self, "_last_plan_snapshot", None):
+            return
+        self._last_plan_snapshot = signature
+        await on_event(plan_event(entries))
+
+    @staticmethod
+    def _harness_plan_entry(item: Any) -> dict[str, str]:
+        """Project a harness ``PlanItem`` onto ACP stable plan fields."""
+        content = str(getattr(item, "content", "") or "").strip()
+        if not content:
+            return {
+                "content": content,
+                "priority": "medium",
+                "status": "pending",
+            }
+        status = str(
+            getattr(getattr(item, "status", None), "value", item.status)
+            or "pending"
+        )
+        entry: dict[str, str] = {
+            "content": content,
+            "priority": "medium",
+            "status": normalize_plan_status(status),
+        }
+        active_form = str(getattr(item, "active_form", "") or "").strip()
+        if active_form and active_form != content:
+            entry["detail"] = active_form
+        return entry
 
     @staticmethod
     def _accumulate_usage(total, result):
@@ -579,7 +660,6 @@ class PydanticAIEngine(AcpEngineBase):
         on_event: Callable[[InternalEvent], Awaitable[None]],
         live_message_queue: asyncio.Queue | None = None,
         images: list[EngineImage] | None = None,
-        message_history: list | None = None,
         thinking_effort: str | None = None,
         workstep_tools: bool = False,
         session_id: str | None = None,
@@ -602,13 +682,17 @@ class PydanticAIEngine(AcpEngineBase):
         if sandbox in ("workspace-write", "danger-full-access"):
             allowed.append("cd")
         subagent_handler = self._make_subagent_handler(on_event)
-        capabilities = [
-            WorkStepCoder(
-                root,
-                allowed_commands=allowed,
-                subagent_event_handler=subagent_handler,
-            ),
-        ]
+        coder = WorkStepCoder(
+            root,
+            allowed_commands=allowed,
+            subagent_event_handler=subagent_handler,
+        )
+        # The pinned Planning store is the authoritative source for the
+        # harness planning tools (write_plan / update_task_status / …);
+        # reset the dedupe cache because the store is fresh per spawn.
+        self._active_plan_store = getattr(coder, "plan_store", None)
+        self._last_plan_snapshot = None
+        capabilities = [coder]
         skill_library = root / ".workstep" / "skills"
         if skill_library.is_dir():
             capabilities.append(Skills(skill_library))
@@ -700,13 +784,14 @@ class PydanticAIEngine(AcpEngineBase):
         try:
             async with agent:
                 stream_kwargs: dict[str, Any] = {}
+                # Cross-turn context is owned entirely by the harness
+                # StepPersistence store (``.workstep/harness_runs.db``); no
+                # host-supplied ``message_history`` is accepted.
                 seeded_history = (
                     await self._harness_continue_history(root, session_id)
                     if harness_capabilities
                     else None
                 )
-                if seeded_history is None and message_history is not None:
-                    seeded_history = message_history
                 if seeded_history is not None:
                     stream_kwargs["message_history"] = seeded_history
                 result = await self._stream_agent_run(
@@ -1101,8 +1186,6 @@ class PydanticAIEngine(AcpEngineBase):
         session_id: str | None = None,
         live_message_queue: asyncio.Queue | None = None,
         images: list[EngineImage] | None = None,
-        message_history: list | None = None,
-        report_engine_state: bool = False,
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
         workstep_tools: bool = False,
@@ -1129,26 +1212,14 @@ class PydanticAIEngine(AcpEngineBase):
 
         self._running = True
         # 进程内 Agent 没有 CLI 会话概念：session_id 作为会话标识（供任务记录
-        # 与前端展示，同一对话保持稳定），跨轮上下文由 message_history 承载。
+        # 与前端展示，同一对话保持稳定），跨轮上下文由 harness StepPersistence
+        # （.workstep/harness_runs.db，按 session_id）承载。
         session_uuid = session_id or str(uuid.uuid4())
         self._active_session_id = session_uuid
         self._interaction_permission_grants.clear()
         self._interaction_permission_rejects.clear()
         yield InternalEvent(type="session_started", data={"session_id": session_uuid})
         yield InternalEvent(type="status", data={"status": "running"})
-        seeded_history: list | None = None
-        if message_history:
-            try:
-                from pydantic_ai.messages import ModelMessagesTypeAdapter
-
-                seeded_history = ModelMessagesTypeAdapter.validate_python(
-                    message_history
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to restore Pydantic AI message history; "
-                    "starting a fresh context"
-                )
         agent_task: asyncio.Task | None = None
         try:
             loaded_model = self.build_model(
@@ -1171,8 +1242,6 @@ class PydanticAIEngine(AcpEngineBase):
                 run_kwargs["thinking_effort"] = thinking_effort
             if workstep_tools:
                 run_kwargs["workstep_tools"] = True
-            if seeded_history is not None:
-                run_kwargs["message_history"] = seeded_history
             agent_task = asyncio.create_task(
                 self._run_agent(**run_kwargs)
             )
@@ -1215,11 +1284,9 @@ class PydanticAIEngine(AcpEngineBase):
                             )
                         except asyncio.CancelledError:
                             pass
-                        # 用 seeded_history + injected 启动新 run
+                        # 用既有上下文 + injected 启动新 run
                         new_kwargs = dict(run_kwargs)
                         new_kwargs["prompt"] = injected
-                        if seeded_history is not None:
-                            new_kwargs["message_history"] = seeded_history
                         event_queue = asyncio.Queue()
                         new_kwargs["on_event"] = event_queue.put
                         agent_task = asyncio.create_task(
@@ -1239,25 +1306,6 @@ class PydanticAIEngine(AcpEngineBase):
                     yield InternalEvent(
                         type="agent_message_chunk",
                         data={"content": {"text": output}},
-                    )
-
-            if report_engine_state:
-                state = None
-                try:
-                    from pydantic_ai.messages import ModelMessagesTypeAdapter
-
-                    state = ModelMessagesTypeAdapter.dump_python(
-                        result.all_messages(),
-                        mode="json",
-                    )
-                except Exception:
-                    logger.exception(
-                        "Failed to serialize Pydantic AI message history"
-                    )
-                if state is not None:
-                    yield InternalEvent(
-                        type="engine_state",
-                        data={"state": state},
                     )
 
             if total_usage is not None:
@@ -1320,8 +1368,10 @@ class PydanticAIEngine(AcpEngineBase):
 
     @property
     def supports_message_history(self) -> bool:
-        """The in-process agent rebuilds context from serialized messages."""
-        return True
+        """Cross-turn context is owned by the harness StepPersistence store
+        (``.workstep/harness_runs.db``), keyed by ``session_id``; the host does
+        not round-trip ``message_history`` / ``engine_state`` for this engine."""
+        return False
 
     @property
     def supports_thinking_effort(self) -> bool:

@@ -10,6 +10,7 @@ import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStor
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import Button from './Button'
+import MarqueeText from './MarqueeText'
 import DirectoryBrowser from './DirectoryBrowser'
 import Field from './Field'
 import Input from './Input'
@@ -892,8 +893,12 @@ export default function Layout({ onSelectProject, children }: Props) {
                   handleSelectProject(p)
                 }}
                 onDoubleClick={(e) => {
-                  if (p.type === 'remote') return
-                  e.stopPropagation(); setRenameId(p.path); setRenameName(p.name); setRenameError('')
+                  e.stopPropagation()
+                  setExpandedProjectId((current) => current === p.id ? null : p.id)
+                  if (expandedProjectId !== p.id) {
+                    useSidebarActivityStore.getState().markProjectRead(p.id)
+                    handleSelectProject(p)
+                  }
                 }}
                 draggable={p.type === 'local' && renameId !== p.path}
                 onDragStart={(e) => {
@@ -1005,6 +1010,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       setRenameId(null)
                     }}
                     onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
                     style={{ flex: 1, height: 30, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                   />
                 ) : (
@@ -1208,10 +1214,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                           style={{ flex: 1, height: 28, fontSize: 'calc(14px * var(--font-scale))', padding: '0 4px', border: `1px solid ${hasWhitespace(renameWfName) ? 'var(--danger)' : 'var(--accent)'}`, borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)' }}
                         />
                       ) : (
-                        <span
-                          style={{ flex: 1, textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
+                        <MarqueeText
+                          text={wf.name}
                           onDoubleClick={(e) => { e.stopPropagation(); if (!deleted) { setRenameWfId(wf.id); setRenameWfName(wf.name) } }}
-                        >{wf.name}</span>
+                          style={{ textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
+                        />
                       )}
                       {wf.running && !deleted ? (
                         <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
@@ -1422,7 +1429,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               style={{ flex: 1, height: 25, fontSize: 'calc(12.8px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
                             />
                           ) : (
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.title}</span>
+                            <MarqueeText text={session.title} />
                           )}
                           {sessionRunning ? (
                             <span
@@ -1519,6 +1526,22 @@ export default function Layout({ onSelectProject, children }: Props) {
           {projectContextMenu.project.type !== 'remote' && (
             <div
               onClick={() => {
+                setRenameId(projectContextMenu.project.path)
+                setRenameName(projectContextMenu.project.name)
+                setRenameError('')
+                setProjectContextMenu(null)
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
+            >
+              <Icon name="pencil" size={14} />
+              {t('common.rename')}
+            </div>
+          )}
+          {projectContextMenu.project.type !== 'remote' && (
+            <div
+              onClick={() => {
                 setShareProject(projectContextMenu.project)
                 setProjectContextMenu(null)
               }}
@@ -1567,7 +1590,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="pencil" size={14} />
-                  {t('common.edit')}
+                  {t('common.rename')}
                 </div>
               )}
               <div
@@ -1646,7 +1669,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
                 >
                   <Icon name="pencil" size={14} />
-                  {t('common.edit')}
+                  {t('common.rename')}
                 </div>
                 {!menuTarget.workflow.is_default && menuTarget.project.workflows.filter((w) => !w.deleted).length > 1 && (
                   <div
@@ -1687,7 +1710,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
           >
             <Icon name="pencil" size={14} />
-            {t('common.edit')}
+            {t('common.rename')}
           </div>
           <div
             onClick={() => {

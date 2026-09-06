@@ -84,6 +84,7 @@ export default function ArchiveExperienceProgress({
                   ? 'stopped'
                   : undefined}
               onViewPrompt={setViewingPrompt}
+              projectId={projectId}
             />
           )}
         />

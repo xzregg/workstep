@@ -246,7 +246,7 @@ class TurnEventJournal:
         ref: JournalRef,
         *,
         cursor: int = 0,
-        limit: int = 200,
+        limit: int = 30000,
     ) -> dict[str, Any]:
         self.sync(ref)
         all_events = self._read(ref)
@@ -254,7 +254,7 @@ class TurnEventJournal:
             event for event in all_events
             if int(event.get("seq") or 0) > max(0, cursor)
         ]
-        bounded_limit = min(max(1, limit), 200)
+        bounded_limit = min(max(1, limit), 30000)
         events = available[:bounded_limit]
         last_seq = int(events[-1].get("seq") or cursor) if events else cursor
         return {

@@ -149,12 +149,12 @@ async def set_quick_buttons(req: QuickButtonsRequest):
 
 @router.get("/system-prompt")
 async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
-    """Return the project's configured chat system prompt and the built-in default."""
+    """Return the configured chat system prompt ("" if none) and the built-in default."""
     from agent_assistants.chat_session import SYSTEM_PROMPT
 
     return {
         "prompt": await _run_db(
-            project_id, lambda: _module().get_raw_system_prompt(project_id)
+            project_id, lambda: _module().get_system_prompt(project_id)
         ),
         "default_prompt": SYSTEM_PROMPT,
     }
@@ -162,7 +162,7 @@ async def get_system_prompt(project_id: str = Query(..., alias="project_id")):
 
 @router.put("/system-prompt")
 async def set_system_prompt(req: SystemPromptRequest):
-    """Persist the project's chat system prompt; empty restores the default."""
+    """Persist the project's chat system prompt; empty clears it (no system prompt)."""
     try:
         prompt = await _run_db(
             req.project_id,
@@ -242,7 +242,7 @@ async def get_message_events(
     message_id: str,
     project_id: str = Query(..., alias="project_id"),
     cursor: int = Query(0, ge=0),
-    limit: int = Query(200, ge=1, le=200),
+    limit: int = Query(30000, ge=1, le=30000),
 ):
     """Return a bounded detail page from the host-side JSONL journal."""
     try:

@@ -159,7 +159,12 @@ Memory。思考强度通过 Pydantic AI
 又保留失控保护。Coder shell 在默认安全命令基础上允许项目构建所需的 `yarn/npm/npx/node`；
 命令固定从项目根执行，不允许用 `cd/bash/sh` 绕过白名单。压缩发生时经 receipts 排空产出
 `compacted` 事件（`acp_events` 已声明）。Shell 命令策略拒绝以普通工具结果返回给模型，不消耗
-Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命令终止整个回合。
+Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命令终止整个回合。Coder 自带
+`Planning` 工具集（`write_plan` / `add_task` / `update_task_status` / `update_task_statuses` /
+`remove_task` 等，Pydantic 引擎独有）直接改固定 `InMemoryPlanStore`；引擎在每次 planning 工具
+调用完成后回读 store 并发布标准 ACP `plan` 快照（未变化则去重），前端按与其它引擎一致的
+`plan` 事件渲染计划清单；`blocked`→`pending`、`cancelled`→`completed` 归一到 ACP 稳定三态
+（`engines/core/plans.py: normalize_plan_status`）。
 
 统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
 - 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`

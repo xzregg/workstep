@@ -48,6 +48,7 @@ import {
   isNearConversationBottom,
   shouldPauseConversationFollow,
   conversationBottomScrollTop,
+  isAutoShrinkClamp,
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
@@ -569,6 +570,7 @@ export default function TaskDetailView({
   const followRef = shouldFollowMessagesRef ?? localShouldFollowRef
   const programmaticRef = lastProgrammaticScrollTopRef ?? localLastProgrammaticRef
   const lastScrollTopRef = useRef(0)
+  const lastScrollHeightRef = useRef(0)
   const stageLastRef = stageLastMessageRefs ?? localStageLastMessageRefs
   const pendingScrollRef = pendingStageScrollRef ?? localPendingStageScrollRef
   const unreadMessages = hasUnreadMessages ?? localHasUnread
@@ -581,18 +583,20 @@ export default function TaskDetailView({
   // 依赖仅含消息内容：durationNowMs 每秒 tick 触发的重渲染不应强制钉底，
   // 否则 LLM 输出期间用户无法滚动查看历史。
   useEffect(() => {
+    const container = scrollRef.current
     if (followRef.current) {
-      const container = scrollRef.current
       if (container) {
         const target = conversationBottomScrollTop(
           container.scrollHeight,
           container.clientHeight,
         )
         programmaticRef.current = target
+        lastScrollHeightRef.current = container.scrollHeight
         container.scrollTop = target
       }
       setUnreadMessages(false)
     } else {
+      if (container) lastScrollHeightRef.current = container.scrollHeight
       setUnreadMessages(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -609,6 +613,7 @@ export default function TaskDetailView({
         container.clientHeight,
       )
       programmaticRef.current = target
+      lastScrollHeightRef.current = container.scrollHeight
       container.scrollTop = target
     }
     container.addEventListener('load', onMediaLoad, true)
@@ -2164,18 +2169,33 @@ export default function TaskDetailView({
                   container.scrollTop -
                     programmaticRef.current,
                 ) <= 1
+              // 内容变矮（思考块折叠等）时浏览器自动把 scrollTop 钳制到新的底部，
+              // 同样触发 scroll 事件；不能把它误判为用户上滚而取消跟随。
+              const autoShrinkClamp = isAutoShrinkClamp({
+                scrollTop: container.scrollTop,
+                prevScrollTop: lastScrollTopRef.current,
+                scrollHeight: container.scrollHeight,
+                prevScrollHeight: lastScrollHeightRef.current,
+                clientHeight: container.clientHeight,
+              })
               if (!programmaticEcho) {
                 // 用户向上滚动（scrollTop 减小）立即取消跟随，
                 // 不能等滚出阈值再取消：流式输出期间内容持续增长，
                 // 幅度不够时永远滚不出阈值。
                 if (container.scrollTop < lastScrollTopRef.current) {
-                  followRef.current = false
+                  if (autoShrinkClamp) {
+                    // 自动钳制落底：同步基准值，后续回显仍按程序滚动识别。
+                    programmaticRef.current = container.scrollTop
+                  } else {
+                    followRef.current = false
+                  }
                 } else if (nearBottom) {
                   followRef.current = true
                   setUnreadMessages(false)
                 }
               }
               lastScrollTopRef.current = container.scrollTop
+              lastScrollHeightRef.current = container.scrollHeight
             }}
             style={{
               height: '100%',
@@ -2573,6 +2593,7 @@ export default function TaskDetailView({
                                   reviewStatus={
                                     msgReview?.status
                                   }
+                                  projectId={projectId}
                                 />
                               )
                             }
@@ -3022,6 +3043,7 @@ export default function TaskDetailView({
                       status={terminalMessageStatus(
                         message.status,
                       )}
+                      projectId={projectId}
                     />
                   }
                   showLoading={
@@ -3138,6 +3160,7 @@ export default function TaskDetailView({
                   <ProcessTrace
                     events={events}
                     running={running ?? false}
+                    projectId={projectId}
                   />
                 }
                 showLoading={

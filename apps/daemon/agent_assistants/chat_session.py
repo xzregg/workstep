@@ -596,7 +596,7 @@ class ChatSessionModule(AssistantRuntime):
         message_id: str,
         *,
         cursor: int = 0,
-        limit: int = 200,
+        limit: int = 30000,
     ) -> dict:
         """Read one message's detailed timeline without loading it in history."""
         with self._project_ctx(project_id) as project:
@@ -1175,7 +1175,7 @@ class ChatSessionModule(AssistantRuntime):
     # ── per-project system prompt ─────────────────────────────────────
 
     def _build_prompt(self, session) -> str:
-        """Use the project-configured system prompt (default when unset)."""
+        """Use the project-configured system prompt ("" when unset, no default)."""
         prompt = self.get_system_prompt(session.project_id)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):
@@ -1192,7 +1192,11 @@ class ChatSessionModule(AssistantRuntime):
                 if pending_handoff.get("relative_path")
                 else render_handoff(pending_handoff)
             )
-            return f"{prompt}\n\n{handoff_prompt}\n\n当前请求：\n{user_message}"
+            return "\n\n".join(
+                part
+                for part in (prompt, handoff_prompt, f"当前请求：\n{user_message}")
+                if part
+            )
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
             user_message = next(
@@ -1203,8 +1207,9 @@ class ChatSessionModule(AssistantRuntime):
                 ),
                 "",
             )
-            head = prompt if not session.resolved_session_id else ""
-            return f"{head}\n\n{user_message}"
+            if session.resolved_session_id or not prompt:
+                return user_message
+            return f"{prompt}\n\n{user_message}"
         turns = [
             item for item in session.messages
             if not (item.get("role") == "assistant" and item.get("status") == "running")
@@ -1213,7 +1218,8 @@ class ChatSessionModule(AssistantRuntime):
             f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
             for item in turns
         )
-        return f"{prompt}\n\n历史对话：\n{history}\n\n请继续。"
+        tail = f"历史对话：\n{history}\n\n请继续。"
+        return f"{prompt}\n\n{tail}" if prompt else tail
 
     def _display_prompt(self, session, prompt: str) -> str:
         if not isinstance(session.extra.get("pending_handoff"), dict):
@@ -1250,19 +1256,11 @@ class ChatSessionModule(AssistantRuntime):
         session.extra.pop("pending_handoff", None)
 
     def get_system_prompt(self, project_id: str) -> str:
-        """Return the project's configured chat prompt or the default."""
-        with self._project_ctx(project_id):
-            row = ProjectSetting.get_or_none(
-                ProjectSetting.project_id == project_id,
-                ProjectSetting.key == SYSTEM_PROMPT_KEY,
-            )
-        if row is None:
-            return SYSTEM_PROMPT
-        prompt = _load_json(row.value_json, "")
-        return prompt if isinstance(prompt, str) and prompt.strip() else SYSTEM_PROMPT
+        """Return the project's configured chat prompt ("" if unset or cleared).
 
-    def get_raw_system_prompt(self, project_id: str) -> str:
-        """Return the stored raw prompt value ("" if none), without default fallback."""
+        No built-in default is substituted: an empty prompt means the chat
+        assistant runs without a system prompt.
+        """
         with self._project_ctx(project_id):
             row = ProjectSetting.get_or_none(
                 ProjectSetting.project_id == project_id,

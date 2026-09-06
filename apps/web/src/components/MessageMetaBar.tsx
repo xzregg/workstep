@@ -67,6 +67,8 @@ export interface MessageMetaBarProps {
     error?: string
   }
   onLoadEventDetails?: () => void
+  /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
+  projectId?: string
 }
 
 export default function MessageMetaBar({
@@ -85,6 +87,7 @@ export default function MessageMetaBar({
   eventSummary,
   eventDetail,
   onLoadEventDetails,
+  projectId,
 }: MessageMetaBarProps) {
   const { t, locale } = useI18n()
   const [sessionCopied, setSessionCopied] = useState(false)
@@ -162,6 +165,7 @@ export default function MessageMetaBar({
         stopped={status === 'cancelled' || status === 'stopped'}
         startedAt={displayStartedAt}
         endedAt={endedAt}
+        projectId={projectId}
         compact
         eventSummary={eventSummary}
         detailsAvailable={eventDetail?.available}

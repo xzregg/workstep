@@ -376,6 +376,36 @@ export function isNearConversationBottom(
   return scrollHeight - scrollTop - clientHeight <= threshold
 }
 
+/**
+ * 区分 scroll 事件是「用户手动滚动」还是「内容高度变化引发的浏览器自动钳制」。
+ *
+ * 对话内容整体变矮时（如思考块结束后自动折叠、过程追踪收起），浏览器会把
+ * scrollTop 自动钳制到新的底部并触发 scroll 事件。只看 scrollTop 减小会把这次
+ * 钳制误判为“用户向上滚动”，从而错误关闭跟随（钉底）。
+ *
+ * 判定：scrollTop 减小 + 同一事件里 scrollHeight 也减小 + 钳制后恰好落在底部，
+ * 视为自动钳制（保留原跟随状态，不取消跟随）；
+ * scrollTop 减小但高度未减小则是用户手动上滚（应取消跟随）。
+ * 用户滚轮/键盘上滚在 capture 阶段已先行取消跟随，因此不会在此被保留。
+ */
+export function isAutoShrinkClamp({
+  scrollTop,
+  prevScrollTop,
+  scrollHeight,
+  prevScrollHeight,
+  clientHeight,
+}: {
+  scrollTop: number
+  prevScrollTop: number
+  scrollHeight: number
+  prevScrollHeight: number
+  clientHeight: number
+}): boolean {
+  if (!(scrollTop < prevScrollTop)) return false
+  if (!(scrollHeight < prevScrollHeight)) return false
+  return scrollHeight - scrollTop - clientHeight <= 1
+}
+
 type ConversationNavigationIntent =
   | { type: 'wheel'; deltaY: number }
   | { type: 'key'; key: string }

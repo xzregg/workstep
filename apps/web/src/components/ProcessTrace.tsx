@@ -46,16 +46,21 @@ interface ProcessTraceProps {
   detailsLoading?: boolean
   detailsError?: string
   onLoadDetails?: () => void
+  /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
+  projectId?: string
 }
 
 function ThinkingTimelineItem({
   content,
   active,
+  lastThinking,
   duration,
   elapsedMs,
 }: {
   content: string
   active: boolean
+  /** 是否为当前消息中最后一个思考块；只有最后一个思考块结束后不自动折叠。 */
+  lastThinking: boolean
   duration: string
   elapsedMs?: number
 }) {
@@ -67,9 +72,15 @@ function ThinkingTimelineItem({
   const lastScrollTopRef = useRef(0)
   const lastProgrammaticScrollTopRef = useRef(0)
   useEffect(() => {
-    setOpen(active)
-    if (active) followRef.current = true
-  }, [active])
+    if (active) {
+      setOpen(true)
+      followRef.current = true
+    } else if (!lastThinking) {
+      // 非最后一个思考块：结束后自动折叠
+      setOpen(false)
+    }
+    // 最后一个思考块：结束后不自动缩回，保留用户当前展开/折叠状态
+  }, [active, lastThinking])
   useLayoutEffect(() => {
     if (!active || !open || !followRef.current) return
     const container = thinkingRef.current
@@ -199,6 +210,7 @@ export default function ProcessTrace({
   detailsLoading = false,
   detailsError,
   onLoadDetails,
+  projectId,
 }: ProcessTraceProps) {
   const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
@@ -217,6 +229,10 @@ export default function ProcessTrace({
     (item): item is Exclude<MessageTimelineItem, { type: 'text' }> => item.type !== 'text',
   )
   const lastProcessItem = processItems[processItems.length - 1]
+  const thinkingItems = processItems.filter(
+    (item): item is Extract<MessageTimelineItem, { type: 'thinking' }> => item.type === 'thinking',
+  )
+  const lastThinkingItem = thinkingItems[thinkingItems.length - 1]
   // 按工具调用去重计数：一次命令/工具调用会拆成 start/args/chunk/result
   // 多条事件（尤其流式参数会逐块产生大量 chunk），不能把事件数当命令数。
   const eventCommandCount = new Set(events
@@ -313,6 +329,7 @@ export default function ProcessTrace({
               key={item.id}
               content={item.content}
               active={running && item === lastProcessItem}
+              lastThinking={item === lastThinkingItem}
               elapsedMs={durationMilliseconds(
                 item.startedAt,
                 running && item === lastProcessItem ? now : item.endedAt,
@@ -328,7 +345,7 @@ export default function ProcessTrace({
           ) : item.type === 'subagent' ? (
             <SubagentTimelineItem key={item.id} item={item} messageRunning={running} />
           ) : (
-            <ToolTimelineItem key={item.id} item={item} streaming={running} />
+            <ToolTimelineItem key={item.id} item={item} streaming={running} projectId={projectId} />
           ))}
         </div>
       </details>

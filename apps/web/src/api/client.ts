@@ -727,7 +727,7 @@ export const chatSessionApi = {
     messageId: string,
     projectId: string,
     cursor = 0,
-    limit = 200,
+    limit = 30000,
   ) => request<ChatMessageEventsPage>(
     `/chat-sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/events`
     + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,

@@ -1523,11 +1523,11 @@ async def test_quick_buttons_defaults_and_validation(chat_module):
 
 
 @pytest.mark.anyio
-async def test_system_prompt_defaults_validation_and_restore(chat_module):
+async def test_system_prompt_persistence_validation_and_clear(chat_module):
     module, bus, manager, project, _ = chat_module
 
-    # Unset → built-in default.
-    assert module.get_system_prompt(project.id) == SYSTEM_PROMPT
+    # Unset → empty; no built-in default is substituted.
+    assert module.get_system_prompt(project.id) == ""
 
     custom = "你是项目专属助手。\n多轮对话保持上下文。"
     saved = module.set_system_prompt(project.id, "  " + custom + "  ")
@@ -1541,10 +1541,9 @@ async def test_system_prompt_defaults_validation_and_restore(chat_module):
     assert stored is not None
     assert json.loads(stored.value_json) == custom
 
-    # Empty input clears the custom prompt and returns "".
+    # Empty input clears the custom prompt; the assistant then has no system prompt.
     assert module.set_system_prompt(project.id, "   ") == ""
-    assert module.get_system_prompt(project.id) == SYSTEM_PROMPT
-    assert module.get_raw_system_prompt(project.id) == ""
+    assert module.get_system_prompt(project.id) == ""
     assert (
         ProjectSetting.get_or_none(
             ProjectSetting.project_id == project.id,
