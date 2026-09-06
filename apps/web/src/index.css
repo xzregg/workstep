@@ -294,7 +294,6 @@ body {
   font-family: var(--font-body);
   font-size: var(--text-body);
   color: var(--fg);
-  background: var(--surface);
   line-height: 1.47;
   height: 100vh;
   overflow: hidden;
@@ -620,11 +619,12 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .process-trace-chevron {
   margin-left: auto;
   color: var(--meta);
+  transform: rotate(-90deg); /* 收起：箭头指向右 ▸ */
   transition: transform var(--motion-fast) var(--ease);
 }
 
 details[open] > summary > .process-trace-chevron {
-  transform: rotate(180deg);
+  transform: rotate(0deg); /* 展开：箭头指向下 ▾ */
 }
 
 .process-trace-body {
@@ -1189,7 +1189,7 @@ details[open] > summary > .process-trace-chevron {
 }
 
 .llm-tool-group[open] > summary > .llm-tool-call-chevron {
-  transform: rotate(180deg);
+  transform: rotate(0deg); /* 展开：箭头指向下 ▾ */
 }
 
 .llm-tool-group-items {
@@ -1246,11 +1246,12 @@ details[open] > summary > .process-trace-chevron {
 .llm-tool-call-chevron {
   flex: 0 0 auto;
   color: var(--meta);
+  transform: rotate(-90deg); /* 收起：箭头指向右 ▸ */
   transition: transform var(--motion-fast) var(--ease);
 }
 
 .llm-tool-call[open] > summary > .llm-tool-call-chevron {
-  transform: rotate(180deg);
+  transform: rotate(0deg); /* 展开：箭头指向下 ▾ */
 }
 
 .llm-tool-call-detail {

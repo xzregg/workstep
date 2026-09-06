@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from pydantic_ai import ModelRetry
-from pydantic_ai_harness import Coder, Shell
+from pydantic_ai_harness import Coder, FileSystem, Shell
 from pydantic_ai_harness.planning import InMemoryPlanStore, Planning
 from pydantic_ai_harness.shell import ShellToolset
 from pydantic_ai_harness.subagents import SubAgents
@@ -134,6 +134,25 @@ class WorkStepCoder(Coder):
                 allow_interactive=capability.allow_interactive,
                 env=capability.env,
                 denied_env_patterns=capability.denied_env_patterns,
+            )
+            self.capabilities[index] = replacement
+            self._instruction_sources = [
+                replacement if source is capability else source
+                for source in self._instruction_sources
+            ]
+            break
+        # Protect project memory from model writes: MEMORY.md is injected into
+        # the prompt upstream (services.prompt) and must stay read-only to the
+        # coding agent. The pattern is relative to the FileSystem root.
+        for index, capability in enumerate(self.capabilities):
+            if not isinstance(capability, FileSystem):
+                continue
+            protected = list(capability.protected_patterns)
+            if ".workstep/MEMORY.md" not in protected:
+                protected.append(".workstep/MEMORY.md")
+            replacement = _dataclasses.replace(
+                capability,
+                protected_patterns=protected,
             )
             self.capabilities[index] = replacement
             self._instruction_sources = [

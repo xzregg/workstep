@@ -27,6 +27,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useI18n } from '../i18n'
 import { clearDraft, loadDraft, saveDraft } from '../utils/chatDraft'
+import { clearInsertQueue, loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
 import { requiresEngineHandoff } from '../utils/chatSessionFork'
@@ -304,6 +305,31 @@ export default function ChatPage() {
     setSendingInsertIds([])
   }, [sessionId])
 
+  // ── 插入队列持久化 ─────────────────────────────
+  // localStorage 按（项目, 会话）保存队列，刷新页面后恢复。
+  // queueStorageRef 记录当前生效 key，写回只跟随队列内容变化，
+  // 避免会话切换瞬间把旧队列错写到新会话的 key 上。
+  const queueStorageRef = useRef<{ projectId: string; sessionId: string } | null>(null)
+
+  useEffect(() => {
+    queueStorageRef.current = sessionId && activeProject?.id
+      ? { projectId: activeProject.id, sessionId }
+      : null
+  }, [sessionId, activeProject?.id])
+
+  // 恢复队列：刷新页面时 activeProject 异步加载完成后再恢复；
+  // 切换会话时在 reset effect 清空后恢复目标会话的队列。
+  useEffect(() => {
+    if (!sessionId || !activeProject?.id) return
+    setPendingInserts(loadInsertQueue(activeProject.id, sessionId))
+  }, [sessionId, activeProject?.id])
+
+  useEffect(() => {
+    const target = queueStorageRef.current
+    if (!target) return
+    saveInsertQueue(target.projectId, target.sessionId, pendingInserts)
+  }, [pendingInserts])
+
   const sendMessageNow = useCallback(async (content: string): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
@@ -433,6 +459,34 @@ export default function ChatPage() {
     setEditingInsertId(null)
     setEditingInsertContent('')
   }, [editingInsertContent])
+
+  // ── 插入队列自动推进 ─────────────────────────────
+  // 引擎执行中插入的消息先排队；当前执行结束（running: true → false）时，
+  // 自动发送队首消息触发下一轮执行，直至队列清空。
+  // autoDrainingRef 防止同一空闲窗口内重复发送；编辑中不自动发送，避免覆盖用户编辑。
+  const prevRunningRef = useRef(running)
+  const autoDrainingRef = useRef(false)
+
+  useEffect(() => {
+    const wasRunning = prevRunningRef.current
+    prevRunningRef.current = running
+    if (!wasRunning || running || autoDrainingRef.current) return
+    if (!sessionId || !activeProject?.id || editingInsertId !== null) return
+    if (pendingInserts.length === 0 || sendingInsertIds.length > 0) return
+    const first = pendingInserts[0]
+    autoDrainingRef.current = true
+    setSendingInsertIds([first.id])
+    setSendError('')
+    void sendMessageNow(first.content).then((ok) => {
+      if (ok) {
+        setPendingInserts((current) => current.filter((item) => item.id !== first.id))
+        setEditingInsertId(null)
+        setEditingInsertContent('')
+      }
+      setSendingInsertIds([])
+      autoDrainingRef.current = false
+    })
+  }, [running, pendingInserts, editingInsertId, sendingInsertIds.length, sessionId, activeProject?.id, sendMessageNow])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -613,6 +667,7 @@ export default function ChatPage() {
       await chatSessionApi.remove(sessionId, activeProject.id)
       useChatSessionStore.getState().resetSession(sessionId)
       useChatListStore.getState().removeSession(sessionId)
+      clearInsertQueue(activeProject.id, sessionId)
       setDeleteOpen(false)
       navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}`, { replace: true })
     } catch (reason) {
@@ -749,6 +804,18 @@ export default function ChatPage() {
             ))}
             onSendAll={() => void sendPendingInserts(pendingInserts)}
             onClear={() => setPendingInserts([])}
+            onReorder={(fromIndex, toIndex) => setPendingInserts((current) => {
+              if (
+                fromIndex === toIndex
+                || fromIndex < 0 || fromIndex >= current.length
+                || toIndex < 0 || toIndex >= current.length
+              ) return current
+              const next = [...current]
+              const [moved] = next.splice(fromIndex, 1)
+              next.splice(toIndex, 0, moved)
+              return next
+            })}
+            reorderHint={t('chatSession.pendingInsertReorderHint')}
           />
         )}
         onAttachmentError={setSendError}

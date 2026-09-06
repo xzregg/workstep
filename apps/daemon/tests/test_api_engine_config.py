@@ -1610,10 +1610,15 @@ def test_provider_storage_and_legacy_migration(tmp_path, monkeypatch):
     assert store.get_pydantic_ai_engine_config() == {
         "provider_id": "prov_1",
         "model": "deepseek-chat",
+        "fast_model": "",
         "mcp_servers": [],
         "harness": "auto",
         "sandbox": "workspace-write",
     }
+
+    # 引擎未显式配置 fast_model 时，回退 coordinator 快速模型
+    store.set_coordinator_defaults(engine="task_coordinator", fast_model="coord-fast")
+    assert store.get_pydantic_ai_engine_config()["fast_model"] == "coord-fast"
 
     # Legacy api engine values are cleaned up by migration
     legacy = {

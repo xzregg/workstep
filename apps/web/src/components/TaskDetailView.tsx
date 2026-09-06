@@ -51,6 +51,7 @@ import {
   isAutoShrinkClamp,
   liveExecutionStatus,
   mergeHistoryMessageWithLive,
+  observeContentResize,
   orderConversationMessages,
   resolveTaskComposerState,
   resolveMessageReview,
@@ -571,6 +572,7 @@ export default function TaskDetailView({
   const programmaticRef = lastProgrammaticScrollTopRef ?? localLastProgrammaticRef
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
+  const contentRef = useRef<HTMLDivElement>(null)
   const stageLastRef = stageLastMessageRefs ?? localStageLastMessageRefs
   const pendingScrollRef = pendingStageScrollRef ?? localPendingStageScrollRef
   const unreadMessages = hasUnreadMessages ?? localHasUnread
@@ -618,6 +620,27 @@ export default function TaskDetailView({
     }
     container.addEventListener('load', onMediaLoad, true)
     return () => container.removeEventListener('load', onMediaLoad, true)
+  }, [scrollRef, followRef, programmaticRef])
+
+  // 展开、折叠思考块 / 过程追踪等只改变内容高度，不会触发上面的消息数据
+  // effect；用 ResizeObserver 监测内容高度变化，跟随中时重新钉底，
+  // 避免运行中展开块后用户被顶出底部且无法滚回。
+  useEffect(() => {
+    return observeContentResize({
+      containerRef: scrollRef,
+      contentRef,
+      onResize: ({ height }) => {
+        const container = scrollRef.current
+        if (!container || !followRef.current) return
+        lastScrollHeightRef.current = height
+        const target = conversationBottomScrollTop(
+          container.scrollHeight,
+          container.clientHeight,
+        )
+        programmaticRef.current = target
+        container.scrollTop = target
+      },
+    })
   }, [scrollRef, followRef, programmaticRef])
 
   // ── Helpers ──
@@ -2186,10 +2209,26 @@ export default function TaskDetailView({
                   if (autoShrinkClamp) {
                     // 自动钳制落底：同步基准值，后续回显仍按程序滚动识别。
                     programmaticRef.current = container.scrollTop
+                  } else if (
+                    // 内容变高（展开折叠项 / 思考块等）时浏览器的 scroll anchoring
+                    // 可能做微小的向上锚定调整，不应误判为用户主动上滚而取消跟随。
+                    // 用户主动滚轮上滚在 capture 阶段已先行取消跟随；此处仅保护
+                    // 拖动滚动条等未走 capture 路径时的微小浏览器自动调整。
+                    container.scrollHeight > lastScrollHeightRef.current &&
+                    lastScrollTopRef.current - container.scrollTop <= 2
+                  ) {
+                    // 忽略内容变高时的微小锚定调整，保持跟随状态。
                   } else {
                     followRef.current = false
                   }
-                } else if (nearBottom) {
+                }
+              }
+              // 接近底部时恢复跟随：必须放在 programmaticEcho 判断之外。
+              // 展开折叠项导致内容高度变化后，用户向下滚回底部时，scrollTop
+              // 可能恰好等于上一次程序钉底的位置（programmaticEcho=true），
+              // 若在此分支内判断会被跳过，导致跟随永远无法恢复、自动滚动失效。
+              if (container.scrollTop >= lastScrollTopRef.current && nearBottom) {
+                if (!followRef.current) {
                   followRef.current = true
                   setUnreadMessages(false)
                 }
@@ -2205,9 +2244,13 @@ export default function TaskDetailView({
               paddingBlock: 20,
               display: 'flex',
               flexDirection: 'column',
-              gap: 16,
             }}
           >
+            <div
+              ref={contentRef}
+              className="chat-history-content"
+              style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, minHeight: '100%' }}
+            >
             {historyMessages.length === 0 &&
               events.length === 0 &&
               !content &&
@@ -2638,6 +2681,7 @@ export default function TaskDetailView({
                                         processEvents,
                                       )
                                     }
+                                    events={processEvents}
                                     engine={
                                       msg.engine
                                     }
@@ -3062,6 +3106,7 @@ export default function TaskDetailView({
                         usage={usageFromEvents(
                           message.events,
                         )}
+                        events={message.events}
                         engine={
                           message.engine
                         }
@@ -3180,6 +3225,7 @@ export default function TaskDetailView({
                       usage={usageFromEvents(
                         events,
                       )}
+                      events={events}
                       engine={
                         task?.engine
                       }
@@ -3204,6 +3250,7 @@ export default function TaskDetailView({
             )}
 
             <div ref={endRef} />
+            </div>
           </div>
 
           <ConversationNewMessagesButton

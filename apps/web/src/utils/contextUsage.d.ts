@@ -13,3 +13,9 @@ export function usageFromEvents(events: unknown[]): Record<string, unknown> | nu
 export function contextUsageFromMessages(
   messages: ContextUsageMessage[],
 ): ContextUsage | null
+
+export function estimateTokens(text: string): number
+
+export function estimateUsageFromEvents(
+  events: unknown[],
+): Record<string, unknown> | null

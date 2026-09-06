@@ -501,3 +501,40 @@ export function createOptimisticUserMessage(
 export function conversationBottomScrollTop(scrollHeight: number, clientHeight: number): number {
   return Math.max(0, scrollHeight - clientHeight)
 }
+
+/**
+ * 观察消息内容包裹层的高度变化。
+ *
+ * overflow 容器的 border-box 高度是固定的（填满父级），ResizeObserver 观察
+ * 容器本身不会因 scrollHeight 变化触发；必须观察其内容包裹层（高度 = 内容高度）。
+ * 消息数据 effect 只覆盖消息新增/内容变化，而展开、折叠思考块（ProcessTrace 的
+ * `<details>`）、过程追踪等纯 UI 状态变化不会改变消息数据却会改变内容高度，
+ * 这类变化由本 helper 捕获，让调用方在跟随中重新钉底。
+ *
+ * 内容高度变化超过 1px 时回调一次；返回取消观察的 cleanup。
+ */
+export function observeContentResize({
+  containerRef,
+  contentRef,
+  onResize,
+}: {
+  containerRef: { current: HTMLElement | null }
+  contentRef: { current: HTMLElement | null }
+  onResize: (info: { height: number; prevHeight: number }) => void
+}): () => void {
+  const container = containerRef.current
+  const content = contentRef.current
+  if (!container || !content || typeof ResizeObserver === 'undefined') {
+    return () => { /* 无法观察时不挂监听 */ }
+  }
+  let prevHeight = container.scrollHeight
+  const observer = new ResizeObserver(() => {
+    const height = container.scrollHeight
+    if (Math.abs(height - prevHeight) < 1) return
+    const previous = prevHeight
+    prevHeight = height
+    onResize({ height, prevHeight: previous })
+  })
+  observer.observe(content)
+  return () => observer.disconnect()
+}

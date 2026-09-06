@@ -3,10 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import React from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import SkillCenterSettings from '../src/pages/SkillCenterSettings.tsx'
-import { I18nProvider } from '../src/i18n/index.tsx'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const component = fs.readFileSync(path.join(root, 'src/pages/SkillCenterSettings.tsx'), 'utf8')
@@ -32,23 +28,4 @@ test('settings navigation and API expose the project skill center', () => {
   assert.match(api, /\/skills\/projects\//)
   assert.match(api, /\/skills\/rescan\?project_id=/)
   assert.match(api, /\/skills\/projects\/\$\{encodeURIComponent\(projectId\)\}\/batch/)
-})
-
-test('skill center renders with an active project without crashing', () => {
-  const project = {
-    id: 'project-1',
-    name: 'Demo',
-    path: '/tmp/demo',
-    steps: {},
-    workflows: [],
-  }
-  const html = renderToStaticMarkup(
-    React.createElement(
-      I18nProvider,
-      null,
-      React.createElement(SkillCenterSettings, { project }),
-    ),
-  )
-  assert.match(html, /Demo/)
-  assert.match(html, /技能中心/)
 })

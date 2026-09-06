@@ -3,9 +3,13 @@ import { useState } from 'react'
 import { engineLabel } from '../engineMeta'
 import Button from './Button'
 import { formatConversationDateTime } from '../utils/datetime'
+import { estimateUsageFromEvents } from '../utils/contextUsage.js'
 import { useI18n, zhCNT, type TFunction } from '../i18n'
 
-export { usageFromEvents } from '../utils/contextUsage.js'
+export {
+  usageFromEvents,
+  estimateUsageFromEvents,
+} from '../utils/contextUsage.js'
 
 /* ══════════════════════════════════════════
    MessageResponseFooter — shared LLM message footer
@@ -71,6 +75,7 @@ export function formatTokenUsage(
     parts.push(t('footer.cacheHit', { pct: cacheHitRate.toFixed(1) }))
   }
   parts.push(t('footer.total', { count: number.format(total) }))
+  if (usage.estimated === true) parts.push(t('footer.estimated'))
   return `${t('footer.tokenPrefix')}${parts.join(' · ')}`
 }
 
@@ -146,6 +151,8 @@ export function MessageCopyButton({
 export interface MessageResponseFooterProps {
   content: string
   usage?: MessageUsage
+  /** 消息原始事件流：running 且无 usage_update 时按字符数估算 token。 */
+  events?: unknown[]
   engine?: string | null
   model?: string | null
   executionModel?: string | null
@@ -161,6 +168,7 @@ export interface MessageResponseFooterProps {
 export default function MessageResponseFooter({
   content,
   usage,
+  events,
   engine,
   model,
   executionModel,
@@ -171,7 +179,13 @@ export default function MessageResponseFooter({
   onFork,
 }: MessageResponseFooterProps) {
   const { t, locale } = useI18n()
-  const usageSummary = running ? '' : formatTokenUsage(usage, t, locale)
+  // LLM 尚未结束且引擎未上报 usage_update 时，按已接收事件与字符数量换算估算值。
+  const estimated = running && !usage ? estimateUsageFromEvents(events ?? []) : null
+  const usageSummary = usage || estimated
+    ? formatTokenUsage(usage ?? estimated, t, locale)
+    : running
+      ? ''
+      : formatTokenUsage(usage, t, locale)
 
   return (
     <div style={{

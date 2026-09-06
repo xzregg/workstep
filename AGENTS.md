@@ -152,9 +152,12 @@ Pydantic AI 固定挂载 harness `Coder` 与 `Skills(<项目>/.workstep/skills)`
 SkillCenter 白名单镜像，项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有
 Memory。思考强度通过 Pydantic AI
 `Thinking(effort=...)` capability 传递，不再使用 `model_settings.thinking`。动态配置仍不暴露
-`harness` 字段并固定写回 `auto`；`TieredCompaction` + `WarnNearLimits` 自动上下文压缩，
-`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`（每 run 最多 30 个快照），
-按 `conversation_id=session_id` 从最近一个有快照的 run 恢复；单次 Agent run 的 Pydantic AI
+`harness` 字段并固定写回 `auto`；`TieredCompaction`（ClearToolResults → SlidingWindow → Summarizing 阶梯，
+摘要模型用配置的 `fast_model`，空则回退 coordinator 快速模型，再空则用 run 模型）
++ `WarnNearLimits` 自动上下文压缩，
+`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`（每 run 保留 1 个快照），
+按 `conversation_id=session_id` 从最近一个有快照的 run 恢复；`ConversationSearch`（scope=conversation）
+与 `StepPersistence` 共享同一 store，通过 BM25 检索同会话已持久化历史；单次 Agent run 的 Pydantic AI
 `request_limit` 固定为 100，工具参数校验重试为 3 次，既容纳长编码任务及非严格模型的参数纠错，
 又保留失控保护。Coder shell 在默认安全命令基础上允许项目构建所需的 `yarn/npm/npx/node`；
 命令固定从项目根执行，不允许用 `cd/bash/sh` 绕过白名单。压缩发生时经 receipts 排空产出

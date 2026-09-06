@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import {
   Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
-  ExternalLink, FileText, Folder, FolderOpen, GitFork, Image as ImageIcon, Layers, LayoutGrid, List,
+  ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List,
   Lightbulb, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
   Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
 } from 'lucide-react'
@@ -26,6 +26,7 @@ const glyphs = {
   folder: Folder,
   'folder-open': FolderOpen,
   'git-fork': GitFork,
+  'grip-vertical': GripVertical,
   image: ImageIcon,
   layers: Layers,
   'layout-grid': LayoutGrid,

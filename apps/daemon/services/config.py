@@ -402,6 +402,8 @@ class ConfigStore:
             "model": raw.get("model")
             or self.get_engine_default_model("pydantic_ai")
             or os.environ.get("PYDANTIC_AI_MODEL", ""),
+            "fast_model": str(raw.get("fast_model") or "")
+            or self.get_coordinator_default_fast_model(),
             "mcp_servers": raw.get("mcp_servers") or [],
             "harness": raw.get("harness") or "auto",
             "sandbox": sandbox,
@@ -415,6 +417,7 @@ class ConfigStore:
         mcp_servers: list | None = None,
         harness: str = "auto",
         sandbox: str = "",
+        fast_model: str = "",
     ) -> None:
         sandbox = str(sandbox or "").strip() or "workspace-write"
         if sandbox not in CODEX_SANDBOX_MODES:
@@ -424,6 +427,7 @@ class ConfigStore:
             {
                 "provider_id": provider_id,
                 "model": model,
+                "fast_model": str(fast_model or ""),
                 "mcp_servers": list(mcp_servers or []),
                 "harness": harness,
                 "sandbox": sandbox,

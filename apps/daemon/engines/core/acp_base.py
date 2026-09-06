@@ -651,6 +651,16 @@ class AcpEngineBase(BaseLLMEngine):
 
         await self._with_agent(cwd, action)
 
+    def delete_session_persistence(self, session_id: str, cwd: str) -> None:
+        """Delete engine-side durable session storage for a conversation.
+
+        No-op by default: most engines keep no WorkStep-owned store keyed by
+        session id. Overridden by engines that do (e.g. Pydantic AI's
+        ``harness_runs.db``) so deleting a chat session also reclaims those
+        bytes instead of orphaning them on disk.
+        """
+        return None
+
     async def cancel_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/cancel — force-stop current reasoning / tool execution."""
         if not self._is_acp_native:

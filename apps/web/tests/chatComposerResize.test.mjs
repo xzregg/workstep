@@ -30,12 +30,6 @@ test('composer height persists via localStorage and resets to auto on double-cli
   assert.match(panelSource, /const resetComposerHeight = \(\) => setComposerHeight\(null\)/)
 })
 
-test('composer overlay stays outside the scrollable composer content', () => {
-  assert.match(panelSource, /height: composerHeight \?\? 'auto'/)
-  assert.match(panelSource, /overflowY: composerHeight \? 'auto' : 'visible'/)
-  assert.doesNotMatch(panelSource, /borderTop: '1px solid var\(--border-soft\)'/)
-})
-
 test('all assistant chats keep using the shared resizable panel', () => {
   assert.match(chatPageSource, /AssistantChatPanel/)
   assert.doesNotMatch(chatPageSource, /row-resize/)

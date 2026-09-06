@@ -311,6 +311,8 @@ class PydanticAIEngine(AcpEngineBase):
             "mcp_error": mcp_error,
             "harness_enabled": self._harness_enabled(),
             "harness_version": self._harness_version(),
+            "websearch": True,
+            "webfetch": True,
         }
 
     @staticmethod
@@ -667,7 +669,7 @@ class PydanticAIEngine(AcpEngineBase):
     ) -> tuple[Any, Any]:
         """Run the agent, injecting queued live messages between rounds."""
         from pydantic_ai import Agent
-        from pydantic_ai.capabilities import Thinking
+        from pydantic_ai.capabilities import Thinking, WebFetch, WebSearch
         from pydantic_ai_harness import Skills
 
         root = Path(cwd).resolve()
@@ -699,9 +701,13 @@ class PydanticAIEngine(AcpEngineBase):
         if effort:
             capabilities.append(Thinking(effort=effort))
         capabilities.extend(harness_capabilities or [])
+        # WebSearch / WebFetch 强制本地模式（native=False）：不调用供应商
+        # 原生工具（避免按次计费），由本地实现处理 —— WebSearch→ddgs
+        # （duckduckgo extra）、WebFetch→markdownify（web-fetch extra）。
+        capabilities.append(WebSearch(native=False, local=True))
+        capabilities.append(WebFetch(native=False, local=True))
         agent = Agent(
             model,
-            instructions=self._compose_instructions(root),
             capabilities=capabilities,
             retries={"tools": PYDANTIC_AI_TOOL_RETRIES, "output": 1},
         )
@@ -862,38 +868,6 @@ class PydanticAIEngine(AcpEngineBase):
         while not queue.empty():
             items.append(queue.get_nowait())
         return items
-
-    @staticmethod
-    def _compose_instructions(root: Path) -> str:
-        """Build agent instructions: role, capability list, project agents.md."""
-        parts = [
-            "You are the built-in WorkStep agent.",
-            f"The active project directory is {root}.",
-            "Use the Coder capability to inspect, modify, and validate the project.",
-            "The run_command tool already runs from the active project directory. "
-            "Do not use cd, bash, or sh to change directories or wrap commands. "
-            "For this repository, run frontend commands like `yarn --cwd apps/web build` "
-            "and backend commands like `uv --project apps/daemon run pytest`. "
-            "When provided, timeout_seconds must be a JSON number, not a string.",
-            "Project memory from .workstep/MEMORY.md has been injected into "
-            "the prompt — treat it as read-only and do not modify the file.",
-            "Project skills are exposed by the Skills capability from the "
-            "SkillCenter-managed .workstep/skills library.",
-            "When required information is missing, call ask_user and wait for "
-            "the user's structured response instead of guessing.",
-            "For multi-step work, call update_plan with the complete task list "
-            "and update it whenever a task starts, completes, is added, or is removed.",
-            "Return a concise final result when the request is complete.",
-        ]
-        for candidate in (root / "agents.md", root / "AGENTS.md"):
-            if candidate.is_file():
-                content = candidate.read_text(encoding="utf-8", errors="replace")
-                parts.append(
-                    f"--- Project instructions ({candidate.name}) ---\n"
-                    f"{content[:50_000]}"
-                )
-                break
-        return "\n\n".join(parts)
 
     @staticmethod
     def _json_safe(value: Any) -> Any:
@@ -1070,8 +1044,76 @@ class PydanticAIEngine(AcpEngineBase):
         workstep_dir.mkdir(parents=True, exist_ok=True)
         return SqliteStepStore(
             database=workstep_dir / "harness_runs.db",
-            max_snapshots_per_run=30,
+            # WorkStep 的会话恢复（continue_run）只读最新一个 complete
+            # 快照，从不消费中间 step 回退点；保留多份完整累积历史纯属
+            # 磁盘冗余（单 run 曾达 ~130MB）。保留 1 份即可，单 run ~5MB。
+            max_snapshots_per_run=1,
         )
+
+    def delete_session_persistence(self, session_id: str, cwd: str) -> None:
+        """Drop this conversation's StepPersistence rows from harness_runs.db.
+
+        ``SqliteStepStore`` (fixed dep ``pydantic-ai-harness``) exposes no
+        delete API, and WorkStep's ``conversation_id == engine_session_id``,
+        so purge the tables by that key directly. tool_effects has no
+        conversation_id column, so it is removed via the run ids.
+        """
+        if not session_id or not self._harness_enabled():
+            return
+        import sqlite3
+
+        db = Path(cwd) / ".workstep" / "harness_runs.db"
+        if not db.exists():
+            return
+        try:
+            conn = sqlite3.connect(str(db))
+            try:
+                run_ids = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT run_id FROM runs WHERE conversation_id = ?",
+                        (session_id,),
+                    )
+                ]
+                if run_ids:
+                    ph = ",".join("?" * len(run_ids))
+                    conn.execute(
+                        f"DELETE FROM tool_effects WHERE run_id IN ({ph})", run_ids
+                    )
+                for table in ("runs", "events", "snapshots"):
+                    conn.execute(
+                        f"DELETE FROM {table} WHERE conversation_id = ?",
+                        (session_id,),
+                    )
+                conn.commit()
+                conn.execute("VACUUM")
+            finally:
+                conn.close()
+        except Exception:
+            logger.exception(
+                "Failed to purge harness_runs.db for session %s", session_id
+        )
+
+    @classmethod
+    def _harness_summary_model(cls):
+        """SummarizingCompaction 的摘要模型。
+
+        优先 pydantic_ai_engine.fast_model（config.getter 已回退 coordinator
+        快速模型），用当前引擎供应商的 base_url/api_key 构建模型对象；
+        未配置快速模型时返回 None（摘要走 run 自身模型）。任何配置异常
+        都静默降级为 None，不阻断 harness 挂载。
+        """
+        try:
+            config = config_store.get_pydantic_ai_engine_config()
+            fast_model_name = str(config.get("fast_model") or "").strip()
+            if not fast_model_name:
+                return None
+            provider = config_store.get_provider(str(config.get("provider_id") or ""))
+            if provider is None:
+                return None
+            return cls.build_model(provider=provider, model_name=fast_model_name)
+        except Exception:
+            return None
 
     @classmethod
     def _harness_capabilities(
@@ -1085,30 +1127,46 @@ class PydanticAIEngine(AcpEngineBase):
         try:
             from pydantic_ai_harness.compaction import (
                 ClearToolResults,
+                SlidingWindowCompaction,
                 SummarizingCompaction,
                 TieredCompaction,
                 WarnNearLimits,
             )
+            from pydantic_ai_harness.conversation_search import (
+                ConversationSearch,
+                SnapshotHistorySource,
+            )
             from pydantic_ai_harness.step_persistence import StepPersistence
         except Exception:
             return None
+        # StepPersistence 与 ConversationSearch 共享同一个 SQLite store：
+        # 后者通过 SnapshotHistorySource 做 BM25 检索（scope=conversation，
+        # 只召回同一 conversation_id 的历史 run）。
+        store = cls._harness_store(root)
         return [
             TieredCompaction(
                 target_fraction=0.9,
                 tiers=[
                     ClearToolResults(max_messages=200, keep_pairs=10),
+                    # 零成本层：只收窄请求窗口、不写回持久化历史，原文仍可被
+                    # ConversationSearch 检索。TieredCompaction 直接驱动
+                    # compact()，max_messages 仅用于满足构造校验（trigger 旁路），
+                    # 实际裁剪目标是 keep_messages=60 条尾部。
+                    SlidingWindowCompaction(max_messages=200, keep_messages=60),
                     SummarizingCompaction(
                         max_messages=120,
                         keep_messages=30,
                         receipts=True,
+                        model=cls._harness_summary_model(),
                     ),
                 ],
             ),
             WarnNearLimits(max_context_fraction=0.85),
             StepPersistence(
-                store=cls._harness_store(root),
+                store=store,
                 agent_name="workstep",
             ),
+            ConversationSearch(SnapshotHistorySource(store), scope="conversation"),
         ]
 
     @classmethod

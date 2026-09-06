@@ -26,7 +26,94 @@ def test_harness_extension_capabilities_attached(tmp_path):
         "TieredCompaction",
         "WarnNearLimits",
         "StepPersistence",
+        "ConversationSearch",
     ]
+
+
+def test_harness_tiered_compaction_stack(tmp_path):
+    engine = PydanticAIEngine()
+    caps = engine._harness_capabilities(tmp_path, "sess-1")
+    tiered = next(c for c in caps if type(c).__name__ == "TieredCompaction")
+    assert [type(t).__name__ for t in tiered.tiers] == [
+        "ClearToolResults",
+        "SlidingWindowCompaction",
+        "SummarizingCompaction",
+    ]
+    sliding = next(
+        t for t in tiered.tiers if type(t).__name__ == "SlidingWindowCompaction"
+    )
+    assert sliding.keep_messages == 60
+
+
+def test_harness_summarizer_uses_fast_model(tmp_path, monkeypatch):
+    from services import config as config_module
+
+    monkeypatch.setattr(
+        config_module.config_store,
+        "get_pydantic_ai_engine_config",
+        lambda: {
+            "provider_id": "prov_1",
+            "model": "main-model",
+            "fast_model": "fast-model",
+            "mcp_servers": [],
+            "harness": "auto",
+            "sandbox": "workspace-write",
+        },
+    )
+    monkeypatch.setattr(
+        config_module.config_store,
+        "get_provider",
+        lambda provider_id: {
+            "id": "prov_1",
+            "type": "openai",
+            "protocol": "openai",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "k",
+        }
+        if provider_id == "prov_1"
+        else None,
+    )
+    monkeypatch.setattr(
+        PydanticAIEngine,
+        "build_model",
+        staticmethod(
+            lambda *, provider, model_name: type(
+                "FakeModel", (), {"model_name": model_name}
+            )()
+        ),
+    )
+    engine = PydanticAIEngine()
+    caps = engine._harness_capabilities(tmp_path, "sess-1")
+    tiered = next(c for c in caps if type(c).__name__ == "TieredCompaction")
+    summarizing = next(
+        t for t in tiered.tiers if type(t).__name__ == "SummarizingCompaction"
+    )
+    assert summarizing.model is not None
+    assert summarizing.model.model_name == "fast-model"
+
+
+def test_harness_summarizer_falls_back_to_run_model(tmp_path, monkeypatch):
+    from services import config as config_module
+
+    monkeypatch.setattr(
+        config_module.config_store,
+        "get_pydantic_ai_engine_config",
+        lambda: {
+            "provider_id": "prov_1",
+            "model": "main-model",
+            "fast_model": "",
+            "mcp_servers": [],
+            "harness": "auto",
+            "sandbox": "workspace-write",
+        },
+    )
+    engine = PydanticAIEngine()
+    caps = engine._harness_capabilities(tmp_path, "sess-1")
+    tiered = next(c for c in caps if type(c).__name__ == "TieredCompaction")
+    summarizing = next(
+        t for t in tiered.tiers if type(t).__name__ == "SummarizingCompaction"
+    )
+    assert summarizing.model is None
 
 
 @pytest.mark.anyio
@@ -228,9 +315,29 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
         "Skills",
         "Thinking",
     ]
-    assert "WebSearch" not in capability_names
+    assert "WebSearch" in capability_names
+    assert "WebFetch" in capability_names
     assert "Memory" not in capability_names
+    # WebSearch / WebFetch 强制本地模式：不调用供应商原生工具
+    for capability in capabilities:
+        if type(capability).__name__ in ("WebSearch", "WebFetch"):
+            assert capability.native is False
+            assert capability.local is not None
+    # ConversationSearch 与 StepPersistence 共享同一 SqliteStepStore，
+    # 且 scope 限定 conversation
+    step_persistence = next(
+        capability for capability in capabilities
+        if type(capability).__name__ == "StepPersistence"
+    )
+    conversation_search = next(
+        capability for capability in capabilities
+        if type(capability).__name__ == "ConversationSearch"
+    )
+    assert conversation_search.scope == "conversation"
+    assert conversation_search.source._store is step_persistence.store
     assert capabilities[2].root_dir == tmp_path
+    # 项目记忆对模型只读：写入会被 FileSystem 拒绝
+    assert ".workstep/MEMORY.md" in capabilities[2].protected_patterns
     assert {"yarn", "npm", "npx", "node"}.issubset(
         set(capabilities[3].allowed_commands)
     )
@@ -239,15 +346,20 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     assert captured["agent"]._max_tool_retries == 3
     assert captured["agent"]._max_output_retries == 1
     assert captured["model_settings"] is None
+    # 宿主不再注入 instructions；系统提示词由 harness capability（RepoContext 等）贡献
+    assert captured["agent"]._instructions == []
 
 
-def test_coder_instructions_explain_project_root_commands(tmp_path):
-    instructions = PydanticAIEngine._compose_instructions(tmp_path)
+def test_instructions_deferred_to_harness():
+    """宿主不再拼装 instructions：AGENTS.md/CLAUDE.md 由 harness RepoContext 注入。"""
+    assert not hasattr(PydanticAIEngine, "_compose_instructions")
 
-    assert "Do not use cd, bash, or sh" in instructions
-    assert "yarn --cwd apps/web" in instructions
-    assert "uv --project apps/daemon" in instructions
-    assert "timeout_seconds must be a JSON number" in instructions
+    from pydantic_ai_harness.coder import Coder
+
+    assert any(
+        type(capability).__name__ == "RepoContext"
+        for capability in Coder(".").capabilities
+    )
 
 
 @pytest.mark.anyio
@@ -450,7 +562,7 @@ async def test_stream_agent_run_allows_more_than_fifty_model_requests():
 
 @pytest.mark.anyio
 async def test_harness_store_bounded_snapshots(tmp_path):
-    """max_snapshots_per_run=30：超出保留集的旧快照在每次写入后被修剪。"""
+    """max_snapshots_per_run=1：超出保留集的旧快照在每次写入后被修剪。"""
     from pydantic_ai_harness.step_persistence import ContinuableSnapshot
 
     store = PydanticAIEngine._harness_store(tmp_path)
@@ -465,7 +577,7 @@ async def test_harness_store_bounded_snapshots(tmp_path):
         ).fetchone()[0]
     finally:
         conn.close()
-    assert count == 30
+    assert count == 1
 
 
 # --- 子 agent 事件转发（对齐其他引擎） ---

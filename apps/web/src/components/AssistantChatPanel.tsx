@@ -9,6 +9,7 @@ import {
   isAutoShrinkClamp,
   isNearConversationBottom,
   conversationBottomScrollTop,
+  observeContentResize,
   shouldPauseConversationFollow,
 } from '../pages/taskDetailChat'
 import Button from './Button'
@@ -125,6 +126,7 @@ export default function AssistantChatPanel({
   const [awaitingReply, setAwaitingReply] = useState(false)
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const followRef = useRef(true)
   const lastProgrammaticScrollTopRef = useRef(0)
@@ -185,6 +187,24 @@ export default function AssistantChatPanel({
     }
     list.addEventListener('load', onMediaLoad, true)
     return () => list.removeEventListener('load', onMediaLoad, true)
+  }, [])
+
+  // 展开、折叠思考块 / 过程追踪等只改变内容高度，不会触发上面的消息数据
+  // effect；用 ResizeObserver 监测内容高度变化，跟随中时重新钉底，
+  // 避免运行中展开块后用户被顶出底部且无法滚回。
+  useEffect(() => {
+    return observeContentResize({
+      containerRef: listRef,
+      contentRef,
+      onResize: ({ height }) => {
+        const list = listRef.current
+        if (!list || !followRef.current) return
+        lastScrollHeightRef.current = height
+        const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
+        lastProgrammaticScrollTopRef.current = target
+        list.scrollTop = target
+      },
+    })
   }, [])
 
   // 持久化输入区高度；双击重置（null）会清除存储值。
@@ -262,7 +282,7 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' ,paddingBottom: '10px'}}>
         <div
           className="chat-history-scroll"
           ref={listRef}
@@ -304,10 +324,24 @@ export default function AssistantChatPanel({
                 if (autoShrinkClamp) {
                   // 自动钳制落底：同步基准值，后续回显仍按程序滚动识别。
                   lastProgrammaticScrollTopRef.current = list.scrollTop
+                } else if (
+                  // 内容变高（展开折叠项 / 思考块等）时浏览器的 scroll anchoring
+                  // 可能做微小的向上锚定调整，不应误判为用户主动上滚而取消跟随。
+                  list.scrollHeight > lastScrollHeightRef.current &&
+                  lastScrollTopRef.current - list.scrollTop <= 2
+                ) {
+                  // 忽略内容变高时的微小锚定调整，保持跟随状态。
                 } else {
                   followRef.current = false
                 }
-              } else if (nearBottom) {
+              }
+            }
+            // 接近底部时恢复跟随：必须放在 programmaticEcho 判断之外。
+            // 展开折叠项导致内容高度变化后，用户向下滚回底部时，scrollTop
+            // 可能恰好等于上一次程序钉底的位置（programmaticEcho=true），
+            // 若在此分支内判断会被跳过，导致跟随永远无法恢复、自动滚动失效。
+            if (list.scrollTop >= lastScrollTopRef.current && nearBottom) {
+              if (!followRef.current) {
                 followRef.current = true
                 setHasUnreadMessages(false)
               }
@@ -317,10 +351,15 @@ export default function AssistantChatPanel({
           }}
           style={{
             height: '100%', minHeight: 0, overflowY: 'auto', paddingBlock: 10,
-            display: 'flex', flexDirection: 'column', gap: 8,
+            display: 'flex', flexDirection: 'column',
             background: 'var(--bg)',
           }}
         >
+          <div
+            ref={contentRef}
+            className="chat-history-content"
+            style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, minHeight: '100%' }}
+          >
           {messages.length === 0 && copy.emptyIntro && (
             <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', padding: '4px 2px', lineHeight: 1.6 }}>
               {copy.emptyIntro}
@@ -385,6 +424,7 @@ export default function AssistantChatPanel({
               <MessageResponseFooter
                 content={stripA2uiBlocks(message.content)}
                 usage={usageFromEvents(message.events ?? [])}
+                events={message.events ?? []}
                 engine={message.engine}
                 model={message.model}
                 onFork={message.status === 'succeeded' && onForkMessage
@@ -407,6 +447,7 @@ export default function AssistantChatPanel({
             />
           )}
           {afterMessages}
+          </div>
         </div>
         <ConversationNewMessagesButton
           visible={hasUnreadMessages}
@@ -454,7 +495,7 @@ export default function AssistantChatPanel({
           ref={composerInnerRef}
           style={{
             height: composerHeight ?? 'auto',
-            overflowY: composerHeight ? 'auto' : 'visible',
+            overflowY: 'visible',
             display: 'flex', flexDirection: 'column',
             padding: '24px 12px',
           }}

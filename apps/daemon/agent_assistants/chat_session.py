@@ -669,13 +669,39 @@ class ChatSessionModule(AssistantRuntime):
 
     def delete_session(self, project_id: str, session_id: str) -> bool:
         with self._project_ctx(project_id):
-            if ChatSession.get_or_none(ChatSession.id == session_id) is None:
+            row = ChatSession.get_or_none(ChatSession.id == session_id)
+            if row is None:
                 raise ValueError("Chat session not found")
+            engine_id, engine_session_id = row.engine, row.engine_session_id
         memory_key, sid = self._session_identity(project_id, session_id)
         removed = self.reset_scoped_session(project_id, session_id, memory_key, sid)
         with self._project_ctx(project_id) as project:
             self._event_journal.delete_session(project.workstep_dir, session_id)
+        self._purge_engine_persistence(project_id, engine_id, engine_session_id)
         return removed
+
+    def _purge_engine_persistence(
+        self,
+        project_id: str,
+        engine_id: str | None,
+        engine_session_id: str | None,
+    ) -> None:
+        """Reclaim engine-side durable storage (e.g. harness_runs.db) for a session."""
+        if not engine_id or not engine_session_id:
+            return
+        from engines.core.registry import ENGINE_REGISTRY
+
+        cls = ENGINE_REGISTRY.get(engine_id)
+        if cls is None:
+            return
+        try:
+            cls().delete_session_persistence(engine_session_id, self._cwd(project_id))
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "Failed to purge engine session persistence"
+            )
 
     def bulk_delete_sessions(
         self,

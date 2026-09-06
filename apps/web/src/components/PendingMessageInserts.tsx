@@ -1,3 +1,4 @@
+import { useState, type DragEvent } from 'react'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 import Textarea from './Textarea'
@@ -22,6 +23,10 @@ interface PendingMessageInsertsProps {
   onRemove?: (id: string) => void
   onSendAll?: () => void
   onClear?: () => void
+  /** 拖动排序：fromIndex 为被拖项原下标，toIndex 为移动后在新数组中的下标。不传则禁用拖动。 */
+  onReorder?: (fromIndex: number, toIndex: number) => void
+  /** 拖动排序的提示文案（拖拽手柄 title）。 */
+  reorderHint?: string
 }
 
 export default function PendingMessageInserts({
@@ -39,12 +44,54 @@ export default function PendingMessageInserts({
   onRemove,
   onSendAll,
   onClear,
+  onReorder,
+  reorderHint,
 }: PendingMessageInsertsProps) {
   const { t } = useI18n()
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
   if (items.length === 0) return null
 
   const sending = new Set(sendingIds)
   const allSending = items.every((item) => sending.has(item.id))
+  const reorderable = Boolean(onReorder) && items.length > 1 && sendingIds.length === 0
+
+  const handleDragStart = (event: DragEvent<HTMLDivElement>, index: number) => {
+    event.stopPropagation()
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+    setDragIndex(index)
+    setDropIndex(null)
+  }
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>, index: number) => {
+    if (dragIndex === null || index === dragIndex) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (dropIndex !== index) setDropIndex(index)
+  }
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>, index: number) => {
+    if (dragIndex === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const from = dragIndex
+    const rect = event.currentTarget.getBoundingClientRect()
+    const before = event.clientY < rect.top + rect.height / 2
+    // toIndex 为移动后在新数组中的下标
+    const to = from < index
+      ? (before ? index - 1 : index)
+      : (before ? index : index + 1)
+    setDragIndex(null)
+    setDropIndex(null)
+    if (from === index || to === from) return
+    onReorder?.(from, to)
+  }
+
+  const handleDragEnd = () => {
+    setDragIndex(null)
+    setDropIndex(null)
+  }
 
   return (
     <div
@@ -85,21 +132,41 @@ export default function PendingMessageInserts({
         <span style={{ fontWeight: 400, color: 'var(--muted)' }}>
           {t('taskDetail.itemCount', { count: items.length })}
         </span>
+        {reorderable && reorderHint && (
+          <span style={{ fontWeight: 400, color: 'var(--muted)', opacity: 0.8 }}>
+            {reorderHint}
+          </span>
+        )}
       </div>
 
-      {items.map((item) => {
+      {items.map((item, index) => {
         const isEditing = editingId === item.id
         const isSending = sending.has(item.id)
+        const isDragging = dragIndex === index
+        const isDropTarget = dropIndex === index && dragIndex !== null && dragIndex !== index
         return (
           <div
             key={item.id}
+            draggable={reorderable && !isEditing}
+            onDragStart={reorderable && !isEditing
+              ? (event) => handleDragStart(event, index)
+              : undefined}
+            onDragOver={reorderable ? (event) => handleDragOver(event, index) : undefined}
+            onDrop={reorderable ? (event) => handleDrop(event, index) : undefined}
+            onDragEnd={reorderable ? handleDragEnd : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
               padding: '4px 6px',
               borderRadius: 6,
-              opacity: isSending ? 0.65 : 1,
+              opacity: isSending ? 0.65 : isDragging ? 0.45 : 1,
+              cursor: reorderable && !isEditing
+                ? (isDragging ? 'grabbing' : 'grab')
+                : 'default',
+              background: isDropTarget ? 'var(--accent-light)' : undefined,
+              outline: isDropTarget ? '1px dashed var(--accent)' : undefined,
+              outlineOffset: -1,
             }}
           >
             {isEditing ? (
@@ -138,11 +205,15 @@ export default function PendingMessageInserts({
                   <span className="task-status-spinner" aria-hidden="true" />
                 ) : (
                   <Icon
-                    name="list"
+                    name={reorderable ? 'grip-vertical' : 'list'}
                     size={12}
                     strokeWidth={1.6}
-                    color="var(--muted)"
-                    style={{ flexShrink: 0, opacity: 0.7 }}
+                    color={reorderable ? 'var(--meta)' : 'var(--muted)'}
+                    style={{
+                      flexShrink: 0,
+                      opacity: reorderable ? 0.85 : 0.7,
+                      cursor: reorderable ? 'grab' : 'default',
+                    }}
                   />
                 )}
                 <div

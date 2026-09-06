@@ -186,7 +186,7 @@ export default function ChatInput({
   title,
   inputRef,
   rows = 1,
-  minHeight = 40,
+  minHeight = 80,
   maxHeight = 120,
 }: ChatInputProps) {
   const { t, locale } = useI18n()

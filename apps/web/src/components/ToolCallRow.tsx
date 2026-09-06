@@ -4,6 +4,7 @@ import { MessageCopyButton } from './MessageResponseFooter'
 import FilePreviewDialog from './FilePreviewDialog'
 import { useI18n, type TFunction } from '../i18n'
 import type { ToolActivity } from '../utils/messageTimeline'
+import { extractToolTarget, type ToolTargetInfo } from '../utils/toolInput'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 
 type ToolKind = 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other'
@@ -16,25 +17,6 @@ function textValue(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function inputRecord(input: unknown): Record<string, unknown> {
-  return input && typeof input === 'object'
-    ? input as Record<string, unknown>
-    : {}
-}
-
-function toolTarget(activity: ToolActivity): string {
-  const input = inputRecord(activity.input)
-  const value = (
-    input.path
-    ?? input.file_path
-    ?? input.filePath
-    ?? input.filename
-    ?? input.pattern
-    ?? input.query
-  )
-  return typeof value === 'string' ? value : ''
 }
 
 function basename(path: string): string {
@@ -64,17 +46,21 @@ function completedSummary(
   activity: ToolActivity,
   t: TFunction,
   fileLink: ProjectFileLink | null,
+  info: ToolTargetInfo,
 ): string {
   const kind = toolKind(activity.name)
-  const target = toolTarget(activity)
-  const targetName = target ? ` ${basename(target)}` : ''
+  // 文件目标（path 系键）与搜索目标（pattern / query）分列：读取/编辑的
+  // pattern 只是过滤关键词（如 read_tool_result 的 pattern:"fail"），
+  // 绝不能当作文件名展示。
+  const fileTargetName = info.fileTarget ? ` ${basename(info.fileTarget)}` : ''
+  const searchTargetName = info.searchTarget ? ` ${info.searchTarget}` : ''
   if (kind === 'subagent') return t('trace.calledSubagent')
   // 文件名以独立的可点击文件链接呈现时，摘要只保留动词，避免文件名重复出现。
-  const fileTarget = fileLink ? '' : targetName || t('trace.file')
+  const fileTarget = fileLink ? '' : fileTargetName || t('trace.file')
   if (kind === 'edit') return t('trace.edited', { target: fileTarget }).trim()
   if (kind === 'read') return t('trace.read', { target: fileTarget }).trim()
   if (kind === 'command') return t('trace.ranCommand')
-  if (kind === 'search') return t('trace.searched', { target: targetName })
+  if (kind === 'search') return t('trace.searched', { target: searchTargetName }).trim()
   return t('trace.calledTool', { name: activity.name || t('chat.tool') })
 }
 
@@ -96,19 +82,28 @@ export default function ToolCallRow({
   const result = textValue(activity.result)
   const isRunning = messageRunning && !activity.hasResult
   const kind = toolKind(activity.name)
+  const targetInfo = extractToolTarget(activity.input)
   // 读取/编辑目标渲染为 Markdown 风格的文件名链接（复用消息组件的文件预览逻辑）；
-  // 只在工具结束后呈现，避免流式参数尚未传完时预览到不完整路径。
-  const fileLink = !isRunning && (kind === 'read' || kind === 'edit')
-    ? classifyProjectFileLink(toolTarget(activity) || undefined, projectId)
+  // 执行中也立即呈现——只要目标值本身已完整（完整对象 / 完整 JSON / 截断 JSON
+  // 中已闭合的路径字符串），就不必等工具结束，避免右侧长时间缺少文件名。
+  // 失败的读取/编辑不渲染链接：文件可能不存在或写入失败，预览无意义；
+  // 摘要中的文件名文本与失败标记仍然保留，便于定位。
+  // 文件名链接只取文件目标（path 系键）；pattern/query 是搜索/过滤关键词，
+  // 即便出现在读取类工具（如 read_tool_result）里也不能当文件渲染。
+  const fileLink = !activity.isError
+    && (kind === 'read' || kind === 'edit')
+    && targetInfo.fileTarget
+    && targetInfo.targetComplete
+    ? classifyProjectFileLink(targetInfo.fileTarget, projectId)
     : null
   const summary = isRunning
     ? t('chat.toolRunning', { name: activity.name || t('chat.tool') })
-    : completedSummary(activity, t, fileLink)
+    : completedSummary(activity, t, fileLink, targetInfo)
   const previewTitle = fileLink ? t('md.previewFile', { name: fileLink.name }) : ''
 
   return (
     <details className={`llm-tool-call llm-tool-call-${isRunning ? 'running' : activity.isError ? 'failed' : 'done'}`}>
-      <summary title={toolTarget(activity) || undefined}>
+      <summary title={targetInfo.target || undefined}>
         <span className="llm-tool-call-icon" aria-hidden="true">
           <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />
         </span>
