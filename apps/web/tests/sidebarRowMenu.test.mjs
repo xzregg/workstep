@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
+const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 
 test('project and workflow rows reveal a "..." more button only on hover', () => {
   assert.match(css, /\.ws-row \.ws-more-btn/)
@@ -12,6 +13,14 @@ test('project and workflow rows reveal a "..." more button only on hover', () =>
   const moreButtons = source.match(/className="ws-more-btn"/g) ?? []
   assert.ok(rows.length >= 2, 'project row and workflow row should both carry the ws-row hover class')
   assert.ok(moreButtons.length >= 2, 'project row and workflow row should both render a ws-more-btn button')
+})
+
+test('compact layouts keep row actions hover-driven when a mouse is available', () => {
+  assert.doesNotMatch(
+    mobileCss,
+    /\.chat-message-row \.chat-message-action, \.chat-message-row \.footer-usage-summary, \.ws-row \.ws-more-btn/,
+  )
+  assert.match(mobileCss, /@media \(hover: none\), \(pointer: coarse\)/)
 })
 
 test('clicking the more button opens an edit/delete menu for projects and workflows', () => {

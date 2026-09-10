@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useOverlay } from '../hooks/useOverlay'
+import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import ArtifactPreview from './ArtifactPreview'
 import Button from './Button'
@@ -8,44 +10,18 @@ import { useI18n } from '../i18n'
 interface FilePreviewDialogProps {
   path: string
   name: string
+  line?: number
   projectId: string
   onClose: () => void
 }
 
-export default function FilePreviewDialog({ path, name, projectId, onClose }: FilePreviewDialogProps) {
+export default function FilePreviewDialog({ path, name, line, projectId, onClose }: FilePreviewDialogProps) {
   const { t } = useI18n()
   const closeRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    closeRef.current?.focus()
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-      if (event.key !== 'Tab') return
-      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), a[href], iframe, [tabindex]:not([tabindex="-1"])',
-      ) ?? [])
-      if (focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable.at(-1) as HTMLElement
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('keydown', handleKey)
-      document.body.style.overflow = previousOverflow
-      previous?.focus()
-    }
-  }, [onClose])
+  const compact = useCompactLayout()
+  useOverlay(true, onClose, dialogRef, compact)
 
   return createPortal(
     <div
@@ -83,7 +59,7 @@ export default function FilePreviewDialog({ path, name, projectId, onClose }: Fi
           </Button>
         </header>
         <div className="file-preview-dialog-body">
-          <ArtifactPreview path={path} projectId={projectId} />
+          <ArtifactPreview path={path} line={line} projectId={projectId} />
         </div>
       </section>
     </div>,

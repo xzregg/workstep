@@ -1,5 +1,7 @@
 """ACP session update 全量映射 + elicitation 模式 + 未知透传测试。"""
 
+import asyncio
+
 import pytest
 from acp import schema
 
@@ -215,20 +217,23 @@ def test_unknown_update_is_not_silently_dropped():
     assert event.type == "acp_raw"
 
 
-def test_elicitation_url_mode_declines_without_form():
-    """非 form 模式（url）未实现时保留 decline 兜底，不合成默认值。"""
-    import asyncio
-
-    class Mode:
-        root = type("Root", (), {
-            "requested_schema": None,
-            "session_id": "s1",
-            "tool_call_id": None,
-        })()
-
+@pytest.mark.anyio
+async def test_elicitation_url_mode_is_forwarded_to_the_user():
     handler = _StreamingClient()
-    result = asyncio.run(handler.create_elicitation("msg", Mode()))
-    assert result.action == "decline"
+    mode = schema.ElicitationUrlMode(root=schema.ElicitationUrlSessionMode(
+        sessionId="s1",
+        toolCallId="t1",
+        elicitationId="url-1",
+        url="https://example.com/authorize",
+    ))
+
+    task = asyncio.create_task(handler.create_elicitation("authorize", mode))
+    event = await handler.updates.get()
+    assert event.data["mode"] == "url"
+    assert event.data["url"] == "https://example.com/authorize"
+    handler.resolve_elicitation(event.data["interaction_id"], {"action": "accept"})
+    result = await task
+    assert result.action == "accept"
 
 
 def test_engine_declares_acp_events_capability():
@@ -236,3 +241,55 @@ def test_engine_declares_acp_events_capability():
     capability = getattr(engine, "acp_events", None)
     assert capability is not None
     assert {"agent_message_chunk", "agent_thought_chunk", "tool_call", "tool_call_update"} <= set(capability)
+
+
+def test_client_capabilities_only_advertise_implemented_features():
+    capabilities = _ProbeEngine._client_capabilities()
+
+    assert capabilities.elicitation.form is not None
+    assert capabilities.elicitation.url is not None
+    assert capabilities.plan is not None
+    assert capabilities.session.config_options.boolean is not None
+    assert capabilities.fs.read_text_file is False
+    assert capabilities.fs.write_text_file is False
+    assert capabilities.terminal is False
+
+
+def test_tool_call_mapping_preserves_rich_acp_fields():
+    start = _map(schema.ToolCallStart(
+        sessionUpdate="tool_call",
+        toolCallId="t-rich",
+        title="edit file",
+        kind="edit",
+        status="in_progress",
+        content=[schema.FileEditToolCallContent(
+            type="diff",
+            path="app.py",
+            oldText="old",
+            newText="new",
+            _meta={"renderer": "diff"},
+        )],
+        locations=[schema.ToolCallLocation(path="app.py", line=12)],
+        rawInput={"path": "app.py"},
+        _meta={"provider": "probe"},
+    ))
+
+    assert start.data["status"] == "in_progress"
+    assert start.data["content"][0]["type"] == "diff"
+    assert start.data["content"][0]["old_text"] == "old"
+    assert start.data["locations"] == [{"path": "app.py", "line": 12}]
+    assert start.data["_meta"] == {"provider": "probe"}
+
+    progress = _map(schema.ToolCallProgress(
+        sessionUpdate="tool_call_update",
+        toolCallId="t-rich",
+        content=[schema.ContentToolCallContent(
+            type="content",
+            content=_text_block("done"),
+        )],
+        locations=[schema.ToolCallLocation(path="app.py")],
+        _meta={"provider": "probe"},
+    ))
+    assert progress.data["content"][0]["content"]["text"] == "done"
+    assert progress.data["locations"] == [{"path": "app.py"}]
+    assert progress.data["_meta"] == {"provider": "probe"}

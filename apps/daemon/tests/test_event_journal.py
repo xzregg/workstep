@@ -3,6 +3,7 @@
 import asyncio
 
 from agent_assistants.event_journal import TurnEventJournal
+from engines.core.agui import to_agui_events
 
 
 def test_journal_recovers_snapshot_without_exposing_thoughts_in_summary(tmp_path):
@@ -51,6 +52,34 @@ def test_journal_ignores_an_incomplete_trailing_line(tmp_path):
     timeline = journal.timeline(ref)
     assert len(timeline["events"]) == 1
     assert timeline["events"][0]["type"] == "usage_update"
+
+
+def test_commentary_survives_replay_without_becoming_response_content(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "session-phases", "message-phases")
+    for phase, item_id, content in [
+        ("commentary", "progress-1", "我先定位。"),
+        ("commentary", "progress-2", "正在核对。"),
+        ("final_answer", "answer", "已完成。"),
+    ]:
+        journal.record(ref, {
+            "type": "agent_message_chunk",
+            "data": {"content": {"text": content}, "phase": phase, "source_item_id": item_id},
+        })
+    journal.finish(ref)
+    restored = TurnEventJournal()
+    snapshot = restored.snapshot(ref)
+    assert snapshot["content"] == "已完成。"
+    assert snapshot["summary"]["commentary_characters"] == 10
+    assert snapshot["summary"]["thought_characters"] == 0
+    replay = [mapped for event in restored.timeline(ref)["events"]
+              for mapped in to_agui_events(event)]
+    assert [(event.get("phase"), event.get("source_item_id"), event["delta"])
+            for event in replay] == [
+        ("commentary", "progress-1", "我先定位。"),
+        ("commentary", "progress-2", "正在核对。"),
+        ("final_answer", "answer", "已完成。"),
+    ]
 
 
 def test_journal_finish_cancels_unanswered_interactions(tmp_path):

@@ -217,6 +217,8 @@ async def install_with_command(
     cmd: list[str],
     *,
     display: str,
+    action: str = "安装",
+    success_hint: str = "请重新扫描引擎",
 ) -> EngineInstallResult:
     """Run an engine install command, mapping failures to a readable result."""
     if not shutil.which(cmd[0]):
@@ -231,13 +233,13 @@ async def install_with_command(
     if code == 0:
         return EngineInstallResult(
             success=True,
-            message=f"{display} 安装完成，请重新扫描引擎",
+            message=f"{display} {action}完成，{success_hint}",
         )
     tail = output[-2000:].strip()
     detail = f"\n{tail}" if tail else ""
     return EngineInstallResult(
         success=False,
-        message=f"{display} 安装失败（exit {code}）{detail}",
+        message=f"{display} {action}失败（exit {code}）{detail}",
     )
 
 
@@ -248,25 +250,56 @@ def _has_pip() -> bool:
         return False
 
 
-async def install_python_package(package: str) -> EngineInstallResult:
+async def install_python_package(
+    package: str,
+    *,
+    upgrade: bool = False,
+) -> EngineInstallResult:
     """Install a Python SDK package into the running daemon environment.
 
     uv 管理的虚拟环境通常没有 pip，优先用 ``uv pip install``（以当前解释器
     为目标），否则回退到 ``python -m pip install``。
     """
-    if shutil.which("uv"):
+    action = "更新" if upgrade else "安装"
+    success_hint = "请重启 daemon 后重新扫描引擎" if upgrade else "请重新扫描引擎"
+    package_dir = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
+    if package_dir:
+        os.makedirs(package_dir, exist_ok=True)
+        cmd = [sys.executable, "-m", "pip", "install"]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.extend(["--target", package_dir, package])
         return await install_with_command(
-            ["uv", "pip", "install", "--python", sys.executable, package],
+            cmd,
             display=package,
+            action=action,
+            success_hint=success_hint,
+        )
+    if shutil.which("uv"):
+        cmd = ["uv", "pip", "install"]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.extend(["--python", sys.executable, package])
+        return await install_with_command(
+            cmd,
+            display=package,
+            action=action,
+            success_hint=success_hint,
         )
     if _has_pip():
+        cmd = [sys.executable, "-m", "pip", "install"]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.append(package)
         return await install_with_command(
-            [sys.executable, "-m", "pip", "install", package],
+            cmd,
             display=package,
+            action=action,
+            success_hint=success_hint,
         )
     return EngineInstallResult(
         success=False,
-        message="未找到 uv 或 pip，无法安装 Python SDK 包",
+        message=f"未找到 uv 或 pip，无法{action} Python SDK 包",
     )
 
 
@@ -480,6 +513,8 @@ class BaseLLMEngine(ABC):
 
     # --- Install (runtime bootstrap) ---
 
+    UPDATE_PACKAGE: ClassVar[str | None] = None
+
 
     @staticmethod
     def install_command() -> str | None:
@@ -513,6 +548,17 @@ class BaseLLMEngine(ABC):
             already_installed=True,
             message="该引擎无需安装",
         )
+
+    @classmethod
+    def update_command(cls) -> str | None:
+        """Human-readable update command for an updateable SDK runtime."""
+        return f"pip install --upgrade {cls.UPDATE_PACKAGE}" if cls.UPDATE_PACKAGE else None
+
+    async def update(self) -> EngineInstallResult:
+        """Update an SDK package in the running daemon environment."""
+        if not self.UPDATE_PACKAGE:
+            return EngineInstallResult(success=False, message="该引擎不支持自动更新")
+        return await install_python_package(self.UPDATE_PACKAGE, upgrade=True)
 
 
     async def inspect_capabilities(

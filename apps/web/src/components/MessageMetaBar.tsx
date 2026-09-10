@@ -7,6 +7,7 @@ import {
   toMilliseconds,
 } from '../utils/datetime'
 import { useI18n } from '../i18n'
+import { useUserSettingsStore } from '../stores/userSettingsStore'
 
 /* ══════════════════════════════════════════
    MessageMetaBar — shared LLM message meta row
@@ -58,6 +59,7 @@ export interface MessageMetaBarProps {
   pendingInserts?: boolean
   eventSummary?: {
     thought_characters?: number
+    commentary_characters?: number
     tool_count?: number
   }
   eventDetail?: {
@@ -90,6 +92,7 @@ export default function MessageMetaBar({
   projectId,
 }: MessageMetaBarProps) {
   const { t, locale } = useI18n()
+  const openMode = useUserSettingsStore((state) => state.openMode)
   const [sessionCopied, setSessionCopied] = useState(false)
   const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
     const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
@@ -262,7 +265,7 @@ export default function MessageMetaBar({
                 {sessionCopied ? t('common.copied') : displaySessionId}
               </button>
             )}
-            {prompt && (
+            {openMode && prompt && (
               <button
                 type="button"
                 className="meta-link-btn chat-message-action"

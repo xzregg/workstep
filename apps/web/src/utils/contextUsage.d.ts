@@ -2,6 +2,19 @@ export interface ContextUsage {
   used: number
   total: number
   percent: number
+  estimated?: boolean
+  breakdown?: {
+    system: number
+    toolDefinitions: number
+    user: number
+    assistant: number
+    toolRequests: number
+    toolResults: number
+    visible: number
+    other: number
+    estimated: boolean
+  }
+  tools?: Array<{ name: string; tokens: number }>
 }
 
 export interface ContextUsageMessage {

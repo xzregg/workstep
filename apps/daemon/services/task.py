@@ -12,7 +12,7 @@ from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, 
 from models.base import db_proxy
 from models.fields import utc_now
 from engines.core.registry import create_engine
-from engines.core.events import InternalEvent
+from engines.core.events import InternalEvent, is_commentary
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 from services.task_runner import extract_usage_json
 from services.config import DEFAULT_EXECUTION_ENGINE
@@ -342,7 +342,7 @@ class TaskService:
                 self._event_journal.record(journal_ref, event.to_dict())
 
                 # Collect text content
-                if event.type == "agent_message_chunk":
+                if event.type == "agent_message_chunk" and not is_commentary(event):
                     content = event.data.get("content") or {}
                     content_parts.append(content.get("text", ""))
                 elif event.type == "error" and reported_error is None:

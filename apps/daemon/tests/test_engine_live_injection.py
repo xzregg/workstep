@@ -67,6 +67,28 @@ def _codex_config():
 
 
 @pytest.mark.anyio
+async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(monkeypatch):
+    frames = [
+        {"type": "item.completed", "item": {"type": "agent_message", "id": "p", "phase": "commentary", "text": "检查中"}},
+        {"type": "item.completed", "item": {"type": "agent_message", "id": "f", "phase": "final_answer", "text": "完成"}},
+        {"type": "item.completed", "item": {"type": "agent_message", "id": "old", "text": "普通回复"}},
+    ]
+    process = _LiveFakeCodexProcess(stdout=("\n".join(json.dumps(frame) for frame in frames) + "\n").encode())
+
+    async def spawn(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr("engines.codex.config_store.get_codex_config", _codex_config)
+    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd="/tmp")]
+    assert [(event.data.get("phase"), event.data.get("source_item_id"), event.data["content"]["text"])
+            for event in events if event.type == "agent_message_chunk"] == [
+        ("commentary", "p", "检查中"), ("final_answer", "f", "完成"), (None, "old", "普通回复"),
+    ]
+
+
+@pytest.mark.anyio
 async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
     """codex exec 无注入协议：插入消息时终止当前进程，用新消息 resume 重启会话。"""
     first = _LiveFakeCodexProcess(
@@ -524,6 +546,10 @@ class _FakeSdkTurn:
     def __init__(self, turn_id: str, deltas: list[str]):
         self.id = turn_id
         self._deltas = list(deltas)
+        self.steered: list[str] = []
+
+    async def steer(self, content):
+        self.steered.append(content)
 
     async def stream(self):
         for delta in self._deltas:
@@ -607,6 +633,42 @@ def _patch_codex_sdk(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_codex_sdk_preserves_message_phases_per_item(monkeypatch):
+    _patch_codex_sdk(monkeypatch)
+
+    class PhasedTurn(_FakeSdkTurn):
+        async def stream(self):
+            for item_id, phase, text, started, streamed in [
+                ("progress-1", "commentary", "我先定位组件。", True, True),
+                ("progress-2", "commentary", "正在核对。", False, True),
+                ("answer", "final_answer", "已完成。", True, False),
+            ]:
+                item = SimpleNamespace(type="agentMessage", id=item_id, phase=phase, text=text)
+                if started:
+                    yield SimpleNamespace(method="item/started", payload=SimpleNamespace(item=item))
+                if streamed:
+                    yield SimpleNamespace(method="item/agentMessage/delta", payload=SimpleNamespace(
+                        item_id=item_id, delta=text,
+                    ))
+                yield SimpleNamespace(method="item/completed", payload=SimpleNamespace(item=item))
+                # Repeated completion must not duplicate a message item.
+                yield SimpleNamespace(method="item/completed", payload=SimpleNamespace(item=item))
+
+    async def turn(self, prompt, model=None):
+        return PhasedTurn("turn-phases", [])
+
+    monkeypatch.setattr(_FakeSdkThread, "turn", turn)
+    events = [event async for event in CodexSDKEngine().spawn(prompt="开始", cwd="/tmp")]
+    messages = [event.data for event in events if event.type == "agent_message_chunk"]
+    assert [(data.get("phase"), data.get("source_item_id"), data["content"]["text"])
+            for data in messages] == [
+        ("commentary", "progress-1", "我先定位组件。"),
+        ("commentary", "progress-2", "正在核对。"),
+        ("final_answer", "answer", "已完成。"),
+    ]
+
+
+@pytest.mark.anyio
 async def test_codex_sdk_forks_to_an_independent_thread(monkeypatch):
     _patch_codex_sdk(monkeypatch)
 
@@ -622,8 +684,7 @@ async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
     在收到 ack 时封口插入前的输出段并开启新的响应段。"""
     _patch_codex_sdk(monkeypatch)
     queue: asyncio.Queue = asyncio.Queue()
-    # 预置插入消息：首轮结束后立即被消费并开启响应轮（引擎在队列为空时
-    # 立即收尾，不再等待插入窗口，因此消息必须在首轮完成前就已排队）。
+    # 预置插入消息：活动 turn 建立后应立即 steer，不应另开响应 turn。
     queue.put_nowait(("mid-1", "插入内容"))
     events: list[InternalEvent] = []
 
@@ -638,14 +699,77 @@ async def test_codex_sdk_acks_live_message_before_response_events(monkeypatch):
     assert [
         (event.data.get("content") or {}).get("text", "")
         for event in deltas
-    ] == ["第一段输出", "插入后的响应"]
+    ] == ["第一段输出"]
     acks = [event for event in events if event.type == "live_message"]
     assert len(acks) == 1
     assert acks[0].data["message_id"] == "mid-1"
     assert acks[0].data["status"] == "delivered"
     ack_index = events.index(acks[0])
-    # 首轮输出在 ack 之前，插入后的响应在 ack 之后
+    # 预置消息先 steer 当前 turn，再消费当前 turn 的输出。
     first_index = events.index(deltas[0])
-    response_index = events.index(deltas[1])
-    assert first_index < ack_index < response_index
+    assert ack_index < first_index
+    thread = next(iter(_FakeAsyncCodex.instances[0].threads.values()))
+    assert thread._turn_count == 1
     assert _FakeAsyncCodex.instances and _FakeAsyncCodex.instances[0].closed is True
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_steers_the_active_turn_before_it_completes(monkeypatch):
+    """执行中的插入消息必须 steer 当前 turn，不能等当前 turn 完成后再开新 turn。"""
+    _patch_codex_sdk(monkeypatch)
+    queue: asyncio.Queue = asyncio.Queue()
+    turn_started = asyncio.Event()
+    release_turn = asyncio.Event()
+
+    class ActiveTurn(_FakeSdkTurn):
+        async def stream(self):
+            turn_started.set()
+            yield SimpleNamespace(
+                method="item/agentMessage/delta",
+                payload=SimpleNamespace(delta="执行中"),
+            )
+            await release_turn.wait()
+            yield SimpleNamespace(
+                method="turn/completed",
+                payload=SimpleNamespace(
+                    turn=SimpleNamespace(
+                        id=self.id,
+                        status=SimpleNamespace(value="completed"),
+                        error=None,
+                    )
+                ),
+            )
+
+    active_turn = ActiveTurn("turn-active", [])
+
+    async def turn(self, prompt, model=None):
+        return active_turn
+
+    monkeypatch.setattr(_FakeSdkThread, "turn", turn)
+    events: list[InternalEvent] = []
+
+    async def consume():
+        async for event in CodexSDKEngine().spawn(
+            prompt="开始任务",
+            cwd="/tmp",
+            live_message_queue=queue,
+        ):
+            events.append(event)
+
+    consume_task = asyncio.create_task(consume())
+    await asyncio.wait_for(turn_started.wait(), timeout=1)
+    queue.put_nowait(("mid-active", "立即调整方向"))
+    try:
+        await asyncio.sleep(0.05)
+        steered_while_running = active_turn.steered == ["立即调整方向"]
+    finally:
+        release_turn.set()
+        await asyncio.wait_for(consume_task, timeout=1)
+
+    assert steered_while_running is True
+    assert any(
+        event.type == "live_message"
+        and event.data.get("message_id") == "mid-active"
+        and event.data.get("status") == "delivered"
+        for event in events
+    )

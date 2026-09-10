@@ -16,6 +16,7 @@ const CodeFilePreview = lazy(() => import('./CodeFilePreview'))
 
 interface ArtifactPreviewProps {
   path: string
+  line?: number
   isDir?: boolean
   onClose?: () => void
   projectId?: string
@@ -79,7 +80,7 @@ function CopyTextButton({ content }: { content: string }) {
   )
 }
 
-export default function ArtifactPreview({ path, isDir = false, onClose, projectId }: ArtifactPreviewProps) {
+export default function ArtifactPreview({ path, line, isDir = false, onClose, projectId }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const [view, setView] = useState<PreviewView>(() =>
     isDir
@@ -423,7 +424,7 @@ export default function ArtifactPreview({ path, isDir = false, onClose, projectI
               {t('common.loading')}
             </div>
           )}>
-            <CodeFilePreview filename={view.path} content={content} />
+            <CodeFilePreview filename={view.path} content={content} line={line} />
           </Suspense>
         </div>
         {fileFooter(content_type, file_size)}

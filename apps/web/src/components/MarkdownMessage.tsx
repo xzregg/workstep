@@ -12,6 +12,8 @@ interface MarkdownMessageProps {
   /** Project id used to resolve `.workstep/uploads/...` relative image paths. */
   projectId?: string
   className?: string
+  /** Render paragraphs as compact blocks for nested process/event timelines. */
+  compactParagraphs?: boolean
   /** When set, images render as clickable thumbnails calling this with (src, alt). */
   onImageClick?: (src: string, alt: string) => void
 }
@@ -46,6 +48,7 @@ export default function MarkdownMessage({
   streaming = false,
   projectId,
   className,
+  compactParagraphs = false,
   onImageClick,
 }: MarkdownMessageProps) {
   const { t } = useI18n()
@@ -53,6 +56,9 @@ export default function MarkdownMessage({
   const markdown = streaming ? closeStreamingFence(content) : content
 
   const components = {
+    p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
+      ? <div className="markdown-compact-paragraph">{children}</div>
+      : <p>{children}</p>,
     img: (props: { src?: string; alt?: string }) => {
       const alt = props.alt ?? ''
       if (!props.src) return null
@@ -110,6 +116,7 @@ export default function MarkdownMessage({
         <FilePreviewDialog
           path={previewFile.path}
           name={previewFile.name}
+          line={previewFile.line}
           projectId={projectId}
           onClose={() => setPreviewFile(null)}
         />

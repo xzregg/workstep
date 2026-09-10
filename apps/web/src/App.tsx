@@ -7,6 +7,7 @@ import CanvasEditor from './pages/CanvasEditor'
 import StatisticsPage from './pages/StatisticsPage'
 import SchedulePage from './pages/SchedulePage'
 import ChatPage from './pages/ChatPage'
+import ChannelsPage from './pages/ChannelsPage'
 import SharedTaskView from './pages/SharedTaskView'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="/statistics" element={<StatisticsPage />} />
         <Route path="/schedules" element={activeProject ? <SchedulePage /> : <WelcomeView />} />
         <Route path="/chat" element={activeProject ? <ChatPage /> : <WelcomeView />} />
+        <Route path="/channels" element={activeProject ? <ChannelsPage /> : <WelcomeView />} />
         <Route path="*" element={<WelcomeView />} />
       </Routes>
     </Layout>

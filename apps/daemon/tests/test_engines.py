@@ -1,6 +1,7 @@
 """Tests for engine layer: events, registry, ClaudeCodeEngine mapping."""
 
 import asyncio
+import sys
 from typing import get_args, get_type_hints
 
 import pytest
@@ -14,6 +15,7 @@ from engines.core.events import (
 )
 from engines.core.registry import ENGINE_REGISTRY, get_available_engines, create_engine
 from engines.claude_code import ClaudeCodeEngine
+import engines.core.base as engine_base
 
 
 class StubEngine(AcpEngineBase):
@@ -211,6 +213,48 @@ def test_engine_install_base_defaults():
     assert result.already_installed is True
 
 
+def test_python_sdk_update_upgrades_in_daemon_environment(monkeypatch):
+    captured = []
+
+    async def fake_run(cmd, *, timeout=600):
+        captured.append(cmd)
+        return 0, "updated"
+
+    monkeypatch.setattr(engine_base.shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    result = asyncio.run(
+        engine_base.install_python_package("openai-codex", upgrade=True)
+    )
+
+    assert captured == [[
+        "uv", "pip", "install", "--upgrade", "--python", sys.executable,
+        "openai-codex",
+    ]]
+    assert result.success is True
+    assert "重启 daemon" in result.message
+
+
+def test_python_sdk_install_targets_desktop_user_runtime(monkeypatch, tmp_path):
+    captured = []
+
+    async def fake_run(cmd, *, timeout=600):
+        captured.append(cmd)
+        return 0, "installed"
+
+    package_dir = tmp_path / "python-packages"
+    monkeypatch.setenv("WORKSTEP_ENGINE_PACKAGE_DIR", str(package_dir))
+    monkeypatch.setattr(engine_base, "run_install_command", fake_run)
+
+    result = asyncio.run(engine_base.install_python_package("openai-codex"))
+
+    assert captured == [[
+        sys.executable, "-m", "pip", "install", "--target", str(package_dir),
+        "openai-codex",
+    ]]
+    assert result.success is True
+
+
 def test_claude_code_install_command():
     assert (
         ClaudeCodeEngine.install_command()
@@ -227,6 +271,20 @@ def test_get_available_engines():
     assert isinstance(claude_entry["installed"], bool)
     assert "installable" in claude_entry
     assert "install_command" in claude_entry
+
+
+def test_registry_marks_python_sdk_engines_as_updatable():
+    engines = {item["id"]: item for item in get_available_engines()}
+
+    for engine_id in (
+        "codex_sdk",
+        "claude_agent_sdk",
+        "qoder_sdk",
+        "deepseek_harness",
+    ):
+        assert engines[engine_id]["updatable"] is True
+        assert "pip install --upgrade" in engines[engine_id]["update_command"]
+    assert engines["pydantic_ai"]["updatable"] is False
 
 
 def test_claude_resolve_binary():

@@ -2736,6 +2736,43 @@ def test_codex_sdk_maps_usage_with_cache():
     assert usage["size"] == 400
 
 
+@pytest.mark.anyio
+async def test_codex_sdk_reads_account_quota_from_active_client():
+    engine = CodexSDKEngine()
+    captured = {}
+
+    class Client:
+        async def request(self, method, params, *, response_model):
+            captured.update(method=method, params=params, response_model=response_model)
+            return _SdkFake(
+                rate_limits=_SdkFake(
+                    primary=_SdkFake(used_percent=19, resets_at=1_800_000_000, window_duration_mins=300),
+                    secondary=None,
+                    credits=_SdkFake(balance="12.5", has_credits=True, unlimited=False),
+                    individual_limit=_SdkFake(limit="100", used="25", remaining_percent=75, resets_at=1_800_000_100),
+                    limit_id="codex",
+                    limit_name="Codex",
+                    plan_type=_SdkFake(value="plus"),
+                    rate_limit_reached_type=None,
+                ),
+                rate_limits_by_limit_id=None,
+            )
+
+    quota = await engine._read_account_quota(_SdkFake(_client=Client()))
+
+    assert captured["method"] == "account/rateLimits/read"
+    assert captured["params"] is None
+    assert quota["engine_id"] == "codex_sdk"
+    assert quota["primary"] == {
+        "used_percent": 19,
+        "remaining_percent": 81,
+        "resets_at": 1_800_000_000,
+        "window_duration_mins": 300,
+    }
+    assert quota["credits"]["balance"] == "12.5"
+    assert quota["individual_limit"]["remaining_percent"] == 75
+
+
 def test_codex_sdk_turn_completed_error():
     engine = CodexSDKEngine()
     events = engine._map_notification(

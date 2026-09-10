@@ -1,10 +1,10 @@
 # WorkStep Desktop
 
-Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 由 Nuitka 编译为 standalone sidecar，用户机器无需安装 Python。
+Electron 桌面壳负责窗口、安装包和自动更新；FastAPI daemon 运行在随应用分发的独立 Python runtime 中，用户机器无需安装 Python。Codex SDK、Claude Agent SDK 等可选引擎不随桌面包预装，用户点击“安装”后写入 `~/.workstep/runtime/python-packages/`，桌面应用升级不会覆盖它们。
 
 ```text
 Electron
-  └─ resources/backend/main(.exe|.bin) --port <port>
+  └─ resources/backend/python/.../python resources/backend/app/main.py --port <port>
        └─ stdout: PORT:<实际端口>
             └─ BrowserWindow 加载 http://127.0.0.1:<实际端口>/
 ```
@@ -45,8 +45,8 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 推送 `v*` tag 后，CI 在 Windows、macOS 和 Linux 分别完成以下流程：
 
 1. 构建 React 前端。
-2. 在干净 venv 中安装锁定的 `requirements-prod.txt` 与 Nuitka。
-3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`。
+2. 下载可重定位的 CPython，并安装锁定的基础 `requirements-prod.txt`（不含可点击安装的引擎 SDK）。
+3. 生成 `build-artifacts/{win,mac,linux}/backend/main.dist/`，其中包含 Python runtime 与 daemon 源码。
 4. 把完整 standalone 目录注入 Electron 的 `resources/backend/`。
 5. 生成 NSIS `.exe`、`.dmg`/更新用 `.zip`、`.AppImage` 和更新元数据。
 6. 创建草稿 GitHub Release；人工发布后客户端才会收到更新。

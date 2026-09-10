@@ -27,7 +27,7 @@ from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
 from engines.core.registry import create_engine
 from engines.core.agui import AGUIContext, to_agui_events
-from engines.core.events import InternalEvent
+from engines.core.events import InternalEvent, is_commentary
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -146,6 +146,137 @@ class TaskRunner:
         if self._database_executor is None:
             return await asyncio.to_thread(operation)
         return await self._database_executor.run(operation)
+
+    async def _start_automatic_review_message(
+        self,
+        task: Task,
+        step: Step,
+        artifacts_dir: Path,
+        review_config: dict,
+    ) -> tuple[str, JournalRef]:
+        """Persist and publish the review bubble before the reviewer starts."""
+        message_id = new_message_id()
+        now = utc_now()
+        journal_ref = self._event_journal.start(
+            artifacts_dir.parent,
+            f"task-{task.id}",
+            message_id,
+        )
+        engine = str(review_config.get("engine") or step.engine)
+        model = str(
+            review_config.get("model")
+            or step.model
+            or config_store.get_engine_default_model(engine)
+            or ""
+        )
+        await self._run_db(
+            lambda: create_task_message(
+                id=message_id,
+                task=task,
+                channel="review",
+                step_key=step.key,
+                role="assistant",
+                content="审核中",
+                engine=engine,
+                model=model,
+                run_id=message_id,
+                run_status="running",
+                event_log_path=journal_ref.relative_path,
+                position=0,
+                started_at=now,
+                created_at=now,
+            )
+        )
+        await self._publish(task.id, step.key, {
+            "channel": "review",
+            "message_id": message_id,
+            "engine": engine,
+            "model": model,
+            "event_sequence": 0,
+            "type": "message_started",
+            "data": {
+                "role": "assistant",
+                "status": "running",
+                "content": "审核中",
+            },
+            "created_at": now.isoformat(),
+        })
+        return message_id, journal_ref
+
+    async def _finish_automatic_review_message(
+        self,
+        task: Task,
+        step_key: str,
+        message_id: str,
+        journal_ref: JournalRef,
+        outcome,
+    ) -> None:
+        """Finalize the same review bubble with its report and event trace."""
+        for review_event in outcome.events:
+            self._event_journal.record(journal_ref, review_event)
+        self._event_journal.finish(journal_ref)
+        snapshot = self._journal_snapshot(journal_ref)
+        summary = outcome.report.get("summary", "")
+        issues = outcome.report.get("issues", [])
+        items = "".join(
+            f"- {issue.get('description', '')}"
+            + (
+                f" → {issue.get('suggestion', '')}"
+                if issue.get("suggestion") else ""
+            )
+            + "\n"
+            for issue in (issues or [])
+        )
+        verdict = "通过" if outcome.status == "passed" else "未通过"
+        content = f"**审核结果：{verdict}**\n{summary}\n{items}"
+
+        def finalize_review_message():
+            message = Message.get_by_id(message_id)
+            message.content = content
+            message.engine = outcome.review_run.engine
+            message.model = outcome.review_run.model
+            message.run_status = "completed"
+            message.prompt_json = outcome.review_run.prompt_json
+            message.events_json = json.dumps(
+                [{
+                    "type": "review_context",
+                    "data": {"review_run_id": outcome.review_run.id},
+                }, *snapshot["events"]],
+                ensure_ascii=False,
+            )
+            message.event_summary_json = snapshot["event_summary_json"]
+            message.event_count = snapshot["event_count"]
+            message.last_event_seq = snapshot["last_event_seq"]
+            message.usage_json = extract_usage_json(list(outcome.events))
+            message.started_at = outcome.review_run.started_at
+            message.ended_at = outcome.review_run.ended_at
+            message.save()
+
+        await self._run_db(finalize_review_message)
+        common = {
+            "channel": "review",
+            "message_id": message_id,
+            "engine": outcome.review_run.engine,
+            "model": outcome.review_run.model,
+            "created_at": outcome.review_run.started_at.isoformat(),
+        }
+        await self._publish(task.id, step_key, {
+            **common,
+            "type": "message_snapshot",
+            "data": {"content": content},
+        })
+        await self._publish(task.id, step_key, {
+            **common,
+            "type": "message_completed",
+            "data": {
+                "status": "completed",
+                "content": content,
+                "ended_at": (
+                    outcome.review_run.ended_at.isoformat()
+                    if outcome.review_run.ended_at else None
+                ),
+            },
+        })
 
     async def run_pipeline(
         self,
@@ -311,6 +442,17 @@ class TaskRunner:
             ts = TaskStep.get(
                 (TaskStep.task == task) & (TaskStep.step_key == step_key)
             )
+            previous_engine = ts.engine
+            if (
+                ts.session_id
+                and previous_engine
+                and previous_engine != step.engine
+            ):
+                # Engine session identifiers are provider-specific. The
+                # assembled stage prompt still carries supplements, upstream
+                # artifacts and task context, but the new engine must create
+                # its own session instead of receiving an incompatible ID.
+                ts.session_id = None
             is_review_retry = (
                 ts.status in ("retrying", "rework_waiting")
                 and ts.started_at is not None
@@ -409,10 +551,31 @@ class TaskRunner:
                 if manual_review_feedback
                 else "验证反馈"
             )
+            prompt += f"\n\n## 上一轮{label}\n{feedback}"
+
+            # 注入审核 Agent 的完整输出（LLM 原始回复），
+            # 比 feedback 摘要更完整，包含审核推理过程。
+            def fetch_review_response():
+                rr = (
+                    ReviewRun.select()
+                    .where(
+                        (ReviewRun.task == task)
+                        & (ReviewRun.step_key == step_key)
+                        & (ReviewRun.status == "rejected")
+                    )
+                    .order_by(ReviewRun.started_at.desc())
+                    .first()
+                )
+                return rr.response_text if rr is not None else None
+
+            review_response = await self._run_db(fetch_review_response)
+            if review_response:
+                prompt += f"\n\n## 审核 Agent 输出\n{review_response}"
+
             prompt += (
-                f"\n\n## 上一轮{label}\n"
-                f"{feedback}\n\n"
-                "请保留已有正确结果，并修复以上问题。"
+                "\n\n请根据以上反馈修复问题，保留已有正确结果。\n"
+                "**注意：修复时必须严格遵守「输出规范」中声明的产物类型、名称和写入路径，"
+                "不要改变输出格式、文件扩展名或目录结构。**"
             )
 
         # Ensure artifact output directory (workflow / task / stage)
@@ -548,7 +711,7 @@ class TaskRunner:
                     await asyncio.sleep(0)
                 events_collected.append(event.to_dict())
                 self._event_journal.record(journal_ref, event.to_dict())
-                if event.type == "agent_message_chunk":
+                if event.type == "agent_message_chunk" and not is_commentary(event):
                     content = event.data.get("content") or {}
                     content_parts.append(content.get("text", ""))
                 elif event.type == "session_started":
@@ -797,6 +960,7 @@ class TaskRunner:
                             "reviewing" if review_mode == "auto"
                             else "awaiting_review"
                         )
+                        review_message_persisted = False
                         ts = await self._persist_step_status(
                             task.id, step_key, review_status, ts.error, ts.ended_at
                         )
@@ -812,6 +976,17 @@ class TaskRunner:
                             lambda event: self._publish(task.id, step_key, event),
                             self._run_db,
                         )
+                        review_message_id = None
+                        review_journal_ref = None
+                        if review_mode == "auto":
+                            review_message_id, review_journal_ref = (
+                                await self._start_automatic_review_message(
+                                    task,
+                                    step,
+                                    artifacts_dir,
+                                    review_config,
+                                )
+                            )
                         outcome = await gate.evaluate(
                             task=task,
                             step=step,
@@ -819,9 +994,20 @@ class TaskRunner:
                             step_run=step_run,
                             artifacts_dir=artifacts_dir,
                             execution_output="".join(content_parts),
+                            execution_prompt=prompt,
                             review_config=review_config,
                             mode=review_mode,
+                            message_id=review_message_id,
                         )
+                        if review_message_id is not None and review_journal_ref is not None:
+                            await self._finish_automatic_review_message(
+                                task,
+                                step_key,
+                                review_message_id,
+                                review_journal_ref,
+                                outcome,
+                            )
+                            review_message_persisted = True
                         # 重新加载最新 ts：gate 在审核期间写入了 review_session_id，
                         # 用旧实例整行 save 会把它覆盖回 None。
                         if outcome.status == "passed":
@@ -878,9 +1064,11 @@ class TaskRunner:
                                 step_run=step_run,
                                 artifacts_dir=artifacts_dir,
                                 execution_output="".join(content_parts),
+                                execution_prompt=prompt,
                                 review_config=review_config,
                                 mode="manual",
                             )
+                            review_message_persisted = False
                             ts = await self._persist_step_status(
                                 task.id,
                                 step_key,
@@ -895,6 +1083,7 @@ class TaskRunner:
                     and workflow_run is not None
                     and step_run is not None
                     and outcome is not None
+                    and not review_message_persisted
                 ):
                     rmsg_id = new_message_id()
                     rnow = utc_now()

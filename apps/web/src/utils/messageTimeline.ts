@@ -2,6 +2,7 @@ import {
   CUSTOM,
   customValue,
   isCustom,
+  isCommentaryEvent,
   isReasoningEvent,
   toolArgs,
   toolCallId,
@@ -14,6 +15,9 @@ export type MessageTimelineEvent = {
   type?: string
   data?: Record<string, unknown>
   delta?: string
+  content?: string
+  phase?: string
+  source_item_id?: string
   isError?: boolean
   timestamp?: unknown
   created_at?: string
@@ -34,10 +38,12 @@ export type SubagentActivity = {
   status: string
   summary?: string
   lastToolName?: string
+  events?: MessageTimelineEvent[]
 }
 
 export type MessageTimelineItem =
   | { type: 'text'; id: string; content: string }
+  | { type: 'commentary'; id: string; content: string; sourceItemId?: string }
   | { type: 'thinking'; id: string; content: string; startedAt?: number; endedAt?: number }
   | { type: 'tool'; id: string; activity: ToolActivity }
   | { type: 'tool-group'; id: string; activities: ToolActivity[] }
@@ -144,6 +150,20 @@ export function buildMessageTimeline(
           id: `thinking-${index}`,
           content: delta,
           ...(timestamp !== null ? { startedAt: timestamp, endedAt: timestamp } : {}),
+        })
+      }
+      return
+    }
+
+    if (isCommentaryEvent(event)) {
+      const delta = eventText(event.content ?? event.delta)
+      if (!delta) return
+      if (previous?.type === 'commentary' && previous.sourceItemId === event.source_item_id) {
+        previous.content = event.type === 'TEXT_MESSAGE_CONTENT' ? delta : previous.content + delta
+      } else {
+        timeline.push({
+          type: 'commentary', id: `commentary-${index}`, content: delta,
+          sourceItemId: event.source_item_id,
         })
       }
       return
@@ -281,12 +301,17 @@ export function buildMessageTimeline(
     if (isCustom(event, CUSTOM.subagent)) {
       const value = customValue(event)
       const taskId = String(value.task_id || value.id || `subagent-${index}`)
-      const existing = subagentsById.get(taskId)
+      const childEvents = Array.isArray(value.events) ? value.events.filter((event): event is MessageTimelineEvent => Boolean(event && typeof event === 'object')) : []
+      const toolUseId = eventText(value.tool_use_id)
+      const existing = subagentsById.get(taskId) || (toolUseId ? subagentsById.get(toolUseId) : undefined)
       const status = String(value.status || 'running')
       const description = eventText(value.description ?? value.subject ?? taskId)
       const lastToolName = eventText(value.last_tool_name ?? '')
       if (existing) {
+        subagentsById.set(taskId, existing)
+        if (toolUseId) subagentsById.set(toolUseId, existing)
         existing.status = status
+        if (childEvents.length) existing.events = [...(existing.events ?? []), ...childEvents]
         if (description && description !== taskId) existing.description = description
         const summary = eventText(value.summary ?? '')
         if (summary) existing.summary = summary
@@ -297,10 +322,12 @@ export function buildMessageTimeline(
         taskId,
         description,
         status,
+        events: childEvents,
         ...(eventText(value.summary ?? '') ? { summary: eventText(value.summary) } : {}),
         ...(lastToolName ? { lastToolName } : {}),
       }
       subagentsById.set(taskId, activity)
+      if (toolUseId) subagentsById.set(toolUseId, activity)
       timeline.push({ type: 'subagent', id: `subagent-${taskId}`, activity })
       return
     }

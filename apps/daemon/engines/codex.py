@@ -1,5 +1,7 @@
 """CodexEngine — direct CLI mode (codex exec)."""
 
+from engines.core.plans import codex_subagent_events
+
 import asyncio
 import json
 import logging
@@ -23,6 +25,7 @@ from engines.core.base import (
 
 from engines.core.events import (
     InternalEvent,
+    agent_message_chunk,
     extract_reasoning_text,
     normalize_cost,
     tool_call_event,
@@ -521,6 +524,10 @@ class CodexEngine(AcpEngineBase):
                     data={"session_id": self._thread_id},
                 )
 
+            item = obj.get("item") or {}
+            if item.get("type") == "collab_agent_tool_call":
+                for child_event in codex_subagent_events(item):
+                    yield child_event
             event = self._map_event(obj)
             if event is None:
                 continue
@@ -632,9 +639,8 @@ class CodexEngine(AcpEngineBase):
             if item_type == "agent_message":
                 text = item.get("text") or item.get("message") or ""
                 if text:
-                    return InternalEvent(
-                        type="agent_message_chunk",
-                        data={"content": {"text": text}},
+                    return agent_message_chunk(
+                        text, phase=item.get("phase"), source_item_id=item.get("id"),
                     )
 
             elif item_type in {"reasoning", "analysis"}:
@@ -765,6 +771,7 @@ class CodexEngine(AcpEngineBase):
 
     #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
     acp_events: frozenset[str] = frozenset({
+        "subagent",
         "agent_message_chunk",
         "agent_thought_chunk",
         "tool_call",

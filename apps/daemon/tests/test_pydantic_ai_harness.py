@@ -561,6 +561,43 @@ async def test_stream_agent_run_allows_more_than_fifty_model_requests():
 
 
 @pytest.mark.anyio
+async def test_pydantic_stream_preserves_provider_phase_across_text_deltas():
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from pydantic_ai.messages import PartStartEvent, PartDeltaEvent, TextPart, TextPartDelta
+
+    class AgentStream:
+        @asynccontextmanager
+        async def run_stream_events(self, prompt, **kwargs):
+            async def events():
+                for item_id, phase, first, delta in [
+                    ("progress", "commentary", "我先", "定位。"),
+                    ("answer", "final_answer", "已", "完成。"),
+                    ("legacy", None, "普通", "回复。"),
+                ]:
+                    yield PartStartEvent(index=0, part=TextPart(
+                        first, id=item_id, provider_name="openai",
+                        provider_details={"phase": phase} if phase else None,
+                    ))
+                    yield PartDeltaEvent(index=0, delta=TextPartDelta(content_delta=delta))
+                yield SimpleNamespace(event_kind="agent_run_result", result=SimpleNamespace(output="完成"))
+            yield events()
+
+    published = []
+
+    async def record(event):
+        published.append(event)
+
+    await PydanticAIEngine()._stream_agent_run(AgentStream(), prompt="检查", on_event=record)
+    assert [(event.data.get("phase"), event.data.get("source_item_id"), event.data["content"]["text"])
+            for event in published] == [
+        ("commentary", "progress", "我先"), ("commentary", "progress", "定位。"),
+        ("final_answer", "answer", "已"), ("final_answer", "answer", "完成。"),
+        ("final_answer", "legacy", "普通"), ("final_answer", "legacy", "回复。"),
+    ]
+
+
+@pytest.mark.anyio
 async def test_harness_store_bounded_snapshots(tmp_path):
     """max_snapshots_per_run=1：超出保留集的旧快照在每次写入后被修剪。"""
     from pydantic_ai_harness.step_persistence import ContinuableSnapshot
@@ -583,23 +620,25 @@ async def test_harness_store_bounded_snapshots(tmp_path):
 # --- 子 agent 事件转发（对齐其他引擎） ---
 
 
-def test_coder_injects_subagent_event_handler():
-    """WorkStepCoder 将 event_stream_handler 注入 SubAgents capability。"""
+def test_coder_injects_subagent_progress_capability():
+    """WorkStepCoder 将整个运行的观察器注入所有子代理。"""
     from pydantic_ai_harness.subagents import SubAgents
 
     from engines.pydantic_ai.coder import WorkStepCoder
 
-    async def fake_handler(ctx, stream):
+    async def on_event(event):
         pass
+
+    progress = PydanticAIEngine()._make_subagent_capability(on_event)
 
     coder = WorkStepCoder(
         ".",
         allowed_commands=["git"],
-        subagent_event_handler=fake_handler,
+        subagent_capability=progress,
     )
     subagents = [c for c in coder.capabilities if isinstance(c, SubAgents)]
     assert subagents, "WorkStepCoder should include a SubAgents capability"
-    assert subagents[0].event_stream_handler is fake_handler
+    assert progress in subagents[0].shared_capabilities
     # 保留原有子 agent（explorer）
     assert "explorer" in subagents[0]._by_name
     # _instruction_sources 同步替换为新实例，避免 CombinedCapability._rebound 断言失败
@@ -616,83 +655,6 @@ def test_coder_without_handler_keeps_default():
     subagents = [c for c in coder.capabilities if isinstance(c, SubAgents)]
     assert subagents
     assert subagents[0].event_stream_handler is None
-
-
-@pytest.mark.anyio
-async def test_subagent_handler_emits_lifecycle_events():
-    """handler 将子 agent 事件流映射为 subagent 生命周期事件。"""
-    from pydantic_ai.messages import (
-        FunctionToolCallEvent,
-        FunctionToolResultEvent,
-        ToolCallPart,
-        ToolReturnPart,
-    )
-
-    from engines.pydantic_ai import PydanticAIEngine
-
-    engine = PydanticAIEngine()
-    collected = []
-
-    async def on_event(event):
-        collected.append(event)
-
-    handler = engine._make_subagent_handler(on_event)
-
-    class FakeAgent:
-        name = "explorer"
-        description = "Explore the codebase"
-
-    class FakeCtx:
-        agent = FakeAgent()
-
-    async def event_stream():
-        yield FunctionToolCallEvent(part=ToolCallPart(
-            tool_call_id="call_1", tool_name="read_file", args={"path": "/tmp/x"},
-        ))
-        yield FunctionToolResultEvent(part=ToolReturnPart(
-            tool_call_id="call_1", tool_name="read_file", content="contents",
-        ))
-
-    await handler(FakeCtx(), event_stream())
-
-    types = [(e.type, e.data.get("status"), e.data.get("stage")) for e in collected]
-    assert types[0] == ("subagent", "running", "started")
-    assert ("subagent", "running", "progress") in types
-    assert types[-1] == ("subagent", "completed", "finished")
-    # task_id 使用子 agent 名字，供前端折叠
-    assert all(e.data.get("task_id") == "subagent-explorer" for e in collected)
-
-
-@pytest.mark.anyio
-async def test_subagent_handler_emits_failed_on_error():
-    """子 agent 事件流异常中断时发 failed 帧，且异常传播。"""
-    from engines.pydantic_ai import PydanticAIEngine
-
-    engine = PydanticAIEngine()
-    collected = []
-
-    async def on_event(event):
-        collected.append(event)
-
-    handler = engine._make_subagent_handler(on_event)
-
-    class FakeAgent:
-        name = "explorer"
-        description = "Explore"
-
-    class FakeCtx:
-        agent = FakeAgent()
-
-    async def failing_stream():
-        yield object()  # 触发 started
-        raise RuntimeError("sub-agent crashed")
-
-    with pytest.raises(RuntimeError, match="sub-agent crashed"):
-        await handler(FakeCtx(), failing_stream())
-
-    statuses = [(e.data.get("status"), e.data.get("stage")) for e in collected]
-    assert statuses[0] == ("running", "started")
-    assert statuses[-1] == ("failed", "finished")
 
 
 @pytest.mark.anyio
@@ -723,7 +685,7 @@ async def test_subagent_events_persist_and_readable(tmp_path):
         journal.record(ref, {"type": ev.type, "data": ev.data})
     journal.finish(ref)
 
-    result = journal.timeline(ref, cursor=0, limit=200)
+    result = journal.timeline(ref, cursor=0, limit=30000)
     subagent_events = [e for e in result["events"] if e["type"] == "subagent"]
     assert len(subagent_events) == 3
     assert subagent_events[0]["data"]["stage"] == "started"

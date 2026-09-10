@@ -19,6 +19,16 @@ export const useChatSessionStore = createAssistantStore({
   channel: 'session_chat',
 })
 
+export function mergeChatSessionRunningState(
+  sessions: ChatSessionSummary[],
+  liveState: Record<string, boolean>,
+): Record<string, boolean> {
+  return {
+    ...Object.fromEntries(sessions.map((session) => [session.id, Boolean(session.running)])),
+    ...liveState,
+  }
+}
+
 /** Click context for multi-select toggling. */
 export interface SelectOptions {
   /** Cmd/Ctrl held → toggle individual selection. */

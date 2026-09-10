@@ -15,16 +15,51 @@ import {
   isManualReviewMessage,
   isMessageReviewActionable,
   isStageResumableWithMessage,
+  isSelectedStageRunning,
   liveExecutionStatus,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
   mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
+  resolveMessageError,
   resolveMessagePrompt,
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../src/pages/taskDetailChat.ts'
+
+test('the composer stop state follows only the selected stage tab', () => {
+  assert.equal(isSelectedStageRunning('implement', ['implement']), true)
+  assert.equal(isSelectedStageRunning('review', ['implement']), false)
+  assert.equal(isSelectedStageRunning('coordinator', ['implement']), false)
+})
+
+test('extracts a readable failure from persisted and live task events', () => {
+  const nestedError = JSON.stringify({
+    type: 'error',
+    status: 400,
+    error: {
+      type: 'invalid_request_error',
+      message: "The 'gpt-6-astra' model requires a newer version of Codex.",
+    },
+  })
+
+  assert.equal(resolveMessageError([{
+    type: 'error',
+    data: { message: nestedError },
+  }]), "The 'gpt-6-astra' model requires a newer version of Codex.")
+
+  assert.equal(resolveMessageError([{
+    type: 'CUSTOM',
+    name: 'workstep.error',
+    value: { message: nestedError },
+  }]), "The 'gpt-6-astra' model requires a newer version of Codex.")
+
+  assert.equal(resolveMessageError([{
+    type: 'RUN_ERROR',
+    error: 'Engine process exited unexpectedly',
+  }]), 'Engine process exited unexpectedly')
+})
 
 test('history refresh preserves already loaded detail events', () => {
   const current = [{
@@ -185,22 +220,24 @@ test('shows only stage execution replies in the main task conversation', () => {
   }), true)
 })
 
-test('allows a message to rerun stopped, failed, rejected, or review-waiting stages', () => {
-  for (const status of ['cancelled', 'failed', 'rejected', 'awaiting_review']) {
+test('allows a message to rerun stopped, failed, review-waiting, or completed stages', () => {
+  for (const status of [
+    'cancelled', 'failed', 'rejected', 'awaiting_review', 'passed', 'skipped',
+  ]) {
     assert.equal(isStageResumableWithMessage(status), true)
   }
-  for (const status of ['pending', 'running', 'reviewing', 'retrying', 'passed', 'skipped']) {
+  for (const status of ['pending', 'running', 'reviewing', 'retrying']) {
     assert.equal(isStageResumableWithMessage(status), false)
   }
 })
 
-test('keeps a running stage visible and uses the stage as its avatar', () => {
+test('keeps running execution and review messages visible and uses the stage as its avatar', () => {
   assert.equal(isVisibleLiveExecutionMessage({
     channel: 'execution', content: '', status: 'running',
   }), true)
   assert.equal(isVisibleLiveExecutionMessage({
     channel: 'review', content: '审核中', status: 'running',
-  }), false)
+  }), true)
   assert.equal(stageAvatarText('任务理解'), '任务')
   assert.equal(stageAvatarText('测试'), '测试')
 })

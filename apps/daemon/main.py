@@ -31,6 +31,8 @@ from api.share import router as share_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
 from api.skills import router as skills_router
+from api.project_settings import router as project_settings_router
+from api.channels import router as channels_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
 from services.project import project_manager
@@ -44,6 +46,8 @@ from agent_assistants.task_draft import TaskDraftModule
 from services.schedule import ScheduleModule
 from services.observability import configure_observability, instrument_fastapi
 from agent_assistants.chat_session import ChatSessionModule
+from agent_assistants.channel_chat import ChannelChatModule
+from services.channels.manager import ChannelManager
 from streaming.ws import (
     WsSubscription,
     _handle_client_message,
@@ -97,16 +101,25 @@ workflow_gen_module: WorkflowGenModule | None = None
 task_draft_module: TaskDraftModule | None = None
 schedule_module: ScheduleModule | None = None
 chat_session_module: ChatSessionModule | None = None
+channel_chat_module: ChannelChatModule | None = None
+channel_manager: ChannelManager | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
-    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module
+    global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_manager
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
     config_store.migrate_legacy_config()
     ensure_global_templates()
     await asyncio.to_thread(project_manager._load_saved_projects)
+    # Load concurrency limits into the in-memory gate (global defaults +
+    # every project's persisted override) before any workflow starts.
+    from services.concurrency import concurrency_gate
+    from services.project_settings import sync_all_project_configs
+
+    concurrency_gate.configure(**config_store.get_concurrency_config())
+    await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
     recovered = await workflow_runtime.recover_running_workflows()
@@ -115,6 +128,9 @@ async def lifespan(app: FastAPI):
             "Recovered %d interrupted workflow run(s) from the last completed stage",
             recovered,
         )
+    requeued = await workflow_runtime.requeue_queued_tasks()
+    if requeued:
+        logger.info("Re-queued %d task(s) waiting for a concurrency slot", requeued)
     coordinator_module = CoordinatorModule(
         event_bus,
         project_manager,
@@ -129,6 +145,14 @@ async def lifespan(app: FastAPI):
         task_agent=task_draft_module,
     )
     chat_session_module = ChatSessionModule(event_bus, project_manager)
+    channel_chat_module = ChannelChatModule(event_bus, project_manager)
+    from services.channels.responder import ChatSessionResponder
+    channel_manager = ChannelManager(
+        event_bus,
+        project_manager,
+        ChatSessionResponder(event_bus, project_manager, channel_chat_module),
+    )
+    await channel_manager.start()
     recovered_chats = await asyncio.to_thread(
         chat_session_module.recover_interrupted_messages
     )
@@ -148,6 +172,10 @@ async def lifespan(app: FastAPI):
             await task_draft_module.shutdown()
         if schedule_module is not None:
             await schedule_module.shutdown()
+        if channel_manager is not None:
+            await channel_manager.shutdown()
+        if channel_chat_module is not None:
+            await channel_chat_module.shutdown()
         if chat_session_module is not None:
             await chat_session_module.shutdown()
         await remote_project_client.close()
@@ -185,6 +213,8 @@ app.include_router(chat_session_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)
+app.include_router(project_settings_router)
+app.include_router(channels_router)
 app.include_router(system_settings_router)
 app.include_router(skills_router)
 app.include_router(remote_project_router)

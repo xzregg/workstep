@@ -1,40 +1,45 @@
+import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
+import ResponsiveNavigation from './ResponsiveNavigation'
 import { BrandIcon } from './BrandIcon'
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
-import { useShallow } from 'zustand/react/shallow'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
+import { formatRelativeTime, formatConversationDateTime } from '../utils/datetime'
 import { useTaskStore } from '../stores/taskStore'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useSidebarActivityStore } from '../stores/sidebarActivityStore'
+import { useSidebarActivity } from '../hooks/useSidebarActivity'
 import { useWebSocket } from '../hooks/useWebSocket'
-import Button from './Button'
+import { taskListPath } from '../hooks/useTaskRoute'
+import { useProjectRouteSelection } from '../hooks/useProjectRouteSelection'
+import Button, { type ButtonProps } from './Button'
 import MarqueeText from './MarqueeText'
-import DirectoryBrowser from './DirectoryBrowser'
-import Field from './Field'
 import Input from './Input'
 import SettingsPage from '../pages/SettingsPage'
 import type { SettingsFocusTarget, SettingsSection } from '../pages/SettingsPage'
-import Select from './Select'
 import ConfirmDialog from './ConfirmDialog'
+import ProjectConnectionDialog from './ProjectConnectionDialog'
 import ProjectShareDialog from './ProjectShareDialog'
-import AiFlowChat from './AiFlowChat'
-import type { GenProposalCard } from '../stores/workflowGenStore'
-import { assistantStarterPrompt, backfillEmptyTitle } from '../utils/assistantTitle'
+import WorkflowCreateDialog from './WorkflowCreateDialog'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
-import FlowCanvas, { type FlowCanvasHandle } from './FlowCanvas'
 import OnboardingChecklist from './OnboardingChecklist'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { buildStarterWorkflow } from '../utils/onboarding'
 import {
   fetchEngineModels,
-  fetchTemplates,
-  templateApi,
   chatSessionApi,
-  type TemplateInfo,
   type Project,
 } from '../api/client'
+
+function SidebarAddButton(props: ButtonProps) {
+  return (
+    <Button {...props} variant="icon" size="sm" className="sidebar-add-button">
+      <Icon name="plus" size={9.6} strokeWidth={2} />
+    </Button>
+  )
+}
 
 const sidebarStyle: React.CSSProperties = {
   width: 280, minWidth: 280,
@@ -93,18 +98,22 @@ interface Props {
 }
 
 export default function Layout({ onSelectProject, children }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   useWebSocket()
+  useVisualViewport()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
-  const { projects, activeProject, activeWorkflowId, fetchProjects, initProject, addRemoteProject, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
+  // 侧栏会话列表的相对时间基准，每分钟刷新一次（Codex 风格）
+  const [sidebarNow, setSidebarNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setSidebarNow(Date.now()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  // 悬停会话行时，右侧的相对时间就地切换为 ⋯ 菜单按钮
+  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null)
+  const { projects, activeProject, activeWorkflowId, fetchProjects, setActiveProject, renameProject, deleteProject, renameWorkflow, createWorkflow, deleteWorkflow, restoreWorkflow, reorderProjects, reorderWorkflows, setActiveWorkflow } = useProjectStore()
   const [showInitModal, setShowInitModal] = useState(false)
-  const [addProjectMode, setAddProjectMode] = useState<'local' | 'remote'>('local')
-  const [remoteShareString, setRemoteShareString] = useState('')
-  const [addingRemote, setAddingRemote] = useState(false)
-  const [newPath, setNewPath] = useState('')
-  const [error, setError] = useState('')
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [renameError, setRenameError] = useState('')
@@ -116,24 +125,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
   const [onboardingError, setOnboardingError] = useState('')
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
-  const [templates, setTemplates] = useState<TemplateInfo[]>([])
-  const [addWfTemplateId, setAddWfTemplateId] = useState('')
-  const [addWfSteps, setAddWfSteps] = useState<any>(null)
-  const [addWfPreviewDirty, setAddWfPreviewDirty] = useState(false)
-  const [addWfGenBusy, setAddWfGenBusy] = useState(false)
-  const [addWfCreating, setAddWfCreating] = useState(false)
-  const [addWfError, setAddWfError] = useState('')
-  const [addWfNameAttempted, setAddWfNameAttempted] = useState(false)
-  const [addWfConfirmClose, setAddWfConfirmClose] = useState(false)
-  const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
-  const [addWfSize, setAddWfSize] = useState<{ width: number; height: number } | null>(null)
-  const [addWfChatWidth, setAddWfChatWidth] = useState<number | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(280)
-  const [addWfAiOpen, setAddWfAiOpen] = useState(false)
-  const [addWfAiMessage, setAddWfAiMessage] = useState('')
   const [renameWfId, setRenameWfId] = useState<string | null>(null)
   const [renameWfName, setRenameWfName] = useState('')
-  const [newWfName, setNewWfName] = useState('')
   const [deleteWf, setDeleteWf] = useState<{ id: string; projectId: string; name: string; soft: boolean } | null>(null)
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
@@ -143,6 +137,7 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [dragProjectId, setDragProjectId] = useState<string | null>(null)
   const [dropProjectId, setDropProjectId] = useState<string | null>(null)
   const sessions = useChatListStore((s) => s.sessions)
+  const tasks = useTaskStore((s) => s.tasks)
   const selectedIds = useChatListStore((s) => s.selectedIds)
   const bulkDeleting = useChatListStore((s) => s.bulkDeleting)
   const handleSelect = useChatListStore((s) => s.handleSelect)
@@ -150,30 +145,20 @@ export default function Layout({ onSelectProject, children }: Props) {
   const bulkRemove = useChatListStore((s) => s.bulkRemove)
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkDeleteError, setBulkDeleteError] = useState('')
-  const runningChatSessions = useChatSessionStore(
-    useShallow((s) =>
-      Object.fromEntries(
-        Object.entries(s.sessions).map(([id, session]) => [id, session.running]),
-      ),
-    ),
-  )
   const activeSessionId = location.pathname === '/chat' ? searchParams.get('session') : null
-  const completedWorkflows = useSidebarActivityStore((s) => s.completedWorkflows)
-  const completedSessions = useSidebarActivityStore((s) => s.completedSessions)
-  const workflowRunningRef = useRef<Record<string, boolean> | null>(null)
-  const sessionRunningRef = useRef<Record<string, boolean> | null>(null)
-  // Chat session id → owning project id, accumulated across project switches
-  // (the sidebar session list only holds the active project's sessions). It
-  // lets a collapsed project row show its spinner from live chat running
-  // state for projects the client has opened.
-  const [sessionProjectMap, setSessionProjectMap] = useState<Record<string, string>>({})
+  useProjectRouteSelection()
+  const {
+    completedSessions,
+    completedWorkflows,
+    projectHasRunningSession,
+    runningChatSessions,
+  } = useSidebarActivity(activeSessionId)
   const [dragWfId, setDragWfId] = useState<string | null>(null)
   const [dropWfId, setDropWfId] = useState<string | null>(null)
   const [dragSessionId, setDragSessionId] = useState<string | null>(null)
   const [dropSessionId, setDropSessionId] = useState<string | null>(null)
   const [pendingWfSwitch, setPendingWfSwitch] = useState<{ project: Project; workflowId: string } | null>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
-  const wfInputRef = useRef<HTMLInputElement>(null)
   const renameWfInputRef = useRef<HTMLInputElement>(null)
   const renameSessionInputRef = useRef<HTMLInputElement>(null)
   const projectMenuRef = useRef<HTMLDivElement>(null)
@@ -195,9 +180,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     storedSidebarSections.flowsByProject,
   )
   const [creatingSession, setCreatingSession] = useState(false)
-  const previewCanvasRef = useRef<FlowCanvasHandle>(null)
-  const addWfModalRef = useRef<HTMLDivElement>(null)
-
   const startSidebarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const startX = e.clientX
@@ -219,95 +201,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     document.body.style.userSelect = 'none'
   }
 
-  const startDividerDrag = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const modalWidth = addWfModalRef.current?.clientWidth ?? window.innerWidth * 0.9
-    const startWidth = addWfChatWidth ?? Math.round((modalWidth * 2) / 5)
-    const onMove = (ev: MouseEvent) => {
-      setAddWfChatWidth(Math.min(Math.round(modalWidth * 0.6), Math.max(280, startWidth - (ev.clientX - startX))))
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'col-resize'
-  }
-
-  const startModalResize = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startY = e.clientY
-    const rect = addWfModalRef.current?.getBoundingClientRect()
-    const startWidth = rect?.width ?? window.innerWidth * 0.9
-    const startHeight = rect?.height ?? 780
-    const onMove = (ev: MouseEvent) => {
-      const width = Math.min(window.innerWidth - 24, Math.max(760, startWidth + (ev.clientX - startX)))
-      const height = Math.min(window.innerHeight - 24, Math.max(480, startHeight + (ev.clientY - startY)))
-      setAddWfSize({ width, height })
-    }
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    document.body.style.cursor = 'nwse-resize'
-  }
-
   useEffect(() => { fetchProjects() }, [fetchProjects])
-
-  useEffect(() => {
-    const current: Record<string, boolean> = {}
-    const workflowProjects: Record<string, string> = {}
-    for (const project of projects) {
-      for (const workflow of project.workflows || []) {
-        current[workflow.id] = !!workflow.running
-        workflowProjects[workflow.id] = project.id
-      }
-    }
-    const previous = workflowRunningRef.current
-    if (previous) {
-      for (const [workflowId, running] of Object.entries(current)) {
-        if (running && previous[workflowId] === false) {
-          useSidebarActivityStore.getState().markWorkflowRead(workflowId)
-        } else if (!running && previous[workflowId] === true) {
-          const alreadyViewing = location.pathname === '/tasks'
-            && activeProject?.id === workflowProjects[workflowId]
-            && activeWorkflowId === workflowId
-          if (!alreadyViewing) {
-            useSidebarActivityStore.getState().markWorkflowCompleted(
-              workflowProjects[workflowId],
-              workflowId,
-            )
-          }
-        }
-      }
-    }
-    workflowRunningRef.current = current
-  }, [activeProject?.id, activeWorkflowId, location.pathname, projects])
-
-  useEffect(() => {
-    const previous = sessionRunningRef.current
-    if (previous) {
-      for (const [sessionId, running] of Object.entries(runningChatSessions)) {
-        if (running && previous[sessionId] === false) {
-          useSidebarActivityStore.getState().markSessionRead(sessionId)
-        } else if (!running && previous[sessionId] === true && activeSessionId !== sessionId) {
-          useSidebarActivityStore.getState().markSessionCompleted(sessionId)
-        }
-      }
-    }
-    sessionRunningRef.current = runningChatSessions
-  }, [activeSessionId, runningChatSessions])
-
-  useEffect(() => {
-    if (activeSessionId) useSidebarActivityStore.getState().markSessionRead(activeSessionId)
-  }, [activeSessionId])
 
   useEffect(() => {
     saveSidebarSectionState({
@@ -324,13 +218,6 @@ export default function Layout({ onSelectProject, children }: Props) {
       return () => clearTimeout(t)
     }
   }, [renameId])
-
-  useEffect(() => {
-    if (addWfProjectId) {
-      const t = setTimeout(() => wfInputRef.current?.focus(), 0)
-      return () => clearTimeout(t)
-    }
-  }, [addWfProjectId])
 
   useEffect(() => {
     if (renameWfId) {
@@ -371,61 +258,10 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }, [])
 
-  // Refresh flow running states whenever a task status event arrives
-  const taskStatusEvents = useTaskStore((s) => s.taskStatusEvents)
-  const tasks = useTaskStore((s) => s.tasks)
-  useEffect(() => {
-    if (!taskStatusEvents) return
-    const t = setTimeout(() => { fetchProjects() }, 300)
-    return () => clearTimeout(t)
-  }, [taskStatusEvents, fetchProjects])
-
-  // Load the active project's chat sessions into the sidebar.
-  useEffect(() => {
-    if (!activeProject?.id) return
-    void useChatListStore.getState().fetchSessions(activeProject.id)
-  }, [activeProject?.id])
-
-  // Accumulate chat session → project ownership whenever a project's session
-  // list is loaded, so running sessions stay attributable after the user
-  // collapses the project or switches to another one.
-  useEffect(() => {
-    setSessionProjectMap((prev) => {
-      let changed = false
-      const next = { ...prev }
-      for (const item of sessions) {
-        if (item.project_id && next[item.id] !== item.project_id) {
-          next[item.id] = item.project_id
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [sessions])
-
-  // Refresh the project list when chat turns start/finish so the backend
-  // aggregate `has_running_tasks` (which includes live chat turns) stays
-  // fresh — covers collapsed / non-active projects and turn completion.
-  const runningSessionKey = Object.entries(runningChatSessions)
-    .filter(([, running]) => running)
-    .map(([sessionId]) => sessionId)
-    .sort()
-    .join(',')
-  const prevRunningSessionKeyRef = useRef('')
-  useEffect(() => {
-    const previous = prevRunningSessionKeyRef.current
-    prevRunningSessionKeyRef.current = runningSessionKey
-    // Skip the initial empty render; the mount effect already fetches once.
-    if (!previous && !runningSessionKey) return
-    const timer = setTimeout(() => { void fetchProjects() }, 300)
-    return () => clearTimeout(timer)
-  }, [runningSessionKey, fetchProjects])
-
-  // True when the project owns at least one live-running chat session.
-  const projectHasRunningSession = (projectId: string) =>
-    Object.entries(runningChatSessions).some(
-      ([sessionId, running]) => running && sessionProjectMap[sessionId] === projectId,
-    )
+  // Running state is now tracked locally via projectStore.projectRunningState
+  // (updated incrementally from WS events in taskStore.handleWsEvent).
+  // No need to call fetchProjects on every status event.
+  const projectRunningState = useProjectStore((s) => s.projectRunningState)
 
   // Auto-select project from URL ?project=name (only once)
   const projectName = searchParams.get('project')
@@ -436,15 +272,6 @@ export default function Layout({ onSelectProject, children }: Props) {
     )
     if (rememberedProject) setActiveProject(rememberedProject)
   }, [projectName, projects, activeProject, setActiveProject, storedSidebarSections.expandedProjectId])
-
-  useEffect(() => {
-    if (projectName && projects.length > 0 && (!activeProject || activeProject.name !== projectName)) {
-      const match = projects.find((p) => p.name === projectName)
-      if (match) {
-        setActiveProject(match)
-      }
-    }
-  }, [projectName, projects, activeProject, setActiveProject])
 
   useEffect(() => {
     if (activeProject?.id) setExpandedProjectId(activeProject.id)
@@ -500,182 +327,22 @@ export default function Layout({ onSelectProject, children }: Props) {
           .find(({ workflow }) => workflow.id === moreMenu.id)
     : undefined
 
-  const openAddWorkflow = async (projectId: string) => {
-    setAddWfProjectId(projectId)
-    setNewWfName('')
-    setAddWfTemplateId('')
-    setAddWfSteps(null)
-    setAddWfPreviewDirty(false)
-    setAddWfGenBusy(false)
-    setAddWfError('')
-    setAddWfNameAttempted(false)
-    setAddWfConfirmClose(false)
-    setPendingAiSteps(null)
-    setAddWfSize(null)
-    setAddWfChatWidth(null)
-    setAddWfAiOpen(false)
-    setAddWfAiMessage('')
-    try {
-      const { templates: list } = await fetchTemplates()
-      setTemplates(list)
-    } catch {
-      setTemplates([])
-    }
-  }
+  const openAddWorkflow = (projectId: string) => setAddWfProjectId(projectId)
 
-  const closeAddWorkflow = () => {
-    setAddWfProjectId(null)
-    setNewWfName('')
-    setAddWfTemplateId('')
-    setAddWfSteps(null)
-    setAddWfPreviewDirty(false)
-    setAddWfGenBusy(false)
-    setAddWfError('')
-    setAddWfNameAttempted(false)
-    setAddWfConfirmClose(false)
-    setPendingAiSteps(null)
-    setAddWfSize(null)
-    setAddWfChatWidth(null)
-    setAddWfAiOpen(false)
-    setAddWfAiMessage('')
-  }
+  const openLocalProjectModal = () => setShowInitModal(true)
 
-  const requestCloseAddWorkflow = () => {
-    if (addWfPreviewDirty || addWfGenBusy) {
-      setAddWfConfirmClose(true)
-      return
+  const handleProjectConnected = (project: Project) => {
+    setActiveProject(project)
+    const onboarding = useOnboardingStore.getState()
+    if (
+      project.type !== 'remote'
+      && onboarding.status === 'active'
+      && onboarding.currentStep === 'project'
+    ) {
+      onboarding.recordProject(project.id)
+      setOnboardingRefreshToken((value) => value + 1)
     }
-    closeAddWorkflow()
-  }
-
-  const handleAiProposal = (steps: any, proposal?: GenProposalCard) => {
-    setNewWfName((current) => backfillEmptyTitle(current, proposal?.workflowName))
-    // A new proposal replaces the preview; guard manual edits with a confirm.
-    if (addWfPreviewDirty) {
-      setPendingAiSteps(steps)
-      return
-    }
-    setAddWfSteps(steps)
-  }
-
-  const handleTemplateChange = async (templateId: string) => {
-    setAddWfTemplateId(templateId)
-    setAddWfError('')
-    if (!templateId) {
-      setAddWfSteps(null)
-      return
-    }
-    try {
-      const full = await templateApi.get(templateId)
-      setAddWfSteps(full.steps || { nodes: [], connections: [] })
-    } catch (reason) {
-      setAddWfError(reason instanceof Error ? reason.message : t('layout.loadTemplateFailed'))
-    }
-  }
-
-  const requestCloseAddWfAi = () => {
-    if (addWfGenBusy) {
-      setAddWfConfirmClose(true)
-      return
-    }
-    setAddWfAiOpen(false)
-  }
-
-  const handleStartAiCreate = () => {
-    if (addWfAiOpen) {
-      requestCloseAddWfAi()
-      return
-    }
-    if (!addWfProjectId) return
-    setAddWfNameAttempted(false)
-    setAddWfAiMessage(assistantStarterPrompt(
-      newWfName,
-      (name) => t('layout.aiCreatePrompt', { name }),
-    ))
-    setAddWfAiOpen(true)
-  }
-
-  const handleAddWorkflow = async () => {
-    if (!addWfProjectId || addWfGenBusy) return
-    if (!newWfName.trim()) {
-      setAddWfNameAttempted(true)
-      wfInputRef.current?.focus()
-      return
-    }
-    if (hasWhitespace(newWfName)) {
-      setAddWfNameAttempted(true)
-      wfInputRef.current?.focus()
-      return
-    }
-    const validationError = previewCanvasRef.current?.validate() ?? null
-    if (validationError) {
-      setAddWfError(validationError)
-      return
-    }
-    const steps = previewCanvasRef.current?.getSteps() ?? addWfSteps ?? undefined
-    setAddWfCreating(true)
-    setAddWfError('')
-    try {
-      await createWorkflow(addWfProjectId, newWfName.trim(), addWfTemplateId || undefined, steps)
-      closeAddWorkflow()
-    } catch (reason) {
-      setAddWfError(reason instanceof Error ? reason.message : t('layout.createWorkflowFailed'))
-    } finally {
-      setAddWfCreating(false)
-    }
-  }
-
-  const handleInit = async () => {
-    if (!newPath.trim()) return
-    try {
-      setError('')
-      const proj = await initProject(newPath.trim())
-      setActiveProject(proj)
-      const onboarding = useOnboardingStore.getState()
-      if (onboarding.status === 'active' && onboarding.currentStep === 'project') {
-        onboarding.recordProject(proj.id)
-        setOnboardingRefreshToken((value) => value + 1)
-      }
-      onSelectProject(proj)
-      setShowInitModal(false)
-      setNewPath('')
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-
-  const handleAddRemote = async () => {
-    if (!remoteShareString.trim() || addingRemote) return
-    setAddingRemote(true)
-    setError('')
-    try {
-      const project = await addRemoteProject(remoteShareString)
-      setActiveProject(project)
-      onSelectProject(project)
-      setShowInitModal(false)
-      setRemoteShareString('')
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t('layout.remoteAddFailed'))
-    } finally {
-      setAddingRemote(false)
-    }
-  }
-
-  const handleDirSelect = (path: string) => {
-    setNewPath(path)
-  }
-
-  const closeInitModal = () => {
-    setShowInitModal(false)
-    setNewPath('')
-    setError('')
-  }
-
-  const openLocalProjectModal = () => {
-    setAddProjectMode('local')
-    setNewPath('')
-    setError('')
-    setShowInitModal(true)
+    onSelectProject(project)
   }
 
   const openOnboardingSettings = (section: SettingsSection, focus: SettingsFocusTarget) => {
@@ -827,9 +494,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh' }}>
+    <div className="app-shell">
       {/* Sidebar */}
-      <aside style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
+      <ResponsiveNavigation newDisabled={!activeProject} dismissSignal={`${showSettings}:${showInitModal}:${addWfProjectId}`} title={activeProject?.name || "WorkStep"} onNew={() => navigate(`/chat?project=${encodeURIComponent(activeProject?.name || "")}`)} style={{ ...sidebarStyle, width: sidebarWidth, minWidth: 180 }}>
         <div style={{ padding: '12px 14px 8px', borderBottom: '1px solid var(--border-soft)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))', fontFamily: 'var(--font-display)' }}>
             <BrandIcon size={18} />
@@ -1048,12 +715,23 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}
                   </span>
                 )}
-                {expandedProjectId !== p.id && (
-                  p.workflows?.some((workflow) => workflow.running)
-                  || p.has_running_tasks
-                  || projectHasRunningSession(p.id)
-                  || (p.id === activeProject?.id && tasks.some((task) => task.status === 'running'))
-                ) ? (
+                {expandedProjectId !== p.id && (() => {
+                  // Real-time signals (always fresh):
+                  //  - local task running state (from WS events)
+                  //  - live chat session running state
+                  const sessionRunning = projectHasRunningSession(p.id)
+                  const localTaskState = projectRunningState[p.id] // undefined | true | false
+                  const realtimeRunning = localTaskState === true || sessionRunning
+                  // If we have a local task record (even false), real-time
+                  // signals are authoritative — skip stale backend snapshots.
+                  if (localTaskState !== undefined) return realtimeRunning
+                  // No local record yet (initial state): fall back to backend
+                  // aggregate + local tasks array.
+                  return realtimeRunning
+                    || p.workflows?.some((workflow) => workflow.running)
+                    || p.has_running_tasks
+                    || (p.id === activeProject?.id && tasks.some((task) => task.status === 'running'))
+                })() ? (
                   <span
                     className="task-status-spinner"
                     style={{ color: 'var(--accent)', flexShrink: 0 }}
@@ -1073,7 +751,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   onClick={(e) => openMoreMenu(e, 'project', p.id)}
                   title={t('layout.moreActions')}
                   aria-label={t('layout.moreActions')}
-                  style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
+                  style={{ width: 20, height: 20, borderRadius: 4, background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '18px', padding: 0, flexShrink: 0 }}
                 >⋯</Button>
               </div>
 
@@ -1103,16 +781,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                             {t('chatSession.flowSection')}
                           </span>
                           {flowOpen && (
-                            <Button
-                              variant="icon"
-                              size="sm"
+                            <SidebarAddButton
                               onClick={(e) => { e.stopPropagation(); void openAddWorkflow(p.id) }}
                               title={t('layout.addWorkflowTitle')}
                               aria-label={t('layout.addWorkflowTitle')}
-                              style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
-                            >
-                              <Icon name="plus" size={9.6} strokeWidth={2} />
-                            </Button>
+                            />
                           )}
                         </div>
                         {flowOpen && (p.workflows || []).map(wf => (
@@ -1134,7 +807,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         }
                         setActiveProject(p)
                         await setActiveWorkflow(wf.id)
-                        navigate('/tasks')
+                        navigate(taskListPath(p.name, wf.id))
                       }}
                       onContextMenu={(e) => {
                         e.preventDefault()
@@ -1222,6 +895,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                       )}
                       {wf.running && !deleted ? (
                         <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
+                      ) : (p.id === activeProject?.id && !deleted && tasks.some((task) => task.workflow_id === wf.id && task.status === 'running')) ? (
+                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
                       ) : completedWorkflows[wf.id] && !deleted ? (
                         <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
                       ) : null}
@@ -1234,7 +909,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                         onClick={(e) => openMoreMenu(e, 'workflow', wf.id)}
                         title={t('layout.moreActions')}
                         aria-label={t('layout.moreActions')}
-                        style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
+                        style={{ width: 28, height: 28, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
                       >⋯</Button>
                     </div>
                     </div>
@@ -1270,18 +945,13 @@ export default function Layout({ onSelectProject, children }: Props) {
                         {t('chatSession.navSection')}
                       </span>
                       {open && (
-                        <Button
-                          variant="icon"
-                          size="sm"
+                        <SidebarAddButton
                           loading={creatingSession}
                           disabled={creatingSession}
                           onClick={(e) => { e.stopPropagation(); void handleCreateSession(p) }}
                           title={t('chatSession.newSession')}
                           aria-label={t('chatSession.newSession')}
-                          style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', padding: 0, flexShrink: 0 }}
-                        >
-                          <Icon name="plus" size={9.6} strokeWidth={2} />
-                        </Button>
+                            />
                       )}
                     </div>
                     {open && (
@@ -1322,7 +992,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       {sessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
-                        const sessionRunning = !!runningChatSessions[session.id]
+                        const sessionRunning = !!runningChatSessions[session.id] || !!session.running
                         const isSelected = selectedIds.has(session.id)
                         const isMultiSelect = selectedIds.size > 1
                         return (
@@ -1345,6 +1015,8 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameSessionValue(session.title)
                           }}
                           onContextMenu={(e) => openSessionMenu(e, session.id, session.title)}
+                          onMouseEnter={() => setHoveredSessionId(session.id)}
+                          onMouseLeave={() => setHoveredSessionId(null)}
                           className="ws-row"
                           draggable={renameSessionId !== session.id && !isMultiSelect}
                           onDragStart={(e) => {
@@ -1441,14 +1113,30 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : completedSessions[session.id] ? (
                             <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
                           ) : null}
-                          <Button
-                            variant="icon"
-                            className="ws-more-btn"
-                            onClick={(e) => openSessionMenu(e, session.id, session.title)}
-                            title={t('layout.moreActions')}
-                            aria-label={t('layout.moreActions')}
-                            style={{ width: 28, height: 28, borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(14px * var(--font-scale))', lineHeight: '26px', padding: 0, flexShrink: 0 }}
-                          >⋯</Button>
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
+                            {hoveredSessionId === session.id || !(session.updated_at || session.created_at) ? (
+                              <Button
+                                variant="icon"
+                                className="ws-more-btn"
+                                onClick={(e) => openSessionMenu(e, session.id, session.title)}
+                                title={t('layout.moreActions')}
+                                aria-label={t('layout.moreActions')}
+                                style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '22px', padding: 0, flexShrink: 0 }}
+                              >⋯</Button>
+                            ) : (
+                              <time
+                                dateTime={session.updated_at || session.created_at}
+                                title={formatConversationDateTime(session.updated_at || session.created_at, Date.now(), locale)}
+                                style={{
+                                  flexShrink: 0, whiteSpace: 'nowrap', padding: '0 6px',
+                                  display: 'inline-flex', alignItems: 'center', height: '100%',
+                                  fontSize: 'calc(10.5px * var(--font-scale))', color: 'var(--meta)', opacity: 0.8,
+                                }}
+                              >
+                                {formatRelativeTime(session.updated_at || session.created_at, sidebarNow, t)}
+                              </time>
+                            )}
+                          </div>
                         </div>
                         )
                       })}
@@ -1497,7 +1185,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           <Icon name="settings" size={17} strokeWidth={2} />
           {t('nav.settings')}
         </Button>
-      </aside>
+      </ResponsiveNavigation>
 
       <div
         className="task-detail-split-handle"
@@ -1748,7 +1436,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       )}
 
       {/* Main content */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main className="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {children}
       </main>
 
@@ -1784,253 +1472,17 @@ export default function Layout({ onSelectProject, children }: Props) {
         onCreateTask={openOnboardingTask}
       />
 
-      {/* Init project modal */}
-      {showInitModal && (
-        <div className="modal-overlay" onClick={closeInitModal}>
-          <div className="modal" style={{ width: addProjectMode === 'local' ? 600 : 440 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">{t('layout.initTitle')}</span>
-              <Button variant="icon" onClick={closeInitModal}>✕</Button>
-            </div>
-            <div className="modal-body">
-              <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-                <Button variant={addProjectMode === 'local' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('local'); setError('') }}>
-                  {t('layout.localProject')}
-                </Button>
-                <Button variant={addProjectMode === 'remote' ? 'primary' : 'ghost'} onClick={() => { setAddProjectMode('remote'); setNewPath(''); setError('') }}>
-                  {t('layout.remoteProject')}
-                </Button>
-              </div>
-              {addProjectMode === 'local' ? <>
-                <div style={{ marginBottom: 8, color: 'var(--fg-2)', fontSize: 'calc(13px * var(--font-scale))' }}>
-                  {t('browser.selectHint')}
-                </div>
-                <DirectoryBrowser onSelect={handleDirSelect} selectedPath={newPath} />
-                {error && <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
-              </> : (
-                <Field label={t('layout.remoteShareString')} htmlFor="remote-share-string" error={error}>
-                  <textarea
-                    id="remote-share-string"
-                    value={remoteShareString}
-                    onChange={(event) => { setRemoteShareString(event.target.value); setError('') }}
-                    placeholder="workstep://remote-project/v1/..."
-                    rows={6}
-                    autoFocus
-                    style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'calc(12px * var(--font-scale))' }}
-                  />
-                  <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>{t('layout.remoteShareHint')}</div>
-                </Field>
-              )}
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={closeInitModal}>{t('common.cancel')}</Button>
-              {addProjectMode === 'local' ? (
-                <Button variant="primary" disabled={!newPath.trim()} onClick={handleInit}>{t('layout.init')}</Button>
-              ) : (
-                <Button variant="primary" loading={addingRemote} disabled={!remoteShareString.trim()} onClick={() => void handleAddRemote()}>{t('layout.connectRemote')}</Button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <ProjectConnectionDialog
+        open={showInitModal}
+        onClose={() => setShowInitModal(false)}
+        onConnected={handleProjectConnected}
+      />
 
       <ProjectShareDialog project={shareProject} onClose={() => setShareProject(null)} />
 
-      {/* Add workflow modal */}
-      {addWfProjectId && (
-        <div className="modal-overlay" style={{ zIndex: 350 }}>
-          <div
-            ref={addWfModalRef}
-            className="modal"
-            style={{
-              width: addWfSize ? addWfSize.width : '90vw', maxWidth: '96vw',
-              height: addWfSize ? addWfSize.height : 'min(92vh, 900px)', maxHeight: '92vh',
-              display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden',
-              position: 'relative',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <span className="modal-title">{t('layout.addFlowTitle')}</span>
-              <Button variant="icon" aria-label={t('common.close')} onClick={requestCloseAddWorkflow}>✕</Button>
-            </div>
-            {/* Top form: workflow name + template */}
-            <div style={{
-              flexShrink: 0, padding: '12px 18px', background: 'var(--bg)',
-              borderBottom: '1px solid var(--border-soft)',
-              display: 'flex', gap: 14, alignItems: 'flex-start',
-            }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <Field
-                  label={t('layout.flowName')}
-                  required
-                  htmlFor="wf-name"
-                  error={hasWhitespace(newWfName)
-                    ? t('layout.nameWhitespace')
-                    : addWfNameAttempted && !newWfName.trim()
-                      ? t('layout.flowNameRequired')
-                      : undefined}
-                >
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <Input
-                      id="wf-name"
-                      ref={wfInputRef}
-                      value={newWfName}
-                      onChange={(e) => setNewWfName(e.target.value)}
-                      placeholder={t('layout.flowNamePlaceholder')}
-                      autoFocus
-                      style={{
-                        flex: 1, minWidth: 0,
-                        border: `1px solid ${(hasWhitespace(newWfName) || (addWfNameAttempted && !newWfName.trim())) ? 'var(--danger)' : 'var(--border)'}`,
-                      }}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleStartAiCreate}
-                      aria-expanded={addWfAiOpen}
-                      title={t('layout.aiCreateTitle')}
-                      style={{
-                        flexShrink: 0, whiteSpace: 'nowrap',
-                        color: 'var(--accent)',
-                        border: '1px solid color-mix(in oklab, var(--accent), transparent 55%)',
-                        background: 'color-mix(in oklab, var(--accent), transparent 93%)',
-                      }}
-                    >
-                      <Icon name="sparkles" size={13} style={{ marginRight: 4, verticalAlign: -2 }} />
-                      {t('layout.aiCreate')}
-                    </Button>
-                  </div>
-                </Field>
-              </div>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <Field label={t('layout.flowTemplate')} htmlFor="wf-template">
-                  <Select
-                    id="wf-template"
-                    value={addWfTemplateId}
-                    onChange={(e) => void handleTemplateChange(e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                  <option value="">{t('layout.blankFlow')}</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>{template.name}（{t('flow.nodeCount', { count: template.nodeCount })}）</option>
-                  ))}
-                  </Select>
-                </Field>
-                {(() => {
-                  const selected = templates.find((t) => t.id === addWfTemplateId)
-                  return selected?.description ? (
-                    <p style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected.description}</p>
-                  ) : null
-                })()}
-              </div>
-            </div>
-            {addWfError && (
-              <div style={{
-                flexShrink: 0, padding: '5px 18px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)',
-                background: 'color-mix(in oklab, var(--danger), transparent 94%)',
-                borderBottom: '1px solid var(--border-soft)',
-              }}>{addWfError}</div>
-            )}
-            <div className="modal-body" style={{ padding: 0, display: 'flex', minHeight: 0, flex: 1, overflow: 'hidden' }}>
-              {/* Left: live editable canvas preview */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <FlowCanvas
-                  ref={previewCanvasRef}
-                  initialSteps={addWfSteps}
-                  projectId={addWfProjectId}
-                  onDirtyChange={setAddWfPreviewDirty}
-                  onSave={async (steps) => { setAddWfSteps(steps); setAddWfPreviewDirty(false) }}
-                  showTemplatePicker={false}
-                  title={t('layout.previewTitle')}
-                  saveLabel={t('layout.updatePreview')}
-                  hint={null}
-                />
-              </div>
-              {addWfAiOpen && (
-                <>
-                  {/* Draggable divider to resize the chat column */}
-                  <div
-                    onMouseDown={startDividerDrag}
-                    title={t('layout.dragResizeChat')}
-                    style={{
-                      width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
-                      background: 'transparent', userSelect: 'none',
-                    }}
-                  >
-                    <div style={{
-                      position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)',
-                      width: 1, background: 'var(--border-soft)',
-                    }} />
-                  </div>
-                  {/* Right: AI flow-design chat */}
-                  <div style={{
-                    width: addWfChatWidth ?? '40%', flexShrink: 0,
-                    display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg)',
-                  }}>
-                    <AiFlowChat
-                      projectId={addWfProjectId}
-                      getCanvasSteps={() => previewCanvasRef.current?.getSteps()}
-                      onProposal={handleAiProposal}
-                      onRestore={(steps) => previewCanvasRef.current?.loadSteps(steps)}
-                      onBusyChange={setAddWfGenBusy}
-                      title={t('aiFlow.title')}
-                      initialMessage={addWfAiMessage}
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="modal-footer">
-              <Button variant="ghost" onClick={requestCloseAddWorkflow}>{t('common.cancel')}</Button>
-              <Button
-                variant="primary"
-                disabled={addWfGenBusy || addWfCreating || !newWfName.trim()}
-                loading={addWfCreating}
-                onClick={handleAddWorkflow}
-              >{t('layout.createFlow')}</Button>
-            </div>
-            {/* Bottom-right corner resize handle */}
-            <div
-              onMouseDown={startModalResize}
-              title={t('layout.dragResizeModal')}
-              style={{
-                position: 'absolute', right: 0, bottom: 0, width: 20, height: 20,
-                cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-                padding: 3, color: 'var(--meta)', userSelect: 'none', zIndex: 5,
-              }}
-            >
-              <Icon name="resize-corner" size={11} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add workflow: confirm close with unsaved preview / running generation */}
-      <ConfirmDialog
-        open={addWfConfirmClose}
-        title={t('canvas.unsavedTitle')}
-        message={addWfGenBusy
-          ? t('layout.abandonGenerating')
-          : t('layout.abandonPreview')}
-        confirmText={t('layout.discardChanges')}
-        danger
-        onConfirm={closeAddWorkflow}
-        onCancel={() => setAddWfConfirmClose(false)}
-      />
-
-      {/* Add workflow: AI proposal overwrites manual preview edits */}
-      <ConfirmDialog
-        open={pendingAiSteps !== null}
-        title={t('layout.aiOverwritePreviewTitle')}
-        message={t('layout.aiOverwritePreviewMessage')}
-        confirmText={t('canvas.applyProposal')}
-        danger
-        onConfirm={() => {
-          if (pendingAiSteps !== null) setAddWfSteps(pendingAiSteps)
-          setPendingAiSteps(null)
-        }}
-        onCancel={() => setPendingAiSteps(null)}
+      <WorkflowCreateDialog
+        projectId={addWfProjectId}
+        onClose={() => setAddWfProjectId(null)}
       />
 
       {/* Delete project confirm */}
@@ -2078,7 +1530,7 @@ export default function Layout({ onSelectProject, children }: Props) {
             const { project, workflowId } = pendingWfSwitch
             setActiveProject(project)
             await setActiveWorkflow(workflowId)
-            navigate('/tasks')
+            navigate(taskListPath(project.name, workflowId))
           }
           setPendingWfSwitch(null)
         }}

@@ -1,3 +1,6 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import MobileSheet from './MobileSheet'
+import { useI18n } from '../i18n'
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import Icon from './Icon'
@@ -67,10 +70,13 @@ export default function FloatingMenu({
   width = 240,
   title,
 }: FloatingMenuProps) {
+  const compact = useCompactLayout()
+  const { t } = useI18n()
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: 0, top: 0 })
 
   useLayoutEffect(() => {
+    if (compact) return
     const menu = menuRef.current
     if (!menu) return
     const menuWidth = menu.offsetWidth || width
@@ -102,9 +108,10 @@ export default function FloatingMenu({
       }
     }
     setPosition({ left, top })
-  }, [anchor, options.length, width, side])
+  }, [anchor, options.length, width, side, compact])
 
   useLayoutEffect(() => {
+    if (compact) return
     const closeOnOutside = (event: globalThis.MouseEvent) => {
       if (menuRef.current?.contains(event.target as Node)) return
       if (triggerRef?.current?.contains(event.target as Node)) return
@@ -118,14 +125,14 @@ export default function FloatingMenu({
       window.removeEventListener('resize', onClose)
       window.removeEventListener('scroll', onClose, true)
     }
-  }, [onClose, triggerRef])
+  }, [onClose, triggerRef, compact])
 
-  return createPortal(
+  const menu = (
     <div
       ref={menuRef}
-      className="chat-input-menu"
+      className={compact ? "mobile-menu-options" : "chat-input-menu"}
       role="dialog"
-      style={{
+      style={compact ? { width: '100%' } : {
         position: 'fixed', left: position.left, top: position.top, zIndex: 2101, width,
         transformOrigin: side === 'top' ? 'bottom right' : 'top left',
       }}
@@ -175,7 +182,8 @@ export default function FloatingMenu({
           </button>
         )
       })}
-    </div>,
-    document.body,
+    </div>
   )
+  if (compact) return <MobileSheet open title={title || t('common.select')} onClose={onClose}>{menu}</MobileSheet>
+  return createPortal(menu, document.body)
 }

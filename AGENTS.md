@@ -91,6 +91,8 @@ npm run build
 ## 前端开发规范（`apps/web`）
 
 - **优先复用**：同一 UI 出现两次即抽公共组件并统一默认值，禁止复制实现。现有入口：消息用 `ChatMessageBubble` + `MessageMetaBar` + `MessageResponseFooter`；输入用 `ChatInput`（配置菜单用 `CoordinatorConfigBar`）；Markdown 编辑/展示用 `MarkdownEditor` / `MarkdownMessage`；确认用 `ConfirmDialog`。
+- **页面与布局职责**：`Layout` 和页面层只负责路由级数据选择、区域编排与少量跨区域协调，不得内联实现完整业务流程。一个弹框、侧栏分区或编辑器只要同时拥有独立状态、异步请求、校验和确认交互，就应抽成自管理的组合模块；调用方只传稳定标识和结果/关闭回调，禁止为了“拆文件”透传整组 state/setter。新增职责前先检查文件复杂度；文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个均视为拆分信号，继续增长必须先抽离职责或在变更说明中写明理由。
+- **模块测试归属**：行为测试应面向实际拥有该行为的模块，不得把页面源码文本当成所有子功能的测试入口。页面层只测试模块是否正确组装；状态、请求、校验、关闭保护和错误恢复由组合模块自己的测试覆盖。重构移动职责时同步迁移测试目标，避免测试反向阻止合理拆分。
 - **交互与校验**：禁用原生 `alert/confirm`。必填项为空时提交类按钮禁用；触发类按钮（如「AI 创建」）可点击，但须在弹框固定高度区域提示、聚焦缺失字段。侧边面板有改动时，关闭前用 `ConfirmDialog` 确认；无改动时遮罩点击直接关闭。
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
 - **流程与模板**：新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。
@@ -170,7 +172,7 @@ Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命�
 （`engines/core/plans.py: normalize_plan_status`）。
 
 统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
-- 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（`tool_call_id/title/kind/raw_input`）、`tool_call_update`（`status: pending|in_progress|completed|failed`，增量 `raw_input`、结果 `raw_output`）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`
+- 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（完整保留 `tool_call_id/title/kind/status/content/locations/raw_input/raw_output/_meta`）、`tool_call_update`（完整保留增量字段）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`
 - 编排事件（保留非 ACP 词汇）：`status`、`session_started`（可复用引擎会话标识）、`live_message`（阶段中途插入消息）、`interaction_request`（权限申请 / 提问弹窗，ACP 语义）、`interaction_response`（弹窗用户回复）、`subagent`（子代理 / 后台任务生命周期事件）、`compacted`（上下文已自动压缩）、`engine_state`（进程内引擎状态快照）、`error`、`a2ui`（A2UI 载荷）、`acp_raw`（未知 ACP update 透传）
 - 旧 `events_json` 兼容：历史回放经 `map_legacy_event` 将旧词汇映射到新词汇后再翻译
 

@@ -1,3 +1,6 @@
+import { useSearchParams } from 'react-router-dom'
+import { useOverlay } from '../hooks/useOverlay'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import Button from '../components/Button'
 import DateTimePicker from '../components/DateTimePicker'
 import {
@@ -43,6 +46,7 @@ import {
   mergeRefreshedTaskHistory,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
+import { loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
 import { useI18n, type TKey } from '../i18n'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
@@ -154,7 +158,7 @@ function initialPanelBounds(): PanelBounds {
       || !Number.isFinite(parsed.width)
       || !Number.isFinite(parsed.height)
     ) return fallback
-    return clampPanelBounds(parsed as PanelBounds)
+    return window.innerWidth < 1024 ? parsed as PanelBounds : clampPanelBounds(parsed as PanelBounds)
   } catch {
     return fallback
   }
@@ -218,7 +222,26 @@ function resizePanelBounds(
 export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const { t, locale } = useI18n()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const projects = useProjectStore((s) => s.projects)
   const setActiveProject = useProjectStore((s) => s.setActiveProject)
+  const [searchParams] = useSearchParams()
+  const urlProjectName = searchParams.get('project')
+  // Resolve the project this task belongs to: prefer the URL ?project= hint
+  // (set when the task was opened) so the panel stays pinned to the correct
+  // project even if global activeProject changes mid-session.
+  // When the resolved project IS the active project, use activeProject directly
+  // because its `steps` are kept fresh by setActiveWorkflow, while the
+  // projects[] entry may hold stale steps from the last fetchProjects.
+  const detailProject = useMemo(() => {
+    if (urlProjectName) {
+      const match = projects.find((p) => p.name === urlProjectName)
+      if (match) {
+        if (activeProject?.id === match.id) return activeProject
+        return match
+      }
+    }
+    return activeProject
+  }, [urlProjectName, projects, activeProject])
   const tasks = useTaskStore((s) => s.tasks)
   const events = useTaskStore((s) => (taskId ? s.events[taskId] : undefined) ?? EMPTY_EVENTS)
   const content = useTaskStore((s) => (taskId ? s.content[taskId] : '') ?? '')
@@ -238,7 +261,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const updateScheduledStart = useTaskStore((s) => s.updateScheduledStart)
   const [scheduledDraft, setScheduledDraft] = useState('')
 
-  const projectId = activeProject?.id || ''
+  const projectId = detailProject?.id || ''
   const task = tasks.find((t) => t.id === taskId)
   const taskStatus = task?.status
   const taskNotStarted = isTaskNotStarted(task?.steps || [])
@@ -332,6 +355,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [descriptionSaving, setDescriptionSaving] = useState(false)
   const [descriptionError, setDescriptionError] = useState('')
+  const compact = useCompactLayout()
+  const mobileDialogRef = useRef<HTMLDivElement>(null)
+  useOverlay(compact && Boolean(task), onClose, mobileDialogRef, false)
   const [panelBounds, setPanelBounds] = useState(initialPanelBounds)
   const [splitRatio, setSplitRatio] = useState(initialSplitRatio)
   const historyFetchedRef = useRef<string>('')
@@ -356,12 +382,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   )
 
   useEffect(() => {
+    if (compact) return
     sessionStorage.setItem(PANEL_BOUNDS_KEY, JSON.stringify(panelBounds))
-  }, [panelBounds])
+  }, [panelBounds, compact])
 
   useEffect(() => {
+    if (compact) return
     sessionStorage.setItem(SPLIT_RATIO_KEY, String(splitRatio))
-  }, [splitRatio])
+  }, [splitRatio, compact])
 
   useEffect(() => {
     setSplitRatio((current) => clampSplitRatio(current, panelBounds.width))
@@ -369,7 +397,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   useEffect(() => {
     const handleViewportResize = () => {
-      setPanelBounds((current) => clampPanelBounds(current))
+      if (window.innerWidth >= 1024) setPanelBounds((current) => clampPanelBounds(current))
     }
     window.addEventListener('resize', handleViewportResize)
     return () => window.removeEventListener('resize', handleViewportResize)
@@ -691,11 +719,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   // Get stages from project steps
   const stages = useMemo<StageData[]>(() => {
-    const steps = activeProject?.steps
+    const steps = detailProject?.steps
     if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', engine: n.engine || '', model: n.model || '', prompt: n.prompt || '', config: n.config || {}, inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
     if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', engine: s.engine || '', model: s.model || '', prompt: s.prompt || '', config: s.config || {}, inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
     return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', engine: '', model: '', prompt: '', inputs: [], outputs: [] }]
-  }, [activeProject?.steps, t])
+  }, [detailProject?.steps, t])
 
   const stageProgress = useMemo<StageProgress[]>(() => {
     const stepByKey = new Map(
@@ -831,6 +859,57 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     })
   }, [runningStages, resumableStages])
 
+  /** 向当前可恢复阶段发送一条消息并重新执行该阶段（stage 模式的新 turn）。 */
+  const resumeStageWithPrompt = useCallback(async (
+    promptText: string,
+    opts?: { onErrorRestore?: () => void },
+  ): Promise<boolean> => {
+    if (!taskId || !projectId || !targetStage) return false
+    setChatError('')
+    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticMessage = createOptimisticUserMessage(
+      optimisticId,
+      promptText,
+      targetStage.key,
+      new Date().toISOString(),
+    )
+    shouldFollowMessagesRef.current = true
+    setHasUnreadMessages(false)
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    setStageResuming(true)
+    try {
+      const accepted = await taskApi.resumeStageWithMessage(
+        taskId,
+        targetStage.key,
+        promptText,
+        projectId,
+      )
+      setHistoryMessages((current) => current.map((message) => (
+        message.id === optimisticId
+          ? {
+              ...message,
+              id: accepted.message_id,
+              run_id: accepted.run_id,
+              channel: 'execution',
+              run_status: 'completed',
+              sequence: accepted.sequence,
+              created_at: accepted.created_at || message.created_at,
+            }
+          : message
+      )))
+      return true
+    } catch (reason) {
+      setHistoryMessages((current) => current.filter(
+        (message) => message.id !== optimisticId
+      ))
+      opts?.onErrorRestore?.()
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+      return false
+    } finally {
+      setStageResuming(false)
+    }
+  }, [taskId, projectId, targetStage, t])
+
   const handleRun = async () => {
     if (!taskId || !projectId) return
     if (!chatTargetStage && coordinatorRunning) return
@@ -850,48 +929,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         return
       }
       if (!targetStage) return
-      setChatError('')
-      const optimisticId = `pending-${crypto.randomUUID()}`
-      const optimisticMessage = createOptimisticUserMessage(
-        optimisticId,
-        submittedPrompt,
-        targetStage.key,
-        new Date().toISOString(),
-      )
-      shouldFollowMessagesRef.current = true
-      setHasUnreadMessages(false)
-      setHistoryMessages((current) => [...current, optimisticMessage])
       setPrompt('')
-      setStageResuming(true)
-      try {
-        const accepted = await taskApi.resumeStageWithMessage(
-          taskId,
-          targetStage.key,
-          submittedPrompt,
-          projectId,
-        )
-        setHistoryMessages((current) => current.map((message) => (
-          message.id === optimisticId
-            ? {
-                ...message,
-                id: accepted.message_id,
-                run_id: accepted.run_id,
-                channel: 'execution',
-                run_status: 'completed',
-                sequence: accepted.sequence,
-                created_at: accepted.created_at || message.created_at,
-              }
-            : message
-        )))
-      } catch (reason) {
-        setHistoryMessages((current) => current.filter(
-          (message) => message.id !== optimisticId
-        ))
-        setPrompt(submittedPrompt)
-        setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
-      } finally {
-        setStageResuming(false)
-      }
+      await resumeStageWithPrompt(submittedPrompt, {
+        onErrorRestore: () => setPrompt(submittedPrompt),
+      })
       return
     }
     const submittedPrompt = prompt.trim()
@@ -968,6 +1009,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setStoppingStepKeys((current) => [...current, stepKey])
     try {
       await taskApi.cancelStep(taskId, stepKey, projectId)
+      // 用户手动停止：该次执行结束不自动推进队列，尊重停止意图
+      userStoppedRef.current = true
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
@@ -1051,6 +1094,67 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const handleSendAllInserts = () => {
     void sendStageInserts(stageInserts)
   }
+
+  // ── 插入队列自动推进 ─────────────────────────────
+  // 阶段运行中插入的消息先排队；阶段执行结束（activeStageRunning: true → false）
+  // 且该阶段仍可恢复时，自动发送队首消息并重新执行该阶段，直至队列清空。
+  // 成功完成 / 手动停止（不可恢复或用户主动停止）不会自动重跑。
+  const prevStageRunRef = useRef<{ key: string | null; running: boolean }>({
+    key: null,
+    running: false,
+  })
+  const stageAutoDrainingRef = useRef(false)
+  const userStoppedRef = useRef(false)
+
+  useEffect(() => {
+    const prev = prevStageRunRef.current
+    const targetKey = targetStage?.key ?? null
+    prevStageRunRef.current = { key: targetKey, running: activeStageRunning }
+    if (stageAutoDrainingRef.current) return
+    const transition = prev.running
+      && !activeStageRunning
+      && prev.key !== null
+      && prev.key === targetKey
+    if (!transition) return
+    if (userStoppedRef.current) {
+      // 用户手动停止的这次结束不自动推进
+      userStoppedRef.current = false
+      return
+    }
+    if (!taskId || !projectId || !targetStage || editingInsertId !== null) return
+    if (stageInserts.length === 0) return
+    const first = stageInserts[0]
+    stageAutoDrainingRef.current = true
+    void resumeStageWithPrompt(first.content).then((ok) => {
+      if (ok) {
+        setStageInserts((current) => current.filter((item) => item.id !== first.id))
+        setEditingInsertId(null)
+        setEditingInsertContent('')
+      }
+      stageAutoDrainingRef.current = false
+    })
+  }, [activeStageRunning, targetStage, stageInserts, editingInsertId, taskId, projectId, resumeStageWithPrompt])
+
+  // ── 插入队列持久化 ─────────────────────────────
+  // 任务详情无会话概念，队列是任务级的，以 taskId 为作用域保存，刷新后恢复。
+  // stageQueueRef 记录当前生效 key，写回只跟随队列内容变化，
+  // 避免切换任务瞬间把旧队列错写到新任务的 key 上。
+  const stageQueueRef = useRef<{ projectId: string; taskId: string } | null>(null)
+
+  useEffect(() => {
+    stageQueueRef.current = projectId && taskId ? { projectId, taskId } : null
+  }, [taskId, projectId])
+
+  useEffect(() => {
+    if (!taskId || !projectId) return
+    setStageInserts(loadInsertQueue(projectId, taskId))
+  }, [taskId, projectId])
+
+  useEffect(() => {
+    const target = stageQueueRef.current
+    if (!target) return
+    saveInsertQueue(target.projectId, target.taskId, stageInserts)
+  }, [stageInserts])
 
   // A2UI protocol: clicks inside rendered UI bubbles (buttons, pickers, ...)
   // arrive as client actions. Relay them to the coordinator as a user message
@@ -1348,8 +1452,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const saveStagePrompt = async () => {
-    if (!activeProject) return
-    const currentSteps = activeProject.steps
+    if (!detailProject) return
+    const currentSteps = detailProject.steps
     let nextSteps = currentSteps
     if (currentSteps?.nodes?.length) {
       nextSteps = {
@@ -1374,8 +1478,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setPromptSaving(true)
     setPromptSaveError('')
     try {
-      await projectApi.saveSteps(activeProject.id, nextSteps)
-      setActiveProject({ ...activeProject, steps: nextSteps })
+      await projectApi.saveSteps(detailProject.id, nextSteps)
+      setActiveProject({ ...detailProject, steps: nextSteps })
       setShowPromptEditor(false)
     } catch (error) {
       setPromptSaveError(
@@ -1524,7 +1628,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }
 
   const openArtifactDirectory = async () => {
-    if (!previewArtifact || activeProject?.type === 'remote') return
+    if (!previewArtifact || detailProject?.type === 'remote') return
     try {
       const result = await fsApi.openDirectory(previewArtifact.path)
       setArtifactNotice(t('taskDetail.directoryOpened', { path: result.path }))
@@ -1538,6 +1642,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   return (
     <div
+      ref={mobileDialogRef}
+      className="task-detail-window"
       role="dialog"
       aria-modal="true"
       aria-label={t('taskDetail.dialogAria', { title: task.title })}
@@ -1553,7 +1659,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       zIndex: 1000,
       animation: 'slideInRight 0.3s ease',
     }}>
-      {RESIZE_EDGES.map((edge) => (
+      {!compact && RESIZE_EDGES.map((edge) => (
         <div
           key={edge}
           role="separator"
@@ -1611,6 +1717,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onEditingInsertContentChange={setEditingInsertContent}
         onSendAllInserts={handleSendAllInserts}
         onClearInserts={() => setStageInserts([])}
+        onStageInsertReorder={(fromIndex, toIndex) => setStageInserts((current) => {
+          if (
+            fromIndex === toIndex
+            || fromIndex < 0 || fromIndex >= current.length
+            || toIndex < 0 || toIndex >= current.length
+          ) return current
+          const next = [...current]
+          const [moved] = next.splice(fromIndex, 1)
+          next.splice(toIndex, 0, moved)
+          return next
+        })}
         onCoordinatorEngineChange={handleCoordinatorEngineChange}
         onCoordinatorProviderChange={handleCoordinatorProviderChange}
         providers={providers}
@@ -1728,9 +1845,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             </Button>
           </>
         }
-        onHeaderPointerDown={beginPanelMove}
-        onHeaderKeyDown={moveWithKeyboard}
-        onHeaderDoubleClick={() => setPanelBounds(initialPanelBounds())}
+        onHeaderPointerDown={compact ? undefined : beginPanelMove}
+        onHeaderKeyDown={compact ? undefined : moveWithKeyboard}
+        onHeaderDoubleClick={compact ? undefined : () => setPanelBounds(initialPanelBounds())}
         locale={locale}
         durationNowMs={durationNowMs}
         currentStage={currentStage}
@@ -1879,8 +1996,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               </div>
               <Button
                 variant="ghost"
-                disabled={activeProject?.type === 'remote'}
-                title={activeProject?.type === 'remote' ? t('taskList.remoteNoLocalDirectory') : undefined}
+                disabled={detailProject?.type === 'remote'}
+                title={detailProject?.type === 'remote' ? t('taskList.remoteNoLocalDirectory') : undefined}
                 onClick={openArtifactDirectory}
               >
                 {t('taskDetail.openDirectory')}

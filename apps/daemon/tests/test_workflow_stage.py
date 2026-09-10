@@ -134,7 +134,7 @@ async def test_dispatch_stage_creates_child_task_with_direct_inputs(tmp_path):
         def __init__(self):
             self.started = []
 
-        async def start(self, project_id, task_id, user_input):
+        async def start(self, project_id, task_id, user_input, source="manual"):
             self.started.append((project_id, task_id, user_input))
 
     task = Task.create(

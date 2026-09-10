@@ -78,6 +78,23 @@ test('elicitation schema renders multi-choice and free text fields', () => {
   assert.equal(form.fields[1].required, true)
 })
 
+test('URL elicitation keeps its link and builds an ACP accept response', () => {
+  const request: InteractionRequestData = {
+    interaction_id: 'url-1',
+    method: 'elicitation/create',
+    mode: 'url',
+    url: 'https://example.com/authorize',
+    elicitation_id: 'url-1',
+    message: '请完成授权',
+  }
+
+  assert.equal(interactionForm(request).title, '请完成授权')
+  assert.deepEqual(buildInteractionResponse(request, {}), {
+    action: 'accept',
+    content: {},
+  })
+})
+
 test('permission decision picks least-privilege allow/deny options', () => {
   const request: InteractionRequestData = {
     interaction_id: 'permission-1',

@@ -431,3 +431,43 @@ def subagent_event_from_message(msg: Any) -> InternalEvent | None:
             usage=field("usage"),
         )
     return None
+
+
+def route_subagent_message(msg, state, mapper):
+    """Keep provider-tagged child messages and their dedupe state isolated."""
+    parent_id = (msg.get("parent_tool_use_id") if isinstance(msg, Mapping)
+                 else getattr(msg, "parent_tool_use_id", None))
+    if not parent_id:
+        return mapper(msg, state)
+    child_state = state.setdefault("child_streams", {}).setdefault(str(parent_id), {})
+    events = mapper(msg, child_state)
+    result = []
+    for event in events:
+        if event.type in {"session_started", "status", "usage_update"}:
+            continue
+        frame = subagent_event(task_id=str(parent_id), tool_use_id=str(parent_id),
+                               status="running", stage="progress")
+        frame.data["event"] = event.to_dict()
+        result.append(frame)
+    return result
+
+
+def codex_subagent_events(item):
+    """Expose native collaboration snapshots without treating tool end as child end."""
+    receivers = item.get("receiver_thread_ids") or item.get("receiverThreadIds") or []
+    states = item.get("agents_states") or item.get("agentsStates") or {}
+    if isinstance(states, list):
+        states = {str(value.get("thread_id") or value.get("threadId") or receivers[index]): value
+                  for index, value in enumerate(states)
+                  if isinstance(value, Mapping) and (value.get("thread_id") or value.get("threadId") or index < len(receivers))}
+    if not isinstance(states, Mapping):
+        return []
+    result = []
+    for child_id, snapshot in states.items():
+        if not isinstance(snapshot, Mapping):
+            continue
+        status = str(snapshot.get("status") or "running")
+        status = {"errored": "failed", "shutdown": "stopped"}.get(status, status)
+        result.append(subagent_event(task_id=str(child_id), status=status, stage="progress",
+                                     summary=snapshot.get("message")))
+    return result

@@ -10,11 +10,14 @@ interface ProjectState {
   activeWorkflowId: string | null
   loading: boolean
   canvasDirty: boolean
+  /** Local per-project running state, updated incrementally from WS events. */
+  projectRunningState: Record<string, boolean>
 
   fetchProjects: () => Promise<void>
   setActiveProject: (p: Project | null) => void
   setActiveWorkflow: (id: string | null) => void
   setCanvasDirty: (d: boolean) => void
+  setProjectRunning: (projectId: string, running: boolean) => void
   initProject: (path: string, name?: string) => Promise<Project>
   addRemoteProject: (shareString: string) => Promise<Project>
   renameProject: (path: string, name: string) => Promise<void>
@@ -34,20 +37,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   activeWorkflowId: null,
   loading: false,
   canvasDirty: false,
+  projectRunningState: {},
 
   fetchProjects: async () => {
     if (useProjectStore.getState().loading) return
     set({ loading: true })
     try {
       const { projects } = await projectApi.list()
-      set((state) => ({
-        projects,
-        activeProject: state.activeProject
-          ? projects.find((project) => project.id === state.activeProject?.id)
-            ?? state.activeProject
-          : null,
-        loading: false,
-      }))
+      set((state) => {
+        let activeProject = null
+        if (state.activeProject) {
+          const found = projects.find((p) => p.id === state.activeProject!.id)
+          if (found) {
+            // If the user has selected a non-default workflow, preserve the
+            // frontend-loaded steps (set by setActiveWorkflow) to avoid
+            // overwriting with the backend's default workflow steps.
+            const defaultWf = found.workflows?.find((w) => w.is_default) || found.workflows?.[0]
+            const isNonDefault = state.activeWorkflowId && defaultWf && state.activeWorkflowId !== defaultWf.id
+            activeProject = isNonDefault
+              ? { ...found, steps: state.activeProject!.steps }
+              : found
+          } else {
+            activeProject = state.activeProject
+          }
+        }
+        return { projects, activeProject, loading: false }
+      })
     } catch {
       set({ loading: false })
     }
@@ -65,6 +80,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setCanvasDirty: (d) => set({ canvasDirty: d }),
+
+  setProjectRunning: (projectId, running) => {
+    set((s) => ({
+      projectRunningState: { ...s.projectRunningState, [projectId]: running },
+    }))
+  },
 
   restoreWorkflow: async (id: string, projectId: string) => {
     await workflowApi.restore(id, projectId)
@@ -143,8 +164,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (activeProject?.id) {
         try {
           const wf = await workflowApi.get(id, activeProject.id)
-          set((s) => s.activeProject?.id === activeProject.id
-            ? { activeProject: { ...activeProject, steps: wf.steps } }
+          set((s) => s.activeProject?.id === activeProject.id && s.activeWorkflowId === id
+            ? { activeProject: { ...s.activeProject, steps: wf.steps } }
             : {})
         } catch (e) {
           console.error('Failed to load workflow steps:', e)

@@ -143,6 +143,16 @@ export default function InteractionPrompt({ request, response, onRespond }: Prop
             : JSON.stringify(request.tool_call.raw_input, null, 2)}
         </pre>
       )}
+      {request.mode === 'url' && request.url && (
+        <a
+          href={request.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: 'var(--accent)', overflowWrap: 'anywhere' }}
+        >
+          {t('common.open')}: {request.url}
+        </a>
+      )}
       {request.method === 'session/request_permission' ? (
         <>
           {error && <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>{error}</div>}

@@ -1,7 +1,13 @@
+import Select from '../components/Select'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useTaskRoute } from '../hooks/useTaskRoute'
+import { useOverlay } from '../hooks/useOverlay'
+import MobileSheet from '../components/MobileSheet'
+import StatusBadge from '../components/StatusBadge'
 import Icon from '../components/Icon'
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useTaskStore, type LiveMessage } from '../stores/taskStore'
+import { useTaskStore, selectWorkflowTasks, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
 import { fsApi, scheduleApi, type DirectoryOpener } from '../api/client'
@@ -18,6 +24,7 @@ import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import MarqueeText from '../components/MarqueeText'
 import ProjectShareDialog from '../components/ProjectShareDialog'
+import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
 import type { TaskDraftResult } from '../stores/taskDraftStore'
 import { useI18n, type TFunction, type TKey } from '../i18n'
@@ -60,6 +67,7 @@ const laneBodyStyle: React.CSSProperties = {
 /* ── Status machine ── */
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
+  queued: 'status.queued',
   done: 'status.done',
   reviewing: 'status.reviewing', awaiting_review: 'status.awaiting_review',
   retrying: 'status.retrying', rejected: 'status.rejected',
@@ -72,6 +80,7 @@ const STATUS_COLORS: Record<string, string> = {
   running: 'var(--status-running)',
   paused: 'var(--status-paused)',
   stopped: 'var(--status-stopped)',
+  queued: '#a16207',
   done: 'var(--status-done)',
   passed: 'var(--status-done)',
   failed: 'var(--status-failed)',
@@ -181,11 +190,17 @@ export default function TaskList() {
     unarchiveTask, setActiveTask,
   } = useTaskStore()
   const activeProject = useProjectStore((s) => s.activeProject)
+  const renameProject = useProjectStore((s) => s.renameProject)
   const activeWorkflowId = useProjectStore((s) => s.activeWorkflowId)
   const activeWorkflowName = activeProject?.workflows?.find((w) => w.id === activeWorkflowId)?.name
   const [showNewPanel, setShowNewPanel] = useState(false)
   const [createStartStepKey, setCreateStartStepKey] = useState<string | null>(null)
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const { taskId: selectedTaskId, openTask, closeTask } = useTaskRoute()
+  const compact = useCompactLayout()
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [mobileStage, setMobileStage] = useState('')
+  useEffect(() => { setMobileStage('') }, [activeProject?.id, activeWorkflowId])
+  const newPanelRef = useRef<HTMLDivElement>(null)
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null)
   const [confirmStartTaskId, setConfirmStartTaskId] = useState<string | null>(null)
   const [confirmArchiveTaskId, setConfirmArchiveTaskId] = useState<string | null>(null)
@@ -219,7 +234,7 @@ export default function TaskList() {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [createError, setCreateError] = useState('')
-  const [activeTab, setActiveTab] = useState<'content' | 'review'>('content')
+  const [activeTab, setActiveTab] = useState<'content' | 'review' | 'assistant'>('content')
   const [newDesc, setNewDesc] = useState('')
   const [newAutoStart, setNewAutoStart] = useState(false)
   const [newStartMode, setNewStartMode] = useState<'manual' | 'immediate' | 'scheduled'>('manual')
@@ -227,6 +242,7 @@ export default function TaskList() {
   const [dragOverLane, setDragOverLane] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [copiedWorkflowId, setCopiedWorkflowId] = useState(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [showMemoryPanel, setShowMemoryPanel] = useState(false)
   const [memoryContent, setMemoryContent] = useState('')
   const [memoryLoading, setMemoryLoading] = useState(false)
@@ -403,10 +419,7 @@ export default function TaskList() {
     }
     if (taskId && activeProject) {
       setActiveTask(taskId)
-      setSelectedTaskId(taskId)
-      const next = new URLSearchParams(searchParams)
-      next.delete('task')
-      setSearchParams(next, { replace: true })
+
     }
   }, [searchParams, setSearchParams, activeProject, activeWorkflowId, lanes.length, showNewPanel, setActiveTask]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -421,8 +434,8 @@ export default function TaskList() {
   }, [cardLanes, lanes, tasks])
 
   const visibleTasks = useMemo(
-    () => tasks.filter((t) => (showArchived ? t.archived : !t.archived)),
-    [tasks, showArchived],
+    () => selectWorkflowTasks(tasks, activeWorkflowId, showArchived),
+    [tasks, activeWorkflowId, showArchived],
   )
 
   const tasksByLane = useMemo(() => {
@@ -482,6 +495,7 @@ export default function TaskList() {
   }
 
   const requestCloseTaskAi = () => {
+    if (compact) setActiveTab('content')
     if (taskAiBusy) {
       setConfirmCloseNewTask(true)
       return
@@ -500,7 +514,7 @@ export default function TaskList() {
       (name) => t('taskList.aiCreatePrompt', { name }),
     ))
     setTaskAiOpen(true)
-    setActiveTab('content')
+    setActiveTab(compact ? 'assistant' : 'content')
   }
 
   const applyTaskDraft = useCallback((draft: TaskDraftResult) => {
@@ -541,7 +555,7 @@ export default function TaskList() {
 
   const handleSelectTask = (taskId: string) => {
     setActiveTask(taskId)
-    setSelectedTaskId(taskId)
+    openTask(taskId, activeProject?.name, activeWorkflowId || undefined)
   }
 
   const openProjectDirectory = async (openerId = selectedOpener) => {
@@ -616,6 +630,8 @@ export default function TaskList() {
       setTaskAiOpen(false)
     }
   }
+
+  useOverlay(compact && showNewPanel, closeNewPanel, newPanelRef)
 
   const closeMemoryPanel = () => {
     if (memoryContent !== memorySavedRef.current) {
@@ -873,7 +889,22 @@ export default function TaskList() {
   return (
     <>
       {/* Topbar */}
-      <div style={topbarStyle}>
+      {compact && <div className="mobile-task-toolbar">
+        <strong>{activeWorkflowName || t('mobile.taskList')}</strong>
+        <button onClick={() => setFiltersOpen(true)} aria-label={t('mobile.filters')}><Icon name="sliders-horizontal" size={20} /></button>
+        <Button variant="primary" onClick={() => openNewPanel()} disabled={!activeWorkflowId}>{t('taskList.new')}</Button>
+      </div>}
+      <MobileSheet open={compact && filtersOpen} title={t('mobile.filters')} onClose={() => setFiltersOpen(false)}>
+        <Select value={mobileStage} onChange={event => setMobileStage(event.target.value)} aria-label={t('mobile.stages')}>
+          <option value="">{t('mobile.allStages')}</option>
+          {lanes.map(lane => <option key={lane.key} value={lane.key}>{lane.label}</option>)}
+        </Select>
+        <Button onClick={() => { setShowArchived(!showArchived); setFiltersOpen(false) }}>{showArchived ? t('mobile.activeTasks') : t('mobile.archivedTasks')}</Button>
+        <Button onClick={() => { setFiltersOpen(false); navigate(`/canvas?project=${encodeURIComponent(activeProject?.name || '')}&workflow=${activeWorkflowId || ''}`) }}>{t('taskList.stageEdit')}</Button>
+        <Button onClick={() => { setFiltersOpen(false); setShowScheduleDialog(true) }}>{t('schedules.title')}</Button>
+        <Button onClick={() => { setFiltersOpen(false); setShowSettingsPanel(true) }}>{t('taskList.settings')}</Button>
+      </MobileSheet>
+      <div className="desktop-task-toolbar" style={topbarStyle}>
         <Button
           variant="ghost"
           onClick={() => {
@@ -1047,6 +1078,16 @@ export default function TaskList() {
             </div>
           )}
         </div>
+        <Button
+          variant="ghost"
+          onClick={() => setShowSettingsPanel(true)}
+          disabled={!activeProject}
+          title={t('taskList.settingsTitle')}
+          style={{ fontSize: 'calc(13px * var(--font-scale))', gap: 5 }}
+        >
+          <Icon name="settings" size={13} strokeWidth={2} />
+          {t('taskList.settings')}
+        </Button>
       </div>
 
       {/* Archive-view banner */}
@@ -1066,7 +1107,15 @@ export default function TaskList() {
       )}
 
       {/* Kanban board */}
-      <div style={kanbanStyle}>
+      {compact && <div className="mobile-task-list">
+        {loading && <div role="status">{t('common.loading')}</div>}
+        {!loading && visibleTasks.filter(task => !mobileStage || getCardLane(task.id) === mobileStage).length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
+        {visibleTasks.filter(task => !mobileStage || getCardLane(task.id) === mobileStage).map(task => <button className="mobile-task-row" key={task.id} onClick={() => handleSelectTask(task.id)}>
+          <span className="mobile-task-row-title">{task.title}</span>
+          <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} /><span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
+        </button>)}
+      </div>}
+      <div className="desktop-task-board" style={kanbanStyle}>
         {loading && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
             {t('common.loading')}
@@ -1197,6 +1246,9 @@ export default function TaskList() {
                             <span className="task-status-spinner" aria-hidden="true" />
                           )}
                           {t(STATUS_LABEL_KEYS[displayStatus] ?? (displayStatus as TKey))}
+                          {status === 'queued' && task.queue_position != null && task.queue_position > 0 && (
+                            <span style={{ fontWeight: 600 }}>{` #${task.queue_position}`}</span>
+                          )}
                         </span>
                         {status === 'running' && (task.recovered_count || 0) > 0 && (
                           <span
@@ -1316,7 +1368,7 @@ export default function TaskList() {
       )}
 
       {/* ── New requirement panel (slide-in from right, fixed to viewport) ── */}
-      <div style={{
+      <div ref={newPanelRef} role="dialog" aria-modal={showNewPanel || undefined} aria-label={t('taskList.new')} inert={!showNewPanel} className="task-create-panel" data-tab={activeTab} style={{
         position: 'fixed', right: 0, top: 0, bottom: 0,
         width: taskAiOpen ? 'min(1100px, 90vw)' : '50vw', minWidth: 420, background: 'var(--bg)',
         borderLeft: '1px solid var(--border-soft)',
@@ -1330,8 +1382,8 @@ export default function TaskList() {
           <span style={{ fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{t('taskList.newTaskTitle', { lane: createLane?.label || t('taskList.requirement') })}</span>
           <Button variant="icon" onClick={closeNewPanel} aria-label={t('common.close')}>✕</Button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div className="task-create-body" style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div className="task-create-form" style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {/* ── Tab bar ── */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border-soft)', padding: '0 16px', gap: 0, flexShrink: 0 }}>
           <button
@@ -1354,10 +1406,11 @@ export default function TaskList() {
               fontFamily: 'var(--font-body)',
             }}
           >{t('taskList.reviewTab')}</button>
+          {compact && <button className="mobile-assistant-tab" aria-pressed={activeTab === 'assistant'} onClick={() => { setTaskAiOpen(true); setActiveTab('assistant') }}>{t('mobile.aiAssistant')}</button>}
         </div>
 
         {/* ── Tab: content ── */}
-        {activeTab === 'content' && (
+        {(activeTab === 'content' || (!compact && activeTab === 'assistant')) && (
         <div style={{ flex: 1, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {createLaneIndex > 0 && (
             <div style={{
@@ -1471,12 +1524,13 @@ export default function TaskList() {
         )}
         <div className="panel-footer">
           <Button variant="ghost" onClick={closeNewPanel}>{t('common.cancel')}</Button>
-          <Button variant="primary" disabled={taskAiBusy || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))} onClick={handleCreate}>{t('common.create')}</Button>
+          <Button variant="primary" disabled={!newTitle.trim() || taskAiBusy || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))} onClick={handleCreate}>{t('common.create')}</Button>
         </div>
         </div>
         {taskAiOpen && activeProject && (
           <>
             <div
+              className="task-create-divider"
               onMouseDown={startTaskAiDividerDrag}
               title={t('layout.dragResizeChat')}
               style={{
@@ -1489,7 +1543,7 @@ export default function TaskList() {
                 transform: 'translateX(-50%)', background: 'var(--border-soft)',
               }} />
             </div>
-            <div style={{
+            <div className="task-create-assistant" style={{
               width: taskAiChatWidth ?? '40%', maxWidth: '45vw', minWidth: 280, flexShrink: 0, minHeight: 0,
               display: 'flex', flexDirection: 'column', background: 'var(--bg)',
             }}>
@@ -1538,17 +1592,25 @@ export default function TaskList() {
         onClose={() => setShowShareDialog(false)}
       />
 
+      <ProjectSettingsPanel
+        project={showSettingsPanel ? activeProject : null}
+        onClose={() => setShowSettingsPanel(false)}
+        onProjectRenamed={(name) => {
+          if (activeProject) void renameProject(activeProject.path, name)
+        }}
+      />
+
       {/* ── Task detail slide-in panel from right ── */}
       {selectedTaskId && (
         <>
           {/* Backdrop */}
           <div
-            onClick={() => setSelectedTaskId(null)}
+            onClick={closeTask}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.2)', zIndex: 999 }}
           />
           <TaskDetail
             taskId={selectedTaskId}
-            onClose={() => setSelectedTaskId(null)}
+            onClose={closeTask}
           />
         </>
       )}
@@ -1767,7 +1829,7 @@ export default function TaskList() {
       )}
 
       {/* ── Memory editor panel (slide-in from right) ── */}
-      <div style={{
+      <div inert={!showMemoryPanel} className="mobile-auxiliary-panel" style={{
         position: 'fixed', right: 0, top: 0, bottom: 0,
         width: '50vw', minWidth: 420, background: 'var(--bg)',
         borderLeft: '1px solid var(--border-soft)',

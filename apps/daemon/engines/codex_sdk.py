@@ -1,5 +1,7 @@
 """CodexSDKEngine — Codex via the official ``openai-codex`` Python SDK."""
 
+from engines.core.plans import codex_subagent_events
+
 import asyncio
 import importlib.metadata
 import json
@@ -19,6 +21,7 @@ from engines.core.base import (
 
 from engines.core.events import (
     InternalEvent,
+    agent_message_chunk,
     compacted_event,
     extract_reasoning_text,
     tool_call_event,
@@ -50,6 +53,8 @@ class CodexSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    UPDATE_PACKAGE = "openai-codex"
+    QUOTA_TIMEOUT_SECONDS = 5
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -300,16 +305,27 @@ class CodexSDKEngine(AcpEngineBase):
             raw_output="\n".join(content_parts),
         )
 
-    def _map_notification(
+    def _map_notification(self, notification, state):
+        events = self._map_notification_content(notification, state)
+        payload = getattr(notification, "payload", None)
+        root = self._root_of(getattr(payload, "item", None))
+        if getattr(root, "type", "") == "collabAgentToolCall":
+            events.extend(codex_subagent_events({
+                "receiver_thread_ids": getattr(root, "receiver_thread_ids", []),
+                "agents_states": self._plain(getattr(root, "agents_states", {})),
+            }))
+        return events
+
+    def _map_notification_content(
         self,
         notification: Any,
         state: dict[str, Any],
     ) -> list[InternalEvent]:
         """Map one SDK notification to zero or more InternalEvents.
 
-        ``state`` tracks whether text has been emitted and which tool call
-        IDs already produced a ``tool_use`` event, so completed items never
-        duplicate streamed content.
+        ``state`` tracks message phases and emitted text per item, and which
+        tool IDs already produced a start event. Unidentified text is buffered
+        until its item metadata arrives; completed items never duplicate deltas.
         """
         events: list[InternalEvent] = []
         method = self._notification_method(notification)
@@ -321,13 +337,19 @@ class CodexSDKEngine(AcpEngineBase):
         elif method == "item/agentMessage/delta":
             delta = getattr(payload, "delta", None) or ""
             if delta:
-                state["emitted_text"] = True
-                events.append(
-                    InternalEvent(
-                        type="agent_message_chunk",
-                        data={"content": {"text": str(delta)}},
-                    )
-                )
+                item_id = str(getattr(payload, "item_id", "") or "")
+                items = state.setdefault("message_items", {})
+                item = items.setdefault(item_id, {"text": "", "pending": ""})
+                if item.get("completed"):
+                    return events
+                if item_id and not item.get("started"):
+                    item["pending"] += str(delta)
+                else:
+                    item["text"] += str(delta)
+                    state["emitted_text"] = True
+                    events.append(agent_message_chunk(
+                        str(delta), phase=item.get("phase"), source_item_id=item_id,
+                    ))
 
         elif method in ("item/reasoning/textDelta", "item/reasoning/summaryTextDelta"):
             delta = getattr(payload, "delta", None) or ""
@@ -343,6 +365,20 @@ class CodexSDKEngine(AcpEngineBase):
         elif method == "item/started":
             root = self._root_of(getattr(payload, "item", None))
             tool_id = getattr(root, "id", None)
+            if getattr(root, "type", "") == "agentMessage":
+                item_id = str(tool_id or "")
+                item = state.setdefault("message_items", {}).setdefault(
+                    item_id, {"text": "", "pending": ""},
+                )
+                phase = getattr(root, "phase", None)
+                item["started"] = True
+                item["phase"] = getattr(phase, "value", phase)
+                if item["pending"]:
+                    events.append(agent_message_chunk(
+                        item["pending"], phase=item["phase"], source_item_id=item_id,
+                    ))
+                    item["text"] += item["pending"]
+                    item["pending"] = ""
             if (
                 getattr(root, "type", "") in {
                     "commandExecution", "fileChange", "mcpToolCall",
@@ -360,14 +396,25 @@ class CodexSDKEngine(AcpEngineBase):
             rtype = getattr(root, "type", "")
             if rtype == "agentMessage":
                 text = getattr(root, "text", None) or ""
-                if text and not state["emitted_text"]:
+                item_id = str(getattr(root, "id", "") or "")
+                item = state.setdefault("message_items", {}).setdefault(
+                    item_id, {"text": "", "pending": ""},
+                )
+                if item.get("completed"):
+                    return events
+                phase = getattr(root, "phase", None)
+                item["phase"] = getattr(phase, "value", phase) or item.get("phase")
+                # Old transports without item IDs retain their legacy deduplication.
+                emitted = item["text"]
+                remaining = str(text)[len(emitted):] if str(text).startswith(emitted) else ""
+                if not text:
+                    remaining = item["pending"]
+                if remaining and (item_id or not state.get("emitted_text")):
                     state["emitted_text"] = True
-                    events.append(
-                        InternalEvent(
-                            type="agent_message_chunk",
-                            data={"content": {"text": str(text)}},
-                        )
-                    )
+                    events.append(agent_message_chunk(
+                        remaining, phase=item.get("phase"), source_item_id=item_id,
+                    ))
+                item.update(text=str(text), pending="", completed=True)
             elif rtype == "reasoning":
                 text = extract_reasoning_text(getattr(root, "content", None))
                 if not text:
@@ -451,6 +498,77 @@ class CodexSDKEngine(AcpEngineBase):
             events.append(InternalEvent(type="error", data={"message": str(message)}))
 
         return events
+
+    @staticmethod
+    def _quota_window(value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        used = int(getattr(value, "used_percent", 0) or 0)
+        return {
+            "used_percent": used,
+            "remaining_percent": max(0, 100 - used),
+            "resets_at": getattr(value, "resets_at", None),
+            "window_duration_mins": getattr(value, "window_duration_mins", None),
+        }
+
+    async def _read_account_quota(self, client: Any) -> dict[str, Any]:
+        """Read and normalize account limits from an initialized SDK client."""
+        from openai_codex.generated.v2_all import GetAccountRateLimitsResponse
+
+        response = await client._client.request(
+            "account/rateLimits/read",
+            None,
+            response_model=GetAccountRateLimitsResponse,
+        )
+        snapshot = response.rate_limits
+        data: dict[str, Any] = {
+            "engine_id": self.ENGINE_ID,
+            "primary": self._quota_window(snapshot.primary),
+            "secondary": self._quota_window(snapshot.secondary),
+            "limit_id": snapshot.limit_id,
+            "limit_name": snapshot.limit_name,
+            "plan_type": getattr(snapshot.plan_type, "value", snapshot.plan_type),
+            "rate_limit_reached_type": getattr(
+                snapshot.rate_limit_reached_type,
+                "value",
+                snapshot.rate_limit_reached_type,
+            ),
+        }
+        if snapshot.credits is not None:
+            data["credits"] = {
+                "balance": snapshot.credits.balance,
+                "has_credits": snapshot.credits.has_credits,
+                "unlimited": snapshot.credits.unlimited,
+            }
+        if snapshot.individual_limit is not None:
+            data["individual_limit"] = {
+                "limit": snapshot.individual_limit.limit,
+                "used": snapshot.individual_limit.used,
+                "remaining_percent": snapshot.individual_limit.remaining_percent,
+                "resets_at": snapshot.individual_limit.resets_at,
+            }
+        if response.rate_limits_by_limit_id is not None:
+            data["rate_limits_by_limit_id"] = response.rate_limits_by_limit_id
+        return data
+
+    async def get_quota(self, cwd: str = "") -> dict[str, Any] | None:
+        """Fetch account quota through a short-lived Codex SDK connection."""
+        from openai_codex import AsyncCodex, CodexConfig
+
+        client = AsyncCodex(config=CodexConfig(
+            codex_bin=self.get_binary_override() or None,
+            cwd=cwd or None,
+        ))
+
+        async def fetch() -> dict[str, Any]:
+            async with client:
+                return await self._read_account_quota(client)
+
+        try:
+            return await asyncio.wait_for(fetch(), timeout=self.QUOTA_TIMEOUT_SECONDS)
+        except Exception:
+            logger.info("Codex SDK account quota unavailable", exc_info=True)
+            return None
 
     # --- Execution ---
 
@@ -607,6 +725,82 @@ class CodexSDKEngine(AcpEngineBase):
                 "tool_emitted": set(),
             }
 
+            async def stream_turn(turn: Any) -> None:
+                stream = turn.stream().__aiter__()
+                notification_task = asyncio.create_task(anext(stream))
+                live_task = (
+                    asyncio.create_task(live_message_queue.get())
+                    if live_message_queue is not None
+                    else None
+                )
+                try:
+                    while True:
+                        waiters = {notification_task}
+                        if live_task is not None:
+                            waiters.add(live_task)
+                        done, _ = await asyncio.wait(
+                            waiters,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if live_task is not None and live_task in done:
+                            live_items = [live_task.result()]
+                            while not live_message_queue.empty():
+                                live_items.append(live_message_queue.get_nowait())
+                            injected = "\n\n".join(
+                                content for _, content in live_items
+                            )
+                            try:
+                                await turn.steer(injected)
+                            except Exception as exc:
+                                for message_id, _ in live_items:
+                                    await event_queue.put(InternalEvent(
+                                        type="live_message",
+                                        data={
+                                            "message_id": message_id,
+                                            "status": "failed",
+                                            "detail": str(exc) or "插入消息失败",
+                                        },
+                                    ))
+                            else:
+                                for message_id, _ in live_items:
+                                    await event_queue.put(InternalEvent(
+                                        type="live_message",
+                                        data={
+                                            "message_id": message_id,
+                                            "status": "delivered",
+                                            "detail": "",
+                                        },
+                                    ))
+                            live_task = asyncio.create_task(
+                                live_message_queue.get()
+                            )
+                            continue
+                        try:
+                            notification = notification_task.result()
+                        except StopAsyncIteration:
+                            break
+                        for event in self._map_notification(notification, state):
+                            await event_queue.put(event)
+                        notification_task = asyncio.create_task(anext(stream))
+                finally:
+                    # Interrupted/older streams may never complete an item. Keep
+                    # its actual text without guessing a phase or losing the tail.
+                    for item_id, item in state.get("message_items", {}).items():
+                        if item["pending"]:
+                            await event_queue.put(agent_message_chunk(
+                                item["pending"], phase=item.get("phase"), source_item_id=item_id,
+                            ))
+                            item["text"] += item["pending"]
+                            item["pending"] = ""
+                    notification_task.cancel()
+                    if live_task is not None:
+                        live_task.cancel()
+                    await asyncio.gather(
+                        notification_task,
+                        *([live_task] if live_task is not None else []),
+                        return_exceptions=True,
+                    )
+
             async def pump() -> None:
                 try:
                     if session_id:
@@ -626,34 +820,7 @@ class CodexSDKEngine(AcpEngineBase):
                         type="status", data={"status": "running"}
                     ))
                     turn = await thread.turn(prompt, model=model or None)
-                    async for notification in turn.stream():
-                        for event in self._map_notification(notification, state):
-                            await event_queue.put(event)
-                    while live_message_queue is not None:
-                        live_items: list[tuple[str, str]] = []
-                        while not live_message_queue.empty():
-                            live_items.append(live_message_queue.get_nowait())
-                        if not live_items:
-                            # 插入队列已空：回复即收尾，不等待插入窗口。
-                            break
-                        injected = "\n\n".join(
-                            content for _, content in live_items
-                        )
-                        # 先确认送达再开启响应 turn：runner 收到 delivered 后
-                        # 封口插入前的输出段并开启新的响应段，响应事件归入新段。
-                        for message_id, _ in live_items:
-                            await event_queue.put(InternalEvent(
-                                type="live_message",
-                                data={
-                                    "message_id": message_id,
-                                    "status": "delivered",
-                                    "detail": "",
-                                },
-                            ))
-                        turn = await thread.turn(injected, model=model or None)
-                        async for notification in turn.stream():
-                            for event in self._map_notification(notification, state):
-                                await event_queue.put(event)
+                    await stream_turn(turn)
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -845,6 +1012,7 @@ class CodexSDKEngine(AcpEngineBase):
 
     #: spawn 实际产出的 ACP 词汇事件（声明 = 实际；无原生来源不合成）。
     acp_events: frozenset[str] = frozenset({
+        "subagent",
         "agent_message_chunk",
         "agent_thought_chunk",
         "tool_call",

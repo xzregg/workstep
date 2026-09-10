@@ -1,3 +1,4 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Button from '../components/Button'
@@ -9,6 +10,7 @@ import Select from '../components/Select'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
+import { resolveCanvasProject } from '../utils/canvasProjectLoad'
 
 /* ══════════════════════════════════════════
    Workflow editor page — project/workflow shell
@@ -17,6 +19,7 @@ import { useOnboardingStore } from '../stores/onboardingStore'
 
 function CanvasEditorInner() {
   const { t } = useI18n()
+  const compact = useCompactLayout()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const activeProject = useProjectStore((s) => s.activeProject)
@@ -48,18 +51,27 @@ function CanvasEditorInner() {
     if (!projectParam) return
 
     const doLoad = async () => {
-      await fetchProjects()
-      const currentProjects = useProjectStore.getState().projects
-      const match = currentProjects.find((p) => p.name === projectParam)
+      const state = useProjectStore.getState()
+      const match = await resolveCanvasProject({
+        projectName: projectParam,
+        activeProject: state.activeProject,
+        projects: state.projects,
+        refreshProjects: fetchProjects,
+        getProjects: () => useProjectStore.getState().projects,
+      })
       if (match) {
-        setActiveProject(match)
+        const current = useProjectStore.getState()
+        const projectChanged = current.activeProject?.id !== match.id
+        if (projectChanged) setActiveProject(match)
         const targetWf = wfParam
           ? match.workflows?.find(w => w.id === wfParam)
           : match.workflows?.find(w => w.is_default) || match.workflows?.[0]
-        if (targetWf) setActiveWorkflow(targetWf.id)
+        if (targetWf && (projectChanged || current.activeWorkflowId !== targetWf.id)) {
+          await setActiveWorkflow(targetWf.id)
+        }
       }
     }
-    doLoad()
+    void doLoad()
   }, [projectParam, wfParam]) // eslint-disable-line
 
   const switchWorkflow = (id: string) => {
@@ -87,11 +99,12 @@ function CanvasEditorInner() {
     <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       <FlowCanvas
+        readOnly={compact}
         initialSteps={activeProject?.steps}
         projectId={activeProject?.id}
         onDirtyChange={setCanvasDirty}
         onSave={async (steps) => {
-          if (!activeProject) return
+          if (!activeProject || compact) return
           await saveSteps(activeProject.id, steps)
           setActiveProject({ ...activeProject, steps })
         }}
@@ -130,7 +143,7 @@ function CanvasEditorInner() {
             <Button
               variant="ghost"
               title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
-              disabled={!activeProject?.id}
+              disabled={!activeProject?.id || compact}
               aria-expanded={aiPanelOpen}
               onClick={toggleAiPanel}
               style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
@@ -156,7 +169,7 @@ function CanvasEditorInner() {
       </div>
 
       {/* AI flow-design right side panel (inline, pushes the canvas — not a floating overlay) */}
-      {aiPanelOpen && (
+      {aiPanelOpen && <div style={{ display: compact ? 'none' : 'contents' }}>
         <AiFlowEditorPanel
           projectId={activeProject?.id || ''}
           workflowId={activeWorkflowId || undefined}
@@ -171,7 +184,7 @@ function CanvasEditorInner() {
           onRequestClose={requestCloseAiPanel}
           title={t('canvas.aiEditFlowTitle')}
         />
-      )}
+      </div>}
 
       {/* AI panel: close while generating */}
       <ConfirmDialog

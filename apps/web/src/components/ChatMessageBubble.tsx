@@ -174,7 +174,7 @@ export default function ChatMessageBubble({
         </div>
         <div style={{
           flex: isUser ? '0 1 auto' : 1,
-          minWidth: 0, display: 'flex',
+          minWidth: 0, display: 'flex', maxWidth: isUser ? '700px': '100%',
           flexDirection: 'column', gap: 6,
           alignItems: isUser ? 'flex-end' : 'stretch',
         }}>

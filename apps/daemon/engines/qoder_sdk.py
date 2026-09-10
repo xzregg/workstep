@@ -20,7 +20,7 @@ from engines.core.base import (
     sdk_turn_watchdog,
 )
 
-from engines.core.plans import subagent_event_from_message
+from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.events import (
     InternalEvent,
     compacted_event,
@@ -59,6 +59,7 @@ class QoderSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "qoder_sdk"
+    UPDATE_PACKAGE = "qoder-agent-sdk"
 
     def __init__(self):
         super().__init__()
@@ -364,7 +365,11 @@ class QoderSDKEngine(AcpEngineBase):
         parts = [part for part in re.split(r"(?<!^)(?=[A-Z])", name) if part]
         return "_".join(part.lower() for part in parts) if parts else name.lower()
 
-    def _map_message(
+    def _map_message(self, msg, state=None):
+        state = state if state is not None else {}
+        return route_subagent_message(msg, state, self._map_message_content)
+
+    def _map_message_content(
         self,
         msg: Any,
         state: dict[str, Any] | None = None,

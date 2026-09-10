@@ -27,6 +27,12 @@ class EnhanceConfigRequest(BaseModel):
     model: str = Field(default="", max_length=200)
 
 
+class ConcurrencyConfigRequest(BaseModel):
+    max_tasks: int = Field(default=0, ge=0)
+    max_chats: int = Field(default=0, ge=0)
+    schedule_exempt: bool = False
+
+
 class AssistantConfigRequest(BaseModel):
     engine: str = Field(default="", max_length=100)
     model: str = Field(default="", max_length=200)
@@ -105,6 +111,26 @@ async def set_enhance_config(req: EnhanceConfigRequest):
             raise HTTPException(status_code=400, detail="该供应商类型不支持 chat/completions 直连")
     config_store.set_prompt_enhance_config(provider_id=provider_id, model=model)
     return {"saved": True, **config_store.get_prompt_enhance_config()}
+
+
+@router.get("/concurrency")
+async def get_concurrency_config():
+    """Return the global task/chat concurrency defaults (0 = unlimited)."""
+    return {"saved": True, **config_store.get_concurrency_config()}
+
+
+@router.put("/concurrency")
+async def set_concurrency_config(req: ConcurrencyConfigRequest):
+    """Save global concurrency defaults and refresh the in-memory gate."""
+    config_store.set_concurrency_config(
+        max_tasks=req.max_tasks,
+        max_chats=req.max_chats,
+        schedule_exempt=req.schedule_exempt,
+    )
+    from services.concurrency import concurrency_gate
+
+    concurrency_gate.configure(**config_store.get_concurrency_config())
+    return {"saved": True, **config_store.get_concurrency_config()}
 
 
 @router.put("/{name}/config")

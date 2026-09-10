@@ -454,8 +454,8 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 3px;
-  width: 1px;
+  left: 0px;
+  width: 2px;
   background: var(--border-soft);
   transition:
     width var(--motion-fast) var(--ease),
@@ -1327,6 +1327,28 @@ details[open] > summary > .process-trace-chevron {
   font-size: calc(11px * var(--font-scale));
 }
 
+/* 子 Agent 事件是紧凑过程记录，不沿用聊天正文的大段落留白。 */
+.markdown-message.subagent-event-markdown p,
+.markdown-message.subagent-event-markdown ul,
+.markdown-message.subagent-event-markdown ol,
+.markdown-message.subagent-event-markdown blockquote,
+.markdown-message.subagent-event-markdown pre,
+.markdown-message.subagent-event-markdown table {
+  margin-bottom: 4px;
+}
+
+.markdown-message.subagent-event-markdown li + li {
+  margin-top: 1px;
+}
+
+.markdown-message.subagent-event-markdown li > p {
+  margin-bottom: 1px;
+}
+
+.subagent-event-markdown .markdown-compact-paragraph + .markdown-compact-paragraph {
+  margin-top: 4px;
+}
+
 /* ── Streaming Markdown messages ── */
 
 .markdown-message {
@@ -1650,6 +1672,10 @@ details[open] > summary > .process-trace-chevron {
 
 .code-preview-line:hover {
   background: color-mix(in oklab, var(--accent), transparent 95%);
+}
+
+.code-preview-line.is-target {
+  background: color-mix(in oklab, var(--accent), transparent 86%);
 }
 
 .code-preview-line-number,
@@ -2430,6 +2456,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   cursor: pointer;
 }
 
+.assistant-chat-header-title {
+  max-width: 30%;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-input-attach,
 .modal-body label.chat-input-attach {
   width: 26px;
@@ -2517,6 +2553,14 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 /* Codex-style context usage pill: percent chip before the engine picker,
    hover reveals the used/total token counts. */
+.chat-input-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 6px 6px;
+}
 .chat-input-context {
   position: relative;
   display: inline-flex;
@@ -2533,8 +2577,70 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   cursor: default;
   transition: background var(--motion-fast);
 }
+.chat-input-quota-tip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: max-content;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 32px));
+  line-height: 1.45;
+}
+.chat-input-context-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: max-content;
+  min-width: 286px;
+  line-height: 1.45;
+}
+.chat-input-context-breakdown-wrap { gap: 5px; }
+.chat-input-context-heading,
+.chat-input-context-row,
+.chat-input-context-tool { display: grid; align-items: center; width: 100%; }
+.chat-input-context-heading { grid-template-columns: 1fr auto; color: var(--meta); }
+.chat-input-context-heading strong { color: var(--fg); }
+.chat-input-context-meter { width: 100%; height: 5px; overflow: hidden; border-radius: 999px; background: color-mix(in oklab, var(--fg), transparent 90%); }
+.chat-input-context-meter i { display: block; height: 100%; background: var(--accent); }
+.chat-input-context-section-title { width: 100%; margin-top: 5px; padding-top: 6px; border-top: 0.5px solid var(--border-soft); color: var(--meta); }
+.chat-input-context-row { grid-template-columns: 8px 1fr auto 34px; gap: 6px; }
+.chat-input-context-row > i { width: 8px; height: 8px; border-radius: 2px; }
+.chat-input-context-row code,
+.chat-input-context-tool code { font-family: inherit; color: var(--fg); }
+.chat-input-context-row em,
+.chat-input-context-tool em { font-style: normal; text-align: right; color: var(--meta); }
+.chat-input-context-tool { grid-template-columns: 1fr auto 34px; gap: 8px; }
 .chat-input-context:hover {
   background: color-mix(in oklab, var(--fg), transparent 93%);
+}
+.chat-input-context-ring-wrap {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+}
+.chat-input-context-ring-wrap:hover {
+  background: color-mix(in oklab, var(--fg), transparent 96%);
+}
+.chat-input-context-ring {
+  width: 17px;
+  height: 17px;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+.chat-input-context-ring-track,
+.chat-input-context-ring-value {
+  fill: none;
+  stroke-width: 2.5;
+}
+.chat-input-context-ring-track {
+  stroke: color-mix(in oklab, currentColor, transparent 78%);
+}
+.chat-input-context-ring-value {
+  stroke: currentColor;
+  stroke-linecap: round;
 }
 .chat-input-context-tip {
   position: absolute;
@@ -3403,4 +3509,42 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   .card-progress-fill {
     animation: none;
   }
+}
+.channels-page {
+  flex: 1;
+  overflow: auto;
+  padding: 42px clamp(20px, 5vw, 72px);
+  background: var(--bg);
+}
+.channels-heading { max-width: 880px; margin: 0 auto 24px; }
+.channels-heading h1 { margin: 0 0 8px; font: 650 calc(26px * var(--font-scale))/1.2 var(--font-display); color: var(--fg); }
+.channels-heading p { margin: 0; color: var(--meta); font-size: calc(13px * var(--font-scale)); }
+.channels-error { max-width: 880px; margin: 0 auto 14px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 9px; color: var(--danger); }
+.channels-empty { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--meta); }
+.channel-card { max-width: 880px; margin: 0 auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.channel-card-header { min-height: 78px; display: flex; align-items: center; gap: 12px; padding: 14px 18px; }
+.channel-expand { padding: 0 !important; }
+.wechat-mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #07c160; color: white; font-weight: 700; }
+.channel-card-title { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.channel-card-title strong { color: var(--fg); }
+.channel-card-title span { color: var(--meta); font-size: calc(12px * var(--font-scale)); }
+.channel-status { padding: 4px 8px; border-radius: 999px; font-size: calc(11px * var(--font-scale)); background: var(--bg); color: var(--meta); }
+.channel-status-logged_in { color: #07984d; background: color-mix(in oklab, #07c160, transparent 88%); }
+.channel-status-error { color: var(--danger); }
+.channel-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.channel-toggle span { display: block; width: 38px; height: 22px; border-radius: 999px; background: var(--border); position: relative; cursor: pointer; transition: background .15s; }
+.channel-toggle span::after { content: ''; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: white; transition: transform .15s; box-shadow: 0 1px 3px #0004; }
+.channel-toggle input:checked + span { background: var(--accent); }
+.channel-toggle input:checked + span::after { transform: translateX(16px); }
+.channel-toggle input:disabled + span { cursor: not-allowed; opacity: .5; }
+.channel-card-body { border-top: 1px solid var(--border-soft); padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; }
+.channel-fields { display: grid; gap: 16px; }
+.channel-account-row { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg-2); }
+.channel-qr-panel { min-height: 220px; border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--meta); text-align: center; font-size: calc(12px * var(--font-scale)); }
+.channel-qr-panel img { width: 176px; height: 176px; object-fit: contain; background: white; border-radius: 8px; }
+@media (max-width: 700px) {
+  .channels-page { padding: 22px 14px; }
+  .channel-card-header { padding: 12px; gap: 9px; }
+  .channel-card-body { grid-template-columns: 1fr; }
+  .channel-status { display: none; }
 }

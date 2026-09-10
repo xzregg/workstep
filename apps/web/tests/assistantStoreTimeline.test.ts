@@ -4,6 +4,35 @@ import test from 'node:test'
 import { createAssistantStore } from '../src/stores/assistantStore.ts'
 import { buildMessageTimeline } from '../src/utils/messageTimeline.ts'
 
+test('keeps commentary in the process timeline and out of the answer across replay', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().newSession('phases')
+  const events = [
+    { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', source_item_id: 'p1', delta: '我先' },
+    { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', source_item_id: 'p1', delta: '检查。' },
+    { type: 'TOOL_CALL_START', toolCallId: 'read', toolCallName: 'Read' },
+    { type: 'TOOL_CALL_RESULT', toolCallId: 'read', output: 'ok' },
+    { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', source_item_id: 'p2', delta: '正在核对。' },
+    { type: 'TEXT_MESSAGE_CHUNK', phase: 'commentary', source_item_id: 'p3', delta: '核对结束。' },
+    { type: 'TEXT_MESSAGE_CHUNK', phase: 'final_answer', source_item_id: 'answer', delta: '已完成。' },
+  ]
+  for (const event of events) {
+    store.getState().handleWsEvent({ ...event, channel: 'session_chat', session_id: 'phases', messageId: 'reply' })
+  }
+  store.getState().handleWsEvent({ type: 'TEXT_MESSAGE_END', status: 'succeeded',
+    channel: 'session_chat', session_id: 'phases', messageId: 'reply' })
+  const message = store.getState().sessions.phases.messages[0]
+  assert.equal(message.content, '已完成。')
+  assert.equal(message.events?.length, events.length)
+  const timeline = buildMessageTimeline(message.events ?? [])
+  assert.deepEqual(timeline.map(item => item.type), ['commentary', 'tool', 'commentary', 'commentary', 'text'])
+  assert.equal('content' in timeline[0] && timeline[0].content, '我先检查。')
+  const restored = createAssistantStore({ channel: 'session_chat' })
+  restored.getState().hydrateSession('phases', [message])
+  assert.equal(restored.getState().sessions.phases.messages[0].content, '已完成。')
+  assert.deepEqual(buildMessageTimeline(restored.getState().sessions.phases.messages[0].events ?? []), timeline)
+})
+
 test('keeps text and tool events on assistant messages for ordered rendering', () => {
   const store = createAssistantStore({ channel: 'flow' })
   store.getState().newSession('session-1')

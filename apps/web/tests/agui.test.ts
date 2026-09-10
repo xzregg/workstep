@@ -196,6 +196,26 @@ test('task store consumes AG-UI text and run events for live messages', () => {
   assert.ok(useTaskStore.getState().taskStatusEvents > 0)
 })
 
+test('task store shows an automatic review as soon as its message starts', () => {
+  useTaskStore.setState({ tasks: [], liveMessages: {}, events: {}, content: {} })
+
+  useTaskStore.getState().handleWsEvent({
+    type: 'TEXT_MESSAGE_START',
+    task_id: 'task-reviewing',
+    step_key: 'build',
+    channel: 'review',
+    messageId: 'review-message',
+    role: 'assistant',
+    status: 'running',
+    content: '审核中',
+  })
+
+  const message = useTaskStore.getState().liveMessages['task-reviewing']['review-message']
+  assert.equal(message.channel, 'review')
+  assert.equal(message.status, 'running')
+  assert.equal(message.content, '审核中')
+})
+
 test('task store keeps compacted events on the current stage message', () => {
   useTaskStore.setState({
     tasks: [],
@@ -226,6 +246,26 @@ test('task store keeps compacted events on the current stage message', () => {
   const compacted = message.events.find((event) => event.name === CUSTOM.compacted)
   assert.ok(compacted)
   assert.equal(compacted.value?.summary, '保留阶段上下文')
+})
+
+test('task channels and legacy task accumulation exclude explicit commentary', () => {
+  useTaskStore.setState({ tasks: [], liveMessages: {}, events: {}, content: {} })
+  for (const channel of ['execution', 'review', 'coordinator', 'archive_experience']) {
+    for (const [phase, delta] of [['commentary', '正在检查。'], ['final_answer', '完成。']]) {
+      useTaskStore.getState().handleWsEvent({
+        type: 'TEXT_MESSAGE_CHUNK', task_id: 'phases', channel,
+        messageId: channel, phase, delta,
+      })
+    }
+    const message = useTaskStore.getState().liveMessages.phases[channel]
+    assert.equal(message.content, '完成。')
+    assert.equal(message.events[0].phase, 'commentary')
+  }
+  for (const [phase, delta] of [['commentary', '我先检查。'], ['final_answer', '完成。']]) {
+    useTaskStore.getState().handleWsEvent({ type: 'TEXT_MESSAGE_CHUNK', task_id: 'legacy-phases', phase, delta })
+  }
+  assert.equal(useTaskStore.getState().content['legacy-phases'], '完成。')
+  assert.equal(useTaskStore.getState().events['legacy-phases'][0].phase, 'commentary')
 })
 
 test('task store keeps latest commands per task conversation target', () => {

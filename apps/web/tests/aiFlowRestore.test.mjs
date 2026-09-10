@@ -22,8 +22,8 @@ const templateSettingsSource = await readFile(
   new URL('../src/pages/TemplateSettings.tsx', import.meta.url),
   'utf8',
 )
-const layoutSource = await readFile(
-  new URL('../src/components/Layout.tsx', import.meta.url),
+const workflowCreateDialogSource = await readFile(
+  new URL('../src/components/WorkflowCreateDialog.tsx', import.meta.url),
   'utf8',
 )
 
@@ -42,5 +42,5 @@ test('AI flow chat repeatedly restores the initial canvas and bypasses proposal 
   assert.match(editorPanelSource, /onRestore=\{onRestore\}/)
   assert.match(canvasEditorSource, /onRestore=\{\(steps\) => canvasRef\.current\?\.loadSteps\(steps\)\}/)
   assert.match(templateSettingsSource, /onRestore=\{\(steps\) => canvasRef\.current\?\.loadSteps\(steps\)\}/)
-  assert.match(layoutSource, /onRestore=\{\(steps\) => previewCanvasRef\.current\?\.loadSteps\(steps\)\}/)
+  assert.match(workflowCreateDialogSource, /onRestore=\{\(nextSteps\) => canvasRef\.current\?\.loadSteps\(nextSteps\)\}/)
 })

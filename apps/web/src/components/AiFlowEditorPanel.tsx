@@ -53,7 +53,7 @@ export default function AiFlowEditorPanel({
         onMouseDown={startDrag}
         title={t('layout.dragResizeChat')}
         style={{
-          width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
+          width: 3, flexShrink: 0, cursor: 'col-resize', position: 'relative',
           background: 'transparent', userSelect: 'none',
         }}
       >

@@ -11,7 +11,8 @@ router = APIRouter(prefix="/api/system-settings")
 
 
 class SystemSettingsRequest(BaseModel):
-    user_name: str = Field(max_length=80)
+    user_name: str | None = Field(default=None, max_length=80)
+    open_mode: bool | None = None
 
 
 class ModelPriceRequest(BaseModel):
@@ -63,16 +64,23 @@ def _model_pricing_response(pricing: dict) -> dict:
 
 @router.get("")
 async def get_system_settings():
-    return {"user_name": config_store.get_user_name(), **config_store.get_device_identity()}
+    return {
+        "user_name": config_store.get_user_name(),
+        "open_mode": config_store.get_open_mode(),
+        **config_store.get_device_identity(),
+    }
 
 
 @router.put("")
 async def set_system_settings(req: SystemSettingsRequest):
-    user_name = req.user_name.strip()
-    if not user_name:
-        raise HTTPException(status_code=400, detail="使用者名称不能为空")
-    config_store.set_user_name(user_name)
-    return {"user_name": config_store.get_user_name(), **config_store.get_device_identity()}
+    if req.user_name is not None:
+        user_name = req.user_name.strip()
+        if not user_name:
+            raise HTTPException(status_code=400, detail="使用者名称不能为空")
+        config_store.set_user_name(user_name)
+    if req.open_mode is not None:
+        config_store.set_open_mode(req.open_mode)
+    return await get_system_settings()
 
 
 @router.get("/model-pricing")

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import css from 'highlight.js/lib/languages/css'
@@ -41,6 +42,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
 interface CodeFilePreviewProps {
   filename: string
   content: string
+  line?: number
 }
 
 function languageForFilename(filename: string): string {
@@ -48,24 +50,34 @@ function languageForFilename(filename: string): string {
   return LANGUAGE_BY_EXTENSION[extension] ?? 'plaintext'
 }
 
-export default function CodeFilePreview({ filename, content }: CodeFilePreviewProps) {
+export default function CodeFilePreview({ filename, content, line }: CodeFilePreviewProps) {
+  const targetRef = useRef<HTMLSpanElement>(null)
   const language = languageForFilename(filename)
   const highlighted = language === 'plaintext'
     ? hljs.highlightAuto(content, []).value
     : hljs.highlight(content, { language, ignoreIllegals: true }).value
   const lines = highlighted.split('\n')
 
+  useEffect(() => {
+    targetRef.current?.scrollIntoView({ block: 'center' })
+  }, [line, content])
+
   return (
     <div className="code-preview" data-language={language}>
       <div className="code-preview-language">{language}</div>
       <pre className="code-preview-scroll" tabIndex={0}>
         <code>
-          {lines.map((line, index) => (
-            <span className="code-preview-line" key={index}>
+          {lines.map((highlightedLine, index) => (
+            <span
+              className={`code-preview-line${line === index + 1 ? ' is-target' : ''}`}
+              data-line={index + 1}
+              ref={line === index + 1 ? targetRef : undefined}
+              key={index}
+            >
               <span className="code-preview-line-number" aria-hidden="true">{index + 1}</span>
               <span
                 className="code-preview-line-content"
-                dangerouslySetInnerHTML={{ __html: line || ' ' }}
+                dangerouslySetInnerHTML={{ __html: highlightedLine || ' ' }}
               />
             </span>
           ))}

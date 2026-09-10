@@ -20,7 +20,7 @@ from engines.core.base import (
     sdk_turn_watchdog,
 )
 
-from engines.core.plans import subagent_event_from_message
+from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.events import (
     InternalEvent,
     compacted_event,
@@ -46,6 +46,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "claude_agent_sdk"
+    UPDATE_PACKAGE = "claude-agent-sdk"
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -281,7 +282,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 result[key] = item
         return result
 
-    def _map_message(
+    def _map_message(self, msg, state=None):
+        state = state if state is not None else {}
+        return route_subagent_message(msg, state, self._map_message_content)
+
+    def _map_message_content(
         self,
         msg: Any,
         state: dict[str, Any] | None = None,

@@ -68,6 +68,21 @@ class MemoryConfigStore:
         }
 
 
+def test_coordinator_parses_json_after_plain_language_explanation():
+    module = CoordinatorModule.__new__(CoordinatorModule)
+    raw = (
+        "我先核对了任务状态，旧结果是 {不是 JSON}，建议重新执行开发阶段。\n\n"
+        '{"version":1,"reply":"开始重跑","intent":"propose_action",'
+        '"proposal":{"type":"supplement_stage","target_step_key":"dev",'
+        '"payload":{"content":"入口移到设置页"}}}'
+    )
+
+    parsed = module._parse_result(raw)
+
+    assert parsed["reply"] == "开始重跑"
+    assert parsed["proposal"]["target_step_key"] == "dev"
+
+
 @pytest.fixture
 async def api_context(tmp_path, monkeypatch):
     import api.history as history_api

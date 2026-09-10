@@ -31,14 +31,6 @@ test('summary includes executed commands only when at least one tool ran', () =>
   assert.match(source, /commandCount > 0 && t\('trace\.commandCount'/)
 })
 
-test('process stream stays expanded except for lazy persisted details', () => {
-  assert.match(source, /useState\(!detailsAvailable \|\| detailsLoaded\)/)
-  assert.match(source, /if \(running && !detailsAvailable\) setOpen\(true\)/)
-  assert.doesNotMatch(source, /setOpen\(running\)/)
-  assert.match(source, /<details[\s\S]*className="process-trace-session"[\s\S]*open=\{open\}/)
-  assert.doesNotMatch(source, /!running && !stopped && t\('trace\.commandCount'/)
-})
-
 test('persisted process details load only when their disclosure is opened', () => {
   assert.match(source, /detailsAvailable\?:\s*boolean/)
   assert.match(source, /detailsLoaded\?:\s*boolean/)
@@ -115,4 +107,14 @@ test('process stream renders subagent lifecycle items alongside tools', () => {
   assert.match(subagentSource, /trace\.subagentRunning/)
   assert.match(subagentSource, /trace\.subagentFailed/)
   assert.match(subagentSource, /trace\.subagentSummary/)
+})
+
+test('subagent markdown uses compact spacing inside the event timeline', () => {
+  assert.match(subagentSource, /className="subagent-event-markdown"/)
+  assert.match(styles, /\.subagent-event-markdown p,[\s\S]*?margin-bottom:\s*4px;/)
+  assert.match(styles, /\.subagent-event-markdown li \+ li\s*\{[\s\S]*?margin-top:\s*1px;/)
+})
+
+test('subagent thinking events render as plain pre-wrapped text instead of markdown paragraphs', () => {
+  assert.match(subagentSource, /entry\.type === 'thinking'[\s\S]*className="process-trace-thinking"/)
 })

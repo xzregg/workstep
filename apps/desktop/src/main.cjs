@@ -2,7 +2,7 @@ const path = require('node:path')
 const { app, BrowserWindow, dialog } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const {
-  backendExecutable,
+  backendLaunch,
   protocolPath,
   resolveBackendPort,
   startSidecar,
@@ -62,9 +62,11 @@ async function backendUrl() {
     return process.env.WORKSTEP_DEV_SERVER_URL
       ?? `http://127.0.0.1:${requestedPort || 8765}`
   }
+  const launch = backendLaunch(process.resourcesPath)
   const result = await startSidecar({
-    executable: backendExecutable(process.resourcesPath),
+    ...launch,
     port: requestedPort,
+    env: { ...process.env, WORKSTEP_DESKTOP_RUNTIME: '1' },
   })
   backendProcess = result.child
   return `http://127.0.0.1:${result.port}`

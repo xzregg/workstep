@@ -49,14 +49,38 @@ def ready_line(port: int) -> str:
 def _bundle_dir() -> Path:
     if "__compiled__" in globals():
         return Path(sys.argv[0]).resolve().parent
-    return Path(__file__).resolve().parent
+    source_dir = Path(__file__).resolve().parent
+    packaged_root = source_dir.parent
+    if (packaged_root / "web_dist").is_dir():
+        return packaged_root
+    return source_dir
 
 
 def _daemon_dir() -> Path:
     configured = os.environ.get("WORKSTEP_DAEMON_DIR")
     if configured:
         return Path(configured).resolve()
+    packaged = Path(__file__).resolve().parent / "daemon"
+    if packaged.is_dir():
+        return packaged
     return Path(__file__).resolve().parents[2] / "daemon"
+
+
+def prepare_engine_package_dir() -> Path:
+    """Expose a writable, update-stable site directory for optional engines."""
+    configured = os.environ.get("WORKSTEP_ENGINE_PACKAGE_DIR", "").strip()
+    package_dir = (
+        Path(configured).expanduser()
+        if configured
+        else Path.home() / ".workstep" / "runtime" / "python-packages"
+    )
+    package_dir.mkdir(parents=True, exist_ok=True)
+    resolved = str(package_dir.resolve())
+    os.environ["WORKSTEP_ENGINE_PACKAGE_DIR"] = resolved
+    if resolved in sys.path:
+        sys.path.remove(resolved)
+    sys.path.insert(0, resolved)
+    return package_dir.resolve()
 
 
 def _load_app(host: str, port: int):
@@ -70,6 +94,10 @@ def _load_app(host: str, port: int):
         daemon_dir = _daemon_dir()
         if str(daemon_dir) not in sys.path:
             sys.path.insert(0, str(daemon_dir))
+        # The daemon intentionally resolves bundled static assets and template
+        # defaults relative to its project root, matching `uvicorn main:app`
+        # in development.
+        os.chdir(daemon_dir)
         from main import app  # noqa: PLC0415
 
     return app
@@ -108,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
 
     port = sock.getsockname()[1]
     try:
+        if os.environ.get("WORKSTEP_DESKTOP_RUNTIME") == "1":
+            prepare_engine_package_dir()
         app = _load_app(host, port)
         return asyncio.run(_serve(app, sock, port))
     finally:

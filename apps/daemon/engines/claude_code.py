@@ -19,7 +19,7 @@ from engines.core.base import (
     install_with_command,
 )
 
-from engines.core.plans import subagent_event_from_message
+from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.events import (
     InternalEvent,
     normalize_cost,
@@ -537,7 +537,11 @@ class ClaudeCodeEngine(AcpEngineBase):
         events = self._map_events(obj)
         return events[0] if events else None
 
-    def _map_events(
+    def _map_events(self, obj, state=None):
+        state = state if state is not None else {}
+        return route_subagent_message(obj, state, self._map_events_content)
+
+    def _map_events_content(
         self,
         obj: dict,
         state: dict | None = None,

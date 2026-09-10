@@ -33,6 +33,8 @@ export interface AGUIEvent {
   /** 消息事件字段 */
   role?: 'user' | 'assistant' | 'developer' | 'system'
   delta?: string
+  phase?: string
+  source_item_id?: string
   content?: string
   prompt?: string
   status?: string
@@ -64,6 +66,8 @@ export type EventLike = {
   message_id?: string
   role?: string
   delta?: string
+  phase?: string
+  source_item_id?: string
   content?: string
   status?: string
   error?: string
@@ -172,6 +176,13 @@ export function appendMessageContent(
   current: string,
   event: EventLike,
 ): string {
+  if (isCommentaryEvent(event)) return current
+  if (
+    event.type === 'TEXT_MESSAGE_START'
+    && typeof event.content === 'string'
+  ) {
+    return event.content
+  }
   if (event.type === 'TEXT_MESSAGE_CHUNK') {
     return current + String(event.delta ?? '')
   }
@@ -188,6 +199,12 @@ export function appendMessageContent(
     return event.delta
   }
   return current
+}
+
+/** Progress narration shares the process panel, but is not model reasoning. */
+export function isCommentaryEvent(event: EventLike): boolean {
+  return (event.type === 'TEXT_MESSAGE_CHUNK' || event.type === 'TEXT_MESSAGE_CONTENT')
+    && event.phase === 'commentary'
 }
 
 /** 推理/思考块事件（AG-UI 用 REASONING_*，废弃 THINKING_*）。 */

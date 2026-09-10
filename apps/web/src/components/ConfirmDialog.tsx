@@ -1,4 +1,6 @@
-import { useEffect, type ReactNode } from 'react'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useOverlay } from '../hooks/useOverlay'
+import { useRef, type ReactNode } from 'react'
 import Button from './Button'
 import { useI18n } from '../i18n'
 
@@ -27,13 +29,9 @@ interface Props {
 
 export default function ConfirmDialog({ open, title, message, confirmText, cancelText, secondaryText, danger, children, loading, confirmDisabled, secondaryLoading, secondaryDisabled, width = 380, onConfirm, onSecondary, onCancel }: Props) {
   const { t } = useI18n()
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onCancel])
+  const compact = useCompactLayout()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useOverlay(open, onCancel, dialogRef, compact)
 
   if (!open) return null
 
@@ -48,6 +46,7 @@ export default function ConfirmDialog({ open, title, message, confirmText, cance
       }}
     >
       <div
+        ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'var(--bg)', borderRadius: 'var(--radius-md)',

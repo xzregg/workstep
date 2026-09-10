@@ -13,41 +13,30 @@ case "$platform_name" in
   *) echo "Unsupported build platform: $platform_name" >&2; exit 1 ;;
 esac
 
-venv_dir="$desktop_dir/.nuitka-venv"
-python_bin="$venv_dir/bin/python"
-output_dir="$repo_dir/build-artifacts/$platform_name/backend"
+output_root="$repo_dir/build-artifacts/$platform_name/backend"
+output_dir="$output_root/main.dist"
 stage_dir="$(mktemp -d)"
+python_install_dir="$stage_dir/python-install"
+python_version="3.12.13"
 trap 'rm -rf "$stage_dir"' EXIT
 
-python3 -m venv "$venv_dir"
-uv pip install --python "$python_bin" \
+# Keep the desktop daemon self-contained but writable: optional Python SDK
+# engines are installed into this bundled runtime only after the user clicks.
+uv python install --managed-python --no-bin --install-dir "$python_install_dir" "$python_version"
+python_root="$(find "$python_install_dir" -mindepth 1 -maxdepth 1 -type d -name 'cpython-3.12*' -print -quit)"
+test -n "$python_root"
+python_bin="$(find "$python_root/bin" -maxdepth 1 -type f -name 'python3.12' -print -quit)"
+test -x "$python_bin"
+uv pip install --break-system-packages --python "$python_bin" \
   -r "$desktop_dir/backend/requirements-prod.txt" \
-  "Nuitka==4.1.3"
+  pip
 
-cp "$daemon_dir/main.py" "$stage_dir/daemon_entry.py"
-PYTHONPATH="$stage_dir:$daemon_dir" "$python_bin" -m nuitka \
-  "$desktop_dir/backend/main.py" \
-  --standalone \
-  --assume-yes-for-downloads \
-  --follow-imports \
-  --include-module=daemon_entry \
-  --include-package=api \
-  --include-package=agent_assistants \
-  --include-package=engines \
-  --include-package=models \
-  --include-package=schemas \
-  --include-package=services \
-  --include-package=streaming \
-  --include-package=uvicorn \
-  --include-package=fastapi \
-  --include-package=openai_codex \
-  --include-package=codex_cli_bin \
-  --include-package=claude_agent_sdk \
-  --include-package=pydantic_ai \
-  --include-package=pydantic_ai_harness \
-  --include-package-data=codex_cli_bin \
-  --include-package-data=claude_agent_sdk \
-  --include-data-dir="$daemon_dir/data=data" \
-  --output-dir="$output_dir"
-
-cp -R "$web_dir/dist" "$output_dir/main.dist/web_dist"
+rm -rf "$output_dir"
+mkdir -p "$output_dir/app/daemon"
+cp -R "$python_root" "$output_dir/python"
+cp "$desktop_dir/backend/main.py" "$desktop_dir/backend/server.py" "$output_dir/app/"
+cp "$daemon_dir/__init__.py" "$daemon_dir/main.py" "$daemon_dir/settings.py" "$output_dir/app/daemon/"
+for runtime_dir in agent_assistants api data engines models schemas services static streaming; do
+  cp -R "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
+done
+cp -R "$web_dir/dist" "$output_dir/web_dist"

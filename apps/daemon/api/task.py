@@ -323,7 +323,7 @@ async def resume_stage(
     req: StageResumeRequest,
     pid: str = Query(..., alias="project_id"),
 ):
-    """Persist a user message and re-run a manually stopped stage."""
+    """Persist a user message and re-run a stopped or completed stage."""
     from main import workflow_runtime
     if not workflow_runtime:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -648,7 +648,7 @@ def _load_archive_experience_draft(task_id: str, workstep_dir=None):
 
         journal = TurnEventJournal()
         ref = journal.reopen(workstep_dir, message.event_log_path)
-        timeline = journal.timeline(ref, limit=200)
+        timeline = journal.timeline(ref, limit=30000)
         events = translate_events(
             timeline["events"],
             task_id=task_id,

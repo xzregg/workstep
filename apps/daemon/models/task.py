@@ -21,7 +21,7 @@ class Task(BaseModel):
     description = pw.TextField(null=True)
     cwd = pw.TextField()
     workflow_id = pw.TextField(null=True)  # FK-like: which workflow this task belongs to
-    status = pw.TextField(default="ready")  # ready / running / paused / stopped
+    status = pw.TextField(default="ready")  # ready / queued / running / paused / stopped
     archived = pw.IntegerField(default=0)  # 1 = hidden from the active board
     engine = pw.TextField(null=True)  # claude / codex / hermes
     model = pw.TextField(null=True)

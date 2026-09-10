@@ -1,3 +1,4 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import {
   useEffect,
   useRef,
@@ -45,6 +46,7 @@ import {
   isManualReviewMessage,
   isMessageReviewActionable,
   isStageResumableWithMessage,
+  isSelectedStageRunning,
   isNearConversationBottom,
   shouldPauseConversationFollow,
   conversationBottomScrollTop,
@@ -54,6 +56,7 @@ import {
   observeContentResize,
   orderConversationMessages,
   resolveTaskComposerState,
+  resolveMessageError,
   resolveMessageReview,
   shouldRenderLegacyExecution,
   stageAvatarText,
@@ -233,6 +236,8 @@ export interface TaskDetailViewProps {
   onEditingInsertContentChange?: (value: string) => void
   onSendAllInserts?: () => void
   onClearInserts?: () => void
+  /** 拖动排序插入队列；不传则禁用拖动。 */
+  onStageInsertReorder?: (fromIndex: number, toIndex: number) => void
 
   // ── Coordinator config (edit mode only) ──
   onCoordinatorEngineChange?: (engineId: string) => void
@@ -370,6 +375,7 @@ export default function TaskDetailView({
   onEditingInsertContentChange,
   onSendAllInserts,
   onClearInserts,
+  onStageInsertReorder,
   // Coordinator
   onCoordinatorEngineChange,
   onCoordinatorProviderChange,
@@ -474,9 +480,13 @@ export default function TaskDetailView({
   const resumableTarget = chatTarget !== 'coordinator'
     ? resumableStages.find((stage) => stage.key === chatTarget) ?? null
     : null
+  const selectedStageRunning = isSelectedStageRunning(
+    chatTarget ?? 'coordinator',
+    runningStages.map((stage) => stage.key),
+  )
   const composerState = resolveTaskComposerState({
     target: chatTarget === 'coordinator' ? 'coordinator' : 'stage',
-    stageRunning: runningStages.length > 0,
+    stageRunning: selectedStageRunning,
     stageResuming: Boolean(resumableTarget && stageResuming),
     coordinatorRunning: coordinatorRunning ?? false,
     prompt: prompt ?? '',
@@ -508,6 +518,9 @@ export default function TaskDetailView({
   const [localHasUnread, setLocalHasUnread] = useState(false)
 
   // ── Split ratio (draggable divider between left panel & conversation) ──
+  const compact = useCompactLayout()
+  const mobileReviewRef = useRef<HTMLDivElement>(null)
+  const [mobileTab, setMobileTab] = useState<'conversation' | 'stages' | 'artifacts'>('conversation')
   const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
   const SPLIT_HANDLE_WIDTH = 8
   const contentSplitRef = useRef<HTMLDivElement>(null)
@@ -747,6 +760,7 @@ export default function TaskDetailView({
 
     return (
       <div
+        className="task-detail-header"
         role={draggable ? 'group' : undefined}
         tabIndex={draggable ? 0 : undefined}
         aria-label={draggable ? t('taskDetail.dragWindowAria') : undefined}
@@ -1752,7 +1766,7 @@ export default function TaskDetailView({
 
         {/* Review results */}
         {selectedReview && (
-          <div>
+          <div ref={mobileReviewRef}>
             <div
               style={{
                 fontSize: 'calc(11px * var(--font-scale))',
@@ -2164,7 +2178,7 @@ export default function TaskDetailView({
             flex: 1,
             minWidth: 0,
             minHeight: 0,
-            position: 'relative',
+            position: 'relative', paddingBottom: '10px'
           }}
         >
           <div
@@ -2458,6 +2472,7 @@ export default function TaskDetailView({
                             color={senderColor}
                             content={messageContent}
                             projectId={projectId}
+                            error={resolveMessageError(processEvents) || undefined}
                             streaming={
                               msg.run_status ===
                               'running'
@@ -3287,7 +3302,7 @@ export default function TaskDetailView({
               flexShrink: 0,
             }}
           >
-            {chatTarget !== 'coordinator' && runningStages.length > 0 && (
+            {selectedStageRunning && (
               <PendingMessageInserts
                 items={stageInserts ?? []}
                 title={t('taskDetail.insertMessages')}
@@ -3304,6 +3319,8 @@ export default function TaskDetailView({
                 onRemove={onStageInsertRemove}
                 onSendAll={onSendAllInserts}
                 onClear={onClearInserts}
+                onReorder={onStageInsertReorder}
+                reorderHint={t('taskDetail.insertReorderHint')}
               />
             )}
             {/* Chat target tabs */}
@@ -3390,7 +3407,9 @@ export default function TaskDetailView({
                     {stage.label}
                   </button>
                 ))}
-                {resumableStages.map((stage) => (
+                {resumableStages.filter((stage) => (
+                  !runningStages.some((runningStage) => runningStage.key === stage.key)
+                )).map((stage) => (
                   <button
                     key={stage.key}
                     type="button"
@@ -3403,7 +3422,10 @@ export default function TaskDetailView({
                       chatTarget === stage.key
                     }
                     title={t(
-                      resumableStatusOf(stage.key) === 'failed'
+                      resumableStatusOf(stage.key) === 'passed'
+                        || resumableStatusOf(stage.key) === 'skipped'
+                        ? 'taskDetail.stageTabTitle'
+                        : resumableStatusOf(stage.key) === 'failed'
                         || resumableStatusOf(stage.key) === 'rejected'
                         ? 'taskDetail.failedStageTabTitle'
                         : resumableStatusOf(stage.key) === 'awaiting_review'
@@ -3422,7 +3444,9 @@ export default function TaskDetailView({
                   </button>
                 ))}
               </div>
-              {resumableTarget && (
+              {resumableTarget
+                && resumableStatusOf(resumableTarget.key) !== 'passed'
+                && resumableStatusOf(resumableTarget.key) !== 'skipped' && (
                 <span
                   style={{
                     fontSize: 'calc(11px * var(--font-scale))',
@@ -3594,18 +3618,16 @@ export default function TaskDetailView({
               running={composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
-                  (stoppingStepKeys ?? [])
-                    .length > 0) ||
+                  (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
                 (chatTarget === 'coordinator' &&
                   (coordinatorStopping ??
                     false))
               }
               onStop={
-                chatTarget !== 'coordinator' &&
-                runningStages[0]
+                chatTarget !== 'coordinator' && selectedStageRunning
                   ? () =>
                       onStopStage?.(
-                        runningStages[0].key,
+                        chatTarget ?? '',
                       )
                   : onStop ?? (() => {})
               }
@@ -3687,8 +3709,19 @@ export default function TaskDetailView({
       {/* Recovered hint */}
       {renderRecoveredHint()}
 
+      {compact && <div className="mobile-detail-tabs" role="tablist">
+        {(['conversation', 'stages', 'artifacts'] as const).map(tab => <button key={tab} role="tab" aria-selected={mobileTab === tab} onClick={() => setMobileTab(tab)}>{t(`mobile.${tab}`)}</button>)}
+      </div>}
+      {compact && reviews.some(review => review.status === 'pending') && <button className="mobile-review-entry" onClick={() => {
+        const review = reviews.find(item => item.status === 'pending')!
+        const index = stages.findIndex(stage => stage.key === review.step_key)
+        if (index >= 0) onStageClick(index)
+        setMobileTab('stages')
+        requestAnimationFrame(() => mobileReviewRef.current?.scrollIntoView({ block: 'center' }))
+      }}><Icon name="shield" size={18} />{t('status.awaiting_review')}<Icon name="chevron-right" size={16} /></button>}
       {/* Content split */}
       <div
+        className="task-detail-content" data-mobile-tab={mobileTab}
         ref={contentSplitRef}
         style={{
           flex: 1,
@@ -3698,7 +3731,7 @@ export default function TaskDetailView({
         }}
       >
         {/* Left panel */}
-        {renderLeftPanel()}
+        <div className="task-detail-stages">{renderLeftPanel()}</div>
 
         {/* Split handle */}
         <div
@@ -3727,7 +3760,11 @@ export default function TaskDetailView({
         </div>
 
         {/* Right panel (conversation) */}
-        {renderConversation()}
+        <div className="task-detail-conversation">{renderConversation()}</div>
+        {compact && <div className="task-detail-artifacts">
+          {!artifacts.length && <p>{t('mobile.noArtifacts')}</p>}
+          {artifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}</span></button>)}
+        </div>}
       </div>
     </>
   )

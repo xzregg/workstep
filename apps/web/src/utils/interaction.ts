@@ -41,6 +41,9 @@ export interface InteractionRequestData {
   }
   options?: PermissionOption[]
   message?: string
+  mode?: 'form' | 'url'
+  url?: string
+  elicitation_id?: string
   requested_schema?: {
     type?: string
     title?: string

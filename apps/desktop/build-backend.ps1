@@ -5,43 +5,33 @@ $AppsDir = Split-Path -Parent $DesktopDir
 $RepoDir = Split-Path -Parent $AppsDir
 $DaemonDir = Join-Path $AppsDir "daemon"
 $WebDir = Join-Path $AppsDir "web"
-$VenvDir = Join-Path $DesktopDir ".nuitka-venv"
-$Python = Join-Path $VenvDir "Scripts/python.exe"
-$OutputDir = Join-Path $RepoDir "build-artifacts/win/backend"
-$StageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("workstep-nuitka-" + [guid]::NewGuid())
+$OutputRoot = Join-Path $RepoDir "build-artifacts/win/backend"
+$OutputDir = Join-Path $OutputRoot "main.dist"
+$StageDir = Join-Path ([System.IO.Path]::GetTempPath()) ("workstep-python-" + [guid]::NewGuid())
+$PythonInstallDir = Join-Path $StageDir "python-install"
+$PythonVersion = "3.12.13"
 
 try {
-  python -m venv $VenvDir
-  uv pip install --python $Python -r (Join-Path $DesktopDir "backend/requirements-prod.txt") "Nuitka==4.1.3"
-  New-Item -ItemType Directory -Path $StageDir | Out-Null
-  Copy-Item (Join-Path $DaemonDir "main.py") (Join-Path $StageDir "daemon_entry.py")
-  $env:PYTHONPATH = "$StageDir;$DaemonDir"
-  & $Python -m nuitka `
-    (Join-Path $DesktopDir "backend/main.py") `
-    --standalone `
-    --assume-yes-for-downloads `
-    --follow-imports `
-    --windows-console-mode=attach `
-    --include-module=daemon_entry `
-    --include-package=api `
-    --include-package=agent_assistants `
-    --include-package=engines `
-    --include-package=models `
-    --include-package=schemas `
-    --include-package=services `
-    --include-package=streaming `
-    --include-package=uvicorn `
-    --include-package=fastapi `
-    --include-package=openai_codex `
-    --include-package=codex_cli_bin `
-    --include-package=claude_agent_sdk `
-    --include-package=pydantic_ai `
-    --include-package=pydantic_ai_harness `
-    --include-package-data=codex_cli_bin `
-    --include-package-data=claude_agent_sdk `
-    "--include-data-dir=$DaemonDir/data=data" `
-    "--output-dir=$OutputDir"
-  Copy-Item (Join-Path $WebDir "dist") (Join-Path $OutputDir "main.dist/web_dist") -Recurse
+  # Keep the desktop daemon self-contained but writable: optional Python SDK
+  # engines are installed into this bundled runtime only after the user clicks.
+  uv python install --managed-python --no-bin --install-dir $PythonInstallDir $PythonVersion
+  $PythonRoot = Get-ChildItem $PythonInstallDir -Directory -Filter "cpython-3.12*" | Select-Object -First 1
+  if (-not $PythonRoot) { throw "uv-managed Python installation was not found" }
+  $Python = Join-Path $PythonRoot.FullName "python.exe"
+  uv pip install --break-system-packages --python $Python -r (Join-Path $DesktopDir "backend/requirements-prod.txt") pip
+
+  if (Test-Path $OutputDir) { Remove-Item $OutputDir -Recurse -Force }
+  New-Item -ItemType Directory -Path (Join-Path $OutputDir "app/daemon") -Force | Out-Null
+  Copy-Item $PythonRoot.FullName (Join-Path $OutputDir "python") -Recurse
+  Copy-Item (Join-Path $DesktopDir "backend/main.py") (Join-Path $OutputDir "app/main.py")
+  Copy-Item (Join-Path $DesktopDir "backend/server.py") (Join-Path $OutputDir "app/server.py")
+  foreach ($File in @("__init__.py", "main.py", "settings.py")) {
+    Copy-Item (Join-Path $DaemonDir $File) (Join-Path $OutputDir "app/daemon/$File")
+  }
+  foreach ($RuntimeDir in @("agent_assistants", "api", "data", "engines", "models", "schemas", "services", "static", "streaming")) {
+    Copy-Item (Join-Path $DaemonDir $RuntimeDir) (Join-Path $OutputDir "app/daemon/$RuntimeDir") -Recurse
+  }
+  Copy-Item (Join-Path $WebDir "dist") (Join-Path $OutputDir "web_dist") -Recurse
 } finally {
   if (Test-Path $StageDir) { Remove-Item $StageDir -Recurse -Force }
 }

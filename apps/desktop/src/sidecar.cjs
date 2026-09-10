@@ -61,13 +61,20 @@ function protocolPath(value) {
   throw new Error(`Unsupported WorkStep URL: ${value}`)
 }
 
-function backendExecutable(resourcesPath, platform = process.platform) {
-  return path.join(resourcesPath, 'backend', platform === 'win32' ? 'main.exe' : 'main.bin')
+function backendLaunch(resourcesPath, platform = process.platform) {
+  const pathImpl = platform === 'win32' ? path.win32 : path
+  const backendDir = pathImpl.join(resourcesPath, 'backend')
+  return {
+    executable: platform === 'win32'
+      ? pathImpl.join(backendDir, 'python', 'python.exe')
+      : pathImpl.join(backendDir, 'python', 'bin', 'python3'),
+    args: [pathImpl.join(backendDir, 'app', 'main.py')],
+  }
 }
 
-function startSidecar({ executable, port, env = process.env, timeoutMs = 30_000 }) {
+function startSidecar({ executable, args = [], port, env = process.env, timeoutMs = 30_000 }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, buildBackendArgs(port), {
+    const child = spawn(executable, [...args, ...buildBackendArgs(port)], {
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -117,7 +124,7 @@ async function stopSidecar(child, graceMs = 1500) {
 }
 
 module.exports = {
-  backendExecutable,
+  backendLaunch,
   buildBackendArgs,
   parseReadyPort,
   protocolPath,

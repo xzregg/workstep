@@ -255,6 +255,220 @@ async def test_restart_without_parent_reuses_passed_upstream_steps(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_restart_from_stage_picks_up_edited_engine(tmp_path):
+    """编辑流程更换阶段引擎后，重跑该阶段应使用新引擎而非父 run 快照。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-engine-change",
+        title="Engine change on restart",
+        cwd=str(tmp_path),
+        engine="engine-a",
+        created_at=now,
+        updated_at=now,
+    )
+
+    # 编辑后（当前）的流程：阶段 do 改用 engine-b
+    project = SimpleNamespace(
+        id="project-engine-change",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "engine-b"},
+            ],
+            "connections": [],
+        },
+    )
+
+    # 父 run 的快照：阶段 do 仍是编辑前的 engine-a
+    parent = WorkflowRun.create(
+        id="run-parent",
+        task=task,
+        status="superseded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(
+            {
+                "nodes": [
+                    {"id": 1, "type": "do", "title": "执行", "engine": "engine-a"},
+                ],
+                "connections": [],
+            }
+        ),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="failed",
+        engine="engine-a",
+        started_at=now,
+        ended_at=now,
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["engine-a"] = RuntimeFakeEngine
+    ENGINE_REGISTRY["engine-b"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        handle = await runtime.restart_from_stage(project.id, task.id, "do")
+        await runtime.wait(handle)
+
+        child = WorkflowRun.get_by_id(handle.id)
+        assert child.parent_run_id == parent.id
+        # 子 run 快照采用编辑后的当前流程（engine-b），而非父快照（engine-a）
+        snapshot = json.loads(child.workflow_snapshot_json)
+        assert snapshot["nodes"][0]["engine"] == "engine-b"
+
+        step_run = (
+            StepRun.select()
+            .where((StepRun.run == child) & (StepRun.step_key == "do"))
+            .order_by(StepRun.attempt.desc())
+            .first()
+        )
+        assert step_run.status == "succeeded"
+        assert step_run.engine == "engine-b"
+
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert step.status == "passed"
+        assert step.engine == "engine-b"
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("previous_engine", "current_engine", "expected_input_session", "expected_saved_session"),
+    [
+        ("resumable", "resumable", "session-original", "session-original"),
+        ("old-engine", "resumable", None, "session-new"),
+    ],
+)
+async def test_completed_stage_message_uses_session_only_for_same_engine(
+    tmp_path,
+    previous_engine,
+    current_engine,
+    expected_input_session,
+    expected_saved_session,
+):
+    """完成阶段重跑时，同引擎复用会话，换引擎创建新会话。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    received_session_ids = []
+
+    class ResumableFakeEngine(RuntimeFakeEngine):
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            received_session_ids.append(kwargs.get("session_id"))
+            if kwargs.get("session_id") is None:
+                yield InternalEvent(
+                    type="session_started",
+                    data={"session_id": "session-new"},
+                )
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "done again"}},
+            )
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-rerun-completed",
+        title="Rerun completed stage",
+        cwd=str(tmp_path),
+        engine=current_engine,
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-rerun-completed",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "done", "title": "完成阶段", "engine": current_engine},
+            ],
+            "connections": [],
+        },
+    )
+    parent = WorkflowRun.create(
+        id="run-completed-parent",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(project.steps),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="done",
+        status="passed",
+        engine=previous_engine,
+        session_id="session-original",
+        started_at=now,
+        ended_at=now,
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["resumable"] = ResumableFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        accepted = await runtime.resume_stage_with_message(
+            project.id,
+            task.id,
+            "done",
+            "继续完善结果",
+        )
+        for _ in range(500):
+            if task.id not in runtime._runners:
+                break
+            await asyncio.sleep(0.01)
+        assert task.id not in runtime._runners
+
+        assert received_session_ids == [expected_input_session]
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "done")
+        )
+        assert step.status == "passed"
+        assert step.session_id == expected_saved_session
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_runtime_start_immediately_persists_user_message(tmp_path, monkeypatch):
     """The submitted prompt is available to history before execution finishes."""
     from models import Message
@@ -418,7 +632,7 @@ async def test_run_endpoint_starts_the_project_workflow(monkeypatch):
     received = {}
 
     class RuntimeStub:
-        async def start(self, project_id, task_id, user_input):
+        async def start(self, project_id, task_id, user_input, source="manual"):
             received.update(
                 project_id=project_id,
                 task_id=task_id,
@@ -453,7 +667,7 @@ async def test_run_endpoint_reports_an_unknown_project_or_task(monkeypatch):
     import main
 
     class RuntimeStub:
-        async def start(self, project_id, task_id, user_input):
+        async def start(self, project_id, task_id, user_input, source="manual"):
             raise ValueError(f"Task not found: {task_id}")
 
     monkeypatch.setattr(main, "workflow_runtime", RuntimeStub(), raising=False)
@@ -474,7 +688,7 @@ async def test_run_endpoint_rejects_a_duplicate_active_task(monkeypatch):
     import main
 
     class RuntimeStub:
-        async def start(self, project_id, task_id, user_input):
+        async def start(self, project_id, task_id, user_input, source="manual"):
             raise RuntimeError(f"Task is already running: {task_id}")
 
     monkeypatch.setattr(main, "workflow_runtime", RuntimeStub(), raising=False)
@@ -496,7 +710,7 @@ async def test_run_endpoint_reports_an_invalid_saved_workflow(monkeypatch):
     from services.workflow_definition import WorkflowValidationError
 
     class RuntimeStub:
-        async def start(self, project_id, task_id, user_input):
+        async def start(self, project_id, task_id, user_input, source="manual"):
             raise WorkflowValidationError("workflow: cycle detected")
 
     monkeypatch.setattr(main, "workflow_runtime", RuntimeStub(), raising=False)
@@ -1065,7 +1279,7 @@ async def test_resume_stage_rejects_empty_or_unstopped_stage(tmp_path):
             await runtime.resume_stage_with_message(
                 project.id, task.id, "do", "   "
             )
-        with pytest.raises(ValueError, match="阶段未停止"):
+        with pytest.raises(ValueError, match="阶段当前不可重新执行"):
             await runtime.resume_stage_with_message(
                 project.id, task.id, "do", "重新来"
             )

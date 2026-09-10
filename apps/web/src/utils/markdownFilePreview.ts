@@ -18,6 +18,19 @@ function fileUrlToPath(href: string): string {
 export interface ProjectFileLink {
   path: string
   name: string
+  line?: number
+  column?: number
+}
+
+function splitSourceLocation(path: string): { path: string; line?: number; column?: number } {
+  const match = path.match(/^(.*)#L(\d+)(?:C(\d+))?$/i)
+    || path.match(/^(.*?):(\d+)(?::(\d+))?$/)
+  if (!match || !match[1]) return { path }
+  return {
+    path: match[1],
+    line: Number(match[2]),
+    column: match[3] ? Number(match[3]) : undefined,
+  }
 }
 
 export function classifyProjectFileLink(
@@ -37,7 +50,8 @@ export function classifyProjectFileLink(
     return null
   }
 
-  const path = candidate.split(/[?#]/, 1)[0]
+  const sourceLocation = splitSourceLocation(candidate)
+  const path = sourceLocation.path.split(/[?#]/, 1)[0]
   if (!path || path.endsWith('/')) return null
   let decoded = path
   try {
@@ -46,5 +60,11 @@ export function classifyProjectFileLink(
     // Keep the original path; the API will report an invalid or missing file.
   }
   const name = decoded.replace(/\\/g, '/').split('/').filter(Boolean).at(-1)
-  return name ? { path: decoded, name } : null
+  if (!name) return null
+  return {
+    path: decoded,
+    name,
+    ...(sourceLocation.line ? { line: sourceLocation.line } : {}),
+    ...(sourceLocation.column ? { column: sourceLocation.column } : {}),
+  }
 }

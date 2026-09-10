@@ -236,7 +236,7 @@ def get_message_events(
     workstep_dir: str | Path,
     *,
     cursor: int = 0,
-    limit: int = 200,
+    limit: int = 30000,
 ) -> dict:
     """Read one task message's detailed timeline without loading it in history."""
     msg = Message.get_or_none(
@@ -263,7 +263,7 @@ def get_message_events(
     except json.JSONDecodeError:
         legacy = []
     start = max(0, cursor)
-    bounded = min(max(1, limit), 200)
+    bounded = min(max(1, limit), 30000)
     raw_events = legacy[start:start + bounded]
     next_cursor = start + len(raw_events)
     return {

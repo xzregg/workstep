@@ -6,8 +6,8 @@ const directoryBrowserSource = await readFile(
   new URL('../src/components/DirectoryBrowser.tsx', import.meta.url),
   'utf8',
 )
-const layoutSource = await readFile(
-  new URL('../src/components/Layout.tsx', import.meta.url),
+const projectConnectionDialogSource = await readFile(
+  new URL('../src/components/ProjectConnectionDialog.tsx', import.meta.url),
   'utf8',
 )
 
@@ -18,7 +18,7 @@ test('project creation selects a folder from the tree before confirmation', () =
   assert.match(directoryBrowserSource, /color: selectedPath === entry\.path \? 'var\(--accent-fg\)'/)
   assert.doesNotMatch(directoryBrowserSource, /browser\.selectDir/)
 
-  assert.match(layoutSource, /<DirectoryBrowser onSelect=\{handleDirSelect\} selectedPath=\{newPath\} \/>/)
-  assert.match(layoutSource, /disabled=\{!newPath\.trim\(\)\}/)
-  assert.doesNotMatch(layoutSource, /id="init-path"/)
+  assert.match(projectConnectionDialogSource, /<DirectoryBrowser onSelect=\{setPath\} selectedPath=\{path\} \/>/)
+  assert.match(projectConnectionDialogSource, /disabled=\{!path\.trim\(\)\}/)
+  assert.doesNotMatch(projectConnectionDialogSource, /id="init-path"/)
 })

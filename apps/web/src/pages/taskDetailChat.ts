@@ -119,16 +119,67 @@ function hasMessageContent(content: unknown): boolean {
   return typeof content === 'string' && content.trim().length > 0
 }
 
+function readableError(value: unknown, depth = 0): string {
+  if (depth > 6 || value === undefined || value === null) return ''
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return readableError(
+      record.message ?? record.error ?? record.detail,
+      depth + 1,
+    )
+  }
+  const text = String(value).trim()
+  if (!text) return ''
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(text)
+      const nested = readableError(parsed, depth + 1)
+      if (nested) return nested
+    } catch {
+      // Plain error text can legitimately start with a brace.
+    }
+  }
+  return text
+}
+
+export function resolveMessageError(events?: readonly any[] | null): string {
+  for (let index = (events?.length ?? 0) - 1; index >= 0; index--) {
+    const event = events![index]
+    let value: unknown
+    if (isCustom(event, CUSTOM.error)) {
+      value = customValue(event)
+    } else if (event?.type === 'error') {
+      value = event.data
+    } else if (event?.type === 'RUN_ERROR' || event?.type === 'TEXT_MESSAGE_END') {
+      value = event.error ?? event.data?.error
+    } else {
+      continue
+    }
+    const message = readableError(value)
+    if (message) return message
+  }
+  return ''
+}
+
 const TERMINAL_EXECUTION_STATUSES = ['cancelled', 'stopped', 'failed']
 const MESSAGE_RESUMABLE_STAGE_STATUSES = [
   'cancelled',
   'failed',
   'rejected',
   'awaiting_review',
+  'passed',
+  'skipped',
 ]
 
 export function isStageResumableWithMessage(status?: string): boolean {
   return status !== undefined && MESSAGE_RESUMABLE_STAGE_STATUSES.includes(status)
+}
+
+export function isSelectedStageRunning(
+  target: string,
+  runningStageKeys: readonly string[],
+): boolean {
+  return target !== 'coordinator' && runningStageKeys.includes(target)
 }
 
 export function resolveMessageReview<T extends MessageReview>(
@@ -209,7 +260,7 @@ export function isVisibleLiveExecutionMessage(message: ConversationMessage): boo
   // 实时插入的用户消息由乐观/历史渲染呈现（右侧 + @阶段名），
   // 不应再以左侧执行消息的身份出现。
   if (message.role === 'user') return false
-  return message.channel === 'execution'
+  return (message.channel === 'execution' || message.channel === 'review')
     && (message.status === 'running'
       || TERMINAL_EXECUTION_STATUSES.includes(message.status || '')
       || hasMessageContent(message.content))

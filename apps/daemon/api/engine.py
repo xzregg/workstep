@@ -68,6 +68,20 @@ class EngineInstallRequest(BaseModel):
     accept_third_party_terms: bool = False
 
 
+def _engine_config_snapshot(engine: BaseLLMEngine) -> dict:
+    values = dict(engine.get_full_config_values())
+    secrets = engine.get_config_secrets()
+    for field in engine.full_config_schema():
+        if not (field.sensitive or field.type == "password"):
+            continue
+        values[field.key] = (
+            engine.reveal_config_value(field.key)
+            if secrets.get(field.key)
+            else None
+        )
+    return values
+
+
 def _engine_summaries() -> list[dict]:
     return [
         {
@@ -262,6 +276,35 @@ async def install_engine(engine_id: str, req: EngineInstallRequest | None = None
     }
 
 
+@router.post("/{engine_id}/update")
+async def update_engine(engine_id: str):
+    """Update an installed SDK engine package in the daemon environment."""
+    cls = list_all_engines().get(engine_id)
+    if cls is None:
+        raise HTTPException(status_code=404, detail="未知引擎")
+    engine = cls()
+    if not engine.is_installed():
+        raise HTTPException(status_code=400, detail="引擎尚未安装，请先安装")
+    if engine.update_command() is None:
+        raise HTTPException(status_code=400, detail="该引擎不支持自动更新")
+    result = await engine.update()
+    engine_info = None
+    if result.success:
+        config_store.set_engine_verified(engine_id, False)
+        refresh_registry()
+        engine_info = next(
+            (item for item in get_available_engines() if item["id"] == engine_id),
+            None,
+        )
+    return {
+        "engine_id": engine_id,
+        "success": result.success,
+        "already_installed": result.already_installed,
+        "message": result.message,
+        "engine": engine_info,
+    }
+
+
 @router.get("/{engine_id}/inspect")
 async def inspect_engine(
     engine_id: str,
@@ -280,6 +323,29 @@ async def inspect_engine(
     if result is None:
         raise HTTPException(status_code=400, detail="该引擎不支持查看加载能力")
     return result
+
+
+@router.get("/{engine_id}/quota")
+async def get_engine_quota(engine_id: str, project_id: str = ""):
+    """Fetch account quota for engines that expose a native quota API."""
+    refresh_registry(invalidate_scan=False)
+    engine = create_engine(engine_id)
+    get_quota = getattr(engine, "get_quota", None) if engine is not None else None
+    if not callable(get_quota):
+        return {"engine_id": engine_id, "supported": False, "quota": None}
+    project = (
+        project_manager.get_project_by_id(project_id.strip())
+        if project_id.strip()
+        else None
+    )
+    quota = await get_quota(
+        cwd=str(project.path) if project else str(Path.cwd())
+    )
+    return {
+        "engine_id": engine_id,
+        "supported": True,
+        "quota": quota,
+    }
 
 
 @router.get("/{engine_id}/models")
@@ -431,6 +497,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
     if cls is None:
         return {"engine_id": engine_id, "saved": False, "message": "未知引擎"}
     engine = cls()
+    previous_config = _engine_config_snapshot(engine)
     try:
         await engine.save_full_config_values(
             dict(req.values),
@@ -445,7 +512,8 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
             "saved": False,
             "message": str(exc) or "保存失败",
         }
-    config_store.set_engine_verified(engine_id, False)
+    if _engine_config_snapshot(engine) != previous_config:
+        config_store.set_engine_verified(engine_id, False)
     refresh_registry()
     response = _engine_config_response(engine_id, engine)
     response.update({"saved": True, "message": "配置已保存"})

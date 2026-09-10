@@ -35,6 +35,7 @@ async def create_project_task(
     source_step_key: str | None = None,
     input_manifest: list[dict] | None = None,
     dispatch_lineage: list[str] | None = None,
+    source: str = "manual",
 ) -> TaskCreationResult:
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
@@ -93,7 +94,9 @@ async def create_project_task(
     if should_start:
         if workflow_runtime is None:
             raise RuntimeError("Workflow runtime not initialized")
-        handle = await workflow_runtime.start(project_id, created["id"], "")
+        handle = await workflow_runtime.start(
+            project_id, created["id"], "", source=source
+        )
         context = (
             project_manager.activate_project_by_id(project_id)
             if hasattr(project_manager, "activate_project_by_id")

@@ -125,6 +125,10 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
             events.append("workflows-recover")
             return 0
 
+        async def requeue_queued_tasks(self):
+            events.append("workflows-requeue")
+            return 0
+
         async def shutdown(self):
             events.append("runtime-shutdown")
 
@@ -138,6 +142,9 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
 
         def close_all(self):
             events.append("projects-close")
+
+        def iter_projects(self):
+            return []
 
     class ScheduleStub:
         async def start(self):
@@ -180,6 +187,7 @@ async def test_lifespan_waits_for_workflows_before_closing_resources(monkeypatch
     assert events == [
         "projects-load",
         "workflows-recover",
+        "workflows-requeue",
         "chats-recover",
         "schedules-start",
         "serving",

@@ -44,6 +44,7 @@ async def assistant_client(tmp_path, monkeypatch):
     # 其余助手在模块 __init__ 里注册；ASGITransport 不跑 lifespan，
     # 这里手动实例化以填充 assistant_registry。
     from agent_assistants.chat_session import ChatSessionModule
+    from agent_assistants.channel_chat import ChannelChatModule
     from agent_assistants.coordinator import CoordinatorModule
     from agent_assistants.task_draft import TaskDraftModule
     from agent_assistants.workflow_gen import WorkflowGenModule
@@ -56,6 +57,7 @@ async def assistant_client(tmp_path, monkeypatch):
     WorkflowGenModule(bus, manager)
     TaskDraftModule(bus, manager)
     ChatSessionModule(bus, manager)
+    ChannelChatModule(bus, manager)
     store = _config_store(tmp_path, monkeypatch)
     monkeypatch.setattr(assistant_api, "config_store", store)
     client = AsyncClient(
@@ -124,7 +126,7 @@ async def test_assistant_list_lists_all_assistants(assistant_client):
     assert response.status_code == 200
     assistants = response.json()["assistants"]
     names = {item["name"] for item in assistants}
-    assert {"task_coordinator", "task_create", "workflow_gen", "chat_session"} <= names
+    assert {"task_coordinator", "task_create", "workflow_gen", "chat_session", "channel_chat"} <= names
     by_name = {item["name"]: item for item in assistants}
     expected_fields = [
         "engine",
@@ -387,6 +389,37 @@ async def test_invoke_engine_merges_provider_config_overrides(monkeypatch):
         plan_mode=True,
     )
     assert captured["config_overrides"] == {"provider_id": "p-b", "sandbox": "read-only"}
+
+
+@pytest.mark.anyio
+async def test_invoke_engine_keeps_progress_out_of_structured_reply(monkeypatch):
+    import agent_assistants.base as base
+    from types import SimpleNamespace
+    from engines.core.events import InternalEvent
+
+    class Engine:
+        capabilities = SimpleNamespace(supports_thinking_effort=False, supports_workstep_tools=False)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            yield InternalEvent("agent_message_chunk", {
+                "content": {"text": "我先检查。"}, "phase": "commentary", "source_item_id": "p1",
+            })
+            yield InternalEvent("agent_message_chunk", {
+                "content": {"text": '{"reply":"完成"}'}, "phase": "final_answer",
+            })
+
+    monkeypatch.setattr(base, "create_engine", lambda _: Engine())
+    published = []
+
+    async def record(event):
+        published.append(event)
+
+    result = await base.invoke_engine("pydantic_ai", None, "/tmp", "hi", None, on_event=record)
+    assert result[0] == '{"reply":"完成"}'
+    assert published[0].data["phase"] == "commentary"
+    assert result[1][0]["data"]["source_item_id"] == "p1"
 
 
 @pytest.mark.anyio

@@ -43,6 +43,8 @@
 - 新文案先写 `zh-CN.ts`，键集合保持一致。
 
 ## 接口与格式
+- 助手文字的阶段信息是跨引擎扩展：内部 `agent_message_chunk.data` 与外部 `TEXT_MESSAGE_CHUNK` 保留可选 `phase: commentary | final_answer`、`source_item_id`。`commentary` 是过程播报，不是模型推理；任务、审核、助手的正文和结构化解析不累加它，完整日志保留它，摘要单独记录 `commentary_characters`。前端在 `ProcessTrace` 中与思考、工具按顺序展示，运行时展开、结束后折叠；正文和复制回复只取非 commentary 文字。
+- 原生阶段来源：Codex SDK 按消息项 ID 关联 started/delta/completed，按项去重；Codex CLI 保留 item 的 phase；Pydantic AI 保留 TextPart 的 `provider_details.phase` 并关联同 part 的后续增量；缺少 phase 时先缓存文字，SDK 发起工具调用则将该轮文字归为 commentary，收到被接受的 agent_run_result 才归为 final_answer，中断时未完成文字保留为过程。该路径的无标记文字需等待 SDK 确定分类后展示。其他引擎继续复用同一消费链路；没有原生阶段字段时保持原行为，不按措辞或段落位置猜测，旧历史不重写。
 - 内部事件示例：`{"type":"agent_message_chunk","data":{"content":{"text":"..."}},"timestamp":...}`；`{"type":"tool_call_update","data":{"tool_call_id":"...","status":"completed","raw_output":"..."}}`。
 - AG-UI 负载示例：`{"type":"TEXT_MESSAGE_CHUNK","messageId":"...","role":"assistant","delta":"...","channel":"execution","task_id":"...","step_key":"...","sequence":n,"timestamp":...}`；A2UI：`{"type":"CUSTOM","name":"a2ui.surface","value":{"version":"v0.9.1","createSurface":{...}},"channel":"flow_gen","messageId":"...","session_id":"..."}`。
 - 历史接口 `events` 数组返回 AG-UI 同格式；DB 只存新词汇内部事件，旧数据读时经兼容映射再翻译。
@@ -56,3 +58,20 @@
 - 引擎无原生来源的事件不发（capability 元数据声明），不合成默认值。
 - AG-UI 用当前规范词汇（`REASONING_*`，废弃 `THINKING_*` 不用）；一次发布直接切换，不做新旧双格式并存。
 - 前端测试用 Node 内置 `node:test`（`node --test`，需 Node ≥ 23.6 支持 TS 类型擦除；本机用 bundled Node v24）。
+
+### Pydantic 子代理实时进度
+
+Pydantic harness 的 `SubAgents.shared_capabilities` 注入运行观察器，以子代理
+`run_id` 区分同名调用。`wrap_run` 发布一次开始及完成／失败／停止状态；
+`wrap_run_event_stream` 转发各模型和工具节点的文字、思考与工具事件，节点流结束不代表子代理结束。
+内部 `subagent.data.event` 保存原始子事件，公共 AG-UI 翻译层将其转换为
+`workstep.subagent.value.events`。子事件仅保存在子代理时间线，不进入主代理正文。
+共享展示组件按顺序展示这些事件，运行中展开，结束后折叠，并支持手动展开及日志回放。
+
+### 其他引擎的子代理来源
+
+Claude Code、Claude Agent SDK、Qoder SDK 根据 `parent_tool_use_id` 隔离子消息及去重状态；
+前端将父工具 ID 与生命周期消息中的 task ID 关联到同一子代理记录。
+DeepSeek Harness 将已登记的子会话 `session.event` 包进同一嵌套事件格式。
+Codex CLI / SDK 将 `agents_states` 原生协作快照展示为子代理状态和摘要，工具调用结束不等于子代理结束。
+这些快照不承诺包含完整子会话逐字流。Hermes 沿用 ACP 原生事件；OpenClaw 的一次性信封没有独立子代理流来源，未合成此能力。

@@ -15,6 +15,7 @@ import { create } from 'zustand'
 import type { EngineInputItem } from '../api/client.ts'
 import {
   CUSTOM,
+  appendMessageContent,
   availableCommandInputItems,
   customValue,
   isCustom,
@@ -43,6 +44,8 @@ export interface AssistantChatEvent {
   value?: Record<string, unknown>
   role?: string
   delta?: string
+  phase?: string
+  source_item_id?: string
   content?: string
   prompt?: string
   status?: string
@@ -80,6 +83,7 @@ export interface AssistantChatMessage {
     event_count?: number
     last_event_seq?: number
     thought_characters?: number
+    commentary_characters?: number
     tool_count?: number
   }
   event_detail?: {
@@ -433,12 +437,11 @@ export function createAssistantStore(
           running = true
         } else if (event.type === 'TEXT_MESSAGE_CHUNK' && mid) {
           const index = findIndex(mid)
-          const delta = String(event.delta ?? '')
           if (index === -1) {
             messages.push({
               id: mid,
               role: event.role === 'user' ? 'user' : 'assistant',
-              content: delta,
+              content: appendMessageContent('', event),
               status: 'running',
               engine: event.engine,
               model: event.model,
@@ -447,14 +450,14 @@ export function createAssistantStore(
               author_name: event.actor?.name,
               author_device_id: event.actor?.device_id,
               author_device_name: event.actor?.device_name,
-              events: [],
+              events: [event],
             })
           } else {
             const current = messages[index]
             messages[index] = {
               ...current,
               role: event.role === 'user' ? 'user' : current.role,
-              content: current.content + delta,
+              content: appendMessageContent(current.content, event),
               events: [...(current.events || []), event],
             }
           }
@@ -464,9 +467,7 @@ export function createAssistantStore(
           if (index !== -1) {
             messages[index] = {
               ...messages[index],
-              content: typeof event.content === 'string'
-                ? event.content
-                : String(event.delta ?? messages[index].content),
+              content: appendMessageContent(messages[index].content, event),
             }
           }
         } else if (

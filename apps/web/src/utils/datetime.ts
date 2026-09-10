@@ -62,6 +62,36 @@ export function formatDurationBetween(
   return durationMs === null ? null : formatDuration(durationMs, t)
 }
 
+/**
+ * Codex 风格的相对时间（如「4小时前」「15天前」「2个月前」）。
+ * 依据 `now` 与 `value` 的差值取最大的时间单位向下取整；无法解析或差值过小时返回「刚刚」。
+ */
+export function formatRelativeTime(
+  value: DateTimeValue,
+  now: DateTimeValue = Date.now(),
+  t: TFunction = zhCNT,
+): string {
+  const valueMs = toMilliseconds(value)
+  const nowMs = toMilliseconds(now)
+  if (valueMs === null || nowMs === null) return ''
+  const diffMs = nowMs - valueMs
+  if (diffMs < 60_000) return t('datetime.justNow')
+
+  const totalSeconds = Math.floor(diffMs / 1000)
+  const units = [
+    { label: 'datetime.year', seconds: 365 * 86_400 },
+    { label: 'datetime.month', seconds: 30 * 86_400 },
+    { label: 'datetime.day', seconds: 86_400 },
+    { label: 'datetime.hour', seconds: 3_600 },
+    { label: 'datetime.minute', seconds: 60 },
+  ] as const
+  for (const unit of units) {
+    const value = Math.floor(totalSeconds / unit.seconds)
+    if (value > 0) return `${value}${t(unit.label)}${t('datetime.ago')}`
+  }
+  return t('datetime.justNow')
+}
+
 export function formatExecutionClock(value: DateTimeValue): string {
   const milliseconds = toMilliseconds(value)
   if (milliseconds === null) return ''

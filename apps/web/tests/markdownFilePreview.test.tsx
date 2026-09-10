@@ -48,6 +48,21 @@ test('resolves file:// absolute links to previewable project files', () => {
   assert.equal(classifyProjectFileLink('file:///Users/me/proj/site.html', undefined), null)
 })
 
+test('splits clickable file line suffixes from Unix and Windows paths', () => {
+  assert.deepEqual(
+    classifyProjectFileLink('/Users/xzr/Desktop/workstep/app.py:1071', 'project-1'),
+    { path: '/Users/xzr/Desktop/workstep/app.py', name: 'app.py', line: 1071 },
+  )
+  assert.deepEqual(
+    classifyProjectFileLink('src/app.ts#L42', 'project-1'),
+    { path: 'src/app.ts', name: 'app.ts', line: 42 },
+  )
+  assert.deepEqual(
+    classifyProjectFileLink('C:\\repo\\main.rs:12:5', 'project-1'),
+    { path: 'C:\\repo\\main.rs', name: 'main.rs', line: 12, column: 5 },
+  )
+})
+
 test('renders file:// project links as preview actions', () => {
   const html = renderToStaticMarkup(
     <I18nProvider>
@@ -105,4 +120,14 @@ test('code preview renders line numbers, language metadata and highlighted token
   assert.match(html, /class="code-preview-line-number"[^>]*>2</)
   assert.match(html, /hljs-keyword/)
   assert.match(html, /const/)
+})
+
+test('code preview marks the requested source line', () => {
+  const html = renderToStaticMarkup(
+    <I18nProvider>
+      <CodeFilePreview filename="example.ts" content={'one\ntwo\nthree'} line={2} />
+    </I18nProvider>,
+  )
+
+  assert.match(html, /class="code-preview-line is-target"[^>]*data-line="2"/)
 })

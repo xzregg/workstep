@@ -30,6 +30,7 @@ async def test_user_name_round_trip_persists_to_global_config(system_settings_cl
     response = await client.get("/api/system-settings")
     assert response.status_code == 200
     assert response.json()["user_name"] == ""
+    assert response.json()["open_mode"] is False
     assert response.json()["device_id"]
     assert response.json()["device_name"]
 
@@ -45,6 +46,20 @@ async def test_user_name_round_trip_persists_to_global_config(system_settings_cl
 
     response = await client.get("/api/system-settings")
     assert response.json()["user_name"] == "小王"
+
+
+async def test_open_mode_round_trip_persists_to_global_config(system_settings_client):
+    client, config_file = system_settings_client
+
+    response = await client.put(
+        "/api/system-settings",
+        json={"open_mode": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["open_mode"] is True
+    assert json.loads(config_file.read_text(encoding="utf-8"))["open_mode"] is True
+    assert (await client.get("/api/system-settings")).json()["open_mode"] is True
 
 
 async def test_user_name_rejects_blank_value(system_settings_client):

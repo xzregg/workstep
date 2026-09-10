@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const taskListSource = await readFile(new URL('../src/pages/TaskList.tsx', import.meta.url), 'utf8')
-const layoutSource = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
+const workflowCreateDialogSource = await readFile(new URL('../src/components/WorkflowCreateDialog.tsx', import.meta.url), 'utf8')
 const scheduleSource = await readFile(new URL('../src/pages/SchedulePage.tsx', import.meta.url), 'utf8')
 
 test('task assistant button toggles its embedded conversation', () => {
@@ -16,11 +16,11 @@ test('task assistant button toggles its embedded conversation', () => {
 })
 
 test('new-workflow assistant button toggles its embedded conversation', () => {
-  assert.match(layoutSource, /aria-expanded=\{addWfAiOpen\}/)
-  assert.match(layoutSource, /if \(addWfAiOpen\) \{\s*requestCloseAddWfAi\(\)\s*return\s*\}/)
+  assert.match(workflowCreateDialogSource, /aria-expanded=\{aiOpen\}/)
+  assert.match(workflowCreateDialogSource, /if \(aiOpen\) \{[\s\S]*?setAiOpen\(false\)[\s\S]*?return/)
   assert.doesNotMatch(
-    layoutSource,
-    /const handleStartAiCreate[\s\S]*?if \(!newWfName\.trim\(\)\)[\s\S]*?setAddWfAiOpen\(true\)/,
+    workflowCreateDialogSource,
+    /const toggleAi[\s\S]*?if \(!name\.trim\(\)\)[\s\S]*?setAiOpen\(true\)/,
   )
 })
 

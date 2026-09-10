@@ -242,7 +242,7 @@ async def test_one_shot_task_timer_starts_once_and_clears(tmp_path):
     started = []
 
     class Runtime:
-        async def start(self, project_id, task_id, prompt):
+        async def start(self, project_id, task_id, prompt, source="manual"):
             started.append((project_id, task_id))
 
     module = ScheduleModule(manager, tasks, Runtime())
@@ -275,7 +275,7 @@ async def test_stopped_one_shot_task_does_not_restart_on_next_tick(tmp_path):
     starts = 0
 
     class Runtime:
-        async def start(self, project_id, task_id, prompt):
+        async def start(self, project_id, task_id, prompt, source="manual"):
             nonlocal starts
             starts += 1
             raise asyncio.CancelledError

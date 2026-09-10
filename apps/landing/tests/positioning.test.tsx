@@ -13,12 +13,12 @@ function renderLanding() {
 }
 
 describe('landing positioning', () => {
-  it('explains stage-based work instead of role-based prompting', () => {
+  it('explains AI tool orchestration instead of LLM API orchestration', () => {
     const html = renderLanding()
 
-    expect(html).toContain('AI 不缺角色，工作缺的是流程')
-    expect(html).toContain('不定义 AI 假装是谁')
-    expect(html).toContain('上下文与产物自动接力')
+    expect(html).toContain('别人在编排模型 API，我们在编排 AI 工具')
+    expect(html).toContain('不造 Agent，编排已经能干活的 Agent')
+    expect(html).toContain('编排现成 Agent 工具，不造轮子')
   })
 
   it('presents reciprocal, multi-person remote project collaboration', () => {
@@ -43,7 +43,7 @@ describe('landing positioning', () => {
 
   it('places demos after the outcome features and remote sharing at the end', () => {
     const html = renderLanding()
-    const featuresIndex = html.indexOf('让工作自己接着往下走')
+    const featuresIndex = html.indexOf('让 AI 工具自己接着往下干')
     const demosIndex = html.indexOf('像看视频一样，看完一次完整的工作流')
     const workflowIndex = html.indexOf('不限于研发，任意流程都能编排')
     const remoteShareIndex = html.indexOf('你的项目分享给我')

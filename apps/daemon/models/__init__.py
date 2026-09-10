@@ -18,6 +18,7 @@ from models.gen_session import WorkflowGenSession
 from models.schedule import Schedule, ScheduleRun
 from models.share import TaskShare
 from models.chat_session import ChatSession, ChatMessage, ProjectSetting
+from models.channel import Channel, ChannelChatMapping
 from models.migrations import LATEST_SCHEMA_VERSION, migrate_database
 
 # Complete model registry for callers that need model metadata.
@@ -41,6 +42,8 @@ ALL_MODELS = [
     ChatSession,
     ChatMessage,
     ProjectSetting,
+    Channel,
+    ChannelChatMapping,
 ]
 
 

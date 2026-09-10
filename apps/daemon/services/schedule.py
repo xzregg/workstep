@@ -623,7 +623,9 @@ class ScheduleModule:
         if scheduled_at is None:
             return
         try:
-            await self._runtime.start(project_id, task_id, "")
+            await self._runtime.start(
+                project_id, task_id, "", source="scheduled_start"
+            )
         except asyncio.CancelledError:
             # A user stop cancels the workflow coroutine. The one-shot timer
             # must be consumed as well, otherwise the next polling tick sees
@@ -749,6 +751,7 @@ class ScheduleModule:
                     start_step_key=template.get("start_step_key"),
                     review_overrides=template.get("review_overrides"),
                     execution_mode=execution_mode,
+                    source="schedule",
                 )
             await self._attach_task_result(project_id, run_id, result)
         except asyncio.CancelledError:
@@ -842,6 +845,7 @@ class ScheduleModule:
             start_step_key=result.get("start_step_key"),
             review_overrides=None,
             execution_mode=execution_mode,
+            source="schedule",
         )
 
     async def _attach_task_result(self, project_id, run_id, result) -> None:

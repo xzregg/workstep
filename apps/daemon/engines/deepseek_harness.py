@@ -40,6 +40,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
+    UPDATE_PACKAGE = "deepseek-harness-sdk"
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -280,7 +281,31 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         except json.JSONDecodeError:
             return raw
 
-    def _map_notification(
+    def _map_notification(self, notification, root_session_id):
+        payload = getattr(notification, "payload", {})
+        method = getattr(notification, "method", "")
+        if not isinstance(payload, Mapping):
+            return self._map_notification_content(notification, root_session_id)
+        children = self.__dict__.setdefault("_child_streamed_blocks", {})
+        if method == "subagent.started" and payload.get("parentSessionId") == root_session_id:
+            children.setdefault(str(payload.get("childSessionId")), set())
+        child_id = str(payload.get("sessionId") or "")
+        if method == "session.event" and child_id != root_session_id and child_id in children:
+            parent_blocks = self._streamed_blocks
+            try:
+                self._streamed_blocks = children[child_id]
+                events = self._map_notification_content(notification, child_id)
+            finally:
+                self._streamed_blocks = parent_blocks
+            frames = []
+            for event in events:
+                frame = subagent_event(task_id=child_id, status="running", stage="progress")
+                frame.data["event"] = event.to_dict()
+                frames.append(frame)
+            return frames
+        return self._map_notification_content(notification, root_session_id)
+
+    def _map_notification_content(
         self,
         notification: Any,
         root_session_id: str,
@@ -543,6 +568,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             self._harness = harness
             self._running = True
             self._streamed_blocks.clear()
+            self.__dict__.setdefault("_child_streamed_blocks", {}).clear()
             self._turn_error_emitted = False
             yield InternalEvent(
                 type="session_started",

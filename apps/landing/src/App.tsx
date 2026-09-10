@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Compare } from './components/Compare'
 import { Demos } from './components/Demos'
 import { DemoModal } from './components/DemoModal'
 import { DownloadModal } from './components/DownloadModal'
@@ -41,6 +42,7 @@ export default function App() {
         <EnginesStrip />
         <Philosophy />
         <Features />
+        <Compare />
         <Demos onOpen={setOpenDemo} />
         <Workflow />
         <RemoteShare />

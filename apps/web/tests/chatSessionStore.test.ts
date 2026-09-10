@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  mergeChatSessionRunningState,
   useChatListStore,
   useChatSessionStore,
 } from '../src/stores/chatSessionStore.ts'
@@ -20,6 +21,13 @@ function summary(id: string, title: string, messageCount = 0) {
     updated_at: '2026-08-12T00:00:00+00:00',
   }
 }
+
+test('sidebar running state falls back to persisted list state until a live event arrives', () => {
+  const running = { ...summary('s1', '执行中'), running: true }
+  assert.deepEqual(mergeChatSessionRunningState([running], {}), { s1: true })
+  assert.deepEqual(mergeChatSessionRunningState([running], { s1: false }), { s1: false })
+  assert.deepEqual(mergeChatSessionRunningState([running], { s2: true }), { s1: true, s2: true })
+})
 
 test('chat message store only accepts session_chat events', () => {
   useChatSessionStore.setState({ sessions: {} })

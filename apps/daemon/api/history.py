@@ -42,7 +42,7 @@ async def task_message_events(
     message_id: str,
     project_id: str = Query(...),
     cursor: int = Query(0, ge=0),
-    limit: int = Query(200, ge=1, le=200),
+    limit: int = Query(30000, ge=1, le=30000),
 ):
     """Return a bounded detail page from a task message's JSONL journal."""
     project = project_manager.get_project_by_id(project_id)

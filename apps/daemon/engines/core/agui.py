@@ -244,7 +244,10 @@ def to_agui_events(
         data = {}
 
     if event_type == "agent_message_chunk":
-        return [_message_chunk(event, ctx, role="assistant", delta=_extract_content_text(data))]
+        return [_message_chunk(
+            event, ctx, role="assistant", delta=_extract_content_text(data),
+            extra={key: data[key] for key in ("phase", "source_item_id") if key in data},
+        )]
     if event_type == "user_message_chunk":
         return [_message_chunk(event, ctx, role="user", delta=_extract_content_text(data))]
     if event_type == "live_message":
@@ -289,6 +292,10 @@ def to_agui_events(
                 **({"ended_at": data["ended_at"]} if data.get("ended_at") is not None else {}),
             },
         )]
+    if event_type == "subagent" and isinstance(data.get("event"), Mapping):
+        child = data["event"]
+        data = {key: value for key, value in data.items() if key != "event"}
+        data["events"] = to_agui_events(child, ctx)
     name = _CUSTOM_NAMES.get(event_type)
     if name is not None:
         return [_custom(event, ctx, name, data)]
@@ -355,7 +362,14 @@ def _map_tool_call(
         start["name"] = title
     if data.get("kind"):
         start["kind"] = str(data["kind"])
-    start["status"] = "pending"
+    start["status"] = str(data.get("status") or "pending")
+    for source_key, target_key in (
+        ("content", "content"),
+        ("locations", "locations"),
+        ("_meta", "_meta"),
+    ):
+        if data.get(source_key) is not None:
+            start[target_key] = data[source_key]
     if data.get("needs_approval"):
         start["needsApproval"] = True
     if ctx.message_id:
@@ -392,6 +406,9 @@ def _map_tool_call_update(
             "output": output,
             "isError": status == "failed",
         }
+        for key in ("content", "locations", "_meta"):
+            if data.get(key) is not None:
+                result[key] = data[key]
         if ctx.message_id:
             result["messageId"] = ctx.message_id
         result.update(_base_fields(event, ctx))
@@ -403,6 +420,9 @@ def _map_tool_call_update(
         "delta": _text(raw_input) if raw_input is not None else "",
         "status": status,
     }
+    for key in ("content", "locations", "_meta"):
+        if data.get(key) is not None:
+            chunk[key] = data[key]
     if ctx.message_id:
         chunk["messageId"] = ctx.message_id
     chunk.update(_base_fields(event, ctx))

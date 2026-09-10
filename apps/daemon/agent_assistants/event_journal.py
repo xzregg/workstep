@@ -202,6 +202,7 @@ class TurnEventJournal:
         events = self._read(ref)
         content_parts: list[str] = []
         thought_characters = 0
+        commentary_characters = 0
         tool_ids: set[str] = set()
         summary_events: list[dict[str, Any]] = []
         latest_usage: dict[str, Any] | None = None
@@ -209,7 +210,11 @@ class TurnEventJournal:
             event_type = event.get("type")
             data = event.get("data") or {}
             if event_type == "agent_message_chunk":
-                content_parts.append(str((data.get("content") or {}).get("text", "")))
+                text = str((data.get("content") or {}).get("text", ""))
+                if data.get("phase") == "commentary":
+                    commentary_characters += len(text)
+                else:
+                    content_parts.append(text)
             elif event_type == "agent_thought_chunk":
                 thought_characters += len(str((data.get("content") or {}).get("text", "")))
             elif event_type in {"tool_call", "tool_call_update"}:
@@ -236,6 +241,7 @@ class TurnEventJournal:
                 "event_count": len(events),
                 "last_event_seq": int(events[-1].get("seq") or 0) if events else 0,
                 "thought_characters": thought_characters,
+                "commentary_characters": commentary_characters,
                 "tool_count": len(tool_ids),
             },
             "events": summary_events,

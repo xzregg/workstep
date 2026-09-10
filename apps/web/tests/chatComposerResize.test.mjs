@@ -17,8 +17,8 @@ test('assistant chat panel exposes a draggable composer divider', () => {
   assert.match(panelSource, /onKeyDown=\{handleComposerResizeKey\}/)
 })
 
-test('composer height is clamped between a 170px minimum and a panel fraction', () => {
-  assert.match(panelSource, /MIN_COMPOSER_HEIGHT = 170/)
+test('composer height is clamped between a 220px minimum and a panel fraction', () => {
+  assert.match(panelSource, /MIN_COMPOSER_HEIGHT = 220/)
   assert.match(panelSource, /MAX_COMPOSER_FRACTION = 0\.85/)
   assert.match(panelSource, /Math\.min\(Math\.max\(MIN_COMPOSER_HEIGHT, height\), max\)/)
 })

@@ -212,10 +212,16 @@ def mark_handoff_consumed(workstep_dir: str | Path, metadata: dict[str, Any]) ->
     _replace_jsonl(path, existing)
 
 
-def render_handoff_reference(metadata: dict[str, Any]) -> str:
+def render_handoff_reference(
+    metadata: dict[str, Any],
+    workstep_dir: str | Path,
+) -> str:
     """Render the bounded bootstrap that points the target engine at the log."""
     if metadata.get("mode") == "none":
         return ""
+    root = Path(workstep_dir).resolve()
+    handoff_path = (root / str(metadata.get("relative_path") or "")).resolve()
+    handoff_path.relative_to((root / "event_logs").resolve())
     reading_instruction = (
         "先读取最新交接摘要和截止消息前最近的可见消息；需要追溯时再向前读取。"
         if metadata.get("mode") == "smart"
@@ -224,7 +230,7 @@ def render_handoff_reference(metadata: dict[str, Any]) -> str:
     return (
         "<workstep_context_handoff>\n"
         "这是一次跨引擎会话交接。请先读取项目内的只读交接日志，再处理当前请求。\n"
-        f"交接日志：{metadata.get('relative_path')}\n"
+        f"交接日志：{handoff_path}\n"
         f"交接 ID：{metadata.get('handoff_id')}\n"
         f"交接方式：{metadata.get('mode')}\n"
         f"截止消息：{metadata.get('cutoff_message_id') or '无'}\n"

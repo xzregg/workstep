@@ -170,6 +170,12 @@ class ConfigStore:
         user["name"] = name.strip()
         self.set("user", user)
 
+    def get_open_mode(self) -> bool:
+        return self.get("open_mode", False) is True
+
+    def set_open_mode(self, enabled: bool) -> None:
+        self.set("open_mode", enabled)
+
     def get_device_identity(self) -> dict[str, str]:
         """Return the stable identity of this WorkStep installation.
 
@@ -718,6 +724,42 @@ class ConfigStore:
         self.set("prompt_enhance", {
             "provider_id": str(provider_id or "").strip(),
             "model": str(model or "").strip(),
+        })
+
+    # ── concurrency limits (global defaults, per-project overrides live in DB) ──
+
+    def get_concurrency_config(self) -> dict:
+        """Global task/chat concurrency defaults.
+
+        ``max_tasks`` / ``max_chats`` are non-negative ints where ``0`` means
+        "unlimited"; ``schedule_exempt`` exempts scheduled tasks from the task
+        channel. Per-project values override these (see project_settings).
+        """
+        raw = self.get("concurrency", {})
+        if not isinstance(raw, dict):
+            raw = {}
+
+        def as_limit(value, default: int) -> int:
+            try:
+                parsed = int(value)
+            except (TypeError, ValueError):
+                return default
+            return parsed if parsed >= 0 else default
+
+        return {
+            "max_tasks": as_limit(raw.get("max_tasks"), 0),
+            "max_chats": as_limit(raw.get("max_chats"), 0),
+            "schedule_exempt": bool(raw.get("schedule_exempt", False)),
+        }
+
+    def set_concurrency_config(
+        self, *, max_tasks: int, max_chats: int, schedule_exempt: bool
+    ) -> None:
+        """Save global concurrency defaults (0 = unlimited)."""
+        self.set("concurrency", {
+            "max_tasks": int(max_tasks) if int(max_tasks) > 0 else 0,
+            "max_chats": int(max_chats) if int(max_chats) > 0 else 0,
+            "schedule_exempt": bool(schedule_exempt),
         })
 
     def delete_provider(self, provider_id: str) -> bool:

@@ -1,3 +1,5 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useOverlay } from '../hooks/useOverlay'
 import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Button from '../components/Button'
@@ -28,6 +30,7 @@ import ProviderSettings from './ProviderSettings'
 import RemoteProjectSettings from './RemoteProjectSettings'
 import ModelPricingSettings from './ModelPricingSettings'
 import SkillCenterSettings from './SkillCenterSettings'
+import ChannelsPage from './ChannelsPage'
 import {
   ENGINE_COLORS,
   engineLabel,
@@ -714,7 +717,7 @@ interface EnhanceProviderInfo {
   enabled: boolean
 }
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'skills' | 'remote' | 'system'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'skills' | 'channels' | 'remote' | 'system'
 export type SettingsFocusTarget = 'provider-create' | 'execution-engine'
 
 interface SettingsPageProps {
@@ -733,10 +736,15 @@ export default function SettingsPage({
   onConfigurationChanged,
 }: SettingsPageProps) {
   const { t, locale, setLocale } = useI18n()
+  const compactLayout = useCompactLayout()
+  const settingsDialogRef = useRef<HTMLDivElement>(null)
+  useOverlay(true, onClose, settingsDialogRef, compactLayout)
   const userName = useUserSettingsStore((state) => state.userName)
   const userSettingsLoading = useUserSettingsStore((state) => state.loading)
   const userSettingsError = useUserSettingsStore((state) => state.error)
   const saveUserName = useUserSettingsStore((state) => state.saveUserName)
+  const openMode = useUserSettingsStore((state) => state.openMode)
+  const saveOpenMode = useUserSettingsStore((state) => state.saveOpenMode)
   const [userNameDraft, setUserNameDraft] = useState(userName)
   const [userNameSaved, setUserNameSaved] = useState(false)
   const [fontSize, setFontSize] = useState(loadFontSizePreference)
@@ -747,6 +755,7 @@ export default function SettingsPage({
   const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, EngineTestResult>>({})
   const [installingEngine, setInstallingEngine] = useState<string | null>(null)
+  const [updatingEngine, setUpdatingEngine] = useState<string | null>(null)
   const [termsEngine, setTermsEngine] = useState<EngineInfo | null>(null)
   const [installResults, setInstallResults] = useState<Record<string, EngineInstallResult>>({})
   const [models, setModels] = useState<Record<string, EngineModel[]>>({})
@@ -899,13 +908,7 @@ export default function SettingsPage({
     void loadEngines(false)
   }, [])
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+
 
   const testEngine = async (engineId: string) => {
     setTestingEngine(engineId)
@@ -971,6 +974,34 @@ export default function SettingsPage({
       }))
     } finally {
       setInstallingEngine(null)
+    }
+  }
+
+  const updateEngine = async (engineId: string) => {
+    setUpdatingEngine(engineId)
+    setInstallResults((current) => {
+      const next = { ...current }
+      delete next[engineId]
+      return next
+    })
+    try {
+      const result = await engineApi.update(engineId)
+      setInstallResults((current) => ({ ...current, [engineId]: result }))
+      if (result.success) await loadEngines(true)
+    } catch (updateError) {
+      setInstallResults((current) => ({
+        ...current,
+        [engineId]: {
+          engine_id: engineId,
+          success: false,
+          already_installed: true,
+          message: updateError instanceof Error
+            ? updateError.message
+            : t('settings.updateFailed', { error: '' }),
+        },
+      }))
+    } finally {
+      setUpdatingEngine(null)
     }
   }
 
@@ -1082,6 +1113,7 @@ export default function SettingsPage({
 
   return (
     <div
+      ref={settingsDialogRef}
       className="modal-overlay"
       role="dialog"
       aria-modal="true"
@@ -1198,6 +1230,19 @@ export default function SettingsPage({
           {t('skillCenter.nav')}
         </button>
         <button
+          aria-current={activeSection === 'channels' ? 'page' : undefined}
+          onClick={() => setActiveSection('channels')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'channels' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'channels' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
+          }}
+        >
+          <Icon name="radio" size={16} strokeWidth={2} />
+          {t('nav.channels')}
+        </button>
+        <button
           aria-current={activeSection === 'remote' ? 'page' : undefined}
           onClick={() => setActiveSection('remote')}
           style={{
@@ -1286,6 +1331,7 @@ export default function SettingsPage({
                 const installResult = installResults[engine.id]
                 const isTesting = testingEngine === engine.id
                 const isInstalling = installingEngine === engine.id
+                const isUpdating = updatingEngine === engine.id
                 const engineModels = models[engine.id] || []
                 const savedDefaultModel = defaultModels[engine.id] || ''
                 const usesCustomModel = Boolean(
@@ -1481,6 +1527,21 @@ export default function SettingsPage({
                       onClick={() => void testEngine(engine.id)}
                     >
                       {t('settings.test')}
+                    </Button>
+                  )}
+
+                  {engine.installed && engine.updatable && (
+                    <Button
+                      variant="ghost"
+                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
+                      disabled={updatingEngine !== null || installingEngine !== null || testingEngine !== null}
+                      loading={isUpdating}
+                      title={engine.update_command
+                        ? `${t('settings.updateHint')}：${engine.update_command}`
+                        : undefined}
+                      onClick={() => void updateEngine(engine.id)}
+                    >
+                      {t('settings.update')}
                     </Button>
                   )}
 
@@ -1692,6 +1753,8 @@ export default function SettingsPage({
           <ModelPricingSettings />
         ) : activeSection === 'templates' ? (
           <TemplateSettings />
+        ) : activeSection === 'channels' ? (
+          <ChannelsPage />
         ) : activeSection === 'remote' ? (
           <RemoteProjectSettings />
         ) : activeSection === 'system' ? (
@@ -1739,6 +1802,31 @@ export default function SettingsPage({
                   {userSettingsError}
                 </div>
               )}
+            </div>
+            <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
+              <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.openMode')}</h2>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={openMode}
+                aria-label={t('settings.openMode')}
+                disabled={userSettingsLoading}
+                onClick={() => void saveOpenMode(!openMode)}
+                style={{
+                  position: 'relative', width: 36, height: 20, padding: 0,
+                  border: 'none', borderRadius: 10,
+                  background: openMode ? 'var(--accent)' : 'var(--border)',
+                  cursor: userSettingsLoading ? 'default' : 'pointer',
+                  transition: 'background 0.16s ease',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, left: openMode ? 18 : 2,
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.24)',
+                  transition: 'left 0.16s ease',
+                }} />
+              </button>
             </div>
             <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
               <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.fontSize')}</h2>

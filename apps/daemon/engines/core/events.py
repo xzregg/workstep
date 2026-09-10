@@ -200,9 +200,24 @@ def extract_reasoning_text(value: Any) -> str:
     return ""
 
 
-def agent_message_chunk(text: str) -> InternalEvent:
+def agent_message_chunk(
+    text: str, *, phase: Any = None, source_item_id: str | None = None,
+) -> InternalEvent:
     """ACP ``agent_message_chunk`` — assistant text increment."""
-    return InternalEvent(type="agent_message_chunk", data={"content": _content_block(text)})
+    data: dict[str, Any] = {"content": _content_block(text)}
+    phase = getattr(phase, "value", phase)
+    if phase in ("commentary", "final_answer"):
+        data["phase"] = phase
+    if source_item_id:
+        data["source_item_id"] = source_item_id
+    return InternalEvent(type="agent_message_chunk", data=data)
+
+
+def is_commentary(event: InternalEvent | Mapping[str, Any]) -> bool:
+    """Only an explicit engine phase identifies progress narration."""
+    kind = event.type if isinstance(event, InternalEvent) else event.get("type")
+    data = event.data if isinstance(event, InternalEvent) else event.get("data") or {}
+    return kind == "agent_message_chunk" and data.get("phase") == "commentary"
 
 
 def agent_thought_chunk(text: str) -> InternalEvent:

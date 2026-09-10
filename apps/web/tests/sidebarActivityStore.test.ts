@@ -1,7 +1,29 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { useSidebarActivityStore } from '../src/stores/sidebarActivityStore.ts'
+import {
+  deriveWorkflowRunningState,
+  useSidebarActivityStore,
+} from '../src/stores/sidebarActivityStore.ts'
+
+test('workflow running state follows active-project task events without a project refresh', () => {
+  const projects = [{
+    id: 'project-1',
+    workflows: [{ id: 'workflow-1', running: false }],
+  }]
+  assert.deepEqual(
+    deriveWorkflowRunningState(projects, [{ workflow_id: 'workflow-1', status: 'running' }], 'project-1'),
+    { 'workflow-1': true },
+  )
+  assert.deepEqual(
+    deriveWorkflowRunningState(
+      [{ ...projects[0], workflows: [{ id: 'workflow-1', running: true }] }],
+      [{ workflow_id: 'workflow-1', status: 'ready' }],
+      'project-1',
+    ),
+    { 'workflow-1': false },
+  )
+})
 
 test('completed workflow and chat session remain unread until opened', () => {
   useSidebarActivityStore.setState({ completedWorkflows: {}, completedSessions: {} })

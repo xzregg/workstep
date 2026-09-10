@@ -103,7 +103,7 @@ def matches_subscription(event: dict[str, Any], sub: WsSubscription) -> bool:
         return True
     channel = event.get("channel")
     if channel and channel in sub.channels:
-        return True
+        return not sub.project_id or event.get("project_id") == sub.project_id
     return False
 
 

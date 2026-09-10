@@ -262,10 +262,6 @@ class ChatRowPersistence(PersistenceAdapter):
         else:
             title = row.title or self._default_title(session.messages)
             row.title = title
-            row.engine = session.engine
-            row.model = session.model
-            row.fast_model = session.fast_model
-            row.vision_model = session.vision_model
             row.engine_session_id = session.resolved_session_id
             row.engine_state_json = self._dump_state(session.engine_state)
             pending_handoff = session.extra.get("pending_handoff")
@@ -511,7 +507,7 @@ class ChatSessionModule(AssistantRuntime):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
         engine_id, default_model, default_fast_model = self._resolve_engine_models()
         default_vision_model = config_store.get_assistant_defaults(
-            "chat_session"
+            self._config.name
         ).get("vision_model", "") or None
         if engine:
             self._validate_engine(engine)
@@ -522,7 +518,7 @@ class ChatSessionModule(AssistantRuntime):
                 default_fast_model = default_model
                 default_vision_model = None
             engine_id = engine
-        defaults = config_store.get_assistant_defaults("chat_session")
+        defaults = config_store.get_assistant_defaults(self._config.name)
         default_provider = (
             defaults.get("provider_id", "")
             if engine_id == (defaults.get("engine") or engine_id)
@@ -800,6 +796,12 @@ class ChatSessionModule(AssistantRuntime):
             "message_count": ChatMessage.select()
             .where(ChatMessage.session == row)
             .count(),
+            "running": ChatMessage.select()
+            .where(
+                ChatMessage.session == row,
+                ChatMessage.status == "running",
+            )
+            .exists(),
             "preview": _preview(last.content, PREVIEW_LENGTH) if last else "",
             "created_at": _iso(row.created_at),
             "updated_at": _iso(row.updated_at),
@@ -832,22 +834,8 @@ class ChatSessionModule(AssistantRuntime):
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
 
-        default_engine, default_model, default_fast_model = self._resolve_engine_models()
-        default_vision_model = config_store.get_assistant_defaults(
-            "chat_session"
-        ).get("vision_model", "") or None
-        if engine != default_engine:
-            default_model = config_store.get_engine_default_model(engine) or None
-            default_fast_model = default_model
-            default_vision_model = None
-        defaults = config_store.get_assistant_defaults("chat_session")
-        default_provider = (
-            defaults.get("provider_id", "")
-            if engine == (defaults.get("engine") or default_engine)
-            else ""
-        )
         normalized_provider = validate_provider_override(
-            provider_id or default_provider,
+            provider_id,
             engine,
         )
 
@@ -876,9 +864,9 @@ class ChatSessionModule(AssistantRuntime):
                 mode=context_mode,
             )
             row.engine = engine
-            row.model = model or default_model
-            row.fast_model = fast_model or default_fast_model
-            row.vision_model = vision_model or default_vision_model
+            row.model = model or None
+            row.fast_model = fast_model or None
+            row.vision_model = vision_model or None
             row.provider_id = normalized_provider or None
             if permission_mode:
                 row.permission_mode = permission_mode
@@ -893,9 +881,9 @@ class ChatSessionModule(AssistantRuntime):
         session = self._sessions.get(memory_key)
         if session is not None:
             session.engine = engine
-            session.model = model or default_model
-            session.fast_model = fast_model or default_fast_model
-            session.vision_model = vision_model or default_vision_model
+            session.model = model or None
+            session.fast_model = fast_model or None
+            session.vision_model = vision_model or None
             session.resolved_session_id = None
             session.engine_state = None
             session.extra["pending_handoff"] = metadata
@@ -1146,6 +1134,10 @@ class ChatSessionModule(AssistantRuntime):
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
         requested_engine = engine
+        requested_model = model
+        requested_fast_model = fast_model
+        requested_vision_model = vision_model
+        requested_provider_id = provider_id
         with self._project_ctx(project_id):
             row = ChatSession.get_or_none(ChatSession.id == session_id)
             if row is None:
@@ -1179,10 +1171,18 @@ class ChatSessionModule(AssistantRuntime):
             provider_id=provider_id,
             schedule=schedule,
         )
-        if engine:
+        if requested_engine is not None:
+            normalized_provider = validate_provider_override(
+                requested_provider_id,
+                engine,
+            )
             with self._project_ctx(project_id):
                 ChatSession.update(
-                    provider_id=(provider_id or "").strip() or None,
+                    engine=engine,
+                    model=(requested_model or "").strip() or None,
+                    fast_model=(requested_fast_model or "").strip() or None,
+                    vision_model=(requested_vision_model or "").strip() or None,
+                    provider_id=normalized_provider or None,
                 ).where(ChatSession.id == session_id).execute()
         return ChatAccepted(
             session_id=accepted.session_id,
@@ -1205,6 +1205,9 @@ class ChatSessionModule(AssistantRuntime):
         prompt = self.get_system_prompt(session.project_id)
         pending_handoff = session.extra.get("pending_handoff")
         if isinstance(pending_handoff, dict):
+            project = self._project_manager.get_project_by_id(session.project_id)
+            if project is None:
+                raise ValueError(f"Project not found: {session.project_id}")
             user_message = next(
                 (
                     str(item.get("content") or "")
@@ -1214,7 +1217,7 @@ class ChatSessionModule(AssistantRuntime):
                 "",
             )
             handoff_prompt = (
-                render_handoff_reference(pending_handoff)
+                render_handoff_reference(pending_handoff, project.workstep_dir)
                 if pending_handoff.get("relative_path")
                 else render_handoff(pending_handoff)
             )
@@ -1401,7 +1404,7 @@ class ChatSessionModule(AssistantRuntime):
         return default_engine_id, None
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
-        defaults = config_store.get_assistant_defaults("chat_session")
+        defaults = config_store.get_assistant_defaults(self._config.name)
         configured_id = defaults["engine"] or "claude"
         if (
             configured_id == "pydantic_ai"

@@ -2,11 +2,23 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  backendLaunch,
   buildBackendArgs,
   parseReadyPort,
   protocolPath,
   resolveBackendPort,
 } = require('../src/sidecar.cjs')
+
+test('packaged desktop launches the bundled writable Python runtime', () => {
+  assert.deepEqual(backendLaunch('/Applications/WorkStep/resources', 'darwin'), {
+    executable: '/Applications/WorkStep/resources/backend/python/bin/python3',
+    args: ['/Applications/WorkStep/resources/backend/app/main.py'],
+  })
+  assert.deepEqual(backendLaunch('C:\\WorkStep\\resources', 'win32'), {
+    executable: 'C:\\WorkStep\\resources\\backend\\python\\python.exe',
+    args: ['C:\\WorkStep\\resources\\backend\\app\\main.py'],
+  })
+})
 
 test('desktop requests a free port by default', () => {
   assert.equal(resolveBackendPort([], {}), 0)

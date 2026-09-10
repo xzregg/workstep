@@ -159,6 +159,7 @@ export default function ToolCallRow({
         <FilePreviewDialog
           path={previewFile.path}
           name={previewFile.name}
+          line={previewFile.line}
           projectId={projectId}
           onClose={() => setPreviewFile(null)}
         />

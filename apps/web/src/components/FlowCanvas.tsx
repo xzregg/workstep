@@ -1,3 +1,5 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import MobileSheet from './MobileSheet'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button'
@@ -1049,6 +1051,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
 export interface FlowCanvasProps {
   /** Canvas JSON ({ nodes, connections } or legacy { steps }). */
   initialSteps?: any
+  readOnly?: boolean
   /** Persist the edited canvas; FlowCanvas manages dirty state + toast. */
   onSave: (steps: any) => Promise<void> | void
   onDirtyChange?: (dirty: boolean) => void
@@ -1086,13 +1089,17 @@ function FlowCanvasInner({
   saveLabel,
   hint,
   showTemplatePicker = true,
+  readOnly: requestedReadOnly = false,
   ref,
 }: FlowCanvasProps) {
   const { t } = useI18n()
+  const compactLayout = useCompactLayout()
+  const readOnly = requestedReadOnly || compactLayout
   const { fitView } = useReactFlow()
   const initial = loadCanvasData(initialSteps)
   const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(initial.nodes))
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(initial.connections, initial.nodes))
+  const [previewNode, setPreviewNode] = useState<StepNodeData | null>(null)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
   const [nodeConfigError, setNodeConfigError] = useState('')
   const [nodeConfigDirty, setNodeConfigDirty] = useState(false)
@@ -1184,6 +1191,7 @@ function FlowCanvasInner({
 
   // Keyboard: Delete selected
   useEffect(() => {
+    if (readOnly) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const tag = (e.target as HTMLElement)?.tagName
@@ -1194,7 +1202,7 @@ function FlowCanvasInner({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setNodes, setEdges])
+  }, [setNodes, setEdges, readOnly])
 
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
@@ -1454,6 +1462,7 @@ function FlowCanvasInner({
     getSteps: () => buildCanvasJson(),
     validate: () => computeStepError(),
     loadSteps: (steps: any) => {
+      if (readOnly) return
       const { nodes: nn, connections: nc } = loadCanvasData(steps)
       setNodes(canvasToFlowNodes(nn))
       setEdges(canvasToFlowEdges(nc, nn))
@@ -1462,7 +1471,7 @@ function FlowCanvasInner({
       setDirty(true)
       setTimeout(() => fitView({ padding: 0.2 }), 100)
     },
-  }), [nodes, edges, nodeConfigError, ref]) // eslint-disable-line react-hooks/exhaustive-deps
+  }), [nodes, edges, nodeConfigError, ref, readOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyTemplate = async (template: TemplateInfo) => {
     try {
@@ -1554,6 +1563,7 @@ function FlowCanvasInner({
   }, [nodes, setEdges, setDirty])
 
   const handleSave = async () => {
+    if (readOnly) return
     const stepError = computeStepError()
     if (stepError) {
       setSaveMsg(t('flow.saveFailed', { error: stepError }))
@@ -1636,6 +1646,22 @@ function FlowCanvasInner({
         </div>
       )}
 
+      <MobileSheet open={readOnly && Boolean(previewNode)} title={previewNode?.label || t('mobile.viewNode')} onClose={() => setPreviewNode(null)}>
+        {previewNode && <dl className="mobile-node-config">
+          <div><dt>{t('flow.stageKey')}</dt><dd>{previewNode.key}</dd></div>
+          <div><dt>{t('flow.autoStart')}</dt><dd>{t(previewNode.autoStart ? 'common.yes' : 'common.no')}</dd></div>
+          {previewNode.kind === 'task_dispatch' ? <div><dt>{t('flow.dispatchTarget')}</dt><dd><pre>{JSON.stringify(previewNode.dispatch, null, 2)}</pre></dd></div> : <>
+            <div><dt>{t('flow.engine')}</dt><dd>{previewNode.engine || t('common.none')}</dd></div>
+            <div><dt>{t('flow.modelOptional')}</dt><dd>{previewNode.model || t('flow.engineDefaultModel')}</dd></div>
+            <div><dt>{t('flow.prompt')}</dt><dd className="mobile-node-prompt">{previewNode.prompt || t('common.none')}</dd></div>
+            {Object.keys(previewNode.config || {}).length > 0 && <div><dt>{t('flow.stageConfig')}</dt><dd><pre>{JSON.stringify(previewNode.config, null, 2)}</pre></dd></div>}
+            <div><dt>{t('flow.stageReview')}</dt><dd>{t(previewNode.review?.auto ? 'flow.autoReview' : 'flow.manualReview')}</dd></div>
+            {previewNode.review?.prompt && <div><dt>{t('flow.reviewPrompt')}</dt><dd className="mobile-node-prompt">{previewNode.review.prompt}</dd></div>}
+          </>}
+          <div><dt>{t('flow.inputArtifacts')}</dt><dd>{previewNode.inputs?.map(input => input.name).join('、') || t('common.none')}</dd></div>
+          <div><dt>{t('flow.outputName')}</dt><dd>{previewNode.outputs?.map(output => output.name).join('、') || t('common.none')}</dd></div>
+        </dl>}
+      </MobileSheet>
       {/* Toolbar */}
       <div style={{ height: 48, background: 'var(--bg)', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 8, flexShrink: 0, overflowX: 'auto' }}>
         {toolbarLeft}
@@ -1644,6 +1670,7 @@ function FlowCanvasInner({
         <div style={{ flex: 1 }} />
         {dirty && <span style={{ color: 'var(--warn-text)', fontSize: 'calc(11px * var(--font-scale))', marginLeft: 12 }}>{t('flow.dirtyHint')}</span>}
          {hint !== undefined && <span style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', marginRight: 10 }}>{hint ?? t('flow.hint')}</span>}
+        {!readOnly && <>
         {showTemplatePicker && <Button variant="ghost" onClick={() => { setShowTemplateModal(true); setTemplateSearch('') }}>{t('flow.templates')}</Button>}
         <DropdownMenu label="JSON ▾">
           {(close) => (
@@ -1664,23 +1691,28 @@ function FlowCanvasInner({
           )}
         </DropdownMenu>
         <Button variant="primary" onClick={() => void handleSave()} style={dirty ? { background: 'var(--danger)', borderColor: 'var(--danger)' } : undefined}>{saveLabel ?? t('common.save')}</Button>
+        </>}
       </div>
+      {readOnly && <p className="mobile-canvas-notice" role="status">{t('mobile.canvasReadOnly')}</p>}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1 }} onClick={() => { if (selectedNode && !nodeConfigDirty) { setNodeConfigError(""); setSelectedNode(null); setNodeConfigDirty(false); } } }>
           <ReactFlow nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect} onNodeDoubleClick={onNodeDoubleClick}
-            onNodeContextMenu={onNodeContextMenu} onEdgeDoubleClick={onEdgeDoubleClick}
+            onNodesChange={readOnly ? changes => onNodesChange(changes.filter(change => change.type === 'dimensions' || change.type === 'select')) : onNodesChange} onEdgesChange={readOnly ? undefined : onEdgesChange}
+            nodesDraggable={!readOnly} nodesConnectable={!readOnly} edgesReconnectable={!readOnly}
+            onNodeClick={readOnly ? (event, node) => { event.stopPropagation(); setPreviewNode(node.data as StepNodeData) } : undefined}
+            onConnect={readOnly ? undefined : onConnect} onNodeDoubleClick={readOnly ? undefined : onNodeDoubleClick}
+            onNodeContextMenu={readOnly ? undefined : onNodeContextMenu} onEdgeDoubleClick={readOnly ? undefined : onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView minZoom={0.1} deleteKeyCode={null}
             connectionLineStyle={{ stroke: 'var(--meta)', strokeWidth: 2, strokeDasharray: '5 5' }}
             style={{ background: 'var(--surface)' }}>
-            <Controls position="top-right" /><Background gap={20} size={1} color="var(--border)" />
+            <Controls position="top-right" showInteractive={!readOnly} /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>
         </div>
 
         {/* Config panel */}
         {selectedNode && (
+          <div style={{ display: readOnly ? 'none' : 'contents' }}>
           <NodeConfigPanel
             node={selectedNode}
             engines={availableEngines}
@@ -1707,11 +1739,12 @@ function FlowCanvasInner({
               setSelectedNode(null)
             }}
           />
+          </div>
         )}
       </div>
 
       {/* Context menu */}
-      {contextMenu && (
+      {!readOnly && contextMenu && (
         <div style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)', padding: '4px 0', zIndex: 500, minWidth: 140 }}>
           <div onClick={() => { const n = nodes.find((nd) => nd.id === contextMenu.nodeId); if (n) { setSelectedNode(n.data as StepNodeData); setNodeConfigDirty(false); } setContextMenu(null) }}
             style={{ padding: '8px 16px', fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
@@ -1729,7 +1762,7 @@ function FlowCanvasInner({
       )}
 
       {/* Template list modal */}
-      {showTemplatePicker && showTemplateModal && (
+      {!readOnly && showTemplatePicker && showTemplateModal && (
         <div className="modal-overlay" onClick={() => setShowTemplateModal(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 520, maxHeight: '80vh' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -1806,7 +1839,7 @@ function FlowCanvasInner({
       )}
 
       {/* Copy node from existing workflow — 3-lane swimlane picker: project → workflow → stage */}
-      {copyOpen && (
+      {!readOnly && copyOpen && (
         <div className="modal-overlay" onClick={() => setCopyOpen(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 780, height: 'min(66vh, 620px)' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -1958,7 +1991,7 @@ function FlowCanvasInner({
       )}
 
       {/* Import workflow JSON */}
-      {showImport && (
+      {!readOnly && showImport && (
         <div className="modal-overlay" onClick={() => setShowImport(false)} style={{ zIndex: 400 }}>
           <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -1985,7 +2018,7 @@ function FlowCanvasInner({
 
       {/* Delete confirm dialog */}
       <ConfirmDialog
-        open={confirmDeleteId !== null}
+        open={!readOnly && confirmDeleteId !== null}
         title={t('flow.deleteStageTitle')}
         message={t('flow.deleteStageMessage')}
         confirmText={t('common.delete')}
@@ -1997,7 +2030,7 @@ function FlowCanvasInner({
       {/* Apply template confirm dialog */}
       {showTemplatePicker && (
         <ConfirmDialog
-          open={pendingTemplate !== null}
+          open={!readOnly && pendingTemplate !== null}
           title={t('flow.applyTemplateTitle')}
           message={pendingTemplate ? t('flow.applyTemplateMessage', { name: pendingTemplate.name }) : undefined}
           confirmText={t('flow.applyTemplate')}

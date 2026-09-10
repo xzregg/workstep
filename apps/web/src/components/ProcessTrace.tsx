@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
 import StreamingStatusText from './StreamingStatusText'
+import MarkdownMessage from './MarkdownMessage'
 import ToolTimelineItem from './ToolTimelineItem'
 import {
   durationMilliseconds,
@@ -39,6 +40,7 @@ interface ProcessTraceProps {
   summaryMeta?: ReactNode
   eventSummary?: {
     thought_characters?: number
+    commentary_characters?: number
     tool_count?: number
   }
   detailsAvailable?: boolean
@@ -214,7 +216,7 @@ export default function ProcessTrace({
 }: ProcessTraceProps) {
   const { t } = useI18n()
   const [now, setNow] = useState(() => Date.now())
-  const [open, setOpen] = useState(!detailsAvailable || detailsLoaded)
+  const [open, setOpen] = useState(running)
   useEffect(() => {
     if (!running) return
     setNow(Date.now())
@@ -222,13 +224,14 @@ export default function ProcessTrace({
     return () => window.clearInterval(timer)
   }, [running])
   useEffect(() => {
-    if (running && !detailsAvailable) setOpen(true)
-  }, [running, detailsAvailable])
+    setOpen(running)
+  }, [running])
 
-  const processItems = buildMessageTimeline(events).filter(
+  const timeline = buildMessageTimeline(events)
+  const processItems = timeline.filter(
     (item): item is Exclude<MessageTimelineItem, { type: 'text' }> => item.type !== 'text',
   )
-  const lastProcessItem = processItems[processItems.length - 1]
+  const lastProcessItem = timeline[timeline.length - 1]
   const thinkingItems = processItems.filter(
     (item): item is Extract<MessageTimelineItem, { type: 'thinking' }> => item.type === 'thinking',
   )
@@ -314,16 +317,12 @@ export default function ProcessTrace({
           {!detailsLoading && detailsError && (
             <div style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{detailsError}</div>
           )}
-          {!detailsLoading && !detailsError && detailsAvailable && !detailsLoaded && (
+          {!detailsLoading && !detailsError && detailsAvailable && !detailsLoaded && Boolean(eventSummary?.thought_characters) && (
             <div style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>
-              {eventSummary?.thought_characters
-                ? t('trace.thoughtCharacters', { count: eventSummary.thought_characters })
-                : t('trace.loadDetails')}
+              {t('trace.thoughtCharacters', { count: eventSummary?.thought_characters ?? 0 })}
             </div>
           )}
-          {!detailsLoading && detailsLoaded && processItems.length === 0 && (
-            <div style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>{t('trace.noDetails')}</div>
-          )}
+          {!detailsLoading && detailsLoaded && processItems.length === 0 && null}
           {processItems.map((item) => item.type === 'thinking' ? (
             <ThinkingTimelineItem
               key={item.id}
@@ -342,8 +341,15 @@ export default function ProcessTrace({
                 t,
               )}
             />
+          ) : item.type === 'commentary' ? (
+            <MarkdownMessage
+              key={item.id}
+              content={item.content}
+              streaming={running && item === lastProcessItem}
+              projectId={projectId}
+            />
           ) : item.type === 'subagent' ? (
-            <SubagentTimelineItem key={item.id} item={item} messageRunning={running} />
+            <SubagentTimelineItem key={item.id} item={item} messageRunning={running} projectId={projectId} />
           ) : (
             <ToolTimelineItem key={item.id} item={item} streaming={running} projectId={projectId} />
           ))}

@@ -31,6 +31,8 @@ from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
 
+_VALID_TASK_SOURCES = {"manual", "schedule", "scheduled_start"}
+
 
 def resolve_message_step_key(
     steps_config: dict,
@@ -107,8 +109,43 @@ class WorkflowRuntime:
         project_id: str,
         task_id: str,
         user_input: str = "",
+        source: str = "manual",
     ) -> WorkflowRunHandle:
-        """Start a saved workflow and return its stable background handle."""
+        """Start a saved workflow and return its stable background handle.
+
+        ``source`` marks the dispatch origin (manual / schedule /
+        scheduled_start) so the concurrency gate can exempt scheduled tasks
+        when the effective project config enables it. When the task channel
+        is full the task transitions to ``queued`` and waits for a slot.
+        """
+        from services.concurrency import (
+            ALREADY_ACTIVE,
+            QUEUED,
+            concurrency_gate,
+        )
+
+        if source not in _VALID_TASK_SOURCES:
+            raise ValueError(f"Invalid task source: {source}")
+        acquired = await concurrency_gate.acquire_task(project_id, task_id, source)
+        if acquired == ALREADY_ACTIVE:
+            raise RuntimeError(f"Task is already queued or running: {task_id}")
+        if acquired == QUEUED:
+            await self._mark_task_status(project_id, task_id, "queued")
+            try:
+                await concurrency_gate.wait_task_slot(project_id, task_id)
+            except asyncio.CancelledError:
+                concurrency_gate.cancel_queued_task(project_id, task_id)
+                await self._mark_task_status(project_id, task_id, "ready")
+                raise
+        return await self._start_after_slot(project_id, task_id, user_input)
+
+    async def _start_after_slot(
+        self,
+        project_id: str,
+        task_id: str,
+        user_input: str = "",
+    ) -> WorkflowRunHandle:
+        """Launch a workflow when the caller already holds a concurrency slot."""
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             if task_id in self._runners:
@@ -131,6 +168,52 @@ class WorkflowRuntime:
                     {"content": normalized_input, "status": "completed"},
                 )
             return handle
+
+    async def _mark_task_status(
+        self,
+        project_id: str,
+        task_id: str,
+        status: str,
+    ) -> None:
+        """Persist a task status change and broadcast it as a status event."""
+        from engines.core.agui import AGUIContext, to_agui_events
+        from services.remote_project import current_actor_event_fields
+
+        def persist():
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                return
+            task.status = status
+            task.updated_at = utc_now()
+            task.save()
+
+        await self._run_db(project_id, lambda _project: persist())
+        from services.concurrency import concurrency_gate
+
+        payload = {
+            "task_id": task_id,
+            "step_key": "",
+            "type": "status",
+            "data": {
+                "status": status,
+                "task_id": task_id,
+                "queue_position": concurrency_gate.task_queue_position(project_id, task_id),
+            },
+            **current_actor_event_fields(),
+        }
+        ctx = AGUIContext.from_event(payload)
+        for agui_event in to_agui_events(payload, ctx):
+            await self._event_bus.publish(agui_event)
+
+    async def cancel_queued(self, project_id: str, task_id: str) -> bool:
+        """Cancel a queued (waiting for a slot) task and return it to ready."""
+        from services.concurrency import concurrency_gate
+
+        if concurrency_gate.task_queue_position(project_id, task_id) == 0:
+            return False
+        concurrency_gate.cancel_queued_task(project_id, task_id)
+        await self._mark_task_status(project_id, task_id, "ready")
+        return True
 
     async def _run_db(self, project_id: str, operation):
         """Use the production DB executor while retaining lightweight adapters."""
@@ -253,6 +336,7 @@ class WorkflowRuntime:
 
         completion = asyncio.create_task(
             self._execute(
+                project_id=prepared.project_id,
                 task=task,
                 runner=runner,
                 workflow_run=workflow_run,
@@ -344,7 +428,7 @@ class WorkflowRuntime:
         step_key: str,
         content: str,
     ) -> dict:
-        """Persist a user message for a stopped or review-waiting stage.
+        """Persist a user message and re-run a stopped or completed stage.
 
         The message is stored in the stage's execution history (and as active
         stage guidance) so the next attempt carries it into the stage LLM,
@@ -369,9 +453,11 @@ class WorkflowRuntime:
                 "failed",
                 "rejected",
                 "awaiting_review",
+                "passed",
+                "skipped",
             ):
                 raise ValueError(
-                    f"阶段未停止: {step_key}（当前状态 {step.status}）"
+                    f"阶段当前不可重新执行: {step_key}（当前状态 {step.status}）"
                 )
             pending_review = None
             if step.status == "awaiting_review":
@@ -637,6 +723,7 @@ class WorkflowRuntime:
         self._runners[task.id] = runner
         completion = asyncio.create_task(
             self._execute(
+                project_id=project.id,
                 task=task,
                 runner=runner,
                 workflow_run=workflow_run,
@@ -675,6 +762,55 @@ class WorkflowRuntime:
                     project.id,
                 )
         return recovered
+
+    async def requeue_queued_tasks(self) -> int:
+        """Re-register tasks left in ``queued`` by a previous daemon run.
+
+        After a restart the in-memory gate is empty, so tasks persisted as
+        ``queued`` are re-acquired and wait again (FIFO) for a free slot.
+        Returns the number of re-queued tasks.
+        """
+        from services.concurrency import QUEUED, concurrency_gate
+
+        count = 0
+        for project in self._project_manager.iter_projects():
+            rows = await self._run_db(
+                project.id,
+                lambda _p: list(
+                    Task.select(Task.id).where(Task.status == "queued").dicts()
+                ),
+            )
+            for row in rows:
+                task_id = row["id"]
+                acquired = await concurrency_gate.acquire_task(
+                    project.id, task_id, "manual"
+                )
+                if acquired != QUEUED:
+                    continue
+                completion = asyncio.create_task(
+                    self._wait_and_start(project.id, task_id),
+                    name=f"workflow-requeue:{task_id}",
+                )
+                self._active_tasks.add(completion)
+                count += 1
+        return count
+
+    async def _wait_and_start(self, project_id: str, task_id: str) -> None:
+        """Wait for a re-acquired slot, then launch the queued task."""
+        from services.concurrency import concurrency_gate
+
+        try:
+            await concurrency_gate.wait_task_slot(project_id, task_id)
+        except asyncio.CancelledError:
+            concurrency_gate.cancel_queued_task(project_id, task_id)
+            await self._mark_task_status(project_id, task_id, "ready")
+            raise
+        try:
+            await self._start_after_slot(project_id, task_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Failed to start requeued task %s", task_id)
 
     async def _recover_project_runs(self, project) -> int:
         prepared = await self._run_db(
@@ -790,6 +926,21 @@ class WorkflowRuntime:
             prepared.append((task, workflow_run, stale_keys, now))
         return prepared
 
+    def _current_workflow_steps(self, project, task: Task) -> dict:
+        """Return the project's latest workflow steps for ``task``.
+
+        A stage restart always reads the workflow as it is right now, so edits
+        made to the flow (such as switching a stage's engine) take effect on
+        the next run instead of being frozen into the parent run's snapshot.
+        """
+        workflow_data = project.steps
+        if task.workflow_id:
+            selected_workflow = project.workflow_by_id(task.workflow_id)
+            if selected_workflow is None:
+                raise ValueError(f"Workflow not found: {task.workflow_id}")
+            workflow_data = selected_workflow["steps"]
+        return workflow_data
+
     async def restart_from_stage(
         self,
         project_id: str,
@@ -798,7 +949,13 @@ class WorkflowRuntime:
         *,
         expected_run_id: str | None = None,
     ) -> WorkflowRunHandle:
-        """Stop the current runner and start a child run from one DAG stage."""
+        """Stop the current runner and start a child run from one DAG stage.
+
+        The child run is built from the workflow's current definition so that
+        edits made to the flow (e.g. changing a stage's engine) are picked up
+        on re-run; the parent run's snapshot is kept only as a historical
+        record.
+        """
         lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
         async with lock:
             def inspect_restart(project):
@@ -816,7 +973,9 @@ class WorkflowRuntime:
                     raise RuntimeError("The referenced workflow run no longer exists")
                 if expected_run_id and task.active_workflow_run_id != expected_run_id:
                     raise RuntimeError("The active workflow run has changed")
-                workflow_data = json.loads(parent.workflow_snapshot_json)
+                # Re-run from the workflow as it is now, not the parent run's
+                # snapshot, so flow edits (e.g. engine changes) apply.
+                workflow_data = self._current_workflow_steps(project, task)
                 compiled = WorkflowDefinition.load(workflow_data).compile()
                 steps_config = compiled.to_steps_config()
                 step_list = [Step.from_dict(item) for item in steps_config["steps"]]
@@ -840,6 +999,7 @@ class WorkflowRuntime:
                     "parent_run_id": parent_run_id,
                     "compiled": compiled,
                     "steps_config": steps_config,
+                    "workflow_data": workflow_data,
                     "affected": affected,
                     "interrupted": interrupted,
                 }
@@ -852,6 +1012,7 @@ class WorkflowRuntime:
             parent_run_id = inspected["parent_run_id"]
             compiled = inspected["compiled"]
             steps_config = inspected["steps_config"]
+            workflow_data = inspected["workflow_data"]
             affected = inspected["affected"]
             interrupted = inspected["interrupted"]
 
@@ -882,6 +1043,11 @@ class WorkflowRuntime:
                         compiled.schema_version,
                         step_key,
                         execution_keys,
+                        json.dumps(
+                            workflow_data,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        ),
                     )
                 except Exception:
                     self._restore_archived_artifacts(archived)
@@ -995,6 +1161,7 @@ class WorkflowRuntime:
         schema_version: int,
         step_key: str,
         execution_keys: set[str],
+        snapshot_json: str,
     ) -> tuple[Task, WorkflowRun]:
         now = utc_now()
         with db_proxy.atomic():
@@ -1013,7 +1180,7 @@ class WorkflowRuntime:
                 task=task,
                 status="running",
                 workflow_schema_version=schema_version,
-                workflow_snapshot_json=parent.workflow_snapshot_json,
+                workflow_snapshot_json=snapshot_json,
                 parent_run_id=parent.id,
                 restart_from_step_key=step_key,
                 started_at=now,
@@ -1146,6 +1313,7 @@ class WorkflowRuntime:
     async def _execute(
         self,
         *,
+        project_id: str,
         task: Task,
         runner: TaskRunner,
         workflow_run: WorkflowRun,
@@ -1195,12 +1363,27 @@ class WorkflowRuntime:
             await runner._run_db(finalize_run)
             if self._runners.get(task.id) is runner:
                 self._runners.pop(task.id, None)
+            from services.concurrency import concurrency_gate
+
+            # Recovered/resumed runs never acquired a slot, so this discard is
+            # a no-op for them.
+            try:
+                await concurrency_gate.release_task(project_id, task.id)
+            except Exception:
+                logger.exception("Failed to release task slot for %s", task.id)
 
         return workflow_run.id
 
     async def cancel(self, task_id: str) -> bool:
-        """Cancel every active step owned by a task's pipeline."""
+        """Cancel every active step owned by a task's pipeline.
+
+        A task that is still waiting for a concurrency slot (status ``queued``)
+        is removed from the queue and returned to ``ready`` instead.
+        """
         runner = self._runners.get(task_id)
         if runner is None:
+            project = self._project_manager.find_project_for_task(task_id)
+            if project is not None:
+                return await self.cancel_queued(project.id, task_id)
             return False
         return await runner.cancel_task(task_id)

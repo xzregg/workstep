@@ -1,6 +1,8 @@
 /** REST API client for the WorkStep daemon. */
 
 const BASE = '/api'
+/** Default page size for loading full event logs / message histories. */
+export const FULL_PAGE_LIMIT = 30000
 
 export class ApiError extends Error {
   status: number
@@ -13,18 +15,23 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options?.headers || {}),
-    },
-  })
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new ApiError(detail.detail || `HTTP ${res.status}`, res.status)
+  const run = async () => {
+    const res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options?.headers || {}),
+      },
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(detail.detail || `HTTP ${res.status}`, res.status)
+    }
+    return res.json() as Promise<T>
   }
-  return res.json()
+
+  const method = (options?.method || 'GET').toUpperCase()
+  return method === 'GET' ? singleFlight(`GET ${path}`, run) : run()
 }
 
 // Dedupe concurrent in-flight reads: React StrictMode double-mounts effects in
@@ -42,6 +49,7 @@ function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
 
 export interface SystemSettings {
   user_name: string
+  open_mode: boolean
   device_id?: string
   device_name?: string
 }
@@ -71,6 +79,10 @@ export const systemSettingsApi = {
   updateUserName: (userName: string) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
     body: JSON.stringify({ user_name: userName }),
+  }),
+  updateOpenMode: (openMode: boolean) => request<SystemSettings>('/system-settings', {
+    method: 'PUT',
+    body: JSON.stringify({ open_mode: openMode }),
   }),
   modelPricing: () => request<ModelPricingSettings>('/system-settings/model-pricing'),
   saveModelPricing: (settings: Omit<ModelPricingSettings, 'providers' | 'standalone_models'>) =>
@@ -139,6 +151,33 @@ export const projectApi = {
       {
         method: 'POST',
         body: JSON.stringify({ steps }),
+      },
+    ),
+  settings: (projectId: string, withShare = false) =>
+    request<ProjectSettingsResult>(
+      `/projects/${encodeURIComponent(projectId)}/settings${withShare ? '?with_share=true' : ''}`,
+    ),
+  concurrency: (projectId: string) =>
+    request<ProjectConcurrencyResult>(
+      `/projects/${encodeURIComponent(projectId)}/settings/concurrency`,
+    ),
+  setConcurrency: (
+    projectId: string,
+    config: {
+      maxTasks: number | null
+      maxChats: number | null
+      scheduleExempt: boolean | null
+    },
+  ) =>
+    request<{ saved: boolean; project: ProjectConcurrencyResult['project'] }>(
+      `/projects/${encodeURIComponent(projectId)}/settings/concurrency`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          max_tasks: config.maxTasks,
+          max_chats: config.maxChats,
+          schedule_exempt: config.scheduleExempt,
+        }),
       },
     ),
 }
@@ -468,6 +507,7 @@ export interface MessageEventSummary {
   event_count?: number
   last_event_seq?: number
   thought_characters?: number
+  commentary_characters?: number
   tool_count?: number
 }
 
@@ -630,6 +670,7 @@ export interface ChatSessionSummary {
   forked_from_message_id?: string | null
   fork_context_mode?: 'native' | 'smart' | 'full' | 'none' | null
   fork_status?: 'pending' | 'ready' | 'failed'
+  running?: boolean
   message_count: number
   preview?: string
   created_at?: string
@@ -727,7 +768,7 @@ export const chatSessionApi = {
     messageId: string,
     projectId: string,
     cursor = 0,
-    limit = 30000,
+    limit = FULL_PAGE_LIMIT,
   ) => request<ChatMessageEventsPage>(
     `/chat-sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}/events`
     + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
@@ -903,6 +944,7 @@ export const templateApi = {
 
 export interface Task {
   id: string
+  workflow_id?: string | null
   title: string
   description: string | null
   cwd: string
@@ -1006,6 +1048,26 @@ export interface CoordinatorEngineSummary {
   supports_controlled_skills?: boolean
 }
 
+export interface EngineQuota {
+  engine_id: string
+  limit_name?: string | null
+  plan_type?: string | null
+  primary: {
+    used_percent: number
+    remaining_percent: number
+    resets_at?: number | null
+    window_duration_mins?: number | null
+  }
+  secondary?: EngineQuota['primary'] | null
+  credits?: { balance?: string | null; has_credits: boolean; unlimited: boolean }
+  individual_limit?: {
+    limit: string
+    used: string
+    remaining_percent: number
+    resets_at?: number | null
+  }
+}
+
 export interface CoordinatorSelection {
   configured: {
     engine: string | null
@@ -1076,7 +1138,7 @@ export const taskApi = {
     messageId: string,
     projectId: string,
     cursor = 0,
-    limit = 200,
+    limit = FULL_PAGE_LIMIT,
   ) => request<ChatMessageEventsPage>(
     `/task/${encodeURIComponent(taskId)}/messages/${encodeURIComponent(messageId)}/events`
     + `?project_id=${encodeURIComponent(projectId)}&cursor=${cursor}&limit=${limit}`,
@@ -1317,19 +1379,26 @@ async function shareRequest<T>(
   sessionToken: string,
   options?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Share-Session': sessionToken,
-      ...(options?.headers || {}),
-    },
-  })
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(detail.detail || `HTTP ${res.status}`)
+  const run = async () => {
+    const res = await fetch(`${BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Share-Session': sessionToken,
+        ...(options?.headers || {}),
+      },
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(detail.detail || `HTTP ${res.status}`)
+    }
+    return res.json() as Promise<T>
   }
-  return res.json()
+
+  const method = (options?.method || 'GET').toUpperCase()
+  return method === 'GET'
+    ? singleFlight(`SHARE GET ${sessionToken} ${path}`, run)
+    : run()
 }
 
 export const shareApi = {
@@ -1348,7 +1417,7 @@ export const shareApi = {
       `/task-share/public/${encodeURIComponent(token)}/task`,
       sessionToken,
     ),
-  history: (token: string, sessionToken: string, limit = 200, offset = 0) =>
+  history: (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) =>
     shareRequest<{ messages: any[]; limit: number; offset: number }>(
       `/task-share/public/${encodeURIComponent(token)}/history?limit=${limit}&offset=${offset}`,
       sessionToken,
@@ -1470,6 +1539,8 @@ export interface EngineInfo {
   config: EngineConfigPayload | null
   installable: boolean
   install_command: string | null
+  updatable: boolean
+  update_command: string | null
   requires_third_party_terms_acceptance: boolean
   third_party_terms_url: string | null
   supports_resume: boolean
@@ -1841,6 +1912,17 @@ export const engineApi = {
       method: 'POST',
       body: JSON.stringify({ accept_third_party_terms: acceptThirdPartyTerms }),
     }),
+  update: (engineId: string) =>
+    request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/update`, {
+      method: 'POST',
+    }),
+  quota: (engineId: string, projectId = '') =>
+    singleFlight(
+      `engine/quota::${engineId}::${projectId}`,
+      () => request<{ engine_id: string; supported: boolean; quota: EngineQuota | null }>(
+        `/engine/${encodeURIComponent(engineId)}/quota${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+      ),
+    ),
   models: (engineId: string, providerId = '', refresh = false, projectId = '') =>
     request<EngineModelsResult>(
       `/engine/${encodeURIComponent(engineId)}/models${
@@ -1909,6 +1991,39 @@ export interface EnhanceConfigResult {
   }[]
 }
 
+export interface ConcurrencyConfig {
+  max_tasks: number
+  max_chats: number
+  schedule_exempt: boolean
+}
+
+export interface ProjectConcurrencyResult {
+  global: ConcurrencyConfig
+  project: {
+    max_tasks: number | null
+    max_chats: number | null
+    schedule_exempt: boolean | null
+  }
+  effective: ConcurrencyConfig
+}
+
+export interface ProjectSettingsResult {
+  name: string
+  path: string
+  chat_system_prompt: string
+  quick_buttons: unknown[]
+  concurrency: {
+    global: ConcurrencyConfig
+    project: {
+      max_tasks: number | null
+      max_chats: number | null
+      schedule_exempt: boolean | null
+    }
+    effective: ConcurrencyConfig
+  }
+  share?: { active_invites: number; devices: unknown[] }
+}
+
 export const assistantApi = {
   list: () => request<{ assistants: AssistantConfigInfo[] }>('/assistant/list'),
   enhanceConfig: () => request<EnhanceConfigResult>('/assistant/enhance-config'),
@@ -1923,6 +2038,13 @@ export const assistantApi = {
         }),
       },
     ),
+  concurrencyConfig: () =>
+    request<ConcurrencyConfig & { saved: boolean }>('/assistant/concurrency'),
+  setConcurrencyConfig: (config: ConcurrencyConfig) =>
+    request<ConcurrencyConfig & { saved: boolean }>('/assistant/concurrency', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    }),
   setConfig: (
     name: string,
     config: {
@@ -1948,6 +2070,64 @@ export const assistantApi = {
         }),
       },
     ),
+}
+
+// --- Channels API ---
+
+export type ChannelStatus = 'logged_in' | 'not_logged_in' | 'connecting' | 'error' | 'stopped'
+
+export interface ChannelInfo {
+  id: string
+  channel_type: string
+  display_name: string
+  icon: string
+  enabled: boolean
+  status: ChannelStatus
+  account_id: string | null
+  assistant_id: string
+  model: string
+  config: Record<string, unknown>
+  error_message: string | null
+  qr_code?: string | null
+}
+
+export interface ChannelLoginResult {
+  status: 'pending' | 'success' | 'expired' | 'failed' | 'not_started'
+  qr_code: string | null
+  account_id: string | null
+  error: string | null
+}
+
+export const channelApi = {
+  list: (projectId: string) => request<ChannelInfo[]>(
+    `/channels?project_id=${encodeURIComponent(projectId)}`,
+  ),
+  update: (channelId: string, projectId: string, config: {
+    enabled: boolean
+    assistantId: string
+    model: string
+    extra?: Record<string, unknown>
+  }) => request<ChannelInfo>(`/channels/${encodeURIComponent(channelId)}/config`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      project_id: projectId,
+      enabled: config.enabled,
+      assistant_id: config.assistantId,
+      model: config.model,
+      config: config.extra ?? {},
+    }),
+  }),
+  login: (projectId: string) => request<ChannelLoginResult>(
+    `/channels/wechat/login?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
+  ),
+  loginStatus: (projectId: string) => request<ChannelLoginResult>(
+    `/channels/wechat/login-status?project_id=${encodeURIComponent(projectId)}`,
+  ),
+  logout: (projectId: string) => request<{ status: 'success' }>(
+    `/channels/wechat/logout?project_id=${encodeURIComponent(projectId)}`,
+    { method: 'POST' },
+  ),
 }
 
 // --- File System API ---

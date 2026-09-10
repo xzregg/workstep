@@ -2,12 +2,13 @@ import type { CSSProperties, ReactNode } from 'react'
 import {
   Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List,
-  Lightbulb, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
-  Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
+  Menu, Lightbulb, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
+  Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
 } from 'lucide-react'
 
 /** 统一 Icon 库：lucide 图标 + 少量自定义字形（保留既有固定规格） */
 const glyphs = {
+  menu: Menu,
   archive: Archive,
   'bar-chart': BarChart3,
   book: Book,
@@ -36,6 +37,7 @@ const glyphs = {
   pencil: Pencil,
   plus: Plus,
   refresh: RefreshCw,
+  radio: Radio,
   'rotate-ccw': RotateCcw,
   search: Search,
   settings: Settings,

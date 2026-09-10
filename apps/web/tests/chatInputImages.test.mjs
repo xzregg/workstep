@@ -50,5 +50,4 @@ test('chat input renders image blocks in source order and exposes preview and re
   assert.match(chatInputSource, /className="chat-input-image"/)
   assert.match(chatInputSource, /className="chat-input-image-remove"/)
   assert.match(chatInputSource, /removeMarkdownImage\(value, segment\)/)
-  assert.match(chatInputSource, /role="dialog"/)
 })

@@ -1,6 +1,7 @@
 """AcpEngineBase — base class for ACP-protocol engines using Python SDK."""
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -122,24 +123,41 @@ class _StreamingClient:
         """Surface ACP form elicitation and await the user's structured input."""
         mode = getattr(mode, "root", mode)
         requested_schema = getattr(mode, "requested_schema", None)
-        if requested_schema is None:
+        url = getattr(mode, "url", None)
+        elicitation_id = getattr(mode, "elicitation_id", None)
+        if requested_schema is None and url is None:
             return schema.DeclineElicitationResponse(action="decline")
-        dump = getattr(requested_schema, "model_dump", None)
-        schema_data = (
-            dump(by_alias=False, exclude_none=True)
-            if callable(dump)
-            else requested_schema
-        )
-        interaction_id = str(uuid.uuid4())
+        interaction_id = str(elicitation_id or uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self._elicitation_futures[interaction_id] = future
-        await self.updates.put(elicitation_request(
-            interaction_id=interaction_id,
-            message=str(message),
-            requested_schema=schema_data,
-            session_id=getattr(mode, "session_id", None),
-            tool_call_id=getattr(mode, "tool_call_id", None),
-        ))
+        if url is not None:
+            await self.updates.put(InternalEvent(
+                type="interaction_request",
+                data={
+                    "interaction_id": interaction_id,
+                    "method": "elicitation/create",
+                    "mode": "url",
+                    "message": str(message),
+                    "url": str(url),
+                    "elicitation_id": interaction_id,
+                    "session_id": getattr(mode, "session_id", None),
+                    "tool_call_id": getattr(mode, "tool_call_id", None),
+                },
+            ))
+        else:
+            dump = getattr(requested_schema, "model_dump", None)
+            schema_data = (
+                dump(by_alias=False, exclude_none=True)
+                if callable(dump)
+                else requested_schema
+            )
+            await self.updates.put(elicitation_request(
+                interaction_id=interaction_id,
+                message=str(message),
+                requested_schema=schema_data,
+                session_id=getattr(mode, "session_id", None),
+                tool_call_id=getattr(mode, "tool_call_id", None),
+            ))
         try:
             response = await future
         finally:
@@ -295,7 +313,10 @@ class _StreamingClient:
         raise acp.RequestError.method_not_found(f"_{method}")
 
     async def ext_notification(self, method: str, params: dict) -> None:
-        return None
+        await self.updates.put(acp_raw_event({
+            "method": method,
+            "params": params,
+        }))
 
     def on_connect(self, conn) -> None:
         return None
@@ -327,6 +348,7 @@ class AcpEngineBase(BaseLLMEngine):
         # request_permission 在 request_interaction 中登记，approve_tool*
         # 据此把决定写回挂起的 Future）。
         self._pending_approvals: dict[str, InternalEvent] = {}
+        self._initialize_response = None
 
     def get_command(self) -> list[str]:
         """Return the command to spawn the ACP agent process."""
@@ -375,7 +397,7 @@ class AcpEngineBase(BaseLLMEngine):
             ) as (client, process):
                 self._process = process
                 self._running = True
-                await client.initialize(
+                self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
                     client_info={"name": "WorkStep", "version": "0.1.0"},
@@ -439,6 +461,11 @@ class AcpEngineBase(BaseLLMEngine):
         """
         return bool(self.get_command())
 
+    @property
+    def supports_session_fork(self) -> bool:
+        """Native ACP agents negotiate fork support during initialization."""
+        return self._is_acp_native
+
     def _pending_approvals_dict(self) -> dict[str, InternalEvent]:
         """Lazily create the pending-approval registry (subclasses may skip
         ``super().__init__``)."""
@@ -455,7 +482,93 @@ class AcpEngineBase(BaseLLMEngine):
                 form=schema.ElicitationFormCapabilities(),
                 url=schema.ElicitationUrlCapabilities(),
             ),
+            plan=schema.PlanCapabilities(),
+            session=schema.ClientSessionCapabilities(
+                configOptions=schema.SessionConfigOptionsCapabilities(
+                    boolean=schema.BooleanConfigOptionCapabilities(),
+                ),
+            ),
         )
+
+    @staticmethod
+    def _agent_capability(response, name: str, nested: str | None = None):
+        """Read a negotiated agent capability; ``None`` means unsupported.
+
+        Test doubles and older agents may return no initialize response.  In
+        that case capability support is unknown and callers retain the legacy
+        request behavior for backwards compatibility.
+        """
+        if response is None:
+            return True
+        capabilities = getattr(response, "agent_capabilities", None)
+        if capabilities is None:
+            return None
+        value = getattr(capabilities, name, None)
+        if nested is not None:
+            value = getattr(value, nested, None) if value is not None else None
+        return value
+
+    @staticmethod
+    def _acp_prompt_blocks(prompt: str, images: list[EngineImage] | None = None):
+        """Build ACP prompt blocks without dropping image attachments."""
+        blocks: list[Any] = [acp.text_block(prompt)]
+        for image in images or []:
+            data_url = image.to_data_url()
+            if not data_url.startswith("data:") or ";base64," not in data_url:
+                raise ValueError("ACP 图片必须是本地文件或 base64 data URL")
+            header, encoded = data_url.split(",", 1)
+            mime_type = header[5:].split(";", 1)[0] or "application/octet-stream"
+            # Validate before handing malformed media to an ACP agent.
+            base64.b64decode(encoded, validate=True)
+            blocks.append(schema.ImageContentBlock(
+                type="image",
+                data=encoded,
+                mimeType=mime_type,
+                uri=image.reference or None,
+            ))
+        return blocks
+
+    @classmethod
+    def _validate_session_inputs(
+        cls,
+        initialize_response,
+        additional_directories: list[str],
+        mcp_servers: list,
+    ) -> None:
+        """Reject session inputs the agent did not advertise support for."""
+        if initialize_response is None:
+            return
+        if additional_directories and not cls._agent_capability(
+            initialize_response, "session_capabilities", "additional_directories"
+        ):
+            raise RuntimeError("ACP Agent 未声明 additionalDirectories 支持")
+        capabilities = getattr(
+            getattr(initialize_response, "agent_capabilities", None),
+            "mcp_capabilities",
+            None,
+        )
+        if capabilities is None:
+            if mcp_servers:
+                raise RuntimeError("ACP Agent 未声明 MCP 支持")
+            return
+        for server in mcp_servers:
+            server_type = (
+                str(server.get("type") or "")
+                if isinstance(server, dict)
+                else str(getattr(server, "type", "") or "")
+            )
+            if (
+                isinstance(server, schema.HttpMcpServer) or server_type == "http"
+            ) and not capabilities.http:
+                raise RuntimeError("ACP Agent 未声明 HTTP MCP 支持")
+            if (
+                isinstance(server, schema.SseMcpServer) or server_type == "sse"
+            ) and not capabilities.sse:
+                raise RuntimeError("ACP Agent 未声明 SSE MCP 支持")
+            if (
+                isinstance(server, schema.AcpMcpServer) or server_type == "acp"
+            ) and not capabilities.acp:
+                raise RuntimeError("ACP Agent 未声明 ACP MCP transport 支持")
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
@@ -475,7 +588,7 @@ class AcpEngineBase(BaseLLMEngine):
             self._process = process
             self._running = True
             try:
-                await client.initialize(
+                self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
                     client_info={"name": "WorkStep", "version": "0.1.0"},
@@ -529,7 +642,7 @@ class AcpEngineBase(BaseLLMEngine):
             self._process = process
             self._running = True
             try:
-                await client.initialize(
+                self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
                     client_info={"name": "WorkStep", "version": "0.1.0"},
@@ -562,6 +675,9 @@ class AcpEngineBase(BaseLLMEngine):
             return None
 
         async def action(client):
+            self._validate_session_inputs(
+                self._initialize_response, add_dirs or [], mcp_servers or []
+            )
             session = await client.new_session(
                 cwd=cwd,
                 additional_directories=add_dirs or [],
@@ -583,6 +699,13 @@ class AcpEngineBase(BaseLLMEngine):
             return False
 
         async def action(client):
+            if not self._agent_capability(
+                self._initialize_response, "load_session"
+            ):
+                return False
+            self._validate_session_inputs(
+                self._initialize_response, add_dirs or [], mcp_servers or []
+            )
             response = await client.load_session(
                 cwd=cwd,
                 session_id=session_id,
@@ -601,6 +724,10 @@ class AcpEngineBase(BaseLLMEngine):
             return []
 
         async def action(client):
+            if not self._agent_capability(
+                self._initialize_response, "session_capabilities", "list"
+            ):
+                return []
             response = await client.list_sessions(cwd=cwd)
             return [item.session_id for item in (response.sessions or [])]
 
@@ -618,6 +745,13 @@ class AcpEngineBase(BaseLLMEngine):
             return False
 
         async def action(client):
+            if not self._agent_capability(
+                self._initialize_response, "session_capabilities", "resume"
+            ):
+                return False
+            self._validate_session_inputs(
+                self._initialize_response, add_dirs or [], mcp_servers or []
+            )
             response = await client.resume_session(
                 session_id=session_id,
                 cwd=cwd,
@@ -637,8 +771,24 @@ class AcpEngineBase(BaseLLMEngine):
         model: str | None = None,
         provider_id: str | None = None,
     ) -> str | None:
-        """Create an independent native session fork when the adapter supports it."""
-        return None
+        """Create an independent native ACP session fork when advertised."""
+        if not self._is_acp_native:
+            return None
+
+        async def action(client):
+            if not self._agent_capability(
+                self._initialize_response, "session_capabilities", "fork"
+            ):
+                return None
+            response = await client.fork_session(
+                session_id=session_id,
+                cwd=cwd,
+                additional_directories=[],
+                mcp_servers=[],
+            )
+            return response.session_id if response is not None else None
+
+        return await self._with_agent(cwd, action)
 
     async def close_session(self, session_id: str, cwd: str | None = None) -> None:
         """session/close — close a session and release its resources."""
@@ -647,6 +797,10 @@ class AcpEngineBase(BaseLLMEngine):
         cwd = cwd or self._last_cwd or "."
 
         async def action(client):
+            if not self._agent_capability(
+                self._initialize_response, "session_capabilities", "close"
+            ):
+                return None
             await client.close_session(session_id=session_id)
 
         await self._with_agent(cwd, action)
@@ -695,6 +849,76 @@ class AcpEngineBase(BaseLLMEngine):
             )
 
         await self._with_agent(self._last_cwd or ".", action)
+
+    async def set_session_mode(
+        self,
+        mode_id: str,
+        session_id: str | None = None,
+    ) -> None:
+        """Call the ACP session mode compatibility endpoint."""
+        if not self._is_acp_native or not session_id:
+            return None
+
+        async def action(client):
+            await client.set_session_mode(session_id=session_id, mode_id=mode_id)
+
+        await self._with_agent(self._last_cwd or ".", action)
+
+    async def authenticate(self, method_id: str, cwd: str | None = None) -> bool:
+        """Run one of the authentication methods returned by initialize."""
+        if not self._is_acp_native or not method_id:
+            return False
+
+        async def action(client):
+            response = await client.authenticate(method_id=method_id)
+            return response is not None
+
+        return await self._with_agent(cwd or self._last_cwd or ".", action)
+
+    async def call_acp_extension(
+        self,
+        method: str,
+        params: dict[str, Any],
+        cwd: str | None = None,
+    ) -> dict[str, Any]:
+        """Call an ACP extension method, including draft NES methods."""
+        if not self._is_acp_native:
+            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
+
+        async def action(client):
+            return await client.ext_method(method, params)
+
+        return await self._with_agent(cwd or self._last_cwd or ".", action)
+
+    async def notify_acp_extension(
+        self,
+        method: str,
+        params: dict[str, Any],
+        cwd: str | None = None,
+    ) -> None:
+        """Send an ACP extension notification without silently discarding it."""
+        if not self._is_acp_native:
+            raise RuntimeError(f"{self.ENGINE_ID}: ACP 扩展不可用")
+
+        async def action(client):
+            await client.ext_notification(method, params)
+
+        await self._with_agent(cwd or self._last_cwd or ".", action)
+
+    async def nes_start(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
+        return await self.call_acp_extension("nes/start", params, cwd)
+
+    async def nes_suggest(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
+        return await self.call_acp_extension("nes/suggest", params, cwd)
+
+    async def nes_accept(self, params: dict[str, Any], cwd: str | None = None) -> None:
+        await self.notify_acp_extension("nes/accept", params, cwd)
+
+    async def nes_reject(self, params: dict[str, Any], cwd: str | None = None) -> None:
+        await self.notify_acp_extension("nes/reject", params, cwd)
+
+    async def nes_close(self, params: dict[str, Any], cwd: str | None = None) -> dict[str, Any]:
+        return await self.call_acp_extension("nes/close", params, cwd)
 
     async def reset_options(self, session_id: str | None = None) -> None:
         """session/reset-options — restore process-global defaults.
@@ -888,16 +1112,50 @@ class AcpEngineBase(BaseLLMEngine):
                     client_capabilities=self._client_capabilities(),
                     client_info={"name": "WorkStep", "version": "0.1.0"},
                 )
+                self._initialize_response = init_resp
                 logger.info("ACP initialized: %s", init_resp)
+
+                if (
+                    init_resp is not None
+                    and getattr(init_resp, "protocol_version", acp.PROTOCOL_VERSION)
+                    != acp.PROTOCOL_VERSION
+                ):
+                    raise RuntimeError(
+                        "ACP 协议版本不兼容："
+                        f"客户端={acp.PROTOCOL_VERSION}，Agent={init_resp.protocol_version}"
+                    )
+
+                mcp_servers = list(
+                    (config_overrides or {}).get("mcp_servers") or []
+                )
+                self._validate_session_inputs(
+                    init_resp, add_dirs or [], mcp_servers
+                )
 
                 if session_id:
                     try:
-                        await client.load_session(
-                            cwd=cwd,
-                            session_id=session_id,
-                            mcp_servers=[],
-                            additional_directories=add_dirs or [],
-                        )
+                        if self._agent_capability(
+                            init_resp, "load_session"
+                        ):
+                            await client.load_session(
+                                cwd=cwd,
+                                session_id=session_id,
+                                mcp_servers=mcp_servers,
+                                additional_directories=add_dirs or [],
+                            )
+                        elif self._agent_capability(
+                            init_resp, "session_capabilities", "resume"
+                        ):
+                            await client.resume_session(
+                                cwd=cwd,
+                                session_id=session_id,
+                                mcp_servers=mcp_servers,
+                                additional_directories=add_dirs or [],
+                            )
+                        else:
+                            raise RuntimeError(
+                                "ACP Agent 未声明 session/load 或 session/resume 支持"
+                            )
                         active_session_id = session_id
                     except Exception as exc:
                         logger.warning("Failed to load session %s: %s", session_id, exc)
@@ -910,7 +1168,7 @@ class AcpEngineBase(BaseLLMEngine):
                     session = await client.new_session(
                         cwd=cwd,
                         additional_directories=add_dirs or [],
-                        mcp_servers=[],
+                        mcp_servers=mcp_servers,
                     )
                     active_session_id = session.session_id
 
@@ -947,10 +1205,14 @@ class AcpEngineBase(BaseLLMEngine):
                         )
 
                 yield InternalEvent(type="status", data={"status": "running"})
+                if images and not self._agent_capability(
+                    init_resp, "prompt_capabilities", "image"
+                ):
+                    raise RuntimeError("ACP Agent 未声明图片 Prompt 支持")
                 prompt_task = asyncio.create_task(
                     client.prompt(
                         session_id=active_session_id,
-                        prompt=[acp.text_block(prompt)],
+                        prompt=self._acp_prompt_blocks(prompt, images),
                     )
                 )
                 while not prompt_task.done() or not handler.updates.empty():
@@ -969,6 +1231,19 @@ class AcpEngineBase(BaseLLMEngine):
                 usage_event = self._map_prompt_response_usage(prompt_response)
                 if usage_event:
                     yield usage_event
+                stop_reason = str(
+                    getattr(prompt_response, "stop_reason", "end_turn")
+                    or "end_turn"
+                )
+                if stop_reason == "cancelled":
+                    yield InternalEvent(type="status", data={"status": "stopped"})
+                    return
+                if stop_reason in {"max_tokens", "max_turn_requests", "refusal"}:
+                    yield InternalEvent(type="error", data={
+                        "message": f"ACP Agent 提前停止：{stop_reason}",
+                        "stop_reason": stop_reason,
+                    })
+                    return
 
                 if live_message_queue is not None:
                     while True:
@@ -1361,8 +1636,18 @@ class AcpEngineBase(BaseLLMEngine):
             }
             if update.kind:
                 data["kind"] = update.kind
+            if update.status:
+                data["status"] = update.status
+            if update.content is not None:
+                data["content"] = self._json_value(update.content)
+            if update.locations is not None:
+                data["locations"] = self._json_value(update.locations)
             if update.raw_input is not None:
                 data["raw_input"] = update.raw_input
+            if update.raw_output is not None:
+                data["raw_output"] = update.raw_output
+            if update.field_meta is not None:
+                data["_meta"] = self._json_value(update.field_meta)
             if self.get_permission_mode() == "ask":
                 data["needs_approval"] = True
             return InternalEvent(type="tool_call", data=data)
@@ -1374,10 +1659,16 @@ class AcpEngineBase(BaseLLMEngine):
                 data["title"] = update.title
             if update.kind:
                 data["kind"] = update.kind
+            if update.content is not None:
+                data["content"] = self._json_value(update.content)
+            if update.locations is not None:
+                data["locations"] = self._json_value(update.locations)
             if update.raw_input is not None:
                 data["raw_input"] = update.raw_input
             if update.raw_output is not None:
                 data["raw_output"] = update.raw_output
+            if update.field_meta is not None:
+                data["_meta"] = self._json_value(update.field_meta)
             return InternalEvent(type="tool_call_update", data=data)
         if isinstance(update, (schema.AgentPlanUpdate, schema.Plan)):
             return plan_event([

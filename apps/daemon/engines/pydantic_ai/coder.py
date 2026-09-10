@@ -67,7 +67,7 @@ class WorkStepCoder(Coder):
         workspace: str | Path = ".",
         *,
         allowed_commands: Sequence[str] | None = None,
-        subagent_event_handler: Any = None,
+        subagent_capability: Any = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -98,10 +98,10 @@ class WorkStepCoder(Coder):
                     for source in self._instruction_sources
                 ]
             break
-        # Rebuild the SubAgents capability (if any) with an event-stream handler so
+        # Rebuild SubAgents with a capability observing complete child runs so
         # sub-agent model/tool events surface into the parent event stream.
         # dataclasses.replace keeps all other fields (agents, models, budgets…).
-        if subagent_event_handler is not None:
+        if subagent_capability is not None:
             import dataclasses
 
             for index, capability in enumerate(self.capabilities):
@@ -109,7 +109,7 @@ class WorkStepCoder(Coder):
                     continue
                 replacement = dataclasses.replace(
                     capability,
-                    event_stream_handler=subagent_event_handler,
+                    shared_capabilities=(*capability.shared_capabilities, subagent_capability),
                 )
                 self.capabilities[index] = replacement
                 # Keep the composition view aligned so _rebound() can rebind by

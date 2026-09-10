@@ -17,8 +17,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { useTaskStore } from '../stores/taskStore'
 import { useWorkflowGenStore } from '../stores/workflowGenStore'
 import { useTaskDraftStore } from '../stores/taskDraftStore'
-import { useChatSessionStore } from '../stores/chatSessionStore'
+import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
 import { useProjectStore } from '../stores/projectStore'
+import { useChannelStore } from '../stores/channelStore'
 
 const WS_RECONNECT_BASE_MS = 1000
 const WS_RECONNECT_MAX_MS = 30000
@@ -52,6 +53,7 @@ export function useWebSocket() {
   const handleGenEvent = useWorkflowGenStore((s) => s.handleWsEvent)
   const handleTaskDraftEvent = useTaskDraftStore((s) => s.handleWsEvent)
   const handleChatSessionEvent = useChatSessionStore((s) => s.handleWsEvent)
+  const handleChannelEvent = useChannelStore((s) => s.handleWsEvent)
 
   // Stable inputs for the subscription: only change when task ids / session
   // ids actually change (message chunks mutate session content, not keys).
@@ -60,6 +62,9 @@ export function useWebSocket() {
   const genSessionIds = useWorkflowGenStore(useShallow((s) => Object.keys(s.sessions)))
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
   const chatSessionIds = useChatSessionStore(useShallow((s) => Object.keys(s.sessions)))
+  const sidebarChatSessionIds = useChatListStore(
+    useShallow((s) => s.sessions.map((session) => session.id)),
+  )
   const activeProjectId = useProjectStore((s) => s.activeProject?.id)
 
   const send = useCallback((msg: object) => {
@@ -73,12 +78,13 @@ export function useWebSocket() {
     project_id: useProjectStore.getState().activeProject?.id,
     task_ids: useWsSubscriptionStore.getState().taskIds,
     status_only_task_ids: useTaskStore.getState().tasks.map((t) => t.id),
-    session_ids: [
+    session_ids: [...new Set([
       ...Object.keys(useWorkflowGenStore.getState().sessions),
       ...Object.keys(useTaskDraftStore.getState().sessions),
       ...Object.keys(useChatSessionStore.getState().sessions),
-    ],
-    channels: [],
+      ...useChatListStore.getState().sessions.map((session) => session.id),
+    ])],
+    channels: useProjectStore.getState().activeProject?.id ? ['channel_wechat'] : [],
   }), [])
 
   const flushSubscription = useCallback(() => {
@@ -96,7 +102,7 @@ export function useWebSocket() {
   // cheap and keeps the subscribe-before-stream race window minimal.
   useEffect(() => {
     flushSubscription()
-  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, activeProjectId])
+  }, [flushSubscription, detailTaskIds, tasks, genSessionIds, draftSessionIds, chatSessionIds, sidebarChatSessionIds, activeProjectId])
 
   useEffect(() => {
     let active = true
@@ -137,6 +143,7 @@ export function useWebSocket() {
           if (parsed.session_id && parsed.channel === 'flow_gen') handleGenEvent(parsed)
           if (parsed.session_id && parsed.channel === 'task_create') handleTaskDraftEvent(parsed)
           if (parsed.session_id && parsed.channel === 'session_chat') handleChatSessionEvent(parsed)
+          if (parsed.channel === 'channel_wechat') handleChannelEvent(parsed)
           handleEvent(parsed)
         } catch (error) {
           console.warn('[WS] invalid message:', error)
@@ -166,7 +173,7 @@ export function useWebSocket() {
       wsRef.current = null
       ws?.close()
     }
-  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, flushSubscription])
+  }, [handleEvent, handleGenEvent, handleTaskDraftEvent, handleChatSessionEvent, handleChannelEvent, flushSubscription])
 
   return { send }
 }

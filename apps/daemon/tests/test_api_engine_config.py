@@ -230,6 +230,39 @@ def _add_provider(
     return provider
 
 
+@pytest.mark.anyio
+async def test_engine_quota_uses_optional_backend_capability(engine_client, monkeypatch):
+    client, _ = engine_client
+    captured = {}
+
+    class QuotaEngine:
+        async def get_quota(self, cwd=""):
+            captured["cwd"] = cwd
+            return {"engine_id": "codex_sdk", "primary": {"remaining_percent": 81}}
+
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: QuotaEngine())
+    response = await client.get("/api/engine/codex_sdk/quota")
+
+    assert response.status_code == 200
+    assert response.json()["supported"] is True
+    assert response.json()["quota"]["primary"]["remaining_percent"] == 81
+    assert captured["cwd"]
+
+
+@pytest.mark.anyio
+async def test_engine_quota_is_hidden_for_unsupported_engine(engine_client, monkeypatch):
+    client, _ = engine_client
+    monkeypatch.setattr(engine_api, "create_engine", lambda engine_id: object())
+
+    response = await client.get("/api/engine/claude/quota")
+
+    assert response.json() == {
+        "engine_id": "claude",
+        "supported": False,
+        "quota": None,
+    }
+
+
 def _write_cc_switch_db(path, providers):
     """Create a cc-switch style SQLite DB with the given providers."""
     conn = sqlite3.connect(path)
@@ -1072,6 +1105,17 @@ async def test_engine_must_pass_connection_test_before_selection(
         "/api/engine/pydantic-ai/config",
         json={"values": {"provider_id": provider["id"]}},
     )
+    assert store.is_engine_verified("pydantic_ai") is True
+
+    await client.put(
+        "/api/engine/pydantic-ai/config",
+        json={
+            "values": {
+                "provider_id": provider["id"],
+                "sandbox": "read-only",
+            }
+        },
+    )
     assert store.is_engine_verified("pydantic_ai") is False
 
 
@@ -1743,6 +1787,44 @@ async def test_engine_install_endpoint_already_installed(engine_client):
     assert body["engine_id"] == "pydantic_ai"
     assert body["success"] is True
     assert body["already_installed"] is True
+
+
+@pytest.mark.anyio
+async def test_engine_update_endpoint_updates_installed_sdk(engine_client, monkeypatch):
+    client, store = engine_client
+    called = False
+
+    async def fake_update(self):
+        nonlocal called
+        called = True
+        return EngineInstallResult(success=True, message="openai-codex 更新完成，请重启 daemon")
+
+    monkeypatch.setattr(
+        "engines.codex_sdk.CodexSDKEngine.is_installed",
+        staticmethod(lambda: True),
+    )
+    monkeypatch.setattr("engines.codex_sdk.CodexSDKEngine.update", fake_update)
+    engine_registry.refresh_registry()
+
+    resp = await client.post("/api/engine/codex_sdk/update")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert called is True
+    assert body["engine_id"] == "codex_sdk"
+    assert body["success"] is True
+    assert body["engine"]["updatable"] is True
+    assert store.is_engine_verified("codex_sdk") is False
+
+
+@pytest.mark.anyio
+async def test_engine_update_endpoint_rejects_non_sdk_engine(engine_client):
+    client, _store = engine_client
+
+    resp = await client.post("/api/engine/pydantic_ai/update")
+
+    assert resp.status_code == 400
+    assert "不支持自动更新" in resp.json()["detail"]
 
 
 @pytest.mark.anyio

@@ -496,7 +496,7 @@ async def test_task_creation_auto_starts_the_selected_stage(api_context, monkeyp
     )
 
     assert created.status_code == 200
-    runtime.start.assert_awaited_once_with(project_id, created.json()["id"], "")
+    runtime.start.assert_awaited_once_with(project_id, created.json()["id"], "", source="manual")
 
     runtime.start.reset_mock()
     manual = await client.post(
@@ -536,7 +536,7 @@ async def test_task_creation_auto_starts_the_selected_stage(api_context, monkeyp
         },
     )
     assert forced.status_code == 200
-    runtime.start.assert_awaited_once_with(project_id, forced.json()["id"], "")
+    runtime.start.assert_awaited_once_with(project_id, forced.json()["id"], "", source="manual")
 
 
 @pytest.mark.anyio
@@ -2284,6 +2284,7 @@ async def test_step_history_returns_jsonl_summary_without_detailed_thoughts(api_
         "event_count": 2,
         "last_event_seq": 2,
         "thought_characters": 8,
+        "commentary_characters": 0,
         "tool_count": 0,
     }
     assert "不应进入历史摘要" not in response.text
@@ -2351,6 +2352,13 @@ async def test_task_message_events_pages_detailed_jsonl_timeline(api_context):
     assert second.status_code == 200
     assert second.json()["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
     assert second.json()["complete"] is True
+
+    full_page = await client.get(
+        f"/api/task/{task_id}/messages/{message_id}/events",
+        params={"project_id": project_id, "limit": 30000},
+    )
+    assert full_page.status_code == 200
+    assert len(full_page.json()["events"]) == 2
 
 
 @pytest.mark.anyio

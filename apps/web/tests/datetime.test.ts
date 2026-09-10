@@ -6,6 +6,7 @@ import {
   formatConversationDateTime,
   formatDuration,
   formatDurationBetween,
+  formatRelativeTime,
   toMilliseconds,
 } from '../src/utils/datetime.ts'
 
@@ -53,4 +54,24 @@ test('formats sub-second, long, and cross-day durations consistently', () => {
   assert.equal(formatDuration(3_723_500), '1小时2分')
   assert.equal(formatDuration(93_600_000), '1天2小时')
   assert.equal(formatDurationBetween(null, new Date()), null)
+})
+
+test('formats Codex-style relative time with the largest unit', () => {
+  const now = new Date('2026-09-09T12:00:00+08:00')
+
+  // < 1 minute → just now.
+  assert.equal(formatRelativeTime(new Date('2026-09-09T11:59:30+08:00'), now), '刚刚')
+  // Future / clock skew also falls back to just now.
+  assert.equal(formatRelativeTime(new Date('2026-09-09T12:00:30+08:00'), now), '刚刚')
+
+  assert.equal(formatRelativeTime(new Date('2026-09-09T11:55:00+08:00'), now), '5分前')
+  assert.equal(formatRelativeTime(new Date('2026-09-09T08:00:00+08:00'), now), '4小时前')
+  assert.equal(formatRelativeTime(new Date('2026-08-25T12:00:00+08:00'), now), '15天前')
+  assert.equal(formatRelativeTime(new Date('2026-08-10T12:00:00+08:00'), now), '1个月前')
+  assert.equal(formatRelativeTime(new Date('2025-09-09T12:00:00+08:00'), now), '1年前')
+
+  // Unparseable values render nothing.
+  assert.equal(formatRelativeTime(null, now), '')
+  assert.equal(formatRelativeTime(undefined, now), '')
+  assert.equal(formatRelativeTime('not-a-date', now), '')
 })

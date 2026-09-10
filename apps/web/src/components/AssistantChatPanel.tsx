@@ -1,3 +1,4 @@
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -15,6 +16,7 @@ import {
 import Button from './Button'
 import ChatInput, {
   type ChatContextUsage,
+  type ChatEngineQuota,
   type ChatInputEnhance,
   type ChatInputEngineConfig,
   type ChatInputPermission,
@@ -32,7 +34,7 @@ import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { useI18n } from '../i18n'
 
 const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
-const MIN_COMPOSER_HEIGHT = 170
+const MIN_COMPOSER_HEIGHT = 220
 const MAX_COMPOSER_FRACTION = 0.85
 
 function loadChatComposerHeight(): number | null {
@@ -81,6 +83,7 @@ export interface AssistantChatPanelProps {
   permission?: ChatInputPermission
   enhance?: ChatInputEnhance
   context?: ChatContextUsage | null
+  quota?: ChatEngineQuota | null
   plan?: ChatInputPlan
   availableCommands?: EngineInputItem[]
   attachmentPrefix: string
@@ -115,13 +118,14 @@ export interface AssistantChatPanelProps {
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
-  locale, config, permission, enhance, context, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
+  locale, config, permission, enhance, context, quota, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const { t } = useI18n()
+  const compactLayout = useCompactLayout()
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [awaitingReply, setAwaitingReply] = useState(false)
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
@@ -266,12 +270,12 @@ export default function AssistantChatPanel({
   }
 
   return (
-    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="assistant-chat-panel" ref={rootRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div style={{
         height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', borderBottom: '1px solid var(--border-soft)', background: 'var(--bg)',
       }}>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 'calc(13px * var(--font-scale))' }}>{title}</span>
+        <span className="assistant-chat-header-title" title={title}>{title}</span>
         {running && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
             <span className="task-status-spinner" aria-hidden="true" /> {copy.thinking}
@@ -486,7 +490,7 @@ export default function AssistantChatPanel({
         ref={composerRef}
         style={{
           position: 'relative', flexShrink: 0,
-          height: composerHeight ?? 'auto',
+          height: compactLayout ? 'auto' : composerHeight ?? 'auto',
           background: 'var(--bg)',
         }}
       >
@@ -494,10 +498,10 @@ export default function AssistantChatPanel({
         <div
           ref={composerInnerRef}
           style={{
-            height: composerHeight ?? 'auto',
+            height: compactLayout ? 'auto' : composerHeight ?? 'auto',
             overflowY: 'visible',
             display: 'flex', flexDirection: 'column',
-            padding: '24px 12px',
+            padding: '12px 12px',
           }}
         >
           {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
@@ -549,6 +553,7 @@ export default function AssistantChatPanel({
             permission={permission}
             enhance={enhance}
             context={context}
+            quota={quota}
             plan={plan}
           />
         </div>

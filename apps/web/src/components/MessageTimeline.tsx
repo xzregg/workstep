@@ -18,6 +18,7 @@ export default function MessageTimeline({
   streaming = false,
   projectId,
 }: MessageTimelineProps) {
+  if (!content) return null
   const timeline = buildMessageTimeline(events)
   const streamedText = timelineText(timeline)
   const canInterleaveText = Boolean(streamedText) && (

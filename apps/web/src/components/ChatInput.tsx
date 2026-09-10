@@ -1,3 +1,4 @@
+import ResponsivePopover from './ResponsivePopover'
 import Icon from './Icon'
 import {
   useEffect,
@@ -10,7 +11,7 @@ import {
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
-import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type ProviderInfo } from '../api/client'
+import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 import {
@@ -104,7 +105,22 @@ export interface ChatContextUsage {
   used: number
   total: number
   percent: number
+  estimated?: boolean
+  breakdown?: {
+    system: number
+    toolDefinitions: number
+    user: number
+    assistant: number
+    toolRequests: number
+    toolResults: number
+    visible: number
+    other: number
+    estimated: boolean
+  }
+  tools?: Array<{ name: string; tokens: number }>
 }
+
+export type ChatEngineQuota = EngineQuota
 
 /** Codex-style plan mode (lightbulb pill, left side; also reachable from the + menu). */
 export interface ChatInputPlan {
@@ -144,6 +160,8 @@ export interface ChatInputProps {
   enhance?: ChatInputEnhance
   /** Context-window usage indicator (Codex-style percent + tooltip). */
   context?: ChatContextUsage | null
+  /** Latest account quota reported by the selected engine. */
+  quota?: ChatEngineQuota | null
   /** Plan-mode toggle (Codex-style lightbulb, left side). */
   plan?: ChatInputPlan
   /** Enable image attach: paste-to-upload + the image button. */
@@ -179,6 +197,7 @@ export default function ChatInput({
   permission,
   enhance,
   context,
+  quota,
   plan,
   imageAttach,
   left,
@@ -186,7 +205,7 @@ export default function ChatInput({
   title,
   inputRef,
   rows = 1,
-  minHeight = 80,
+  minHeight = 110,
   maxHeight = 120,
 }: ChatInputProps) {
   const { t, locale } = useI18n()
@@ -622,7 +641,7 @@ export default function ChatInput({
             })
           })()}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 6px 6px' }}>
+        <div className="chat-input-toolbar">
           {left}
           {imageAttach && (
             <>
@@ -684,17 +703,7 @@ export default function ChatInput({
                   )}
                 </button>
                 {attachMenuOpen && (
-                  <>
-                    <div
-                      style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
-                      onClick={() => setAttachMenuOpen(false)}
-                    />
-                    <div
-                      role="dialog"
-                      aria-label={t('chatInput.attachMenuTitle')}
-                      className="chat-input-menu"
-                      style={{ left: 0, bottom: 'calc(100% + 6px)', zIndex: 1301, width: 190 }}
-                    >
+                  <ResponsivePopover title={t('chatInput.attachMenuTitle')} onClose={() => setAttachMenuOpen(false)} className="chat-input-menu" style={{ left: 0, bottom: 'calc(100% + 6px)', zIndex: 1301, width: 190 }}>
                       <button
                         type="button"
                         className="chat-input-menu-item"
@@ -727,8 +736,7 @@ export default function ChatInput({
                           )}
                         </button>
                       )}
-                    </div>
-                  </>
+                  </ResponsivePopover>
                 )}
               </div>
             </>
@@ -751,10 +759,42 @@ export default function ChatInput({
             </button>
           )}
           <div style={{ flex: 1 }} />
+          {quota?.primary && (
+            <span className="chat-input-context chat-input-quota">
+              {t('chatInput.quotaCompact', { remaining: quota.primary.remaining_percent })}
+              <span className="chat-input-context-tip chat-input-quota-tip">
+                <strong>{quota.limit_name || t('chatInput.quotaTitle')}</strong>
+                <span>{t('chatInput.quotaPrimary', {
+                  remaining: quota.primary.remaining_percent,
+                })}</span>
+                <span>{t('chatInput.quotaReset', {
+                  reset: quota.primary.resets_at
+                    ? new Date(quota.primary.resets_at * 1000).toLocaleString(locale)
+                    : t('chatInput.quotaResetUnknown'),
+                })}</span>
+                {quota.secondary && (
+                  <span>{t('chatInput.quotaSecondary', {
+                    remaining: quota.secondary.remaining_percent,
+                  })}</span>
+                )}
+                {quota.credits && (
+                  <span>{quota.credits.unlimited
+                    ? t('chatInput.quotaCreditsUnlimited')
+                    : t('chatInput.quotaCredits', { balance: quota.credits.balance ?? '0' })}</span>
+                )}
+                {quota.individual_limit && (
+                  <span>{t('chatInput.quotaIndividual', {
+                    used: quota.individual_limit.used,
+                    limit: quota.individual_limit.limit,
+                    remaining: quota.individual_limit.remaining_percent,
+                  })}</span>
+                )}
+              </span>
+            </span>
+          )}
           {context && (
             <span
-              className="chat-input-context"
-              role="img"
+              className="chat-input-context chat-input-context-breakdown-wrap"
               aria-label={t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
               style={{
                 color: context.percent > 90
@@ -764,9 +804,59 @@ export default function ChatInput({
                     : 'var(--meta)',
               }}
             >
-              {Math.round(context.percent)}%
-              <span className="chat-input-context-tip">
-                {t('chatInput.contextTokens', { used: formatTokens(context.used), total: formatTokens(context.total) })}
+              <svg className="chat-input-context-ring" viewBox="0 0 24 24" aria-hidden="true">
+                <circle className="chat-input-context-ring-track" cx="12" cy="12" r="9" pathLength="100" />
+                <circle
+                  className="chat-input-context-ring-value"
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  pathLength="100"
+                  strokeDasharray={`${Math.min(100, Math.max(0, context.percent))} 100`}
+                />
+              </svg>
+              <span>{Math.round(context.percent)}%</span>
+              <span className="chat-input-context-tip chat-input-context-detail">
+                <span className="chat-input-context-heading">
+                  <strong>{t('chatInput.contextCompact', { percent: Math.round(context.percent) })}</strong>
+                  <span>{context.estimated ? '~' : ''}{formatTokens(context.used)} / {formatTokens(context.total)}</span>
+                </span>
+                <span className="chat-input-context-meter"><i style={{ width: `${Math.min(100, context.percent)}%` }} /></span>
+                {context.breakdown && (
+                  <>
+                    <span className="chat-input-context-section-title">
+                      {context.breakdown.estimated ? t('chatInput.contextBreakdownEstimated') : t('chatInput.contextBreakdown')}
+                    </span>
+                    {([
+                      ['system', 'contextSystem', '#f59e0b'],
+                      ['toolDefinitions', 'contextToolDefinitions', '#0ea5e9'],
+                      ['user', 'contextUserMessages', '#d946ef'],
+                      ['assistant', 'contextAssistantMessages', '#ec4899'],
+                      ['toolRequests', 'contextToolRequests', '#8b5cf6'],
+                      ['toolResults', 'contextToolResults', '#10b981'],
+                      ['other', 'contextOther', '#94a3b8'],
+                    ] as const).filter(([key]) => context.breakdown![key] > 0).map(([key, label, color]) => (
+                      <span className="chat-input-context-row" key={key}>
+                        <i style={{ background: color }} />
+                        <span>{t(`chatInput.${label}`)}</span>
+                        <code>~{formatTokens(context.breakdown![key])}</code>
+                        <em>{Math.round((context.breakdown![key] / context.used) * 100)}%</em>
+                      </span>
+                    ))}
+                    {context.tools && context.tools.length > 0 && (
+                      <>
+                        <span className="chat-input-context-section-title">{t('chatInput.contextToolsTop')}</span>
+                        {context.tools.map((tool) => (
+                          <span className="chat-input-context-tool" key={tool.name}>
+                            <code>{tool.name}</code>
+                            <span>~{formatTokens(tool.tokens)}</span>
+                            <em>{Math.round((tool.tokens / context.used) * 100)}%</em>
+                          </span>
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
               </span>
             </span>
           )}
@@ -833,22 +923,7 @@ export default function ChatInput({
                 <Icon name="chevron-down" size={9} strokeWidth={2.5} style={{ transform: configOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s', opacity: 0.6 }} />
               </button>
               {configOpen && (
-                <>
-                  <div
-                    style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
-                    onClick={() => setConfigOpen(false)}
-                  />
-                  <div
-                    role="dialog"
-                    aria-label={t('chatInput.engineModelDialog')}
-                    style={{
-                      position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301,
-                      width: 224, maxHeight: '70vh', overflowY: 'auto',
-                      background: 'var(--bg)', border: '1px solid var(--border-soft)', borderRadius: 12,
-                      boxShadow: '0 18px 44px rgba(0,0,0,0.20), 0 0 0 1px var(--border-soft)',
-                      padding: '6px',
-                    }}
-                  >
+                <ResponsivePopover title={t('chatInput.engineModelDialog')} onClose={() => setConfigOpen(false)} style={{ position: 'absolute', right: 0, bottom: '100%', marginBottom: 8, zIndex: 1301, width: 224, maxHeight: '70vh', overflowY: 'auto', background: 'var(--bg)', border: '1px solid var(--border-soft)', borderRadius: 12, padding: 6 }}>
                     {config.onReset && (
                       <button
                         type="button"
@@ -886,8 +961,7 @@ export default function ChatInput({
                       onVisionModelChange={config.onVisionModelChange}
                       onThinkingEffortChange={config.onThinkingEffortChange}
                     />
-                  </div>
-                </>
+                </ResponsivePopover>
               )}
             </div>
           )}

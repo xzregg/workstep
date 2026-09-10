@@ -1,0 +1,32 @@
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
+import { useCompactLayout } from '../hooks/useCompactLayout'
+import { useOverlay } from '../hooks/useOverlay'
+import { useI18n } from '../i18n'
+import Icon from './Icon'
+
+export default function ResponsiveNavigation({ children, title, onNew, style, dismissSignal, newDisabled = false }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; dismissSignal?: string; newDisabled?: boolean
+}) {
+  const { t } = useI18n()
+  const compact = useCompactLayout()
+  const [open, setOpen] = useState(false)
+  const location = useLocation()
+  const ref = useRef<HTMLElement>(null)
+  useOverlay(compact && open, () => setOpen(false), ref)
+  useEffect(() => { setOpen(false) }, [location.key, compact, dismissSignal])
+  return <>
+    <header className="mobile-header">
+      <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>
+      <span title={title}>{title}</span>
+      <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>
+    </header>
+    {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}
+    <aside id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${open ? ' is-open' : ''}`}
+      role={compact && open ? 'dialog' : undefined} aria-modal={compact && open ? true : undefined}
+      aria-label={t('mobile.navigation')} inert={compact && !open ? true : undefined} tabIndex={-1}>
+      {compact && <button className="navigation-close" aria-label={t('common.close')} onClick={() => setOpen(false)}><Icon name="x" size={20} /></button>}
+      {children}
+    </aside>
+  </>
+}

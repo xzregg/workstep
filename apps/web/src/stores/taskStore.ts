@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { taskApi, type EngineInputItem, type Task, type TaskStepState } from '../api/client.ts'
+import { useProjectStore } from './projectStore.ts'
 import {
   CUSTOM,
+  appendMessageContent,
   availableCommandInputItems,
   customValue,
   isCustom,
@@ -13,6 +15,7 @@ export interface TaskEvent {
   type: string
   data?: Record<string, unknown>
   task_id?: string
+  project_id?: string
   step_key?: string
   channel?: 'coordinator' | 'execution' | 'review' | 'archive_experience'
   message_id?: string
@@ -27,6 +30,8 @@ export interface TaskEvent {
   value?: Record<string, unknown>
   role?: string
   delta?: string
+  phase?: string
+  source_item_id?: string
   content?: string
   prompt?: string
   status?: string
@@ -77,6 +82,7 @@ interface TaskState {
   liveMessages: Record<string, Record<string, LiveMessage>>
   availableCommands: Record<string, Record<string, EngineInputItem[]>>
   loading: boolean
+  listQuery: { projectId: string; workflowId: string | null; archived: boolean } | null
   /** Incremented on every task status WS event, so the sidebar can refresh flow running state. */
   taskStatusEvents: number
   /** task_id → incremented whenever a user chat message arrives over WS. */
@@ -117,7 +123,14 @@ interface TaskState {
   handleWsEvent: (event: TaskEvent) => void
 }
 
-export const useTaskStore = create<TaskState>((set) => ({
+export function selectWorkflowTasks(tasks: Task[], workflowId: string | null, archived: boolean): Task[] {
+  return tasks.filter(task => (
+    Boolean(task.archived) === archived
+    && (!workflowId || task.workflow_id === workflowId)
+  ))
+}
+
+export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   activeTaskId: null,
   events: {},
@@ -125,16 +138,25 @@ export const useTaskStore = create<TaskState>((set) => ({
   liveMessages: {},
   availableCommands: {},
   loading: false,
+  listQuery: null,
   taskStatusEvents: 0,
   userMessageEvents: {},
 
   fetchTasks: async (projectId: string, workflowId?: string | null, archived?: boolean) => {
-    set({ loading: true })
+    const previous = get().listQuery
+    // Background refreshes omit filters; retain the current board selection.
+    const query = {
+      projectId,
+      workflowId: workflowId === undefined && previous?.projectId === projectId
+        ? previous.workflowId : workflowId ?? null,
+      archived: archived ?? (previous?.projectId === projectId ? previous.archived : false),
+    }
+    set({ loading: true, listQuery: query })
     try {
-      const { tasks } = await taskApi.list(projectId, workflowId, archived)
-      set({ tasks, loading: false })
+      const { tasks } = await taskApi.list(projectId, query.workflowId, query.archived)
+      if (get().listQuery === query) set({ tasks, loading: false })
     } catch {
-      set({ loading: false })
+      if (get().listQuery === query) set({ loading: false })
     }
   },
 
@@ -282,8 +304,31 @@ export const useTaskStore = create<TaskState>((set) => ({
       || isCustom(event, CUSTOM.status)
       || isCustom(event, CUSTOM.stepRetrying)
     if (isStatusEvent) {
-      // Bump the counter so the sidebar can refresh flow running state.
+      // Bump the counter so other consumers (e.g. statistics) can react.
       useTaskStore.setState((st) => ({ taskStatusEvents: st.taskStatusEvents + 1 }))
+      // Update local per-project running state from the event's project_id.
+      const eventId = event.project_id as string | undefined
+      if (eventId) {
+        const value = customValue(event)
+        const status = (
+          isCustom(event, CUSTOM.stepRetrying)
+            ? 'retrying'
+            : event.status ?? value.status
+        ) as string || ''
+        const isRunning = ['running', 'reviewing', 'retrying'].includes(status)
+        if (isRunning) {
+          useProjectStore.getState().setProjectRunning(eventId, true)
+        } else if (['passed', 'failed', 'cancelled', 'ready', 'stopped', 'paused', 'skipped'].includes(status)) {
+          // For the active project we have the full tasks array; check if
+          // any task is still running before clearing the flag.
+          const { activeProject } = useProjectStore.getState()
+          if (activeProject?.id === eventId) {
+            const stillRunning = useTaskStore.getState().tasks.some((t) => t.status === 'running')
+            useProjectStore.getState().setProjectRunning(eventId, stillRunning)
+          }
+          // Non-active projects: leave as true (conservative; corrected on reload).
+        }
+      }
     }
     const isRecoveredEvent = isCustom(event, CUSTOM.runRecovered)
     if (isRecoveredEvent) {
@@ -356,13 +401,7 @@ export const useTaskStore = create<TaskState>((set) => ({
           author_device_name: event.actor?.device_name,
           proposals: [],
         }
-        const nextContent = event.type === 'TEXT_MESSAGE_CHUNK'
-          ? current.content + String(event.delta ?? '')
-          : event.type === 'TEXT_MESSAGE_CONTENT'
-            ? (typeof event.content === 'string'
-              ? event.content
-              : String(event.delta ?? current.content))
-            : current.content
+        const nextContent = appendMessageContent(current.content, event)
         const nextStatus = event.type === 'TEXT_MESSAGE_END'
           ? String(event.status ?? 'succeeded')
           : current.status
@@ -404,7 +443,7 @@ export const useTaskStore = create<TaskState>((set) => ({
 
       let newContent = prevContent
       if (event.type === 'TEXT_MESSAGE_CHUNK') {
-        newContent = prevContent + String(event.delta ?? '')
+        newContent = appendMessageContent(prevContent, event)
       }
 
       let newTasks = s.tasks

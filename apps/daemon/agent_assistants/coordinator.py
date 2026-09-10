@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 
 from engines.core.agui import AGUIContext, to_agui_events
-from engines.core.events import InternalEvent
+from engines.core.events import InternalEvent, is_commentary
 from engines.core.registry import (
     COORDINATOR_FALLBACK_ORDER,
     create_engine,
@@ -197,7 +197,9 @@ class CoordinatorModule:
 
         async def publish_engine_event(event: InternalEvent) -> None:
             nonlocal raw_content, streamed_reply
-            if event.type == "agent_message_chunk":
+            if is_commentary(event):
+                await publish(event.type, event.data)
+            elif event.type == "agent_message_chunk":
                 content = event.data.get("content") or {}
                 raw_content += str(content.get("text", ""))
                 partial_reply = extract_streaming_reply(raw_content)
@@ -209,7 +211,7 @@ class CoordinatorModule:
                 streamed_reply = partial_reply
                 await publish(
                     "agent_message_chunk",
-                    {"content": {"text": delta}},
+                    {**event.data, "content": {"text": delta}},
                 )
             elif event.type in {
                 "agent_thought_chunk",
@@ -923,7 +925,12 @@ class CoordinatorModule:
                             event_dict,
                             force=event.type in {"interaction_request", "session_started"},
                         )
-                        if event.type == "agent_message_chunk":
+                        if is_commentary(event):
+                            await self._publish_message_event(
+                                task_id, assistant, event.type, event.data, live_event_sequence,
+                            )
+                            live_event_sequence += 1
+                        elif event.type == "agent_message_chunk":
                             content = event.data.get("content") or {}
                             raw_content += str(content.get("text", ""))
                             partial_reply = extract_streaming_reply(raw_content)
@@ -937,7 +944,7 @@ class CoordinatorModule:
                                 task_id,
                                 assistant,
                                 "agent_message_chunk",
-                                {"content": {"text": delta}},
+                                {**event.data, "content": {"text": delta}},
                                 live_event_sequence,
                             )
                             live_event_sequence += 1
@@ -1688,21 +1695,21 @@ class CoordinatorModule:
         fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", raw, re.DOTALL)
         if fenced:
             candidates.insert(0, fenced.group(1))
-        start, end = raw.find("{"), raw.rfind("}")
-        if start >= 0 and end > start:
-            candidates.append(raw[start : end + 1])
+        decoder = json.JSONDecoder()
         for candidate in candidates:
-            try:
-                parsed = json.loads(candidate)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(parsed, dict):
-                continue
-            if not isinstance(parsed.get("reply"), str):
-                continue
-            requests = parsed.get("artifact_requests", [])
-            parsed["artifact_requests"] = requests if isinstance(requests, list) else []
-            return parsed
+            starts = [0, *(match.start() for match in re.finditer(r"\{", candidate))]
+            for start in dict.fromkeys(starts):
+                try:
+                    parsed, _ = decoder.raw_decode(candidate, start)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(parsed, dict):
+                    continue
+                if not isinstance(parsed.get("reply"), str):
+                    continue
+                requests = parsed.get("artifact_requests", [])
+                parsed["artifact_requests"] = requests if isinstance(requests, list) else []
+                return parsed
         raise RuntimeError("Coordinator returned invalid JSON")
 
     async def _parse_or_repair(

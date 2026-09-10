@@ -15,6 +15,7 @@ from engines.core.base import EngineModel, resolve_thinking_effort
 from engines.core.schema import EngineImage
 from engines.core.events import (
     InternalEvent,
+    agent_message_chunk,
     compacted_event,
     normalize_token_usage,
     tool_call_event,
@@ -424,28 +425,67 @@ class PydanticAIEngine(AcpEngineBase):
         if conversation_id:
             kwargs["conversation_id"] = conversation_id
         tool_names: dict[str, str] = {}
-        async with agent.run_stream_events(prompt, **kwargs) as stream:
-            result = None
-            async for event in stream:
-                if getattr(event, "event_kind", "") == "agent_run_result":
-                    result = event.result
+        text_parts: dict[int, dict[str, Any]] = {}
+        pending: list[InternalEvent] = []
+        round_id = 0
+        run_id = uuid.uuid4().hex
+
+        async def flush(phase):
+            nonlocal round_id
+            for item in pending:
+                if (
+                    item.type == "agent_message_chunk"
+                    and phase == "commentary"
+                    and item.data.get("phase") != "final_answer"
+                ):
+                    # 中间引导文本归入思考通道（对齐 Codex reasoning 行为）
+                    text = item.data.get("content", {}).get("text", "")
+                    if text:
+                        await on_event(InternalEvent(
+                            type="agent_thought_chunk",
+                            data={"content": {"text": text}},
+                        ))
                     continue
-                internal = self._map_stream_event(event)
-                if internal is not None:
+                if item.type == "agent_message_chunk":
+                    item.data.setdefault("phase", phase)
+                    item.data.setdefault("source_item_id", f"{run_id}:{round_id}")
+                await on_event(item)
+            pending.clear()
+            round_id += 1
+
+        try:
+            async with agent.run_stream_events(prompt, **kwargs) as stream:
+                result = None
+                async for event in stream:
+                    if getattr(event, "event_kind", "") == "agent_run_result":
+                        result = event.result
+                        await flush("final_answer")
+                        continue
+                    internal = self._map_stream_event(event, text_parts)
+                    if internal is None:
+                        continue
                     if internal.type == "tool_call":
+                        # A tool request is protocol evidence that this model
+                        # response is an intermediate step, even without phase.
+                        await flush("commentary")
                         call_id = str(internal.data.get("tool_call_id") or "")
                         if call_id:
-                            tool_names[call_id] = str(
-                                internal.data.get("title") or ""
-                            )
-                    await on_event(internal)
+                            tool_names[call_id] = str(internal.data.get("title") or "")
+                    if internal.type == "agent_message_chunk" or pending:
+                        pending.append(internal)
+                    else:
+                        await on_event(internal)
                     if internal.type == "tool_call_update" and tool_names.get(
                         str(internal.data.get("tool_call_id") or "")
                     ) in PYDANTIC_PLANNING_TOOL_NAMES:
                         await self._publish_plan_snapshot(on_event)
-            if result is None:
-                raise RuntimeError("Pydantic AI 未返回执行结果")
-            return result
+                if result is None:
+                    raise RuntimeError("Pydantic AI 未返回执行结果")
+                return result
+        finally:
+            # An interrupted run has no accepted final result. Keep its partial
+            # output in the process log instead of inventing a final answer.
+            await flush("commentary")
 
     async def _publish_plan_snapshot(
         self,
@@ -683,11 +723,11 @@ class PydanticAIEngine(AcpEngineBase):
         allowed = list(PYDANTIC_AI_CODER_COMMANDS)
         if sandbox in ("workspace-write", "danger-full-access"):
             allowed.append("cd")
-        subagent_handler = self._make_subagent_handler(on_event)
+        subagent_capability = self._make_subagent_capability(on_event)
         coder = WorkStepCoder(
             root,
             allowed_commands=allowed,
-            subagent_event_handler=subagent_handler,
+            subagent_capability=subagent_capability,
         )
         # The pinned Planning store is the authoritative source for the
         # harness planning tools (write_plan / update_task_status / …);
@@ -877,19 +917,26 @@ class PydanticAIEngine(AcpEngineBase):
             return str(value)
 
     @classmethod
-    def _map_stream_event(cls, event) -> InternalEvent | None:
+    def _map_stream_event(cls, event, text_parts: dict | None = None) -> InternalEvent | None:
         """Map Pydantic AI agent events without duplicating completed parts."""
         event_kind = getattr(event, "event_kind", "")
+        if text_parts is None:
+            text_parts = {}
+        index = getattr(event, "index", 0)
 
         if event_kind == "part_start":
             part = event.part
             part_kind = getattr(part, "part_kind", "")
             content = getattr(part, "content", "")
+            text_parts.pop(index, None)
+            if part_kind == "text":
+                details = getattr(part, "provider_details", None) or {}
+                text_parts[index] = {
+                    "phase": details.get("phase"),
+                    "source_item_id": getattr(part, "id", None),
+                }
             if part_kind == "text" and content:
-                return InternalEvent(
-                    type="agent_message_chunk",
-                    data={"content": {"text": content}},
-                )
+                return agent_message_chunk(content, **text_parts[index])
             if part_kind == "thinking" and content:
                 return InternalEvent(
                     type="agent_thought_chunk",
@@ -913,10 +960,7 @@ class PydanticAIEngine(AcpEngineBase):
             delta_kind = getattr(delta, "part_delta_kind", "")
             content = getattr(delta, "content_delta", "")
             if delta_kind == "text" and content:
-                return InternalEvent(
-                    type="agent_message_chunk",
-                    data={"content": {"text": content}},
-                )
+                return agent_message_chunk(content, **text_parts.get(index, {}))
             if delta_kind == "thinking" and content:
                 return InternalEvent(
                     type="agent_thought_chunk",
@@ -947,78 +991,49 @@ class PydanticAIEngine(AcpEngineBase):
 
         return None
 
-    def _make_subagent_handler(
-        self,
-        on_event: Callable[[InternalEvent], Awaitable[None]],
-    ):
-        """Build an EventStreamHandler that surfaces sub-agent activity to the parent.
+    def _make_subagent_capability(self, on_event):
+        """Observe the whole child run; SDK event streams only cover one node."""
+        from pydantic_ai.capabilities import AbstractCapability
 
-        The handler matches the pydantic-ai-harness ``EventStreamHandler`` signature:
-        ``async def handler(ctx, event_stream)``. Every model/tool event from a
-        sub-agent run is mapped with the same ``_map_stream_event`` logic the parent
-        uses, then wrapped in a ``subagent`` event so it lands in the parent's event
-        stream as a distinct, non-overwriting entry. ``task_id`` is the sub-agent's
-        resolved name so the frontend can fold repeated frames into one subagent row.
-        """
-        async def handler(ctx, event_stream):
-            agent_name = str(getattr(getattr(ctx, "agent", None), "name", "") or "subagent")
-            task_id = f"subagent-{agent_name}"
-            description = str(
-                getattr(getattr(ctx, "agent", None), "description", "") or ""
-            )
-            last_tool: str | None = None
-            has_activity = False
-            completed_normally = False
-            try:
-                async for event in event_stream:
-                    # Emit an initial "running" frame the first time anything surfaces.
-                    if not has_activity:
-                        has_activity = True
-                        await on_event(subagent_event(
-                            task_id=task_id,
-                            status="running",
-                            stage="started",
-                            description=description or None,
-                        ))
-                    internal = self._map_stream_event(event)
-                    if internal is None:
-                        continue
-                    if internal.type == "tool_call":
-                        last_tool = str(internal.data.get("title") or "")
-                        await on_event(subagent_event(
-                            task_id=task_id,
-                            status="running",
-                            stage="progress",
-                            description=description or None,
-                            last_tool_name=last_tool,
-                        ))
-                    elif internal.type == "tool_call_update":
-                        # A tool completed; keep the row alive but don't duplicate
-                        # the raw result into the parent stream (it stays in the
-                        # sub-agent's own run and toolcall part).
-                        pass
-                completed_normally = True
-            finally:
-                # Always close with a lifecycle frame so the UI can settle the row.
-                # A cancelled/errored sub-agent run surfaces as `failed`; a normal
-                # drain of the event stream is `completed`. Cancellation must still
-                # propagate, so a send that would immediately re-raise CancelledError
-                # is tolerated rather than allowed to mask the cancel.
+        mapper = self._map_stream_event
+
+        class SubagentProgress(AbstractCapability):
+            async def emit(self, ctx, status, stage, internal=None):
+                agent = ctx.agent
+                frame = subagent_event(
+                    task_id=f"subagent-{ctx.run_id}",
+                    description=getattr(agent, "description", None) or getattr(agent, "name", None),
+                    status=status,
+                    stage=stage,
+                    last_tool_name=(internal.data.get("title")
+                                    if internal and internal.type == "tool_call" else None),
+                )
+                if internal is not None:
+                    frame.data["event"] = internal.to_dict()
+                await on_event(frame)
+
+            async def wrap_run(self, ctx, *, handler):
+                await self.emit(ctx, "running", "started")
+                status = "failed"
                 try:
-                    await on_event(subagent_event(
-                        task_id=task_id,
-                        status="completed" if completed_normally else "failed",
-                        stage="finished",
-                        description=description or None,
-                        last_tool_name=last_tool,
-                    ))
+                    result = await handler()
+                    status = "completed"
+                    return result
                 except asyncio.CancelledError:
+                    status = "stopped"
                     raise
-                except Exception:
-                    # The parent stream may already be closing; don't let a final
-                    # frame failure mask the sub-agent outcome.
-                    pass
-        return handler
+                finally:
+                    await self.emit(ctx, status, "finished")
+
+            async def wrap_run_event_stream(self, ctx, *, stream):
+                text_parts = {}
+                async for event in stream:
+                    internal = mapper(event, text_parts)
+                    if internal is not None:
+                        await self.emit(ctx, "running", "progress", internal)
+                    yield event
+
+        return SubagentProgress()
 
     # --- pydantic-ai-harness 扩展（上下文压缩 / 会话持久化） ---
 
@@ -1353,7 +1368,7 @@ class PydanticAIEngine(AcpEngineBase):
                         self._run_task = agent_task
                         emitted_text = False
                     continue
-                if event.type == "agent_message_chunk":
+                if event.type == "agent_message_chunk" and event.data.get("phase") != "commentary":
                     emitted_text = True
                 yield event
 

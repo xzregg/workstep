@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
 from engines.core.agui import AGUIContext, to_agui_events
-from engines.core.events import InternalEvent
+from engines.core.events import InternalEvent, is_commentary
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.registry import create_engine
 from engines.core.schema import EngineImage
@@ -288,7 +288,7 @@ async def invoke_engine(
             events.append(event.to_dict())
             if on_event is not None:
                 await on_event(event)
-            if event.type == "agent_message_chunk":
+            if event.type == "agent_message_chunk" and not is_commentary(event):
                 content_block = event.data.get("content") or {}
                 content.append(str(content_block.get("text", "")))
             elif event.type == "session_started":
@@ -577,7 +577,9 @@ def _prune_events(events: list[dict]) -> list[dict]:
     return [
         event
         for event in events
-        if isinstance(event, dict) and event.get("type") in _PERSISTED_EVENT_TYPES
+        if isinstance(event, dict) and (
+            event.get("type") in _PERSISTED_EVENT_TYPES or is_commentary(event)
+        )
     ]
 
 
@@ -818,6 +820,10 @@ class AssistantRuntime:
                         f"{self._config.engine_label} is unavailable: {engine}"
                     )
             if engine != engine_id:
+                default_model = (
+                    config_store.get_engine_default_model(engine) or None
+                )
+                default_fast_model = default_model
                 default_vision_model = None
             engine_id = engine
         normalized_provider = validate_provider_override(provider_id, engine_id)
@@ -922,7 +928,11 @@ class AssistantRuntime:
         )
 
     def start_queued_turn(self, turn_id: str) -> None:
-        """Start a persisted assistant turn on the current event loop."""
+        """Start a persisted assistant turn on the current event loop.
+
+        The turn first acquires a chat-concurrency slot; while the project's
+        chat channel is full the turn stays ``queued`` and waits (FIFO).
+        """
         existing = self._turn_tasks.get(turn_id)
         if existing is not None and not existing.done():
             return
@@ -934,7 +944,7 @@ class AssistantRuntime:
             raise ValueError("Assistant session not found")
         assistant_message_id = str(state.get("assistant_message_id") or "")
         background = asyncio.create_task(
-            self._run_turn(session, turn_id, assistant_message_id),
+            self._run_turn_guarded(session, turn_id, assistant_message_id),
             name=f"assistant-{self._config.name}:{turn_id}",
         )
         self._active_tasks.add(background)
@@ -944,6 +954,27 @@ class AssistantRuntime:
                 task, active_turn_id
             )
         )
+
+    async def _run_turn_guarded(
+        self,
+        session: AssistantSession,
+        turn_id: str,
+        assistant_message_id: str,
+    ) -> None:
+        """Acquire a chat slot, run the turn, then always release it.
+
+        While waiting for a slot the turn keeps its ``queued`` status, so the
+        UI shows the conversation waiting instead of running.
+        """
+        from services.concurrency import concurrency_gate, session_key
+
+        project_id = session.project_id
+        key = session_key(project_id, session.session_id)
+        await concurrency_gate.acquire_chat(project_id, key)
+        try:
+            await self._run_turn(session, turn_id, assistant_message_id)
+        finally:
+            await concurrency_gate.release_chat(project_id, key)
 
     async def stop_current(self, session_id: str) -> bool:
         """Stop the newest queued or running turn for an assistant session."""
@@ -1462,7 +1493,14 @@ class AssistantRuntime:
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
                         active_segment_events.append(event_dict)
-                        if event.type == "agent_message_chunk":
+                        if is_commentary(event):
+                            self._record_journal_event(active_journal_ref[0], event_dict)
+                            await self._publish(
+                                session, active_message_id[0], event.type,
+                                event.data, seq_holder[0],
+                            )
+                            seq_holder[0] += 1
+                        elif event.type == "agent_message_chunk":
                             content_block = event.data.get("content") or {}
                             raw_content += str(content_block.get("text", ""))
                             partial_reply = extract_text(raw_content)
@@ -1476,14 +1514,14 @@ class AssistantRuntime:
                                 active_journal_ref[0],
                                 {
                                     "type": "agent_message_chunk",
-                                    "data": {"content": {"text": delta}},
+                                    "data": {**event.data, "content": {"text": delta}},
                                 },
                             )
                             await self._publish(
                                 session,
                                 active_message_id[0],
                                 "agent_message_chunk",
-                                {"content": {"text": delta}},
+                                {**event.data, "content": {"text": delta}},
                                 seq_holder[0],
                             )
                             seq_holder[0] += 1

@@ -57,8 +57,10 @@ class ReviewGate:
         step_run: StepRun,
         artifacts_dir: Path,
         execution_output: str,
+        execution_prompt: str = "",
         review_config: dict | None = None,
         mode: str | None = None,
+        message_id: str | None = None,
     ) -> ReviewOutcome:
         config = dict(review_config) if review_config is not None else dict(step.review or {})
         if mode is None:
@@ -75,7 +77,8 @@ class ReviewGate:
             or ""
         )
         prompt = self._assemble_prompt(
-            task, step, artifacts_dir, execution_output, str(config.get("prompt", ""))
+            task, step, artifacts_dir, execution_output,
+            str(config.get("prompt", "")), execution_prompt,
         )
         now = utc_now()
         # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，
@@ -154,7 +157,7 @@ class ReviewGate:
                     if event is None:
                         continue
                     events_collected.append(event.to_dict())
-                    if event.type == "agent_message_chunk":
+                    if event.type == "agent_message_chunk" and event.data.get("phase") != "commentary":
                         content = event.data.get("content") or {}
                         response_parts.append(str(content.get("text", "")))
                     elif event.type == "error" and error is None:
@@ -169,15 +172,11 @@ class ReviewGate:
                     ):
                         review_session_id = str(event.data["session_id"])
                     await self._publish({
-                        "type": "review_event",
-                        "data": {
-                            **event.data,
-                            "event_type": event.type,
-                            "task_id": task.id,
-                            "step_key": step.key,
-                            "step_run_id": step_run.id,
-                            "review_run_id": review_run.id,
-                        },
+                        **event.to_dict(),
+                        "channel": "review",
+                        "message_id": message_id,
+                        "engine": engine_id,
+                        "model": model,
                     })
             except Exception as exc:
                 error = str(exc)
@@ -226,6 +225,7 @@ class ReviewGate:
         artifacts_dir: Path,
         execution_output: str,
         review_prompt: str,
+        execution_prompt: str = "",
     ) -> str:
         wf_name = task.workflow_id or "default"
         out_dir = artifacts_dir / wf_name / task.id / step.key
@@ -234,6 +234,10 @@ class ReviewGate:
             if out_dir.exists()
             else []
         )
+        # 阶段输入（a1）：给执行 Agent 的完整 prompt，含任务需求、上游产物等上下文。
+        stage_input_section = ""
+        if execution_prompt:
+            stage_input_section = f"\n## 阶段输入（给执行 Agent 的完整 Prompt）\n{execution_prompt}\n"
         return f"""你是 WorkStep 的阶段审核 Agent。只检查结果，不修改任何文件。
 
 ## 阶段
@@ -241,7 +245,7 @@ class ReviewGate:
 - 名称: {step.label}
 - 阶段要求: {step.prompt}
 - 声明输出: {json.dumps(step.outputs, ensure_ascii=False)}
-
+{stage_input_section}
 ## 本次执行结果
 {execution_output}
 

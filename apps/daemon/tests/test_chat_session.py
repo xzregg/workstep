@@ -195,6 +195,26 @@ async def test_session_crud_round_trip(chat_module):
 
 
 @pytest.mark.anyio
+async def test_session_summary_reports_persisted_running_turn(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    created = module.create_session(project.id, "wf-running")
+
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(created["id"])
+        ChatMessage.create(
+            id="running-assistant",
+            session=row,
+            role="assistant",
+            content="处理中",
+            status="running",
+            created_at=utc_now(),
+        )
+
+    assert module.list_sessions(project.id)[0]["running"] is True
+    assert module.get_session(project.id, created["id"])["running"] is True
+
+
+@pytest.mark.anyio
 async def test_cross_engine_fork_creates_independent_session_with_smart_handoff(
     chat_module,
 ):
@@ -455,7 +475,7 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
         "继续完成",
     ]
     assert "<workstep_context_handoff>" in prompts[0]
-    assert handoff_meta["relative_path"] in prompts[0]
+    assert str(handoff_path.resolve()) in prompts[0]
     assert "旧目标：完成登录" not in prompts[0]
     assert detail["messages"][-1]["prompt"] == "请继续"
     with module._project_ctx(project.id):
@@ -580,19 +600,21 @@ async def test_new_session_explicit_engine_does_not_inherit_other_engine_models(
 
 
 @pytest.mark.anyio
-async def test_existing_session_engine_switch_uses_engine_provider_default(
+async def test_existing_session_engine_switch_uses_target_engine_defaults(
     chat_module,
     monkeypatch,
 ):
-    """切换会话引擎后，“跟随默认”清除旧供应商并交给新引擎解析。"""
+    """切换会话引擎后，“跟随默认”使用目标引擎的供应商与模型。"""
     module, _bus, _manager, project, config_store = chat_module
     config_store.values.update({
         "assistant_defaults": {
             "chat_session": {
                 "engine": "pydantic_ai",
                 "provider_id": "chat-provider",
+                "model": "qwen3.8-27b-mtplx-optimized-speed",
             },
         },
+        "engine_default_models": {"codex_sdk": "gpt-5.6-codex"},
         "providers": [{
             "id": "chat-provider",
             "protocol": "openai_compatible",
@@ -602,12 +624,21 @@ async def test_existing_session_engine_switch_uses_engine_provider_default(
     captured: dict = {}
 
     async def fake_invoke_engine(*args, **kwargs):
+        captured["model"] = args[1]
         captured["config_overrides"] = kwargs.get("config_overrides")
         return "已切换", [], None
 
     monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
     created = module.create_session(project.id)
     assert created["provider_id"] == "chat-provider"
+    handed_off = module.handoff_session(
+        project.id,
+        created["id"],
+        engine="codex_sdk",
+        context_mode="smart",
+    )
+    assert handed_off["model"] is None
+    config_store.values["engine_default_models"]["codex_sdk"] = "gpt-6-codex"
 
     accepted = module.submit_message(
         project.id,
@@ -615,6 +646,7 @@ async def test_existing_session_engine_switch_uses_engine_provider_default(
         "使用 Codex",
         "switch-engine-provider-default",
         engine="codex_sdk",
+        model=None,
         provider_id=None,
     )
 
@@ -622,6 +654,8 @@ async def test_existing_session_engine_switch_uses_engine_provider_default(
     detail = module.get_session(project.id, created["id"])
     assert detail["engine"] == "codex_sdk"
     assert detail["provider_id"] is None
+    assert detail["model"] is None
+    assert captured["model"] == "gpt-6-codex"
     assert captured["config_overrides"] is None
 
 
@@ -1101,6 +1135,57 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     ]
     assert detail["messages"][1]["status"] == "succeeded"
     assert detail["messages"][3]["status"] == "succeeded"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("ending", ["completed", "error", "stopped"])
+async def test_commentary_is_preserved_in_live_and_reloaded_chat_only_as_process(
+    chat_module, monkeypatch, ending,
+):
+    module, bus, manager, project, _ = chat_module
+    queue = bus.subscribe()
+
+    async def invoke(engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs):
+        await on_event(InternalEvent("agent_message_chunk", {
+            "content": {"text": "我先定位组件。"}, "phase": "commentary", "source_item_id": "progress",
+        }))
+        if ending == "error":
+            raise RuntimeError("测试失败")
+        if ending == "stopped":
+            raise asyncio.CancelledError
+        await on_event(InternalEvent("agent_message_chunk", {
+            "content": {"text": "完成。"}, "phase": "final_answer", "source_item_id": "answer",
+        }))
+        return "完成。", [], None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    session = module.create_session(project.id)
+    accepted = module.submit_message(project.id, session["id"], "检查", f"phases-{ending}")
+    assert await _wait_turn(module, accepted.turn_id) == ending
+    streamed = []
+    while not queue.empty():
+        streamed.append(queue.get_nowait())
+    commentary = [event for event in streamed if event.get("phase") == "commentary"]
+    assert len(commentary) == 1
+    assert commentary[0]["delta"] == "我先定位组件。"
+    assert commentary[0]["source_item_id"] == "progress"
+
+    restored = ChatSessionModule(bus, manager)
+    try:
+        history = restored.history(project.id, session["id"])
+        message = history["messages"][-1]
+        assert message["content"] == {
+            "completed": "完成。", "stopped": "", "error": "（生成失败：测试失败）",
+        }[ending]
+        assert message["status"] == ("succeeded" if ending == "completed" else ending)
+        assert message["event_summary"]["commentary_characters"] == 7
+        page = restored.message_events(project.id, session["id"], message["id"])
+        replay = [event for event in page["events"] if event.get("phase") == "commentary"]
+        assert len(replay) == 1
+        assert replay[0]["delta"] == "我先定位组件。"
+    finally:
+        await restored.shutdown()
+        bus.unsubscribe(queue)
 
 
 @pytest.mark.anyio

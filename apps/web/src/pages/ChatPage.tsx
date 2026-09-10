@@ -8,16 +8,17 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
 import Input from '../components/Input'
-import MarkdownEditor from '../components/MarkdownEditor'
 import PendingMessageInserts, {
   type PendingMessageInsert,
 } from '../components/PendingMessageInserts'
+import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import {
   assistantApi,
   chatSessionApi,
+  engineApi,
   providerApi,
   type AssistantConfigInfo,
-  type ChatQuickButton,
+  type EngineQuota,
   type ChatSessionHandoffInput,
   type ProviderInfo,
   type ChatSessionForkInput,
@@ -84,17 +85,7 @@ export default function ChatPage() {
   const [handingOff, setHandingOff] = useState(false)
   const [handoffError, setHandoffError] = useState('')
   const [handoffTargetEngine, setHandoffTargetEngine] = useState('')
-  const [quickEditOpen, setQuickEditOpen] = useState(false)
-  const [quickDraft, setQuickDraft] = useState<ChatQuickButton[]>([])
-  const [quickError, setQuickError] = useState('')
-  const [quickSaving, setQuickSaving] = useState(false)
-  const [quickRemoveId, setQuickRemoveId] = useState<string | null>(null)
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [defaultPrompt, setDefaultPrompt] = useState('')
-  const [promptEditOpen, setPromptEditOpen] = useState(false)
-  const [promptDraft, setPromptDraft] = useState('')
-  const [promptError, setPromptError] = useState('')
-  const [promptSaving, setPromptSaving] = useState(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
@@ -132,6 +123,23 @@ export default function ChatPage() {
     () => contextUsageFromMessages(messages),
     [messages],
   )
+  const effectiveEngine = selectedEngine
+    || assistantConfig?.configured.engine
+    || 'claude'
+  const [quota, setQuota] = useState<EngineQuota | null>(null)
+  useEffect(() => {
+    if (running || !activeProject?.id) return
+    let cancelled = false
+    void engineApi.quota(effectiveEngine, activeProject.id)
+      .then((result) => {
+        if (!cancelled) setQuota(result.quota)
+      })
+      .catch(() => {
+        if (!cancelled) setQuota(null)
+      })
+    return () => { cancelled = true }
+  }, [running, effectiveEngine, activeProject?.id])
+  const visibleQuota = quota?.engine_id === effectiveEngine ? quota : null
   const forkMessageIndex = forkMessageId
     ? messages.findIndex((message) => message.id === forkMessageId)
     : -1
@@ -200,20 +208,6 @@ export default function ChatPage() {
     void useChatListStore.getState().fetchQuickButtons(activeProject.id)
   }, [activeProject?.id])
 
-  useEffect(() => {
-    if (!activeProject?.id) return
-    let active = true
-    chatSessionApi.getSystemPrompt(activeProject.id)
-      .then((result) => {
-        if (active) {
-          setSystemPrompt(result.prompt)
-          setDefaultPrompt(result.default_prompt)
-        }
-      })
-      .catch(() => { /* keep the last known prompt */ })
-    return () => { active = false }
-  }, [activeProject?.id])
-
   // Load one session's history when the URL session id changes.
   useEffect(() => {
     setSessionId(sessionParam)
@@ -266,6 +260,7 @@ export default function ChatPage() {
               data: e.data || {},
             })),
           })),
+          detail.running,
         )
       })
       .catch(() => {
@@ -677,60 +672,6 @@ export default function ChatPage() {
     }
   }, [activeProject, sessionId, deleting, running, projectParam, navigate, t])
 
-  const openQuickEdit = () => {
-    setQuickDraft(quickButtons.length > 0 ? quickButtons.map((b) => ({ ...b })) : [{ id: randomId(), label: '', prompt: '' }])
-    setQuickError('')
-    setQuickEditOpen(true)
-  }
-
-  const saveQuickButtons = useCallback(async () => {
-    if (!activeProject?.id || quickSaving) return
-    for (const button of quickDraft) {
-      if (!button.label.trim()) {
-        setQuickError(t('chatSession.buttonLabelRequired'))
-        return
-      }
-      if (!button.prompt.trim()) {
-        setQuickError(t('chatSession.buttonPromptRequired'))
-        return
-      }
-    }
-    setQuickSaving(true)
-    setQuickError('')
-    try {
-      await useChatListStore.getState().saveQuickButtons(
-        activeProject.id,
-        quickDraft.map((b) => ({ id: b.id, label: b.label.trim(), prompt: b.prompt.trim() })),
-      )
-      setQuickEditOpen(false)
-    } catch (reason) {
-      setQuickError(reason instanceof Error ? reason.message : t('chatSession.buttonsSaved'))
-    } finally {
-      setQuickSaving(false)
-    }
-  }, [activeProject?.id, quickDraft, quickSaving, t])
-
-  const openPromptEdit = () => {
-    setPromptDraft(systemPrompt)
-    setPromptError('')
-    setPromptEditOpen(true)
-  }
-
-  const saveSystemPrompt = useCallback(async () => {
-    if (!activeProject?.id || promptSaving) return
-    setPromptSaving(true)
-    setPromptError('')
-    try {
-      const result = await chatSessionApi.saveSystemPrompt(activeProject.id, promptDraft)
-      setSystemPrompt(result.prompt)
-      setPromptEditOpen(false)
-    } catch (reason) {
-      setPromptError(reason instanceof Error ? reason.message : t('chatSession.promptSaveFailed'))
-    } finally {
-      setPromptSaving(false)
-    }
-  }, [activeProject?.id, promptDraft, promptSaving, t])
-
   if (!activeProject) {
     return (
       <div style={{ flex: 1, display: 'flex', minHeight: 0, alignItems: 'center', justifyContent: 'center' }}>
@@ -843,22 +784,6 @@ export default function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
-              title={t('chatSession.manageQuickButtons')}
-              onClick={openQuickEdit}
-            >
-              {t('chatSession.manageQuickButtons')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              title={t('chatSession.manageSystemPrompt')}
-              onClick={openPromptEdit}
-            >
-              {t('chatSession.manageSystemPrompt')}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
               loading={creating}
               title={t('chatSession.newSession')}
               onClick={() => void createSession()}
@@ -881,6 +806,15 @@ export default function ChatPage() {
               style={{ color: 'var(--danger)' }}
             >
               {t('common.delete')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              title={t('taskList.settingsTitle')}
+              onClick={() => setShowSettingsPanel(true)}
+            >
+              <Icon name="settings" size={13} strokeWidth={2} />
+              {t('taskList.settings')}
             </Button>
           </>
         )}
@@ -949,6 +883,7 @@ export default function ChatPage() {
         }}
         enhance={enhance}
         context={context}
+        quota={visibleQuota}
       />
 
       <ChatSessionForkDialog
@@ -1030,121 +965,9 @@ export default function ChatPage() {
         onCancel={() => setDeleteOpen(false)}
       />
 
-      {/* Quick buttons editor */}
-      <ConfirmDialog
-        open={quickEditOpen}
-        title={t('chatSession.manageQuickButtonsTitle')}
-        confirmText={t('chatSession.saveButtons')}
-        loading={quickSaving}
-        width={820}
-        onConfirm={() => void saveQuickButtons()}
-        onCancel={() => setQuickEditOpen(false)}
-      >
-        <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '65vh', overflowY: 'auto' }}>
-          {quickDraft.map((button, index) => (
-            <div key={button.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                <Input
-                  value={button.label}
-                  onChange={(e) => {
-                    const next = [...quickDraft]
-                    next[index] = { ...button, label: e.target.value }
-                    setQuickDraft(next)
-                    setQuickError('')
-                  }}
-                  placeholder={t('chatSession.buttonLabel')}
-                  style={{ width: '100%' }}
-                />
-                <MarkdownEditor
-                  value={button.prompt}
-                  onChange={(value) => {
-                    const next = [...quickDraft]
-                    next[index] = { ...button, prompt: value }
-                    setQuickDraft(next)
-                    setQuickError('')
-                  }}
-                  projectId={activeProject?.id}
-                  imagePrefix="quick-button"
-                  placeholder={t('chatSession.buttonPrompt')}
-                  minHeight={120}
-                  maxHeight={220}
-                />
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (quickDraft.length <= 1) return
-                  setQuickRemoveId(button.id)
-                }}
-                style={{ color: 'var(--danger)', flexShrink: 0 }}
-              >
-                <Icon name="trash" size={14} />
-              </Button>
-            </div>
-          ))}
-          {quickError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{quickError}</div>}
-          <Button variant="ghost" size="sm" onClick={() => {
-            setQuickDraft([...quickDraft, { id: randomId(), label: '', prompt: '' }])
-            setQuickError('')
-          }}>
-            {t('chatSession.addButton')}
-          </Button>
-        </div>
-      </ConfirmDialog>
-
-      {/* System prompt editor */}
-      <ConfirmDialog
-        open={promptEditOpen}
-        title={t('chatSession.manageSystemPromptTitle')}
-        confirmText={t('common.save')}
-        loading={promptSaving}
-        width={820}
-        onConfirm={() => void saveSystemPrompt()}
-        onCancel={() => setPromptEditOpen(false)}
-      >
-        <div style={{ padding: '0 20px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <MarkdownEditor
-            autoFocus
-            value={promptDraft}
-            onChange={(value) => { setPromptDraft(value); setPromptError('') }}
-            projectId={activeProject?.id}
-            imagePrefix="system-prompt"
-            placeholder={t('chatSession.systemPromptPlaceholder')}
-            minHeight={420}
-            maxHeight="55vh"
-          />
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-            <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>{t('chatSession.systemPromptHint')}</div>
-            <button
-              onClick={() => { setPromptDraft(defaultPrompt); setPromptError('') }}
-              style={{
-                fontSize: 'calc(12px * var(--font-scale))',
-                color: 'var(--accent)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {t('chatSession.loadDefaultPrompt')}
-            </button>
-          </div>
-          {promptError && <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--danger)' }}>{promptError}</div>}
-        </div>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={quickRemoveId !== null}
-        title={t('common.delete')}
-        message={t('chatSession.manageQuickButtonsTitle')}
-        danger
-        onConfirm={() => {
-          if (quickRemoveId) setQuickDraft((draft) => draft.filter((b) => b.id !== quickRemoveId))
-          setQuickRemoveId(null)
-        }}
-        onCancel={() => setQuickRemoveId(null)}
+      <ProjectSettingsPanel
+        project={showSettingsPanel ? activeProject : null}
+        onClose={() => setShowSettingsPanel(false)}
       />
     </>
   )

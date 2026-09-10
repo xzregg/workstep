@@ -271,6 +271,23 @@
 | **组合层** | 现有公共组件：`ChatInput`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter`、`CoordinatorConfigBar`、`MarkdownEditor`、`MarkdownMessage`、`ConfirmDialog`、`Combobox`、`EngineSelect`、`DirectoryBrowser`、`FlowCanvas`、`AiFlowChat` | 复用一致性原则：两处及以上使用的 UI 必须抽公共组件，改一处全局生效 |
 | **页面层** | `Layout`、`TaskList`、`TaskDetail`、`CanvasEditor`、`SettingsPage`、`TemplateSettings` | 只组装，不内联实现公共组件逻辑 |
 
+页面层的“只组装”同时约束状态和副作用：路由级页面可以选择数据并协调区域，但完整业务流程应收口到组合模块。若一个弹框、侧栏分区或编辑器同时包含自己的局部状态、异步请求、校验、错误恢复与关闭保护，应在该功能处形成 seam，对外只暴露稳定标识与结果/关闭回调。不得把大量 state/setter 作为 props 搬到新文件制造浅模块。
+
+以下指标是代码评审中的拆分信号，而非鼓励凑行数：文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个。触发任一指标后，新增功能应先识别可独立验证的业务职责并抽离，或在变更说明中记录暂不拆分的耦合原因。行为测试跟随职责所有者；页面层测试模块组装，组合模块测试自身交互和异常路径。
+
+截至 2026-09-10 的结构审计中，以下模块已触发拆分信号，后续修改应优先沿所列 seam 收口，而不是继续向原文件追加：
+
+| 优先级 | 模块 | 主要混合职责 | 建议 seam |
+|---|---|---|---|
+| P0 | `TaskDetailView.tsx` | 只读/编辑视图、阶段时间线、消息、审核、产物和多个编辑区 | 按任务头部、阶段导航、对话时间线、审核与产物区拆成组合模块，页面只传领域数据和用户意图 |
+| P0 | `FlowCanvas.tsx` | 数据迁移、图布局、节点渲染、画布交互、校验和保存 | 纯数据转换与校验、节点展示、画布控制器分别形成可测试 seam |
+| P0 | `SettingsPage.tsx` | 设置导航、引擎安装、助手配置和多个设置分区 | 由 section registry 组装独立设置分区，页面仅维护当前分区和跨分区刷新 |
+| P1 | `TaskDetail.tsx` | 项目解析、历史同步、实时事件、面板几何和会话控制 | 数据/实时协调 hook 与面板外壳分离，视图交给 `TaskDetailView` 的后续子模块 |
+| P1 | `TaskList.tsx` | 看板、拖拽、筛选、新建任务和 AI 创建 | 看板控制器与任务创建面板分离，新建流程自行拥有草稿、校验和关闭保护 |
+| P2 | `ProviderSettings.tsx`、`ChatInput.tsx`、`ChatPage.tsx` | 表单状态或会话副作用集中，接口持续扩张 | 分别按供应商编辑、输入附件/配置、会话加载/发送队列建立 seam |
+
+`Layout.tsx` 已先移出流程创建、项目连接和侧栏活动同步；剩余侧栏树与菜单仍是后续拆分对象，新功能不得重新放回 `Layout`。
+
 ### 5.2 基础层组件规范
 
 - `Button`：变体 `primary`（accent 底 + `--accent-fg` 文字，hover `brightness(1.06)`）、`ghost`（`--border` 描边）、`danger`、`icon`（圆形图标钮）；尺寸 `sm`/默认；loading 态内置 `Spinner`。

@@ -101,7 +101,11 @@ class MyAcpEngine(AcpEngineBase):
 基类已经处理：
 
 - Agent 初始化（`initialize` / `new_session` / `load_session`）。
-- 会话生命周期（`session/new`、`session/load`、`session/resume`、`session/list`、`session/close`、`session/cancel`）。
+- 会话生命周期（`session/new`、`session/load`、`session/resume`、`session/list`、`session/close`、`session/cancel`、协商后的 `session/fork`）。
+- 初始化后必须按 Agent capabilities 调用可选方法；图片、附加目录及 HTTP/SSE/ACP MCP transport 未声明时应显式拒绝，不能静默丢弃。
+- 客户端只声明实际支持的能力：当前支持表单/URL elicitation、Plan 更新和 boolean config options；客户端文件系统/终端不声明。
+- ACP 工具更新完整保留 `content`、`locations`、`status` 与 `_meta`，并继续透传到 AG-UI；未知通知仍进入 `acp_raw`。
+- 兼容认证、旧 Session Mode 入口及通过扩展 transport 调用的 NES 草案方法。
 - 模型配置（`set_config_option`）。
 - 文本、思考、工具调用、计划、用量、MCP、elicitation 等全部 session update 的事件映射。
 - 权限审批（`request_permission` → `interaction_request`）与表单询问（`create_elicitation` → `elicitation_request`）。
