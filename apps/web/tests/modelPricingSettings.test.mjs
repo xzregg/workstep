@@ -7,21 +7,30 @@ const pricingSource = await readFile(new URL('../src/pages/ModelPricingSettings.
 const apiSource = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
 const statisticsSource = await readFile(new URL('../src/pages/StatisticsPage.tsx', import.meta.url), 'utf8')
 
-test('settings exposes a model pricing section backed by global config APIs', () => {
+test('settings exposes model settings backed by global config APIs', () => {
   assert.match(settingsSource, /activeSection === 'pricing'/)
   assert.match(settingsSource, /<ModelPricingSettings/)
-  assert.match(apiSource, /['"]\/system-settings\/model-pricing['"]/) 
-  assert.match(pricingSource, /systemSettingsApi\.modelPricing/)
-  assert.match(pricingSource, /systemSettingsApi\.saveModelPricing/)
+  assert.match(apiSource, /['"]\/system-settings\/model-settings['"]/) 
+  assert.match(pricingSource, /systemSettingsApi\.modelSettings/)
+  assert.match(pricingSource, /systemSettingsApi\.saveModelSettings/)
 })
 
-test('model pricing lists provider and standalone models with three token prices', () => {
+test('model settings lists provider and engine models with three token prices', () => {
   assert.match(pricingSource, /pricing\.providers/)
-  assert.match(pricingSource, /pricing\.standalone_models/)
+  assert.match(pricingSource, /pricing\.engines/)
   assert.match(pricingSource, /input_price/)
   assert.match(pricingSource, /output_price/)
   assert.match(pricingSource, /cache_price/)
   assert.match(pricingSource, /usd_to_cny_rate/)
+})
+
+test('model settings configures model type and multimodal support per source model', () => {
+  assert.match(apiSource, /engine_id: string \| null/)
+  assert.match(apiSource, /model_type: ModelType/)
+  assert.match(apiSource, /supports_multimodal: boolean/)
+  assert.match(pricingSource, /settings\.pricingModelType/)
+  assert.match(pricingSource, /settings\.pricingMultimodal/)
+  assert.match(pricingSource, /engineLabel\(row\.sourceId, t\)/)
 })
 
 test('model pricing only includes enabled providers', () => {
@@ -32,6 +41,7 @@ test('provider model options come from the saved cache without refresh', () => {
   assert.doesNotMatch(pricingSource, /providerApi\.models/)
   assert.doesNotMatch(pricingSource, /engineApi\.config/)
   assert.doesNotMatch(pricingSource, /engineApi\.list/)
+  assert.doesNotMatch(pricingSource, /fetchEngineModels/)
 })
 
 test('model pricing supports selecting models and applying three prices in bulk', () => {

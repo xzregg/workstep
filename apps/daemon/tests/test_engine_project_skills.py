@@ -40,8 +40,8 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
     claude = await ClaudeCodeEngine().inspect_capabilities(str(tmp_path))
     openclaw = await OpenClawEngine().inspect_capabilities(str(tmp_path))
 
-    assert [item["name"] for item in codex["input_items"][:4]] == [
-        "goal", "plan", "reasoning", "status",
+    assert [item["name"] for item in codex["input_items"][:5]] == [
+        "goal", "plan", "reasoning", "status", "compact",
     ]
     assert codex["input_items"][0] == {
         "kind": "command",
@@ -50,13 +50,20 @@ async def test_engine_inspection_returns_engine_owned_input_items(tmp_path):
         "insert_text": "/goal ",
         "action": "prompt",
     }
+    assert codex["input_items"][4] == {
+        "kind": "command",
+        "name": "compact",
+        "description": "压缩当前会话上下文",
+        "insert_text": "/compact",
+        "action": "prompt",
+    }
     assert next(item for item in codex["input_items"] if item["name"] == "shared")["insert_text"] == "$shared "
-    assert [item["name"] for item in claude["input_items"][:4]] == [
-        "goal", "plan", "reasoning", "status",
+    assert [item["name"] for item in claude["input_items"][:5]] == [
+        "goal", "plan", "reasoning", "status", "compact",
     ]
     assert next(item for item in claude["input_items"] if item["name"] == "shared")["insert_text"] == "/shared "
     assert [item["name"] for item in openclaw["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "shared",
+        "goal", "plan", "reasoning", "status", "compact", "shared",
     ]
 
 
@@ -66,5 +73,5 @@ async def test_engine_inspection_without_skills_returns_empty_lists(tmp_path):
 
     assert result["skills"] == []
     assert [item["name"] for item in result["input_items"]] == [
-        "goal", "plan", "reasoning", "status",
+        "goal", "plan", "reasoning", "status", "compact",
     ]

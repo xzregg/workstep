@@ -82,6 +82,12 @@ class PromptCapturingEngine(AcpEngineBase):
         return {}
 
 
+class DirectImageEngine(PromptCapturingEngine):
+    @property
+    def supports_vision(self):
+        return True
+
+
 @pytest.mark.anyio
 async def test_base_spawn_coordinator_injects_image_refs_into_prompt():
     PromptCapturingEngine.calls.clear()
@@ -112,6 +118,40 @@ async def test_base_spawn_coordinator_without_images_keeps_prompt_clean():
         "You are a read-only task coordinator. Do not call tools, execute "
         "commands, or modify files. Return only the requested JSON.\n\n普通问题"
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("multimodal", [True, False])
+async def test_assistant_sends_images_directly_only_for_multimodal_model(
+    monkeypatch,
+    multimodal,
+):
+    import agent_assistants.base as assistant_base
+
+    DirectImageEngine.calls.clear()
+    DirectImageEngine.image_calls.clear()
+    engine = DirectImageEngine()
+
+    class ModelSettingsStore:
+        def model_supports_multimodal(self, engine_id, model, provider_id=""):
+            assert (engine_id, model, provider_id) == ("vision", "vision-model", "")
+            return multimodal
+
+    monkeypatch.setattr(assistant_base, "create_engine", lambda _engine_id: engine)
+    monkeypatch.setattr(assistant_base, "config_store", ModelSettingsStore())
+    image = EngineImage(path="/project/.workstep/uploads/a.png")
+
+    await assistant_base.invoke_engine(
+        "vision",
+        "vision-model",
+        "/project",
+        "看图说话",
+        None,
+        images=[image],
+    )
+
+    assert DirectImageEngine.image_calls[-1] == ([image] if multimodal else None)
+    assert ("/project/.workstep/uploads/a.png" in DirectImageEngine.calls[-1]) is not multimodal
 
 
 class SimpleStore:

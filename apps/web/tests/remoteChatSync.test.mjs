@@ -15,8 +15,14 @@ test('task store surfaces remote user-message events without rendering live user
 
 test('open task details refresh persisted history when a user message arrives', () => {
   assert.match(detailSource, /s\.userMessageEvents\[taskId\]/)
-  assert.match(detailSource, /taskApi\.history\(taskId, projectId, 50, 0\)/)
+  assert.match(detailSource, /taskApi\.history\(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0\)/)
   assert.match(detailSource, /mergeRefreshedTaskHistory\(current, response\.messages \|\| \[\]\)/)
+})
+
+test('task details load older history when the conversation is scrolled to the top', () => {
+  assert.match(detailSource, /const TASK_HISTORY_PAGE_SIZE = 300/)
+  assert.match(detailSource, /taskApi\.history\(taskId, projectId, TASK_HISTORY_PAGE_SIZE, offset\)/)
+  assert.match(detailSource, /onLoadOlderHistory=\{loadOlderHistory\}/)
 })
 
 test('open task details do not poll history and overwrite loaded message details', () => {

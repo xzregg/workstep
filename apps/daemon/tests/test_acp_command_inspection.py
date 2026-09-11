@@ -101,6 +101,7 @@ async def test_hermes_inspection_timeout_returns_shared_skills(monkeypatch, tmp_
         "plan",
         "reasoning",
         "status",
+        "compact",
         "shared",
     ]
     assert result["input_items"][-1] == {

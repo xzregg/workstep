@@ -485,6 +485,25 @@ def test_workflow_running_flag_reflects_task_status(tmp_path, manager):
     assert next(w for w in workflows if w["id"] == wf["id"])["running"] is False
 
 
+def test_workflow_failed_flag_reflects_failed_stage(tmp_path, manager):
+    """Project summaries expose a workflow whose executed stage failed."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    wf = m.create_workflow(proj, "Flow")
+    _seed_workflow_task_data(m, proj, wf["id"])
+
+    Task.update(status="stopped").where(Task.id == "task-1").execute()
+    TaskStep.update(status="failed").where(
+        TaskStep.task == "task-1",
+        TaskStep.step_key == "req",
+    ).execute()
+
+    workflows = next(p for p in m.list_projects() if p["id"] == proj.id)["workflows"]
+    summary = next(w for w in workflows if w["id"] == wf["id"])
+    assert summary["running"] is False
+    assert summary["failed"] is True
+
+
 def test_workflow_running_flag_is_computed_per_project(tmp_path, manager):
     """Running state must come from each project's own database."""
     m, _, _ = manager

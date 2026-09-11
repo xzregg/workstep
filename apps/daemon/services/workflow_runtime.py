@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from services.workflow_definition import WorkflowDefinition
 from services.messages import create_task_message, new_message_id
 from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.context_handoff import append_handoff_log
 from services.pipeline import DAGScheduler, Step
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
@@ -32,6 +34,7 @@ from streaming.bus import EventBus
 logger = logging.getLogger(__name__)
 
 _VALID_TASK_SOURCES = {"manual", "schedule", "scheduled_start"}
+_ACTIVE_STAGE_CONFIG_STATUSES = {"running", "retrying", "rework"}
 
 
 def resolve_message_step_key(
@@ -251,12 +254,7 @@ class WorkflowRuntime:
         except Task.DoesNotExist as exc:
             raise ValueError(f"Task not found: {task_id}") from exc
 
-        workflow_data = project.steps
-        if task.workflow_id:
-            selected_workflow = project.workflow_by_id(task.workflow_id)
-            if selected_workflow is None:
-                raise ValueError(f"Workflow not found: {task.workflow_id}")
-            workflow_data = selected_workflow["steps"]
+        workflow_data = self._current_workflow_steps(project, task)
         workflow = WorkflowDefinition.load(workflow_data)
         compiled = workflow.compile()
         steps_config = compiled.to_steps_config()
@@ -322,6 +320,7 @@ class WorkflowRuntime:
         self,
         prepared: _PreparedWorkflowRun,
         user_input: str,
+        stage_followups: dict[str, str] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
@@ -331,6 +330,7 @@ class WorkflowRuntime:
             dispatch_service=self._dispatch_service,
             source_project_id=prepared.project_id,
             database_executor=prepared.database_executor,
+            stage_followups=stage_followups,
         )
         self._runners[task.id] = runner
 
@@ -513,7 +513,12 @@ class WorkflowRuntime:
             project_id, lambda _project: persist_message()
         )
         message_id = user_message.id
-        handle = await self.restart_from_stage(project_id, task_id, step_key)
+        handle = await self.restart_from_stage(
+            project_id,
+            task_id,
+            step_key,
+            stage_followup=normalized,
+        )
         await self._publish_user_message(
             task_id,
             user_message,
@@ -939,7 +944,284 @@ class WorkflowRuntime:
             if selected_workflow is None:
                 raise ValueError(f"Workflow not found: {task.workflow_id}")
             workflow_data = selected_workflow["steps"]
-        return workflow_data
+        merged = deepcopy(workflow_data)
+        is_nodes = bool(merged.get("nodes"))
+        raw_steps = merged.get("nodes") or merged.get("steps") or []
+        by_key = {
+            str(
+                (item.get("type") or item.get("key") or item.get("id"))
+                if is_nodes
+                else (item.get("key") or item.get("id") or item.get("type"))
+                or ""
+            ): item
+            for item in raw_steps
+        }
+        for row in TaskStep.select().where(TaskStep.task == task):
+            if not row.execution_config_json or row.step_key not in by_key:
+                continue
+            try:
+                override = json.loads(row.execution_config_json)
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(override, dict):
+                continue
+            target = by_key[row.step_key]
+            target["engine"] = str(override.get("engine") or target.get("engine") or "")
+            target["model"] = str(override.get("model") or "")
+            target["config"] = dict(override.get("config") or {})
+        return merged
+
+    @staticmethod
+    def _find_stage(workflow_data: dict, step_key: str) -> dict | None:
+        is_nodes = bool(workflow_data.get("nodes"))
+        for item in workflow_data.get("nodes") or workflow_data.get("steps") or []:
+            key = str(
+                (item.get("type") or item.get("key") or item.get("id"))
+                if is_nodes
+                else (item.get("key") or item.get("id") or item.get("type"))
+                or ""
+            )
+            if key == step_key:
+                return item
+        return None
+
+    async def get_stage_execution_config(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+    ) -> dict:
+        from engines.core.registry import get_available_engines
+
+        def load(project):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if step is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            workflow = self._current_workflow_steps(project, task)
+            resolved_stage = self._find_stage(workflow, step_key)
+            if resolved_stage is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            if step.status in _ACTIVE_STAGE_CONFIG_STATUSES and task.active_workflow_run_id:
+                active_run = WorkflowRun.get_or_none(
+                    WorkflowRun.id == task.active_workflow_run_id
+                )
+                if active_run is not None:
+                    try:
+                        snapshot = json.loads(active_run.workflow_snapshot_json)
+                    except (TypeError, json.JSONDecodeError):
+                        snapshot = None
+                    if isinstance(snapshot, dict):
+                        snapshot_stage = self._find_stage(snapshot, step_key)
+                        if snapshot_stage is not None:
+                            resolved_stage = snapshot_stage
+            configured = None
+            if step.execution_config_json:
+                try:
+                    value = json.loads(step.execution_config_json)
+                    configured = value if isinstance(value, dict) else None
+                except (TypeError, json.JSONDecodeError):
+                    configured = None
+            resolved = {
+                "engine": str(resolved_stage.get("engine") or ""),
+                "model": str(resolved_stage.get("model") or ""),
+                "config": dict(resolved_stage.get("config") or {}),
+            }
+            execution_messages = Message.select().where(
+                (Message.task == task)
+                & (Message.step_key == step_key)
+                & (Message.channel == "execution")
+                & (Message.role.in_(["user", "assistant"]))
+            )
+            latest_response = (
+                execution_messages.where(
+                    (Message.role == "assistant")
+                    & (Message.run_status.in_(["succeeded", "completed"]))
+                )
+                .order_by(Message.sequence.desc())
+                .first()
+            )
+            return {
+                "configured": configured,
+                "resolved": resolved,
+                "source": "task_override" if configured is not None else "workflow",
+                "editable": step.status not in _ACTIVE_STAGE_CONFIG_STATUSES,
+                "status": step.status,
+                "has_history": execution_messages.exists(),
+                "message_count": execution_messages.count(),
+                "session_engine": str(
+                    (latest_response.engine if latest_response is not None else None)
+                    or step.engine
+                    or resolved["engine"]
+                ),
+                # 当前引擎会话建立时绑定的供应商；null = 无可复用会话。
+                # 同引擎换供应商时需要交接（旧会话端点与新供应商不匹配）。
+                "session_provider": (
+                    str(step.session_provider or "").strip()
+                    if step.session_id else None
+                ),
+                "available_engines": get_available_engines(),
+            }
+
+        return await self._run_db(project_id, load)
+
+    async def update_stage_execution_config(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+        *,
+        engine: str,
+        model: str | None,
+        config: dict[str, str],
+        context_mode: str | None = None,
+    ) -> dict:
+        from engines.core.registry import create_engine
+
+        normalized_engine = engine.strip()
+        if not normalized_engine:
+            raise ValueError("引擎不能为空")
+        if context_mode not in {None, "smart", "full", "none"}:
+            raise ValueError("不支持的交接方式")
+        if any(not isinstance(key, str) or not isinstance(value, str) for key, value in config.items()):
+            raise ValueError("阶段配置必须为字符串键值")
+        target_engine = create_engine(normalized_engine)
+        if target_engine is None:
+            raise ValueError(f"未知引擎: {normalized_engine}")
+        allowed_fields = {
+            field.key for field in target_engine.full_stage_config_schema()
+        }
+        unknown_fields = sorted(set(config) - allowed_fields)
+        if unknown_fields:
+            raise ValueError(f"不支持的阶段配置字段: {', '.join(unknown_fields)}")
+
+        def save(_project):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if step is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            if step.status in _ACTIVE_STAGE_CONFIG_STATUSES:
+                raise RuntimeError("阶段执行中，不能修改引擎配置")
+            previous = (
+                Message.select()
+                .where(
+                    (Message.task == task)
+                    & (Message.step_key == step_key)
+                    & (Message.channel == "execution")
+                    & (Message.role == "assistant")
+                    & (Message.run_status.in_(["succeeded", "completed"]))
+                )
+                .order_by(Message.sequence.desc())
+                .first()
+            )
+            source_engine = str(
+                (previous.engine if previous is not None else None)
+                or step.engine
+                or ""
+            )
+            current_workflow = self._current_workflow_steps(_project, task)
+            current_stage = self._find_stage(current_workflow, step_key) or {}
+            current_provider = str(
+                (current_stage.get("config") or {}).get("provider_id") or ""
+            ).strip()
+            new_provider = str((config or {}).get("provider_id") or "").strip()
+            # 同引擎但供应商变更也属于端点切换：只要阶段已有历史，就要生成
+            # 交接数据。是否存在可复用 session 仅决定后续能否 resume，不影响
+            # 用户对上下文交接方式的选择。
+            provider_changed = (
+                bool(source_engine)
+                and source_engine == normalized_engine
+                and current_provider != new_provider
+            )
+            previous_provider = current_provider if provider_changed else ""
+            step.execution_config_json = json.dumps({
+                "engine": normalized_engine,
+                "model": (model or "").strip(),
+                "config": dict(config),
+            }, ensure_ascii=False, sort_keys=True)
+            if source_engine and (
+                source_engine != normalized_engine or provider_changed
+            ):
+                history = [
+                    {
+                        "id": row.id,
+                        "role": row.role,
+                        "content": row.content,
+                        "status": row.run_status,
+                        "created_at": (
+                            row.created_at.isoformat() if row.created_at else None
+                        ),
+                    }
+                    for row in (
+                        Message.select()
+                        .where(
+                            (Message.task == task)
+                            & (Message.step_key == step_key)
+                            & (Message.channel == "execution")
+                            & (Message.role.in_(["user", "assistant"]))
+                        )
+                        .order_by(Message.sequence.asc())
+                    )
+                ]
+                if history:
+                    metadata = append_handoff_log(
+                        _project.workstep_dir,
+                        f"task-{task.id}:{step_key}",
+                        history,
+                        source_engine=source_engine,
+                        target_engine=normalized_engine,
+                        mode=context_mode or "smart",
+                        source_provider=previous_provider,
+                        target_provider=new_provider,
+                    )
+                    step.pending_handoff_json = json.dumps(
+                        metadata, ensure_ascii=False, sort_keys=True
+                    )
+            else:
+                step.pending_handoff_json = None
+            step.save(only=[
+                TaskStep.execution_config_json,
+                TaskStep.pending_handoff_json,
+            ])
+
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            await self._run_db(project_id, save)
+        return await self.get_stage_execution_config(project_id, task_id, step_key)
+
+    async def reset_stage_execution_config(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+    ) -> dict:
+        def reset(_project):
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if step is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            if step.status in _ACTIVE_STAGE_CONFIG_STATUSES:
+                raise RuntimeError("阶段执行中，不能修改引擎配置")
+            step.execution_config_json = None
+            step.pending_handoff_json = None
+            step.save(only=[TaskStep.execution_config_json, TaskStep.pending_handoff_json])
+
+        lock = self._operation_locks.setdefault(task_id, asyncio.Lock())
+        async with lock:
+            await self._run_db(project_id, reset)
+        return await self.get_stage_execution_config(project_id, task_id, step_key)
 
     async def restart_from_stage(
         self,
@@ -948,6 +1230,7 @@ class WorkflowRuntime:
         step_key: str,
         *,
         expected_run_id: str | None = None,
+        stage_followup: str | None = None,
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG stage.
 
@@ -1063,7 +1346,11 @@ class WorkflowRuntime:
                 )
 
             prepared = await self._run_db(project_id, persist_restart)
-            return self._launch_prepared_run(prepared, "")
+            return self._launch_prepared_run(
+                prepared,
+                "",
+                {step_key: stage_followup} if stage_followup else None,
+            )
 
     async def _start_from_stage_without_parent_async(
         self,
@@ -1086,12 +1373,7 @@ class WorkflowRuntime:
         step_key: str,
     ) -> _PreparedWorkflowRun:
         task = Task.get_by_id(task_id)
-        workflow_data = project.steps
-        if task.workflow_id:
-            selected_workflow = project.workflow_by_id(task.workflow_id)
-            if selected_workflow is None:
-                raise ValueError(f"Workflow not found: {task.workflow_id}")
-            workflow_data = selected_workflow["steps"]
+        workflow_data = self._current_workflow_steps(project, task)
         compiled = WorkflowDefinition.load(workflow_data).compile()
         steps_config = compiled.to_steps_config()
         scheduler = DAGScheduler([

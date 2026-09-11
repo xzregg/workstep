@@ -37,8 +37,9 @@ import {
   engineDescription,
   sortExecutionEngines,
 } from '../engineMeta'
-import { useI18n, type TKey } from '../i18n'
+import { useI18n, type TFunction, type TKey } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
+import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import {
@@ -156,6 +157,12 @@ const ASSISTANT_NAME_KEYS: Record<string, TKey> = {
   task_create: 'settings.assistantNames.taskCreate',
   workflow_gen: 'settings.assistantNames.workflowGen',
   chat_session: 'settings.assistantNames.chatSession',
+  channel_chat: 'settings.assistantNames.channelChat',
+}
+
+export function getAssistantLabel(name: string, t: TFunction): string {
+  const key = ASSISTANT_NAME_KEYS[name]
+  return key ? t(key) : name
 }
 
 function AgentAssistantSettings() {
@@ -313,9 +320,6 @@ function AgentAssistantSettings() {
     }
   }
 
-  const assistantLabel = (info: AssistantConfigInfo) =>
-    t(ASSISTANT_NAME_KEYS[info.name] || 'settings.assistantSelect')
-
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
       <div style={{ marginBottom: 24 }}>
@@ -346,7 +350,7 @@ function AgentAssistantSettings() {
                   fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, fontFamily: 'var(--font-body)',
                 }}
               >
-                {assistantLabel(item)}
+                {getAssistantLabel(item.name, t)}
               </button>
             )
           })}
@@ -783,6 +787,12 @@ export default function SettingsPage({
     setActiveSection(initialSection)
   }, [initialSection])
 
+  // 引擎的安装 / 配置 / 测试状态每次变化都同步给共享可用性，聊天框和阶段引擎下拉
+  // 才能立即跟随禁用状态（设置弹框是浮层，不会卸载底下的聊天页）。
+  useEffect(() => {
+    if (engines.length > 0) publishEngineCatalog(engines)
+  }, [engines])
+
   useEffect(() => {
     if (activeSection !== 'engines' || focusTarget !== 'execution-engine') return
     const timer = window.setTimeout(() => {
@@ -1187,7 +1197,7 @@ export default function SettingsPage({
             color: activeSection === 'pricing' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
           }}
         >
-          <span aria-hidden="true" style={{ width: 16, textAlign: 'center' }}>$</span>
+          <Icon name="layers" size={16} strokeWidth={2} />
           {t('settings.pricingNav')}
         </button>
         <button

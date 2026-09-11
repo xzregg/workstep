@@ -402,6 +402,9 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .chat-message-row:hover .footer-usage-summary,
 .chat-message-row:focus-within .footer-usage-summary { opacity: 1; }
 
+/* 「会话 ID」下拉面板：显隐由组件内状态控制（悬停/聚焦打开，滑入面板不关闭）。 */
+.msg-id-trigger { cursor: default; }
+
 /* 文本链接按钮（查看提示词等），不套灰色边框盒 */
 .meta-link-btn { background: none; border: none; padding: 0; cursor: pointer; }
 .meta-link-btn:hover { background: none; color: var(--accent-hover); text-decoration: underline; }
@@ -2810,6 +2813,16 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   animation: sidebar-completion-arrive 180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.sidebar-failure-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--status-failed);
+  animation: sidebar-completion-arrive 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @keyframes sidebar-completion-arrive {
   from { transform: scale(0.55); opacity: 0.35; }
   to { transform: scale(1); opacity: 1; }
@@ -2817,7 +2830,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   .task-status-spinner { animation-duration: 1.6s; }
-  .sidebar-completion-dot { animation: none; }
+  .sidebar-completion-dot, .sidebar-failure-dot { animation: none; }
 }
 
 @keyframes task-status-spin {
@@ -3542,6 +3555,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .channel-account-row { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg-2); }
 .channel-qr-panel { min-height: 220px; border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--meta); text-align: center; font-size: calc(12px * var(--font-scale)); }
 .channel-qr-panel img { width: 176px; height: 176px; object-fit: contain; background: white; border-radius: 8px; }
+.channel-qr-failed-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in oklab, var(--danger), transparent 88%); color: var(--danger); font-weight: 700; font-size: calc(20px * var(--font-scale)); }
+.channel-qr-error { color: var(--danger); max-width: 200px; word-break: break-word; }
 @media (max-width: 700px) {
   .channels-page { padding: 22px 14px; }
   .channel-card-header { padding: 12px; gap: 9px; }

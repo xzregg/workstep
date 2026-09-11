@@ -57,7 +57,10 @@ class TaskStep(BaseModel):
     status = pw.TextField(default="pending")  # pending / running / passed / failed / skipped
     engine = pw.TextField(null=True)
     session_id = pw.TextField(null=True)  # 该任务该阶段专属的引擎会话（重跑时复用）
+    session_provider = pw.TextField(null=True)  # 建立该会话时使用的供应商（供应商变更时失效）
     review_session_id = pw.TextField(null=True)  # 该任务该阶段专属的审核会话（与执行会话隔离）
+    execution_config_json = pw.TextField(null=True)  # 当前任务对流程阶段执行配置的覆盖
+    pending_handoff_json = pw.TextField(null=True)  # 跨引擎重跑待消费的交接元数据
     rework_feedback = pw.TextField(null=True)  # 下游验证阶段下发的返工反馈（重跑时注入 prompt）
     review_feedback = pw.TextField(null=True)  # 人工审核驳回原因（重跑该阶段时注入 prompt）
     started_at = UTCDateTimeField(null=True)

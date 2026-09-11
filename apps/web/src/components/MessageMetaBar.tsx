@@ -1,5 +1,5 @@
 import Icon from './Icon'
-import { useState } from 'react'
+import MessageIdPopover from './MessageIdPopover'
 import ProcessTrace from './ProcessTrace'
 import {
   formatConversationDateTime,
@@ -47,7 +47,10 @@ export interface MessageMetaBarProps {
   running?: boolean
   events?: any[]
   prompt?: string | null
+  /** WorkStep 会话 ID：元信息栏显示「会话 ID」入口，点击复制完整 ID；悬停该入口弹出 ID 面板。 */
   sessionId?: string | null
+  /** 消息 ID：与 sessionId 一起显示在「会话 ID」悬停面板中。 */
+  messageId?: string | null
   onViewPrompt: (prompt: string) => void
   /** Terminal message status shown as a pill (cancelled/stopped/failed). */
   status?: 'cancelled' | 'stopped' | 'failed'
@@ -81,6 +84,7 @@ export default function MessageMetaBar({
   events,
   prompt,
   sessionId,
+  messageId,
   onViewPrompt,
   status,
   reviewMode = false,
@@ -93,7 +97,6 @@ export default function MessageMetaBar({
 }: MessageMetaBarProps) {
   const { t, locale } = useI18n()
   const openMode = useUserSettingsStore((state) => state.openMode)
-  const [sessionCopied, setSessionCopied] = useState(false)
   const eventStartedAt = (events || []).reduce<number | null>((earliest, event) => {
     const timestamp = toMilliseconds(event?.created_at ?? event?.timestamp)
     if (timestamp === null) return earliest
@@ -108,16 +111,6 @@ export default function MessageMetaBar({
     return typeof sid === 'string' && sid.trim() ? sid : null
   }, null)
   const displaySessionId = sessionId || eventSessionId
-  const copySessionId = async () => {
-    if (!displaySessionId) return
-    try {
-      await navigator.clipboard.writeText(displaySessionId)
-      setSessionCopied(true)
-      setTimeout(() => setSessionCopied(false), 1500)
-    } catch {
-      // Clipboard unavailable — leave state untouched.
-    }
-  }
 
   return reviewMode ? (
     <div style={{
@@ -247,24 +240,14 @@ export default function MessageMetaBar({
                 {t('meta.compacted')}
               </span>
             )}
-            {displaySessionId && (
-              <button
-                type="button"
-                className="chat-message-action"
-                title={sessionCopied
-                  ? t('common.copied')
-                  : t('meta.copySessionTitle', { sessionId: displaySessionId })}
-                aria-label={t('meta.copySessionAria')}
-                onClick={() => void copySessionId()}
-                style={{
-                  fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))',
-                  color: sessionCopied ? 'var(--success)' : 'var(--meta)',
-                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                }}
-              >
-                {sessionCopied ? t('common.copied') : displaySessionId}
-              </button>
-            )}
+            {/* 「会话 ID」入口 + 悬停下拉面板（自带触发按钮，无 ID 时不渲染）。
+                开发模式下面板内出现「打开」按钮，reveal 会话 JSONL 日志目录。 */}
+            <MessageIdPopover
+              messageId={messageId}
+              sessionId={displaySessionId}
+              projectId={projectId}
+              openEnabled={openMode}
+            />
             {openMode && prompt && (
               <button
                 type="button"

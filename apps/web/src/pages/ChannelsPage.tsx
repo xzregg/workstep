@@ -122,10 +122,19 @@ export default function ChannelsPage() {
               </Select>
             </Field>
           </div>
-          {(login?.status === 'pending' || login?.qr_code) && (
+          {(login?.status === 'pending' || login?.status === 'failed' || login?.qr_code) && (
             <div className="channel-qr-panel">
-              {login.qr_code ? <img src={login.qr_code} alt={t('channels.qrAlt')} /> : <Spinner size={22} />}
-              <span>{t('channels.qrHint')}</span>
+              {login.qr_code ? (
+                <img src={login.qr_code} alt={t('channels.qrAlt')} />
+              ) : login.status === 'failed' ? (
+                <span className="channel-qr-failed-icon" aria-hidden>!</span>
+              ) : (
+                <Spinner size={22} />
+              )}
+              <span>{login.status === 'failed' ? t('channels.qrFailed') : t('channels.qrHint')}</span>
+              {login.status === 'failed' && login.error && (
+                <span className="channel-qr-error">{login.error}</span>
+              )}
             </div>
           )}
         </ChannelCard>

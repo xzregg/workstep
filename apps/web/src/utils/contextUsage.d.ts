@@ -31,4 +31,9 @@ export function estimateTokens(text: string): number
 
 export function estimateUsageFromEvents(
   events: unknown[],
+  fallbackOutputText?: string,
+): Record<string, unknown> | null
+
+export function estimateUsageFromEventSummary(
+  summary?: Record<string, unknown> | null,
 ): Record<string, unknown> | null

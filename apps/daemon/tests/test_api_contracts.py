@@ -61,6 +61,19 @@ class MemoryConfigStore:
         values[engine_id] = path
         self.values["engine_binary_paths"] = values
 
+    def get_engine_models(self, engine_id):
+        return dict(self.values.get("engine_models", {}).get(engine_id, {}))
+
+    def set_engine_models(self, engine_id, models, fetched_at):
+        values = dict(self.values.get("engine_models", {}))
+        values[engine_id] = {"models": list(models), "fetched_at": fetched_at}
+        self.values["engine_models"] = values
+
+    def clear_engine_models(self, engine_id):
+        values = dict(self.values.get("engine_models", {}))
+        values.pop(engine_id, None)
+        self.values["engine_models"] = values
+
     def get_claude_permission_mode(self):
         return self.values.get("claude_permission_mode", "")
 
@@ -1593,6 +1606,7 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
     assert accepted.json()["values"] == {
         "provider_id": "",
         "permission_mode": "bypassPermissions",
+        "model_map": "",
     }
 
 
@@ -2032,6 +2046,25 @@ async def test_project_file_preview_resolves_relative_paths_and_scopes_raw_files
     )
     assert escaped.status_code == 403
 
+    absolute_preview = await client.get(
+        "/api/fs/preview",
+        params={
+            "path": str(outside_file),
+            "project_id": project_id,
+            "absolute": "true",
+        },
+    )
+    assert absolute_preview.status_code == 200
+    assert absolute_preview.json()["content"] == "secret"
+    assert absolute_preview.json()["relative_path"] is None
+
+    absolute_raw = await client.get(
+        f"/api/fs/project-raw/{project_id}/{str(outside_file).lstrip('/')}",
+        params={"project_id": project_id, "absolute": "true"},
+    )
+    assert absolute_raw.status_code == 200
+    assert absolute_raw.text == "secret"
+
 
 @pytest.mark.anyio
 async def test_file_endpoint_serves_raw_html_for_browser_preview(api_context):
@@ -2151,6 +2184,99 @@ async def test_directory_openers_expose_the_platform_file_manager(
         if opener["id"] == "file_manager"
     )
     assert file_manager["available"] is True
+
+
+async def _init_journal_project(client, tmp_path, name):
+    project_dir = tmp_path / name
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    assert initialized.status_code == 200
+    return initialized.json()["id"]
+
+
+@pytest.mark.anyio
+async def test_open_session_journal_reveals_the_journal_folder(
+    api_context,
+    monkeypatch,
+):
+    client, tmp_path = api_context
+    import api.fs as fs_api
+
+    project_id = await _init_journal_project(client, tmp_path, "journal-reveal")
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    journal_dir = project.workstep_dir / "event_logs" / "sess-reveal"
+    journal_dir.mkdir(parents=True)
+    (journal_dir / "msg-1.jsonl").write_text("")
+
+    opener = AsyncMock()
+    monkeypatch.setattr(fs_api, "_open_directory", opener)
+
+    response = await client.post(
+        "/api/fs/open-session-journal",
+        json={
+            "project_id": project_id,
+            "session_id": "sess-reveal",
+            "message_id": "msg-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"opened": True, "path": str(journal_dir)}
+    opener.assert_awaited_once_with(journal_dir)
+
+
+@pytest.mark.anyio
+async def test_open_session_journal_finds_task_layout_by_message_id(
+    api_context,
+    monkeypatch,
+):
+    """Task turns journal under ``event_logs/task-{id}/`` while the UI shows a
+    different session id; the message scan still locates the folder."""
+    client, tmp_path = api_context
+    import api.fs as fs_api
+
+    project_id = await _init_journal_project(client, tmp_path, "journal-task")
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    journal_dir = project.workstep_dir / "event_logs" / "task-42"
+    journal_dir.mkdir(parents=True)
+    (journal_dir / "msg-task.jsonl").write_text("")
+
+    opener = AsyncMock()
+    monkeypatch.setattr(fs_api, "_open_directory", opener)
+
+    response = await client.post(
+        "/api/fs/open-session-journal",
+        json={
+            "project_id": project_id,
+            "session_id": "coordinator-session",
+            "message_id": "msg-task",
+        },
+    )
+
+    assert response.status_code == 200
+    opener.assert_awaited_once_with(journal_dir)
+
+
+@pytest.mark.anyio
+async def test_open_session_journal_rejects_missing_journal(api_context):
+    client, tmp_path = api_context
+
+    project_id = await _init_journal_project(client, tmp_path, "journal-missing")
+
+    missing = await client.post(
+        "/api/fs/open-session-journal",
+        json={"project_id": project_id, "session_id": "sess-absent"},
+    )
+    assert missing.status_code == 404
+
+    traversal = await client.post(
+        "/api/fs/open-session-journal",
+        json={"project_id": project_id, "session_id": "../secret"},
+    )
+    assert traversal.status_code == 404
 
 
 @pytest.mark.anyio
@@ -2833,6 +2959,210 @@ async def test_resume_stage_message_conflict_when_stage_not_stopped(api_context,
     )
     assert sent.status_code == 409
     assert "阶段未停止" in sent.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_stage_execution_config_inherits_and_overrides_without_mutating_workflow(
+    api_context,
+):
+    """任务阶段配置默认继承流程，任务覆盖不会污染共享流程。"""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "stage-config-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    workflow = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": "StageConfigFlow",
+            "steps": {
+                "nodes": [{
+                    "id": "implement",
+                    "title": "实现",
+                    "engine": "codex",
+                    "model": "gpt-flow",
+                    "config": {"sandbox_mode": "read-only"},
+                    "inputs": [],
+                    "outputs": [],
+                }],
+                "connections": [],
+            },
+        },
+    )
+    workflow_id = workflow.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Config task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    endpoint = (
+        f"/api/task/{task_id}/step/implement/config?project_id={project_id}"
+    )
+
+    inherited = await client.get(endpoint)
+    assert inherited.status_code == 200
+    assert inherited.json()["configured"] is None
+    assert inherited.json()["resolved"] == {
+        "engine": "codex",
+        "model": "gpt-flow",
+        "config": {"sandbox_mode": "read-only"},
+    }
+    assert inherited.json()["source"] == "workflow"
+
+    overridden = await client.patch(
+        endpoint,
+        json={
+            "engine": "pydantic_ai",
+            "model": "gpt-task",
+            "config": {"sandbox": "workspace-write"},
+            "context_mode": "smart",
+        },
+    )
+    assert overridden.status_code == 200, overridden.text
+    assert overridden.json()["configured"] == {
+        "engine": "pydantic_ai",
+        "model": "gpt-task",
+        "config": {"sandbox": "workspace-write"},
+    }
+    assert overridden.json()["resolved"] == overridden.json()["configured"]
+    assert overridden.json()["source"] == "task_override"
+
+    unchanged = await client.get(
+        f"/api/workflow/{workflow_id}?project_id={project_id}"
+    )
+    node = unchanged.json()["steps"]["nodes"][0]
+    assert (node["engine"], node["model"], node["config"]) == (
+        "codex",
+        "gpt-flow",
+        {"sandbox_mode": "read-only"},
+    )
+
+    reset = await client.delete(endpoint)
+    assert reset.status_code == 200
+    assert reset.json()["configured"] is None
+    assert reset.json()["resolved"]["engine"] == "codex"
+
+    sensitive = await client.patch(
+        endpoint,
+        json={
+            "engine": "pydantic_ai",
+            "model": "gpt-task",
+            "config": {"api_key": "must-not-be-stored"},
+        },
+    )
+    assert sensitive.status_code == 422
+    assert "api_key" in sensitive.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_stage_execution_config_rejects_changes_while_stage_runs(
+    api_context,
+):
+    """执行中的阶段配置只读。"""
+    from models import TaskStep
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "running-stage-config-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    workflows = await client.get(
+        "/api/workflow/list", params={"project_id": project_id}
+    )
+    workflow_id = workflows.json()["workflows"][0]["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Running config task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    await main.project_manager.run_db(
+        project_id,
+        lambda _project: TaskStep.update(status="running").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == step_key)
+        ).execute(),
+    )
+
+    endpoint = f"/api/task/{task_id}/step/{step_key}/config?project_id={project_id}"
+    current = await client.get(endpoint)
+    assert current.status_code == 200, current.text
+    assert current.json()["editable"] is False
+    changed = await client.patch(
+        endpoint,
+        json={"engine": "pydantic_ai", "model": None, "config": {}},
+    )
+    assert changed.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_stage_execution_config_write_does_not_block_health_check(api_context):
+    """阶段覆盖写入等待 SQLite 锁时，事件循环仍能响应健康检查。"""
+    client, tmp_path = api_context
+    project_dir = tmp_path / "stage-config-lock-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init", json={"path": str(project_dir)}
+    )
+    project_id = initialized.json()["id"]
+    workflows = await client.get(
+        "/api/workflow/list", params={"project_id": project_id}
+    )
+    workflow_id = workflows.json()["workflows"][0]["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Config lock task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "auto_start": False,
+        },
+    )
+    task_id = created.json()["id"]
+    step_key = created.json()["steps"][0]["step_key"]
+    endpoint = f"/api/task/{task_id}/step/{step_key}/config?project_id={project_id}"
+    current = (await client.get(endpoint)).json()["resolved"]
+    database_path = project_dir / ".workstep" / "workstep.db"
+    locked = threading.Event()
+
+    def hold_write_lock():
+        connection = sqlite3.connect(database_path, timeout=1)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            locked.set()
+            time.sleep(0.35)
+            connection.commit()
+        finally:
+            connection.close()
+
+    locker = threading.Thread(target=hold_write_lock)
+    locker.start()
+    assert locked.wait(1)
+    started_at = time.perf_counter()
+    update = asyncio.create_task(client.patch(endpoint, json=current))
+    await asyncio.sleep(0.05)
+    health = await client.get("/api/health")
+    health_elapsed = time.perf_counter() - started_at
+    updated = await update
+    locker.join(timeout=1)
+
+    assert health.status_code == 200
+    assert health_elapsed < 0.2
+    assert updated.status_code == 200
 
 
 # --- /api/fs/mkdir (project path picker) ---

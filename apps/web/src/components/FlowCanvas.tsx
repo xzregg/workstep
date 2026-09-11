@@ -38,6 +38,7 @@ import { DEFAULT_EXECUTION_ENGINE } from '../engineMeta'
 import { initialStageConfig, normalizeStepConfig } from '../utils/stageConfig'
 import StageConfigFields from './StageConfigFields'
 import { useI18n } from '../i18n'
+import { useEngineRevision } from '../stores/engineAvailabilityStore'
 
 /* ══════════════════════════════════════════
    Reusable flow canvas editor — shared by the
@@ -1128,6 +1129,7 @@ function FlowCanvasInner({
   const [copySelected, setCopySelected] = useState<{ data: StepNodeData; srcKey: string } | null>(null)
   const copyStepsCache = useRef<Record<string, StepNodeData[]>>({})
   const [availableEngines, setAvailableEngines] = useState<EngineInfo[]>([])
+  const engineRevision = useEngineRevision()
   const [defaultExecutionEngine, setDefaultExecutionEngine] = useState(DEFAULT_EXECUTION_ENGINE)
   const [enginesLoading, setEnginesLoading] = useState(true)
   const [enginesError, setEnginesError] = useState('')
@@ -1152,7 +1154,8 @@ function FlowCanvasInner({
         setEnginesError(error instanceof Error ? error.message : t('common.unknownError'))
       })
       .finally(() => setEnginesLoading(false))
-  }, [])
+    // engineRevision：设置页改了引擎状态后重新拉取，节点的阶段引擎下拉即时跟随禁用状态。
+  }, [engineRevision])
 
   useEffect(() => {
     engineApi.executionConfig()

@@ -17,7 +17,11 @@ from services.workflow_definition import WorkflowDefinition, WorkflowValidationE
 from services.task_runner import extract_usage_json
 from services.config import DEFAULT_EXECUTION_ENGINE
 from services.messages import create_task_message, new_message_id
-from services.history import event_detail, restore_running_projection
+from services.history import (
+    event_detail,
+    restore_running_projection,
+    session_id_from_events,
+)
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -253,11 +257,13 @@ class TaskService:
                 "events": [],
                 "prompt": None,
                 "usage": None,
+                "session_id": None,
                 "proposals": [],
             }
             if msg.events_json:
                 try:
                     entry["events"] = json_mod.loads(msg.events_json)
+                    entry["session_id"] = session_id_from_events(entry["events"])
                 except Exception:
                     pass
             detail = event_detail(msg)

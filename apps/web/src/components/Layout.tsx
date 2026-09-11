@@ -23,6 +23,7 @@ import ConfirmDialog from './ConfirmDialog'
 import ProjectConnectionDialog from './ProjectConnectionDialog'
 import ProjectShareDialog from './ProjectShareDialog'
 import WorkflowCreateDialog from './WorkflowCreateDialog'
+import SidebarStatusIndicator from './SidebarStatusIndicator'
 import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sidebarSectionState'
 import OnboardingChecklist from './OnboardingChecklist'
 import { useOnboardingStore } from '../stores/onboardingStore'
@@ -150,6 +151,10 @@ export default function Layout({ onSelectProject, children }: Props) {
   const {
     completedSessions,
     completedWorkflows,
+    failedChatSessions,
+    failedWorkflows,
+    markProjectRead,
+    projectHasFailure,
     projectHasRunningSession,
     runningChatSessions,
   } = useSidebarActivity(activeSessionId)
@@ -556,14 +561,14 @@ export default function Layout({ onSelectProject, children }: Props) {
             <div key={p.id}>
               <div
                 onClick={() => {
-                  useSidebarActivityStore.getState().markProjectRead(p.id)
+                  markProjectRead(p.id)
                   handleSelectProject(p)
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation()
                   setExpandedProjectId((current) => current === p.id ? null : p.id)
                   if (expandedProjectId !== p.id) {
-                    useSidebarActivityStore.getState().markProjectRead(p.id)
+                    markProjectRead(p.id)
                     handleSelectProject(p)
                   }
                 }}
@@ -634,7 +639,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     e.stopPropagation()
                     setExpandedProjectId((current) => current === p.id ? null : p.id)
                     if (expandedProjectId !== p.id) {
-                      useSidebarActivityStore.getState().markProjectRead(p.id)
+                      markProjectRead(p.id)
                       handleSelectProject(p)
                     }
                   }}
@@ -732,17 +737,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                     || p.has_running_tasks
                     || (p.id === activeProject?.id && tasks.some((task) => task.status === 'running'))
                 })() ? (
-                  <span
-                    className="task-status-spinner"
-                    style={{ color: 'var(--accent)', flexShrink: 0 }}
-                    title={projectHasRunningSession(p.id) ? t('chatSession.runningHint') : t('layout.flowRunning')}
-                    aria-hidden="true"
+                  <SidebarStatusIndicator
+                    running
+                    runningTitle={projectHasRunningSession(p.id) ? t('chatSession.runningHint') : t('layout.flowRunning')}
+                    failedTitle={t('layout.failedState')}
+                    completedTitle={t('layout.completedUnread')}
                   />
-                ) : expandedProjectId !== p.id && Object.values(completedWorkflows).includes(p.id) ? (
-                  <span
-                    className="sidebar-completion-dot"
-                    title={t('layout.completedUnread')}
-                    aria-label={t('layout.completedUnread')}
+                ) : expandedProjectId !== p.id ? (
+                  <SidebarStatusIndicator
+                    failed={projectHasFailure(p.id)}
+                    completed={Object.values(completedWorkflows).includes(p.id)}
+                    runningTitle={t('layout.flowRunning')}
+                    failedTitle={t('layout.failedState')}
+                    completedTitle={t('layout.completedUnread')}
                   />
                 ) : null}
                 <Button
@@ -893,13 +900,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                           style={{ textDecoration: deleted ? 'line-through' : 'none', opacity: deleted ? 0.6 : 1, cursor: deleted ? 'default' : 'pointer' }}
                         />
                       )}
-                      {wf.running && !deleted ? (
-                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
-                      ) : (p.id === activeProject?.id && !deleted && tasks.some((task) => task.workflow_id === wf.id && task.status === 'running')) ? (
-                        <span className="task-status-spinner" style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }} title={t('layout.flowRunning')} aria-hidden="true" />
-                      ) : completedWorkflows[wf.id] && !deleted ? (
-                        <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
-                      ) : null}
+                      {!deleted && (
+                        <SidebarStatusIndicator
+                          running={Boolean(wf.running || (
+                            p.id === activeProject?.id
+                            && tasks.some((task) => task.workflow_id === wf.id && task.status === 'running')
+                          ))}
+                          failed={failedWorkflows[wf.id]}
+                          completed={Boolean(completedWorkflows[wf.id])}
+                          runningTitle={t('layout.flowRunning')}
+                          failedTitle={t('layout.failedState')}
+                          completedTitle={t('layout.completedUnread')}
+                        />
+                      )}
                       {deleted && <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', color: 'var(--danger)', opacity: 0.8 }}>{t('layout.trash')}</span>}
                       {wf.is_default ? <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.6 }}>{t('layout.default')}</span> : null}
                       <span style={{ fontSize: 'calc(11.6px * var(--font-scale))', opacity: 0.5 }}>{t('flow.nodeCount', { count: wf.nodeCount })}</span>
@@ -992,7 +1005,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                       {sessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
-                        const sessionRunning = !!runningChatSessions[session.id] || !!session.running
+                        const sessionRunning = Boolean(runningChatSessions[session.id])
                         const isSelected = selectedIds.has(session.id)
                         const isMultiSelect = selectedIds.size > 1
                         return (
@@ -1103,16 +1116,14 @@ export default function Layout({ onSelectProject, children }: Props) {
                           ) : (
                             <MarqueeText text={session.title} />
                           )}
-                          {sessionRunning ? (
-                            <span
-                              className="task-status-spinner"
-                              style={{ color: 'var(--accent)', flexShrink: 0, width: 10.4, height: 10.4 }}
-                              title={t('chatSession.runningHint')}
-                              aria-hidden="true"
-                            />
-                          ) : completedSessions[session.id] ? (
-                            <span className="sidebar-completion-dot" title={t('layout.completedUnread')} aria-label={t('layout.completedUnread')} />
-                          ) : null}
+                          <SidebarStatusIndicator
+                            running={sessionRunning}
+                            failed={failedChatSessions[session.id]}
+                            completed={Boolean(completedSessions[session.id])}
+                            runningTitle={t('chatSession.runningHint')}
+                            failedTitle={t('layout.failedState')}
+                            completedTitle={t('layout.completedUnread')}
+                          />
                           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, height: 24 }}>
                             {hoveredSessionId === session.id || !(session.updated_at || session.created_at) ? (
                               <Button

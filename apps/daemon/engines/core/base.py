@@ -203,6 +203,7 @@ async def run_install_command(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        limit=1024 * 256,
     )
     try:
         output, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -387,6 +388,14 @@ class BaseLLMEngine(ABC):
             model=model,
         )
 
+    def build_native_runtime(self, model: str | None) -> ProviderRuntimeConfig:
+        """Runtime when no provider is bound — engines may still inject own env.
+
+        未绑定供应商不代表没有可注入的东西：Claude 系引擎的模型映射属于引擎自身
+        配置，即使用户走 CLI 原生登录也必须生效，所以这里留一个可覆写的钩子。
+        """
+        return ProviderRuntimeConfig(model=model)
+
     def resolve_provider_runtime(
         self,
         provider_id: str | None = None,
@@ -410,7 +419,7 @@ class BaseLLMEngine(ABC):
         if not selected:
             if self.provider_required():
                 raise ValueError("该引擎需要先选择供应商")
-            return ProviderRuntimeConfig(model=model)
+            return self.build_native_runtime(model)
         provider = config_store.get_provider(selected)
         if provider is None:
             raise ValueError("供应商不存在")
@@ -461,7 +470,9 @@ class BaseLLMEngine(ABC):
         return [
             field
             for field in cls.full_config_schema()
-            if not field.sensitive and field.type != "password"
+            if not field.sensitive
+            and field.type != "password"
+            and not field.stage_hidden
         ]
 
     def get_full_config_values(self) -> dict[str, Any]:
@@ -688,7 +699,9 @@ class BaseLLMEngine(ABC):
         return [
             field
             for field in cls.config_schema()
-            if not field.sensitive and field.type != "password"
+            if not field.sensitive
+            and field.type != "password"
+            and not field.stage_hidden
         ]
 
 

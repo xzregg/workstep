@@ -17,7 +17,13 @@ export function useProjectRouteSelection() {
   const setActiveWorkflow = useProjectStore((state) => state.setActiveWorkflow)
 
   useEffect(() => {
-    if (location.pathname !== '/tasks') return
+    if (location.pathname !== '/tasks' && location.pathname !== '/chat') return
+    if (location.pathname === '/chat') {
+      if (!projectName || projects.length === 0) return
+      const project = projects.find(item => item.name === projectName)
+      if (project && activeProjectId !== project.id) setActiveProject(project)
+      return
+    }
     if (
       activeProject
       && activeWorkflowId

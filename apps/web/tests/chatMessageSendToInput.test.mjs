@@ -24,7 +24,11 @@ test('user messages expose a send action beside copy that fills the composer', (
   const copyActionIndex = bubbleSource.indexOf('<MessageCopyButton content={content}')
   assert.ok(sendActionIndex !== -1 && sendActionIndex < copyActionIndex)
 
-  assert.match(assistantPanelSource, /onSendToInput=\{\(content\) => \{/)
+  // 面板把回调收敛为稳定引用（useCallback）再传给 memo 化的 MessageItem：
+  // 流式输出时历史消息靠引用相等整体跳过重渲染，内联箭头会击穿 memo。
+  assert.match(assistantPanelSource, /const handleSendToInput = useCallback\(\(content: string\) => \{/)
+  assert.match(assistantPanelSource, /onSendToInput=\{handleSendToInput\}/)
+  assert.match(assistantPanelSource, /const MessageItem = memo\(function MessageItem/)
   assert.match(assistantPanelSource, /onInputChange\(content\)/)
   assert.match(taskDetailSource, /onSendToInput=\{/)
   assert.match(taskDetailSource, /onPromptChange\(content\)/)

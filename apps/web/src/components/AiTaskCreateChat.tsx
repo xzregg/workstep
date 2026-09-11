@@ -10,6 +10,10 @@ import {
 } from '../api/client'
 import { useI18n } from '../i18n'
 import { useTaskDraftStore, type TaskDraftResult } from '../stores/taskDraftStore'
+import {
+  publishEngineCatalog,
+  useCoordinatorEngines,
+} from '../stores/engineAvailabilityStore'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import { applyTaskQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
@@ -61,6 +65,8 @@ export default function AiTaskCreateChat({
   const [sendError, setSendError] = useState('')
   const [stopping, setStopping] = useState(false)
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
+  // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
+  const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
@@ -113,6 +119,7 @@ export default function AiTaskCreateChat({
         const config = assistants.find((item) => item.name === 'task_create')
         if (!config) throw new Error(t('taskList.aiConfigLoadFailed'))
         setAssistantConfig(config)
+        publishEngineCatalog(config.available_engines)
         setSelectedEngine(config.configured.engine || '')
         setSelectedProvider(config.configured.provider_id || '')
         setSelectedModel(config.configured.model || '')
@@ -284,7 +291,7 @@ export default function AiTaskCreateChat({
       }}
       config={{
         projectId,
-        engines: assistantConfig?.available_engines || [],
+        engines: sharedEngines,
         engine: selectedEngine,
         providers,
         providerId: selectedProvider,

@@ -32,5 +32,5 @@ test('project type declares the backend running aggregate', () => {
 
 test('session rows restore their spinner from the API after refresh', () => {
   assert.match(client, /running\?: boolean/)
-  assert.match(source, /runningChatSessions\[session\.id\].*session\.running/s)
+  assert.match(source, /const sessionRunning = Boolean\(runningChatSessions\[session\.id\]\)/)
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
@@ -43,7 +43,12 @@ function closeStreamingFence(markdown: string): string {
   return openFence ? `${markdown}\n${openFence}` : markdown
 }
 
-export default function MarkdownMessage({
+/**
+ * memo 化：markdown 解析 + 代码高亮是单条消息里最重的渲染。流式输出时父级
+ * （消息列表/任务详情）每个 token 都会重渲染，历史消息的 content 字符串不变，
+ * 靠 memo 按值比较直接跳过整棵解析子树。
+ */
+function MarkdownMessage({
   content,
   streaming = false,
   projectId,
@@ -124,3 +129,5 @@ export default function MarkdownMessage({
     </>
   )
 }
+
+export default memo(MarkdownMessage)

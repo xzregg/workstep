@@ -6,14 +6,23 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 from pathlib import Path
 import shlex
 from typing import Protocol
 
 from services.channels.base import ChannelBase, IncomingMessage, LoginResult
+from engines.core.stream_lines import iter_stream_lines
 
 
 logger = logging.getLogger(__name__)
+
+
+#: Surfaced in the Web UI when no runnable WeChat bridge is available.
+BRIDGE_UNAVAILABLE_MESSAGE = (
+    "微信桥接服务不可用：请在 apps/wechat-bridge 目录执行 npm install，"
+    "或设置 WORKSTEP_WECHAT_BRIDGE_COMMAND 指向自定义桥接进程"
+)
 
 
 class WeChatBridge(Protocol):
@@ -27,22 +36,19 @@ class WeChatBridge(Protocol):
 class MissingWeChatBridge:
     async def start(self, session: dict | None, channel: "WeChatChannel") -> None:
         if session:
-            await channel.login_failed("微信桥接服务不可用，请安装并配置 wechaty bridge")
+            await channel.login_failed(BRIDGE_UNAVAILABLE_MESSAGE)
 
     async def stop(self) -> None:
         return None
 
     async def login(self, channel: "WeChatChannel") -> LoginResult:
-        return LoginResult(
-            status="failed",
-            error="微信桥接服务不可用，请安装并配置 wechaty bridge",
-        )
+        return LoginResult(status="failed", error=BRIDGE_UNAVAILABLE_MESSAGE)
 
     async def logout(self) -> None:
         return None
 
     async def send_text(self, chat_id: str, text: str) -> None:
-        raise RuntimeError("微信桥接服务不可用")
+        raise RuntimeError(BRIDGE_UNAVAILABLE_MESSAGE)
 
 
 class SubprocessWeChatBridge:
@@ -66,6 +72,7 @@ class SubprocessWeChatBridge:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
+            limit=1024 * 256,
         )
         self._reader_task = asyncio.create_task(self._read_events())
         await self._write({"action": "start", "session": session})
@@ -113,7 +120,10 @@ class SubprocessWeChatBridge:
     async def _read_events(self) -> None:
         if self._process is None or self._process.stdout is None:
             return
-        while line := await self._process.stdout.readline():
+        # 分块读取：桥接进程的单条 JSON（二维码 base64、长消息）可能超过
+        # StreamReader 默认 64KiB limit，readline 会抛
+        # "Separator is not found, and chunk exceed the limit"。
+        async for line in iter_stream_lines(self._process.stdout):
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -163,9 +173,39 @@ class SubprocessWeChatBridge:
                 logger.exception("Failed to send WeChat error reply for chat %s", chat_id)
 
 
+def _bundled_bridge_command() -> str | None:
+    """Locate the bundled ``apps/wechat-bridge`` sidecar, if runnable.
+
+    Resolved relative to this file (``apps/daemon/services/channels``) so the
+    daemon works from any CWD. Requires Node.js on PATH and the sidecar script
+    to exist; dependency installation happens out-of-band (see
+    ``apps/wechat-bridge/README.md``).
+    """
+    # wechat.py lives at <root>/apps/daemon/services/channels/wechat.py
+    repo_root = Path(__file__).resolve().parents[4]
+    entry = repo_root / "apps" / "wechat-bridge" / "index.js"
+    if not entry.is_file():
+        return None
+    node = shutil.which("node")
+    if node is None:
+        return None
+    return f"{node} {entry}"
+
+
 def default_wechat_bridge() -> WeChatBridge:
+    """Pick the WeChat bridge implementation.
+
+    Priority: explicit ``WORKSTEP_WECHAT_BRIDGE_COMMAND`` override, then the
+    bundled ``apps/wechat-bridge`` sidecar, then a no-op bridge that surfaces a
+    clear "not configured" error to the UI.
+    """
     command = os.environ.get("WORKSTEP_WECHAT_BRIDGE_COMMAND", "").strip()
-    return SubprocessWeChatBridge(command) if command else MissingWeChatBridge()
+    if command:
+        return SubprocessWeChatBridge(command)
+    bundled = _bundled_bridge_command()
+    if bundled:
+        return SubprocessWeChatBridge(bundled)
+    return MissingWeChatBridge()
 
 
 class WeChatChannel(ChannelBase):

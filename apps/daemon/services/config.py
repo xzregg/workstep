@@ -45,6 +45,73 @@ PROVIDER_PROTOCOLS = {
     "openai_chat_completions",
 }
 
+# Claude Code 内部的四个模型档位。CLI 用 ANTHROPIC_DEFAULT_{档位}_MODEL 解析
+# `--model sonnet` 这类档位名，绑定第三方中转后必须把它们映射到真实模型 id。
+CLAUDE_MODEL_MAP_ALIASES = ("fable", "haiku", "opus", "sonnet")
+CLAUDE_MODEL_MAP_MAX_LEN = 256
+
+
+def normalize_claude_model_map(raw: Any) -> dict[str, dict[str, str]]:
+    """把任意输入规范化为 ``{档位: {"model": 模型 id, "name": 显示名}}``。
+
+    入参可以是 API 传输层的 JSON 字符串，也可以是存储/cc-switch 的 dict。
+    显示名为空时补成模型 id —— 「默认同值」这一语义只在存储层固化一次，
+    env 生成、UI 回显和导入预填都直接复用规范化结果。
+    """
+    if raw is None:
+        return {}
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return {}
+        try:
+            raw = json.loads(text)
+        except ValueError:
+            raise ValueError("模型映射格式不正确")
+    if isinstance(raw, dict) is False:
+        raise ValueError("模型映射格式不正确")
+    normalized: dict[str, dict[str, str]] = {}
+    for alias, entry in raw.items():
+        key = str(alias or "").strip().lower()
+        if key not in CLAUDE_MODEL_MAP_ALIASES:
+            # 未知档位静默丢弃：CLI 新增档位时旧版本不至于保存失败。
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError("模型映射格式不正确")
+        model = str(entry.get("model") or "").strip()
+        if not model:
+            continue
+        name = str(entry.get("name") or "").strip() or model
+        for value in (model, name):
+            if len(value) > CLAUDE_MODEL_MAP_MAX_LEN:
+                raise ValueError("模型映射内容过长")
+        normalized[key] = {"model": model, "name": name}
+    return normalized
+
+
+def claude_model_map_env(
+    model_map: dict[str, dict[str, str]],
+) -> dict[str, str]:
+    """把规范化后的映射展开为 Claude Code 识别的环境变量。"""
+    env: dict[str, str] = {}
+    for alias, entry in model_map.items():
+        model = str((entry or {}).get("model") or "").strip()
+        if not model:
+            continue
+        prefix = f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL"
+        env[prefix] = model
+        env[f"{prefix}_NAME"] = str(entry.get("name") or "").strip() or model
+    return env
+
+
+def claude_model_map_json(
+    model_map: dict[str, dict[str, str]],
+) -> str:
+    """序列化为稳定的 JSON 字符串（配置快照按字符串全等比较，键序必须固定）。"""
+    if not model_map:
+        return ""
+    return json.dumps(model_map, sort_keys=True, ensure_ascii=False)
+
 
 def default_provider_protocol(type_id: str) -> str:
     """Return the backward-compatible protocol for one provider preset."""
@@ -143,6 +210,98 @@ class ConfigStore:
 
     def set_model_pricing(self, pricing: dict[str, Any]) -> None:
         self.set("model_pricing", pricing)
+
+    def model_supports_multimodal(
+        self,
+        engine_id: str,
+        model: str,
+        provider_id: str = "",
+    ) -> bool:
+        """Return the per-model direct-image setting for the active source."""
+        if not model:
+            return False
+        prices = self.get_model_pricing().get("prices", [])
+        effective_provider = provider_id or self.get_engine_provider(engine_id)
+        if effective_provider:
+            provider_setting = next(
+                (
+                    item for item in prices
+                    if isinstance(item, dict)
+                    and item.get("model") == model
+                    and item.get("provider_id") == effective_provider
+                ),
+                None,
+            )
+            if provider_setting is not None:
+                return provider_setting.get("supports_multimodal") is True
+        engine_setting = next(
+            (
+                item for item in prices
+                if isinstance(item, dict)
+                and item.get("model") == model
+                and item.get("engine_id") == engine_id
+            ),
+            None,
+        )
+        if engine_setting is not None:
+            return engine_setting.get("supports_multimodal") is True
+        legacy_setting = next(
+            (
+                item for item in prices
+                if isinstance(item, dict)
+                and item.get("model") == model
+                and not item.get("provider_id")
+                and not item.get("engine_id")
+            ),
+            None,
+        )
+        return bool(
+            legacy_setting
+            and legacy_setting.get("supports_multimodal") is True
+        )
+
+    # --- Execution-engine model list cache (global config, not per-project DB) ---
+
+    def get_engine_models(self, engine_id: str) -> dict:
+        cache = self.get("engine_models", {})
+        if not isinstance(cache, dict):
+            return {}
+        entry = cache.get(engine_id)
+        return dict(entry) if isinstance(entry, dict) else {}
+
+    def get_engine_model_caches(self) -> dict[str, dict]:
+        cache = self.get("engine_models", {})
+        if not isinstance(cache, dict):
+            return {}
+        return {
+            str(engine_id): dict(entry)
+            for engine_id, entry in cache.items()
+            if isinstance(entry, dict)
+        }
+
+    def set_engine_models(
+        self,
+        engine_id: str,
+        models: list[dict],
+        fetched_at: str,
+    ) -> None:
+        cache = self.get("engine_models", {})
+        if not isinstance(cache, dict):
+            cache = {}
+        cache = dict(cache)
+        cache[engine_id] = {
+            "models": models,
+            "fetched_at": fetched_at,
+        }
+        self.set("engine_models", cache)
+
+    def clear_engine_models(self, engine_id: str) -> None:
+        cache = self.get("engine_models", {})
+        if not isinstance(cache, dict) or engine_id not in cache:
+            return
+        cache = dict(cache)
+        cache.pop(engine_id, None)
+        self.set("engine_models", cache)
 
     def get_coordinator_default_engine(self) -> str:
         value = self.get("coordinator_default_engine", "")
@@ -489,6 +648,33 @@ class ConfigStore:
             raise ValueError(f"Unsupported Claude permission mode: {mode}")
         self.set("claude_permission_mode", mode)
 
+    # --- Claude Code CLI config ---
+
+    def get_claude_code_config(self) -> dict[str, str]:
+        """Claude Code CLI engine section: ``{"model_map": 规范化 JSON 字符串}``.
+
+        ``model_map`` 走传输层字符串（引擎配置表单的 value 全是字符串），
+        无映射时为空串。
+        """
+        raw = self.get("claude_code_engine", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        return {
+            "model_map": claude_model_map_json(
+                normalize_claude_model_map(raw.get("model_map"))
+            ),
+        }
+
+    def set_claude_code_model_map(self, model_map: Any) -> None:
+        normalized = normalize_claude_model_map(model_map)
+        raw = self.get("claude_code_engine", {})
+        raw = dict(raw) if isinstance(raw, dict) else {}
+        if normalized:
+            raw["model_map"] = normalized
+        else:
+            raw.pop("model_map", None)
+        self.set("claude_code_engine", raw)
+
     # --- Claude Agent SDK config ---
 
     def get_claude_agent_sdk_config(self) -> dict[str, Any]:
@@ -500,6 +686,9 @@ class ConfigStore:
             "permission_mode": self.get_claude_permission_mode(),
             "max_turns": str(max_turns) if max_turns not in (None, "") else "",
             "fallback_model": str(raw.get("fallback_model", "") or ""),
+            "model_map": claude_model_map_json(
+                normalize_claude_model_map(raw.get("model_map"))
+            ),
         }
 
     def set_claude_agent_sdk_config(
@@ -507,6 +696,7 @@ class ConfigStore:
         max_turns: str = "",
         permission_mode: str | None = None,
         fallback_model: str = "",
+        model_map: str | dict[str, Any] | None = None,
     ) -> None:
         if permission_mode is not None:
             self.set_claude_permission_mode(permission_mode)
@@ -530,6 +720,13 @@ class ConfigStore:
             raw["fallback_model"] = fallback_model
         else:
             raw.pop("fallback_model", None)
+        if model_map is not None:
+            # None = 保持原值（部分调用方只改轮数/备用模型）；"" = 显式清空。
+            normalized_map = normalize_claude_model_map(model_map)
+            if normalized_map:
+                raw["model_map"] = normalized_map
+            else:
+                raw.pop("model_map", None)
         self.set("claude_agent_sdk_engine", raw)
 
     # --- Codex CLI config ---

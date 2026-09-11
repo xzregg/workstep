@@ -12,6 +12,7 @@ import SharedTaskView from './pages/SharedTaskView'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
+import { projectSelectionPath } from './utils/projectSelectionPath'
 
 function AppRoutes() {
   const navigate = useNavigate()
@@ -19,15 +20,17 @@ function AppRoutes() {
   const { activeProject } = useProjectStore()
 
   const handleSelectProject = (project: Project) => {
-    if (location.pathname === '/canvas') {
-      navigate(`/canvas?project=${encodeURIComponent(project.name)}`)
-      return
-    }
-    if (location.pathname === '/schedules') {
-      navigate('/schedules')
-      return
-    }
-    navigate('/tasks')
+    // Always carry the clicked project in the URL. A bare `/tasks` lets the
+    // still-mounted route hook read the previous location (e.g.
+    // `/chat?project=workstep`) and write the old project back into the store,
+    // after which the bare task list is canonicalized to that stale project.
+    navigate(
+      projectSelectionPath(
+        location.pathname,
+        project.name,
+        useProjectStore.getState().activeWorkflowId,
+      ),
+    )
   }
 
   // The share viewer is a standalone read-only page with its own chrome;

@@ -65,6 +65,37 @@ test('deleting the last active project clears the selection', async () => {
   }
 })
 
+test('concurrent project loads share the in-flight request and both await its result', async () => {
+  const loaded = project('loaded')
+  const originalFetch = globalThis.fetch
+  let resolveFetch!: (response: Response) => void
+  let fetchCount = 0
+  globalThis.fetch = async () => {
+    fetchCount += 1
+    return new Promise<Response>((resolve) => { resolveFetch = resolve })
+  }
+  useProjectStore.setState({ projects: [], activeProject: null, loading: false })
+
+  try {
+    const first = useProjectStore.getState().fetchProjects()
+    const second = useProjectStore.getState().fetchProjects()
+    let secondSettled = false
+    void second.then(() => { secondSettled = true })
+    await Promise.resolve()
+    assert.equal(secondSettled, false)
+    resolveFetch(new Response(JSON.stringify({ projects: [loaded] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    await Promise.all([first, second])
+
+    assert.equal(fetchCount, 1)
+    assert.deepEqual(useProjectStore.getState().projects, [loaded])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 const projectWithFlows = (id: string, workflowNames: string[]): Project => ({
   id,
   path: `/tmp/${id}`,

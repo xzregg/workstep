@@ -3,6 +3,7 @@ import pytest
 from engines.claude_agent_sdk import ClaudeAgentSDKEngine
 from engines.qoder_sdk import QoderSDKEngine
 from engines.claude_code import ClaudeCodeEngine
+from engines.core.agui import AGUIContext, to_agui_events
 
 @pytest.mark.parametrize("engine", [ClaudeAgentSDKEngine, QoderSDKEngine, ClaudeCodeEngine])
 def test_child_stream_is_nested_and_does_not_swallow_parent(engine):
@@ -22,6 +23,27 @@ def test_child_stream_is_nested_and_does_not_swallow_parent(engine):
     parent = send(None, "parent answer")
     assert parent[0].type == "agent_message_chunk"
     assert parent[0].data["content"]["text"] == "parent answer"
+
+
+def test_claude_code_child_assistant_message_reaches_agui_timeline():
+    """Claude Code 非增量子 agent 回复也必须进入前端可消费的嵌套事件。"""
+    engine = ClaudeCodeEngine()
+    events = engine._map_events({
+        "type": "assistant",
+        "parent_tool_use_id": "agent-tool",
+        "message": {
+            "content": [{"type": "text", "text": "子 agent 的完整回复"}],
+        },
+    }, {})
+
+    assert len(events) == 1
+    normalized = engine.normalize_event(events[0])
+    assert normalized is not None
+    outward = to_agui_events(normalized, AGUIContext(message_id="message-1"))
+    assert outward[0]["type"] == "CUSTOM"
+    assert outward[0]["name"] == "workstep.subagent"
+    assert outward[0]["value"]["events"][0]["type"] == "TEXT_MESSAGE_CHUNK"
+    assert outward[0]["value"]["events"][0]["delta"] == "子 agent 的完整回复"
 
 
 def test_deepseek_child_messages_are_nested():

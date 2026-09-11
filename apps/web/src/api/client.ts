@@ -54,9 +54,14 @@ export interface SystemSettings {
   device_name?: string
 }
 
+export type ModelType = 'chat' | 'reasoning' | 'embedding' | 'rerank' | 'image' | 'audio'
+
 export interface ModelPrice {
   provider_id: string | null
+  engine_id: string | null
   model: string
+  model_type: ModelType
+  supports_multimodal: boolean
   input_price: number
   output_price: number
   cache_price: number
@@ -71,8 +76,15 @@ export interface ModelPricingSettings {
     name: string
     models: { id: string; label: string; description: string }[]
   }[]
+  engines: {
+    id: string
+    models: { id: string; label: string; description: string }[]
+  }[]
   standalone_models: string[]
 }
+
+export type ModelSetting = ModelPrice
+export type ModelSettings = ModelPricingSettings
 
 export const systemSettingsApi = {
   get: () => request<SystemSettings>('/system-settings'),
@@ -85,8 +97,14 @@ export const systemSettingsApi = {
     body: JSON.stringify({ open_mode: openMode }),
   }),
   modelPricing: () => request<ModelPricingSettings>('/system-settings/model-pricing'),
-  saveModelPricing: (settings: Omit<ModelPricingSettings, 'providers' | 'standalone_models'>) =>
+  saveModelPricing: (settings: Omit<ModelPricingSettings, 'providers' | 'engines' | 'standalone_models'>) =>
     request<ModelPricingSettings>('/system-settings/model-pricing', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    }),
+  modelSettings: () => request<ModelSettings>('/system-settings/model-settings'),
+  saveModelSettings: (settings: Omit<ModelSettings, 'providers' | 'engines' | 'standalone_models'>) =>
+    request<ModelSettings>('/system-settings/model-settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
@@ -100,6 +118,7 @@ export interface WorkflowSummary {
   is_default: boolean
   deleted?: boolean
   running?: boolean
+  failed?: boolean
   nodeCount: number
 }
 
@@ -671,6 +690,7 @@ export interface ChatSessionSummary {
   fork_context_mode?: 'native' | 'smart' | 'full' | 'none' | null
   fork_status?: 'pending' | 'ready' | 'failed'
   running?: boolean
+  last_message_status?: string | null
   message_count: number
   preview?: string
   created_at?: string
@@ -1091,6 +1111,26 @@ export interface CoordinatorConfig extends CoordinatorSelection {
   available_engines: CoordinatorEngineSummary[]
 }
 
+export interface StageExecutionSelection {
+  engine: string
+  model: string
+  config: Record<string, string>
+}
+
+export interface StageExecutionConfig {
+  configured: StageExecutionSelection | null
+  resolved: StageExecutionSelection
+  source: 'workflow' | 'task_override'
+  editable: boolean
+  status: string
+  has_history: boolean
+  message_count: number
+  session_engine: string
+  /** Provider bound to the reusable engine session; null = no reusable session. */
+  session_provider: string | null
+  available_engines: EngineInfo[]
+}
+
 export const taskApi = {
   list: (projectId: string, workflowId?: string | null, archived?: boolean) =>
     request<{ tasks: Task[] }>(
@@ -1184,6 +1224,31 @@ export const taskApi = {
         method: 'POST',
         body: JSON.stringify({ content }),
       },
+    ),
+  stageExecutionConfig: (taskId: string, stepKey: string, projectId: string) =>
+    request<StageExecutionConfig>(
+      `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
+    ),
+  updateStageExecutionConfig: (
+    taskId: string,
+    stepKey: string,
+    projectId: string,
+    selection: StageExecutionSelection,
+    contextMode?: 'smart' | 'full' | 'none',
+  ) => request<StageExecutionConfig>(
+    `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        ...selection,
+        context_mode: contextMode,
+      }),
+    },
+  ),
+  resetStageExecutionConfig: (taskId: string, stepKey: string, projectId: string) =>
+    request<StageExecutionConfig>(
+      `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'DELETE' },
     ),
   coordinatorConfig: (taskId: string, projectId: string) =>
     request<CoordinatorConfig>(
@@ -1658,7 +1723,7 @@ export interface EngineConfigOption {
 export interface EngineConfigField {
   key: string
   label: string
-  type: 'text' | 'password' | 'select' | 'textarea' | 'number' | 'checkbox'
+  type: 'text' | 'password' | 'select' | 'textarea' | 'number' | 'checkbox' | 'model_map'
   placeholder: string
   options: EngineConfigOption[] | null
   required: boolean
@@ -1666,6 +1731,7 @@ export interface EngineConfigField {
   default: string | number | boolean
   sensitive: boolean
   confirm_values: string[]
+  stage_hidden?: boolean
 }
 
 export interface EngineConfigSchema {
@@ -2212,7 +2278,7 @@ export const fsApi = {
     return data as { url: string; filename: string; size: number }
   },
 
-  preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}`),
+  preview: (path: string, projectId?: string) => request<FilePreview>(`/fs/preview?path=${encodeURIComponent(path)}${projectId ? `&project_id=${encodeURIComponent(projectId)}` : ''}${path.startsWith('/') ? '&absolute=true' : ''}`),
   browse: (path?: string, projectId?: string) =>
     request<DirectoryBrowseResult>(
       path
@@ -2245,6 +2311,15 @@ export const fsApi = {
     request<{ opened: boolean; path: string }>('/fs/open-directory', {
       method: 'POST',
       body: JSON.stringify({ path, opener }),
+    }),
+  openSessionJournal: (projectId: string, sessionId?: string | null, messageId?: string | null) =>
+    request<{ opened: boolean; path: string }>('/fs/open-session-journal', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: projectId,
+        session_id: sessionId || null,
+        message_id: messageId || null,
+      }),
     }),
 }
 

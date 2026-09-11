@@ -25,6 +25,7 @@ import httpx
 from engines.core.base import EngineModel, EngineTestResult
 from engines.core.schema import validate_api_base_url
 from services.config import (
+    CLAUDE_MODEL_MAP_ALIASES,
     PROVIDER_PROTOCOLS,
     config_store,
     default_provider_protocol,
@@ -247,6 +248,7 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     parsed: dict[str, Any] = {}
     api_key = ""
     model_ids: list[str] = []
+    model_map: dict[str, dict[str, str]] = {}
 
     def add_model(value: Any) -> None:
         model_id = str(value or "").strip()
@@ -273,6 +275,13 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
             "ANTHROPIC_DEFAULT_FABLE_MODEL",
         ):
             add_model(env.get(key))
+        for alias in CLAUDE_MODEL_MAP_ALIASES:
+            key = f"ANTHROPIC_DEFAULT_{alias.upper()}_MODEL"
+            model = str(env.get(key) or "").strip()
+            if not model:
+                continue
+            display_name = str(env.get(f"{key}_NAME") or "").strip() or model
+            model_map[alias] = {"model": model, "name": display_name}
     elif app_type == "codex":
         parsed = _parse_cc_switch_toml(str(settings.get("config") or ""))
         auth = settings.get("auth")
@@ -384,6 +393,7 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "has_key": bool(api_key),
         "wire_api": wire_api or "responses",
         "model_ids": model_ids,
+        "model_map": model_map,
         "category": str(row.get("category") or ""),
         "error": error,
     }

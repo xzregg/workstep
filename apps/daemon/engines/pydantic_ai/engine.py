@@ -739,7 +739,13 @@ class PydanticAIEngine(AcpEngineBase):
         if skill_library.is_dir():
             capabilities.append(Skills(skill_library))
         if effort:
-            capabilities.append(Thinking(effort=effort))
+            if effort == "minimal":
+                # 「极简」= 关闭思考模式：Pydantic AI 的 ThinkingLevel 支持
+                # bool，effort=False → ModelSettings(thinking=False)，显式
+                # 关闭思考（仅对始终开启思考的模型被静默忽略）。
+                capabilities.append(Thinking(effort=False))
+            else:
+                capabilities.append(Thinking(effort=effort))
         capabilities.extend(harness_capabilities or [])
         # WebSearch / WebFetch 强制本地模式（native=False）：不调用供应商
         # 原生工具（避免按次计费），由本地实现处理 —— WebSearch→ddgs

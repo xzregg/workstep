@@ -175,6 +175,142 @@ def test_claude_provider_runtime_is_isolated_from_parent_environment(provider_st
     assert "secret-claude-gateway" not in runtime.safe_summary
 
 
+_MODEL_MAP_PAYLOAD = json.dumps({
+    "sonnet": {"model": "qwen3.8-max"},
+    "haiku": {"model": "qwen3.8-flash", "name": "Qwen Flash"},
+})
+
+
+def test_claude_provider_runtime_merges_model_map_env(provider_store):
+    provider_store.save_provider(
+        _provider("claude-gateway", "anthropic_messages", type_id="anthropic")
+    )
+    provider_store.set_claude_code_model_map(_MODEL_MAP_PAYLOAD)
+    provider_store.set_claude_agent_sdk_config(model_map=_MODEL_MAP_PAYLOAD)
+
+    runtime = ClaudeCodeEngine().resolve_provider_runtime(
+        provider_id="claude-gateway", model="claude-custom"
+    )
+    sdk_runtime = ClaudeAgentSDKEngine().resolve_provider_runtime(
+        provider_id="claude-gateway", model="claude-custom"
+    )
+
+    mapped_env = {
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.8-max",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "qwen3.8-max",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.8-flash",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "Qwen Flash",
+    }
+    assert runtime.env == {
+        "ANTHROPIC_BASE_URL": "https://claude-gateway.example.com/v1",
+        "ANTHROPIC_API_KEY": "secret-claude-gateway",
+        **mapped_env,
+    }
+    assert sdk_runtime.env == runtime.env
+    # 未配置的档位不发任何环境变量，交给 CLI 自身默认。
+    for alias in ("OPUS", "FABLE"):
+        assert f"ANTHROPIC_DEFAULT_{alias}_MODEL" not in runtime.env
+        assert f"ANTHROPIC_DEFAULT_{alias}_MODEL_NAME" not in runtime.env
+
+
+def test_claude_native_runtime_applies_model_map_without_provider(provider_store):
+    provider_store.set_claude_code_model_map(_MODEL_MAP_PAYLOAD)
+    provider_store.set_claude_agent_sdk_config(model_map=_MODEL_MAP_PAYLOAD)
+
+    runtime = ClaudeCodeEngine().resolve_provider_runtime(model=None)
+    sdk_runtime = ClaudeAgentSDKEngine().resolve_provider_runtime(model=None)
+
+    assert runtime.provider_id == ""
+    assert runtime.env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "qwen3.8-max"
+    assert runtime.env["ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"] == "Qwen Flash"
+    assert sdk_runtime.env == runtime.env
+
+    provider_store.set_claude_code_model_map("")
+    provider_store.set_claude_agent_sdk_config(model_map="")
+    assert ClaudeCodeEngine().resolve_provider_runtime(model=None).env == {}
+    assert ClaudeAgentSDKEngine().resolve_provider_runtime(model=None).env == {}
+
+
+@pytest.mark.anyio
+async def test_claude_code_spawn_injects_model_map_env_without_provider(
+    provider_store, monkeypatch, tmp_path
+):
+    """只配映射不绑供应商时，环境变量仍必须进入 CLI 子进程。"""
+    provider_store.set_claude_code_model_map(_MODEL_MAP_PAYLOAD)
+    provider_store.set_claude_permission_mode("acceptEdits")
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*_args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    events = [
+        event
+        async for event in ClaudeCodeEngine().spawn(
+            prompt="hello", cwd=str(tmp_path)
+        )
+    ]
+
+    env = captured["env"]
+    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "qwen3.8-max"
+    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"] == "qwen3.8-max"
+    assert env["ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME"] == "Qwen Flash"
+    # 未配置的档位不发环境变量，避免覆盖 CLI 自身默认。
+    assert "ANTHROPIC_DEFAULT_OPUS_MODEL" not in env
+    assert any(event.type == "status" for event in events)
+
+
+@pytest.mark.anyio
+async def test_claude_code_spawn_keeps_parent_env_without_map_or_provider(
+    provider_store, monkeypatch, tmp_path
+):
+    """既没绑供应商也没配映射时保持原有行为：不显式传 env。"""
+    provider_store.set_claude_permission_mode("acceptEdits")
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*_args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    async for _ in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+        pass
+
+    assert "env" not in captured
+
+
+def test_claude_model_map_round_trips_as_sorted_json(provider_store):
+    provider_store.set_claude_code_model_map(json.dumps(
+        {"sonnet": {"model": "b"}, "opus": {"model": "a"}},
+    ))
+    first = provider_store.get_claude_code_config()["model_map"]
+    # 键序稳定：配置快照按字符串全等比较，乱序回显会误判为「配置已变更」。
+    assert first == json.dumps(
+        {
+            "opus": {"model": "a", "name": "a"},
+            "sonnet": {"model": "b", "name": "b"},
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    provider_store.set_claude_code_model_map(json.dumps(
+        {"opus": {"model": "a"}, "sonnet": {"model": "b"}},
+    ))
+    assert provider_store.get_claude_code_config()["model_map"] == first
+    provider_store.set_claude_code_model_map("")
+    assert provider_store.get_claude_code_config()["model_map"] == ""
+    assert "model_map" not in provider_store._load()["claude_code_engine"]
+
+
 def test_codex_provider_runtime_uses_ephemeral_model_provider(provider_store):
     provider_store.save_provider(_provider("responses", "openai_responses"))
 

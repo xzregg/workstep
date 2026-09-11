@@ -17,7 +17,10 @@ class SystemSettingsRequest(BaseModel):
 
 class ModelPriceRequest(BaseModel):
     provider_id: str | None = Field(default=None, max_length=200)
+    engine_id: str | None = Field(default=None, max_length=200)
     model: str = Field(min_length=1, max_length=300)
+    model_type: Literal["chat", "reasoning", "embedding", "rerank", "image", "audio"] = "chat"
+    supports_multimodal: bool = False
     input_price: float = Field(ge=0)
     output_price: float = Field(ge=0)
     cache_price: float = Field(ge=0)
@@ -50,6 +53,33 @@ def _model_pricing_response(pricing: dict) -> dict:
             "models": models,
         })
     engine_defaults = config_store.get("engine_default_models", {})
+    if not isinstance(engine_defaults, dict):
+        engine_defaults = {}
+    engine_caches = config_store.get_engine_model_caches()
+    engines = []
+    for engine_id in sorted(set(engine_caches) | set(engine_defaults)):
+        cached = engine_caches.get(engine_id, {})
+        models = []
+        for item in cached.get("models", []):
+            if not isinstance(item, dict) or not str(item.get("id") or "").strip():
+                continue
+            models.append({
+                "id": str(item["id"]),
+                "label": str(item.get("label") or item["id"]),
+                "description": str(item.get("description") or ""),
+            })
+        default_model = engine_defaults.get(engine_id)
+        if (
+            isinstance(default_model, str)
+            and default_model.strip()
+            and all(item["id"] != default_model.strip() for item in models)
+        ):
+            models.append({
+                "id": default_model.strip(),
+                "label": default_model.strip(),
+                "description": "",
+            })
+        engines.append({"id": engine_id, "models": models})
     standalone_models = sorted({
         value.strip()
         for value in engine_defaults.values()
@@ -57,7 +87,18 @@ def _model_pricing_response(pricing: dict) -> dict:
     }) if isinstance(engine_defaults, dict) else []
     return {
         **pricing,
+        "prices": [
+            {
+                **item,
+                "engine_id": item.get("engine_id"),
+                "model_type": item.get("model_type", "chat"),
+                "supports_multimodal": item.get("supports_multimodal", False) is True,
+            }
+            for item in pricing.get("prices", [])
+            if isinstance(item, dict)
+        ],
         "providers": providers,
+        "engines": engines,
         "standalone_models": standalone_models,
     }
 
@@ -85,25 +126,41 @@ async def set_system_settings(req: SystemSettingsRequest):
 
 @router.get("/model-pricing")
 async def get_model_pricing():
-    return _model_pricing_response(config_store.get_model_pricing())
+    return await get_model_settings()
 
 
 @router.put("/model-pricing")
 async def set_model_pricing(req: ModelPricingRequest):
+    return await set_model_settings(req)
+
+
+@router.get("/model-settings")
+async def get_model_settings():
+    return _model_pricing_response(config_store.get_model_pricing())
+
+
+@router.put("/model-settings")
+async def set_model_settings(req: ModelPricingRequest):
     prices = []
-    seen: set[tuple[str | None, str]] = set()
+    seen: set[tuple[str | None, str | None, str]] = set()
     for item in req.prices:
         provider_id = item.provider_id.strip() if item.provider_id else None
+        engine_id = item.engine_id.strip() if item.engine_id else None
+        if provider_id and engine_id:
+            raise HTTPException(status_code=400, detail="模型不能同时属于供应商和执行引擎")
         model = item.model.strip()
         if not model:
             raise HTTPException(status_code=400, detail="模型名称不能为空")
-        key = (provider_id, model)
+        key = (provider_id, engine_id, model)
         if key in seen:
             raise HTTPException(status_code=400, detail="供应商与模型组合不能重复")
         seen.add(key)
         prices.append({
             "provider_id": provider_id,
+            "engine_id": engine_id,
             "model": model,
+            "model_type": item.model_type,
+            "supports_multimodal": item.supports_multimodal,
             "input_price": float(item.input_price),
             "output_price": float(item.output_price),
             "cache_price": float(item.cache_price),

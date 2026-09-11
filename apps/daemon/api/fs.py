@@ -38,6 +38,12 @@ class OpenDirectoryRequest(BaseModel):
     opener: str = "file_manager"
 
 
+class OpenSessionJournalRequest(BaseModel):
+    project_id: str
+    session_id: str | None = None
+    message_id: str | None = None
+
+
 class MkdirRequest(BaseModel):
     parent: str
     name: str
@@ -133,6 +139,7 @@ async def _run_open_command(command: list[str], directory: Path) -> None:
             *command,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
+            limit=1024 * 256,
         )
         return_code = await process.wait()
     except FileNotFoundError as exc:
@@ -385,8 +392,13 @@ def _assert_project_path(path: Path, project_id: str | None) -> None:
         raise HTTPException(status_code=403, detail="Path is outside the project") from exc
 
 
-def _resolve_project_file(path: str, project_id: str | None) -> Path:
-    """Resolve a user-visible file link without allowing it to escape its project."""
+def _resolve_project_file(
+    path: str,
+    project_id: str | None,
+    *,
+    allow_absolute: bool = False,
+) -> Path:
+    """Resolve a file link, allowing project escape only for explicit absolute paths."""
     candidate = Path(path).expanduser()
     if not project_id:
         return candidate.resolve()
@@ -398,7 +410,8 @@ def _resolve_project_file(path: str, project_id: str | None) -> Path:
         raise HTTPException(status_code=404, detail="Project not found")
     project_root = project.path.resolve()
     target = candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
-    _assert_project_path(target, project_id)
+    if not (allow_absolute and candidate.is_absolute()):
+        _assert_project_path(target, project_id)
     return target
 
 
@@ -410,7 +423,10 @@ def _project_relative_path(path: Path, project_id: str | None) -> str | None:
     project = project_manager.get_project_by_id(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return path.relative_to(project.path.resolve()).as_posix()
+    try:
+        return path.relative_to(project.path.resolve()).as_posix()
+    except ValueError:
+        return None
 
 
 @router.get("/browse")
@@ -517,7 +533,11 @@ async def serve_project_raw_file(
 ):
     """Serve a project file from a stable URL so HTML relative assets still work."""
     requested_path = f"/{full_path}" if absolute else full_path
-    file_path = _resolve_project_file(requested_path, project_id or project_ref)
+    file_path = _resolve_project_file(
+        requested_path,
+        project_id or project_ref,
+        allow_absolute=absolute,
+    )
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
     if not file_path.is_file():
@@ -527,9 +547,13 @@ async def serve_project_raw_file(
 
 
 @router.get("/preview")
-async def preview_file(path: str, project_id: str | None = Query(None)):
+async def preview_file(
+    path: str,
+    project_id: str | None = Query(None),
+    absolute: bool = Query(False),
+):
     """Preview a file content for display."""
-    file_path = _resolve_project_file(path, project_id)
+    file_path = _resolve_project_file(path, project_id, allow_absolute=absolute)
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
@@ -600,6 +624,35 @@ async def open_directory(req: OpenDirectoryRequest):
         await _open_directory(directory)
     else:
         await _open_with(directory, req.opener)
+    return {"opened": True, "path": str(directory)}
+
+
+@router.post("/open-session-journal")
+async def open_session_journal(req: OpenSessionJournalRequest):
+    """Open the folder holding one session's JSONL event journal (dev tool).
+
+    ``message_id`` wins when provided: task turns journal under
+    ``event_logs/task-{task_id}/`` rather than under the session id the UI
+    displays, so scanning for ``{message_id}.jsonl`` finds the real folder.
+    """
+    from agent_assistants.event_journal import _SAFE_SEGMENT
+
+    project = _project(req.project_id)
+    event_logs = project.workstep_dir / "event_logs"
+    directory: Path | None = None
+    message_id = (req.message_id or "").strip()
+    if message_id and _SAFE_SEGMENT.fullmatch(message_id):
+        matches = sorted(event_logs.rglob(f"{message_id}.jsonl"))
+        if matches:
+            directory = matches[0].parent
+    session_id = (req.session_id or "").strip()
+    if directory is None and session_id and _SAFE_SEGMENT.fullmatch(session_id):
+        candidate = event_logs / session_id
+        if candidate.is_dir():
+            directory = candidate
+    if directory is None:
+        raise HTTPException(status_code=404, detail="Session journal not found")
+    await _open_directory(directory)
     return {"opened": True, "path": str(directory)}
 
 

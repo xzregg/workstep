@@ -77,24 +77,28 @@ async def test_model_pricing_round_trip_persists_currency_rate_and_prices(
 ):
     client, config_file = system_settings_client
 
-    response = await client.get("/api/system-settings/model-pricing")
+    response = await client.get("/api/system-settings/model-settings")
     assert response.status_code == 200
     assert response.json() == {
         "currency": "USD",
         "usd_to_cny_rate": 7.2,
         "prices": [],
         "providers": [],
+        "engines": [],
         "standalone_models": [],
     }
 
     response = await client.put(
-        "/api/system-settings/model-pricing",
+        "/api/system-settings/model-settings",
         json={
             "currency": "CNY",
             "usd_to_cny_rate": 7.18,
             "prices": [{
                 "provider_id": "openai",
+                "engine_id": None,
                 "model": "gpt-5",
+                "model_type": "chat",
+                "supports_multimodal": True,
                 "input_price": 10,
                 "output_price": 30,
                 "cache_price": 2.5,
@@ -106,7 +110,10 @@ async def test_model_pricing_round_trip_persists_currency_rate_and_prices(
     assert response.json()["currency"] == "CNY"
     assert response.json()["prices"][0] == {
         "provider_id": "openai",
+        "engine_id": None,
         "model": "gpt-5",
+        "model_type": "chat",
+        "supports_multimodal": True,
         "input_price": 10.0,
         "output_price": 30.0,
         "cache_price": 2.5,
@@ -115,6 +122,11 @@ async def test_model_pricing_round_trip_persists_currency_rate_and_prices(
         key: response.json()[key]
         for key in ("currency", "usd_to_cny_rate", "prices")
     }
+    assert system_settings_api.config_store.model_supports_multimodal(
+        "pydantic_ai",
+        "gpt-5",
+        "openai",
+    ) is True
 
 
 async def test_model_pricing_returns_enabled_providers_with_cached_models_in_one_response(
@@ -142,7 +154,7 @@ async def test_model_pricing_returns_enabled_providers_with_cached_models_in_one
         "2026-08-14T00:00:00+00:00",
     )
 
-    response = await client.get("/api/system-settings/model-pricing")
+    response = await client.get("/api/system-settings/model-settings")
 
     assert response.status_code == 200
     assert response.json()["providers"] == [{
@@ -155,6 +167,71 @@ async def test_model_pricing_returns_enabled_providers_with_cached_models_in_one
         }],
     }]
     assert response.json()["standalone_models"] == ["claude-sonnet", "gpt-5"]
+
+
+async def test_model_settings_returns_cached_execution_engine_models_without_fetching(
+    system_settings_client,
+):
+    client, _ = system_settings_client
+    store = system_settings_api.config_store
+    store.set_engine_models(
+        "codex",
+        [
+            {"id": "gpt-5", "label": "GPT-5", "description": "cached"},
+            {"id": "gpt-5-mini", "label": "GPT-5 mini", "description": None},
+        ],
+        "2026-09-10T00:00:00+00:00",
+    )
+
+    response = await client.get("/api/system-settings/model-pricing")
+
+    assert response.status_code == 200
+    assert response.json()["engines"] == [{
+        "id": "codex",
+        "models": [
+            {"id": "gpt-5", "label": "GPT-5", "description": "cached"},
+            {"id": "gpt-5-mini", "label": "GPT-5 mini", "description": ""},
+        ],
+    }]
+
+
+async def test_model_settings_persists_engine_model_metadata(system_settings_client):
+    client, config_file = system_settings_client
+
+    response = await client.put(
+        "/api/system-settings/model-settings",
+        json={
+            "currency": "USD",
+            "usd_to_cny_rate": 7.2,
+            "prices": [{
+                "provider_id": None,
+                "engine_id": "codex",
+                "model": "gpt-5",
+                "model_type": "reasoning",
+                "supports_multimodal": True,
+                "input_price": 1,
+                "output_price": 2,
+                "cache_price": 0.5,
+            }],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["prices"][0] == {
+        "provider_id": None,
+        "engine_id": "codex",
+        "model": "gpt-5",
+        "model_type": "reasoning",
+        "supports_multimodal": True,
+        "input_price": 1.0,
+        "output_price": 2.0,
+        "cache_price": 0.5,
+    }
+    assert json.loads(config_file.read_text(encoding="utf-8"))["model_pricing"]["prices"][0]["engine_id"] == "codex"
+    assert system_settings_api.config_store.model_supports_multimodal(
+        "codex",
+        "gpt-5",
+    ) is True
 
 
 async def test_model_pricing_rejects_duplicate_or_invalid_entries(system_settings_client):

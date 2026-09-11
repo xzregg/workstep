@@ -14,6 +14,17 @@ logger = logging.getLogger(__name__)
 _event_journal = TurnEventJournal()
 
 
+def session_id_from_events(events: list[dict]) -> str | None:
+    """Return the engine session owned by one persisted message segment."""
+    for event in events:
+        if not isinstance(event, dict) or event.get("type") != "session_started":
+            continue
+        data = event.get("data")
+        if isinstance(data, dict) and data.get("session_id"):
+            return str(data["session_id"])
+    return None
+
+
 def event_detail(msg: Message) -> dict | None:
     if not msg.event_log_path:
         return None
@@ -83,6 +94,7 @@ def restore_running_projection(
         logger.exception("Failed to restore running task message %s", msg.id)
         return
     entry["content"] = snapshot["content"]
+    entry["session_id"] = session_id_from_events(snapshot["events"])
     entry["events"] = translate_events(
         snapshot["events"],
         task_id=str(msg.task_id),
@@ -130,6 +142,7 @@ def get_task_history(
             "events": [],
             "prompt": None,
             "usage": None,
+            "session_id": None,
         }
 
         # Parse events_json → AG-UI（旧词汇经兼容映射）
@@ -139,6 +152,7 @@ def get_task_history(
                 raw_events = json.loads(msg.events_json)
             except json.JSONDecodeError:
                 logger.warning("Invalid events_json for message %s", msg.id)
+        entry["session_id"] = session_id_from_events(raw_events)
         entry["events"] = translate_events(
             raw_events,
             task_id=task_id,
@@ -196,12 +210,14 @@ def get_step_history(
             "events": [],
             "prompt": None,
             "usage": None,
+            "session_id": None,
         }
         if msg.events_json:
             try:
                 raw_events = json.loads(msg.events_json)
             except json.JSONDecodeError:
                 raw_events = []
+            entry["session_id"] = session_id_from_events(raw_events)
             entry["events"] = translate_events(
                 raw_events,
                 task_id=task_id,

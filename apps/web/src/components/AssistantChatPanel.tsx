@@ -1,5 +1,5 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import type { AssistantChatMessage } from '../stores/assistantStore'
@@ -115,6 +115,121 @@ export interface AssistantChatPanelProps {
   onForkMessage?: (messageId: string) => void
 }
 
+interface MessageItemProps {
+  message: AssistantChatMessage
+  copy: AssistantChatCopy
+  deviceId: string
+  locale: string
+  showUserTag: boolean
+  projectId: string
+  sessionId?: string | null
+  a2uiEntry?: Record<string, unknown>[]
+  respondInteraction: (
+    interactionId: string,
+    response: Record<string, unknown>,
+  ) => Promise<void>
+  onViewPrompt: (value: string | null) => void
+  onLoadMessageEvents?: (messageId: string) => void
+  onForkMessage?: (messageId: string) => void
+  onSendToInput: (content: string) => void
+  onA2uiAction?: (action: A2uiClientAction) => void
+}
+
+/**
+ * 单条消息行（memo 化）。流式输出时每个 token 都会重建 messages 数组，但只有
+ * 最后一条消息的对象引用在变；历史气泡靠 memo 整体跳过重渲染（含 markdown
+ * 重新解析与 ProcessTrace 时间线），否则长对话会让主线程每个 token 卡一次，
+ * 侧栏点击/页面切换都要排队。
+ *
+ * 注意：所有 props 必须引用稳定 —— copy 由调用方 useMemo，回调由 useCallback，
+ * 否则 memo 失效（功能不受影响，只是回到全量重渲染）。
+ */
+const MessageItem = memo(function MessageItem({
+  message, copy, deviceId, locale, showUserTag, projectId, sessionId,
+  a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
+  onForkMessage, onSendToInput, onA2uiAction,
+}: MessageItemProps) {
+  const { t } = useI18n()
+  const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
+  const userSender = ownUserMessage ? copy.me : (message.author_name || copy.me)
+  return (
+    <ChatMessageBubble
+      role={message.role}
+      sender={message.role === 'user' ? userSender : copy.agent}
+      senderTitle={message.role === 'user' && message.author_device_name ? `${userSender} · ${message.author_device_name}` : undefined}
+      initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
+      color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
+      content={message.content}
+      events={message.events}
+      interactionsEnabled={message.status === 'running'}
+      a2uiMessages={a2uiEntry}
+      onInteractionRespond={respondInteraction}
+      streaming={message.status === 'running'}
+      projectId={projectId}
+      error={message.role === 'assistant' ? message.error : undefined}
+      showLoading={message.role === 'assistant' && message.status === 'running'}
+      loading={message.role === 'assistant'
+        ? <StreamingStatusText label={t('bubble.thinking')} />
+        : undefined}
+      header={message.role === 'user' ? (
+        <>
+          {showUserTag && copy.tag && (
+            <span
+              title={copy.userTagTitle}
+              style={{
+                padding: '1px 6px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))',
+                border: '1px solid var(--border-soft)',
+                background: 'rgba(124,58,237,0.08)', color: 'var(--ai-assistant)',
+              }}
+            >{copy.tag}</span>
+          )}
+          {formatConversationDateTime(message.created_at, Date.now(), locale)}
+        </>
+      ) : (
+        <MessageMetaBar
+          createdAt={message.created_at}
+          endedAt={message.ended_at}
+          sessionId={sessionId}
+          messageId={message.id}
+          running={message.status === 'running'}
+          status={message.status === 'stopped' ? 'stopped' : message.status === 'error' ? 'failed' : undefined}
+          events={message.events}
+          eventSummary={message.event_summary}
+          eventDetail={message.event_detail}
+          onLoadEventDetails={onLoadMessageEvents
+            ? () => onLoadMessageEvents(message.id)
+            : undefined}
+          prompt={message.prompt}
+          onViewPrompt={onViewPrompt}
+          projectId={projectId}
+        />
+      )}
+      footer={
+        message.role === 'assistant' &&
+        // 思考中（尚无正文）也展示 Token / t/s / 引擎 * 模型
+        (message.content || message.status === 'running' || message.status === 'stopped') ? (
+          <MessageResponseFooter
+            content={stripA2uiBlocks(message.content)}
+            usage={usageFromEvents(message.events ?? [])}
+            events={message.events ?? []}
+            eventSummary={message.event_summary}
+            engine={message.engine}
+            model={message.model}
+            startedAt={message.created_at}
+            running={message.status === 'running'}
+            stopped={message.status === 'stopped'}
+            onFork={message.status === 'succeeded' && onForkMessage
+              ? () => onForkMessage(message.id)
+              : undefined}
+          />
+        ) : undefined
+      }
+      onSendToInput={onSendToInput}
+      onA2uiAction={onA2uiAction}
+    />
+  )
+})
+
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
@@ -152,6 +267,11 @@ export default function AssistantChatPanel({
   ) => {
     await taskApi.respondInteraction(interactionId, response, projectId)
   }, [projectId])
+  // MessageItem 是 memo 化的：这里的回调必须引用稳定，否则每个 token 都会击穿 memo。
+  const handleSendToInput = useCallback((content: string) => {
+    onInputChange(content)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [onInputChange])
 
   useEffect(() => {
     const list = listRef.current
@@ -286,7 +406,7 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' ,paddingBottom: '10px'}}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' ,paddingBottom: '80px'}}>
         <div
           className="chat-history-scroll"
           ref={listRef}
@@ -369,85 +489,37 @@ export default function AssistantChatPanel({
               {copy.emptyIntro}
             </div>
           )}
-          {messages.map((message) => {
-          const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
-          const userSender = ownUserMessage ? copy.me : (message.author_name || copy.me)
-          return (
-          <ChatMessageBubble
-            key={message.id}
-            role={message.role}
-            sender={message.role === 'user' ? userSender : copy.agent}
-            senderTitle={message.role === 'user' && message.author_device_name ? `${userSender} · ${message.author_device_name}` : undefined}
-            initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
-            color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
-            content={message.content}
-            events={message.events}
-            interactionsEnabled={message.status === 'running'}
-            a2uiMessages={a2uiMessages?.[message.id]}
-            onInteractionRespond={respondInteraction}
-            streaming={message.status === 'running'}
-            projectId={projectId}
-            error={message.role === 'assistant' ? message.error : undefined}
-            showLoading={message.role === 'assistant' && message.status === 'running'}
-            loading={message.role === 'assistant'
-              ? <StreamingStatusText label={t('bubble.thinking')} />
-              : undefined}
-            header={message.role === 'user' ? (
-              <>
-                {showUserTag && copy.tag && (
-                  <span
-                    title={copy.userTagTitle}
-                    style={{
-                      padding: '1px 6px', borderRadius: 999, fontSize: 'calc(11px * var(--font-scale))',
-                      border: '1px solid var(--border-soft)',
-                      background: 'rgba(124,58,237,0.08)', color: 'var(--ai-assistant)',
-                    }}
-                  >{copy.tag}</span>
-                )}
-                {formatConversationDateTime(message.created_at, Date.now(), locale)}
-              </>
-            ) : (
-              <MessageMetaBar
-                createdAt={message.created_at}
-                endedAt={message.ended_at}
-                sessionId={sessionId}
-                running={message.status === 'running'}
-                status={message.status === 'stopped' ? 'stopped' : message.status === 'error' ? 'failed' : undefined}
-                events={message.events}
-                eventSummary={message.event_summary}
-                eventDetail={message.event_detail}
-                onLoadEventDetails={onLoadMessageEvents
-                  ? () => onLoadMessageEvents(message.id)
-                  : undefined}
-                prompt={message.prompt}
-                onViewPrompt={setViewingPrompt}
-                projectId={projectId}
-              />
-            )}
-            footer={message.role === 'assistant' && message.status !== 'running' ? (
-              <MessageResponseFooter
-                content={stripA2uiBlocks(message.content)}
-                usage={usageFromEvents(message.events ?? [])}
-                events={message.events ?? []}
-                engine={message.engine}
-                model={message.model}
-                onFork={message.status === 'succeeded' && onForkMessage
-                  ? () => onForkMessage(message.id)
-                  : undefined}
-              />
-            ) : undefined}
-            onSendToInput={(content) => {
-              onInputChange(content)
-              requestAnimationFrame(() => inputRef.current?.focus())
-            }}
-            onA2uiAction={onA2uiAction}
-          />
-          )
-          })}
+          {messages.map((message) => (
+            <MessageItem
+              key={message.id}
+              message={message}
+              copy={copy}
+              deviceId={deviceId}
+              locale={locale}
+              showUserTag={showUserTag}
+              projectId={projectId}
+              sessionId={sessionId}
+              a2uiEntry={a2uiMessages?.[message.id]}
+              respondInteraction={respondInteraction}
+              onViewPrompt={setViewingPrompt}
+              onLoadMessageEvents={onLoadMessageEvents}
+              onForkMessage={onForkMessage}
+              onSendToInput={handleSendToInput}
+              onA2uiAction={onA2uiAction}
+            />
+          ))}
           {showThinkingReply && (
             <AssistantThinkingMessage
               sender={copy.agent}
               initials={copy.agentInitials}
+              footer={config.engine || config.defaultEngine || config.model ? (
+                <MessageResponseFooter
+                  content=""
+                  engine={config.engine || config.defaultEngine || null}
+                  model={config.model || null}
+                  running
+                />
+              ) : undefined}
             />
           )}
           {afterMessages}

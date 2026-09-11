@@ -16,6 +16,7 @@ from engines.core.events import (
     usage_update_event,
 )
 from engines.core.schema import EngineImage
+from engines.core.stream_lines import ChunkedLineReader
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class HermesEngine(AcpEngineBase):
         self._process: asyncio.subprocess.Process | None = None
         self._running = False
         self._request_id = 0
+        self._stdout_reader: ChunkedLineReader | None = None
 
     @staticmethod
     def is_installed() -> bool:
@@ -150,9 +152,23 @@ class HermesEngine(AcpEngineBase):
         ):
             yield event
 
+    def _stdout_lines(self) -> ChunkedLineReader:
+        """返回与当前进程 stdout 绑定的分块行读取器（跨多次调用复用缓冲）。
+
+        Hermes 的 JSON-RPC 单行可能远超 asyncio StreamReader 默认 64KiB limit，
+        直接 ``readline()`` 会抛 "Separator is not found, and chunk exceed the limit"
+        并清空已缓冲数据。
+        """
+        stdout = self._process.stdout
+        reader = self._stdout_reader
+        if reader is None or reader.stream is not stdout:
+            reader = ChunkedLineReader(stdout)
+            self._stdout_reader = reader
+        return reader
+
     async def _read_until_response(self, target_id: int) -> dict | None:
         """Read lines until we get a response matching target_id."""
-        async for line in self._process.stdout:
+        async for line in self._stdout_lines():
             line = line.decode(errors="replace").strip()
             if not line:
                 continue
@@ -166,7 +182,7 @@ class HermesEngine(AcpEngineBase):
 
     async def _stream_until_prompt_done(self, prompt_id: int) -> AsyncIterator[InternalEvent]:
         """Stream events until prompt response is received."""
-        async for line in self._process.stdout:
+        async for line in self._stdout_lines():
             line = line.decode(errors="replace").strip()
             if not line:
                 continue

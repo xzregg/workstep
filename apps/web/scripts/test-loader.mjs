@@ -32,6 +32,9 @@ export async function resolve(specifier, context, nextResolve) {
 export async function load(url, context, nextLoad) {
   const pathname = new URL(url).pathname
   const extension = pathname.slice(pathname.lastIndexOf('.'))
+  if (extension === '.css') {
+    return { format: 'module', source: 'export default {}', shortCircuit: true }
+  }
   if (!extensions.has(extension)) return nextLoad(url, context)
 
   const source = await readFile(new URL(url), 'utf8')

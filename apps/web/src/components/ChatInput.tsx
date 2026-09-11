@@ -8,10 +8,11 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import ChatInputTextSegment from './ChatInputTextSegment'
 import CoordinatorConfigBar from './CoordinatorConfigBar'
 import FloatingMenu, { useFloatingMenu } from './FloatingMenu'
 import ImagePreview from './ImagePreview'
-import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
+import { engineApi, fsApi, type CoordinatorEngineSummary, type EngineConfigField, type EngineInputItem, type EngineQuota, type ProviderInfo } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
 import {
@@ -73,6 +74,12 @@ export interface ChatInputEngineConfig {
   onFastModelChange: (model: string) => void
   onVisionModelChange?: (model: string) => void
   onThinkingEffortChange?: (value: string) => void
+  /** Stage mode exposes the selected engine's non-sensitive workflow fields. */
+  stageFields?: EngineConfigField[]
+  stageValues?: Record<string, string>
+  onStageFieldChange?: (key: string, value: string) => void
+  requireCoordinator?: boolean
+  allowDefault?: boolean
   /** Reset all selections back to the defaults. */
   onReset?: () => void
 }
@@ -312,12 +319,6 @@ export default function ChatInput({
 
   const formatTokens = (count: number) =>
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
-
-  const resizeElement = (element: HTMLTextAreaElement | null) => {
-    if (!element) return
-    element.style.height = 'auto'
-    element.style.height = `${element.scrollHeight}px`
-  }
 
   const focusMarkdownCursor = (markdown: string, cursor: number) => {
     const segments = splitMarkdownImages(markdown)
@@ -597,45 +598,36 @@ export default function ChatInput({
               const currentTextIndex = textIndex
               const isLastText = currentTextIndex === textSegmentCount - 1
               return (
-                <textarea
+                <ChatInputTextSegment
                   key={`text:${segmentIndex}`}
-                  ref={(element) => {
+                  markdown={segment.markdown}
+                  placeholder={inputSegments.length === 1 ? placeholder : undefined}
+                  disabled={disabled}
+                  rows={rows}
+                  externalRef={isLastText ? inputRef : undefined}
+                  onElement={(element) => {
                     if (element) {
                       segmentRefs.current.set(currentTextIndex, element)
-                      resizeElement(element)
                       if (!textareaRef.current || isLastText) textareaRef.current = element
                     } else {
                       segmentRefs.current.delete(currentTextIndex)
                     }
-                    if (isLastText) {
-                      if (typeof inputRef === 'function') inputRef(element)
-                      else if (inputRef) inputRef.current = element
-                    }
                   }}
-                  className="chat-input-text-segment"
-                  value={segment.markdown}
-                  onChange={(event) => {
-                    updateTextSegment(segment, event.target.value, event.currentTarget.selectionStart)
-                    resizeElement(event.currentTarget)
-                  }}
-                  onPaste={imageAttach ? handleImagePaste : onPaste}
-                  onKeyDown={handleKeyDown}
-                  placeholder={inputSegments.length === 1 ? placeholder : undefined}
-                  disabled={disabled}
-                  rows={rows}
-                  onFocus={(event) => {
-                    textareaRef.current = event.currentTarget
+                  onCommitText={(text, localCursor) => updateTextSegment(segment, text, localCursor)}
+                  onCursorMove={(localCursor) => setSlashCursor(segment.start + localCursor)}
+                  onFocusElement={(element) => {
+                    textareaRef.current = element
                     inputFocusedRef.current = true
                     setFocused(true)
                   }}
-                  onBlur={(event) => {
-                    if (!event.currentTarget.parentElement?.contains(event.relatedTarget)) {
+                  onBlurElement={(element, relatedTarget) => {
+                    if (!element.parentElement?.contains(relatedTarget as Node | null)) {
                       inputFocusedRef.current = false
                       setFocused(false)
                     }
                   }}
-                  onClick={(event) => setSlashCursor(segment.start + event.currentTarget.selectionStart)}
-                  onSelect={(event) => setSlashCursor(segment.start + event.currentTarget.selectionStart)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={imageAttach ? handleImagePaste : onPaste}
                 />
               )
             })
@@ -954,6 +946,11 @@ export default function ChatInput({
                       notice={config.notice}
                       hint={config.hint}
                       engineTitle={config.engineTitle}
+                      stageFields={config.stageFields}
+                      stageValues={config.stageValues}
+                      onStageFieldChange={config.onStageFieldChange}
+                      requireCoordinator={config.requireCoordinator}
+                      allowDefault={config.allowDefault}
                       onEngineChange={(id) => { config.onEngineChange(id); setConfigOpen(true) }}
                       onProviderChange={config.onProviderChange}
                       onModelChange={config.onModelChange}

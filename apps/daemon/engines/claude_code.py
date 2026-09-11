@@ -33,7 +33,13 @@ from engines.core.interactions import (
     permission_signature,
 )
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
-from services.config import CLAUDE_PERMISSION_MODES, config_store
+from engines.core.stream_lines import iter_stream_lines
+from services.config import (
+    CLAUDE_PERMISSION_MODES,
+    claude_model_map_env,
+    config_store,
+    normalize_claude_model_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +143,15 @@ class ClaudeCodeEngine(AcpEngineBase):
     def supported_provider_protocols(cls) -> set[str]:
         return {"anthropic_messages"}
 
+    def _model_map(self) -> dict[str, dict[str, str]]:
+        """已保存的档位映射；读取路径不抛错（写路径才校验）。"""
+        try:
+            return normalize_claude_model_map(
+                self.get_config_values().get("model_map")
+            )
+        except ValueError:
+            return {}
+
     def build_provider_runtime(self, provider, model):
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
@@ -144,6 +159,7 @@ class ClaudeCodeEngine(AcpEngineBase):
             env={
                 "ANTHROPIC_BASE_URL": str(provider.get("base_url") or ""),
                 "ANTHROPIC_API_KEY": str(provider.get("api_key") or ""),
+                **claude_model_map_env(self._model_map()),
             },
             unset_env={
                 "ANTHROPIC_AUTH_TOKEN",
@@ -151,6 +167,13 @@ class ClaudeCodeEngine(AcpEngineBase):
                 "CLAUDE_CODE_USE_VERTEX",
                 "CLAUDE_CODE_USE_FOUNDRY",
             },
+        )
+
+    def build_native_runtime(self, model):
+        # 未绑定供应商时映射同样生效（CLI 原生登录 + 只做档位映射是合法场景）。
+        return ProviderRuntimeConfig(
+            model=model,
+            env=claude_model_map_env(self._model_map()),
         )
 
     """Claude Code CLI engine using direct subprocess.
@@ -229,10 +252,24 @@ class ClaudeCodeEngine(AcpEngineBase):
                 confirm_values=("bypassPermissions",),
                 help="WorkStep 每次启动 Claude Code 都会显式传入此权限模式。",
             ),
+            EngineConfigField(
+                key="model_map",
+                label="模型映射",
+                type="model_map",
+                stage_hidden=True,
+                help=(
+                    "把 Claude Code 内部的 sonnet/opus/haiku/fable 档位映射到实际模型 ID，"
+                    "绑定第三方中转时用它替代 Anthropic 官方模型名；显示名留空则与模型 ID 相同。"
+                    "按引擎独立保存，需先保存配置再生效。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
-        return {"permission_mode": config_store.get_claude_permission_mode()}
+        return {
+            "permission_mode": config_store.get_claude_permission_mode(),
+            "model_map": config_store.get_claude_code_config()["model_map"],
+        }
 
     async def save_config_values(
         self,
@@ -247,7 +284,10 @@ class ClaudeCodeEngine(AcpEngineBase):
             "permission_mode"
         ):
             raise ValueError("bypassPermissions 需要明确确认风险")
+        # 先校验映射再落盘，避免映射非法时权限模式已写一半。
+        model_map = normalize_claude_model_map(values.get("model_map"))
         config_store.set_claude_permission_mode(mode)
+        config_store.set_claude_code_model_map(model_map)
 
     # --- Execution ---
 
@@ -368,6 +408,7 @@ class ClaudeCodeEngine(AcpEngineBase):
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
             "cwd": cwd,
+            "limit": 1024 * 256,
         }
         compact_pct = (config_overrides or {}).get("autocompact_pct_override")
         if compact_pct not in (None, ""):
@@ -381,7 +422,8 @@ class ClaudeCodeEngine(AcpEngineBase):
             process_kwargs["env"]["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
                 compact_pct_value
             )
-        elif provider_runtime.provider_id:
+        elif provider_runtime.provider_id or provider_runtime.env:
+            # env 非空也可能只是模型映射（未绑供应商），此时同样要落进子进程。
             process_kwargs["env"] = provider_runtime.child_env()
         self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
         self._running = True
@@ -460,7 +502,10 @@ class ClaudeCodeEngine(AcpEngineBase):
     async def _parse_stdout(self) -> AsyncIterator[InternalEvent]:
         """Parse Claude's stream-json stdout into InternalEvents."""
         state = {"streamed_text": False, "streamed_thinking": False}
-        async for line in self._process.stdout:
+        # 分块读取：Claude 的单条 JSONL 事件（大段 tool 输出 / 长消息）可能超过
+        # asyncio StreamReader 默认 64KiB limit，readline 会抛
+        # "Separator is not found, and chunk exceed the limit" 并清空缓冲。
+        async for line in iter_stream_lines(self._process.stdout):
             line = line.decode(errors="replace").strip()
             if not line:
                 continue

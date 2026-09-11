@@ -80,6 +80,13 @@ test('uses product-facing engine names', () => {
   assert.equal(zhCNT('settings.systemDefault'), '系统默认（Pydantic AI）')
 })
 
+test('translates the channel chat assistant name', () => {
+  assert.equal(zhCNT('settings.assistantNames.channelChat'), '渠道对话')
+  assert.equal(createT(enUS)('settings.assistantNames.channelChat'), 'Channel Chat')
+  assert.equal(createT(zhTW)('settings.assistantNames.channelChat'), '渠道對話')
+  assert.equal(createT(jaJP)('settings.assistantNames.channelChat'), 'チャンネルチャット')
+})
+
 test('uses duration wording for completed and stopped LLM messages', () => {
   assert.equal(zhCNT('trace.processed'), '耗时')
   assert.equal(zhCNT('trace.stoppedAfter', { duration: '3秒' }), '已停止，耗时 3秒')

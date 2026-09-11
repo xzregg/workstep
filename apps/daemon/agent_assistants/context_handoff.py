@@ -118,6 +118,8 @@ def append_handoff_log(
     source_engine: str,
     target_engine: str,
     mode: str,
+    source_provider: str = "",
+    target_provider: str = "",
 ) -> dict[str, Any]:
     """Append one engine handoff with only messages not logged previously."""
     if not _SAFE_SEGMENT_RE.fullmatch(session_id or ""):
@@ -155,7 +157,7 @@ def append_handoff_log(
         key: package.get(key)
         for key in ("objective", "latest_request", "file_refs", "decisions", "constraints")
     }
-    appended: list[dict[str, Any]] = [{
+    handoff_start: dict[str, Any] = {
         "type": "handoff_start",
         "handoff_id": handoff_id,
         "timestamp": timestamp,
@@ -163,7 +165,11 @@ def append_handoff_log(
         "target_engine": target_engine,
         "mode": mode,
         "summary": summary,
-    }]
+    }
+    if source_provider or target_provider:
+        handoff_start["source_provider"] = source_provider
+        handoff_start["target_provider"] = target_provider
+    appended: list[dict[str, Any]] = [handoff_start]
     for item in (visible if mode != "none" else []):
         message_id = str(item.get("id") or "")
         if not message_id or message_id in logged_ids:
@@ -183,7 +189,7 @@ def append_handoff_log(
         "cutoff_message_id": cutoff_message_id or None,
     })
     _replace_jsonl(path, [*existing, *appended])
-    return {
+    metadata: dict[str, Any] = {
         "version": 1,
         "handoff_id": handoff_id,
         "mode": mode,
@@ -193,6 +199,10 @@ def append_handoff_log(
         "relative_path": relative.as_posix(),
         "consumed": False,
     }
+    if source_provider or target_provider:
+        metadata["source_provider"] = source_provider
+        metadata["target_provider"] = target_provider
+    return metadata
 
 
 def mark_handoff_consumed(workstep_dir: str | Path, metadata: dict[str, Any]) -> None:
@@ -212,6 +222,12 @@ def mark_handoff_consumed(workstep_dir: str | Path, metadata: dict[str, Any]) ->
     _replace_jsonl(path, existing)
 
 
+def _endpoint_label(engine: str, provider: str) -> str:
+    """Render one handoff endpoint as engine (+provider) text."""
+    provider = (provider or "").strip()
+    return f"{engine}（供应商：{provider}）" if provider else str(engine)
+
+
 def render_handoff_reference(
     metadata: dict[str, Any],
     workstep_dir: str | Path,
@@ -222,14 +238,28 @@ def render_handoff_reference(
     root = Path(workstep_dir).resolve()
     handoff_path = (root / str(metadata.get("relative_path") or "")).resolve()
     handoff_path.relative_to((root / "event_logs").resolve())
+    source_label = _endpoint_label(
+        str(metadata.get("source_engine") or ""),
+        str(metadata.get("source_provider") or ""),
+    )
+    target_label = _endpoint_label(
+        str(metadata.get("target_engine") or ""),
+        str(metadata.get("target_provider") or ""),
+    )
+    same_engine = (
+        str(metadata.get("source_engine") or "")
+        == str(metadata.get("target_engine") or "")
+    )
+    scope = "会话交接" if same_engine else "跨引擎会话交接"
     reading_instruction = (
         "先读取最新交接摘要和截止消息前最近的可见消息；需要追溯时再向前读取。"
         if metadata.get("mode") == "smart"
         else "读取截止消息之前的全部可见用户和助手消息。"
     )
     return (
-        "<workstep_context_handoff>\n"
-        "这是一次跨引擎会话交接。请先读取项目内的只读交接日志，再处理当前请求。\n"
+        f"<workstep_context_handoff>\n"
+        f"这是一次{scope}（{source_label} → {target_label}）。"
+        "请先读取项目内的只读交接日志，再处理当前请求。\n"
         f"交接日志：{handoff_path}\n"
         f"交接 ID：{metadata.get('handoff_id')}\n"
         f"交接方式：{metadata.get('mode')}\n"

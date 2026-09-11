@@ -16,6 +16,10 @@ import {
   type ProviderInfo,
 } from '../api/client'
 import { useWorkflowGenStore, type GenProposalCard } from '../stores/workflowGenStore'
+import {
+  publishEngineCatalog,
+  useCoordinatorEngines,
+} from '../stores/engineAvailabilityStore'
 import { useI18n } from '../i18n'
 import { selectWorkflowTurnContext } from '../utils/workflowContext'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
@@ -105,6 +109,8 @@ export default function AiFlowChat({
   })
   // Assistant engine / model overrides (session-scoped: this chat turn only).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
+  // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
+  const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
@@ -164,6 +170,7 @@ export default function AiFlowChat({
         const config = assistants.find((item) => item.name === 'workflow_gen')
         if (!config) throw new Error(t('aiFlow.configLoadFailed'))
         setAssistantConfig(config)
+        publishEngineCatalog(config.available_engines)
         setSelectedEngine(config.configured.engine || '')
         setSelectedProvider(config.configured.provider_id || '')
         setSelectedModel(config.configured.model || '')
@@ -432,7 +439,7 @@ export default function AiFlowChat({
         </>}
         config={{
           projectId,
-          engines: assistantConfig?.available_engines || [],
+          engines: sharedEngines,
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,

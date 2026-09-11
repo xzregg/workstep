@@ -31,7 +31,12 @@ from engines.core.events import (
 )
 from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
-from services.config import CLAUDE_PERMISSION_MODES, config_store
+from services.config import (
+    CLAUDE_PERMISSION_MODES,
+    claude_model_map_env,
+    config_store,
+    normalize_claude_model_map,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +57,15 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
     def supported_provider_protocols(cls) -> set[str]:
         return {"anthropic_messages"}
 
+    def _model_map(self) -> dict[str, dict[str, str]]:
+        """已保存的档位映射；读取路径不抛错（写路径才校验）。"""
+        try:
+            return normalize_claude_model_map(
+                self.get_config_values().get("model_map")
+            )
+        except ValueError:
+            return {}
+
     def build_provider_runtime(self, provider, model):
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
@@ -59,6 +73,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             env={
                 "ANTHROPIC_BASE_URL": str(provider.get("base_url") or ""),
                 "ANTHROPIC_API_KEY": str(provider.get("api_key") or ""),
+                **claude_model_map_env(self._model_map()),
             },
             unset_env={
                 "ANTHROPIC_AUTH_TOKEN",
@@ -66,6 +81,13 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 "CLAUDE_CODE_USE_VERTEX",
                 "CLAUDE_CODE_USE_FOUNDRY",
             },
+        )
+
+    def build_native_runtime(self, model):
+        # 未绑定供应商时映射同样生效（CLI 原生登录 + 只做档位映射是合法场景）。
+        return ProviderRuntimeConfig(
+            model=model,
+            env=claude_model_map_env(self._model_map()),
         )
 
     def __init__(self):
@@ -171,6 +193,17 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 placeholder="如 claude-3-5-haiku-latest",
                 help="主模型不可用时自动切换的备用模型。",
             ),
+            EngineConfigField(
+                key="model_map",
+                label="模型映射",
+                type="model_map",
+                stage_hidden=True,
+                help=(
+                    "把 Claude Code 内部的 sonnet/opus/haiku/fable 档位映射到实际模型 ID，"
+                    "绑定第三方中转时用它替代 Anthropic 官方模型名；显示名留空则与模型 ID 相同。"
+                    "按引擎独立保存，需先保存配置再生效。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -189,10 +222,13 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             "permission_mode"
         ):
             raise ValueError("bypassPermissions 需要明确确认风险")
+        # 先校验映射再落盘，避免映射非法时其它字段已写一半。
+        model_map = normalize_claude_model_map(values.get("model_map"))
         config_store.set_claude_agent_sdk_config(
             max_turns=str(values.get("max_turns") or ""),
             permission_mode=mode,
             fallback_model=str(values.get("fallback_model") or ""),
+            model_map=model_map,
         )
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
@@ -281,6 +317,52 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             if item is not None:
                 result[key] = item
         return result
+
+    @staticmethod
+    def _result_error_message(msg: Any, result: Any, state: dict[str, Any]) -> str:
+        """Extract the most specific error description from a failed result.
+
+        新版 SDK（≥0.2.130）的 ResultMessage 在失败时可能仍带
+        ``subtype="success"``，真实原因散落在 ``errors`` / ``result`` 文本 /
+        ``api_error_status`` / ``terminal_reason`` 等字段中（例如认证失败会
+        回写 ``result="Not logged in · Please run /login"``）。按信息量从具体
+        到笼统的顺序取值，避免 UI 只剩无提示的兜底文案。
+        """
+        sources = [msg] + ([result] if not isinstance(result, str) else [])
+        errors = None
+        for source in sources:
+            candidate = getattr(source, "errors", None)
+            if isinstance(candidate, (list, tuple)) and candidate:
+                errors = candidate
+                break
+        if errors:
+            first = str(errors[0] or "").strip()
+            if first:
+                return first
+        for source in sources:
+            legacy = getattr(source, "error", None)
+            if legacy is not None and str(legacy).strip():
+                return str(legacy).strip()
+        if isinstance(result, str) and result.strip():
+            # CLI 在错误 result 中回写的描述文本（如登录失效提示）。
+            return result.strip()
+        text = ClaudeAgentSDKEngine._result_output(result)
+        if str(text).strip():
+            return str(text).strip()
+        assistant_error = (state or {}).get("assistant_error")
+        if assistant_error:
+            # 失败回合助手消息上的错误标记（如 authentication_failed）。
+            return str(assistant_error)
+        api_status = getattr(msg, "api_error_status", None)
+        if api_status is not None and str(api_status).strip():
+            return f"API 请求失败（HTTP {api_status}）"
+        terminal = getattr(msg, "terminal_reason", None)
+        if terminal and terminal != "success":
+            return str(terminal)
+        subtype = getattr(msg, "subtype", None) or getattr(result, "subtype", None)
+        if subtype and subtype != "success":
+            return str(subtype)
+        return "Claude Agent SDK 执行失败"
 
     def _map_message(self, msg, state=None):
         state = state if state is not None else {}
@@ -382,6 +464,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             return events
 
         if mtype == "assistant":
+            # 失败回合的助手消息带 error 标记（如 authentication_failed）；
+            # 记录到 state，供 result 错误映射在缺少描述文本时兜底使用。
+            assistant_error = getattr(msg, "error", None)
+            if assistant_error and not state.get("assistant_error"):
+                state["assistant_error"] = str(assistant_error)
             for block in self._content_blocks(msg):
                 block_type = self._block_type(block)
                 if block_type == "text" and not state["streamed_text"]:
@@ -462,13 +549,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 usage_data["session_id"] = session_id or ""
                 events.append(usage_update_event(usage_data))
             if is_error:
-                _subtype = getattr(msg, "subtype", None) or getattr(result, "subtype", None)
-                message = (
-                    getattr(msg, "error", None)
-                    or getattr(result, "error", None)
-                    or (_subtype if _subtype != "success" else None)
-                    or "Claude Agent SDK 执行失败"
-                )
+                message = ClaudeAgentSDKEngine._result_error_message(msg, result, state)
                 events.append(
                     InternalEvent(type="error", data={"message": str(message)})
                 )
@@ -545,7 +626,11 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             resume=session_id or None,
             include_partial_messages=True,
             can_use_tool=can_use_tool,
-            env=(provider_runtime.child_env() if provider_runtime.provider_id else {}),
+            env=(
+                provider_runtime.child_env()
+                if provider_runtime.provider_id or provider_runtime.env
+                else {}
+            ),
             plugins=[{"type": "local", "path": str(plugin_dir)}],
             skills=skill_names,
             setting_sources=[],

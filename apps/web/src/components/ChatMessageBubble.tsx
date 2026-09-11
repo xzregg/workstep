@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
@@ -114,6 +114,10 @@ export default function ChatMessageBubble({
   const { t } = useI18n()
   const isUser = role === 'user'
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null)
+  // 稳定引用：MarkdownMessage 已 memo 化，内联箭头会每次击穿 memo 让历史消息重新解析 markdown。
+  const handleImageClick = useCallback((src: string, alt: string) => {
+    setPreviewImage({ src, alt })
+  }, [])
   const interactions = pendingInteractionItems(events, interactionsEnabled)
   const plan = latestPlanFromEvents(events)
   const hasToolActivity = !isUser && events.some((event) => (
@@ -199,7 +203,7 @@ export default function ChatMessageBubble({
                   content={content}
                   projectId={projectId}
                   className="user-message-markdown"
-                  onImageClick={(src, alt) => setPreviewImage({ src, alt })}
+                  onImageClick={handleImageClick}
                 />
               ) : (
                 <>

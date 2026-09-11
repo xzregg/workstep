@@ -371,6 +371,7 @@ async def test_completed_stage_message_uses_session_only_for_same_engine(
     import json
 
     from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
     from services.workflow_runtime import WorkflowRuntime
 
     received_session_ids = []
@@ -428,10 +429,28 @@ async def test_completed_stage_message_uses_session_only_for_same_engine(
         task=task,
         step_key="done",
         status="passed",
-        engine=previous_engine,
+        # This field may already have been synchronized to the edited
+        # workflow before the rerun starts; message history remains the
+        # authoritative engine provenance for the saved session.
+        engine=current_engine,
         session_id="session-original",
         started_at=now,
         ended_at=now,
+    )
+    Message.create(
+        id="previous-stage-response",
+        task=task,
+        channel="execution",
+        step_key="done",
+        sequence=1,
+        role="assistant",
+        engine=previous_engine,
+        content="previous output",
+        run_status="succeeded",
+        position=1,
+        started_at=now,
+        ended_at=now,
+        created_at=now,
     )
 
     class ProjectManagerStub:
@@ -461,6 +480,248 @@ async def test_completed_stage_message_uses_session_only_for_same_engine(
         )
         assert step.status == "passed"
         assert step.session_id == expected_saved_session
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_stage_engine_override_hands_off_history_by_file_once(tmp_path):
+    """当前任务换引擎后，以文件引用交接阶段历史且不复用旧 session。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    prompts: list[str] = []
+    received_sessions: list[str | None] = []
+
+    class TargetEngine(RuntimeFakeEngine):
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            received_sessions.append(kwargs.get("session_id"))
+            yield InternalEvent(
+                type="session_started",
+                data={"session_id": "target-session"},
+            )
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "new output"}},
+            )
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-stage-handoff",
+        title="Stage handoff",
+        cwd=str(tmp_path),
+        engine="engine-a",
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-stage-handoff",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [{
+                "id": 1,
+                "type": "do",
+                "title": "执行",
+                "engine": "engine-a",
+                "prompt": "完成任务",
+            }],
+            "connections": [],
+        },
+    )
+    parent = WorkflowRun.create(
+        id="run-stage-handoff-parent",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(project.steps),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="passed",
+        engine="engine-a",
+        session_id="source-session",
+        started_at=now,
+        ended_at=now,
+    )
+    Message.create(
+        id="old-stage-user",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="user",
+        content="保留旧约束",
+        run_status="completed",
+        position=0,
+        created_at=now,
+    )
+    Message.create(
+        id="old-stage-assistant",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=2,
+        role="assistant",
+        engine="engine-a",
+        content="旧阶段结果",
+        run_status="succeeded",
+        position=1,
+        created_at=now,
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["engine-b"] = TargetEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        await runtime.update_stage_execution_config(
+            project.id,
+            task.id,
+            "do",
+            engine="engine-b",
+            model=None,
+            config={},
+            context_mode="smart",
+        )
+        await runtime.resume_stage_with_message(
+            project.id, task.id, "do", "继续处理"
+        )
+        for _ in range(500):
+            if task.id not in runtime._runners:
+                break
+            await asyncio.sleep(0.01)
+        assert task.id not in runtime._runners
+
+        assert received_sessions == [None]
+        assert len(prompts) == 1
+        assert "<workstep_context_handoff>" in prompts[0]
+        assert "handoffs.jsonl" in prompts[0]
+        assert "保留旧约束" not in prompts[0]
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        assert step.pending_handoff_json is None
+        handoff_files = list((tmp_path / ".workstep" / "event_logs").rglob("handoffs.jsonl"))
+        assert len(handoff_files) == 1
+        records = [json.loads(line) for line in handoff_files[0].read_text().splitlines()]
+        assert any(item["type"] == "handoff_consumed" for item in records)
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_task_stage_provider_override_hands_off_history_without_session(tmp_path):
+    """同引擎换供应商时，即使旧运行无可复用 session，也保留阶段历史交接。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    class ProviderEngine(RuntimeFakeEngine):
+        ENGINE_ID = "provider-engine"
+
+        @classmethod
+        def supported_provider_protocols(cls):
+            return {"anthropic_messages"}
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-stage-provider-handoff",
+        title="Stage provider handoff",
+        cwd=str(tmp_path),
+        engine="provider-engine",
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-stage-provider-handoff",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [{
+                "id": 1,
+                "type": "do",
+                "title": "执行",
+                "engine": "provider-engine",
+                "config": {"provider_id": "provider-a"},
+                "prompt": "完成任务",
+            }],
+            "connections": [],
+        },
+    )
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="passed",
+        engine="provider-engine",
+        session_id=None,
+        started_at=now,
+        ended_at=now,
+    )
+    Message.create(
+        id="old-provider-stage-response",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="assistant",
+        engine="provider-engine",
+        content="旧供应商阶段结果",
+        run_status="succeeded",
+        position=1,
+        created_at=now,
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["provider-engine"] = ProviderEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        await runtime.update_stage_execution_config(
+            project.id,
+            task.id,
+            "do",
+            engine="provider-engine",
+            model=None,
+            config={"provider_id": "provider-b"},
+            context_mode="smart",
+        )
+
+        step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
+        metadata = json.loads(step.pending_handoff_json or "{}")
+        assert metadata["source_engine"] == "provider-engine"
+        assert metadata["target_engine"] == "provider-engine"
+        assert metadata["source_provider"] == "provider-a"
+        assert metadata["target_provider"] == "provider-b"
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

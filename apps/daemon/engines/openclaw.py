@@ -112,6 +112,7 @@ class OpenClawEngine(AcpEngineBase):
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
             env=process_env,
+            limit=1024 * 256,
         )
         self._running = True
 

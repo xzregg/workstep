@@ -64,9 +64,18 @@ class TurnEventJournal:
             raise ValueError("Invalid journal path segment")
         return value
 
-    def start(self, workstep_dir: str | Path, session_id: str, message_id: str) -> JournalRef:
+    def start(
+        self,
+        workstep_dir: str | Path,
+        session_id: str,
+        message_id: str,
+        conversation_id: str | None = None,
+    ) -> JournalRef:
         root = Path(workstep_dir).resolve()
-        relative = Path("event_logs") / self._segment(session_id) / f"{self._segment(message_id)}.jsonl"
+        relative = Path("event_logs") / self._segment(session_id)
+        if conversation_id:
+            relative /= self._segment(conversation_id)
+        relative /= f"{self._segment(message_id)}.jsonl"
         ref = JournalRef(root=root, relative_path=relative.as_posix())
         path = self.resolve(root, ref)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +86,32 @@ class TurnEventJournal:
             next_seq = max(int(item.get("seq") or 0) for item in existing) + 1
         self._states[path] = _WriterState(ref=ref, next_seq=next_seq)
         return ref
+
+    def move_to_conversation(
+        self,
+        ref: JournalRef,
+        conversation_id: str,
+    ) -> JournalRef:
+        """Move a just-started task journal beneath its resolved engine session."""
+        conversation = self._segment(conversation_id)
+        source = self.resolve(ref.root, ref)
+        if source.parent.name == conversation:
+            return ref
+        self.sync(ref, durable=True)
+        destination = source.parent / conversation / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists() and destination.resolve() != source.resolve():
+            raise FileExistsError(f"Journal destination already exists: {destination}")
+        state = self._states.pop(source, None)
+        source.replace(destination)
+        moved = JournalRef(
+            root=ref.root,
+            relative_path=destination.relative_to(ref.root).as_posix(),
+        )
+        if state is not None:
+            state.ref = moved
+            self._states[destination.resolve()] = state
+        return moved
 
     def reopen(self, workstep_dir: str | Path, relative_path: str) -> JournalRef:
         ref = JournalRef(Path(workstep_dir).resolve(), relative_path)

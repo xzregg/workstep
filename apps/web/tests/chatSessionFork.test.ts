@@ -28,3 +28,11 @@ test('selecting another engine requests handoff only when history exists', () =>
   assert.equal(requiresEngineHandoff('claude', 'claude', 6), false)
   assert.equal(requiresEngineHandoff('claude', 'codex_sdk', 0), false)
 })
+
+
+test('selecting another provider on the same engine requests handoff', () => {
+  assert.equal(requiresEngineHandoff('claude', 'claude', 6, 'provider-a', 'provider-b'), true)
+  assert.equal(requiresEngineHandoff('claude', 'claude', 6, '', 'provider-b'), true)
+  assert.equal(requiresEngineHandoff('claude', 'claude', 6, 'provider-a', 'provider-a'), false)
+  assert.equal(requiresEngineHandoff('claude', 'claude', 0, 'provider-a', 'provider-b'), false)
+})

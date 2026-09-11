@@ -350,6 +350,73 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     assert captured["agent"]._instructions == []
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("effort", "expect_thinking", "expected_level"),
+    [
+        # 「极简」= 关闭思考模式：仍挂载 Thinking，但 effort=False
+        # → ModelSettings(thinking=False)。
+        ("minimal", True, False),
+        # 自动 = 不强制，不挂载 Thinking capability。
+        ("auto", False, None),
+        ("low", True, "low"),
+    ],
+)
+async def test_run_agent_thinking_effort_minimal_disables_thinking(
+    monkeypatch,
+    tmp_path,
+    effort,
+    expect_thinking,
+    expected_level,
+):
+    """Pydantic AI 引擎：极简 → thinking=False（关闭思考）；自动 → 不挂载。"""
+    captured = {}
+
+    class FakeResult:
+        usage = None
+
+        def all_messages(self):
+            return []
+
+    async def fake_stream(
+        self,
+        agent,
+        *,
+        prompt,
+        on_event,
+        message_history=None,
+        model_settings=None,
+        conversation_id=None,
+    ):
+        captured["agent"] = agent
+        captured["capabilities"] = agent.root_capability.capabilities
+        return FakeResult()
+
+    monkeypatch.setattr(PydanticAIEngine, "_stream_agent_run", fake_stream)
+    engine = PydanticAIEngine()
+    await engine._run_agent(
+        prompt="问题",
+        cwd=str(tmp_path),
+        add_dirs=None,
+        model=None,
+        on_event=lambda event: None,
+        session_id="sess-1",
+        thinking_effort=effort,
+    )
+
+    thinking = next(
+        (
+            capability
+            for capability in captured["capabilities"]
+            if type(capability).__name__ == "Thinking"
+        ),
+        None,
+    )
+    assert (thinking is not None) is expect_thinking
+    if thinking is not None:
+        assert thinking.effort == expected_level
+
+
 def test_instructions_deferred_to_harness():
     """宿主不再拼装 instructions：AGENTS.md/CLAUDE.md 由 harness RepoContext 注入。"""
     assert not hasattr(PydanticAIEngine, "_compose_instructions")

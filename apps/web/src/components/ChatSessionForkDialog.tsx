@@ -73,6 +73,7 @@ export default function ChatSessionForkDialog({
   const nativeAvailable = (
     forkAtTail
     && effectiveEngine === sourceEngine
+    && providerId === sourceProviderId
     && Boolean(engineInfo?.supports_session_fork)
   )
 

@@ -147,6 +147,39 @@ def assemble_prompt(
     return "\n\n".join(parts)
 
 
+def assemble_followup_prompt(
+    task: Task,
+    step: Step,
+    artifacts_dir: Path,
+    user_input: str,
+) -> str:
+    """Build a compact prompt for an existing stage engine session.
+
+    The resumed engine session already owns the task and stage context.  A
+    user ``@stage`` follow-up therefore only needs the new message plus the
+    output contract that must still be honoured.
+    """
+    parts = [f"## 用户消息\n{user_input.strip()}"]
+    workflow_name = task.workflow_id or "default"
+    out_dir = artifacts_dir / workflow_name / task.id / step.key
+
+    if step.outputs:
+        paths = []
+        for i, out in enumerate(step.outputs, 1):
+            name = out.get("name", f"产物{i}")
+            otype = out.get("type", "file")
+            path_label, output_path = _output_path(out_dir, name, otype)
+            suffix = "/" if path_label == "输出目录" else ""
+            paths.append(f"- {name}（{otype}）: {output_path}{suffix}")
+        parts.append(
+            "## 产物要求\n"
+            "完成本次修改后，必须生成或更新以下产物，并保持名称、类型和路径：\n"
+            + "\n".join(paths)
+        )
+
+    return "\n\n".join(parts)
+
+
 def _collect_upstream_artifacts(
     task: Task,
     step: Step,

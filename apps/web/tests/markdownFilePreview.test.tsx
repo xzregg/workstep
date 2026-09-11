@@ -108,6 +108,35 @@ test('project raw URLs retain project scope and file hierarchy', () => {
   )
 })
 
+test('marks absolute paths when requesting file preview content', async () => {
+  const originalFetch = globalThis.fetch
+  let requestedUrl = ''
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input)
+    return new Response(JSON.stringify({
+      type: 'text',
+      content_type: 'text/markdown',
+      content: '# Plan',
+      file_size: 6,
+      extension: '.md',
+      relative_path: null,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  try {
+    await fsApi.preview('/Users/demo/.claude/plans/example.md', 'project:one')
+    assert.equal(
+      requestedUrl,
+      '/api/fs/preview?path=%2FUsers%2Fdemo%2F.claude%2Fplans%2Fexample.md&project_id=project%3Aone&absolute=true',
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('code preview renders line numbers, language metadata and highlighted tokens', () => {
   const html = renderToStaticMarkup(
     <I18nProvider>

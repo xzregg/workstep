@@ -23,7 +23,7 @@ class EngineConfigOption:
 class EngineConfigField:
     key: str
     label: str
-    type: str = "text"  # text | password | select | textarea | number | checkbox
+    type: str = "text"  # text | password | select | textarea | number | checkbox | model_map
     placeholder: str = ""
     options: tuple[EngineConfigOption, ...] | None = None
     required: bool = False
@@ -32,6 +32,9 @@ class EngineConfigField:
     sensitive: bool = False
     # Select values that require explicit user confirmation before saving
     confirm_values: tuple[str, ...] = ()
+    # 结构化编辑类字段（如 model_map）暂不支持阶段级覆盖：阶段表单没有对应控件，
+    # 且 merge_config_overrides 会整段替换全局值，语义不可控。
+    stage_hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)

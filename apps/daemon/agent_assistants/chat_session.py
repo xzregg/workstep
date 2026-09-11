@@ -802,6 +802,7 @@ class ChatSessionModule(AssistantRuntime):
                 ChatMessage.status == "running",
             )
             .exists(),
+            "last_message_status": last.status if last else None,
             "preview": _preview(last.content, PREVIEW_LENGTH) if last else "",
             "created_at": _iso(row.created_at),
             "updated_at": _iso(row.updated_at),
@@ -846,7 +847,8 @@ class ChatSessionModule(AssistantRuntime):
             )
             if row is None:
                 raise ValueError("Chat session not found")
-            if row.engine == engine:
+            provider_changed = (row.provider_id or "") != normalized_provider
+            if row.engine == engine and not provider_changed:
                 raise ValueError("Target engine is already active")
             if ChatMessage.select().where(
                 ChatMessage.session == row,
@@ -854,6 +856,7 @@ class ChatSessionModule(AssistantRuntime):
             ).exists():
                 raise ValueError("Chat session is running")
             source_engine = row.engine
+            source_provider = row.provider_id or ""
             messages = ChatRowPersistence()._load_messages(row)
             metadata = append_handoff_log(
                 project.workstep_dir,
@@ -862,6 +865,8 @@ class ChatSessionModule(AssistantRuntime):
                 source_engine=source_engine,
                 target_engine=engine,
                 mode=context_mode,
+                source_provider=source_provider,
+                target_provider=normalized_provider,
             )
             row.engine = engine
             row.model = model or None
@@ -996,6 +1001,9 @@ class ChatSessionModule(AssistantRuntime):
                 effective_context_mode = "none"
             elif engine != source_engine:
                 raise ValueError("Native fork requires the same engine")
+            elif (provider_id or "").strip() and (provider_id or "").strip() != (source_provider_id or "").strip():
+                # 引擎会话端点与供应商绑定：换供应商时不能直接 fork 原生会话。
+                raise ValueError("Native fork requires the same provider; use smart handoff")
             else:
                 adapter = create_engine(engine)
                 if adapter is None or not adapter.supports_session_fork:
@@ -1152,6 +1160,26 @@ class ChatSessionModule(AssistantRuntime):
                 ChatSession.update(permission_mode=permission_mode).where(
                     ChatSession.id == session_id
                 ).execute()
+            if requested_provider_id is not None and engine == (row.engine or ""):
+                # 同引擎换供应商：显式传入的 provider 与会话绑定时，旧的引擎
+                # 会话属于另一个端点，必须丢弃（UI 走交接对话框；API 直连退化为
+                # 新会话，上下文由历史重发兜底）。
+                switched_provider = validate_provider_override(
+                    requested_provider_id,
+                    engine,
+                )
+                if (row.provider_id or "") != switched_provider:
+                    ChatSession.update(
+                        provider_id=switched_provider or None,
+                        engine_session_id=None,
+                        engine_state_json=None,
+                    ).where(ChatSession.id == session_id).execute()
+                    memory_session = self._sessions.get(
+                        self._session_identity(project_id, session_id)[0]
+                    )
+                    if memory_session is not None:
+                        memory_session.resolved_session_id = None
+                        memory_session.engine_state = None
         memory_key, resolved_sid = self._session_identity(project_id, session_id)
         accepted = super().submit_message(
             project_id,
@@ -1249,18 +1277,6 @@ class ChatSessionModule(AssistantRuntime):
         )
         tail = f"历史对话：\n{history}\n\n请继续。"
         return f"{prompt}\n\n{tail}" if prompt else tail
-
-    def _display_prompt(self, session, prompt: str) -> str:
-        if not isinstance(session.extra.get("pending_handoff"), dict):
-            return prompt
-        return next(
-            (
-                str(item.get("content") or "")
-                for item in reversed(session.messages)
-                if item.get("role") == "user"
-            ),
-            "",
-        )
 
     async def _on_engine_session_started(self, session) -> None:
         metadata = session.extra.get("pending_handoff")

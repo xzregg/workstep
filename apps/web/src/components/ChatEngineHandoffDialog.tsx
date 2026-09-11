@@ -5,13 +5,21 @@ import type { ForkContextMode } from '../utils/chatSessionFork'
 import ChatHandoffOptions from './ChatHandoffOptions'
 import ConfirmDialog from './ConfirmDialog'
 
+export interface HandoffEndpoint {
+  engine: string
+  providerId: string
+}
+
 interface Props {
   open: boolean
   projectId: string
-  sourceEngine: string
-  targetEngine: string
+  source: HandoffEndpoint
+  target: HandoffEndpoint
   messageCount: number
   permissionMode: string
+  /** Display labels for the provider endpoints ('' provider = engine default). */
+  sourceProviderLabel?: string
+  targetProviderLabel?: string
   loading?: boolean
   error?: string
   onConfirm: (input: ChatSessionHandoffInput) => void
@@ -23,10 +31,12 @@ const modes: ForkContextMode[] = ['smart', 'full', 'none']
 export default function ChatEngineHandoffDialog({
   open,
   projectId,
-  sourceEngine,
-  targetEngine,
+  source,
+  target,
   messageCount,
   permissionMode,
+  sourceProviderLabel = '',
+  targetProviderLabel = '',
   loading = false,
   error = '',
   onConfirm,
@@ -34,24 +44,44 @@ export default function ChatEngineHandoffDialog({
 }: Props) {
   const { t } = useI18n()
   const [mode, setMode] = useState<ForkContextMode>('smart')
+  const providerOnly = Boolean(
+    source.engine
+    && source.engine === target.engine
+    && source.providerId !== target.providerId,
+  )
 
   useEffect(() => {
     if (open) setMode('smart')
-  }, [open, targetEngine])
+  }, [open, target.engine, target.providerId])
+
+  const title = providerOnly
+    ? t('chatSession.handoffProviderTitle')
+    : t('chatSession.handoffTitle')
+  const message = providerOnly
+    ? t('chatSession.handoffProviderMessage', {
+      engine: source.engine,
+      source: sourceProviderLabel || source.providerId || t('chatSession.providerDefaultLabel'),
+      target: targetProviderLabel || target.providerId || t('chatSession.providerDefaultLabel'),
+    })
+    : t('chatSession.handoffMessage', {
+      source: source.engine,
+      target: target.engine,
+    })
 
   return (
     <ConfirmDialog
       open={open}
-      title={t('chatSession.handoffTitle')}
-      message={t('chatSession.handoffMessage', { source: sourceEngine, target: targetEngine })}
+      title={title}
+      message={message}
       confirmText={t('chatSession.handoffConfirm')}
       loading={loading}
       width={620}
       onCancel={onCancel}
       onConfirm={() => onConfirm({
         project_id: projectId,
-        engine: targetEngine,
+        engine: target.engine,
         context_mode: mode as ChatSessionHandoffInput['context_mode'],
+        provider_id: target.providerId,
         permission_mode: permissionMode || undefined,
       })}
     >

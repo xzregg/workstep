@@ -195,15 +195,17 @@ export function estimateTokens(text) {
 }
 
 /**
- * LLM 尚未结束（无 usage_update 事件）时，按已接收的事件与字符数量换算
+ * LLM 尚未结束或被手动停止（无 usage_update 事件）时，按已接收的事件与字符数量换算
  * token 统计：assistant 文本/思考/工具结果计为输出，用户输入/工具入参计为输入。
+ * fallbackOutputText 用于刷新后的停止消息：历史摘要可能不含正文 chunk，此时用已持久化正文补算。
  * 返回的 usage 带 estimated: true，前端展示为估算值。
  */
-export function estimateUsageFromEvents(events) {
-  if (!Array.isArray(events) || events.length === 0) return null
+export function estimateUsageFromEvents(events, fallbackOutputText = '') {
+  if ((!Array.isArray(events) || events.length === 0) && !fallbackOutputText) return null
   let outputText = ''
   let inputText = ''
   let sawAssistantChunk = false
+  let sawAssistantContent = false
   let sawUserChunk = false
   const fullArgsSeen = new Set()
 
@@ -229,6 +231,7 @@ export function estimateUsageFromEvents(events) {
       } else {
         outputText += text
         sawAssistantChunk = true
+        sawAssistantContent = true
       }
       continue
     }
@@ -240,6 +243,7 @@ export function estimateUsageFromEvents(events) {
         if (!sawUserChunk) inputText += text
       } else if (!sawAssistantChunk) {
         outputText += text
+        sawAssistantContent = true
       }
       continue
     }
@@ -286,6 +290,10 @@ export function estimateUsageFromEvents(events) {
     }
   }
 
+  if (!sawAssistantContent && fallbackOutputText) {
+    outputText += fallbackOutputText
+  }
+
   const inputTokens = estimateTokens(inputText)
   const outputTokens = estimateTokens(outputText)
   if (inputTokens <= 0 && outputTokens <= 0) return null
@@ -293,6 +301,27 @@ export function estimateUsageFromEvents(events) {
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     total_tokens: inputTokens + outputTokens,
+    estimated: true,
+  }
+}
+
+/**
+ * 历史摘要不暴露思考正文，只保留字符数。旧摘要没有预计算 token 时，按非 CJK
+ * 的 4 字符约 1 token 保守恢复；用于停止且没有正文/详细事件的消息。
+ */
+export function estimateUsageFromEventSummary(summary) {
+  if (!summary || typeof summary !== 'object') return null
+  const reportedInput = number(summary.estimated_input_tokens)
+  const reportedOutput = number(summary.estimated_output_tokens)
+  const hiddenCharacters = number(summary.thought_characters)
+    + number(summary.commentary_characters)
+  const outputTokens = reportedOutput
+    || (hiddenCharacters > 0 ? Math.max(1, Math.round(hiddenCharacters / 4)) : 0)
+  if (reportedInput <= 0 && outputTokens <= 0) return null
+  return {
+    input_tokens: reportedInput,
+    output_tokens: outputTokens,
+    total_tokens: reportedInput + outputTokens,
     estimated: true,
   }
 }

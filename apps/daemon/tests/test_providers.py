@@ -196,6 +196,7 @@ def test_cc_switch_scan_discovers_claude_code_providers(tmp_path, monkeypatch):
                     "ANTHROPIC_MODEL": "deepseek-v4-pro[1m]",
                     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "deepseek-v4-flash",
                     "ANTHROPIC_DEFAULT_SONNET_MODEL": "deepseek-v4-pro[1m]",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "DeepSeek Pro",
                 },
             },
         },
@@ -215,9 +216,33 @@ def test_cc_switch_scan_discovers_claude_code_providers(tmp_path, monkeypatch):
         "has_key": True,
         "wire_api": "messages",
         "model_ids": ["deepseek-v4-pro[1m]", "deepseek-v4-flash"],
+        "model_map": {
+            "haiku": {
+                "model": "deepseek-v4-flash",
+                "name": "deepseek-v4-flash",
+            },
+            "sonnet": {
+                "model": "deepseek-v4-pro[1m]",
+                "name": "DeepSeek Pro",
+            },
+        },
         "category": "",
         "error": None,
     }]
+
+
+def test_cc_switch_scan_non_claude_candidate_has_empty_model_map(tmp_path, monkeypatch):
+    db_path = tmp_path / "cc-switch.db"
+    _write_cc_switch_db(db_path, [{
+        "id": "codex-id",
+        "name": "Codex Gateway",
+        "settings": _deepseek_settings(),
+    }])
+    monkeypatch.setattr(provider_service, "CC_SWITCH_DB_PATH", db_path)
+
+    [candidate] = provider_service.scan_cc_switch_providers()
+
+    assert candidate["model_map"] == {}
 
 
 def test_cc_switch_scan_lists_every_application_type(tmp_path, monkeypatch):

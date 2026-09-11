@@ -203,6 +203,15 @@ def test_get_task_history(db_with_history):
     assert history[1]["content"] == "UI spec"
 
 
+def test_session_id_is_projected_from_each_message_events():
+    from services.history import session_id_from_events
+
+    assert session_id_from_events([
+        {"type": "session_started", "data": {"session_id": "codex-session"}},
+    ]) == "codex-session"
+    assert session_id_from_events([]) is None
+
+
 def test_get_step_history(db_with_history):
     _, task_id = db_with_history
     history = get_step_history(task_id, "req")

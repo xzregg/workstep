@@ -87,6 +87,25 @@ def _provider_name_exists(name: str) -> bool:
     )
 
 
+def _prefill_claude_model_maps(candidate: dict) -> None:
+    """用首个 Claude 导入候选预填空白的引擎级档位映射。"""
+    if candidate.get("source_type") not in {"claude", "claude-desktop"}:
+        return
+    model_map = candidate.get("model_map")
+    if not isinstance(model_map, dict) or not model_map:
+        return
+    if not config_store.get_claude_code_config().get("model_map"):
+        config_store.set_claude_code_model_map(model_map)
+    sdk = config_store.get_claude_agent_sdk_config()
+    if not sdk.get("model_map"):
+        config_store.set_claude_agent_sdk_config(
+            max_turns=str(sdk.get("max_turns") or ""),
+            permission_mode=sdk.get("permission_mode") or None,
+            fallback_model=str(sdk.get("fallback_model") or ""),
+            model_map=model_map,
+        )
+
+
 def _require_provider(provider_id: str) -> dict:
     provider = config_store.get_provider(provider_id)
     if provider is None:
@@ -243,6 +262,7 @@ async def import_cc_switch(req: ProviderImportRequest):
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         config_store.save_provider(provider)
+        _prefill_claude_model_maps(candidate)
         existing_names.add(name)
         imported.append(_public_provider(provider))
     if imported:

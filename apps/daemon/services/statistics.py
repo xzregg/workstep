@@ -265,7 +265,12 @@ class StatisticsModule:
                     usage = _parse_usage(message.usage_json)
                     if usage is None:
                         continue
-                    cost = _usage_cost(usage, message.model or "", pricing)
+                    cost = _usage_cost(
+                        usage,
+                        message.model or "",
+                        pricing,
+                        engine=message.engine or "",
+                    )
                     global_bucket.add_usage(usage, cost)
                     project_bucket.add_usage(usage, cost)
                     workflow_bucket.add_usage(usage, cost)
@@ -679,7 +684,13 @@ def _parse_usage(raw: str | None) -> dict[str, Any] | None:
     return result
 
 
-def _usage_cost(usage: dict[str, Any], model: str, pricing: dict[str, Any]) -> float:
+def _usage_cost(
+    usage: dict[str, Any],
+    model: str,
+    pricing: dict[str, Any],
+    *,
+    engine: str = "",
+) -> float:
     target_currency = pricing["currency"]
     rate = pricing["usd_to_cny_rate"]
     provider_cost = usage.get("provider_cost")
@@ -695,18 +706,33 @@ def _usage_cost(usage: dict[str, Any], model: str, pricing: dict[str, Any]) -> f
 
     provider_id = usage.get("provider_id")
     prices = pricing.get("prices", [])
-    price = next(
-        (
-            item for item in prices
-            if item.get("model") == model and item.get("provider_id") == provider_id
-        ),
-        None,
+    price = (
+        next(
+            (
+                item for item in prices
+                if item.get("model") == model
+                and item.get("provider_id") == provider_id
+            ),
+            None,
+        )
+        if provider_id
+        else None
     )
     if price is None:
         price = next(
             (
                 item for item in prices
-                if item.get("model") == model and not item.get("provider_id")
+                if item.get("model") == model and item.get("engine_id") == engine
+            ),
+            None,
+        )
+    if price is None:
+        price = next(
+            (
+                item for item in prices
+                if item.get("model") == model
+                and not item.get("provider_id")
+                and not item.get("engine_id")
             ),
             None,
         )

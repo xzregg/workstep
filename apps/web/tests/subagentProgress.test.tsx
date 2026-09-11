@@ -29,7 +29,7 @@ test('subagent live messages remain nested and survive replay', () => {
 })
 
 for (const width of [390, 1280]) {
-  test(`subagent opens live output and folds only when done at ${width}`, async () => {
+  test(`only the latest subagent stays open at ${width}`, async () => {
     const window = new Window({ width, url: 'http://localhost' })
     Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
     const container = document.createElement('div')
@@ -50,16 +50,43 @@ for (const width of [390, 1280]) {
       assert.match(child.textContent ?? '', /Considering paths/)
       assert.match(child.textContent ?? '', /Found answer/)
       await act(async () => render(true))
-      assert.equal(child.open, false)
-      await act(async () => { child.open = true; child.dispatchEvent(new window.Event('toggle')) })
-      await act(async () => render(true))
       assert.equal(child.open, true)
+      await act(async () => { child.open = false; child.dispatchEvent(new window.Event('toggle')) })
+      await act(async () => render(true))
+      assert.equal(child.open, false)
     } finally {
       await act(async () => root.unmount())
       await window.happyDOM.close()
     }
   })
 }
+
+test('a newer running subagent folds the previous one and opens only itself', async () => {
+  const window = new Window({ url: 'http://localhost' })
+  Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const twoChildren = [
+    frame('running'),
+    { type: 'CUSTOM', name: 'workstep.subagent', value: { task_id: 'child-2', description: 'Builder', status: 'running' } },
+  ]
+  try {
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={[frame('running')]} /></I18nProvider>))
+    assert.deepEqual(
+      [...container.querySelectorAll<HTMLDetailsElement>('.subagent-timeline')].map((child) => child.open),
+      [true],
+    )
+
+    await act(async () => root.render(<I18nProvider><ProcessTrace running events={twoChildren} /></I18nProvider>))
+    assert.deepEqual(
+      [...container.querySelectorAll<HTMLDetailsElement>('.subagent-timeline')].map((child) => child.open),
+      [false, true],
+    )
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
 
 
 test('native task IDs and parent tool IDs share one child timeline', () => {

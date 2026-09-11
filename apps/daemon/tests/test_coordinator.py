@@ -50,6 +50,17 @@ class MemoryConfigStore:
     def get_engine_default_model(self, engine_id):
         return ""
 
+    def get_engine_provider(self, engine_id):
+        return ""
+
+    def model_supports_multimodal(self, engine_id, model, provider_id=""):
+        return any(
+            item.get("model") == model
+            and item.get("engine_id") == engine_id
+            and item.get("supports_multimodal") is True
+            for item in self.values.get("model_pricing", {}).get("prices", [])
+        )
+
     def is_engine_verified(self, engine_id):
         return True
 
@@ -1509,6 +1520,14 @@ async def test_coordinator_routes_message_images_to_engine(api_context, monkeypa
     coordinator_service.config_store.set(
         "coordinator_default_vision_model", "vision-model"
     )
+    coordinator_service.config_store.set("model_pricing", {
+        "prices": [{
+            "provider_id": None,
+            "engine_id": "claude",
+            "model": "vision-model",
+            "supports_multimodal": True,
+        }],
+    })
     project_id, task_id = await _create_task(client, tmp_path)
 
     project_dir = tmp_path / "coordinator-project"

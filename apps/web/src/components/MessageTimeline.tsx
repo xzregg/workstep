@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import MarkdownMessage from './MarkdownMessage'
 import {
   buildMessageTimeline,
@@ -12,7 +13,12 @@ interface MessageTimelineProps {
   projectId?: string
 }
 
-export default function MessageTimeline({
+/**
+ * memo 化：buildMessageTimeline + 分段 markdown 是 assistant 消息的主要渲染成本。
+ * 历史消息的 content（字符串按值比较）与 events（引用不变）都稳定，
+ * 流式时父级每个 token 重渲染也不会重算历史时间线。
+ */
+function MessageTimeline({
   content,
   events,
   streaming = false,
@@ -51,3 +57,5 @@ export default function MessageTimeline({
     </div>
   )
 }
+
+export default memo(MessageTimeline)

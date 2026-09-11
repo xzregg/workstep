@@ -7,11 +7,13 @@ import {
   fetchEngineModels,
   getCachedEngineModels,
   type CoordinatorEngineSummary,
+  type EngineConfigField,
   type EngineModel,
   type ProviderInfo,
 } from '../api/client'
 import { engineLabel } from '../engineMeta'
 import { useI18n } from '../i18n'
+import StageConfigFields from './StageConfigFields'
 
 /* ══════════════════════════════════════════
    CoordinatorConfigBar — shared coordinator
@@ -62,6 +64,11 @@ export interface CoordinatorConfigBarProps {
   variant?: 'bar' | 'menu'
   /** Open one nested selector when invoked from a slash command. */
   autoOpenField?: 'model' | 'reasoning' | null
+  stageFields?: EngineConfigField[]
+  stageValues?: Record<string, string>
+  onStageFieldChange?: (key: string, value: string) => void
+  requireCoordinator?: boolean
+  allowDefault?: boolean
 }
 
 const selectStyle: CSSProperties = {
@@ -193,6 +200,11 @@ export default function CoordinatorConfigBar({
   engineTitle,
   variant = 'bar',
   autoOpenField = null,
+  stageFields,
+  stageValues = {},
+  onStageFieldChange,
+  requireCoordinator = true,
+  allowDefault = true,
 }: CoordinatorConfigBarProps) {
   const { t } = useI18n()
   const [models, setModels] = useState<EngineModel[]>([])
@@ -259,20 +271,20 @@ export default function CoordinatorConfigBar({
             icon="terminal"
             onChange={onEngineChange}
             options={[
-              {
+              ...(allowDefault ? [{
                 value: '',
                 label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
-              },
+              }] : []),
               ...engines
                 .filter((item) => item.installed || item.built_in)
                 .map((item) => ({
                   value: item.id,
                   label: engineLabel(item.id, t),
-                  disabled: !isEngineSelectable(item, true),
+                  disabled: !isEngineSelectable(item, requireCoordinator),
                 })),
             ]}
           />
-          {supportsProvider && onProviderChange && (
+          {!stageFields && supportsProvider && onProviderChange && (
             <MenuField
               label={t('coord.provider')}
               title={t('coord.providerTitle')}
@@ -302,7 +314,7 @@ export default function CoordinatorConfigBar({
               ...models.map((m) => ({ value: m.id, label: m.label || m.id, description: m.description || undefined })),
             ]}
           />
-          <MenuField
+          {!stageFields && <MenuField
             label={t('coord.fast')}
             title={t('coord.fastTitle')}
             value={fastModel}
@@ -314,8 +326,8 @@ export default function CoordinatorConfigBar({
               { value: '', label: t('coord.fastFollow') },
               ...models.map((m) => ({ value: m.id, label: m.label || m.id, description: m.description || undefined })),
             ]}
-          />
-          {showVision && onVisionModelChange && (
+          />}
+          {!stageFields && showVision && onVisionModelChange && (
             <MenuField
               label={t('coord.vision')}
               title={t('coord.visionTitle')}
@@ -330,7 +342,7 @@ export default function CoordinatorConfigBar({
               ]}
             />
           )}
-          {onThinkingEffortChange && (
+          {!stageFields && onThinkingEffortChange && (
             <MenuField
               autoOpen={autoOpenField === 'reasoning'}
               label={t('coord.thinkingEffort')}
@@ -349,6 +361,14 @@ export default function CoordinatorConfigBar({
               ]}
             />
           )}
+          {stageFields && onStageFieldChange && (
+            <StageConfigFields
+              engineId={engineId}
+              fields={stageFields}
+              values={stageValues}
+              onChange={onStageFieldChange}
+            />
+          )}
         </>
       ) : (
         <>
@@ -357,11 +377,11 @@ export default function CoordinatorConfigBar({
             value={engine}
             disabled={disabled}
             onChange={onEngineChange}
-            requireCoordinator
-            defaultOption={{
+            requireCoordinator={requireCoordinator}
+            defaultOption={allowDefault ? {
               value: '',
               label: t('coord.defaultOption', { engine: engineLabel(defaultEngine || 'claude', t) }),
-            }}
+            } : undefined}
             ariaLabel={t('coord.engineAria')}
             title={engineTitle ?? t('coord.engineTitle')}
             style={engineStyle}

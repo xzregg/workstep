@@ -422,6 +422,27 @@ async def test_unknown_project_channel_endpoints_return_404(channel_client):
         assert response.status_code == 404
 
 
+def test_bundled_bridge_command_resolution(tmp_path, monkeypatch):
+    from services.channels import wechat as wechat_mod
+    from services.channels.wechat import MissingWeChatBridge, SubprocessWeChatBridge
+
+    # When the sidecar script exists and node is on PATH, the bundled bridge is
+    # used automatically — this is what makes the QR code appear without the
+    # operator having to set WORKSTEP_WECHAT_BRIDGE_COMMAND.
+    real_node = __import__("shutil").which("node")
+    if real_node:
+        monkeypatch.delenv("WORKSTEP_WECHAT_BRIDGE_COMMAND", raising=False)
+        bridge = wechat_mod.default_wechat_bridge()
+        assert isinstance(bridge, SubprocessWeChatBridge)
+        assert "wechat-bridge" in bridge._command[-1]
+
+    # Without node on PATH (and no env override) we fall back to the explicit
+    # "not configured" bridge so the UI can show an actionable error.
+    monkeypatch.setattr(wechat_mod.shutil, "which", lambda _name: None)
+    monkeypatch.delenv("WORKSTEP_WECHAT_BRIDGE_COMMAND", raising=False)
+    assert isinstance(wechat_mod.default_wechat_bridge(), MissingWeChatBridge)
+
+
 async def test_sidecar_start_failure_returns_503_and_persists_error(channel_client, monkeypatch):
     client, project, channels, _responses = channel_client
     monkeypatch.setenv("WORKSTEP_WECHAT_BRIDGE_COMMAND", "/missing/workstep-wechat-sidecar")

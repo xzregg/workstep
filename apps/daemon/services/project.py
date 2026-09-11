@@ -525,6 +525,19 @@ class ProjectManager:
             (Task.workflow_id == workflow_id) & (Task.status == "running")
         ).exists()
 
+    def workflow_has_failed_tasks(self, workflow_id: str) -> bool:
+        """True when an active task in the workflow has a failed stage."""
+        return (
+            TaskStep.select()
+            .join(Task)
+            .where(
+                Task.workflow_id == workflow_id,
+                Task.archived == 0,
+                TaskStep.status == "failed",
+            )
+            .exists()
+        )
+
     def _delete_workflow_data(self, workflow_id: str) -> None:
         """Permanently delete every DB record owned by a workflow's tasks.
 
@@ -739,6 +752,7 @@ class ProjectManager:
                         "is_default": w["is_default"],
                         "deleted": w["deleted"],
                         "running": self.workflow_has_running_tasks(w["id"]),
+                        "failed": self.workflow_has_failed_tasks(w["id"]),
                         "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
                     }
                     for w in proj.workflows

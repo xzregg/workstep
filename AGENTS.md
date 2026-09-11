@@ -150,6 +150,17 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 
 会话分叉能力通过 `supports_session_fork` / `fork_session` 独立声明，不能用 resume 模拟。当前 Codex SDK 使用官方 `thread_fork`；其它没有真实原生入口的引擎声明为不支持，并由会话聊天层使用显式的跨引擎上下文交接。
 
+**子进程 stdout 必须分块读取**：CLI 引擎（Codex / Claude Code / Hermes）与通道桥接的单条 JSONL
+事件（大段 tool 输出、长 assistant 消息、二维码 base64）可轻易超过 asyncio `StreamReader`
+默认 64KiB limit，`readline()` / `async for line in stdout` 会抛
+`Separator is not found, and chunk exceed the limit` 并**清空已缓冲数据**，导致整轮执行中断且日志丢失。
+统一使用 `engines/core/stream_lines.py`：`iter_stream_lines(stdout)` 按行迭代，
+需要超时轮询（如 Codex 轮询 live 消息队列）时复用同一个 `ChunkedLineReader` 实例
+（`readline(timeout=...)` 超时保留不完整行，跨进程重建读取器需比较 `reader.stream`）；
+单行超过 `max_line_bytes`（默认 256MiB）时切块并告警而不是中断。
+`tests/test_stream_lines.py` 覆盖超长单行、超时保缓冲、真实子进程与 Claude/Codex 引擎级回归，
+并守护「不得再用原生 readline 读子进程 stdout」。
+
 Pydantic AI 固定挂载 harness `Coder` 与 `Skills(<项目>/.workstep/skills)`；Skills 只消费
 SkillCenter 白名单镜像，项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有
 Memory。思考强度通过 Pydantic AI
@@ -192,7 +203,7 @@ Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命�
 - `agent_sessions` — 引擎会话（Codex --resume 用）
 - `artifacts` — 产物记录
 
-任务阶段执行与审核的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<message_id>.jsonl`
+任务阶段执行的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<session_id>/<message_id>.jsonl`
 为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、
 事件数量/末序号及 `event_log_path` 查询投影。历史接口默认返回摘要，详细时间线通过
 `GET /api/task/{task_id}/messages/{message_id}/events` 分页读取；无 `event_log_path` 的旧

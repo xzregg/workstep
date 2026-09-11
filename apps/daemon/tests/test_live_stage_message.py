@@ -238,6 +238,27 @@ class PlainFakeEngine(LiveFakeEngine):
         return False
 
 
+class ResumablePromptFakeEngine(LiveFakeEngine):
+    prompts: list[str] = []
+    sessions: list[str | None] = []
+
+    @property
+    def supports_resume(self):
+        return True
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        type(self).prompts.append(prompt)
+        type(self).sessions.append(kwargs.get("session_id"))
+        yield InternalEvent(
+            type="session_started",
+            data={"session_id": kwargs.get("session_id") or "engine-session"},
+        )
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "done"}},
+        )
+
+
 class SplitLiveFakeEngine(LiveFakeEngine):
     """Emits output before AND after an injected live message, so the runner
     must seal the pre-insert segment and open a new response segment."""
@@ -284,6 +305,76 @@ def _make_runner_task(tmp_path, engine_cls):
     original = ENGINE_REGISTRY.copy()
     ENGINE_REGISTRY["claude"] = engine_cls
     return db, task, steps_config, bus, runner, original
+
+
+@pytest.mark.anyio
+async def test_runner_sends_compact_prompt_for_resumed_stage_followup(tmp_path):
+    db, task, steps_config, bus, _, original = _make_runner_task(
+        tmp_path, ResumablePromptFakeEngine
+    )
+    from services.task_runner import TaskRunner
+
+    step = TaskStep.get(
+        (TaskStep.task == task) & (TaskStep.step_key == "do")
+    )
+    step.session_id = "existing-session"
+    step.save()
+    steps_config["steps"][0]["outputs"] = [
+        {"name": "结果", "type": "md"},
+    ]
+    ResumablePromptFakeEngine.prompts = []
+    ResumablePromptFakeEngine.sessions = []
+    runner = TaskRunner(bus, stage_followups={"do": "只更新摘要"})
+    try:
+        await runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+
+        prompt = ResumablePromptFakeEngine.prompts[0]
+        assert "只更新摘要" in prompt
+        assert "结果.md" in prompt
+        assert "## 阶段要求\nwork" not in prompt
+        assert "WorkStep 工作流中的一个执行阶段" not in prompt
+    finally:
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_pydantic_ai_new_session_uses_response_message_id(tmp_path):
+    db, task, steps_config, bus, _, original = _make_runner_task(
+        tmp_path, ResumablePromptFakeEngine
+    )
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.task_runner import TaskRunner
+
+    ENGINE_REGISTRY["pydantic_ai"] = ResumablePromptFakeEngine
+    steps_config["steps"][0]["engine"] = "pydantic_ai"
+    ResumablePromptFakeEngine.sessions = []
+    runner = TaskRunner(bus)
+    try:
+        await runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
+
+        response = Message.get(
+            (Message.task == task)
+            & (Message.step_key == "do")
+            & (Message.role == "assistant")
+        )
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "do")
+        )
+        assert ResumablePromptFakeEngine.sessions == [response.id]
+        assert step.session_id == response.id
+        assert response.event_log_path == (
+            f"event_logs/task-{task.id}/{response.id}/{response.id}.jsonl"
+        )
+        assert (tmp_path / response.event_log_path).is_file()
+    finally:
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
 
 
 @pytest.mark.anyio

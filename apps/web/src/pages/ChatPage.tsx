@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import Button from '../components/Button'
-import ChatEngineHandoffDialog from '../components/ChatEngineHandoffDialog'
+import ChatEngineHandoffDialog, { type HandoffEndpoint } from '../components/ChatEngineHandoffDialog'
 import ChatSessionForkDialog from '../components/ChatSessionForkDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
@@ -24,11 +24,24 @@ import {
   type ChatSessionForkInput,
 } from '../api/client'
 import { useChatListStore, useChatSessionStore } from '../stores/chatSessionStore'
+import {
+  publishEngineCatalog,
+  useCoordinatorEngines,
+} from '../stores/engineAvailabilityStore'
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
+import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useI18n } from '../i18n'
 import { clearDraft, loadDraft, saveDraft } from '../utils/chatDraft'
 import { clearInsertQueue, loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
+import {
+  clearChatEngineConfig,
+  EMPTY_ENGINE_CONFIG,
+  hasChatEngineConfig,
+  loadChatEngineConfig,
+  saveChatEngineConfig,
+  type ChatEngineConfigState,
+} from '../utils/chatEngineConfig'
 import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { contextUsageFromMessages } from '../utils/contextUsage.js'
 import { requiresEngineHandoff } from '../utils/chatSessionFork'
@@ -57,12 +70,21 @@ export default function ChatPage() {
   const workflowParam = searchParams.get('workflow')
   const sessionParam = searchParams.get('session')
 
-  const { activeProject, fetchProjects, setActiveProject, setActiveWorkflow } = useProjectStore()
+  const {
+    projects,
+    activeProject,
+    loading: projectsLoading,
+    fetchProjects,
+    setActiveProject,
+    setActiveWorkflow,
+  } = useProjectStore()
 
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
   const prevSessionIdRef = useRef<string | null>(null)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
+  const inputRef = useRef(input)
+  inputRef.current = input
   const [sendError, setSendError] = useState('')
   const [pendingInserts, setPendingInserts] = useState<PendingMessageInsert[]>([])
   const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
@@ -84,11 +106,13 @@ export default function ChatPage() {
   const [handoffOpen, setHandoffOpen] = useState(false)
   const [handingOff, setHandingOff] = useState(false)
   const [handoffError, setHandoffError] = useState('')
-  const [handoffTargetEngine, setHandoffTargetEngine] = useState('')
+  const [handoffTarget, setHandoffTarget] = useState<HandoffEndpoint | null>(null)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
+  // 引擎可用性（选项是否禁用）跟随共享状态，设置页改动即时生效。
+  const sharedEngines = useCoordinatorEngines()
   const [coordinatorConfigError, setCoordinatorConfigError] = useState('')
   const [selectedEngine, setSelectedEngine] = useState('')
   const [selectedProvider, setSelectedProvider] = useState('')
@@ -96,6 +120,16 @@ export default function ChatPage() {
   const [selectedFastModel, setSelectedFastModel] = useState('')
   const [selectedVisionModel, setSelectedVisionModel] = useState('')
   const [selectedThinkingEffort, setSelectedThinkingEffort] = useState('')
+  // 镜像最新的引擎配置选择，供切换会话 / 路由卸载时懒保存到 localStorage。
+  const engineConfigRef = useRef<ChatEngineConfigState>({ ...EMPTY_ENGINE_CONFIG })
+  engineConfigRef.current = {
+    engine: selectedEngine,
+    providerId: selectedProvider,
+    model: selectedModel,
+    fastModel: selectedFastModel,
+    visionModel: selectedVisionModel,
+    thinkingEffort: selectedThinkingEffort,
+  }
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [permissionMode, setPermissionMode] = useState('')
   const [planMode, setPlanMode] = useState(false)
@@ -119,9 +153,12 @@ export default function ChatPage() {
   const running = Boolean(session?.running || messages.some((message) => (
     message.role === 'assistant' && message.status === 'running'
   )))
-  const context = useMemo(
+  // messages 引用每个 token 都会重建，而 context 占用要扫描全部事件做 token 估算；
+  // 每 token 全量计算会占住主线程（侧栏点击排队、页面切换卡顿），节流到 ~2 次/秒。
+  const context = useThrottledMemo(
     () => contextUsageFromMessages(messages),
     [messages],
+    500,
   )
   const effectiveEngine = selectedEngine
     || assistantConfig?.configured.engine
@@ -140,31 +177,60 @@ export default function ChatPage() {
     return () => { cancelled = true }
   }, [running, effectiveEngine, activeProject?.id])
   const visibleQuota = quota?.engine_id === effectiveEngine ? quota : null
+  const providerLabel = useCallback((providerId: string) => (
+    providerId
+      ? providers.find((item) => item.id === providerId)?.name || providerId
+      : t('chatSession.providerDefaultLabel')
+  ), [providers, t])
+  const handoffSource: HandoffEndpoint = {
+    engine: selectedEngine || assistantConfig?.configured.engine || 'claude',
+    providerId: selectedProvider,
+  }
   const forkMessageIndex = forkMessageId
     ? messages.findIndex((message) => message.id === forkMessageId)
     : -1
   const quickButtons = useChatListStore((s) => s.quickButtons)
+  // AssistantChatPanel 的消息行是 memo 化的：copy/quickPrompts/回调必须引用稳定，
+  // 否则流式期间每个 token 都会击穿 memo，历史气泡全量重渲染。
+  const panelCopy = useMemo(() => ({
+    emptyIntro: t('chatSession.emptyIntro'),
+    thinking: t('chatSession.thinking'),
+    me: t('chatSession.me'),
+    meInitials: t('chatSession.meInitials'),
+    agent: t('chatSession.agent'),
+    agentInitials: t('chatSession.agentInitials'),
+    placeholder: t('chatSession.placeholder'),
+    fullPrompt: t('aiFlow.fullPrompt'),
+    closePrompt: t('aiFlow.closePrompt'),
+  }), [t])
+  const quickPromptItems = useMemo(
+    () => quickButtons.map((button) => ({ label: button.label, prompt: button.prompt })),
+    [quickButtons],
+  )
 
   // Resolve project/workflow from the URL (mirrors CanvasEditor's loader).
   useEffect(() => {
     if (!projectParam) return
-    const doLoad = async () => {
-      await fetchProjects()
-      const currentProjects = useProjectStore.getState().projects
-      const match = currentProjects.find((p) => p.name === projectParam)
-      if (match) {
-        setActiveProject(match)
-        const targetWf = workflowParam
-          ? match.workflows?.find((w) => w.id === workflowParam)
-          : match.workflows?.find((w) => w.is_default) || match.workflows?.[0]
-        if (targetWf) setActiveWorkflow(targetWf.id)
-      }
+    const match = projects.find((project) => project.name === projectParam)
+    if (!match) {
+      if (!projectsLoading) void fetchProjects()
+      return
     }
-    void doLoad()
-  }, [projectParam, workflowParam, fetchProjects, setActiveProject, setActiveWorkflow])
+    setActiveProject(match)
+    // Only pin the workflow when the URL explicitly names one. When there is
+    // no workflow param (e.g. clicking a chat session), leave the current
+    // selection untouched so the sidebar flow highlight doesn't jump back to
+    // the default workflow.
+    if (workflowParam) {
+      const targetWf = match.workflows?.find((workflow) => workflow.id === workflowParam)
+      if (targetWf) setActiveWorkflow(targetWf.id)
+    }
+  }, [projectParam, workflowParam, projects, projectsLoading, fetchProjects, setActiveProject, setActiveWorkflow])
 
   // Engine defaults + per-project quick buttons.
   // Only re-fetch when the project changes; session switching does not affect config.
+  // The engine *availability* list is published to the shared store so the composer's
+  // disabled options keep following the settings page instead of freezing on this snapshot.
   useEffect(() => {
     let active = true
     if (!activeProject?.id) return
@@ -174,6 +240,7 @@ export default function ChatPage() {
         const config = assistants.find((item) => item.name === 'chat_session')
         if (!config) throw new Error(t('chatSession.configLoadFailed'))
         setAssistantConfig(config)
+        publishEngineCatalog(config.available_engines)
         if (!sessionParam) {
           const configured = config.configured
           setSelectedEngine(configured.engine || '')
@@ -235,6 +302,19 @@ export default function ChatPage() {
         setSelectedModel(detail.model || '')
         setSelectedFastModel(detail.fast_model || '')
         setSelectedVisionModel(detail.vision_model || '')
+        // 优先恢复本地记录的用户选择（后端会话详情不含 thinking_effort，
+        // 且用户可能改过配置但尚未发消息）。无记录时思考强度归默认。
+        const saved = loadChatEngineConfig(activeProject.id, sessionParam)
+        if (hasChatEngineConfig(saved)) {
+          setSelectedEngine(saved.engine)
+          setSelectedProvider(saved.providerId)
+          setSelectedModel(saved.model)
+          setSelectedFastModel(saved.fastModel)
+          setSelectedVisionModel(saved.visionModel)
+          setSelectedThinkingEffort(saved.thinkingEffort)
+        } else {
+          setSelectedThinkingEffort('')
+        }
         store.newSession(detail.id)
         store.hydrateSession(
           detail.id,
@@ -285,6 +365,10 @@ export default function ChatPage() {
     if (prevId && input.trim()) {
       saveDraft(activeProject?.id ?? '', prevId, input)
     }
+    // 切换前配置仍是旧会话的值 → 存回旧会话的 key（与草稿同一懒保存模式）。
+    if (prevId && activeProject?.id) {
+      saveChatEngineConfig(activeProject.id, prevId, engineConfigRef.current)
+    }
     prevSessionIdRef.current = sessionId
     if (sessionId && activeProject?.id) {
       const draft = loadDraft(activeProject.id, sessionId)
@@ -299,6 +383,20 @@ export default function ChatPage() {
     setEditingInsertContent('')
     setSendingInsertIds([])
   }, [sessionId])
+
+  // 路由切换会卸载整个 ChatPage；保存最新 ref，避免草稿只在切换会话时落盘。
+  useEffect(() => {
+    if (!sessionId || !activeProject?.id) return
+    const target = { projectId: activeProject.id, sessionId }
+    return () => saveDraft(target.projectId, target.sessionId, inputRef.current)
+  }, [sessionId, activeProject?.id])
+
+  // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
+  useEffect(() => {
+    if (!sessionId || !activeProject?.id) return
+    const target = { projectId: activeProject.id, sessionId }
+    return () => saveChatEngineConfig(target.projectId, target.sessionId, engineConfigRef.current)
+  }, [sessionId, activeProject?.id])
 
   // ── 插入队列持久化 ─────────────────────────────
   // localStorage 按（项目, 会话）保存队列，刷新页面后恢复。
@@ -459,13 +557,21 @@ export default function ChatPage() {
   // 引擎执行中插入的消息先排队；当前执行结束（running: true → false）时，
   // 自动发送队首消息触发下一轮执行，直至队列清空。
   // autoDrainingRef 防止同一空闲窗口内重复发送；编辑中不自动发送，避免覆盖用户编辑。
-  const prevRunningRef = useRef(running)
+  // prevRunRef 同时记录会话 ID：切换会话（如从运行中的 a 切到空闲的 b）也会
+  // 产生 running true → false 的假转变，且此时闭包里的 pendingInserts 还是旧
+  // 会话的队列，若不校验会话一致性会把 a 的待插入消息发进 b。
+  const prevRunRef = useRef<{ sessionId: string | null; running: boolean }>({
+    sessionId,
+    running,
+  })
   const autoDrainingRef = useRef(false)
 
   useEffect(() => {
-    const wasRunning = prevRunningRef.current
-    prevRunningRef.current = running
-    if (!wasRunning || running || autoDrainingRef.current) return
+    const prev = prevRunRef.current
+    prevRunRef.current = { sessionId, running }
+    // 会话切换产生的 running 转变不是"执行结束"，不自动推进
+    if (prev.sessionId !== sessionId) return
+    if (!prev.running || running || autoDrainingRef.current) return
     if (!sessionId || !activeProject?.id || editingInsertId !== null) return
     if (pendingInserts.length === 0 || sendingInsertIds.length > 0) return
     const first = pendingInserts[0]
@@ -595,6 +701,13 @@ export default function ChatPage() {
     setForkOpen(true)
   }, [sessionId, running, selectedEngine])
 
+  const handleMessageEventsLoad = useCallback((messageId: string) => {
+    void loadMessageEvents(messageId)
+  }, [loadMessageEvents])
+  const handleForkMessage = useCallback((messageId: string) => {
+    openFork(selectedEngine, messageId)
+  }, [openFork, selectedEngine])
+
   const forkSession = useCallback(async (input: ChatSessionForkInput) => {
     if (!sessionId || !activeProject?.id || forking) return
     setForking(true)
@@ -663,6 +776,7 @@ export default function ChatPage() {
       useChatSessionStore.getState().resetSession(sessionId)
       useChatListStore.getState().removeSession(sessionId)
       clearInsertQueue(activeProject.id, sessionId)
+      clearChatEngineConfig(activeProject.id, sessionId)
       setDeleteOpen(false)
       navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}`, { replace: true })
     } catch (reason) {
@@ -760,25 +874,15 @@ export default function ChatPage() {
           />
         )}
         onAttachmentError={setSendError}
-        onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
-        onForkMessage={(messageId) => openFork(selectedEngine, messageId)}
+        onLoadMessageEvents={handleMessageEventsLoad}
+        onForkMessage={handleForkMessage}
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
-        quickPrompts={quickButtons.map((button) => ({ label: button.label, prompt: button.prompt }))}
+        quickPrompts={quickPromptItems}
         onQuickPromptSelect={(prompt) => {
           setInput((current) => applyAssistantQuickPrompt(current, prompt))
           setSendError('')
         }}
-        copy={{
-          emptyIntro: t('chatSession.emptyIntro'),
-          thinking: t('chatSession.thinking'),
-          me: t('chatSession.me'),
-          meInitials: t('chatSession.meInitials'),
-          agent: t('chatSession.agent'),
-          agentInitials: t('chatSession.agentInitials'),
-          placeholder: t('chatSession.placeholder'),
-          fullPrompt: t('aiFlow.fullPrompt'),
-          closePrompt: t('aiFlow.closePrompt'),
-        }}
+        copy={panelCopy}
         headerActions={(
           <>
             <Button
@@ -820,7 +924,7 @@ export default function ChatPage() {
         )}
         config={{
           projectId: activeProject.id,
-          engines: assistantConfig?.available_engines || [],
+          engines: sharedEngines,
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,
@@ -838,8 +942,11 @@ export default function ChatPage() {
             const defaultEngine = assistantConfig?.configured.engine || 'claude'
             const sourceEngine = selectedEngine || defaultEngine
             const targetEngine = engineId || defaultEngine
-            if (requiresEngineHandoff(sourceEngine, targetEngine, messages.length)) {
-              setHandoffTargetEngine(targetEngine)
+            if (requiresEngineHandoff(
+              sourceEngine, targetEngine, messages.length,
+              selectedProvider, '',
+            )) {
+              setHandoffTarget({ engine: targetEngine, providerId: '' })
               setHandoffError('')
               setHandoffOpen(true)
               return
@@ -852,6 +959,18 @@ export default function ChatPage() {
             setSelectedThinkingEffort('')
           },
           onProviderChange: (providerId) => {
+            if (requiresEngineHandoff(
+              effectiveEngine, effectiveEngine,
+              messages.length, selectedProvider, providerId || '',
+            )) {
+              setHandoffTarget({
+                engine: effectiveEngine,
+                providerId: providerId || '',
+              })
+              setHandoffError('')
+              setHandoffOpen(true)
+              return
+            }
             setSelectedProvider(providerId)
             setSelectedModel('')
             setSelectedFastModel('')
@@ -899,7 +1018,7 @@ export default function ChatPage() {
         messageCount={forkMessageIndex >= 0 ? forkMessageIndex + 1 : messages.length}
         forkMessageId={forkMessageId}
         forkAtTail={forkMessageIndex < 0 || forkMessageIndex === messages.length - 1}
-        engines={assistantConfig?.available_engines || []}
+        engines={sharedEngines}
         providers={providers}
         defaultEngine={assistantConfig?.configured.engine || 'claude'}
         initialTargetEngine={forkTargetEngine}
@@ -917,10 +1036,12 @@ export default function ChatPage() {
       <ChatEngineHandoffDialog
         open={handoffOpen}
         projectId={activeProject.id}
-        sourceEngine={selectedEngine || assistantConfig?.configured.engine || 'claude'}
-        targetEngine={handoffTargetEngine}
+        source={handoffSource}
+        target={handoffTarget ?? { engine: selectedEngine, providerId: selectedProvider }}
         messageCount={messages.length}
         permissionMode={permissionMode}
+        sourceProviderLabel={providerLabel(selectedProvider)}
+        targetProviderLabel={providerLabel(handoffTarget?.providerId ?? '')}
         loading={handingOff}
         error={handoffError}
         onConfirm={(input) => void handoffSession(input)}

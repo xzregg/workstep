@@ -106,6 +106,7 @@ async def list_workflows(pid: str = Query(..., alias="project_id")):
                     "is_default": w["is_default"],
                     "deleted": w["deleted"],
                     "running": project_manager.workflow_has_running_tasks(w["id"]),
+                    "failed": project_manager.workflow_has_failed_tasks(w["id"]),
                     "nodeCount": len(
                         w.get("steps", {}).get("nodes", [])
                         or w.get("steps", {}).get("steps", [])

@@ -89,6 +89,11 @@ _ADDITIVE_COLUMNS = {
         "input_manifest_json": "TEXT",
         "dispatch_lineage_json": "TEXT",
     },
+    "taskstep": {
+        "execution_config_json": "TEXT",
+        "pending_handoff_json": "TEXT",
+        "session_provider": "TEXT",
+    },
 }
 
 

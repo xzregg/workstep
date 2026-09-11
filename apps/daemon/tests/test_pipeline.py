@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from services.pipeline import DAGScheduler, Step
-from services.prompt import assemble_prompt, SYSTEM_PROMPT
+from services.prompt import assemble_followup_prompt, assemble_prompt, SYSTEM_PROMPT
 from services.task_runner import TaskRunner
 from engines.core.events import InternalEvent
 from engines.core.acp_base import AcpEngineBase
@@ -233,6 +233,36 @@ def test_assemble_prompt_with_user_input(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir, user_input="Make it fast")
     assert "Make it fast" in prompt
+    db.close()
+
+
+def test_assemble_followup_prompt_only_contains_message_and_output_requirements(tmp_path):
+    """A resumed @stage turn relies on its engine session for prior context."""
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", description="旧任务说明不应重复发送",
+        cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(key="do", label="Do", prompt="旧阶段要求不应重复发送", outputs=[
+        {"name": "交付文档", "type": "md"},
+    ])
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_followup_prompt(
+        task, step, artifacts_dir, "只修改结论部分"
+    )
+
+    assert "只修改结论部分" in prompt
+    assert "旧任务说明不应重复发送" not in prompt
+    assert "旧阶段要求不应重复发送" not in prompt
+    assert SYSTEM_PROMPT not in prompt
+    assert "交付文档.md" in prompt
+    assert "必须生成或更新" in prompt
     db.close()
 
 
@@ -773,20 +803,28 @@ async def test_task_runner_persists_base_normalized_plan_snapshots(tmp_path):
 
 @pytest.mark.anyio
 async def test_task_runner_persists_usage_json(tmp_path):
-    """TaskRunner persists usage (incl. cache) to message.usage_json."""
+    """TaskRunner persists the exact stage prompt and usage reported by the engine."""
     from models import init_db, Task, Message
     from engines.core.registry import ENGINE_REGISTRY
     import time, uuid, json as _json
 
     db = init_db(str(tmp_path / "test.db"))
     task = Task.create(
-        id=str(uuid.uuid4()), title="Usage", cwd=str(tmp_path),
+        id=str(uuid.uuid4()), title="Usage", description="实现完整提示词展示", cwd=str(tmp_path),
         engine="claude",
         created_at=int(time.time()), updated_at=int(time.time()),
     )
 
     original = ENGINE_REGISTRY.copy()
-    ENGINE_REGISTRY["claude"] = lambda: PipelineUsageEngine("output")
+    received_prompts: list[str] = []
+
+    class CapturingUsageEngine(PipelineUsageEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            received_prompts.append(prompt)
+            async for event in super().spawn(prompt, cwd, **kwargs):
+                yield event
+
+    ENGINE_REGISTRY["claude"] = lambda: CapturingUsageEngine("output")
     try:
         bus = EventBus()
         runner = TaskRunner(bus)
@@ -798,14 +836,20 @@ async def test_task_runner_persists_usage_json(tmp_path):
         }
         artifacts_dir = tmp_path / "artifacts"
         artifacts_dir.mkdir()
+        (tmp_path / "MEMORY.md").write_text("统一使用公开消息边界", encoding="utf-8")
 
         await runner.run_pipeline(task, steps_config, artifacts_dir)
 
         msg = Message.select().where(Message.task == task).get()
-        assert _json.loads(msg.prompt_json)["prompt"].endswith(
+        persisted_prompt = _json.loads(msg.prompt_json)["prompt"]
+        assert received_prompts == [persisted_prompt]
+        assert persisted_prompt.startswith("你是 WorkStep 工作流中的一个执行阶段。")
+        assert "## 项目记忆\n统一使用公开消息边界" in persisted_prompt
+        assert "## 任务说明\n实现完整提示词展示" in persisted_prompt
+        assert persisted_prompt.endswith(
             str(artifacts_dir / "default" / task.id / "a")
         )
-        assert "## 阶段要求\nDo A" in _json.loads(msg.prompt_json)["prompt"]
+        assert "## 阶段要求\nDo A" in persisted_prompt
         assert msg.usage_json is not None
         usage = _json.loads(msg.usage_json)
         assert usage["input_tokens"] == 300

@@ -18,10 +18,14 @@ from models import (
 )
 from models.fields import utc_now
 from services.pipeline import DAGScheduler, Step
-from services.prompt import assemble_prompt
+from services.prompt import assemble_followup_prompt, assemble_prompt
 from services.review_gate import ReviewGate
 from services.config import config_store
 from services.messages import create_task_message, new_message_id
+from agent_assistants.context_handoff import (
+    mark_handoff_consumed,
+    render_handoff_reference,
+)
 from services.intervention import intervention_manager, seal_unanswered_interactions
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
 from engines.core.acp_base import AcpEngineBase
@@ -114,11 +118,13 @@ class TaskRunner:
         dispatch_service=None,
         source_project_id=None,
         database_executor=None,
+        stage_followups: dict[str, str] | None = None,
     ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
         self._source_project_id = source_project_id
         self._database_executor = database_executor
+        self._stage_followups = stage_followups or {}
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
@@ -443,15 +449,41 @@ class TaskRunner:
                 (TaskStep.task == task) & (TaskStep.step_key == step_key)
             )
             previous_engine = ts.engine
-            if (
-                ts.session_id
-                and previous_engine
-                and previous_engine != step.engine
+            last_completed_execution = (
+                Message.select()
+                .where(
+                    (Message.task == task)
+                    & (Message.step_key == step_key)
+                    & (Message.channel == "execution")
+                    & (Message.role == "assistant")
+                    & (Message.run_status.in_(["succeeded", "completed"]))
+                )
+                .order_by(Message.sequence.desc())
+                .first()
+            )
+            session_engine = (
+                last_completed_execution.engine
+                if last_completed_execution is not None
+                and last_completed_execution.engine
+                else previous_engine
+            )
+            # Engine session identifiers are provider-specific: an engine or
+            # provider switch must not resume the old session. The assembled
+            # stage prompt still carries supplements, upstream artifacts and
+            # task context (plus the handoff reference when one is pending),
+            # but the new endpoint must create its own session instead of
+            # receiving an incompatible ID.
+            session_provider = str((step.config or {}).get("provider_id") or "").strip()
+            if ts.session_id and (
+                ts.pending_handoff_json
+                or (session_engine and session_engine != step.engine)
+                # 同引擎但供应商变更（含重置为默认后 provider 覆盖被移除）：
+                # 旧会话建立于另一个供应商端点，不能继续 resume。
+                or (
+                    session_engine == step.engine
+                    and str(ts.session_provider or "").strip() != session_provider
+                )
             ):
-                # Engine session identifiers are provider-specific. The
-                # assembled stage prompt still carries supplements, upstream
-                # artifacts and task context, but the new engine must create
-                # its own session instead of receiving an incompatible ID.
                 ts.session_id = None
             is_review_retry = (
                 ts.status in ("retrying", "rework_waiting")
@@ -491,9 +523,22 @@ class TaskRunner:
                     model=resolved_model,
                     started_at=utc_now(),
                 )
-            return ts, step_run, rework_feedback, manual_review_feedback
+            pending_handoff = None
+            if ts.pending_handoff_json:
+                try:
+                    value = json.loads(ts.pending_handoff_json)
+                    pending_handoff = value if isinstance(value, dict) else None
+                except (TypeError, json.JSONDecodeError):
+                    pending_handoff = None
+            return (
+                ts,
+                step_run,
+                rework_feedback,
+                manual_review_feedback,
+                pending_handoff,
+            )
 
-        ts, step_run, rework_feedback, manual_review_feedback = (
+        ts, step_run, rework_feedback, manual_review_feedback, pending_handoff = (
             await self._run_db(prepare_step_state)
         )
 
@@ -540,11 +585,27 @@ class TaskRunner:
                 })
             return
 
+        # Instantiate before prompt assembly so compact follow-ups are only
+        # used when the engine can genuinely resume the saved stage session.
+        engine = create_engine(step.engine)
+
         # Assemble prompt
         feedback = review_feedback or manual_review_feedback or rework_feedback
-        prompt = await self._run_db(
-            lambda: assemble_prompt(task, step, artifacts_dir, user_input)
-        )
+        followup = self._stage_followups.get(step_key, "").strip()
+        if followup and ts.session_id and engine is not None and engine.supports_resume:
+            prompt = assemble_followup_prompt(
+                task, step, artifacts_dir, followup
+            )
+        else:
+            prompt = await self._run_db(
+                lambda: assemble_prompt(task, step, artifacts_dir, user_input)
+            )
+        if pending_handoff:
+            handoff_reference = render_handoff_reference(
+                pending_handoff, artifacts_dir.parent
+            )
+            if handoff_reference:
+                prompt = f"{handoff_reference}\n\n{prompt}"
         if feedback:
             label = (
                 "人工审核反馈"
@@ -583,10 +644,23 @@ class TaskRunner:
         out_dir = artifacts_dir / wf_name / task.id / step_key
         msg_id = new_message_id()
         message_started_at = utc_now()
+        engine_session_id = (
+            ts.session_id
+            if engine is not None and engine.supports_resume
+            else None
+        )
+        if (
+            engine is not None
+            and engine.supports_resume
+            and engine_session_id is None
+            and step.engine == "pydantic_ai"
+        ):
+            engine_session_id = msg_id
         journal_ref = self._event_journal.start(
             artifacts_dir.parent,
             f"task-{task.id}",
             msg_id,
+            engine_session_id,
         )
 
         def create_message():
@@ -621,7 +695,6 @@ class TaskRunner:
         })
 
         # Select engine
-        engine = create_engine(step.engine)
         if not engine:
             error = f"Engine '{step.engine}' not available"
             await self._fail_step(ts, task, step_key, error)
@@ -665,12 +738,35 @@ class TaskRunner:
         captured_session_id = ts.session_id
         interrupted = False
 
+        async def consume_pending_handoff() -> None:
+            nonlocal pending_handoff
+            if not pending_handoff:
+                return
+            handoff_id = pending_handoff.get("handoff_id")
+
+            def consume():
+                current = TaskStep.get(
+                    (TaskStep.task == task) & (TaskStep.step_key == step_key)
+                )
+                try:
+                    stored = json.loads(current.pending_handoff_json or "null")
+                except (TypeError, json.JSONDecodeError):
+                    stored = None
+                if not isinstance(stored, dict) or stored.get("handoff_id") != handoff_id:
+                    return
+                mark_handoff_consumed(artifacts_dir.parent, pending_handoff)
+                current.pending_handoff_json = None
+                current.save(only=[TaskStep.pending_handoff_json])
+
+            await self._run_db(consume)
+            pending_handoff = None
+
         try:
             spawn_kwargs = dict(
                 prompt=prompt,
                 cwd=task.cwd,
                 model=resolved_model,
-                session_id=ts.session_id if engine.supports_resume else None,
+                session_id=engine_session_id,
                 config_overrides=step.config or None,
             )
             if live_queue is not None:
@@ -691,6 +787,8 @@ class TaskRunner:
                     event = normalize_event(event)
                 if event is None:
                     continue
+                if pending_handoff and event.type != "error":
+                    await consume_pending_handoff()
                 live_message_id = None
                 interaction_waiter: asyncio.Task | None = None
                 if event.type == "interaction_request":
@@ -718,6 +816,16 @@ class TaskRunner:
                     captured_session_id = (
                         str(event.data.get("session_id") or "") or None
                     )
+                    if captured_session_id:
+                        journal_ref = self._event_journal.move_to_conversation(
+                            journal_ref,
+                            captured_session_id,
+                        )
+                        await self._run_db(
+                            lambda: Message.update(
+                                event_log_path=journal_ref.relative_path
+                            ).where(Message.id == msg_id).execute()
+                        )
                 elif event.type == "usage_update" and event.data.get("session_id"):
                     captured_session_id = str(event.data["session_id"])
                 elif event.type == "error" and reported_error is None:
@@ -780,6 +888,7 @@ class TaskRunner:
                             artifacts_dir.parent,
                             f"task-{task.id}",
                             new_msg_id,
+                            captured_session_id,
                         )
                         await self._run_db(lambda: create_task_message(
                                 id=new_msg_id,
@@ -893,11 +1002,17 @@ class TaskRunner:
 
             if captured_session_id:
                 # 同任务同阶段重跑时复用该会话（session/resume）。
+                # 记录建立会话时使用的供应商，供重跑前判断 resume 兼容性。
+                captured_session_provider = str(
+                    (step.config or {}).get("provider_id") or ""
+                ).strip()
+
                 def save_session_id():
                     current = TaskStep.get(
                         (TaskStep.task == task) & (TaskStep.step_key == step_key)
                     )
                     current.session_id = captured_session_id
+                    current.session_provider = captured_session_provider
                     current.save()
                     return current
 

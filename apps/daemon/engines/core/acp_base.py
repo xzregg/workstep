@@ -1093,7 +1093,7 @@ class AcpEngineBase(BaseLLMEngine):
         try:
             process_env = (
                 provider_runtime.child_env()
-                if provider_runtime.provider_id
+                if provider_runtime.provider_id or provider_runtime.env
                 else dict(os.environ)
             )
             process_env.update(skill_env)

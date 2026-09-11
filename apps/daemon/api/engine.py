@@ -2,13 +2,14 @@
 
 import asyncio
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from engines.core.base import BaseLLMEngine
+from engines.core.base import BaseLLMEngine, EngineModel
 from engines.core.registry import (
     create_engine,
     get_available_engines,
@@ -390,10 +391,33 @@ async def list_engine_models(
                 "fetched_at"
             )
         else:
-            models = await asyncio.wait_for(
-                engine.list_models(**models_kwargs),
-                timeout=15,
-            )
+            entry = config_store.get_engine_models(engine_id)
+            if refresh or not entry:
+                models = await asyncio.wait_for(
+                    engine.list_models(**models_kwargs),
+                    timeout=15,
+                )
+                fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                config_store.set_engine_models(
+                    engine_id,
+                    [asdict(model) for model in models],
+                    fetched_at,
+                )
+            else:
+                models = [
+                    EngineModel(
+                        id=str(item["id"]),
+                        label=str(item.get("label") or item["id"]),
+                        description=(
+                            str(item["description"])
+                            if item.get("description") is not None
+                            else None
+                        ),
+                    )
+                    for item in entry.get("models", [])
+                    if isinstance(item, dict) and str(item.get("id") or "").strip()
+                ]
+                fetched_at = entry.get("fetched_at")
         error = None
     except asyncio.TimeoutError:
         models = []
@@ -463,6 +487,7 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
 
     config_store.set_engine_binary_path(engine_id, normalized)
     config_store.set_engine_verified(engine_id, False)
+    config_store.clear_engine_models(engine_id)
     refresh_registry()
     engine_info = next(
         engine for engine in get_available_engines() if engine["id"] == engine_id
@@ -514,6 +539,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
         }
     if _engine_config_snapshot(engine) != previous_config:
         config_store.set_engine_verified(engine_id, False)
+        config_store.clear_engine_models(engine_id)
     refresh_registry()
     response = _engine_config_response(engine_id, engine)
     response.update({"saved": True, "message": "配置已保存"})

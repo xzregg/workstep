@@ -9,12 +9,14 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useLayoutEffect,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import { useTaskStore, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
+import { publishEngineCatalog } from '../stores/engineAvailabilityStore'
 import {
   fsApi,
   projectApi,
@@ -35,6 +37,7 @@ import PromptViewerDialog from '../components/PromptViewerDialog'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
 import TaskDetailView from '../components/TaskDetailView'
+import TaskStageConfigController from '../components/TaskStageConfigController'
 import {
   createOptimisticUserMessage,
   isVisibleLiveExecutionMessage,
@@ -104,6 +107,7 @@ const PANEL_BOUNDS_KEY = 'workstep:task-detail-bounds'
 const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
 const DEFAULT_SPLIT_RATIO = 1 / 3
 const SPLIT_HANDLE_WIDTH = 8
+const TASK_HISTORY_PAGE_SIZE = 300
 const RESIZE_EDGES: ResizeEdge[] = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']
 const RESIZE_LABEL_KEYS: Record<ResizeEdge, TKey> = {
   n: 'taskDetail.resize.n',
@@ -336,6 +340,10 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const pendingStageScrollRef = useRef<string | null>(null)
   const [historyMessages, setHistoryMessages] = useState<any[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const historyOffsetRef = useRef(0)
+  const historyHasOlderRef = useRef(true)
+  const historyOlderLoadingRef = useRef(false)
+  const historyPrependScrollHeightRef = useRef<number | null>(null)
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
   const [artifactsLoading, setArtifactsLoading] = useState(false)
   const [reviews, setReviews] = useState<ReviewRun[]>([])
@@ -529,11 +537,60 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (historyFetchedRef.current === fetchKey) return
     historyFetchedRef.current = fetchKey
     setHistoryLoading(true)
-    taskApi.history(taskId, projectId, 50, 0)
-      .then((res) => setHistoryMessages(res.messages || []))
+    historyOffsetRef.current = 0
+    historyHasOlderRef.current = true
+    historyOlderLoadingRef.current = false
+    taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
+      .then((res) => {
+        const messages = res.messages || []
+        historyOffsetRef.current = messages.length
+        historyHasOlderRef.current = messages.length === TASK_HISTORY_PAGE_SIZE
+        setHistoryMessages(messages)
+      })
       .catch(() => setHistoryMessages([]))
       .finally(() => setHistoryLoading(false))
   }, [taskId, projectId])
+
+  const loadOlderHistory = useCallback(async () => {
+    if (
+      !taskId || !projectId
+      || historyLoading
+      || historyOlderLoadingRef.current
+      || !historyHasOlderRef.current
+    ) return
+    historyOlderLoadingRef.current = true
+    shouldFollowMessagesRef.current = false
+    const container = chatScrollRef.current
+    historyPrependScrollHeightRef.current = container?.scrollHeight ?? null
+    const offset = historyOffsetRef.current
+    try {
+      const response = await taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, offset)
+      const olderMessages = response.messages || []
+      historyOffsetRef.current += olderMessages.length
+      historyHasOlderRef.current = olderMessages.length === TASK_HISTORY_PAGE_SIZE
+      setHistoryMessages((current) => {
+        const currentIds = new Set(current.map((message) => String(message.id)))
+        return [
+          ...olderMessages.filter((message: any) => !currentIds.has(String(message.id))),
+          ...current,
+        ]
+      })
+    } catch {
+      historyPrependScrollHeightRef.current = null
+    } finally {
+      historyOlderLoadingRef.current = false
+    }
+  }, [historyLoading, projectId, taskId])
+
+  useLayoutEffect(() => {
+    const previousHeight = historyPrependScrollHeightRef.current
+    const container = chatScrollRef.current
+    if (previousHeight === null || !container) return
+    const nextTop = container.scrollTop + container.scrollHeight - previousHeight
+    container.scrollTop = nextTop
+    lastProgrammaticScrollTopRef.current = nextTop
+    historyPrependScrollHeightRef.current = null
+  }, [historyMessages])
 
   const loadMessageEvents = useCallback(async (messageId: string) => {
     if (!taskId || !projectId) return
@@ -574,7 +631,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useEffect(() => {
     if (!taskId || !projectId || userMessageEvents === 0) return
     const timer = window.setTimeout(() => {
-      taskApi.history(taskId, projectId, 50, 0)
+      taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
         .then((response) => setHistoryMessages((current) => (
           mergeRefreshedTaskHistory(current, response.messages || [])
         )))
@@ -587,7 +644,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (!taskId || !projectId || missingLivePromptIds.length === 0) return
     let cancelled = false
     const missingIds = new Set(missingLivePromptIds)
-    taskApi.history(taskId, projectId, 50, 0)
+    taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
       .then((response) => {
         if (cancelled) return
         const prompts = Object.fromEntries(
@@ -613,6 +670,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     taskApi.coordinatorConfig(taskId, projectId)
       .then((config) => {
         setCoordinatorConfig(config)
+        // 协调引擎下拉的可用性改用共享状态：设置页改动后即时跟随。
+        publishEngineCatalog(config.available_engines)
         setCoordinatorConfigError('')
       })
       .catch((reason) => setCoordinatorConfigError(
@@ -644,7 +703,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useEffect(() => {
     if (!taskId || !projectId || !reviewEventSignal) return
     const timer = window.setTimeout(() => {
-      taskApi.history(taskId, projectId, 50, 0)
+      taskApi.history(taskId, projectId, TASK_HISTORY_PAGE_SIZE, 0)
         .then((response) => setHistoryMessages((current) => (
           mergeRefreshedTaskHistory(current, response.messages || [])
         )))
@@ -1671,13 +1730,20 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         />
       ))}
 
-      <TaskDetailView
+      <TaskStageConfigController
+        projectId={projectId || ''}
+        taskId={task.id}
+        stepKey={chatTargetStageKey}
+        running={activeStageRunning}
+      >
+        {({ inputConfig: stageEngineConfig, loading: stageEngineConfigLoading, error: stageEngineConfigError }) => <TaskDetailView
         task={task}
         stages={stages}
         stageProgress={stageProgress}
         selectedStage={selectedStage}
         onStageClick={handleStageClick}
         historyMessages={historyMessages}
+        onLoadOlderHistory={loadOlderHistory}
         onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
         liveMessages={liveMessages}
         availableCommands={availableCommands}
@@ -1694,6 +1760,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onChatTargetChange={setChatTarget}
         coordinatorRunning={coordinatorRunning}
         coordinatorConfig={coordinatorConfig}
+        stageEngineConfig={stageEngineConfig}
+        stageEngineConfigLoading={stageEngineConfigLoading}
+        stageEngineConfigError={stageEngineConfigError}
         chatError={chatError}
         onChatError={setChatError}
         prompt={prompt}
@@ -1870,7 +1939,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         pendingStageScrollRef={pendingStageScrollRef}
         hasUnreadMessages={hasUnreadMessages}
         onUnreadMessagesChange={setHasUnreadMessages}
-      />
+        />}
+      </TaskStageConfigController>
       <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
         <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
         <Button

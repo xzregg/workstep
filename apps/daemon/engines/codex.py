@@ -36,6 +36,7 @@ from engines.core.interactions import permission_request, permission_signature
 from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
+from engines.core.stream_lines import ChunkedLineReader
 from services.config import (
     CODEX_APPROVAL_POLICIES,
     CODEX_REASONING_EFFORTS,
@@ -102,6 +103,7 @@ class CodexEngine(AcpEngineBase):
         self._running = False
         self._stderr: list[bytes] = []
         self._thread_id: str | None = None
+        self._stdout_reader: ChunkedLineReader | None = None
         self._escalate_sandbox = False
         # interaction_id → 命令签名（「拒绝本次运行」跨调用记忆用）。
         self._permission_signatures: dict[str, str] = {}
@@ -166,6 +168,7 @@ class CodexEngine(AcpEngineBase):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            limit=1024 * 256,
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
@@ -342,6 +345,7 @@ class CodexEngine(AcpEngineBase):
                 "stdout": asyncio.subprocess.PIPE,
                 "stderr": asyncio.subprocess.PIPE,
                 "cwd": cwd,
+                "limit": 1024 * 256,
             }
             if provider_runtime.provider_id:
                 process_kwargs["env"] = provider_runtime.child_env()
@@ -496,9 +500,16 @@ class CodexEngine(AcpEngineBase):
                 })
                 return
             try:
-                line = await asyncio.wait_for(
-                    self._process.stdout.readline(), timeout=0.25
-                )
+                # 分块读取：codex 单条 JSONL（大 tool 输出 / 长消息）可能超过
+                # StreamReader 默认 64KiB limit，readline 会抛
+                # "Separator is not found, and chunk exceed the limit" 并清空缓冲。
+                # 超时只作用于等待新数据，已缓冲的不完整行会保留继续拼接。
+                if (
+                    self._stdout_reader is None
+                    or self._stdout_reader.stream is not self._process.stdout
+                ):
+                    self._stdout_reader = ChunkedLineReader(self._process.stdout)
+                line = await self._stdout_reader.readline(timeout=0.25)
             except asyncio.TimeoutError:
                 continue
             except (RuntimeError, OSError):

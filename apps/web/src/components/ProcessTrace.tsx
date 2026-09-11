@@ -236,6 +236,10 @@ export default function ProcessTrace({
     (item): item is Extract<MessageTimelineItem, { type: 'thinking' }> => item.type === 'thinking',
   )
   const lastThinkingItem = thinkingItems[thinkingItems.length - 1]
+  const subagentItems = processItems.filter(
+    (item): item is Extract<MessageTimelineItem, { type: 'subagent' }> => item.type === 'subagent',
+  )
+  const lastSubagentItem = subagentItems[subagentItems.length - 1]
   // 按工具调用去重计数：一次命令/工具调用会拆成 start/args/chunk/result
   // 多条事件（尤其流式参数会逐块产生大量 chunk），不能把事件数当命令数。
   const eventCommandCount = new Set(events
@@ -349,7 +353,13 @@ export default function ProcessTrace({
               projectId={projectId}
             />
           ) : item.type === 'subagent' ? (
-            <SubagentTimelineItem key={item.id} item={item} messageRunning={running} projectId={projectId} />
+            <SubagentTimelineItem
+              key={item.id}
+              item={item}
+              lastSubagent={item === lastSubagentItem}
+              messageRunning={running}
+              projectId={projectId}
+            />
           ) : (
             <ToolTimelineItem key={item.id} item={item} streaming={running} projectId={projectId} />
           ))}

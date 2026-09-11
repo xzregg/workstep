@@ -12,7 +12,7 @@ test('remote projects use a text badge instead of a status dot', () => {
 
 test('project rows show a running spinner when any workflow is running', () => {
   assert.match(source, /p\.workflows\?\.some\(\(workflow\) => workflow\.running\)/)
-  assert.match(source, /title=\{t\('layout\.flowRunning'\)\}/)
+  assert.match(source, /runningTitle=.*t\('layout\.flowRunning'\)/)
 })
 
 test('remote projects refresh from websocket status events instead of polling the project list', () => {

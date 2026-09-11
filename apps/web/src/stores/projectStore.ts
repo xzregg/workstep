@@ -31,6 +31,8 @@ interface ProjectState {
   saveSteps: (projectId: string, steps: any) => Promise<void>
 }
 
+let fetchProjectsInFlight: Promise<void> | null = null
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   activeProject: null,
@@ -39,33 +41,38 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   canvasDirty: false,
   projectRunningState: {},
 
-  fetchProjects: async () => {
-    if (useProjectStore.getState().loading) return
+  fetchProjects: () => {
+    if (fetchProjectsInFlight) return fetchProjectsInFlight
     set({ loading: true })
-    try {
-      const { projects } = await projectApi.list()
-      set((state) => {
-        let activeProject = null
-        if (state.activeProject) {
-          const found = projects.find((p) => p.id === state.activeProject!.id)
-          if (found) {
-            // If the user has selected a non-default workflow, preserve the
-            // frontend-loaded steps (set by setActiveWorkflow) to avoid
-            // overwriting with the backend's default workflow steps.
-            const defaultWf = found.workflows?.find((w) => w.is_default) || found.workflows?.[0]
-            const isNonDefault = state.activeWorkflowId && defaultWf && state.activeWorkflowId !== defaultWf.id
-            activeProject = isNonDefault
-              ? { ...found, steps: state.activeProject!.steps }
-              : found
-          } else {
-            activeProject = state.activeProject
+    fetchProjectsInFlight = (async () => {
+      try {
+        const { projects } = await projectApi.list()
+        set((state) => {
+          let activeProject = null
+          if (state.activeProject) {
+            const found = projects.find((p) => p.id === state.activeProject!.id)
+            if (found) {
+              // If the user has selected a non-default workflow, preserve the
+              // frontend-loaded steps (set by setActiveWorkflow) to avoid
+              // overwriting with the backend's default workflow steps.
+              const defaultWf = found.workflows?.find((w) => w.is_default) || found.workflows?.[0]
+              const isNonDefault = state.activeWorkflowId && defaultWf && state.activeWorkflowId !== defaultWf.id
+              activeProject = isNonDefault
+                ? { ...found, steps: state.activeProject!.steps }
+                : found
+            } else {
+              activeProject = state.activeProject
+            }
           }
-        }
-        return { projects, activeProject, loading: false }
-      })
-    } catch {
-      set({ loading: false })
-    }
+          return { projects, activeProject, loading: false }
+        })
+      } catch {
+        set({ loading: false })
+      } finally {
+        fetchProjectsInFlight = null
+      }
+    })()
+    return fetchProjectsInFlight
   },
 
   setActiveProject: (p) => {

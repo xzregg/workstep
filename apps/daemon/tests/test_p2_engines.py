@@ -66,6 +66,7 @@ async def test_codex_list_models_uses_cli_catalog(monkeypatch, tmp_path):
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
             "cwd": str(tmp_path),
+            "limit": 1024 * 256,
         })
     ]
     assert [(model.id, model.label, model.description) for model in models] == [
@@ -2022,6 +2023,67 @@ def test_claude_agent_sdk_result_error():
     assert "error_during_execution" in events[0].data["message"]
 
 
+def test_claude_agent_sdk_result_error_surfaces_cli_error_text():
+    """SDK ≥0.2.130 认证失败时 subtype 仍为 success，真实原因在 result 文本里。
+
+    复现：捆绑 claude CLI 未登录时，ResultMessage 回写
+    ``result="Not logged in · Please run /login"``（terminal_reason=api_error、
+    errors=None），旧映射只能给出无提示的兜底文案。
+    """
+    engine = ClaudeAgentSDKEngine()
+    msg = _SdkFake(
+        type="result",
+        subtype="success",
+        is_error=True,
+        result="Not logged in · Please run /login",
+        terminal_reason="api_error",
+        errors=None,
+        api_error_status=None,
+        usage=None,
+    )
+    events = engine._map_message(msg, state={"emitted_text": True})
+    assert [event.type for event in events] == ["error"]
+    assert events[0].data["message"] == "Not logged in · Please run /login"
+
+
+def test_claude_agent_sdk_result_error_prefers_errors_list_and_marker():
+    """errors 列表最具体；无描述文本时回退到助手消息的 error 标记。"""
+    engine = ClaudeAgentSDKEngine()
+
+    listed = _SdkFake(
+        type="result",
+        subtype="success",
+        is_error=True,
+        result=None,
+        errors=["API Error: 401 authentication failed"],
+        api_error_status=401,
+        terminal_reason="api_error",
+        usage=None,
+    )
+    events = engine._map_message(listed, state={"emitted_text": True})
+    assert events[0].data["message"] == "API Error: 401 authentication failed"
+
+    state: dict = {"emitted_text": True}
+    assistant = _SdkFake(
+        type="assistant",
+        message=_SdkFake(content=[_SdkFake(type="text", text="Not logged in")]),
+        error="authentication_failed",
+    )
+    engine._map_message(assistant, state)
+    bare = _SdkFake(
+        type="result",
+        subtype="success",
+        is_error=True,
+        result=None,
+        errors=None,
+        api_error_status=None,
+        terminal_reason="api_error",
+        usage=None,
+    )
+    events = engine._map_message(bare, state)
+    assert events[0].data["message"] == "authentication_failed"
+
+
 def test_claude_agent_sdk_maps_compact():
     engine = ClaudeAgentSDKEngine()
     msg = _SdkFake(type="system", subtype="compacted", data={"summary": "旧对话已摘要"})
@@ -3084,8 +3146,10 @@ def test_engine_config_schemas_are_declared():
     assert PydanticAIEngine.config_schema()[0].type == "select"
 
     claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}
-    assert set(claude_fields) == {"permission_mode"}
+    assert set(claude_fields) == {"permission_mode", "model_map"}
     assert "bypassPermissions" in claude_fields["permission_mode"].confirm_values
+    assert claude_fields["model_map"].type == "model_map"
+    assert claude_fields["model_map"].stage_hidden is True
 
     codex_fields = {field.key: field for field in CodexEngine.config_schema()}
     assert set(codex_fields) == {
@@ -3103,8 +3167,11 @@ def test_engine_config_schemas_are_declared():
         "permission_mode",
         "max_turns",
         "fallback_model",
+        "model_map",
     }
     assert claude_sdk_fields["max_turns"].type == "number"
+    assert claude_sdk_fields["model_map"].type == "model_map"
+    assert claude_sdk_fields["model_map"].stage_hidden is True
     assert "bypassPermissions" in claude_sdk_fields["permission_mode"].confirm_values
 
     codex_sdk_fields = {field.key: field for field in CodexSDKEngine.config_schema()}
@@ -3117,6 +3184,16 @@ def test_engine_config_schemas_are_declared():
 
     from engines.core.base import BaseLLMEngine
     assert BaseLLMEngine.config_schema() == []
+
+
+@pytest.mark.parametrize("engine_cls", [ClaudeCodeEngine, ClaudeAgentSDKEngine])
+def test_stage_config_schema_excludes_stage_hidden_fields(engine_cls):
+    """模型映射只在全局引擎配置里编辑，不进阶段配置模板。"""
+    stage_keys = {field.key for field in engine_cls.stage_config_schema()}
+    full_stage_keys = {field.key for field in engine_cls.full_stage_config_schema()}
+    assert "model_map" in {field.key for field in engine_cls.config_schema()}
+    assert "model_map" not in stage_keys
+    assert "model_map" not in full_stage_keys
 
 
 @pytest.mark.anyio

@@ -4,33 +4,57 @@ import Input from '../components/Input'
 import Select from '../components/Select'
 import {
   systemSettingsApi,
-  type ModelPrice,
-  type ModelPricingSettings,
+  type ModelSetting,
+  type ModelSettings,
+  type ModelType,
 } from '../api/client'
 import { useI18n } from '../i18n'
+import { engineLabel } from '../engineMeta'
 
 interface CatalogModel {
-  providerId: string | null
+  sourceType: 'provider' | 'engine' | 'custom'
+  sourceId: string | null
   group: string
   model: string
 }
 
-const priceKey = (providerId: string | null, model: string) => `${providerId || ''}\u0000${model}`
-const emptyPrice = (providerId: string | null, model: string): ModelPrice => ({
-  provider_id: providerId,
-  model,
+const priceKey = (row: Pick<CatalogModel, 'sourceType' | 'sourceId' | 'model'>) =>
+  `${row.sourceType}\u0000${row.sourceId || ''}\u0000${row.model}`
+
+const priceKeyFromSetting = (item: ModelSetting) => priceKey({
+  sourceType: item.provider_id ? 'provider' : item.engine_id ? 'engine' : 'custom',
+  sourceId: item.provider_id || item.engine_id,
+  model: item.model,
+})
+
+const emptyPrice = (row: CatalogModel): ModelSetting => ({
+  provider_id: row.sourceType === 'provider' ? row.sourceId : null,
+  engine_id: row.sourceType === 'engine' ? row.sourceId : null,
+  model: row.model,
+  model_type: 'chat',
+  supports_multimodal: false,
   input_price: 0,
   output_price: 0,
   cache_price: 0,
 })
 
-export default function ModelPricingSettingsPage() {
+const MODEL_TYPES: Array<{ value: ModelType; label: 'settings.pricingTypeChat' | 'settings.pricingTypeReasoning' | 'settings.pricingTypeEmbedding' | 'settings.pricingTypeRerank' | 'settings.pricingTypeImage' | 'settings.pricingTypeAudio' }> = [
+  { value: 'chat', label: 'settings.pricingTypeChat' },
+  { value: 'reasoning', label: 'settings.pricingTypeReasoning' },
+  { value: 'embedding', label: 'settings.pricingTypeEmbedding' },
+  { value: 'rerank', label: 'settings.pricingTypeRerank' },
+  { value: 'image', label: 'settings.pricingTypeImage' },
+  { value: 'audio', label: 'settings.pricingTypeAudio' },
+]
+
+export default function ModelSettingsPage() {
   const { t } = useI18n()
-  const [settings, setSettings] = useState<ModelPricingSettings>({
+  const [settings, setSettings] = useState<ModelSettings>({
     currency: 'USD',
     usd_to_cny_rate: 7.2,
     prices: [],
     providers: [],
+    engines: [],
     standalone_models: [],
   })
   const [catalog, setCatalog] = useState<CatalogModel[]>([])
@@ -53,25 +77,29 @@ export default function ModelPricingSettingsPage() {
       setLoading(true)
       setError('')
       try {
-        const pricing = await systemSettingsApi.modelPricing()
+        const pricing = await systemSettingsApi.modelSettings()
         const providerRows = pricing.providers.flatMap((provider) =>
           provider.models.map((model) => ({
-            providerId: provider.id,
+            sourceType: 'provider' as const,
+            sourceId: provider.id,
             group: provider.name,
             model: model.id,
           })),
         )
-        const standaloneRows = pricing.standalone_models.map((model) => ({
-          providerId: null,
-          group: t('settings.pricingStandalone'),
-          model,
-        }))
+        const engineRows = pricing.engines.flatMap((engine) =>
+          engine.models.map((model) => ({
+            sourceType: 'engine' as const,
+            sourceId: engine.id,
+            group: engine.id,
+            model: model.id,
+          })),
+        )
         if (cancelled) return
         setSettings(pricing)
         setEnabledProviderIds(new Set(pricing.providers.map((provider) => provider.id)))
         setCatalog([
           ...providerRows,
-          ...standaloneRows,
+          ...engineRows,
         ])
       } catch (reason) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason))
@@ -85,14 +113,15 @@ export default function ModelPricingSettingsPage() {
 
   const rows = useMemo(() => {
     const byKey = new Map<string, CatalogModel>()
-    for (const item of catalog) byKey.set(priceKey(item.providerId, item.model), item)
+    for (const item of catalog) byKey.set(priceKey(item), item)
     for (const item of settings.prices) {
       if (item.provider_id && !enabledProviderIds.has(item.provider_id)) continue
-      const key = priceKey(item.provider_id, item.model)
+      const key = priceKeyFromSetting(item)
       if (!byKey.has(key)) {
         byKey.set(key, {
-          providerId: item.provider_id,
-          group: item.provider_id || t('settings.pricingStandalone'),
+          sourceType: item.provider_id ? 'provider' : item.engine_id ? 'engine' : 'custom',
+          sourceId: item.provider_id || item.engine_id,
+          group: item.provider_id || item.engine_id || t('settings.pricingStandalone'),
           model: item.model,
         })
       }
@@ -103,7 +132,7 @@ export default function ModelPricingSettingsPage() {
   }, [catalog, enabledProviderIds, settings.prices, t])
 
   const prices = useMemo(
-    () => new Map(settings.prices.map((item) => [priceKey(item.provider_id, item.model), item])),
+    () => new Map(settings.prices.map((item) => [priceKeyFromSetting(item), item])),
     [settings.prices],
   )
 
@@ -112,15 +141,27 @@ export default function ModelPricingSettingsPage() {
     if (!query) return rows
     return rows.filter((row) =>
       row.group.toLocaleLowerCase().includes(query)
+      || (row.sourceType === 'engine' && engineLabel(row.sourceId || '', t).toLocaleLowerCase().includes(query))
       || row.model.toLocaleLowerCase().includes(query)
     )
-  }, [filterQuery, rows])
+  }, [filterQuery, rows, t])
 
-  const updatePrice = (row: CatalogModel, field: keyof Pick<ModelPrice, 'input_price' | 'output_price' | 'cache_price'>, value: string) => {
+  const updatePrice = (row: CatalogModel, field: keyof Pick<ModelSetting, 'input_price' | 'output_price' | 'cache_price'>, value: string) => {
     const number = Math.max(0, Number(value) || 0)
-    const key = priceKey(row.providerId, row.model)
+    const key = priceKey(row)
     const next = new Map(prices)
-    next.set(key, { ...(next.get(key) || emptyPrice(row.providerId, row.model)), [field]: number })
+    next.set(key, { ...(next.get(key) || emptyPrice(row)), [field]: number })
+    setSettings((current) => ({ ...current, prices: Array.from(next.values()) }))
+    setSaved(false)
+  }
+
+  const updateMetadata = (
+    row: CatalogModel,
+    patch: Pick<Partial<ModelSetting>, 'model_type' | 'supports_multimodal'>,
+  ) => {
+    const key = priceKey(row)
+    const next = new Map(prices)
+    next.set(key, { ...(next.get(key) || emptyPrice(row)), ...patch })
     setSettings((current) => ({ ...current, prices: Array.from(next.values()) }))
     setSaved(false)
   }
@@ -128,11 +169,10 @@ export default function ModelPricingSettingsPage() {
   const applyBulkPrices = () => {
     const next = new Map(prices)
     for (const row of rows) {
-      const key = priceKey(row.providerId, row.model)
+      const key = priceKey(row)
       if (!selectedKeys.has(key)) continue
       next.set(key, {
-        provider_id: row.providerId,
-        model: row.model,
+        ...(next.get(key) || emptyPrice(row)),
         input_price: Math.max(0, Number(bulkPrices.input_price) || 0),
         output_price: Math.max(0, Number(bulkPrices.output_price) || 0),
         cache_price: Math.max(0, Number(bulkPrices.cache_price) || 0),
@@ -162,12 +202,15 @@ export default function ModelPricingSettingsPage() {
     setSaving(true)
     setError('')
     try {
-      const { providers: _providers, standalone_models: _standaloneModels, ...config } = settings
-      const result = await systemSettingsApi.saveModelPricing({
+      const { providers: _providers, engines: _engines, standalone_models: _standaloneModels, ...config } = settings
+      const result = await systemSettingsApi.saveModelSettings({
         ...config,
         prices: settings.prices.filter((item) =>
           (!item.provider_id || enabledProviderIds.has(item.provider_id))
-          && (item.input_price > 0 || item.output_price > 0 || item.cache_price > 0)
+          && (
+            item.input_price > 0 || item.output_price > 0 || item.cache_price > 0
+            || item.model_type !== 'chat' || item.supports_multimodal
+          )
         ),
       })
       setSettings(result)
@@ -264,40 +307,83 @@ export default function ModelPricingSettingsPage() {
                 <input
                   type="checkbox"
                   aria-label={t('settings.pricingSelectAll')}
-                      checked={filteredRows.length > 0 && filteredRows.every((row) => selectedKeys.has(priceKey(row.providerId, row.model)))}
+                      checked={filteredRows.length > 0 && filteredRows.every((row) => selectedKeys.has(priceKey(row)))}
                       onChange={(event) => setSelectedKeys(event.target.checked
-                        ? new Set(filteredRows.map((row) => priceKey(row.providerId, row.model)))
+                        ? new Set(filteredRows.map((row) => priceKey(row)))
                         : new Set())}
                 />
               </th>
-              <th>{t('settings.pricingProvider')}</th>
-              <th>{t('statistics.model')}</th>
+              <th style={{ textAlign: 'left' }}>{t('settings.pricingSource')}</th>
+              <th style={{ textAlign: 'left' }}>{t('statistics.model')}</th>
+              <th style={{ textAlign: 'left' }}>{t('settings.pricingModelType')}</th>
+              <th>{t('settings.pricingMultimodal')}</th>
               <th>{t('settings.pricingInput')}</th>
               <th>{t('settings.pricingOutput')}</th>
               <th>{t('settings.pricingCache')}</th>
             </tr></thead>
                 <tbody>{filteredRows.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--meta)', padding: 24 }}>{t('settings.pricingFilterEmpty')}</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--meta)', padding: 24 }}>{t('settings.pricingFilterEmpty')}</td></tr>
                 ) : filteredRows.map((row) => {
-              const price = prices.get(priceKey(row.providerId, row.model)) || emptyPrice(row.providerId, row.model)
+              const price = prices.get(priceKey(row)) || emptyPrice(row)
+              const sourceName = row.sourceType === 'engine' && row.sourceId
+                ? engineLabel(row.sourceId, t)
+                : row.group
               return (
-                <tr key={priceKey(row.providerId, row.model)}>
+                <tr key={priceKey(row)}>
                   <td>
                     <input
                       type="checkbox"
-                      aria-label={`${row.group} ${row.model}`}
-                      checked={selectedKeys.has(priceKey(row.providerId, row.model))}
+                      aria-label={`${sourceName} ${row.model}`}
+                      checked={selectedKeys.has(priceKey(row))}
                       onChange={(event) => setSelectedKeys((current) => {
                         const next = new Set(current)
-                        const key = priceKey(row.providerId, row.model)
+                        const key = priceKey(row)
                         if (event.target.checked) next.add(key)
                         else next.delete(key)
                         return next
                       })}
                     />
                   </td>
-                  <td>{row.group}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}>{row.model}</td>
+                  <td style={{ textAlign: 'left' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ padding: '2px 7px', borderRadius: 999, background: 'var(--surface)', color: 'var(--meta)', fontSize: 'calc(10px * var(--font-scale))' }}>
+                        {t(row.sourceType === 'provider' ? 'settings.pricingSourceProvider' : row.sourceType === 'engine' ? 'settings.pricingSourceEngine' : 'settings.pricingSourceCustom')}
+                      </span>
+                      <span>{sourceName}</span>
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}>{row.model}</td>
+                  <td style={{ textAlign: 'left' }}>
+                    <Select
+                      value={price.model_type}
+                      aria-label={`${row.model} ${t('settings.pricingModelType')}`}
+                      onChange={(event) => updateMetadata(row, { model_type: event.target.value as ModelType })}
+                      style={{ width: 112 }}
+                    >
+                      {MODEL_TYPES.map((type) => <option key={type.value} value={type.value}>{t(type.label)}</option>)}
+                    </Select>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={price.supports_multimodal}
+                      aria-label={`${row.model} ${t('settings.pricingMultimodal')}`}
+                      onClick={() => updateMetadata(row, { supports_multimodal: !price.supports_multimodal })}
+                      style={{
+                        position: 'relative', width: 36, height: 20, padding: 0,
+                        border: 'none', borderRadius: 10,
+                        background: price.supports_multimodal ? 'var(--accent)' : 'var(--border)',
+                        transition: 'background 0.16s ease',
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 2, left: price.supports_multimodal ? 18 : 2,
+                        width: 16, height: 16, borderRadius: '50%', background: 'var(--bg)',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)', transition: 'left 0.16s ease',
+                      }} />
+                    </button>
+                  </td>
                   {(['input_price', 'output_price', 'cache_price'] as const).map((field) => (
                     <td key={field}><Input type="number" min="0" step="0.000001" value={price[field]} onChange={(event) => updatePrice(row, field, event.target.value)} style={{ width: 120, textAlign: 'right' }} /></td>
                   ))}

@@ -11,6 +11,7 @@ import {
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import type { LiveMessage } from '../stores/taskStore'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
+import { useCoordinatorEngines } from '../stores/engineAvailabilityStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import {
   type ActionProposal,
@@ -111,6 +112,9 @@ const PROCESS_EVENT_TYPES = new Set([
   'tool_result',
 ])
 
+/** 稳定空数组：避免无 events 的消息每次渲染都生成新引用，击穿下游 memo。 */
+const EMPTY_EVENTS: never[] = []
+
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready',
   running: 'status.running',
@@ -187,6 +191,7 @@ export interface TaskDetailViewProps {
 
   // ── Messages ──
   historyMessages: any[]
+  onLoadOlderHistory?: () => void
   onLoadMessageEvents?: (messageId: string) => void
   liveMessages: Record<string, LiveMessage>
   events: any[]
@@ -213,6 +218,9 @@ export interface TaskDetailViewProps {
   onChatTargetChange?: (target: string | 'coordinator') => void
   coordinatorRunning?: boolean
   coordinatorConfig?: CoordinatorConfig | null
+  stageEngineConfig?: ChatInputEngineConfig | null
+  stageEngineConfigLoading?: boolean
+  stageEngineConfigError?: string
   chatError?: string
   onChatError?: (message: string) => void
   prompt?: string
@@ -337,6 +345,7 @@ export default function TaskDetailView({
   selectedStage,
   onStageClick,
   historyMessages,
+  onLoadOlderHistory,
   onLoadMessageEvents,
   liveMessages,
   events,
@@ -354,6 +363,9 @@ export default function TaskDetailView({
   onChatTargetChange,
   coordinatorRunning,
   coordinatorConfig,
+  stageEngineConfig,
+  stageEngineConfigLoading = false,
+  stageEngineConfigError = '',
   chatError,
   prompt,
   onPromptChange,
@@ -451,6 +463,8 @@ export default function TaskDetailView({
 }: TaskDetailViewProps) {
   const { t } = useI18n()
   const localDeviceId = useUserSettingsStore((state) => state.deviceId)
+  // 协调引擎下拉的可用性走共享状态，设置页改动后即时跟随（由 TaskDetail 拉取时播种）。
+  const sharedCoordinatorEngines = useCoordinatorEngines()
   const {
     enhance,
     onInputChange: enhanceInputChanged,
@@ -736,6 +750,59 @@ export default function TaskDetailView({
       })
     )
   }
+
+  const renderMessageArtifacts = (
+    messageArtifacts: TaskArtifact[],
+    stageColor?: string,
+  ) => messageArtifacts.length > 0 ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+      <div style={{
+        fontSize: 'calc(11px * var(--font-scale))',
+        fontWeight: 600,
+        color: 'var(--muted)',
+        fontFamily: 'var(--font-mono)',
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+      }}>
+        {t('taskDetail.reviewArtifacts')}
+      </div>
+      {messageArtifacts.map((artifact) => (
+        <div
+          key={artifact.path}
+          role="button"
+          tabIndex={0}
+          aria-label={t('taskDetail.openOutputAria', { name: artifact.name })}
+          onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onOpenArtifact(artifact.name, artifact.step_key)
+            }
+          }}
+          title={t('taskDetail.openFileTitle', { name: artifact.name })}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+            background: 'var(--surface)', borderRadius: 6,
+            border: '1px solid var(--border-soft)', cursor: 'pointer',
+            fontSize: 'calc(13px * var(--font-scale))',
+          }}
+        >
+          {artifact.is_dir ? (
+            <Icon name="folder" size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
+          ) : (
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: stageColor || 'var(--accent)', flexShrink: 0,
+            }} />
+          )}
+          <span style={{ flex: 1, fontWeight: 500 }}>{artifact.name}</span>
+          <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)' }}>
+            {t('common.open')}
+          </span>
+        </div>
+      ))}
+    </div>
+  ) : null
 
   const handleStageClick = (stageIndex: number) => {
     onStageClick(stageIndex)
@@ -2178,7 +2245,7 @@ export default function TaskDetailView({
             flex: 1,
             minWidth: 0,
             minHeight: 0,
-            position: 'relative', paddingBottom: '10px'
+            position: 'relative', paddingBottom: '80px'
           }}
         >
           <div
@@ -2196,6 +2263,7 @@ export default function TaskDetailView({
             }}
             onScroll={(event) => {
               const container = event.currentTarget
+              if (container.scrollTop <= 40) onLoadOlderHistory?.()
               const nearBottom = isNearConversationBottom(
                 container.scrollHeight,
                 container.scrollTop,
@@ -2370,12 +2438,24 @@ export default function TaskDetailView({
                             reviews,
                             msgStepStatus,
                           )
+                        const isLastExecutionResponse =
+                          !isUser &&
+                          !isReview &&
+                          !isCoordinator &&
+                          !isSystem &&
+                          ['succeeded', 'completed'].includes(
+                            msg.run_status,
+                          ) &&
+                          !msgs.slice(i + 1).some(
+                            (later) =>
+                              later.role === 'assistant' &&
+                              later.channel === 'execution',
+                          )
                         const msgArtifacts =
-                          isReview
+                          isReview || isLastExecutionResponse
                             ? artifacts.filter(
                                 (artifact) =>
-                                  artifact.step_key ===
-                                  stageKey,
+                                  artifact.step_key === stageKey,
                               )
                             : []
                         const processEvents =
@@ -2383,7 +2463,7 @@ export default function TaskDetailView({
                             msg.events,
                           )
                             ? msg.events
-                            : []
+                            : EMPTY_EVENTS
                         const isManualReview =
                           isReview &&
                           isManualReviewMessage(
@@ -2631,10 +2711,12 @@ export default function TaskDetailView({
                                           null)
                                       : isReview
                                         ? undefined
-                                        : sessionIdForStep(
-                                            stageKey,
-                                          )
+                                        : msg.session_id ||
+                                          (msg.run_status === 'running'
+                                            ? sessionIdForStep(stageKey)
+                                            : null)
                                   }
+                                  messageId={msg.id}
                                   onViewPrompt={
                                     onViewingPromptChange
                                   }
@@ -2680,16 +2762,21 @@ export default function TaskDetailView({
                             footer={
                               !isUser &&
                               !isSystem &&
-                              msg.content &&
+                              // 思考中（尚无正文）也展示 Token / t/s / 引擎 * 模型
+                              (msg.content ||
+                                msg.run_status ===
+                                'running') &&
                               !(isReview &&
                                 !msg.engine)
                                 ? (
                                   <MessageResponseFooter
-                                    content={stripA2uiBlocks(
-                                      String(
-                                        msg.content,
-                                      ),
-                                    )}
+                                    content={msg.content
+                                      ? stripA2uiBlocks(
+                                        String(
+                                          msg.content,
+                                        ),
+                                      )
+                                      : ''}
                                     usage={
                                       msg.usage ||
                                       usageFromEvents(
@@ -2707,6 +2794,10 @@ export default function TaskDetailView({
                                       isCoordinator
                                         ? undefined
                                         : executionStageModel
+                                    }
+                                    startedAt={
+                                      msg.started_at ||
+                                      msg.created_at
                                     }
                                     endedAt={
                                       msg.ended_at
@@ -2775,6 +2866,11 @@ export default function TaskDetailView({
                                     )
                                   },
                                 )}
+                            {!isReview &&
+                              renderMessageArtifacts(
+                                msgArtifacts,
+                                stageInfo?.color,
+                              )}
                             {isReview &&
                               msgReviewPending && (
                                 <div
@@ -2787,148 +2883,9 @@ export default function TaskDetailView({
                                     marginTop: 2,
                                   }}
                                 >
-                                  {msgArtifacts.length >
-                                    0 && (
-                                    <div
-                                      style={{
-                                        display:
-                                          'flex',
-                                        flexDirection:
-                                          'column',
-                                        gap: 4,
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontSize: 'calc(11px * var(--font-scale))',
-                                          fontWeight: 600,
-                                          color: 'var(--muted)',
-                                          fontFamily:
-                                            'var(--font-mono)',
-                                          textTransform:
-                                            'uppercase',
-                                          letterSpacing:
-                                            '0.08em',
-                                        }}
-                                      >
-                                        {t(
-                                          'taskDetail.reviewArtifacts',
-                                        )}
-                                      </div>
-                                      {msgArtifacts.map(
-                                        (
-                                          artifact,
-                                        ) => (
-                                          <div
-                                            key={
-                                              artifact.path
-                                            }
-                                            role="button"
-                                            tabIndex={0}
-                                            aria-label={t(
-                                              'taskDetail.openOutputAria',
-                                              {
-                                                name:
-                                                  artifact.name,
-                                              },
-                                            )}
-                                            onClick={() =>
-                                              onOpenArtifact(
-                                                artifact.name,
-                                                artifact.step_key,
-                                              )
-                                            }
-                                            onKeyDown={(
-                                              event,
-                                            ) => {
-                                              if (
-                                                event.key ===
-                                                  'Enter' ||
-                                                event.key ===
-                                                  ' '
-                                              ) {
-                                                event.preventDefault()
-                                                onOpenArtifact(
-                                                  artifact.name,
-                                                  artifact.step_key,
-                                                )
-                                              }
-                                            }}
-                                            title={t(
-                                              'taskDetail.openFileTitle',
-                                              {
-                                                name:
-                                                  artifact.name,
-                                              },
-                                            )}
-                                            style={{
-                                              display:
-                                                'flex',
-                                              alignItems:
-                                                'center',
-                                              gap: 8,
-                                              padding:
-                                                '6px 10px',
-                                              background:
-                                                'var(--surface)',
-                                              borderRadius: 6,
-                                              border:
-                                                '1px solid var(--border-soft)',
-                                              cursor:
-                                                'pointer',
-                                              fontSize: 'calc(13px * var(--font-scale))',
-                                            }}
-                                          >
-                                            {artifact.is_dir
-                                              ? (
-                                                <Icon
-                                                  name="folder"
-                                                  size={14}
-                                                  color="var(--accent)"
-                                                  style={{
-                                                    flexShrink: 0,
-                                                  }}
-                                                />
-                                              )
-                                              : (
-                                                <span
-                                                  style={{
-                                                    width: 6,
-                                                    height: 6,
-                                                    borderRadius:
-                                                      '50%',
-                                                    background:
-                                                      stageInfo
-                                                        ?.color ||
-                                                      'var(--accent)',
-                                                    flexShrink: 0,
-                                                  }}
-                                                />
-                                              )}
-                                            <span
-                                              style={{
-                                                flex: 1,
-                                                fontWeight: 500,
-                                              }}
-                                            >
-                                              {
-                                                artifact.name
-                                              }
-                                            </span>
-                                            <span
-                                              style={{
-                                                fontSize: 'calc(11px * var(--font-scale))',
-                                                color: 'var(--accent)',
-                                              }}
-                                            >
-                                              {t(
-                                                'common.open',
-                                              )}
-                                            </span>
-                                          </div>
-                                        ),
-                                      )}
-                                    </div>
+                                  {renderMessageArtifacts(
+                                    msgArtifacts,
+                                    stageInfo?.color,
                                   )}
                                   {!readOnly &&
                                     msgReview!.status ===
@@ -3044,6 +3001,14 @@ export default function TaskDetailView({
               <AssistantThinkingMessage
                 sender={t('aiFlow.agent')}
                 initials={t('aiFlow.agentInitials')}
+                footer={task?.engine || task?.model ? (
+                  <MessageResponseFooter
+                    content=""
+                    engine={task?.engine}
+                    model={task?.model}
+                    running
+                  />
+                ) : undefined}
               />
             )}
 
@@ -3096,6 +3061,7 @@ export default function TaskDetailView({
                           message.step_key,
                         )
                       }
+                      messageId={message.id}
                       onViewPrompt={
                         onViewingPromptChange
                       }
@@ -3113,7 +3079,8 @@ export default function TaskDetailView({
                     <StreamingStatusText label={t('bubble.thinking')} />
                   }
                   footer={
-                    message.content ? (
+                    message.content ||
+                    message.status === 'running' ? (
                       <MessageResponseFooter
                         content={stripA2uiBlocks(
                           message.content,
@@ -3127,6 +3094,9 @@ export default function TaskDetailView({
                         }
                         model={
                           message.model
+                        }
+                        startedAt={
+                          message.created_at
                         }
                         endedAt={
                           message.status ===
@@ -3232,7 +3202,7 @@ export default function TaskDetailView({
                   <StreamingStatusText label={t('chat.processing')} />
                 }
                 footer={
-                  content ? (
+                  content || running ? (
                     <MessageResponseFooter
                       content={stripA2uiBlocks(
                         content,
@@ -3479,7 +3449,7 @@ export default function TaskDetailView({
                 )}
             </div>
 
-            {chatError && (
+            {(chatError || stageEngineConfigError) && (
               <div
                 role="alert"
                 style={{
@@ -3493,7 +3463,7 @@ export default function TaskDetailView({
                     'rgba(217,45,32,0.06)',
                 }}
               >
-                {chatError}
+                {chatError || stageEngineConfigError}
               </div>
             )}
 
@@ -3506,7 +3476,8 @@ export default function TaskDetailView({
               ]}
               skillEngine={chatTarget === 'coordinator'
                 ? coordinatorConfig?.resolved.engine
-                : stages.find((stage) => stage.key === chatTarget)?.engine
+                : stageEngineConfig?.engine
+                  || stages.find((stage) => stage.key === chatTarget)?.engine
                   || task?.engine
                   || coordinatorConfig?.resolved.engine}
               value={prompt ?? ''}
@@ -3538,11 +3509,15 @@ export default function TaskDetailView({
                   : t('chatInput.stopGenerating')
               }
               config={
-                {
+                chatTarget !== 'coordinator'
+                  ? stageEngineConfig || undefined
+                  : {
                   projectId,
                   engines:
-                    coordinatorConfig
-                      ?.available_engines ||
+                    sharedCoordinatorEngines.length > 0
+                      ? sharedCoordinatorEngines
+                      : coordinatorConfig
+                        ?.available_engines ||
                     [],
                   engine:
                     coordinatorConfig
@@ -3612,9 +3587,12 @@ export default function TaskDetailView({
                     onCoordinatorEngineChange?.(
                       '',
                     ),
-                } as ChatInputEngineConfig
+                    } as ChatInputEngineConfig
               }
-              disabled={composerState.disabled}
+              disabled={composerState.disabled || (
+                chatTarget !== 'coordinator'
+                && (stageEngineConfigLoading || !stageEngineConfig || Boolean(stageEngineConfig.saving))
+              )}
               running={composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&

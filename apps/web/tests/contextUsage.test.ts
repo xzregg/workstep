@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   estimateTokens,
+  estimateUsageFromEventSummary,
   estimateUsageFromEvents,
   usageFromEvents,
 } from '../src/utils/contextUsage.js'
@@ -32,6 +33,32 @@ test('estimateUsageFromEvents counts assistant text as output tokens', () => {
   assert.equal(usage.output_tokens, 17) // 9 + 8 个汉字
   assert.equal(usage.input_tokens, 0)
   assert.equal(usage.total_tokens, 17)
+  assert.equal(usage.estimated, true)
+})
+
+test('estimateUsageFromEvents uses persisted output only when message chunks are absent', () => {
+  const persisted = '停止后保存的回复'
+  const fallbackUsage = estimateUsageFromEvents([], persisted)
+  assert.ok(fallbackUsage)
+  assert.equal(fallbackUsage.output_tokens, estimateTokens(persisted))
+
+  const streamed = '流式回复'
+  const streamedUsage = estimateUsageFromEvents([
+    { type: 'TEXT_MESSAGE_CHUNK', delta: streamed },
+  ], persisted)
+  assert.ok(streamedUsage)
+  assert.equal(streamedUsage.output_tokens, estimateTokens(streamed))
+})
+
+test('estimateUsageFromEventSummary restores a stopped thought-only turn', () => {
+  const usage = estimateUsageFromEventSummary({
+    thought_characters: 1007,
+    commentary_characters: 0,
+  })
+  assert.ok(usage)
+  assert.equal(usage.input_tokens, 0)
+  assert.equal(usage.output_tokens, 252)
+  assert.equal(usage.total_tokens, 252)
   assert.equal(usage.estimated, true)
 })
 

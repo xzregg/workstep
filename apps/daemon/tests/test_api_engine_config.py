@@ -10,6 +10,8 @@ from httpx import ASGITransport, AsyncClient
 
 import api.engine as engine_api
 import api.provider as provider_api
+import engines.claude_agent_sdk as claude_agent_sdk_engine_module
+import engines.claude_code as claude_code_engine_module
 import engines.deepseek_harness as deepseek_harness_engine_module
 import engines.pydantic_ai.engine as pydantic_ai_engine_module
 import engines.core.registry as engine_registry
@@ -28,6 +30,7 @@ class MemoryEngineConfigStore:
     def __init__(self):
         self.providers: list[dict] = []
         self.provider_models: dict[str, dict] = {}
+        self.engine_models: dict[str, dict] = {}
         self.pydantic_ai_config = {
             "provider_id": "", "model": "", "mcp_servers": [], "sandbox": "workspace-write",
         }
@@ -46,6 +49,14 @@ class MemoryEngineConfigStore:
         self.coordinator_default_thinking_effort = ""
         self.verified_engines = set()
         self.engine_providers = {}
+        self.claude_permission_mode = ""
+        self.claude_code_model_map = ""
+        self.claude_agent_sdk_config = {
+            "permission_mode": "",
+            "max_turns": "",
+            "fallback_model": "",
+            "model_map": "",
+        }
 
     # --- providers ---
 
@@ -84,6 +95,19 @@ class MemoryEngineConfigStore:
     def clear_provider_models(self, provider_id):
         self.provider_models.pop(provider_id, None)
 
+    def get_engine_models(self, engine_id):
+        entry = self.engine_models.get(engine_id)
+        return dict(entry) if entry else {}
+
+    def set_engine_models(self, engine_id, models, fetched_at):
+        self.engine_models[engine_id] = {
+            "models": list(models),
+            "fetched_at": fetched_at,
+        }
+
+    def clear_engine_models(self, engine_id):
+        self.engine_models.pop(engine_id, None)
+
     def is_provider_in_use(self, provider_id):
         return (
             self.pydantic_ai_config.get("provider_id") == provider_id
@@ -99,6 +123,46 @@ class MemoryEngineConfigStore:
             self.engine_providers[engine_id] = provider_id
         else:
             self.engine_providers.pop(engine_id, None)
+
+    # --- Claude engines ---
+
+    def get_claude_permission_mode(self):
+        return self.claude_permission_mode
+
+    def set_claude_permission_mode(self, mode):
+        self.claude_permission_mode = mode
+        self.claude_agent_sdk_config["permission_mode"] = mode
+
+    def get_claude_code_config(self):
+        return {"model_map": self.claude_code_model_map}
+
+    def set_claude_code_model_map(self, model_map):
+        from services.config import claude_model_map_json, normalize_claude_model_map
+        self.claude_code_model_map = claude_model_map_json(
+            normalize_claude_model_map(model_map)
+        )
+
+    def get_claude_agent_sdk_config(self):
+        return dict(self.claude_agent_sdk_config)
+
+    def set_claude_agent_sdk_config(
+        self,
+        max_turns="",
+        permission_mode=None,
+        fallback_model="",
+        model_map=None,
+    ):
+        if permission_mode is not None:
+            self.set_claude_permission_mode(permission_mode)
+        from services.config import claude_model_map_json, normalize_claude_model_map
+        self.claude_agent_sdk_config.update({
+            "max_turns": str(max_turns or ""),
+            "fallback_model": str(fallback_model or ""),
+        })
+        if model_map is not None:
+            self.claude_agent_sdk_config["model_map"] = claude_model_map_json(
+                normalize_claude_model_map(model_map)
+            )
 
     # --- Pydantic AI engine ---
 
@@ -201,6 +265,8 @@ async def engine_client(monkeypatch):
     monkeypatch.setattr(provider_service, "config_store", store)
     monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
     monkeypatch.setattr(deepseek_harness_engine_module, "config_store", store)
+    monkeypatch.setattr(claude_code_engine_module, "config_store", store)
+    monkeypatch.setattr(claude_agent_sdk_engine_module, "config_store", store)
     monkeypatch.setattr(engine_registry, "config_store", store)
     engine_registry.refresh_registry()
     transport = ASGITransport(app=main.app)
@@ -341,6 +407,8 @@ def _cc_switch_providers():
                     "ANTHROPIC_AUTH_TOKEN": "sk-claude",
                     "ANTHROPIC_BASE_URL": "https://claude.example.com/v1",
                     "ANTHROPIC_MODEL": "claude-model",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3-max",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "Qwen Max",
                 },
             },
         },
@@ -592,6 +660,36 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
 
 
 @pytest.mark.anyio
+async def test_native_engine_models_are_persisted_and_reused(engine_client, monkeypatch):
+    client, store = engine_client
+    calls = {"count": 0}
+
+    class NativeEngine:
+        def resolve_provider_runtime(self, provider_id=""):
+            return None
+
+        async def list_models(self, cwd):
+            calls["count"] += 1
+            return [EngineModel(id="native-model", label="Native Model")]
+
+    monkeypatch.setattr(engine_api, "create_engine", lambda _engine_id: NativeEngine())
+    monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kwargs: None)
+
+    first = await client.get("/api/engine/native/models")
+    second = await client.get("/api/engine/native/models")
+    refreshed = await client.get("/api/engine/native/models?refresh=1")
+
+    assert first.json()["models"] == second.json()["models"] == [{
+        "id": "native-model",
+        "label": "Native Model",
+        "description": None,
+    }]
+    assert store.get_engine_models("native")["fetched_at"]
+    assert refreshed.json()["fetched_at"]
+    assert calls["count"] == 2
+
+
+@pytest.mark.anyio
 async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     engine_client,
     monkeypatch,
@@ -802,6 +900,7 @@ async def test_cc_switch_import_creates_skips_and_rejects(engine_client, monkeyp
         "verified": False,
         "created_at": "2026-01-01T00:00:00",
     })
+    store.set_claude_agent_sdk_config(max_turns="77", fallback_model="fallback")
 
     response = await client.post(
         "/api/provider/import/cc-switch",
@@ -831,6 +930,68 @@ async def test_cc_switch_import_creates_skips_and_rejects(engine_client, monkeyp
     assert claude_provider["type"] == "anthropic"
     assert claude_provider["api_key"] == "sk-claude"
     assert store.get_provider("prov_existing") is not None
+    expected_map = json.dumps({
+        "sonnet": {"model": "qwen3-max", "name": "Qwen Max"},
+    }, sort_keys=True, ensure_ascii=False)
+    assert store.get_claude_code_config()["model_map"] == expected_map
+    sdk = store.get_claude_agent_sdk_config()
+    assert sdk["model_map"] == expected_map
+    assert sdk["max_turns"] == "77"
+    assert sdk["fallback_model"] == "fallback"
+
+
+@pytest.mark.anyio
+async def test_cc_switch_import_keeps_existing_claude_model_maps(
+    engine_client, monkeypatch, tmp_path
+):
+    client, store = engine_client
+    db_path = tmp_path / "cc-switch.db"
+    _write_cc_switch_db(db_path, _cc_switch_providers())
+    monkeypatch.setattr(provider_api.provider_service, "CC_SWITCH_DB_PATH", db_path)
+    existing = json.dumps({"opus": {"model": "my-opus"}})
+    store.set_claude_code_model_map(existing)
+    store.set_claude_agent_sdk_config(model_map=existing)
+
+    response = await client.post(
+        "/api/provider/import/cc-switch",
+        json={"provider_ids": ["claude-id"]},
+    )
+
+    assert response.json()["errors"] == []
+    assert "my-opus" in store.get_claude_code_config()["model_map"]
+    assert "my-opus" in store.get_claude_agent_sdk_config()["model_map"]
+
+
+@pytest.mark.anyio
+async def test_cc_switch_import_does_not_prefill_non_claude_sources(
+    engine_client, monkeypatch
+):
+    client, store = engine_client
+    candidate = {
+        "id": "codex-with-map",
+        "source_type": "codex",
+        "name": "Codex Gateway",
+        "type": "custom",
+        "protocol": "openai_responses",
+        "base_url": "https://gateway.example.com/v1",
+        "api_key": "secret",
+        "model_map": {"sonnet": {"model": "must-not-apply", "name": "x"}},
+        "error": None,
+    }
+    monkeypatch.setattr(
+        provider_api.provider_service,
+        "scan_cc_switch_providers",
+        lambda: [candidate],
+    )
+
+    response = await client.post(
+        "/api/provider/import/cc-switch",
+        json={"provider_ids": ["codex-with-map"]},
+    )
+
+    assert response.json()["errors"] == []
+    assert store.get_claude_code_config()["model_map"] == ""
+    assert store.get_claude_agent_sdk_config()["model_map"] == ""
 
 
 @pytest.mark.anyio
@@ -884,6 +1045,14 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
     assert {field["key"] for field in engines["claude"]["config"]["fields"]} == {
         "permission_mode",
         "provider_id",
+        "model_map",
+    }
+    claude_fields = {field["key"]: field for field in engines["claude"]["config"]["fields"]}
+    assert claude_fields["model_map"]["type"] == "model_map"
+    assert claude_fields["model_map"]["stage_hidden"] is True
+    # 结构化映射不进阶段配置模板，避免阶段覆盖整段替换全局映射。
+    assert "model_map" not in {
+        field["key"] for field in engines["claude"]["config"]["stage_fields"]
     }
 
 
@@ -1033,6 +1202,67 @@ async def test_compatible_engine_config_exposes_and_saves_common_provider(engine
     assert saved.json()["saved"] is True
     assert saved.json()["values"]["provider_id"] == provider["id"]
     assert store.get_engine_provider("claude") == provider["id"]
+
+
+@pytest.mark.anyio
+async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
+    client, store = engine_client
+    payload = json.dumps({
+        "sonnet": {"model": "qwen3-max", "name": ""},
+        "opus": {"model": "deepseek-v4", "name": "DeepSeek V4"},
+    })
+
+    saved = await client.put(
+        "/api/engine/claude/config",
+        json={"values": {"permission_mode": "acceptEdits", "model_map": payload}},
+    )
+
+    body = saved.json()
+    assert body["saved"] is True
+    assert json.loads(body["values"]["model_map"]) == {
+        "opus": {"model": "deepseek-v4", "name": "DeepSeek V4"},
+        "sonnet": {"model": "qwen3-max", "name": "qwen3-max"},
+    }
+    assert body["values"]["model_map"] == store.get_claude_code_config()["model_map"]
+
+    rejected = await client.put(
+        "/api/engine/claude/config",
+        json={"values": {
+            "permission_mode": "acceptEdits",
+            "model_map": '{"sonnet":"bad-shape"}',
+        }},
+    )
+    assert rejected.json()["saved"] is False
+    assert "格式不正确" in rejected.json()["message"]
+    assert store.get_claude_code_config()["model_map"] == body["values"]["model_map"]
+
+
+@pytest.mark.anyio
+async def test_engine_config_resaves_stable_model_map_without_invalidating(engine_client):
+    client, store = engine_client
+    first = json.dumps({
+        "sonnet": {"model": "b"},
+        "opus": {"model": "a"},
+    })
+    await client.put(
+        "/api/engine/claude/config",
+        json={"values": {"permission_mode": "acceptEdits", "model_map": first}},
+    )
+    store.set_engine_verified("claude", True)
+    store.set_engine_models("claude", [{"id": "cached"}], "now")
+
+    reordered = json.dumps({
+        "opus": {"name": "a", "model": "a"},
+        "sonnet": {"name": "b", "model": "b"},
+    })
+    saved = await client.put(
+        "/api/engine/claude/config",
+        json={"values": {"permission_mode": "acceptEdits", "model_map": reordered}},
+    )
+
+    assert saved.json()["saved"] is True
+    assert store.is_engine_verified("claude") is True
+    assert store.get_engine_models("claude")["models"] == [{"id": "cached"}]
 
 
 @pytest.mark.anyio
@@ -1929,7 +2159,7 @@ async def test_pydantic_ai_inspect_capabilities(engine_client, tmp_path):
     assert body["project_root"] == str(tmp_path.resolve())
     assert {skill["name"] for skill in body["skills"]} == {"shared"}
     assert [item["name"] for item in body["input_items"]] == [
-        "goal", "plan", "reasoning", "status", "shared",
+        "goal", "plan", "reasoning", "status", "compact", "shared",
     ]
     assert all("description" in skill and "source_dir" in skill for skill in body["skills"])
     assert body["mcp_servers"] == [{

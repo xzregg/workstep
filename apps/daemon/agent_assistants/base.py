@@ -189,6 +189,25 @@ async def invoke_engine(
     engine = create_engine(engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    if images:
+        capabilities = getattr(engine, "capabilities", None)
+        engine_accepts_images = bool(
+            getattr(capabilities, "supports_vision", False)
+        )
+        supports_multimodal = getattr(
+            config_store,
+            "model_supports_multimodal",
+            None,
+        )
+        provider_id = str((config_overrides or {}).get("provider_id") or "")
+        model_accepts_images = (
+            supports_multimodal(engine_id, model or "", provider_id)
+            if callable(supports_multimodal)
+            else engine_accepts_images
+        )
+        if not (engine_accepts_images and model_accepts_images):
+            prompt = engine.render_image_prompt(prompt, images)
+            images = None
     if plan_mode:
         prompt = f"{prompt}\n\n{PLAN_MODE_INSTRUCTION}"
     content: list[str] = []

@@ -32,4 +32,11 @@ def workstep_input_commands() -> list[dict[str, str]]:
             "insert_text": "/status",
             "action": "show_status",
         },
+        {
+            "kind": "command",
+            "name": "compact",
+            "description": "压缩当前会话上下文",
+            "insert_text": "/compact",
+            "action": "prompt",
+        },
     ]

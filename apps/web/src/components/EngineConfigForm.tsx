@@ -10,6 +10,7 @@ import {
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Input from './Input'
+import ModelMapEditor from './ModelMapEditor'
 import Select from './Select'
 import Textarea from './Textarea'
 import { useI18n } from '../i18n'
@@ -184,9 +185,10 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     const isPassword = field.type === 'password'
     const isCheckbox = field.type === 'checkbox'
     const isTextarea = field.type === 'textarea'
+    const isModelMap = field.type === 'model_map'
 
     return (
-      <div key={field.key} style={{ minWidth: 0 }}>
+      <div key={field.key} style={{ minWidth: 0, gridColumn: isModelMap ? '1 / -1' : undefined }}>
         <label
           htmlFor={`engine-config-${engineId}-${field.key}`}
           style={{ display: 'block', marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600 }}
@@ -290,6 +292,13 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
             placeholder={field.placeholder}
             rows={3}
             style={{ resize: 'vertical' }}
+          />
+        ) : isModelMap ? (
+          <ModelMapEditor
+            id={`engine-config-${engineId}-${field.key}`}
+            value={value}
+            disabled={saving}
+            onChange={(nextValue) => setFieldValue(field.key, nextValue)}
           />
         ) : (
           <Input

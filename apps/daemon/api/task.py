@@ -16,6 +16,7 @@ from schemas.task import (
     RunTaskRequest,
     ScheduledStartRequest,
     StageMessageRequest,
+    StageExecutionConfigRequest,
     StageResumeRequest,
     UpdateTaskRequest,
 )
@@ -197,7 +198,7 @@ async def update_task(
 async def get_task_history(
     task_id: str,
     pid: str = Query(..., alias="project_id"),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=300),
     offset: int = Query(0, ge=0),
 ):
     """Get chat history (messages) for a task with pagination."""
@@ -296,6 +297,62 @@ async def send_stage_message(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return accepted
+
+
+@router.get("/{task_id}/step/{step_key}/config")
+async def get_stage_execution_config(
+    task_id: str,
+    step_key: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.get_stage_execution_config(pid, task_id, step_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.patch("/{task_id}/step/{step_key}/config")
+async def update_stage_execution_config(
+    task_id: str,
+    step_key: str,
+    req: StageExecutionConfigRequest,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.update_stage_execution_config(
+            pid, task_id, step_key,
+            engine=req.engine,
+            model=req.model,
+            config=req.config,
+            context_mode=req.context_mode,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/{task_id}/step/{step_key}/config")
+async def reset_stage_execution_config(
+    task_id: str,
+    step_key: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.reset_stage_execution_config(pid, task_id, step_key)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/{task_id}/step/{step_key}/cancel")

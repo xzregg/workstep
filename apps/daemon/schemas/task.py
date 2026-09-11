@@ -1,6 +1,9 @@
 """Task API schemas."""
 
 from datetime import datetime
+from typing import Literal
+
+from pydantic import Field
 
 from schemas.base import BaseSchema
 
@@ -56,3 +59,10 @@ class CoordinatorConfigRequest(BaseSchema):
 
 class StageResumeRequest(BaseSchema):
     content: str
+
+
+class StageExecutionConfigRequest(BaseSchema):
+    engine: str
+    model: str | None = None
+    config: dict[str, str] = Field(default_factory=dict)
+    context_mode: Literal["smart", "full", "none"] | None = None

@@ -10,6 +10,8 @@ interface SubagentTimelineItemProps {
   item: Extract<MessageTimelineItem, { type: 'subagent' }>
   projectId?: string
   messageRunning: boolean
+  /** 是否为同级最后一个子代理；与思考块一致，仅自动展开最后一项。 */
+  lastSubagent: boolean
 }
 
 const NON_TERMINAL = new Set(['pending', 'running', 'in_progress'])
@@ -18,13 +20,24 @@ export default function SubagentTimelineItem({
   item,
   messageRunning,
   projectId,
+  lastSubagent,
 }: SubagentTimelineItemProps) {
   const { t } = useI18n()
   const { activity } = item
   const active = messageRunning && NON_TERMINAL.has(activity.status)
-  const [open, setOpen] = useState(active)
-  useEffect(() => setOpen(active), [active])
+  const [open, setOpen] = useState(active && lastSubagent)
+  useEffect(() => {
+    if (active && lastSubagent) {
+      setOpen(true)
+    } else if (!lastSubagent) {
+      setOpen(false)
+    }
+  }, [active, lastSubagent])
   const timeline = buildMessageTimeline(activity.events ?? [])
+  const nestedSubagents = timeline.filter(
+    (entry): entry is Extract<MessageTimelineItem, { type: 'subagent' }> => entry.type === 'subagent',
+  )
+  const lastNestedSubagent = nestedSubagents[nestedSubagents.length - 1]
   const failed = activity.status === 'failed'
   const stopped = activity.status === 'stopped' || activity.status === 'killed'
   const label = active
@@ -56,7 +69,15 @@ export default function SubagentTimelineItem({
             return <ToolTimelineItem key={entry.id} item={entry} streaming={active} projectId={projectId} />
           }
           if (entry.type === 'subagent') {
-            return <SubagentTimelineItem key={entry.id} item={entry} messageRunning={active} projectId={projectId} />
+            return (
+              <SubagentTimelineItem
+                key={entry.id}
+                item={entry}
+                lastSubagent={entry === lastNestedSubagent}
+                messageRunning={active}
+                projectId={projectId}
+              />
+            )
           }
           if (entry.type === 'thinking') {
             return <div key={entry.id} className="process-trace-thinking">{entry.content.trimStart()}</div>

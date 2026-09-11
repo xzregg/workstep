@@ -30,6 +30,18 @@ test('a running task keeps the composer editable for live message insertion and 
   assert.match(taskDetailSource, /onStop=\{/)
 })
 
+test('the last completed stage response renders its output artifacts', () => {
+  assert.match(taskDetailSource, /isLastExecutionResponse/)
+  assert.match(taskDetailSource, /\['succeeded', 'completed'\]\.includes/)
+  assert.match(taskDetailSource, /renderMessageArtifacts\(\s*msgArtifacts/)
+  assert.match(taskDetailSource, /artifact\.step_key === stageKey/)
+})
+
+test('historical stage messages display their own engine session id', () => {
+  assert.match(taskDetailSource, /msg\.session_id \|\|/)
+  assert.match(taskDetailSource, /msg\.run_status === 'running'/)
+})
+
 test('refreshing a running task upserts it into an empty store', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () => new Response(JSON.stringify({

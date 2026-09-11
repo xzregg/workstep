@@ -215,6 +215,26 @@ async def test_session_summary_reports_persisted_running_turn(chat_module):
 
 
 @pytest.mark.anyio
+async def test_session_summary_reports_failed_last_message(chat_module):
+    module, _bus, _manager, project, _ = chat_module
+    created = module.create_session(project.id, "wf-failed")
+
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(created["id"])
+        ChatMessage.create(
+            id="failed-assistant",
+            session=row,
+            role="assistant",
+            content="执行失败",
+            status="error",
+            created_at=utc_now(),
+        )
+
+    assert module.list_sessions(project.id)[0]["last_message_status"] == "error"
+    assert module.get_session(project.id, created["id"])["last_message_status"] == "error"
+
+
+@pytest.mark.anyio
 async def test_cross_engine_fork_creates_independent_session_with_smart_handoff(
     chat_module,
 ):
@@ -477,7 +497,9 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
     assert "<workstep_context_handoff>" in prompts[0]
     assert str(handoff_path.resolve()) in prompts[0]
     assert "旧目标：完成登录" not in prompts[0]
-    assert detail["messages"][-1]["prompt"] == "请继续"
+    assert detail["messages"][-1]["prompt"] == prompts[0]
+    assert "<workstep_context_handoff>" in detail["messages"][-1]["prompt"]
+    assert str(handoff_path.resolve()) in detail["messages"][-1]["prompt"]
     with module._project_ctx(project.id):
         row = ChatSession.get_by_id(source["id"])
         assert row.fork_context_json is None
