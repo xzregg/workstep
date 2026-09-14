@@ -23,6 +23,32 @@ from engines.core.registry import (
 from engines.core.events import InternalEvent
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("engine_class", "expected_mode"),
+    [
+        (ClaudeAgentSDKEngine, "acceptEdits"),
+        (QoderSDKEngine, "acceptEdits"),
+    ],
+)
+async def test_sdk_permission_mode_changes_active_client_immediately(
+    engine_class,
+    expected_mode,
+):
+    engine = engine_class()
+    applied: list[str] = []
+
+    class ActiveClient:
+        async def set_permission_mode(self, mode: str) -> None:
+            applied.append(mode)
+
+    engine._client = ActiveClient()
+    await engine.set_permission_mode("workspace-write")
+
+    assert applied == [expected_mode]
+    assert engine.runtime_permission_mode() == "workspace-write"
+
+
 # --- CodexEngine ---
 
 def test_codex_resolve_binary():
@@ -580,6 +606,88 @@ def test_claude_code_maps_subagent_task_frames():
     assert updated[0].data["stage"] == "updated"
     assert failed[0].data["status"] == "failed"
     assert failed[0].data["summary"] == "工具执行错误"
+
+
+def test_claude_code_uses_structured_task_create_result_for_plan_updates():
+    engine = ClaudeCodeEngine()
+
+    created = engine.normalize_event(engine._map_events({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use",
+            "id": "create-call-1",
+            "name": "TaskCreate",
+            "input": {"subject": "排查网页易崩溃"},
+        }]},
+    })[0])
+    assignment_events = engine._map_events({
+        "type": "user",
+        "message": {"content": [{
+            "type": "tool_result",
+            "tool_use_id": "create-call-1",
+            "content": "Task #15 created successfully: 排查网页易崩溃",
+        }]},
+        "toolUseResult": {
+            "task": {"id": "15", "subject": "排查网页易崩溃"},
+        },
+    })
+    assert assignment_events[0].data["raw_output"] == (
+        "Task #15 created successfully: 排查网页易崩溃"
+    )
+    assigned = engine.normalize_event(assignment_events[0])
+    updated = engine.normalize_event(engine._map_events({
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use",
+            "id": "update-call-1",
+            "name": "TaskUpdate",
+            "input": {"taskId": "15", "status": "in_progress"},
+        }]},
+    })[0])
+
+    assert created is not None and created.type == "plan"
+    assert assigned is not None and assigned.type == "plan"
+    assert updated is not None and updated.type == "plan"
+    assert updated.data["entries"] == [{
+        "content": "排查网页易崩溃",
+        "priority": "medium",
+        "status": "in_progress",
+    }]
+
+
+def test_claude_code_result_usage_is_not_a_context_snapshot():
+    events = ClaudeCodeEngine()._map_events({
+        "type": "result",
+        "usage": {
+            "input_tokens": 100,
+            "cache_creation_input_tokens": 40,
+            "cache_read_input_tokens": 20,
+            "output_tokens": 30,
+        },
+    })
+
+    usage = events[0].data
+    assert usage["used"] == 130
+    assert "size" not in usage
+
+
+def test_claude_code_assistant_usage_defaults_context_window_to_256k():
+    events = ClaudeCodeEngine()._map_events({
+        "type": "assistant",
+        "message": {
+            "content": [],
+            "usage": {
+                "input_tokens": 100,
+                "cache_creation_input_tokens": 40,
+                "cache_read_input_tokens": 20,
+                "output_tokens": 30,
+            },
+        },
+    })
+
+    usage = events[0].data
+    assert usage["used"] == 190
+    assert usage["size"] == 256_000
 
 
 def test_claude_code_maps_compact_boundary_and_declares_event():
@@ -2000,8 +2108,90 @@ def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
     assert usage["cache_creation_input_tokens"] == 40
     assert usage["cache_read_input_tokens"] == 20
     assert usage["used"] == 130
+    assert "size" not in usage
     assert usage["cost"] == {"amount": 0.12, "currency": "USD"}
     assert events[1].data["status"] == "done"
+
+
+def test_claude_agent_sdk_assistant_usage_is_a_context_snapshot():
+    engine = ClaudeAgentSDKEngine()
+    msg = _SdkFake(
+        type="assistant",
+        content=[],
+        usage={
+            "input_tokens": 100,
+            "cache_creation_input_tokens": 40,
+            "cache_read_input_tokens": 20,
+            "output_tokens": 30,
+        },
+    )
+
+    events = engine._map_message(msg)
+
+    assert [event.type for event in events] == ["usage_update"]
+    assert events[0].data["used"] == 190
+    assert events[0].data["size"] == 256_000
+
+
+@pytest.mark.anyio
+async def test_claude_agent_sdk_spawn_prefers_live_context_usage(monkeypatch):
+    import claude_agent_sdk as sdk_module
+
+    class _ClaudeClientContextUsage:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            if hasattr(prompt, "__aiter__"):
+                async for _ in prompt:
+                    pass
+
+        async def receive_messages(self):
+            yield _SdkFake(
+                type="result",
+                result="",
+                is_error=False,
+                usage={"input_tokens": 900_000, "output_tokens": 100_000},
+                session_id="s1",
+            )
+
+        async def get_context_usage(self):
+            return {
+                "totalTokens": 42_000,
+                "rawMaxTokens": 256_000,
+                "maxTokens": 243_200,
+                "percentage": 16.4,
+            }
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _ClaudeClientContextUsage)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_agent_sdk.config_store.get_claude_agent_sdk_config",
+        lambda: {
+            "permission_mode": "acceptEdits",
+            "max_turns": "",
+            "fallback_model": "",
+        },
+    )
+
+    events = [
+        event
+        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd="/tmp")
+    ]
+    usage_events = [event.data for event in events if event.type == "usage_update"]
+
+    assert usage_events[0]["used"] == 42_000
+    assert usage_events[0]["size"] == 256_000
+    assert usage_events[1]["used"] == 1_000_000
+    assert "size" not in usage_events[1]
 
 
 def test_claude_agent_sdk_result_falls_back_to_output():
@@ -2796,6 +2986,31 @@ def test_codex_sdk_maps_usage_with_cache():
     assert usage["total_tokens"] == 150
     assert usage["used"] == 150
     assert usage["size"] == 400
+
+
+def test_codex_sdk_cumulative_usage_without_last_is_not_a_context_snapshot():
+    engine = CodexSDKEngine()
+    notification = _SdkFake(
+        method="thread/tokenUsage/updated",
+        payload=_SdkFake(token_usage=_SdkFake(
+            last=None,
+            total=_SdkFake(
+                input_tokens=900_000,
+                output_tokens=100_000,
+                cached_input_tokens=600_000,
+                total_tokens=1_000_000,
+            ),
+            model_context_window=400_000,
+        )),
+    )
+
+    events = engine._map_notification(
+        notification, {"emitted_text": False, "tool_emitted": set()}
+    )
+
+    assert [event.type for event in events] == ["usage_update"]
+    assert events[0].data["used"] == 1_000_000
+    assert "size" not in events[0].data
 
 
 @pytest.mark.anyio

@@ -284,9 +284,9 @@ def usage_update_event(
 ) -> InternalEvent:
     """ACP ``usage_update`` — context-window usage + token breakdown + cost.
 
-    ``used`` 统一表示最近一次 usage 的总 token；``size`` 仅在引擎原生提供
-    上下文窗口时写入，不合成窗口默认值。token 字段由
-    ``normalize_token_usage`` 归一化。
+    ``used`` 统一表示该 usage 记录的总 token。只有调用方已确认
+    该记录是“当前上下文快照”时才能传入 ``size``；会话或运行累计
+    usage 不得携带 ``size``。token 字段由 ``normalize_token_usage`` 归一化。
     """
     data: dict[str, Any] = normalize_token_usage(usage)
 

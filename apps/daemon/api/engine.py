@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -93,17 +94,32 @@ def _engine_summaries() -> list[dict]:
     ]
 
 
+def _refresh_and_summaries(*, invalidate_scan: bool = True) -> list[dict]:
+    if invalidate_scan:
+        refresh_registry()
+    else:
+        refresh_registry(invalidate_scan=False)
+    return _engine_summaries()
+
+
+def _engine_info(engine_id: str) -> dict | None:
+    return next(
+        (item for item in get_available_engines() if item["id"] == engine_id),
+        None,
+    )
+
+
 @router.get("/list")
 async def list_engines():
     """Return every supported backend and its local availability."""
-    return {"engines": _engine_summaries()}
+    return {"engines": await asyncio.to_thread(_engine_summaries)}
 
 
 @router.post("/refresh")
 async def refresh_engines():
     """Re-scan the host for supported execution engines."""
-    refresh_registry()
-    return {"engines": _engine_summaries()}
+    engines = await asyncio.to_thread(_refresh_and_summaries)
+    return {"engines": engines}
 
 
 def _coordinator_engine_options() -> list[dict]:
@@ -131,7 +147,7 @@ def _validate_engine(engine_id: str, *, coordinator: bool = False):
 
 @router.get("/execution/config")
 async def get_execution_default_config():
-    configured = config_store.get_execution_default_engine()
+    configured = await asyncio.to_thread(config_store.get_execution_default_engine)
     return {
         "engine": configured,
         "resolved_engine": configured or DEFAULT_EXECUTION_ENGINE,
@@ -142,8 +158,8 @@ async def get_execution_default_config():
 async def set_execution_default_config(req: DefaultEngineRequest):
     engine_id = req.engine.strip()
     if engine_id:
-        _validate_engine(engine_id)
-    config_store.set_execution_default_engine(engine_id)
+        await asyncio.to_thread(_validate_engine, engine_id)
+    await asyncio.to_thread(config_store.set_execution_default_engine, engine_id)
     return {
         "saved": True,
         "engine": engine_id,
@@ -153,14 +169,17 @@ async def set_execution_default_config(req: DefaultEngineRequest):
 
 @router.get("/coordinator/config")
 async def get_coordinator_default_config(project_id: str = ""):
-    return {
-        "engine": config_store.get_coordinator_default_engine(),
-        "model": config_store.get_coordinator_default_model(),
-        "fast_model": config_store.get_coordinator_default_fast_model(),
-        "vision_model": config_store.get_coordinator_default_vision_model(),
-        "thinking_effort": config_store.get_coordinator_default_thinking_effort(),
-        "available_engines": _coordinator_engine_options(),
-    }
+    def load() -> dict:
+        return {
+            "engine": config_store.get_coordinator_default_engine(),
+            "model": config_store.get_coordinator_default_model(),
+            "fast_model": config_store.get_coordinator_default_fast_model(),
+            "vision_model": config_store.get_coordinator_default_vision_model(),
+            "thinking_effort": config_store.get_coordinator_default_thinking_effort(),
+            "available_engines": _coordinator_engine_options(),
+        }
+
+    return await asyncio.to_thread(load)
 
 
 @router.put("/coordinator/config")
@@ -173,11 +192,16 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
     if thinking_effort and thinking_effort not in CODEX_REASONING_EFFORTS:
         raise HTTPException(status_code=400, detail="不支持的思考强度")
     if engine_id:
-        _validate_engine(engine_id, coordinator=True)
+        await asyncio.to_thread(_validate_engine, engine_id, coordinator=True)
     elif model or fast_model or vision_model:
         raise HTTPException(status_code=400, detail="默认模型需要先选择协调引擎")
-    config_store.set_coordinator_defaults(
-        engine_id, model, fast_model, vision_model, thinking_effort
+    await asyncio.to_thread(
+        config_store.set_coordinator_defaults,
+        engine_id,
+        model,
+        fast_model,
+        vision_model,
+        thinking_effort,
     )
     return {
         "saved": True,
@@ -192,10 +216,11 @@ async def set_coordinator_default_config(req: CoordinatorDefaultsRequest):
 @router.post("/test")
 async def test_engine(req: EngineTestRequest):
     """Delegate the connectivity test to the selected engine adapter."""
-    refresh_registry()
-    engine = create_engine(req.engine_id)
+    engine = await asyncio.to_thread(
+        lambda: (refresh_registry(), create_engine(req.engine_id))[1]
+    )
     if engine is None:
-        config_store.set_engine_verified(req.engine_id, False)
+        await asyncio.to_thread(config_store.set_engine_verified, req.engine_id, False)
         return {
             "engine_id": req.engine_id,
             "success": False,
@@ -204,7 +229,6 @@ async def test_engine(req: EngineTestRequest):
         }
 
     test_kwargs = {
-        "cwd": str(Path.cwd()),
         "timeout_seconds": req.timeout_seconds,
     }
     selected_model = req.model.strip()
@@ -216,12 +240,19 @@ async def test_engine(req: EngineTestRequest):
         config_overrides["__workstep_clear_keys__"] = clear_keys
     if config_overrides:
         test_kwargs["config_overrides"] = config_overrides
-    result = await engine.test_connection(**test_kwargs)
-    config_store.set_engine_verified(req.engine_id, result.success)
-    engine_info = next(
-        item for item in get_available_engines()
-        if item["id"] == req.engine_id
+    # Engine initialization writes project-local skills and session state.
+    # Connectivity probes must not treat the daemon's cwd as a project.
+    workspace = await asyncio.to_thread(
+        TemporaryDirectory, prefix="workstep-engine-test-"
     )
+    try:
+        result = await engine.test_connection(cwd=workspace.name, **test_kwargs)
+    finally:
+        await asyncio.to_thread(workspace.cleanup)
+    await asyncio.to_thread(
+        config_store.set_engine_verified, req.engine_id, result.success
+    )
+    engine_info = await asyncio.to_thread(_engine_info, req.engine_id)
     return {
         "engine_id": req.engine_id,
         **asdict(result),
@@ -244,16 +275,13 @@ async def install_engine(engine_id: str, req: EngineInstallRequest | None = None
             status_code=400,
             detail="安装此前请先阅读并明确接受第三方服务条款",
         )
-    if engine.is_installed():
+    if await asyncio.to_thread(engine.is_installed):
         return {
             "engine_id": engine_id,
             "success": True,
             "already_installed": True,
             "message": "引擎已安装",
-            "engine": next(
-                (item for item in get_available_engines() if item["id"] == engine_id),
-                None,
-            ),
+            "engine": await asyncio.to_thread(_engine_info, engine_id),
         }
     if engine.install_command() is None:
         raise HTTPException(
@@ -263,10 +291,8 @@ async def install_engine(engine_id: str, req: EngineInstallRequest | None = None
     result = await engine.install()
     engine_info = None
     if result.success:
-        refresh_registry()
-        engine_info = next(
-            (item for item in get_available_engines() if item["id"] == engine_id),
-            None,
+        engine_info = await asyncio.to_thread(
+            lambda: (_refresh_and_summaries(), _engine_info(engine_id))[1]
         )
     return {
         "engine_id": engine_id,
@@ -284,19 +310,19 @@ async def update_engine(engine_id: str):
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")
     engine = cls()
-    if not engine.is_installed():
+    if not await asyncio.to_thread(engine.is_installed):
         raise HTTPException(status_code=400, detail="引擎尚未安装，请先安装")
     if engine.update_command() is None:
         raise HTTPException(status_code=400, detail="该引擎不支持自动更新")
     result = await engine.update()
     engine_info = None
     if result.success:
-        config_store.set_engine_verified(engine_id, False)
-        refresh_registry()
-        engine_info = next(
-            (item for item in get_available_engines() if item["id"] == engine_id),
-            None,
-        )
+        def refresh_after_update() -> dict | None:
+            config_store.set_engine_verified(engine_id, False)
+            refresh_registry()
+            return _engine_info(engine_id)
+
+        engine_info = await asyncio.to_thread(refresh_after_update)
     return {
         "engine_id": engine_id,
         "success": result.success,
@@ -329,8 +355,9 @@ async def inspect_engine(
 @router.get("/{engine_id}/quota")
 async def get_engine_quota(engine_id: str, project_id: str = ""):
     """Fetch account quota for engines that expose a native quota API."""
-    refresh_registry(invalidate_scan=False)
-    engine = create_engine(engine_id)
+    engine = await asyncio.to_thread(
+        lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
+    )
     get_quota = getattr(engine, "get_quota", None) if engine is not None else None
     if not callable(get_quota):
         return {"engine_id": engine_id, "supported": False, "quota": None}
@@ -357,8 +384,9 @@ async def list_engine_models(
     project_id: str = "",
 ):
     """Return native models or the selected provider's cached model list."""
-    refresh_registry(invalidate_scan=False)
-    engine = create_engine(engine_id)
+    engine = await asyncio.to_thread(
+        lambda: (refresh_registry(invalidate_scan=False), create_engine(engine_id))[1]
+    )
     if engine is None:
         return {
             "engine_id": engine_id,
@@ -372,38 +400,49 @@ async def list_engine_models(
         models_kwargs: dict = {"cwd": str(project.path) if project else str(Path.cwd())}
         resolve_provider = getattr(engine, "resolve_provider_runtime", None)
         provider_runtime = (
-            resolve_provider(provider_id=provider_id.strip())
+            await asyncio.to_thread(
+                resolve_provider, provider_id=provider_id.strip()
+            )
             if callable(resolve_provider)
             else None
         )
         effective_provider = provider_runtime.provider_id if provider_runtime else ""
         if effective_provider:
-            provider = config_store.get_provider(effective_provider)
-            entry = config_store.get_provider_models(effective_provider)
-            if refresh or not entry:
+            provider, entry = await asyncio.to_thread(
+                lambda: (
+                    config_store.get_provider(effective_provider),
+                    config_store.get_provider_models(effective_provider),
+                )
+            )
+            if refresh:
                 models = await asyncio.wait_for(
                     provider_service.fetch_and_save_models(provider),
                     timeout=15,
                 )
             else:
-                models = provider_service.saved_models(effective_provider)
-            fetched_at = config_store.get_provider_models(effective_provider).get(
-                "fetched_at"
-            )
+                models = await asyncio.to_thread(
+                    provider_service.saved_models, effective_provider
+                )
+            fetched_at = (
+                await asyncio.to_thread(
+                    config_store.get_provider_models, effective_provider
+                )
+            ).get("fetched_at")
         else:
-            entry = config_store.get_engine_models(engine_id)
-            if refresh or not entry:
+            entry = await asyncio.to_thread(config_store.get_engine_models, engine_id)
+            if refresh:
                 models = await asyncio.wait_for(
                     engine.list_models(**models_kwargs),
                     timeout=15,
                 )
                 fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-                config_store.set_engine_models(
+                await asyncio.to_thread(
+                    config_store.set_engine_models,
                     engine_id,
                     [asdict(model) for model in models],
                     fetched_at,
                 )
-            else:
+            elif entry:
                 models = [
                     EngineModel(
                         id=str(item["id"]),
@@ -418,6 +457,8 @@ async def list_engine_models(
                     if isinstance(item, dict) and str(item.get("id") or "").strip()
                 ]
                 fetched_at = entry.get("fetched_at")
+            else:
+                models = []
         error = None
     except asyncio.TimeoutError:
         models = []
@@ -428,7 +469,9 @@ async def list_engine_models(
     return {
         "engine_id": engine_id,
         "models": [asdict(model) for model in models],
-        "default_model": config_store.get_engine_default_model(engine_id),
+        "default_model": await asyncio.to_thread(
+            config_store.get_engine_default_model, engine_id
+        ),
         "fetched_at": fetched_at,
         "error": error,
     }
@@ -437,8 +480,10 @@ async def list_engine_models(
 @router.put("/{engine_id}/default-model")
 async def set_default_model(engine_id: str, req: DefaultModelRequest):
     """Persist the model inherited by stages without an explicit model."""
-    refresh_registry()
-    if create_engine(engine_id) is None:
+    engine = await asyncio.to_thread(
+        lambda: (refresh_registry(), create_engine(engine_id))[1]
+    )
+    if engine is None:
         return {
             "engine_id": engine_id,
             "default_model": "",
@@ -446,8 +491,8 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
             "message": "引擎未安装或当前不可用",
         }
     model = req.model.strip()
-    config_store.set_engine_default_model(engine_id, model)
-    config_store.set_engine_verified(engine_id, False)
+    await asyncio.to_thread(config_store.set_engine_default_model, engine_id, model)
+    await asyncio.to_thread(config_store.set_engine_verified, engine_id, False)
     return {
         "engine_id": engine_id,
         "default_model": model,
@@ -458,7 +503,9 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
 @router.put("/{engine_id}/binary-path")
 async def set_binary_path(engine_id: str, req: BinaryPathRequest):
     """Persist or clear a backend's executable path override."""
-    supported = {engine["id"] for engine in get_available_engines()}
+    supported = await asyncio.to_thread(
+        lambda: {engine["id"] for engine in get_available_engines()}
+    )
     if engine_id not in supported or engine_id == "pydantic_ai":
         return {
             "engine_id": engine_id,
@@ -475,23 +522,24 @@ async def set_binary_path(engine_id: str, req: BinaryPathRequest):
                 "saved": False,
                 "message": "请输入可执行文件的绝对路径",
             }
-        if not path.is_file():
+        if not await asyncio.to_thread(path.is_file):
             return {
                 "engine_id": engine_id,
                 "saved": False,
                 "message": "指定的可执行文件不存在",
             }
-        normalized = str(path.resolve())
+        normalized = str(await asyncio.to_thread(path.resolve))
     else:
         normalized = ""
 
-    config_store.set_engine_binary_path(engine_id, normalized)
-    config_store.set_engine_verified(engine_id, False)
-    config_store.clear_engine_models(engine_id)
-    refresh_registry()
-    engine_info = next(
-        engine for engine in get_available_engines() if engine["id"] == engine_id
-    )
+    def save_binary_path() -> dict | None:
+        config_store.set_engine_binary_path(engine_id, normalized)
+        config_store.set_engine_verified(engine_id, False)
+        config_store.clear_engine_models(engine_id)
+        refresh_registry()
+        return _engine_info(engine_id)
+
+    engine_info = await asyncio.to_thread(save_binary_path)
     return {
         "engine_id": engine_id,
         "saved": True,
@@ -511,7 +559,7 @@ async def get_engine_config(engine_id: str):
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")
     engine = cls()
-    return _engine_config_response(engine_id, engine)
+    return await asyncio.to_thread(_engine_config_response, engine_id, engine)
 
 
 @router.put("/{engine_id}/config")
@@ -522,7 +570,7 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
     if cls is None:
         return {"engine_id": engine_id, "saved": False, "message": "未知引擎"}
     engine = cls()
-    previous_config = _engine_config_snapshot(engine)
+    previous_config = await asyncio.to_thread(_engine_config_snapshot, engine)
     try:
         await engine.save_full_config_values(
             dict(req.values),
@@ -537,16 +585,15 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
             "saved": False,
             "message": str(exc) or "保存失败",
         }
-    if _engine_config_snapshot(engine) != previous_config:
-        config_store.set_engine_verified(engine_id, False)
-        config_store.clear_engine_models(engine_id)
-    refresh_registry()
-    response = _engine_config_response(engine_id, engine)
+    def finish_save() -> tuple[dict, dict | None]:
+        if _engine_config_snapshot(engine) != previous_config:
+            config_store.set_engine_verified(engine_id, False)
+            config_store.clear_engine_models(engine_id)
+        refresh_registry()
+        return _engine_config_response(engine_id, engine), _engine_info(engine_id)
+
+    response, info = await asyncio.to_thread(finish_save)
     response.update({"saved": True, "message": "配置已保存"})
-    info = next(
-        (item for item in get_available_engines() if item["id"] == engine_id),
-        None,
-    )
     if info is not None:
         response["engine"] = info
     return response
@@ -560,7 +607,7 @@ async def reveal_engine_config(engine_id: str, req: EngineConfigRevealRequest):
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")
     engine = cls()
-    value = engine.reveal_config_value(req.key)
+    value = await asyncio.to_thread(engine.reveal_config_value, req.key)
     return JSONResponse(
         {"key": req.key, "value": value},
         headers={"Cache-Control": "no-store"},

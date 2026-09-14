@@ -175,7 +175,8 @@ class CodexSDKEngine(AcpEngineBase):
         clear: dict[str, bool] | None = None,
         confirmed: dict[str, bool] | None = None,
     ) -> None:
-        config_store.set_codex_sdk_config(
+        await asyncio.to_thread(
+            config_store.set_codex_sdk_config,
             model_reasoning_effort=str(values.get("model_reasoning_effort") or ""),
             approval_mode=str(values.get("approval_mode") or ""),
             sandbox=str(values.get("sandbox") or ""),
@@ -443,6 +444,7 @@ class CodexSDKEngine(AcpEngineBase):
         elif method == "thread/tokenUsage/updated":
             usage = getattr(payload, "token_usage", None)
             source = getattr(usage, "last", None)
+            is_context_snapshot = source is not None
             if source is None:
                 source = getattr(usage, "total", None)
             if source is not None:
@@ -452,9 +454,11 @@ class CodexSDKEngine(AcpEngineBase):
                     "cache_read_input_tokens": getattr(source, "cached_input_tokens", 0) or 0,
                     "total_tokens": getattr(source, "total_tokens", 0) or 0,
                 }
-                context_window = getattr(usage, "model_context_window", None)
-                if context_window is None:
-                    context_window = getattr(usage, "modelContextWindow", None)
+                context_window = None
+                if is_context_snapshot:
+                    context_window = getattr(usage, "model_context_window", None)
+                    if context_window is None:
+                        context_window = getattr(usage, "modelContextWindow", None)
                 usage_event = usage_update_event(raw, size=context_window)
                 reasoning = getattr(source, "reasoning_output_tokens", None)
                 if isinstance(reasoning, (int, float)):
@@ -608,7 +612,8 @@ class CodexSDKEngine(AcpEngineBase):
         workstep_tools: bool = False,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        guarded_prompt = self.render_image_prompt(
+        guarded_prompt = await asyncio.to_thread(
+            self.render_image_prompt,
             self._coordinator_prompt(prompt, workstep_tools=workstep_tools),
             images,
         )
@@ -657,9 +662,11 @@ class CodexSDKEngine(AcpEngineBase):
             return
 
         sdk_config = self.merge_config_overrides(
-            config_store.get_codex_sdk_config(), config_overrides
+            await asyncio.to_thread(config_store.get_codex_sdk_config),
+            config_overrides,
         )
-        provider_runtime = self.resolve_provider_runtime(
+        provider_runtime = await asyncio.to_thread(
+            self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),
             model=model,
         )
@@ -697,7 +704,9 @@ class CodexSDKEngine(AcpEngineBase):
         override = self.get_binary_override()
         from services.skill_runtime import codex_skills_config
 
-        skill_override = codex_skills_config(self.project_skills(cwd))
+        skill_override = await asyncio.to_thread(
+            lambda: codex_skills_config(self.project_skills(cwd))
+        )
         client_config = CodexConfig(
             codex_bin=override or None,
             cwd=cwd or None,
@@ -919,6 +928,9 @@ class CodexSDKEngine(AcpEngineBase):
         params: dict[str, Any],
     ) -> bool:
         """Ask the user to allow/deny a Codex approval request (ACP-shaped)."""
+        runtime_decision = self.runtime_permission_decision()
+        if runtime_decision is not None:
+            return runtime_decision
         raw = params if isinstance(params, dict) else {}
         if method == "item/fileChange/requestApproval":
             tool_name = "Edit"

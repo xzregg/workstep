@@ -5,6 +5,7 @@ startup the shipped defaults in `data/templates/` are seeded there — files
 with the same name are never overwritten.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -72,6 +73,10 @@ class Template(BaseSchema):
 @router.get("/list")
 async def list_templates():
     """List all workflow templates stored in ~/.workstep/data/templates/."""
+    return await asyncio.to_thread(_list_templates_sync)
+
+
+def _list_templates_sync():
     templates = []
     if GLOBAL_TEMPLATES_DIR.exists():
         for f in GLOBAL_TEMPLATES_DIR.glob("*.json"):
@@ -95,6 +100,10 @@ async def list_templates():
 async def get_template(template_id: str):
     """Get a specific template by ID."""
     _validate_template_id(template_id)
+    return await asyncio.to_thread(_get_template_sync, template_id)
+
+
+def _get_template_sync(template_id: str):
     template_path = GLOBAL_TEMPLATES_DIR / f"{template_id}.json"
     if template_path.exists():
         try:
@@ -121,6 +130,10 @@ async def save_template(req: SaveTemplateRequest):
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    return await asyncio.to_thread(_save_template_sync, req)
+
+
+def _save_template_sync(req: SaveTemplateRequest):
     GLOBAL_TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
     path = GLOBAL_TEMPLATES_DIR / f"{req.id}.json"
     data = {
@@ -153,6 +166,10 @@ async def save_template(req: SaveTemplateRequest):
 async def delete_template(template_id: str):
     """Delete a custom template. Default (shipped) templates cannot be deleted."""
     _validate_template_id(template_id)
+    return await asyncio.to_thread(_delete_template_sync, template_id)
+
+
+def _delete_template_sync(template_id: str):
     template_path = GLOBAL_TEMPLATES_DIR / f"{template_id}.json"
     if not template_path.exists():
         raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")

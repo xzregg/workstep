@@ -1,5 +1,7 @@
 """Owner and client APIs for WorkStep remote projects."""
 
+import asyncio
+
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -53,15 +55,16 @@ class UpdateDeviceAccessRequest(BaseModel):
 
 @router.get("/settings")
 async def get_remote_access_settings(request: Request):
-    _observe_runtime_port(request)
-    return remote_access_service.settings()
+    await asyncio.to_thread(_observe_runtime_port, request)
+    return await asyncio.to_thread(remote_access_service.settings)
 
 
 @router.put("/settings")
 async def update_remote_access_settings(req: RemoteAccessSettingsRequest, request: Request):
-    _observe_runtime_port(request)
+    await asyncio.to_thread(_observe_runtime_port, request)
     try:
-        return remote_access_service.update_settings(
+        return await asyncio.to_thread(
+            remote_access_service.update_settings,
             enabled=req.enabled,
             internal_base_url=req.internal_base_url,
             external_base_url=req.external_base_url,
@@ -74,12 +77,13 @@ async def update_remote_access_settings(req: RemoteAccessSettingsRequest, reques
 async def create_remote_project_share(req: CreateShareRequest, request: Request):
     from main import project_manager
 
-    _observe_runtime_port(request)
+    await asyncio.to_thread(_observe_runtime_port, request)
     project = project_manager.get_project_by_id(req.project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     try:
-        return remote_access_service.create_share(
+        return await asyncio.to_thread(
+            remote_access_service.create_share,
             project_id=project.id,
             project_name=project.name,
             access=req.access,
@@ -93,7 +97,7 @@ async def create_remote_project_share(req: CreateShareRequest, request: Request)
 async def add_remote_project(req: AddRemoteProjectRequest):
     if client_manager is None:
         raise HTTPException(status_code=503, detail="Remote project client is unavailable")
-    if not config_store.get_user_name():
+    if not await asyncio.to_thread(config_store.get_user_name):
         raise HTTPException(status_code=400, detail="请先在系统设置中填写使用者名称")
     try:
         return await client_manager.add_share(req.share_string)
@@ -106,7 +110,7 @@ async def add_remote_project(req: AddRemoteProjectRequest):
 @router.delete("/{project_id}")
 async def remove_remote_project(project_id: str):
     if client_manager is None:
-        removed = remote_project_registry.remove(project_id)
+        removed = await asyncio.to_thread(remote_project_registry.remove, project_id)
     else:
         removed = await client_manager.remove(project_id)
     if not removed:
@@ -116,7 +120,7 @@ async def remove_remote_project(project_id: str):
 
 @router.get("/devices/list")
 async def list_remote_devices(project_id: str | None = Query(None)):
-    devices = remote_access_service.list_devices(project_id)
+    devices = await asyncio.to_thread(remote_access_service.list_devices, project_id)
     return {
         "devices": devices,
         "connected_count": sum(item["connected"] for item in devices),
@@ -125,7 +129,9 @@ async def list_remote_devices(project_id: str | None = Query(None)):
 
 @router.post("/devices/revoke")
 async def revoke_remote_device(req: RevokeDeviceRequest):
-    if not remote_access_service.revoke_device(req.project_id, req.device_id):
+    if not await asyncio.to_thread(
+        remote_access_service.revoke_device, req.project_id, req.device_id
+    ):
         raise HTTPException(status_code=404, detail="Remote device not found")
     await remote_access_service.disconnect_device(
         req.project_id,
@@ -138,7 +144,8 @@ async def revoke_remote_device(req: RevokeDeviceRequest):
 @router.patch("/devices/access")
 async def update_remote_device_access(req: UpdateDeviceAccessRequest):
     try:
-        device = remote_access_service.update_device_expiry(
+        device = await asyncio.to_thread(
+            remote_access_service.update_device_expiry,
             req.project_id,
             req.device_id,
             req.expires_at,
@@ -152,10 +159,13 @@ async def update_remote_device_access(req: UpdateDeviceAccessRequest):
         req.device_id,
         reason="access_changed",
     )
+    devices = await asyncio.to_thread(
+        remote_access_service.list_devices, req.project_id
+    )
     refreshed = next(
         (
             item
-            for item in remote_access_service.list_devices(req.project_id)
+            for item in devices
             if item["device_id"] == req.device_id and item["status"] != "revoked"
         ),
         device,

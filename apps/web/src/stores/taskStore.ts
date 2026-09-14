@@ -11,6 +11,21 @@ import {
   messageId,
 } from '../utils/agui.ts'
 
+/**
+ * 单任务 / 单消息在前端 live 保留的事件上限。长任务（子代理、流式思考）可产生
+ * 上万条事件，逐条整数组复制是 O(n²)，且事件在任务生命周期内从不释放——后台
+ * 任务越多渲染进程内存涨得越快，是标签页 OOM 崩溃的主要来源之一。超限只保留
+ * 最近 N 条；完整事件流服务端已持久化，展开详情时经 messageEvents 懒加载。
+ */
+const MAX_LIVE_EVENTS_PER_TASK = 2000
+
+function appendCappedEvent(events: TaskEvent[] | undefined, event: TaskEvent): TaskEvent[] {
+  const combined = [...(events || []), event]
+  return combined.length > MAX_LIVE_EVENTS_PER_TASK
+    ? combined.slice(-MAX_LIVE_EVENTS_PER_TASK)
+    : combined
+}
+
 export interface TaskEvent {
   type: string
   data?: Record<string, unknown>
@@ -343,7 +358,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         // panel refresh its history when the counter changes.
         const prevEvents = s.events[taskId] || []
         return {
-          events: { ...s.events, [taskId]: [...prevEvents, timedEvent] },
+          events: { ...s.events, [taskId]: appendCappedEvent(prevEvents, timedEvent) },
         }
       }
       if (isCustom(event, CUSTOM.availableCommandsUpdate)) {
@@ -372,7 +387,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                 scheduled_start_error: scheduledError,
               }
             : task),
-          events: { ...s.events, [taskId]: [...(s.events[taskId] || []), timedEvent] },
+          events: { ...s.events, [taskId]: appendCappedEvent(s.events[taskId], timedEvent) },
         }
       }
       if (mid) {
@@ -432,7 +447,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                 author_device_id: current.author_device_id || event.actor?.device_id,
                 author_device_name: current.author_device_name || event.actor?.device_name,
                 proposals: nextProposals,
-                events: [...current.events, timedEvent],
+                events: appendCappedEvent(current.events, timedEvent),
               },
             },
           },
@@ -504,7 +519,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
       return {
         tasks: newTasks,
-        events: { ...s.events, [taskId]: [...prevEvents, timedEvent] },
+        events: { ...s.events, [taskId]: appendCappedEvent(prevEvents, timedEvent) },
         content: { ...s.content, [taskId]: newContent },
       }
     })

@@ -17,7 +17,10 @@ const project = {
   workflows: [],
 }
 
-function installApiStubs(running = false) {
+function installApiStubs(
+  running = false,
+  onPermissionUpdate?: (mode: string) => void,
+) {
   const originals = {
     assistantList: assistantApi.list,
     chatGet: chatSessionApi.get,
@@ -25,6 +28,7 @@ function installApiStubs(running = false) {
     quickButtons: chatSessionApi.quickButtons,
     quota: engineApi.quota,
     providerList: providerApi.list,
+    updatePermission: chatSessionApi.updatePermissionMode,
   }
   assistantApi.list = async () => ({ assistants: [{
     name: 'chat_session',
@@ -52,6 +56,10 @@ function installApiStubs(running = false) {
   chatSessionApi.quickButtons = async () => ({
     buttons: [{ id: 'draft', label: '填入草稿', prompt: '切页后还在' }],
   })
+  chatSessionApi.updatePermissionMode = async (_sessionId, _projectId, mode) => {
+    onPermissionUpdate?.(mode)
+    return { permission_mode: mode } as never
+  }
   engineApi.quota = async () => ({ engine_id: 'claude', supported: false, quota: null })
   providerApi.list = async () => ({ providers: [] })
   return () => {
@@ -61,6 +69,7 @@ function installApiStubs(running = false) {
     chatSessionApi.quickButtons = originals.quickButtons
     engineApi.quota = originals.quota
     providerApi.list = originals.providerList
+    chatSessionApi.updatePermissionMode = originals.updatePermission
   }
 }
 
@@ -156,6 +165,106 @@ test('pending inserts survive leaving and returning to the chat page', async () 
 
     root = await renderChat(container)
     assert.match(document.body.textContent || '', /待插入内容/)
+    await act(async () => root.unmount())
+  } finally {
+    restoreApis()
+    await window.happyDOM.close()
+  }
+})
+
+test('restores the locally recorded engine selection over the session default', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    localStorage: window.localStorage,
+    sessionStorage: window.sessionStorage,
+    Event: window.Event,
+    InputEvent: window.InputEvent,
+    HTMLElement: window.HTMLElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(callback, 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  // 模拟用户上次在该会话选过的引擎配置；后端 detail 仍是默认 claude。
+  localStorage.setItem(
+    'workstep-chat-engine-config:project-1:session-1',
+    JSON.stringify({
+      engine: 'zz-resumed-engine', providerId: '', model: '',
+      fastModel: '', visionModel: '', thinkingEffort: 'high',
+    }),
+  )
+  const restoreApis = installApiStubs()
+  useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
+  useChatListStore.setState({ sessions: [], quickButtons: [], listLoading: false })
+  useChatSessionStore.setState({ sessions: {} })
+  const container = document.body.appendChild(document.createElement('div'))
+
+  try {
+    const root = await renderChat(container)
+    // 本地记录优先于后端默认 → 胶囊按钮回显记录的引擎 id（未登记 id 原样回显，与 locale 无关）。
+    assert.match(document.body.textContent || '', /zz-resumed-engine/)
+    await act(async () => root.unmount())
+  } finally {
+    restoreApis()
+    await window.happyDOM.close()
+  }
+})
+
+test('permission mode remains editable and updates immediately while running', async () => {
+  const window = new Window({ url: 'http://localhost/' })
+  Object.assign(globalThis, {
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    localStorage: window.localStorage,
+    sessionStorage: window.sessionStorage,
+    Event: window.Event,
+    InputEvent: window.InputEvent,
+    HTMLElement: window.HTMLElement,
+    HTMLTextAreaElement: window.HTMLTextAreaElement,
+    requestAnimationFrame: (callback: FrameRequestCallback) => window.setTimeout(callback, 0),
+    cancelAnimationFrame: (id: number) => window.clearTimeout(id),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  })
+  const updates: string[] = []
+  const restoreApis = installApiStubs(true, (mode) => {
+    updates.push(mode)
+    if (mode === 'read-only') throw new Error('permission update rejected')
+  })
+  useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
+  useChatListStore.setState({ sessions: [], quickButtons: [], listLoading: false })
+  useChatSessionStore.setState({ sessions: {} })
+  const container = document.body.appendChild(document.createElement('div'))
+
+  try {
+    const root = await renderChat(container)
+    const permissionButton = [...document.querySelectorAll('button')]
+      .find((button) => button.title === '权限') as HTMLButtonElement | undefined
+    assert.ok(permissionButton)
+    assert.equal(permissionButton.disabled, false)
+
+    await act(async () => permissionButton.click())
+    const workspaceWrite = [...document.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes('工作区写入')) as HTMLButtonElement | undefined
+    assert.ok(workspaceWrite)
+    await act(async () => workspaceWrite.click())
+    await act(async () => { await Promise.resolve() })
+
+    assert.deepEqual(updates, ['workspace-write'])
+
+    await act(async () => permissionButton.click())
+    const readOnly = [...document.querySelectorAll('button')]
+      .find((button) => button.textContent?.includes('只读')) as HTMLButtonElement | undefined
+    assert.ok(readOnly)
+    await act(async () => readOnly.click())
+    await act(async () => { await Promise.resolve() })
+
+    assert.deepEqual(updates, ['workspace-write', 'read-only'])
+    assert.match(permissionButton.textContent || '', /工作区写入/)
+    assert.match(document.body.textContent || '', /permission update rejected/)
     await act(async () => root.unmount())
   } finally {
     restoreApis()

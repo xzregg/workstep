@@ -9,7 +9,7 @@ import pytest
 
 from services.project import ProjectManager
 from services.workflow_definition import WorkflowDefinition
-from agent_assistants.workflow_gen import WorkflowGenModule
+from agent_assistants.workflow_gen import SYSTEM_PROMPT, WorkflowGenModule
 from agent_assistants.base import AssistantConfig, AssistantRuntime
 from streaming.bus import EventBus
 
@@ -598,6 +598,60 @@ async def test_invalid_proposal_is_repaired(gen_module, monkeypatch):
     # The repaired reply also carries the auto-generated a2ui choice UI.
     assert session.messages[-1]["content"].startswith("已修复")
     assert "```a2ui" not in session.messages[-1]["content"]
+
+
+@pytest.mark.anyio
+async def test_assistant_shape_missing_canvas_fields_is_repaired(gen_module, monkeypatch):
+    module, *_ = gen_module
+    invalid = json.dumps(
+        {
+            "reply": "请选择方案",
+            "flow_proposals": [
+                {
+                    "title": "简洁版",
+                    "steps": {
+                        "nodes": [
+                            {"id": "intake", "name": "需求评估", "outputs": ["review.md"]},
+                            {"id": "estimate", "name": "工时评估", "outputs": ["estimate.md"]},
+                        ],
+                        "edges": [{"from": "intake", "to": "estimate"}],
+                    },
+                }
+            ],
+        }
+    )
+    fixed = json.dumps(
+        {
+            "reply": "已修复",
+            "flow_proposals": [
+                {
+                    "title": "简洁版",
+                    "steps": {
+                        "nodes": [
+                            {"id": 1, "type": "intake", "title": "需求评估"},
+                            {"id": 2, "type": "estimate", "title": "工时评估"},
+                        ],
+                        "connections": [{"from": 1, "to": 2}],
+                    },
+                }
+            ],
+        }
+    )
+    calls: list[str] = []
+
+    async def fake_invoke(*args, **kwargs):
+        calls.append(args[3])
+        return fixed, [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    reply, proposals, _events = await module._resolve_proposal_inner(
+        SimpleNamespace(engine="claude", fast_model="fast", cwd="/tmp"),
+        invalid,
+    )
+
+    assert reply == "已修复"
+    assert len(calls) == 1
+    assert proposals[0]["steps"]["nodes"][0]["title"] == "需求评估"
 
 
 @pytest.mark.anyio
@@ -1422,6 +1476,48 @@ async def test_reset_workflow_session_clears_memory_and_persistence(
     assert await _wait_turn(module, second.turn_id) == "completed"
     assert "旧会话内容" not in seen_prompts[-1]
     assert "新会话内容" in seen_prompts[-1]
+
+
+@pytest.mark.anyio
+async def test_resumed_workflow_prompt_view_keeps_system_injection_visible(
+    gen_module, monkeypatch
+):
+    """查看提示词展示完整有效上下文，但不向可恢复引擎重复发送系统提示。"""
+    import agent_assistants.workflow_gen as wfgen_service
+
+    module, _bus, _manager, project, _ = gen_module
+    sent_prompts: list[str] = []
+
+    class ResumeEngine(FakeEngine):
+        supports_resume = True
+
+    monkeypatch.setattr(wfgen_service, "create_engine", lambda _engine_id: ResumeEngine())
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None,
+        message_history=None,
+    ):
+        sent_prompts.append(prompt)
+        return json.dumps({"reply": "ok", "flow_proposals": []}), [], "engine-session"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    first = module.submit_message(
+        project.id, None, "设计发布流程", "display-system-1", workflow_id="wf-display"
+    )
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    second = module.submit_message(
+        project.id,
+        first.session_id,
+        "补充审核阶段",
+        "display-system-2",
+        workflow_id="wf-display",
+    )
+    assert await _wait_turn(module, second.turn_id) == "completed"
+
+    assert SYSTEM_PROMPT not in sent_prompts[1]
+    visible_prompt = module.history(project.id, "wf-display")["messages"][-1]["prompt"]
+    assert visible_prompt.startswith(SYSTEM_PROMPT)
+    assert "补充审核阶段" in visible_prompt
 
 
 @pytest.mark.anyio

@@ -31,7 +31,7 @@ async def init_project(req: InitRequest):
         proj = await asyncio.to_thread(
             project_manager.init_project, req.path, name=req.name
         )
-        return {"id": proj.id, "path": str(proj.path), "name": proj.name, "steps": proj.steps}
+        return await _run_db(proj.id, project_manager.project_summary)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -43,12 +43,7 @@ async def register_project(req: RegisterRequest):
         proj = await asyncio.to_thread(
             project_manager.register_and_save, req.path, name=req.name
         )
-        return {
-            "id": proj.id,
-            "path": str(proj.path),
-            "name": proj.name,
-            "steps": proj.steps,
-        }
+        return await _run_db(proj.id, project_manager.project_summary)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -79,7 +74,8 @@ async def list_projects():
         {**project, "type": "local", "connection_status": "local"}
         for project in local_projects
     ]
-    return {"projects": [*local, *remote_project_registry.list_public()]}
+    remote = await asyncio.to_thread(remote_project_registry.list_public)
+    return {"projects": [*local, *remote]}
 
 
 @router.delete("/{project_id}")
@@ -87,11 +83,11 @@ async def delete_project(project_id: str):
     """Unregister a project without deleting its files."""
     from api.remote_project import client_manager, remote_project_registry
 
-    if remote_project_registry.get(project_id) is not None:
+    if await asyncio.to_thread(remote_project_registry.get, project_id) is not None:
         removed = (
             await client_manager.remove(project_id)
             if client_manager is not None
-            else remote_project_registry.remove(project_id)
+            else await asyncio.to_thread(remote_project_registry.remove, project_id)
         )
         return {"deleted": removed}
     if await asyncio.to_thread(project_manager.unregister, project_id) is None:

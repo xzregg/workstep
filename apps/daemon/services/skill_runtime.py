@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
@@ -38,7 +39,15 @@ def _replace_tree(source_dirs: list[tuple[str, Path]], target: Path) -> None:
         if backup.exists():
             shutil.rmtree(backup)
         if target.exists():
-            os.replace(target, backup)
+            try:
+                os.replace(target, backup)
+            except OSError as exc:
+                if exc.errno != errno.EXDEV:
+                    raise
+                # OverlayFS can reject renaming a directory from an image layer.
+                # Copy before removing it so the existing rollback stays usable.
+                shutil.copytree(target, backup, symlinks=True)
+                shutil.rmtree(target)
         os.replace(temp, target)
         if backup.exists():
             shutil.rmtree(backup)

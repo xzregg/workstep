@@ -516,7 +516,7 @@ def save_models(provider: dict, models: list[EngineModel]) -> None:
 async def fetch_and_save_models(provider: dict) -> list[EngineModel]:
     """Fetch a provider's model list once and persist it locally."""
     models = await fetch_models(provider)
-    save_models(provider, models)
+    await asyncio.to_thread(save_models, provider, models)
     return models
 
 

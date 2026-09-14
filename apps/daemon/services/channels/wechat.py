@@ -222,12 +222,15 @@ class WeChatChannel(ChannelBase):
         self._session_path = session_dir / "wechat.json"
 
     async def start(self) -> None:
-        session = None
-        if self._session_path.is_file():
+        def load_session() -> dict | None:
+            if not self._session_path.is_file():
+                return None
             try:
-                session = json.loads(self._session_path.read_text(encoding="utf-8"))
+                return json.loads(self._session_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
-                session = None
+                return None
+
+        session = await asyncio.to_thread(load_session)
         await self._bridge.start(session, self)
 
     async def stop(self) -> None:
@@ -249,7 +252,7 @@ class WeChatChannel(ChannelBase):
         await self._bridge.logout()
         self._logged_in = False
         self._account_id = None
-        self._session_path.unlink(missing_ok=True)
+        await asyncio.to_thread(self._session_path.unlink, missing_ok=True)
         await self._set_login_result(LoginResult(status="not_started"))
 
     async def is_logged_in(self) -> bool:
@@ -259,10 +262,13 @@ class WeChatChannel(ChannelBase):
         await self._bridge.send_text(chat_id, text)
 
     async def login_succeeded(self, account_id: str, session: dict) -> None:
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        self._session_path.write_text(
-            json.dumps(session, ensure_ascii=False), encoding="utf-8"
-        )
+        def save_session() -> None:
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+            self._session_path.write_text(
+                json.dumps(session, ensure_ascii=False), encoding="utf-8"
+            )
+
+        await asyncio.to_thread(save_session)
         self._logged_in = True
         self._account_id = account_id
         await self._set_login_result(

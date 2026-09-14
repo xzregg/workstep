@@ -6,6 +6,10 @@ WorkStep is a local-first system with three distributable surfaces: `apps/daemon
 
 Each project stores state in `.workstep/workstep.db`; no hosted account is required. Tasks, task steps, messages, engine sessions, and artifacts are project-local. Engine events are normalized before persistence so live streaming and historical replay share the same AG-UI translation.
 
+项目标识同时保存在 `.workstep/project.json`，从列表移除项目不会删除该标识或数据库。重新打开原目录时复用标识和已有流程、会话历史；没有该文件的旧项目从数据库中的会话、流程助手或项目配置恢复标识。初始化和注册接口均返回完整流程列表，前端可立即选择已有流程。
+
+聊天会话以当前激活的项目数据库为归属边界，不再按会话行中历史 `project_id` 二次过滤。同一个数据库可能经历目录移动或本机、容器分别注册而保留多个旧标识；列表、历史和后续会话操作均在当前项目数据库内执行，接口返回当前注册标识，不改写旧记录。
+
 ## Engine boundary
 
 `BaseLLMEngine` defines WorkStep-specific discovery, installation, configuration, and capabilities. `AcpEngineBase` defines the common session, interaction, approval, and cancellation seam. Native ACP engines use it directly; SDK and CLI engines adapt only events they genuinely receive.

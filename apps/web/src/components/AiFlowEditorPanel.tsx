@@ -54,8 +54,7 @@ export default function AiFlowEditorPanel({
         title={t('layout.dragResizeChat')}
         style={{
           width: 3, flexShrink: 0, cursor: 'col-resize', position: 'relative',
-          background: 'transparent', userSelect: 'none',
-        }}
+          background: 'transparent',        }}
       >
         <div style={{
           position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)',

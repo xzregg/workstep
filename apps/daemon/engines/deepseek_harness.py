@@ -174,7 +174,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         confirmed: dict[str, bool] | None = None,
     ) -> None:
         provider_id = str(values.get("provider_id") or "").strip()
-        provider = config_store.get_provider(provider_id)
+        provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if not provider_id:
             raise ValueError("请选择 DeepSeek 供应商")
         if (
@@ -183,7 +183,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             or not provider.get("enabled", True)
         ):
             raise ValueError("所选 DeepSeek 供应商不存在或已停用")
-        current = config_store.get_deepseek_harness_config()
+        current = await asyncio.to_thread(config_store.get_deepseek_harness_config)
         preset = str(
             values.get("preset", current.get("preset") or self.DEFAULT_PRESET) or ""
         ).strip()
@@ -196,7 +196,8 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                     raise ValueError
             except ValueError:
                 raise ValueError("最大输出 Token 必须是正整数") from None
-        config_store.set_deepseek_harness_config(
+        await asyncio.to_thread(
+            config_store.set_deepseek_harness_config,
             provider_id=provider_id,
             model=str(current["model"] or "deepseek-v4-flash"),
             max_tokens=max_tokens,
@@ -209,13 +210,15 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         provider_id: str | None = None,
         refresh: bool = False,
     ) -> list[EngineModel]:
-        config = config_store.get_deepseek_harness_config()
-        provider = config_store.get_provider(provider_id or config["provider_id"])
+        config = await asyncio.to_thread(config_store.get_deepseek_harness_config)
+        provider = await asyncio.to_thread(
+            config_store.get_provider, provider_id or config["provider_id"]
+        )
         if provider is None or provider.get("type") != "deepseek":
             return []
-        entry = config_store.get_provider_models(provider["id"])
+        entry = await asyncio.to_thread(config_store.get_provider_models, provider["id"])
         if entry and not refresh:
-            return provider_service.saved_models(provider["id"])
+            return await asyncio.to_thread(provider_service.saved_models, provider["id"])
         return await provider_service.fetch_and_save_models(provider)
 
     def _build_harness(
@@ -514,7 +517,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
                 data={"message": "DeepSeek Harness 当前不支持图片输入"},
             )
             return
-        if not self.is_installed():
+        if not await asyncio.to_thread(self.is_installed):
             yield InternalEvent(
                 type="error",
                 data={"message": "deepseek-harness-sdk 未安装"},
@@ -522,12 +525,14 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             return
 
         config = self.merge_config_overrides(
-            config_store.get_deepseek_harness_config(),
+            await asyncio.to_thread(config_store.get_deepseek_harness_config),
             kwargs.get("config_overrides"),
         )
         selected_model = str(
             model
-            or config_store.get_engine_default_model(self.ENGINE_ID)
+            or await asyncio.to_thread(
+                config_store.get_engine_default_model, self.ENGINE_ID
+            )
             or config.get("model")
             or "deepseek-v4-flash"
         )
@@ -539,7 +544,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         except ValueError as exc:
             yield InternalEvent(type="error", data={"message": str(exc)})
             return
-        provider = config_store.get_provider(provider_runtime.provider_id)
+        provider = await asyncio.to_thread(
+            config_store.get_provider, provider_runtime.provider_id
+        )
         if (
             provider is None
             or not provider.get("base_url")
@@ -558,7 +565,8 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         harness = None
 
         try:
-            harness = self._build_harness(
+            harness = await asyncio.to_thread(
+                self._build_harness,
                 cwd=cwd,
                 provider=provider,
                 model=selected_model,

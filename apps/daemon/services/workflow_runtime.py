@@ -616,10 +616,18 @@ class WorkflowRuntime:
         comment: str | None = None,
     ) -> WorkflowRunHandle | None:
         """Persist a manual decision and resume the same workflow when approved."""
+        from services.messages import current_actor_message_fields
+
+        actor_fields = current_actor_message_fields()
         decision_data = await self._run_db(
             project_id,
             lambda _project: self._persist_review_decision_sync(
-                task_id, step_key, review_run_id, decision, comment
+                task_id,
+                step_key,
+                review_run_id,
+                decision,
+                comment,
+                actor_fields,
             ),
         )
         if decision_data is None:
@@ -635,7 +643,13 @@ class WorkflowRuntime:
         return self._resume_in_project(project, task, workflow_run)
 
     def _persist_review_decision_sync(
-        self, task_id, step_key, review_run_id, decision, comment
+        self,
+        task_id,
+        step_key,
+        review_run_id,
+        decision,
+        comment,
+        actor_fields,
     ):
         review = ReviewRun.get_or_none(ReviewRun.id == review_run_id)
         if (
@@ -666,6 +680,10 @@ class WorkflowRuntime:
         approved = decision in {"approve", "force_approve"}
         review.decision = decision
         review.decision_comment = comment
+        review.reviewer_id = actor_fields.get("author_id")
+        review.reviewer_name = actor_fields.get("author_name")
+        review.reviewer_device_id = actor_fields.get("author_device_id")
+        review.reviewer_device_name = actor_fields.get("author_device_name")
         review.decided_at = now
         review.ended_at = review.ended_at or now
         review.status = "passed" if approved else "rejected"
@@ -675,6 +693,7 @@ class WorkflowRuntime:
         Message.update(
             ended_at=review.ended_at,
             run_status="completed",
+            **actor_fields,
         ).where(
             (Message.task == task_id)
             & (Message.channel == "review")
@@ -1643,6 +1662,10 @@ class WorkflowRuntime:
                 workflow_run.save()
 
             await runner._run_db(finalize_run)
+            try:
+                await runner.close()
+            except Exception:
+                logger.exception("Failed to close event journal for task %s", task.id)
             if self._runners.get(task.id) is runner:
                 self._runners.pop(task.id, None)
             from services.concurrency import concurrency_gate
@@ -1664,7 +1687,16 @@ class WorkflowRuntime:
         """
         runner = self._runners.get(task_id)
         if runner is None:
-            project = self._project_manager.find_project_for_task(task_id)
+            async_finder = getattr(
+                self._project_manager, "find_project_for_task_async", None
+            )
+            project = (
+                await async_finder(task_id)
+                if async_finder is not None
+                else await asyncio.to_thread(
+                    self._project_manager.find_project_for_task, task_id
+                )
+            )
             if project is not None:
                 return await self.cancel_queued(project.id, task_id)
             return False

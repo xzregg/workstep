@@ -192,7 +192,7 @@ export default function SchedulePage({ onClose, onCountChange }: SchedulePagePro
     const previousCursor = document.body.style.cursor
     const previousUserSelect = document.body.style.userSelect
     document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
+    document.body.style.userSelect = ''
     const handleMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX
       if (edge === 'aside') {

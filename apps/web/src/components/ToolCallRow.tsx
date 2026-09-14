@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Icon, { type IconName } from './Icon'
 import { MessageCopyButton } from './MessageResponseFooter'
 import FilePreviewDialog from './FilePreviewDialog'
@@ -9,14 +9,74 @@ import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdown
 
 type ToolKind = 'edit' | 'read' | 'command' | 'search' | 'subagent' | 'other'
 
-function textValue(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (value === undefined || value === null) return ''
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
+/**
+ * 展开时单段（输入/结果）显示上限。子代理一次读取/编辑的 raw_output 可达数十 MB，
+ * 全量 JSON.stringify + 塞进 DOM 会冻结主线程（折叠时也照渲染，因为 <details>
+ * 只是 CSS 隐藏）。超限即截断；完整内容应由后端按需提供（per-event 拉取）。
+ */
+const MAX_DETAIL_CHARS = 50_000
+
+/** 仅在展开时调用：把工具输入/结果转为可显示文本并截断，避免渲染期 stringify 巨串。 */
+function cappedText(value: unknown): { text: string; truncated: boolean } {
+  if (value === undefined || value === null) return { text: '', truncated: false }
+  if (typeof value === 'string') {
+    return value.length > MAX_DETAIL_CHARS
+      ? { text: value.slice(0, MAX_DETAIL_CHARS), truncated: true }
+      : { text: value, truncated: false }
   }
+  try {
+    const s = JSON.stringify(value, null, 2)
+    return s.length > MAX_DETAIL_CHARS
+      ? { text: s.slice(0, MAX_DETAIL_CHARS), truncated: true }
+      : { text: s, truncated: false }
+  } catch {
+    return { text: String(value), truncated: false }
+  }
+}
+
+/**
+ * 工具详情（输入/结果）——只在 <details> 展开时挂载。
+ * 折叠状态下完全不计算/不渲染这段，巨型 raw_output 因此不会拖垮每次渲染。
+ */
+function ToolCallDetail({ input, result, t }: {
+  input: unknown
+  result: unknown
+  t: TFunction
+}) {
+  const inputText = useMemo(() => cappedText(input), [input])
+  const resultText = useMemo(() => cappedText(result), [result])
+  const truncatedHint = (
+    <div className="process-trace-empty">
+      {t('trace.outputTruncated', { count: MAX_DETAIL_CHARS })}
+    </div>
+  )
+  return (
+    <div className="llm-tool-call-detail">
+      {inputText.text && (
+        <div className="llm-tool-call-section">
+          <div className="llm-tool-call-section-header">
+            <span>{t('trace.input')}</span>
+            <MessageCopyButton content={inputText.text} title={t('trace.copyInput')} />
+          </div>
+          <pre>{inputText.text}</pre>
+          {inputText.truncated && truncatedHint}
+        </div>
+      )}
+      {resultText.text && (
+        <div className="llm-tool-call-section">
+          <div className="llm-tool-call-section-header">
+            <span>{t('trace.result')}</span>
+            <MessageCopyButton content={resultText.text} title={t('trace.copyResult')} />
+          </div>
+          <pre>{resultText.text}</pre>
+          {resultText.truncated && truncatedHint}
+        </div>
+      )}
+      {!inputText.text && !resultText.text && (
+        <div className="process-trace-empty">{t('trace.noDetails')}</div>
+      )}
+    </div>
+  )
 }
 
 function basename(path: string): string {
@@ -78,8 +138,9 @@ export default function ToolCallRow({
 }: ToolCallRowProps) {
   const { t } = useI18n()
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
-  const input = textValue(activity.input)
-  const result = textValue(activity.result)
+  // 详情（输入/结果）仅在展开后挂载：折叠时完全不碰可能达数十 MB 的 raw_output，
+  // 否则流式期间每次重渲染都会 stringify 巨串并塞进 DOM，主线程被占满、页面失去响应。
+  const [open, setOpen] = useState(false)
   const isRunning = messageRunning && !activity.hasResult
   const kind = toolKind(activity.name)
   const targetInfo = extractToolTarget(activity.input)
@@ -102,59 +163,48 @@ export default function ToolCallRow({
   const previewTitle = fileLink ? t('md.previewFile', { name: fileLink.name }) : ''
 
   return (
-    <details className={`llm-tool-call llm-tool-call-${isRunning ? 'running' : activity.isError ? 'failed' : 'done'}`}>
-      <summary title={targetInfo.target || undefined}>
+    <details
+      className={`llm-tool-call llm-tool-call-${isRunning ? 'running' : activity.isError ? 'failed' : 'done'}`}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary
+        title={targetInfo.target || undefined}
+        onClick={(event) => {
+          // 文件名渲染为非交互 span（交互元素放进 <summary> 会触发可访问性
+          // 告警且键盘行为不一致），点击经此委托：命中文件名 → 打开预览并
+          // preventDefault 阻止本次展开/折叠；键盘入口在展开后的详情里。
+          if (fileLink && (event.target as HTMLElement).closest('[data-file-preview-link]')) {
+            event.preventDefault()
+            setPreviewFile(fileLink)
+          }
+        }}
+      >
         <span className="llm-tool-call-icon" aria-hidden="true">
           <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />
         </span>
         <span className={`llm-tool-call-summary${isRunning ? ' is-shimmer' : ''}`}>{summary}</span>
         {fileLink && (
-          <a
+          <span
             className="markdown-file-link"
-            role="button"
-            tabIndex={0}
             data-file-preview="true"
+            data-file-preview-link="true"
             title={previewTitle}
             aria-label={previewTitle}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setPreviewFile(fileLink)
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' && event.key !== ' ') return
-              event.preventDefault()
-              event.stopPropagation()
-              setPreviewFile(fileLink)
-            }}
+            style={{ cursor: 'pointer' }}
           >
             {fileLink.name}
-          </a>
+          </span>
         )}
         {activity.isError && <span className="process-trace-error">{t('trace.failed')}</span>}
         <Icon name="chevron-down" size={12} strokeWidth={1.8} className="llm-tool-call-chevron" />
       </summary>
-      <div className="llm-tool-call-detail">
-        {input && (
-          <div className="llm-tool-call-section">
-            <div className="llm-tool-call-section-header">
-              <span>{t('trace.input')}</span>
-              <MessageCopyButton content={input} title={t('trace.copyInput')} />
-            </div>
-            <pre>{input}</pre>
-          </div>
-        )}
-        {result && (
-          <div className="llm-tool-call-section">
-            <div className="llm-tool-call-section-header">
-              <span>{t('trace.result')}</span>
-              <MessageCopyButton content={result} title={t('trace.copyResult')} />
-            </div>
-            <pre>{result}</pre>
-          </div>
-        )}
-        {!input && !result && <div className="process-trace-empty">{t('trace.noDetails')}</div>}
-      </div>
+      {open && (
+        <ToolCallDetail
+          input={activity.input}
+          result={activity.result}
+          t={t}
+        />
+      )}
       {previewFile && projectId && (
         <FilePreviewDialog
           path={previewFile.path}

@@ -26,6 +26,8 @@ from typing import Any, Awaitable, Callable, Protocol
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import InternalEvent, is_commentary
 from agent_assistants.event_journal import JournalRef, TurnEventJournal
+from agent_assistants.event_truncation import truncate_large_tool_payloads
+from agent_assistants.thought_aggregation import ThoughtChunkAggregator
 from engines.core.registry import create_engine
 from engines.core.schema import EngineImage
 from models.fields import utc_now
@@ -189,6 +191,8 @@ async def invoke_engine(
     engine = create_engine(engine_id)
     if engine is None:
         raise RuntimeError(f"{error_prefix} is unavailable: {engine_id}")
+    if permission_mode:
+        await engine.set_permission_mode(permission_mode)
     if images:
         capabilities = getattr(engine, "capabilities", None)
         engine_accepts_images = bool(
@@ -1020,6 +1024,26 @@ class AssistantRuntime:
             return True
         return False
 
+    async def set_running_permission_mode(
+        self,
+        session_id: str,
+        permission_mode: str,
+    ) -> bool:
+        """Apply a permission change to a queued or running assistant turn."""
+        matched = False
+        for turn_id, state in reversed(self._turn_states.items()):
+            if (
+                state.get("session_id") != session_id
+                or state.get("status") not in {"queued", "running"}
+            ):
+                continue
+            engine = self._running_engines.get(turn_id)
+            if engine is not None:
+                await engine.set_permission_mode(permission_mode)
+            state["permission_mode"] = permission_mode or None
+            matched = True
+        return matched
+
     async def send_live_message(
         self,
         session_id: str,
@@ -1193,7 +1217,7 @@ class AssistantRuntime:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         if self._config.event_journal is not None:
-            self._config.event_journal.close()
+            await self._config.event_journal.aclose()
         self._sessions.clear()
         self._turn_keys.clear()
         self._turn_states.clear()
@@ -1412,9 +1436,21 @@ class AssistantRuntime:
             f"\n\n历史对话：\n{history}\n\n请继续。"
         )
 
+    def _system_prompt_for_display(self, session: AssistantSession) -> str:
+        """Return the system instruction that remains effective for this session."""
+        return self._config.system_prompt
+
     def _display_prompt(self, session: AssistantSession, prompt: str) -> str:
-        """Return the user-visible prompt projection persisted with a message."""
-        return prompt
+        """Return the complete effective prompt shown by ``查看提示词``.
+
+        Resume-capable engines retain the system instruction in their session,
+        so later wire prompts intentionally omit it.  The inspection view must
+        still show that effective instruction without sending it again.
+        """
+        system_prompt = self._system_prompt_for_display(session).strip()
+        if not system_prompt or prompt.lstrip().startswith(system_prompt):
+            return prompt
+        return f"{system_prompt}\n\n{prompt.lstrip()}"
 
     async def _on_engine_session_started(self, session: AssistantSession) -> None:
         """Assistant-specific hook after the target engine session starts."""
@@ -1449,8 +1485,8 @@ class AssistantRuntime:
             active_segment_events: list[dict] = []
             live_split_count = [0]
             try:
-                session.cwd = self._cwd(session.project_id)
-                prompt = self._build_prompt(session)
+                session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
+                prompt = await asyncio.to_thread(self._build_prompt, session)
                 display_prompt = self._display_prompt(session, prompt)
                 user_messages = [
                     message
@@ -1471,12 +1507,15 @@ class AssistantRuntime:
                     )
                 images: list[EngineImage] = []
                 if user_messages and self._project_manager is not None:
-                    with self._project_ctx(session.project_id) as project:
-                        images = extract_uploaded_images(
-                            project,
-                            session.cwd,
-                            str(user_messages[-1].get("content", "")),
-                        )
+                    def load_images() -> list[EngineImage]:
+                        with self._project_ctx(session.project_id) as project:
+                            return extract_uploaded_images(
+                                project,
+                                session.cwd,
+                                str(user_messages[-1].get("content", "")),
+                            )
+
+                    images = await asyncio.to_thread(load_images)
                 turn_model = (
                     session.vision_model or session.model
                     if images
@@ -1495,6 +1534,23 @@ class AssistantRuntime:
                     or (lambda raw: raw)
                 )
 
+                # 思考增量聚合：token 级的思考/子代理增量在进日志与广播前合并为
+                # 少量大事件（长回合中此类事件占比 ~90%，逐条下发会造成 WS 消息
+                # 风暴与前端 store 每条事件复制一次数组）。emit_aggregated 与原
+                # 逐条分支走完全相同的出口（journal + _publish + seq 递增）。
+                thought_aggregator = ThoughtChunkAggregator()
+
+                async def emit_aggregated(aggregated: dict) -> None:
+                    await self._record_journal_event(active_journal_ref[0], aggregated)
+                    await self._publish(
+                        session,
+                        active_message_id[0],
+                        aggregated["type"],
+                        aggregated["data"],
+                        seq_holder[0],
+                    )
+                    seq_holder[0] += 1
+
                 def make_live_callback(journaled_events: list[dict]):
                     raw_content = ""
 
@@ -1512,8 +1568,18 @@ class AssistantRuntime:
                         event_dict = event.to_dict()
                         journaled_events.append(event_dict)
                         active_segment_events.append(event_dict)
+                        # 可合并的思考增量进聚合器（预算达到才落日志/广播）；
+                        # 其他事件先冲刷挂起的思考流，保证顺序与消息归属
+                        # （下方 live-split 会切换 active_message_id）。
+                        if thought_aggregator.is_mergeable(event_dict):
+                            merged = thought_aggregator.offer(event_dict)
+                            if merged is not None:
+                                await emit_aggregated(merged)
+                            return
+                        for pending in thought_aggregator.flush():
+                            await emit_aggregated(pending)
                         if is_commentary(event):
-                            self._record_journal_event(active_journal_ref[0], event_dict)
+                            await self._record_journal_event(active_journal_ref[0], event_dict)
                             await self._publish(
                                 session, active_message_id[0], event.type,
                                 event.data, seq_holder[0],
@@ -1529,7 +1595,7 @@ class AssistantRuntime:
                             if not delta:
                                 return
                             streamed_reply = partial_reply
-                            self._record_journal_event(
+                            await self._record_journal_event(
                                 active_journal_ref[0],
                                 {
                                     "type": "agent_message_chunk",
@@ -1545,7 +1611,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "agent_thought_chunk":
-                            self._record_journal_event(active_journal_ref[0], event_dict)
+                            await self._record_journal_event(active_journal_ref[0], event_dict)
                             await self._publish(
                                 session,
                                 active_message_id[0],
@@ -1568,7 +1634,7 @@ class AssistantRuntime:
                             "compacted",
                             "session_started",
                         }:
-                            self._record_journal_event(
+                            await self._record_journal_event(
                                 active_journal_ref[0],
                                 event_dict,
                                 force=event.type in {"interaction_request", "session_started"},
@@ -1582,7 +1648,7 @@ class AssistantRuntime:
                             )
                             seq_holder[0] += 1
                         elif event.type == "usage_update":
-                            self._record_journal_event(active_journal_ref[0], event_dict)
+                            await self._record_journal_event(active_journal_ref[0], event_dict)
                             await self._publish(
                                 session,
                                 active_message_id[0],
@@ -1620,7 +1686,7 @@ class AssistantRuntime:
                                         "status": "succeeded",
                                         "ended_at": ended_at,
                                     })
-                                    self._finish_journal(
+                                    await self._finish_journal(
                                         active_journal_ref[0],
                                         sealed,
                                         {"type": "status", "data": {"status": "succeeded"}},
@@ -1661,7 +1727,7 @@ class AssistantRuntime:
                                         self._config.event_journal is not None
                                         and active_journal_ref[0] is not None
                                     ):
-                                        next_journal_ref = self._config.event_journal.start(
+                                        next_journal_ref = await self._config.event_journal.astart(
                                             active_journal_ref[0].root,
                                             session.session_id,
                                             next_message_id,
@@ -1716,7 +1782,7 @@ class AssistantRuntime:
                         else:
                             # Keep the host-side journal complete even when an
                             # event has no current AG-UI rendering path.
-                            self._record_journal_event(active_journal_ref[0], event_dict)
+                            await self._record_journal_event(active_journal_ref[0], event_dict)
 
                     return publish_live_event
 
@@ -1733,7 +1799,10 @@ class AssistantRuntime:
                     make_live_callback(journaled_events),
                     **invoke_kwargs,
                 )
-                self._record_unstreamed_journal_events(
+                # 回合结束：先冲刷聚合器里剩余的思考流，再补录非实时事件。
+                for pending in thought_aggregator.flush():
+                    await emit_aggregated(pending)
+                await self._record_unstreamed_journal_events(
                     active_journal_ref[0], _events, journaled_events
                 )
                 if self._turn_states[turn_id]["status"] == "stopping":
@@ -1754,7 +1823,7 @@ class AssistantRuntime:
                 if live_split_count[0] > 0 and not structured:
                     reply = streamed_reply
                 for extra_event in repair_events:
-                    self._record_journal_event(active_journal_ref[0], extra_event)
+                    await self._record_journal_event(active_journal_ref[0], extra_event)
                     await self._publish(
                         session,
                         active_message_id[0],
@@ -1772,7 +1841,7 @@ class AssistantRuntime:
                         seq_holder[0],
                     )
                     for structured_event in structured_events:
-                        self._record_journal_event(
+                        await self._record_journal_event(
                             active_journal_ref[0], structured_event
                         )
                 seq_holder[0] = await self._publish(
@@ -1817,7 +1886,7 @@ class AssistantRuntime:
                         ],
                     }
                 )
-                self._finish_journal(
+                await self._finish_journal(
                     active_journal_ref[0],
                     active_message[0],
                     {"type": "status", "data": {"status": "succeeded"}},
@@ -1839,7 +1908,7 @@ class AssistantRuntime:
                         "events": _prune_events(active_segment_events),
                     }
                 )
-                self._finish_journal(
+                await self._finish_journal(
                     active_journal_ref[0],
                     active_message[0],
                     {"type": "status", "data": {"status": "stopped"}},
@@ -1879,7 +1948,7 @@ class AssistantRuntime:
                         "events": _prune_events(active_segment_events),
                     }
                 )
-                self._finish_journal(
+                await self._finish_journal(
                     active_journal_ref[0],
                     active_message[0],
                     {"type": "error", "data": {"message": str(exc)}},
@@ -1911,7 +1980,7 @@ class AssistantRuntime:
                         lambda _project: self._config.persistence.save(session),
                     )
 
-    def _record_journal_event(
+    async def _record_journal_event(
         self,
         ref: JournalRef | None,
         event: dict,
@@ -1921,11 +1990,11 @@ class AssistantRuntime:
         if ref is None or self._config.event_journal is None:
             return
         try:
-            self._config.event_journal.record(ref, event, force=force)
+            await self._config.event_journal.arecord(ref, event, force=force)
         except Exception:
             logger.exception("Failed to append assistant event journal")
 
-    def _record_unstreamed_journal_events(
+    async def _record_unstreamed_journal_events(
         self,
         ref: JournalRef | None,
         returned_events: list[dict],
@@ -1937,9 +2006,9 @@ class AssistantRuntime:
             if event in unmatched:
                 unmatched.remove(event)
             else:
-                self._record_journal_event(ref, event)
+                await self._record_journal_event(ref, event)
 
-    def _finish_journal(
+    async def _finish_journal(
         self,
         ref: JournalRef | None,
         message: dict,
@@ -1948,8 +2017,8 @@ class AssistantRuntime:
         if ref is None or self._config.event_journal is None:
             return
         try:
-            self._config.event_journal.finish(ref, terminal_event)
-            snapshot = self._config.event_journal.snapshot(ref)
+            await self._config.event_journal.afinish(ref, terminal_event)
+            snapshot = await self._config.event_journal.asnapshot(ref)
             message["event_summary"] = snapshot["summary"]
             message["events"] = snapshot["events"]
             message["event_detail"] = {
@@ -2054,13 +2123,13 @@ class AssistantRuntime:
         )
         turn_state = self._turn_states.get(run_key, {}) if run_key else {}
         turn_provider = turn_state.get("provider_id")
-        provider_id = turn_provider or (
-            ""
-            if turn_state.get("engine_overridden")
-            else config_store.get_assistant_defaults(self._config.name).get(
-                "provider_id", ""
+        if turn_provider or turn_state.get("engine_overridden"):
+            provider_id = turn_provider or ""
+        else:
+            defaults = await asyncio.to_thread(
+                config_store.get_assistant_defaults, self._config.name
             )
-        )
+            provider_id = defaults.get("provider_id", "")
         config_overrides = (
             {"provider_id": provider_id} if provider_id else None
         )
@@ -2104,7 +2173,9 @@ class AssistantRuntime:
             "model": session.model,
             "event_sequence": event_sequence,
             "type": event_type,
-            "data": data,
+            # 广播出口截断超大工具载荷（30MB 级 raw_output 会冻结浏览器）；
+            # JSONL 日志走 _record_journal_event，独立于本路径，保留全量。
+            "data": truncate_large_tool_payloads(data),
             "created_at": utc_now().isoformat(),
         }
         actor = get_effective_actor()

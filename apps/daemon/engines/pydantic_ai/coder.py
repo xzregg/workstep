@@ -1,14 +1,103 @@
 """WorkStep compatibility layer for the harness Coder capability."""
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+import anyio
 from pydantic_ai import ModelRetry
 from pydantic_ai_harness import Coder, FileSystem, Shell
+from pydantic_ai_harness.filesystem import (
+    READ_ONLY_TOOL_NAMES,
+    FileSystemToolset,
+)
 from pydantic_ai_harness.planning import InMemoryPlanStore, Planning
 from pydantic_ai_harness.shell import ShellToolset
 from pydantic_ai_harness.subagents import SubAgents
+from pydantic_ai.toolsets import FilteredToolset
+
+
+class WorkStepFileSystemToolset(FileSystemToolset):
+    """Run the harness's synchronous filesystem implementation in a worker."""
+
+    @staticmethod
+    async def _offload(operation, /, *args, **kwargs):
+        def run():
+            return asyncio.run(operation(*args, **kwargs))
+
+        return await asyncio.to_thread(run)
+
+    async def read_file(self, path: str, *, offset: int = 0, limit: int | None = None) -> str:
+        return await self._offload(super().read_file, path, offset=offset, limit=limit)
+
+    async def write_file(self, path: str, content: str, *, expected_hash: str | None = None) -> str:
+        return await self._offload(super().write_file, path, content, expected_hash=expected_hash)
+
+    async def edit_file(
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        *,
+        expected_hash: str | None = None,
+    ) -> str:
+        return await self._offload(
+            super().edit_file,
+            path,
+            old_text,
+            new_text,
+            expected_hash=expected_hash,
+        )
+
+    async def list_directory(self, path: str = ".") -> str:
+        return await self._offload(super().list_directory, path)
+
+    async def search_files(
+        self,
+        pattern: str,
+        *,
+        path: str = ".",
+        include_glob: str | None = None,
+    ) -> str:
+        return await self._offload(
+            super().search_files,
+            pattern,
+            path=path,
+            include_glob=include_glob,
+        )
+
+    async def find_files(self, pattern: str, *, path: str = ".") -> str:
+        return await self._offload(super().find_files, pattern, path=path)
+
+    async def create_directory(self, path: str) -> str:
+        return await self._offload(super().create_directory, path)
+
+    async def file_info(self, path: str) -> str:
+        return await self._offload(super().file_info, path)
+
+
+@dataclass
+class WorkStepFileSystem(FileSystem):
+    """Harness filesystem capability whose disk work cannot stall FastAPI."""
+
+    def get_toolset(self):
+        toolset = WorkStepFileSystemToolset(
+            root_dir=Path(self.root_dir),
+            allowed_patterns=self.allowed_patterns,
+            denied_patterns=self.denied_patterns,
+            protected_patterns=self.protected_patterns,
+            max_read_lines=self.max_read_lines,
+            max_list_results=self.max_list_results,
+            max_search_results=self.max_search_results,
+            max_find_results=self.max_find_results,
+        )
+        if self.read_only:
+            return FilteredToolset(
+                toolset,
+                lambda ctx, tool: tool.name in READ_ONLY_TOOL_NAMES,
+            )
+        return toolset
 
 
 class WorkStepShellToolset(ShellToolset):
@@ -38,6 +127,45 @@ class WorkStepShellToolset(ShellToolset):
             # coding turn. Keep the rejection visible while allowing the model
             # to choose another command.
             return f"[Command rejected]\n{exc}"
+
+    @staticmethod
+    def _background_output(stdout: str, stderr: str, status: str, exit_code=None) -> str:
+        sections = []
+        if stdout:
+            sections.append(f"[stdout]\n{stdout}")
+        if stderr:
+            sections.append(f"[stderr]\n{stderr}")
+        parts = ["\n".join(sections) if sections else "(no output yet)", f"[{status}]"]
+        if exit_code is not None:
+            parts.append(f"[exit code: {exit_code}]")
+        return "\n".join(parts)
+
+    async def check_command(self, command_id: str) -> str:
+        bg = self._background.get(command_id)
+        if bg is None:
+            return f"[Error: unknown command ID {command_id!r}]"
+        if not bg.finished and bg.proc.returncode is not None:
+            bg.exit_code = bg.proc.returncode
+            bg.finished = True
+        stdout, stderr = await asyncio.to_thread(self._read_bg_output, bg)
+        status = "status: finished" if bg.finished else "status: running"
+        return self._background_output(stdout, stderr, status, bg.exit_code if bg.finished else None)
+
+    async def stop_command(self, command_id: str) -> str:
+        bg = self._background.get(command_id)
+        if bg is None:
+            return f"[Error: unknown command ID {command_id!r}]"
+        if not bg.finished:
+            await self._kill_process_group(bg.proc)
+            with anyio.CancelScope(shield=True):
+                await bg.proc.wait()
+            bg.exit_code = bg.proc.returncode
+            bg.finished = True
+        stdout, stderr = await asyncio.to_thread(self._read_bg_output, bg)
+        await asyncio.to_thread(self._cleanup_bg_files, bg)
+        del self._background[command_id]
+        await bg.proc.aclose()
+        return self._background_output(stdout, stderr, "stopped", bg.exit_code)
 
 
 @dataclass
@@ -150,9 +278,16 @@ class WorkStepCoder(Coder):
             protected = list(capability.protected_patterns)
             if ".workstep/MEMORY.md" not in protected:
                 protected.append(".workstep/MEMORY.md")
-            replacement = _dataclasses.replace(
-                capability,
+            replacement = WorkStepFileSystem(
+                root_dir=capability.root_dir,
+                allowed_patterns=capability.allowed_patterns,
+                denied_patterns=capability.denied_patterns,
                 protected_patterns=protected,
+                max_read_lines=capability.max_read_lines,
+                max_list_results=capability.max_list_results,
+                max_search_results=capability.max_search_results,
+                max_find_results=capability.max_find_results,
+                read_only=capability.read_only,
             )
             self.capabilities[index] = replacement
             self._instruction_sources = [

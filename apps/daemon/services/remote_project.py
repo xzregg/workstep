@@ -16,10 +16,12 @@ import json
 import logging
 import secrets
 import socket
+import threading
 import time
 import uuid
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any, Callable, Literal
 from urllib.parse import urlparse, urlunparse
 
@@ -210,6 +212,7 @@ class RemoteAccessService:
             daemon_host = daemon_settings.host if daemon_host is None else daemon_host
             daemon_port = daemon_settings.port if daemon_port is None else daemon_port
         self._config = config_store
+        self._state_lock = threading.RLock()
         self._daemon_host = daemon_host
         self._daemon_port = daemon_port
         self._network_address_resolver = network_address_resolver or _primary_network_ipv4
@@ -615,6 +618,7 @@ class RemoteProjectRegistry:
 
     def __init__(self, config_store):
         self._config = config_store
+        self._state_lock = threading.RLock()
 
     def _load(self) -> list[dict[str, Any]]:
         raw = self._config.get(self.CONFIG_KEY, [])
@@ -756,6 +760,52 @@ class RemoteProjectRegistry:
 
     def list_public(self) -> list[dict[str, Any]]:
         return [self._public(item) for item in self._load()]
+
+
+def _serialize_remote_state(method):
+    @wraps(method)
+    def synchronized(self, *args, **kwargs):
+        with self._state_lock:
+            return method(self, *args, **kwargs)
+
+    return synchronized
+
+
+for _owner, _methods in (
+    (
+        RemoteAccessService,
+        (
+            "set_runtime_port",
+            "settings",
+            "update_settings",
+            "create_share",
+            "authenticate",
+            "list_devices",
+            "revoke_device",
+            "update_device_expiry",
+            "touch_device_activity",
+            "is_principal_authorized",
+        ),
+    ),
+    (
+        RemoteProjectRegistry,
+        (
+            "add_from_share",
+            "get",
+            "update",
+            "mark_authenticated",
+            "set_status",
+            "remove",
+            "list_public",
+        ),
+    ),
+):
+    for _method_name in _methods:
+        setattr(
+            _owner,
+            _method_name,
+            _serialize_remote_state(getattr(_owner, _method_name)),
+        )
 
 
 @dataclass(frozen=True)
@@ -932,12 +982,18 @@ class _RemoteProjectConnection:
         async with self._connect_lock:
             if self._socket is not None and self._reader_task is not None:
                 return RemoteProjectRegistry._public(
-                    self._registry.get(self.local_project_id) or {}
+                    await asyncio.to_thread(
+                        self._registry.get, self.local_project_id
+                    ) or {}
                 )
-            descriptor = self._registry.get(self.local_project_id)
+            descriptor = await asyncio.to_thread(
+                self._registry.get, self.local_project_id
+            )
             if descriptor is None:
                 raise KeyError(self.local_project_id)
-            self._registry.set_status(self.local_project_id, "connecting")
+            await asyncio.to_thread(
+                self._registry.set_status, self.local_project_id, "connecting"
+            )
             socket = None
             try:
                 socket = await self._connect_factory(
@@ -947,7 +1003,7 @@ class _RemoteProjectConnection:
                     ping_timeout=20,
                     max_size=16 * 1024 * 1024,
                 )
-                actor: ActorSnapshot = self._actor_provider()
+                actor: ActorSnapshot = await asyncio.to_thread(self._actor_provider)
                 auth = {
                     "type": "auth",
                     "project_id": descriptor["host_project_id"],
@@ -967,12 +1023,14 @@ class _RemoteProjectConnection:
                     detail = str(message.get("detail") or "Remote authentication failed")
                     normalized_detail = detail.lower()
                     if "revoked" in normalized_detail:
-                        self._registry.update(
+                        await asyncio.to_thread(
+                            self._registry.update,
                             self.local_project_id,
                             access_status="revoked",
                         )
                     elif "expired" in normalized_detail:
-                        self._registry.update(
+                        await asyncio.to_thread(
+                            self._registry.update,
                             self.local_project_id,
                             access_status="expired",
                         )
@@ -986,7 +1044,8 @@ class _RemoteProjectConnection:
                 if not isinstance(project, dict):
                     raise ValueError("Remote host returned an invalid project summary")
                 self._socket = socket
-                public = self._registry.mark_authenticated(
+                public = await asyncio.to_thread(
+                    self._registry.mark_authenticated,
                     self.local_project_id,
                     credential=credential,
                     project=project,
@@ -1003,7 +1062,9 @@ class _RemoteProjectConnection:
             except Exception:
                 if socket is not None and self._socket is None:
                     await socket.close()
-                self._registry.set_status(self.local_project_id, "error")
+                await asyncio.to_thread(
+                    self._registry.set_status, self.local_project_id, "error"
+                )
                 await self._emit_status("error")
                 raise
 
@@ -1024,7 +1085,10 @@ class _RemoteProjectConnection:
                                     str(k): str(v)
                                     for k, v in dict(message.get("headers") or {}).items()
                                 },
-                                body=base64.b64decode(str(message.get("body_b64") or "")),
+                                body=await asyncio.to_thread(
+                                    base64.b64decode,
+                                    str(message.get("body_b64") or ""),
+                                ),
                             )
                         )
                 elif message.get("type") == "event" and isinstance(message.get("event"), dict):
@@ -1036,7 +1100,8 @@ class _RemoteProjectConnection:
                     message.get("project"), dict
                 ):
                     project = message["project"]
-                    self._registry.update(
+                    await asyncio.to_thread(
+                        self._registry.update,
                         self.local_project_id,
                         name=str(project.get("name") or ""),
                         steps=project.get("steps") or {},
@@ -1045,7 +1110,8 @@ class _RemoteProjectConnection:
                 elif message.get("type") == "access_ended":
                     reason = str(message.get("reason") or "")
                     if reason in {"expired", "revoked"}:
-                        self._registry.update(
+                        await asyncio.to_thread(
+                            self._registry.update,
                             self.local_project_id,
                             access_status=reason,
                         )
@@ -1056,7 +1122,9 @@ class _RemoteProjectConnection:
             logger.info("Remote project socket closed: %s", exc)
         finally:
             self._socket = None
-            self._registry.set_status(self.local_project_id, "disconnected")
+            await asyncio.to_thread(
+                self._registry.set_status, self.local_project_id, "disconnected"
+            )
             await self._emit_status("disconnected")
             for future in self._pending.values():
                 if not future.done():
@@ -1070,6 +1138,7 @@ class _RemoteProjectConnection:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending[request.request_id] = future
+        encoded_body = await asyncio.to_thread(base64.b64encode, request.body)
         envelope = {
             "type": "http.request",
             "request_id": request.request_id,
@@ -1077,7 +1146,7 @@ class _RemoteProjectConnection:
             "path": request.path,
             "query": request.query,
             "headers": request.headers,
-            "body_b64": base64.b64encode(request.body).decode(),
+            "body_b64": encoded_body.decode(),
         }
         try:
             async with self._send_lock:
@@ -1114,7 +1183,9 @@ class _RemoteProjectConnection:
         if socket is not None:
             await socket.close()
         if reader is None:
-            self._registry.set_status(self.local_project_id, "disconnected")
+            await asyncio.to_thread(
+                self._registry.set_status, self.local_project_id, "disconnected"
+            )
             await self._emit_status("disconnected")
 
 
@@ -1151,7 +1222,7 @@ class RemoteProjectClientManager:
         return connection
 
     async def add_share(self, share_string: str) -> dict[str, Any]:
-        project = self._registry.add_from_share(share_string)
+        project = await asyncio.to_thread(self._registry.add_from_share, share_string)
         existing = self._connections.pop(project["id"], None)
         if existing is not None:
             await existing.close()
@@ -1165,19 +1236,19 @@ class RemoteProjectClientManager:
     async def request(
         self, local_project_id: str, request: RemoteHttpRequest
     ) -> RemoteHttpResponse:
-        if self._registry.get(local_project_id) is None:
+        if await asyncio.to_thread(self._registry.get, local_project_id) is None:
             raise KeyError(local_project_id)
         return await self._connection(local_project_id).request(request)
 
     async def subscribe(self, local_project_id: str, subscription: dict[str, Any]) -> None:
-        if self._registry.get(local_project_id) is not None:
+        if await asyncio.to_thread(self._registry.get, local_project_id) is not None:
             await self._connection(local_project_id).subscribe(subscription)
 
     async def remove(self, local_project_id: str) -> bool:
         connection = self._connections.pop(local_project_id, None)
         if connection is not None:
             await connection.close()
-        return self._registry.remove(local_project_id)
+        return await asyncio.to_thread(self._registry.remove, local_project_id)
 
     async def close(self) -> None:
         connections = list(self._connections.values())
@@ -1214,7 +1285,9 @@ class RemoteProjectProxyMiddleware(BaseHTTPMiddleware):
                 payload = None
             if isinstance(payload, dict) and isinstance(payload.get("project_id"), str):
                 project_id = payload["project_id"]
-        if not project_id or self._registry.get(project_id) is None:
+        if not project_id or await asyncio.to_thread(
+            self._registry.get, project_id
+        ) is None:
             return await call_next(request)
 
         forwarded = RemoteHttpRequest(
@@ -1283,7 +1356,8 @@ async def serve_remote_project_socket(
         )
         if not actor.user_name or not actor.device_id or not actor.device_name:
             raise PermissionError("Incomplete remote actor identity")
-        principal = access_service.authenticate(
+        principal = await asyncio.to_thread(
+            access_service.authenticate,
             project_id=str(auth.get("project_id") or ""),
             actor=actor,
             invite_token=str(auth.get("invite_token") or "") or None,
@@ -1302,7 +1376,9 @@ async def serve_remote_project_socket(
                     "credential": principal.credential,
                     "access_expires_at": principal.expires_at,
                     "access_status": "active",
-                    "host_id": access_service.settings()["host_id"],
+                    "host_id": (
+                        await asyncio.to_thread(access_service.settings)
+                    )["host_id"],
                     "project": summary,
                 }
             )
@@ -1364,7 +1440,9 @@ async def serve_remote_project_socket(
             event = await bus_queue.get()
             if event is None:
                 return
-            if not access_service.is_principal_authorized(principal):
+            if not await asyncio.to_thread(
+                access_service.is_principal_authorized, principal
+            ):
                 continue
             event_project_id = str(event.get("project_id") or "")
             task_id = str(event.get("task_id") or "")
@@ -1394,9 +1472,12 @@ async def serve_remote_project_socket(
         request_id = str(message.get("request_id") or "")
         try:
             async with semaphore:
-                if not access_service.is_principal_authorized(principal):
+                if not await asyncio.to_thread(
+                    access_service.is_principal_authorized, principal
+                ):
                     raise PermissionError("Remote device authorization was revoked")
-                access_service.touch_device_activity(
+                await asyncio.to_thread(
+                    access_service.touch_device_activity,
                     principal.project_id,
                     principal.actor.device_id,
                 )
@@ -1407,7 +1488,13 @@ async def serve_remote_project_socket(
                     path=str(message.get("path") or ""),
                     query={str(k): str(v) for k, v in dict(message.get("query") or {}).items()},
                     headers={str(k): str(v) for k, v in dict(message.get("headers") or {}).items()},
-                    body=base64.b64decode(encoded_body, validate=True) if encoded_body else b"",
+                    body=(
+                        await asyncio.to_thread(
+                            base64.b64decode, encoded_body, validate=True
+                        )
+                        if encoded_body
+                        else b""
+                    ),
                 )
                 response = await dispatcher.dispatch(request, principal)
                 discover_authorized_ids(request.path, response)
@@ -1486,7 +1573,8 @@ async def serve_remote_project_socket(
                         else set()
                     )
             elif message_type == "ping":
-                access_service.touch_device_activity(
+                await asyncio.to_thread(
+                    access_service.touch_device_activity,
                     principal.project_id,
                     principal.actor.device_id,
                 )

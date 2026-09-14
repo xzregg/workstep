@@ -8,6 +8,7 @@
 .venv
 **/.venv
 .workstep
+**/.workstep
 .pids
 logs
 *.db

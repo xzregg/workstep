@@ -32,4 +32,6 @@ test('execution engine settings show the saved model and only refresh from the r
   assert.match(settingsSource, /engine\.default_model/)
   assert.doesNotMatch(modelSelect, /loadEngineModels/)
   assert.match(settingsSource, /onClick=\{\(\) => void loadEngineModels\(engine\.id, true\)\}/)
+  assert.match(settingsSource, /if \(!isExpanded\) void loadEngineModels\(engineId, false\)/)
+  assert.match(settingsSource, /providerApi\.models\(providerId, true\)/)
 })

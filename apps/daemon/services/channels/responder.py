@@ -45,7 +45,9 @@ class ChatSessionResponder:
         assistant_id: str,
         model: str,
     ) -> tuple[str, str]:
-        defaults = config_store.get_assistant_defaults(assistant_id)
+        defaults = await asyncio.to_thread(
+            config_store.get_assistant_defaults, assistant_id
+        )
         engine = defaults.get("engine") or None
         selected_model = model or defaults.get("model") or None
         module = self._module_for(assistant_id)

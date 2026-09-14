@@ -153,19 +153,13 @@ class TaskDispatchService:
         if target_start_step_key not in valid_keys:
             raise ValueError(f"目标阶段不存在: {target_start_step_key}")
         source_workflow = task.workflow_id or "default"
-        files = []
-        for source_step_key in step.depends_on:
-            source_root = artifacts_dir / source_workflow / task.id / source_step_key
-            if not source_root.is_dir():
-                continue
-            for source in sorted(source_root.rglob("*")):
-                if source.is_file():
-                    files.append({
-                        "source_step_key": source_step_key,
-                        "name": source.name,
-                        "relative_path": str(source.relative_to(source_root)),
-                        "content_b64": base64.b64encode(source.read_bytes()).decode(),
-                    })
+        files = await asyncio.to_thread(
+            self._collect_remote_inputs,
+            artifacts_dir,
+            source_workflow,
+            task.id,
+            step.depends_on,
+        )
         payload = {
             "dispatch_id": dispatch_id,
             "title": task.title,
@@ -196,6 +190,28 @@ class TaskDispatchService:
         if not 200 <= response.status < 300:
             raise ValueError(f"远程创建下游任务失败: {response.json()}")
         return response.json()
+
+    @staticmethod
+    def _collect_remote_inputs(
+        artifacts_dir: Path,
+        source_workflow: str,
+        task_id: str,
+        source_step_keys: list[str],
+    ) -> list[dict]:
+        files = []
+        for source_step_key in source_step_keys:
+            source_root = artifacts_dir / source_workflow / task_id / source_step_key
+            if not source_root.is_dir():
+                continue
+            for source in sorted(source_root.rglob("*")):
+                if source.is_file():
+                    files.append({
+                        "source_step_key": source_step_key,
+                        "name": source.name,
+                        "relative_path": str(source.relative_to(source_root)),
+                        "content_b64": base64.b64encode(source.read_bytes()).decode(),
+                    })
+        return files
 
     @staticmethod
     def _dispatch_id(task: Task, step, workflow_run) -> str:

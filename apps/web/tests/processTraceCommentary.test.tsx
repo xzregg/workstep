@@ -36,8 +36,8 @@ for (const width of [390, 1280]) {
     }
     try {
       await act(async () => render(true))
-      let trace = container.querySelector<HTMLDetailsElement>('.process-trace-session')!
-      assert.equal(trace.open, true)
+      let trace = container.querySelector<HTMLDivElement>('.process-trace-session')!
+      assert.equal(trace.dataset.open, 'true')
       assert.match(trace.textContent ?? '', /我先检查 文件。/)
       assert.equal(trace.querySelector('strong')?.textContent, '文件')
       const items = trace.querySelector('.process-trace-body')!.children
@@ -52,17 +52,17 @@ for (const width of [390, 1280]) {
       assert.equal(container.querySelectorAll('.markdown-stream-cursor').length, 1)
 
       await act(async () => render(false))
-      trace = container.querySelector<HTMLDetailsElement>('.process-trace-session')!
-      assert.equal(trace.open, false)
+      trace = container.querySelector<HTMLDivElement>('.process-trace-session')!
+      assert.equal(trace.dataset.open, undefined)
       assert.doesNotMatch(trace.textContent ?? '', /已完成/)
       assert.match(container.textContent ?? '', /已完成/)
       await act(async () => {
-        trace.open = true
-        trace.dispatchEvent(new window.Event('toggle'))
+        trace.querySelector<HTMLDivElement>('.process-trace-session-summary')!
+          .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
       })
-      assert.equal(trace.open, true)
+      assert.equal(trace.dataset.open, 'true')
       await act(async () => render(false))
-      assert.equal(trace.open, true, 'unrelated rerenders preserve manual expansion')
+      assert.equal(trace.dataset.open, 'true', 'unrelated rerenders preserve manual expansion')
     } finally {
       await act(async () => root.unmount())
       await window.happyDOM.close()
@@ -90,14 +90,14 @@ test('unloaded process details do not show an expand-to-load placeholder', async
         />
       </I18nProvider>,
     ))
-    const details = container.querySelector<HTMLDetailsElement>('.process-trace-session')!
-    assert.ok(details)
+    const session = container.querySelector<HTMLDivElement>('.process-trace-session')!
+    assert.ok(session)
     await act(async () => {
-      details.open = true
-      details.dispatchEvent(new window.Event('toggle'))
+      container.querySelector<HTMLDivElement>('.process-trace-session-summary')!
+        .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
     })
     assert.ok(loadCount >= 1)
-    assert.doesNotMatch(details.textContent ?? '', /展开后加载详细过程/)
+    assert.doesNotMatch(session.textContent ?? '', /展开后加载详细过程/)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

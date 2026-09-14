@@ -62,13 +62,25 @@ test('engine config form renders a full-width model map and submits its JSON val
     await act(async () => {
       root.render(
         <I18nProvider>
-          <EngineConfigForm ref={ref} engineId="claude" config={config} />
+          <EngineConfigForm
+            ref={ref}
+            engineId="claude"
+            config={config}
+            modelOptions={[
+              { id: 'qwen3-max', label: 'Qwen 3 Max', description: null },
+            ]}
+            onRefreshModelOptions={() => {}}
+          />
         </I18nProvider>,
       )
     })
     const editor = container.querySelector('[data-model-map-editor]') as HTMLElement
     assert.ok(editor)
     assert.equal(editor.parentElement?.style.gridColumn, '1 / -1')
+    assert.equal(
+      (editor.querySelector('[data-field="model"]') as HTMLSelectElement).options[1]?.value,
+      'qwen3-max',
+    )
 
     await act(async () => { ref.current?.save(); await Promise.resolve() })
     assert.deepEqual(JSON.parse(submitted), JSON.parse(initial))

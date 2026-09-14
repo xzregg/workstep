@@ -1,5 +1,9 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import {
+  ComposerOverlayHostContext,
+  useComposerOverlayClearance,
+} from '../hooks/useComposerOverlayClearance'
+import {
   useEffect,
   useRef,
   useState,
@@ -49,6 +53,7 @@ import {
   isStageResumableWithMessage,
   isSelectedStageRunning,
   isNearConversationBottom,
+  hasActiveSelectionWithin,
   shouldPauseConversationFollow,
   conversationBottomScrollTop,
   isAutoShrinkClamp,
@@ -59,6 +64,7 @@ import {
   resolveTaskComposerState,
   resolveMessageError,
   resolveMessageReview,
+  reviewActorLabel,
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../pages/taskDetailChat'
@@ -194,6 +200,8 @@ export interface TaskDetailViewProps {
   onLoadOlderHistory?: () => void
   onLoadMessageEvents?: (messageId: string) => void
   liveMessages: Record<string, LiveMessage>
+  /** 实时消息缺失 prompt 时从历史接口回填的覆盖表（失败消息也要能「查看提示词」）。 */
+  livePromptOverrides?: Record<string, string>
   events: any[]
   content: string
   availableCommands?: Record<string, EngineInputItem[]>
@@ -348,6 +356,7 @@ export default function TaskDetailView({
   onLoadOlderHistory,
   onLoadMessageEvents,
   liveMessages,
+  livePromptOverrides,
   events,
   content,
   availableCommands,
@@ -558,7 +567,7 @@ export default function TaskDetailView({
       const previousCursor = document.body.style.cursor
       const previousUserSelect = document.body.style.userSelect
       document.body.style.cursor = 'col-resize'
-      document.body.style.userSelect = 'none'
+      document.body.style.userSelect = ''
 
       const handleMove = (moveEvent: PointerEvent) => {
         const rect = container.getBoundingClientRect()
@@ -600,6 +609,17 @@ export default function TaskDetailView({
   const lastScrollTopRef = useRef(0)
   const lastScrollHeightRef = useRef(0)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // 待插入消息面板悬浮在输入框上方，会遮住会话区底部内容：
+  // 面板高度测量、底部留白与跟随钉底由共用 hook 处理，
+  // 面板通过 Context 自行注册，无需在这里跟踪它的数据。
+  const { registerOverlay, overlayPaddingBottom } = useComposerOverlayClearance({
+    scrollRef,
+    followRef,
+    programmaticRef,
+    scrollHeightRef: lastScrollHeightRef,
+  })
+
   const stageLastRef = stageLastMessageRefs ?? localStageLastMessageRefs
   const pendingScrollRef = pendingStageScrollRef ?? localPendingStageScrollRef
   const unreadMessages = hasUnreadMessages ?? localHasUnread
@@ -613,6 +633,15 @@ export default function TaskDetailView({
   // 否则 LLM 输出期间用户无法滚动查看历史。
   useEffect(() => {
     const container = scrollRef.current
+    if (container && hasActiveSelectionWithin(
+      container,
+      container.ownerDocument.getSelection(),
+    )) {
+      followRef.current = false
+      lastScrollHeightRef.current = container.scrollHeight
+      setUnreadMessages(true)
+      return
+    }
     if (followRef.current) {
       if (container) {
         const target = conversationBottomScrollTop(
@@ -724,6 +753,9 @@ export default function TaskDetailView({
   const selectedReview = reviews.find(
     (review) => review.step_key === currentStage.key,
   )
+  const selectedReviewActor = selectedReview
+    ? reviewActorLabel(selectedReview)
+    : undefined
 
   const findArtifact = (
     name: string,
@@ -842,13 +874,13 @@ export default function TaskDetailView({
           alignItems: 'center',
           gap: 16,
           flexShrink: 0,
-          ...(draggable ? { cursor: 'move', userSelect: 'none' } : {}),
+          ...(draggable ? { cursor: 'move' } : {}),
         }}
       >
         {draggable && (
           <span
             aria-hidden="true"
-            style={{ cursor: 'move', userSelect: 'none', lineHeight: 1 }}
+            style={{ cursor: 'move', lineHeight: 1 }}
           >
             ⠿
           </span>
@@ -1925,6 +1957,13 @@ export default function TaskDetailView({
                   )}
                 </>
               )}
+              {selectedReview.decision && selectedReviewActor && (
+                <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
+                  {t('taskDetail.reviewedBy', {
+                    name: selectedReviewActor,
+                  })}
+                </div>
+              )}
               {/* Review action buttons (edit mode only) */}
               {!readOnly &&
                 (selectedReview.status === 'pending' ||
@@ -2245,7 +2284,8 @@ export default function TaskDetailView({
             flex: 1,
             minWidth: 0,
             minHeight: 0,
-            position: 'relative', paddingBottom: '80px'
+            // 待插入消息面板悬浮在输入框上方：由包裹层留出「面板高度 + 10px」
+            position: 'relative', paddingBottom: overlayPaddingBottom(10)
           }}
         >
           <div
@@ -2511,6 +2551,9 @@ export default function TaskDetailView({
                                 'taskDetail.manualReview',
                               )
                             : undefined
+                        const reviewActor = msgReview
+                          ? reviewActorLabel(msgReview)
+                          : undefined
                         const messageContent =
                           isReview &&
                           msgReview?.decision
@@ -2524,6 +2567,9 @@ export default function TaskDetailView({
                                   : t(
                                       'taskDetail.reviewRejected',
                                     ),
+                                reviewActor
+                                  ? t('taskDetail.reviewedBy', { name: reviewActor })
+                                  : undefined,
                                 msgReview.decision_comment,
                               ]
                                 .filter(
@@ -2702,7 +2748,10 @@ export default function TaskDetailView({
                                       .length > 0
                                   }
                                   prompt={
-                                    msg.prompt
+                                    msg.prompt ||
+                                    livePromptOverrides?.[
+                                      String(msg.id)
+                                    ]
                                   }
                                   sessionId={
                                     isCoordinator
@@ -3053,7 +3102,10 @@ export default function TaskDetailView({
                       }
                       events={message.events}
                       prompt={
-                        message.prompt
+                        message.prompt ||
+                        livePromptOverrides?.[
+                          String(message.id)
+                        ]
                       }
                       sessionId={
                         task?.coordinator_session_id ||
@@ -3273,6 +3325,7 @@ export default function TaskDetailView({
             }}
           >
             {selectedStageRunning && (
+              <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
                 items={stageInserts ?? []}
                 title={t('taskDetail.insertMessages')}
@@ -3292,6 +3345,7 @@ export default function TaskDetailView({
                 onReorder={onStageInsertReorder}
                 reorderHint={t('taskDetail.insertReorderHint')}
               />
+              </ComposerOverlayHostContext.Provider>
             )}
             {/* Chat target tabs */}
             <div

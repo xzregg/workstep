@@ -5,6 +5,8 @@ Serves the settings aggregated for the project-config panel (常规 / 对话助�
 reuses the existing remote-project API and its dialog component.
 """
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -49,7 +51,7 @@ async def get_project_concurrency(project_id: str):
     what the gate actually enforces right now.
     """
     _require_project(project_id)
-    global_config = config_store.get_concurrency_config()
+    global_config = await asyncio.to_thread(config_store.get_concurrency_config)
     project_override = await _run_db(
         project_id, lambda: get_concurrency_sync(project_id)
     )
@@ -127,7 +129,7 @@ async def get_project_settings(
 
     chat = await _run_db(project_id, load_chat_settings)
     override = await _run_db(project_id, lambda: get_concurrency_sync(project_id))
-    global_config = config_store.get_concurrency_config()
+    global_config = await asyncio.to_thread(config_store.get_concurrency_config)
 
     def pick(project_value, global_value):
         return project_value if project_value is not None else global_value
@@ -154,7 +156,7 @@ async def get_project_settings(
         },
     }
     if with_share:
-        result["share"] = _load_share_settings(project_id)
+        result["share"] = await asyncio.to_thread(_load_share_settings, project_id)
     return result
 
 

@@ -58,7 +58,7 @@ export default function Combobox({ value, options, onChange, placeholder, style 
         />
         <span
           onMouseDown={(e) => { e.preventDefault(); toggle() }}
-          style={{ cursor: 'pointer', padding: '0 4px', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', userSelect: 'none', lineHeight: 1 }}
+          style={{ cursor: 'pointer', padding: '0 4px', fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', lineHeight: 1 }}
         >▼</span>
       </div>
       {open && (

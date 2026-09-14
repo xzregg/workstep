@@ -14,6 +14,17 @@ export class ApiError extends Error {
   }
 }
 
+function errorDetailMessage(detail: unknown, status: number): string {
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => errorDetailMessage(item, status)).join('; ') || `HTTP ${status}`
+  }
+  if (detail && typeof detail === 'object' && 'msg' in detail && typeof detail.msg === 'string') {
+    return detail.msg || `HTTP ${status}`
+  }
+  return `HTTP ${status}`
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const run = async () => {
     const res = await fetch(`${BASE}${path}`, {
@@ -25,7 +36,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     })
     if (!res.ok) {
       const detail = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new ApiError(detail.detail || `HTTP ${res.status}`, res.status)
+      throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
     }
     return res.json() as Promise<T>
   }
@@ -801,6 +812,20 @@ export const chatSessionApi = {
         body: JSON.stringify({ project_id: projectId, title }),
       },
     ),
+  updatePermissionMode: (
+    sessionId: string,
+    projectId: string,
+    permissionMode: string,
+  ) => request<ChatSessionSummary>(
+    `/chat-sessions/${encodeURIComponent(sessionId)}/permission-mode`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        project_id: projectId,
+        permission_mode: permissionMode,
+      }),
+    },
+  ),
   remove: (sessionId: string, projectId: string) =>
     request<{ deleted: boolean }>(
       `/chat-sessions/${encodeURIComponent(sessionId)}?project_id=${encodeURIComponent(projectId)}`,
@@ -1027,6 +1052,10 @@ export interface ReviewRun {
   } | null
   decision: string | null
   decision_comment: string | null
+  reviewer_id: string | null
+  reviewer_name: string | null
+  reviewer_device_id: string | null
+  reviewer_device_name: string | null
   started_at: string | null
   ended_at: string | null
 }
@@ -1455,7 +1484,7 @@ async function shareRequest<T>(
     })
     if (!res.ok) {
       const detail = await res.json().catch(() => ({ detail: res.statusText }))
-      throw new Error(detail.detail || `HTTP ${res.status}`)
+      throw new ApiError(errorDetailMessage(detail.detail, res.status), res.status)
     }
     return res.json() as Promise<T>
   }
@@ -1482,11 +1511,20 @@ export const shareApi = {
       `/task-share/public/${encodeURIComponent(token)}/task`,
       sessionToken,
     ),
-  history: (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) =>
-    shareRequest<{ messages: any[]; limit: number; offset: number }>(
-      `/task-share/public/${encodeURIComponent(token)}/history?limit=${limit}&offset=${offset}`,
-      sessionToken,
-    ),
+  history: async (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) => {
+    let messages: any[] = []
+    while (messages.length < limit) {
+      const pageLimit = Math.min(500, limit - messages.length)
+      const page = await shareRequest<{ messages: any[] }>(
+        `/task-share/public/${encodeURIComponent(token)}/history?limit=${pageLimit}&offset=${offset + messages.length}`,
+        sessionToken,
+      )
+      // Pages select newest first, but each page is returned chronologically.
+      messages = [...page.messages, ...messages]
+      if (page.messages.length < pageLimit) break
+    }
+    return { messages, limit, offset }
+  },
   artifacts: (token: string, sessionToken: string) =>
     shareRequest<{ artifacts: TaskArtifact[] }>(
       `/task-share/public/${encodeURIComponent(token)}/artifacts`,

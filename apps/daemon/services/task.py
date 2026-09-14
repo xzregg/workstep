@@ -345,7 +345,7 @@ class TaskService:
                 if event is None:
                     continue
                 events_collected.append(event.to_dict())
-                self._event_journal.record(journal_ref, event.to_dict())
+                await self._event_journal.arecord(journal_ref, event.to_dict())
 
                 # Collect text content
                 if event.type == "agent_message_chunk" and not is_commentary(event):
@@ -387,11 +387,11 @@ class TaskService:
                 task_status = "ready"
         finally:
             try:
-                self._event_journal.finish(
+                await self._event_journal.afinish(
                     journal_ref,
                     {"type": "status", "data": {"status": step_status}},
                 )
-                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                journal_snapshot = await self._event_journal.asnapshot(journal_ref)
                 await asyncio.to_thread(
                     self._finish_legacy_run,
                     task_id,
@@ -408,12 +408,16 @@ class TaskService:
 
             # Clean up engine reference
             self._running_engines.pop(task_id, None)
+
             self._cancelled_tasks.discard(task_id)
 
             await self._publish(task_id, "do", {
                 "type": "status",
                 "data": {"status": step_status, "task_id": task_id},
             })
+
+    async def shutdown(self) -> None:
+        await self._event_journal.aclose()
 
     def _prepare_legacy_run(self, task_id: str):
         try:

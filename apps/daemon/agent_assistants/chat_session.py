@@ -13,6 +13,7 @@ and can be renamed or deleted. Quick-action buttons above the composer are
 configured per project via the ``project_settings`` table.
 """
 
+import asyncio
 import json
 import logging
 import peewee as pw
@@ -35,6 +36,7 @@ from agent_assistants.base import (
     validate_provider_override,
 )
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.event_truncation import truncate_large_tool_payloads
 from agent_assistants.context_handoff import (
     append_handoff_log,
     compile_handoff,
@@ -128,6 +130,9 @@ def _detail_agui_events(
 ) -> list[dict]:
     translated: list[dict] = []
     for index, event in enumerate(events, start=1):
+        # 出口截断：JSONL 里单条工具输出可达数十 MB，全量下发会冻结浏览器
+        # （前端展示上限本就远小于此）。日志保留全量，此处只影响响应。
+        event = truncate_large_tool_payloads(event)
         event_type = str(event.get("type") or "")
         sequence = int(event.get("seq") or event.get("sequence") or index)
         if event_type in _AGUI_EVENT_TYPES:
@@ -223,7 +228,13 @@ class ChatRowPersistence(PersistenceAdapter):
                 message["ended_at"] = _iso(item.ended_at)
             events = _load_json(item.events_json, [])
             if events:
-                message["events"] = events
+                # 历史出口同样截断超大工具载荷：events_json 按全量保真落库，
+                # 单条消息可达数十 MB（raw_output）。整包随 history 下发会让
+                # 前端 JSON.parse + store 常驻数百 MB（多会话缓存叠加后直接
+                # 压垮渲染进程）。完整内容仍可在展开时经 messageEvents 懒加载。
+                message["events"] = [
+                    truncate_large_tool_payloads(event) for event in events
+                ]
             summary = _load_json(item.event_summary_json, {})
             if item.event_log_path:
                 message["event_log_path"] = item.event_log_path
@@ -475,18 +486,18 @@ class ChatSessionModule(AssistantRuntime):
     # ── session CRUD ───────────────────────────────────────────────────
 
     def list_sessions(self, project_id: str, workflow_id: str | None = None) -> list[dict]:
+        """The active project database owns sessions, including historical registry IDs."""
         if not project_id:
             raise ValueError("project_id is required")
         with self._project_ctx(project_id):
             rows = (
                 ChatSession.select()
                 .where(
-                    ChatSession.project_id == project_id,
                     ChatSession.fork_status == "ready",
                 )
                 .order_by(ChatSession.sort_order, ChatSession.updated_at.desc())
             )
-            return [self._session_summary(row) for row in rows]
+            return [self._session_summary(row, project_id) for row in rows]
 
     def create_session(
         self,
@@ -534,9 +545,6 @@ class ChatSessionModule(AssistantRuntime):
         with self._project_ctx(project_id):
             min_order = (
                 ChatSession.select(pw.fn.MIN(ChatSession.sort_order))
-                .where(
-                    ChatSession.project_id == project_id,
-                )
                 .scalar()
             )
             ChatSession.create(
@@ -561,7 +569,7 @@ class ChatSessionModule(AssistantRuntime):
             row = ChatSession.get_or_none(ChatSession.id == session_id)
             if row is None:
                 return None
-            summary = self._session_summary(row)
+            summary = self._session_summary(row, project_id)
         history = self.history(project_id, session_id) or {}
         for message in history.get("messages", []):
             if message.get("status") != "running" or not message.get("event_log_path"):
@@ -574,7 +582,10 @@ class ChatSessionModule(AssistantRuntime):
                     )
                     snapshot = self._event_journal.snapshot(ref)
                 message["content"] = snapshot["content"]
-                message["events"] = snapshot["events"]
+                message["events"] = [
+                    truncate_large_tool_payloads(event)
+                    for event in snapshot["events"]
+                ]
                 message["event_summary"] = snapshot["summary"]
                 message["event_detail"] = {
                     "available": True,
@@ -602,7 +613,6 @@ class ChatSessionModule(AssistantRuntime):
                 .where(
                     ChatMessage.id == message_id,
                     ChatSession.id == session_id,
-                    ChatSession.project_id == project_id,
                 )
                 .first()
             )
@@ -661,7 +671,7 @@ class ChatSessionModule(AssistantRuntime):
             row.title = title
             row.updated_at = utc_now()
             row.save()
-            return self._session_summary(row)
+            return self._session_summary(row, project_id)
 
     def delete_session(self, project_id: str, session_id: str) -> bool:
         with self._project_ctx(project_id):
@@ -749,9 +759,6 @@ class ChatSessionModule(AssistantRuntime):
         with self._project_ctx(project_id):
             rows = list(
                 ChatSession.select()
-                .where(
-                    ChatSession.project_id == project_id,
-                )
                 .order_by(ChatSession.sort_order, ChatSession.updated_at.desc())
             )
             by_id = {row.id: row for row in rows}
@@ -770,7 +777,7 @@ class ChatSessionModule(AssistantRuntime):
                     row.sort_order = index
                     row.save()
 
-    def _session_summary(self, row: ChatSession) -> dict:
+    def _session_summary(self, row: ChatSession, project_id: str) -> dict:
         last = (
             ChatMessage.select()
             .where(ChatMessage.session == row)
@@ -779,7 +786,7 @@ class ChatSessionModule(AssistantRuntime):
         )
         return {
             "id": row.id,
-            "project_id": row.project_id,
+            "project_id": project_id,
             "workflow_id": row.workflow_id,
             "title": row.title or "未命名会话",
             "engine": row.engine,
@@ -843,7 +850,6 @@ class ChatSessionModule(AssistantRuntime):
         with self._project_ctx(project_id) as project:
             row = ChatSession.get_or_none(
                 ChatSession.id == session_id,
-                ChatSession.project_id == project_id,
             )
             if row is None:
                 raise ValueError("Chat session not found")
@@ -927,7 +933,6 @@ class ChatSessionModule(AssistantRuntime):
         def load_source():
             source = ChatSession.get_or_none(
                 ChatSession.id == source_session_id,
-                ChatSession.project_id == project_id,
             )
             if source is None:
                 raise ValueError("Chat session not found")
@@ -1120,6 +1125,42 @@ class ChatSessionModule(AssistantRuntime):
 
     # ── turn submission ────────────────────────────────────────────────
 
+    async def update_permission_mode(
+        self,
+        project_id: str,
+        session_id: str,
+        permission_mode: str,
+    ) -> dict:
+        """Persist a permission mode and apply it to the active turn immediately."""
+        permission_mode = (permission_mode or "").strip()
+        if permission_mode and not is_valid_permission_mode(permission_mode):
+            raise ValueError(f"Unsupported permission mode: {permission_mode}")
+
+        def ensure_session_exists() -> None:
+            with self._project_ctx(project_id):
+                if ChatSession.get_or_none(
+                    ChatSession.id == session_id,
+                ) is None:
+                    raise ValueError("Chat session not found")
+
+        await self._project_manager.run_db(
+            project_id, lambda _project: ensure_session_exists()
+        )
+        await self.set_running_permission_mode(session_id, permission_mode)
+
+        def persist_and_load() -> dict:
+            with self._project_ctx(project_id):
+                ChatSession.update(
+                    permission_mode=permission_mode or None,
+                ).where(
+                    ChatSession.id == session_id,
+                ).execute()
+                return self.get_session(project_id, session_id)
+
+        return await self._project_manager.run_db(
+            project_id, lambda _project: persist_and_load()
+        )
+
     def submit_message(
         self,
         project_id: str,
@@ -1278,6 +1319,10 @@ class ChatSessionModule(AssistantRuntime):
         tail = f"历史对话：\n{history}\n\n请继续。"
         return f"{prompt}\n\n{tail}" if prompt else tail
 
+    def _system_prompt_for_display(self, session) -> str:
+        """Show the project-specific instruction, including on resumed turns."""
+        return self.get_system_prompt(session.project_id)
+
     async def _on_engine_session_started(self, session) -> None:
         metadata = session.extra.get("pending_handoff")
         if not isinstance(metadata, dict) or not metadata.get("relative_path"):
@@ -1359,11 +1404,15 @@ class ChatSessionModule(AssistantRuntime):
             raise ValueError("提示词不能为空")
         if len(prompt) > ENHANCE_MAX_LENGTH:
             raise ValueError(f"提示词不能超过 {ENHANCE_MAX_LENGTH} 字")
-        enhance_config = config_store.get_prompt_enhance_config()
+        enhance_config = await asyncio.to_thread(
+            config_store.get_prompt_enhance_config
+        )
         if enhance_config["provider_id"] and enhance_config["model"]:
             from services import providers as provider_service
 
-            provider = config_store.get_provider(enhance_config["provider_id"])
+            provider = await asyncio.to_thread(
+                config_store.get_provider, enhance_config["provider_id"]
+            )
             if provider is None:
                 raise ValueError("提示词增强的供应商不存在，请在设置中重新配置")
             raw = await provider_service.chat_completion(

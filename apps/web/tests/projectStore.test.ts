@@ -12,6 +12,24 @@ const project = (id: string): Project => ({
   workflows: [{ id: `${id}-workflow`, name: 'Default', is_default: true, nodeCount: 0 }],
 })
 
+test('opening an existing project restores workflow selection without duplicating it', async () => {
+  const restored = project('existing')
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(JSON.stringify(restored), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+  useProjectStore.setState({ projects: [restored], activeProject: null, activeWorkflowId: null })
+  try {
+    const opened = await useProjectStore.getState().initProject(restored.path)
+    useProjectStore.getState().setActiveProject(opened)
+    assert.deepEqual(useProjectStore.getState().projects, [restored])
+    assert.equal(useProjectStore.getState().activeWorkflowId, 'existing-workflow')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('deleting the active project selects the next registered project', async () => {
   const first = project('first')
   const second = project('second')

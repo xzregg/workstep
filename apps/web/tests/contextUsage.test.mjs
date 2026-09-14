@@ -31,6 +31,25 @@ test('context usage ignores cumulative run usage without a context window snapsh
   assert.equal(context, null)
 })
 
+test('context usage ignores an impossible persisted snapshot above its window', () => {
+  const context = contextUsageFromMessages([
+    {
+      events: [{
+        type: 'usage_update',
+        data: {
+          used: 2_277_214,
+          size: 256_000,
+          input_tokens: 2_206,
+          output_tokens: 872,
+          cache_read_input_tokens: 2_272_795,
+        },
+      }],
+    },
+  ])
+
+  assert.equal(context, null)
+})
+
 test('context usage uses total tokens when an explicit context window is present', () => {
   const context = contextUsageFromMessages([
     {

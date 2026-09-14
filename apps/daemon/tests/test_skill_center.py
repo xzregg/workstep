@@ -243,6 +243,32 @@ def test_adopts_existing_project_skill_and_disables_recoverably(
     assert any((project / ".workstep" / "skills-disabled").iterdir())
 
 
+def test_claude_plugin_refresh_handles_overlay_directory_rename(
+    tmp_path: Path, roots: dict[str, Path], monkeypatch
+) -> None:
+    import errno
+    import os
+
+    project = tmp_path / "project"
+    selection = SkillCenter(source_roots=roots).runtime_selection(project)
+    plugin, _ = prepare_claude_plugin(selection)
+    (plugin / "stale.txt").write_text("old")
+    original_replace = os.replace
+
+    def overlay_replace(source, destination):
+        if Path(source) == plugin:
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", overlay_replace)
+    refreshed, names = prepare_claude_plugin(selection)
+    assert refreshed == plugin
+    assert names == []
+    assert (plugin / ".claude-plugin" / "plugin.json").is_file()
+    assert not (plugin / "stale.txt").exists()
+    assert not (plugin.parent / ".claude-plugin-previous").exists()
+
+
 def test_engine_runtime_projections_only_expose_enabled_skills(
     tmp_path: Path, roots: dict[str, Path]
 ) -> None:

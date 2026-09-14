@@ -19,7 +19,7 @@ from engines.core.base import (
     install_with_command,
 )
 
-from engines.core.plans import subagent_event_from_message, route_subagent_message
+from engines.core.claude_usage import claude_context_snapshot
 from engines.core.events import (
     InternalEvent,
     normalize_cost,
@@ -27,6 +27,7 @@ from engines.core.events import (
     tool_call_update_event,
     usage_update_event,
 )
+from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.interactions import (
     interaction_from_tool_use,
     permission_request,
@@ -286,8 +287,8 @@ class ClaudeCodeEngine(AcpEngineBase):
             raise ValueError("bypassPermissions 需要明确确认风险")
         # 先校验映射再落盘，避免映射非法时权限模式已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
-        config_store.set_claude_permission_mode(mode)
-        config_store.set_claude_code_model_map(model_map)
+        await asyncio.to_thread(config_store.set_claude_permission_mode, mode)
+        await asyncio.to_thread(config_store.set_claude_code_model_map, model_map)
 
     # --- Execution ---
 
@@ -351,17 +352,23 @@ class ClaudeCodeEngine(AcpEngineBase):
         mode: stdin stays open and queued ``(message_id, content)`` pairs are
         injected as ordinary user messages while the turn is still running.
         """
-        prompt = self.render_image_prompt(prompt, images)
-        binary = self.resolve_binary()
+        prompt, binary = await asyncio.to_thread(
+            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+        )
         if not binary:
             yield InternalEvent(type="error", data={"message": "claude binary not found"})
             return
 
         permission_mode = self.merge_config_overrides(
-            {"permission_mode": config_store.get_claude_permission_mode()},
+            {
+                "permission_mode": await asyncio.to_thread(
+                    config_store.get_claude_permission_mode
+                )
+            },
             config_overrides,
         )["permission_mode"]
-        provider_runtime = self.resolve_provider_runtime(
+        provider_runtime = await asyncio.to_thread(
+            self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),
             model=model,
         )
@@ -379,7 +386,9 @@ class ClaudeCodeEngine(AcpEngineBase):
         self._session_reject.clear()
         from services.skill_runtime import prepare_claude_plugin
 
-        plugin_dir, skill_names = prepare_claude_plugin(self.project_skills(cwd))
+        plugin_dir, skill_names = await asyncio.to_thread(
+            lambda: prepare_claude_plugin(self.project_skills(cwd))
+        )
         skill_settings = json.dumps({
             "skillOverrides": {name: "on" for name in skill_names},
         })
@@ -534,6 +543,15 @@ class ClaudeCodeEngine(AcpEngineBase):
                     signature, rule = self._permission_details.pop(
                         interaction_id, ("", "")
                     )
+                    runtime_decision = self.runtime_permission_decision()
+                    if runtime_decision is not None:
+                        await self._inject_permission(
+                            tool_use_id,
+                            _PERMISSION_ALLOW_ONCE_CONTENT
+                            if runtime_decision
+                            else _PERMISSION_REJECT_ONCE_CONTENT,
+                        )
+                        continue
                     # 本会话内已记住的决定：不弹窗，直接注入结果。
                     remembered = (
                         self._session_allow.get(signature) if signature else None
@@ -667,7 +685,8 @@ class ClaudeCodeEngine(AcpEngineBase):
             return events
 
         if event_type == "assistant":
-            for block in obj.get("message", {}).get("content", []):
+            message = obj.get("message", {})
+            for block in message.get("content", []):
                 block_type = block.get("type", "")
                 if block_type == "text" and not state["streamed_text"]:
                     text = block.get("text", "")
@@ -704,6 +723,14 @@ class ClaudeCodeEngine(AcpEngineBase):
                             title=tool_name,
                             raw_input=block.get("input", {}),
                         ))
+            usage = message.get("usage")
+            if isinstance(usage, dict):
+                context_used, context_size = claude_context_snapshot(usage)
+                events.append(usage_update_event(
+                    usage,
+                    used=context_used,
+                    size=context_size,
+                ))
             return events
 
         if event_type == "result":
@@ -780,11 +807,20 @@ class ClaudeCodeEngine(AcpEngineBase):
                         ],
                     ))
                 else:
-                    events.append(tool_call_update_event(
+                    result_event = tool_call_update_event(
                         tool_call_id=tool_use_id,
                         status="failed" if is_error else "completed",
                         raw_output=content,
-                    ))
+                    )
+                    structured_result = obj.get("toolUseResult")
+                    if (
+                        isinstance(structured_result, dict)
+                        and isinstance(structured_result.get("task"), dict)
+                    ):
+                        result_event.data["_meta"] = {
+                            "provider_result": structured_result,
+                        }
+                    events.append(result_event)
             return events
 
         return events

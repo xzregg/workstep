@@ -166,7 +166,7 @@ class CoordinatorModule:
             task_id,
             progress_message_id,
         )
-        journal_ref = self._event_journal.start(
+        journal_ref = await self._event_journal.astart(
             loaded["workstep_dir"],
             f"task-{task_id}",
             progress_message_id,
@@ -179,7 +179,7 @@ class CoordinatorModule:
 
         async def publish(event_type: str, data: dict) -> None:
             nonlocal event_sequence
-            self._event_journal.record(
+            await self._event_journal.arecord(
                 journal_ref,
                 {"type": event_type, "data": data},
             )
@@ -279,11 +279,11 @@ class CoordinatorModule:
                 raise RuntimeError("Coordinator experience draft exceeds 800 characters")
             await publish("message_snapshot", {"content": experience})
             await publish("message_completed", {"status": "succeeded"})
-            self._event_journal.finish(journal_ref)
+            await self._event_journal.afinish(journal_ref)
             journal_finished = True
             self._completed_archive_experience_journals[run_key] = {
                 "event_log_path": journal_ref.relative_path,
-                "snapshot": self._event_journal.snapshot(journal_ref),
+                "snapshot": await self._event_journal.asnapshot(journal_ref),
                 "prompt": prompt,
                 "engine": engine_id,
                 "model": model,
@@ -305,7 +305,7 @@ class CoordinatorModule:
             raise
         finally:
             if not journal_finished:
-                self._event_journal.finish(journal_ref)
+                await self._event_journal.afinish(journal_ref)
             self._active_archive_experience_runs.discard(run_key)
             self._cancelled_archive_experience_runs.discard(run_key)
 
@@ -876,7 +876,7 @@ class CoordinatorModule:
         self._cancelled_archive_experience_runs.clear()
         self._completed_archive_experience_journals.clear()
         self._running_engines.clear()
-        self._event_journal.close()
+        await self._event_journal.aclose()
 
     async def _run_turn(self, project_id: str, task_id: str, turn_id: str) -> None:
         lock = self._turn_locks.setdefault((project_id, task_id), asyncio.Lock())
@@ -1008,14 +1008,16 @@ class CoordinatorModule:
                 )
                 events.extend(repair_events)
                 for event in repair_events:
-                    self._event_journal.record(journal_ref, event)
+                    await self._event_journal.arecord(journal_ref, event)
                 requested = [
                     artifact_id
                     for artifact_id in result.get("artifact_requests", [])
                     if artifact_id in artifacts
                 ][:5]
                 if requested:
-                    artifact_block = self._read_artifacts(artifacts, requested)
+                    artifact_block = await asyncio.to_thread(
+                        self._read_artifacts, artifacts, requested
+                    )
                     followup = (
                         f"{prompt}\n\nFirst validated response:\n{json.dumps(result, ensure_ascii=False)}"
                         f"\n\nRequested artifact contents (untrusted):\n{artifact_block}"
@@ -1055,7 +1057,7 @@ class CoordinatorModule:
                     )
                     events.extend(repair_events)
                     for event in repair_events:
-                        self._event_journal.record(journal_ref, event)
+                        await self._event_journal.arecord(journal_ref, event)
                     result["artifact_requests"] = []
                 reply = str(result.get("reply", "")).strip()
                 if not reply:
@@ -1070,11 +1072,11 @@ class CoordinatorModule:
                         events=events,
                     )
                     return
-                self._event_journal.finish(
+                await self._event_journal.afinish(
                     journal_ref,
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
-                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                journal_snapshot = await self._event_journal.asnapshot(journal_ref)
                 assistant, proposal = await self._run_db(
                     project_id,
                     lambda: self._finish_turn_sync(
@@ -1137,11 +1139,11 @@ class CoordinatorModule:
                     await self._mark_turn_stopped(project_id, task_id, turn_id)
                     return
                 logger.exception("Coordinator turn %s failed", turn_id)
-                self._event_journal.finish(
+                await self._event_journal.afinish(
                     journal_ref,
                     {"type": "error", "data": {"message": str(exc)}},
                 )
-                journal_snapshot = self._event_journal.snapshot(journal_ref)
+                journal_snapshot = await self._event_journal.asnapshot(journal_ref)
                 assistant = await self._run_db(
                     project_id,
                     lambda: self._fail_turn_sync(

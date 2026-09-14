@@ -67,6 +67,12 @@ _ADDITIVE_COLUMNS = {
         "event_count": "INTEGER DEFAULT 0",
         "last_event_seq": "INTEGER DEFAULT 0",
     },
+    "review_runs": {
+        "reviewer_id": "TEXT",
+        "reviewer_name": "TEXT",
+        "reviewer_device_id": "TEXT",
+        "reviewer_device_name": "TEXT",
+    },
     "chat_sessions": {
         "vision_model": "TEXT",
         "parent_session_id": "TEXT",

@@ -369,6 +369,14 @@ class TaskDraftModule(AssistantRuntime):
             )
         return prompt
 
+    def _system_prompt_for_display(self, session) -> str:
+        """Match the visible system instruction to normal or scheduled mode."""
+        return (
+            SYSTEM_PROMPT_SCHEDULE
+            if session.extra.get("schedule_mode")
+            else SYSTEM_PROMPT
+        )
+
     def _allowed_workflow_ids(self, session, project=None) -> list[dict]:
         """Active project workflows, narrowed to the candidate list when given."""
         if project is None:

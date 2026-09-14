@@ -22,11 +22,26 @@ import {
   mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
+  reviewActorLabel,
   resolveMessageError,
   resolveMessagePrompt,
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../src/pages/taskDetailChat.ts'
+
+test('formats the person who completed a manual review', () => {
+  assert.equal(reviewActorLabel({
+    id: 'review-1',
+    step_key: 'verify',
+    reviewer_name: '张三',
+    reviewer_device_name: 'MacBook',
+  }), '张三 · MacBook')
+  assert.equal(reviewActorLabel({
+    id: 'review-2',
+    step_key: 'verify',
+    reviewer_name: '李四',
+  }), '李四')
+})
 
 test('the composer stop state follows only the selected stage tab', () => {
   assert.equal(isSelectedStageRunning('implement', ['implement']), true)

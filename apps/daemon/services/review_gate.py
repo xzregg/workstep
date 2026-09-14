@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import uuid
@@ -70,15 +71,23 @@ class ReviewGate:
                 else "manual"
             )
         engine_id = str(config.get("engine") or step.engine)
+        default_model = await asyncio.to_thread(
+            config_store.get_engine_default_model, engine_id
+        )
         model = str(
             config.get("model")
             or step.model
-            or config_store.get_engine_default_model(engine_id)
+            or default_model
             or ""
         )
-        prompt = self._assemble_prompt(
-            task, step, artifacts_dir, execution_output,
-            str(config.get("prompt", "")), execution_prompt,
+        prompt = await asyncio.to_thread(
+            self._assemble_prompt,
+            task,
+            step,
+            artifacts_dir,
+            execution_output,
+            str(config.get("prompt", "")),
+            execution_prompt,
         )
         now = utc_now()
         # 同一 step_run 下可能先后有自动审核与转人工审核等多条记录，

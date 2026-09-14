@@ -197,6 +197,30 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
     db.close()
 
 
+def test_migrate_database_adds_reviewer_columns_to_existing_review_runs(tmp_path):
+    """Existing review history gains reviewer snapshots without data loss."""
+    import peewee as pw
+
+    from models import migrate_database
+
+    db = pw.SqliteDatabase(tmp_path / "legacy-reviewer-columns.db")
+    db.connect()
+    db.execute_sql(
+        'CREATE TABLE "review_runs" ('
+        '"id" TEXT PRIMARY KEY, "started_at" DATETIME)'
+    )
+
+    migrate_database(db)
+
+    assert {
+        "reviewer_id",
+        "reviewer_name",
+        "reviewer_device_id",
+        "reviewer_device_name",
+    }.issubset({column.name for column in db.get_columns("review_runs")})
+    db.close()
+
+
 def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
     """Legacy task rows survive dispatch-column and unique-index migration."""
     import peewee as pw

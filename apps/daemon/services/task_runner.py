@@ -132,7 +132,10 @@ class TaskRunner:
         self._event_journal = TurnEventJournal()
 
     def _journal_snapshot(self, ref: JournalRef) -> dict:
-        snapshot = self._event_journal.snapshot(ref)
+        return self._journal_projection(self._event_journal.snapshot(ref))
+
+    @staticmethod
+    def _journal_projection(snapshot: dict) -> dict:
         return {
             "events": snapshot["events"],
             "events_json": (
@@ -147,11 +150,18 @@ class TaskRunner:
             "content": snapshot["content"],
         }
 
+    async def _ajournal_snapshot(self, ref: JournalRef) -> dict:
+        snapshot = await self._event_journal.asnapshot(ref)
+        return self._journal_projection(snapshot)
+
     async def _run_db(self, operation: Callable[[], ResultT]) -> ResultT:
         """Run persistence on the owning project's writer when available."""
         if self._database_executor is None:
             return await asyncio.to_thread(operation)
         return await self._database_executor.run(operation)
+
+    async def close(self) -> None:
+        await self._event_journal.aclose()
 
     async def _start_automatic_review_message(
         self,
@@ -163,16 +173,19 @@ class TaskRunner:
         """Persist and publish the review bubble before the reviewer starts."""
         message_id = new_message_id()
         now = utc_now()
-        journal_ref = self._event_journal.start(
+        journal_ref = await self._event_journal.astart(
             artifacts_dir.parent,
             f"task-{task.id}",
             message_id,
         )
         engine = str(review_config.get("engine") or step.engine)
+        default_model = await asyncio.to_thread(
+            config_store.get_engine_default_model, engine
+        )
         model = str(
             review_config.get("model")
             or step.model
-            or config_store.get_engine_default_model(engine)
+            or default_model
             or ""
         )
         await self._run_db(
@@ -219,9 +232,9 @@ class TaskRunner:
     ) -> None:
         """Finalize the same review bubble with its report and event trace."""
         for review_event in outcome.events:
-            self._event_journal.record(journal_ref, review_event)
-        self._event_journal.finish(journal_ref)
-        snapshot = self._journal_snapshot(journal_ref)
+            await self._event_journal.arecord(journal_ref, review_event)
+        await self._event_journal.afinish(journal_ref)
+        snapshot = await self._ajournal_snapshot(journal_ref)
         summary = outcome.report.get("summary", "")
         issues = outcome.report.get("issues", [])
         items = "".join(
@@ -438,9 +451,12 @@ class TaskRunner:
         """Execute a single pipeline step."""
         step_key = step.key
         run_key = f"{task.id}:{step_key}"
+        default_model = await asyncio.to_thread(
+            config_store.get_engine_default_model, step.engine
+        )
         resolved_model = (
             step.model
-            or config_store.get_engine_default_model(step.engine)
+            or default_model
             or None
         )
 
@@ -593,16 +609,16 @@ class TaskRunner:
         feedback = review_feedback or manual_review_feedback or rework_feedback
         followup = self._stage_followups.get(step_key, "").strip()
         if followup and ts.session_id and engine is not None and engine.supports_resume:
-            prompt = assemble_followup_prompt(
-                task, step, artifacts_dir, followup
+            prompt = await asyncio.to_thread(
+                assemble_followup_prompt, task, step, artifacts_dir, followup
             )
         else:
             prompt = await self._run_db(
                 lambda: assemble_prompt(task, step, artifacts_dir, user_input)
             )
         if pending_handoff:
-            handoff_reference = render_handoff_reference(
-                pending_handoff, artifacts_dir.parent
+            handoff_reference = await asyncio.to_thread(
+                render_handoff_reference, pending_handoff, artifacts_dir.parent
             )
             if handoff_reference:
                 prompt = f"{handoff_reference}\n\n{prompt}"
@@ -656,7 +672,7 @@ class TaskRunner:
             and step.engine == "pydantic_ai"
         ):
             engine_session_id = msg_id
-        journal_ref = self._event_journal.start(
+        journal_ref = await self._event_journal.astart(
             artifacts_dir.parent,
             f"task-{task.id}",
             msg_id,
@@ -702,8 +718,8 @@ class TaskRunner:
             error_event = InternalEvent(
                 type="error", data={"message": error}
             ).to_dict()
-            self._event_journal.finish(journal_ref, error_event)
-            snapshot = self._journal_snapshot(journal_ref)
+            await self._event_journal.afinish(journal_ref, error_event)
+            snapshot = await self._ajournal_snapshot(journal_ref)
             def persist_unavailable_engine():
                 message = Message.get_by_id(msg_id)
                 message.events_json = snapshot["events_json"]
@@ -772,7 +788,9 @@ class TaskRunner:
             if live_queue is not None:
                 spawn_kwargs["live_message_queue"] = live_queue
             spawn_iter = engine.spawn(**spawn_kwargs)
-            idle_timeout = config_store.get_engine_idle_timeout_seconds()
+            idle_timeout = await asyncio.to_thread(
+                config_store.get_engine_idle_timeout_seconds
+            )
             if idle_timeout and idle_timeout > 0:
                 spawn_iter = _with_engine_idle_timeout(
                     engine, spawn_iter, idle_timeout
@@ -808,7 +826,7 @@ class TaskRunner:
                     # race the in-memory intervention broker.
                     await asyncio.sleep(0)
                 events_collected.append(event.to_dict())
-                self._event_journal.record(journal_ref, event.to_dict())
+                await self._event_journal.arecord(journal_ref, event.to_dict())
                 if event.type == "agent_message_chunk" and not is_commentary(event):
                     content = event.data.get("content") or {}
                     content_parts.append(content.get("text", ""))
@@ -817,7 +835,7 @@ class TaskRunner:
                         str(event.data.get("session_id") or "") or None
                     )
                     if captured_session_id:
-                        journal_ref = self._event_journal.move_to_conversation(
+                        journal_ref = await self._event_journal.amove_to_conversation(
                             journal_ref,
                             captured_session_id,
                         )
@@ -884,7 +902,7 @@ class TaskRunner:
                         except Message.DoesNotExist:
                             pass
                         new_msg_id = new_message_id()
-                        journal_ref = self._event_journal.start(
+                        journal_ref = await self._event_journal.astart(
                             artifacts_dir.parent,
                             f"task-{task.id}",
                             new_msg_id,
@@ -962,7 +980,7 @@ class TaskRunner:
                         },
                     )
                     events_collected.append(response_event.to_dict())
-                    self._event_journal.record(journal_ref, response_event.to_dict())
+                    await self._event_journal.arecord(journal_ref, response_event.to_dict())
                     # Make the response visible to history before notifying
                     # the UI. Otherwise the live card disappears immediately,
                     # but a reload while the engine is still running rebuilds
@@ -1202,18 +1220,18 @@ class TaskRunner:
                 ):
                     rmsg_id = new_message_id()
                     rnow = utc_now()
-                    review_journal_ref = self._event_journal.start(
+                    review_journal_ref = await self._event_journal.astart(
                         artifacts_dir.parent,
                         f"task-{task.id}",
                         rmsg_id,
                     )
                     for review_event in outcome.events:
-                        self._event_journal.record(
+                        await self._event_journal.arecord(
                             review_journal_ref,
                             review_event,
                         )
-                    self._event_journal.finish(review_journal_ref)
-                    review_snapshot = self._journal_snapshot(review_journal_ref)
+                    await self._event_journal.afinish(review_journal_ref)
+                    review_snapshot = await self._ajournal_snapshot(review_journal_ref)
                     rsummary = outcome.report.get("summary", "")
                     rissues = outcome.report.get("issues", [])
                     ritems = "".join(
@@ -1318,7 +1336,7 @@ class TaskRunner:
                 type="error", data={"message": str(e)}
             ).to_dict()
             events_collected.append(error_event)
-            self._event_journal.record(journal_ref, error_event)
+            await self._event_journal.arecord(journal_ref, error_event)
 
         finally:
             interrupted_by_shutdown = interrupted and self._graceful_shutdown

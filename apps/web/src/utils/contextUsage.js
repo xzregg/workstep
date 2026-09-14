@@ -127,6 +127,11 @@ export function contextUsageFromMessages(messages) {
       )
       if (reportedSize <= 0) continue
 
+      // 不可能的快照：used 远超 size 说明引擎把「累计会话用量」塞进了
+      // used 字段（真实上下文占用不可能超过窗口本身）。照单渲染会画出
+      // 恒 100% 的误导进度条，跳过并继续向前找合法快照。
+      if (snapshotUsed > reportedSize) continue
+
       const trailingEvents = events.slice(eventIndex + 1)
       for (let nextIndex = messageIndex + 1; nextIndex < messages.length; nextIndex += 1) {
         trailingEvents.push(...(messages[nextIndex]?.events || []))
@@ -148,17 +153,30 @@ export function contextUsageFromMessages(messages) {
   return null
 }
 
+/**
+ * 参与 token 估算的单条工具输入/输出文本上限。
+ * 子代理一次读取/编辑的 raw_output 可达数十 MB，直接 stringify + 逐字符 estimateTokens
+ * 会冻结主线程数秒。估算本就是近似值（真实用量以引擎 usage_update 为准），故截断到上限：
+ * 字符串走 slice（O(上限)），不再把整段巨串拼进累计文本。
+ */
+const MAX_ESTIMATE_ITEM_CHARS = 20000
+
 function eventText(value) {
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    return value.length > MAX_ESTIMATE_ITEM_CHARS ? value.slice(0, MAX_ESTIMATE_ITEM_CHARS) : value
+  }
   if (value === undefined || value === null) return ''
   return String(value)
 }
 
 function stringify(value) {
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    return value.length > MAX_ESTIMATE_ITEM_CHARS ? value.slice(0, MAX_ESTIMATE_ITEM_CHARS) : value
+  }
   if (value === undefined || value === null) return ''
   try {
-    return JSON.stringify(value) ?? ''
+    const text = JSON.stringify(value) ?? ''
+    return text.length > MAX_ESTIMATE_ITEM_CHARS ? text.slice(0, MAX_ESTIMATE_ITEM_CHARS) : text
   } catch {
     return String(value)
   }

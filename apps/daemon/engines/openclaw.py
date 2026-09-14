@@ -90,8 +90,9 @@ class OpenClawEngine(AcpEngineBase):
         OpenClaw does not expose token deltas on this headless interface, so
         the final assistant text is emitted as one ``text_delta`` event.
         """
-        prompt = self.render_image_prompt(prompt, images)
-        binary = self.resolve_binary()
+        prompt, binary = await asyncio.to_thread(
+            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+        )
         if not binary:
             yield InternalEvent(type="error", data={"message": "openclaw binary not found"})
             return
@@ -99,7 +100,9 @@ class OpenClawEngine(AcpEngineBase):
         cmd = self.build_command(binary, prompt, cwd, model=model)
         from services.skill_runtime import write_openclaw_config
 
-        openclaw_config = write_openclaw_config(self.project_skills(cwd))
+        openclaw_config = await asyncio.to_thread(
+            lambda: write_openclaw_config(self.project_skills(cwd))
+        )
 
         logger.info("Spawning: %s (cwd=%s)", " ".join(cmd), cwd)
 

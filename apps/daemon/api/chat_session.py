@@ -29,6 +29,11 @@ class ChatSessionRenameRequest(BaseSchema):
     title: str
 
 
+class ChatSessionPermissionRequest(BaseSchema):
+    project_id: str
+    permission_mode: str
+
+
 class ChatSessionForkRequest(BaseSchema):
     project_id: str
     title: str
@@ -276,6 +281,22 @@ async def rename_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
     return session
+
+
+@router.patch("/{session_id}/permission-mode")
+async def update_permission_mode(
+    session_id: str,
+    req: ChatSessionPermissionRequest,
+):
+    """Apply a permission mode to the current run and future turns."""
+    try:
+        return await _module().update_permission_mode(
+            req.project_id,
+            session_id,
+            req.permission_mode,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc
 
 
 @router.post("/{session_id}/fork")

@@ -1,5 +1,7 @@
 """Global system settings stored in ~/.workstep/config.json."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from typing import Literal
 
@@ -105,11 +107,14 @@ def _model_pricing_response(pricing: dict) -> dict:
 
 @router.get("")
 async def get_system_settings():
-    return {
-        "user_name": config_store.get_user_name(),
-        "open_mode": config_store.get_open_mode(),
-        **config_store.get_device_identity(),
-    }
+    def load() -> dict:
+        return {
+            "user_name": config_store.get_user_name(),
+            "open_mode": config_store.get_open_mode(),
+            **config_store.get_device_identity(),
+        }
+
+    return await asyncio.to_thread(load)
 
 
 @router.put("")
@@ -118,9 +123,9 @@ async def set_system_settings(req: SystemSettingsRequest):
         user_name = req.user_name.strip()
         if not user_name:
             raise HTTPException(status_code=400, detail="使用者名称不能为空")
-        config_store.set_user_name(user_name)
+        await asyncio.to_thread(config_store.set_user_name, user_name)
     if req.open_mode is not None:
-        config_store.set_open_mode(req.open_mode)
+        await asyncio.to_thread(config_store.set_open_mode, req.open_mode)
     return await get_system_settings()
 
 
@@ -136,7 +141,9 @@ async def set_model_pricing(req: ModelPricingRequest):
 
 @router.get("/model-settings")
 async def get_model_settings():
-    return _model_pricing_response(config_store.get_model_pricing())
+    return await asyncio.to_thread(
+        lambda: _model_pricing_response(config_store.get_model_pricing())
+    )
 
 
 @router.put("/model-settings")
@@ -170,5 +177,8 @@ async def set_model_settings(req: ModelPricingRequest):
         "usd_to_cny_rate": float(req.usd_to_cny_rate),
         "prices": prices,
     }
-    config_store.set_model_pricing(pricing)
-    return _model_pricing_response(pricing)
+    def save() -> dict:
+        config_store.set_model_pricing(pricing)
+        return _model_pricing_response(pricing)
+
+    return await asyncio.to_thread(save)

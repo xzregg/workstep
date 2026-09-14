@@ -1,4 +1,8 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import {
+  ComposerOverlayHostContext,
+  useComposerOverlayClearance,
+} from '../hooks/useComposerOverlayClearance'
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -257,6 +261,14 @@ export default function AssistantChatPanel({
   const [composerHeight, setComposerHeight] = useState<number | null>(loadChatComposerHeight)
   const lastContent = messages.at(-1)?.content ?? ''
   const lastEventsCount = messages.at(-1)?.events?.length ?? 0
+  // 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
+  // 留白与跟随钉底走共用 hook，面板经插槽透传也能自行注册。
+  const { registerOverlay, overlayPaddingBottom } = useComposerOverlayClearance({
+    scrollRef: listRef,
+    followRef,
+    programmaticRef: lastProgrammaticScrollTopRef,
+    scrollHeightRef: lastScrollHeightRef,
+  })
   const showThinkingReply = shouldShowAssistantThinking(
     awaitingReply || running,
     messages,
@@ -372,7 +384,7 @@ export default function AssistantChatPanel({
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
+    document.body.style.userSelect = ''
   }
 
   const resetComposerHeight = () => setComposerHeight(null)
@@ -406,7 +418,9 @@ export default function AssistantChatPanel({
         {onClose && <Button variant="icon" aria-label={copy.closePrompt} onClick={onClose}>✕</Button>}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' ,paddingBottom: '80px'}}>
+      {/* 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
+          由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(10) }}>
         <div
           className="chat-history-scroll"
           ref={listRef}
@@ -554,8 +568,7 @@ export default function AssistantChatPanel({
         className="chat-composer-resize-handle"
         style={{
           height: 2, flexShrink: 0, cursor: 'row-resize',
-          background: 'var(--border-soft)', userSelect: 'none',
-        }}
+          background: 'var(--border-soft)',        }}
       />
 
       <div
@@ -566,7 +579,9 @@ export default function AssistantChatPanel({
           background: 'var(--bg)',
         }}
       >
-        {composerOverlay}
+        <ComposerOverlayHostContext.Provider value={registerOverlay}>
+          {composerOverlay}
+        </ComposerOverlayHostContext.Provider>
         <div
           ref={composerInnerRef}
           style={{

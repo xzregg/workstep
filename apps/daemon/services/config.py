@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import platform
+from functools import wraps
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -135,45 +137,61 @@ class ConfigStore:
 
     def __init__(self):
         self._cache: dict[str, Any] | None = None
+        self._lock = threading.RLock()
 
     def _load(self) -> dict:
-        if self._cache is not None:
+        with self._lock:
+            if self._cache is not None:
+                return self._cache
+            if not CONFIG_FILE.exists():
+                self._cache = {}
+                return self._cache
+            try:
+                self._cache = json.loads(CONFIG_FILE.read_text())
+            except Exception as e:
+                logger.warning("Failed to load config: %s", e)
+                self._cache = {}
             return self._cache
-        if not CONFIG_FILE.exists():
-            self._cache = {}
-            return self._cache
-        try:
-            self._cache = json.loads(CONFIG_FILE.read_text())
-        except Exception as e:
-            logger.warning("Failed to load config: %s", e)
-            self._cache = {}
-        return self._cache
 
     def _save(self):
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps(self._cache, ensure_ascii=False, indent=2))
-        CONFIG_FILE.chmod(0o600)
+        with self._lock:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            temporary = CONFIG_FILE.with_name(
+                f".{CONFIG_FILE.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+            )
+            try:
+                temporary.write_text(
+                    json.dumps(self._cache, ensure_ascii=False, indent=2)
+                )
+                temporary.chmod(0o600)
+                os.replace(temporary, CONFIG_FILE)
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a config section."""
-        return self._load().get(key, default)
+        with self._lock:
+            return self._load().get(key, default)
 
     def set(self, key: str, value: Any):
         """Set a config section and persist."""
-        data = self._load()
-        data[key] = value
-        self._save()
+        with self._lock:
+            data = self._load()
+            data[key] = value
+            self._save()
 
     def delete(self, key: str):
         """Remove a config section and persist."""
-        data = self._load()
-        if key in data:
-            del data[key]
-            self._save()
+        with self._lock:
+            data = self._load()
+            if key in data:
+                del data[key]
+                self._save()
 
     def invalidate(self):
         """Clear cache, force reload on next access."""
-        self._cache = None
+        with self._lock:
+            self._cache = None
 
     def get_engine_default_model(self, engine_id: str) -> str:
         defaults = self.get("engine_default_models", {})
@@ -1047,6 +1065,25 @@ class ConfigStore:
             changed = True
         if changed:
             self._save()
+
+# Config writes used to be serialized accidentally by the event loop. They now
+# run in worker threads, so keep every read-modify-write method atomic as one
+# unit (the lower-level set/delete methods use the same re-entrant lock).
+def _serialize_config_mutation(method):
+    @wraps(method)
+    def synchronized(self: ConfigStore, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return synchronized
+
+
+for _method_name, _method in tuple(vars(ConfigStore).items()):
+    if _method_name in {"set", "delete", "invalidate", "migrate_legacy_config"} or (
+        _method_name.startswith(("set_", "save_", "delete_", "clear_"))
+        and callable(_method)
+    ):
+        setattr(ConfigStore, _method_name, _serialize_config_mutation(_method))
 
 
 # Global singleton

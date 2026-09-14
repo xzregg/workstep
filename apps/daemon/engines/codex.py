@@ -157,7 +157,7 @@ class CodexEngine(AcpEngineBase):
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the selectable model catalog from the installed Codex CLI."""
-        binary = self.resolve_binary()
+        binary = await asyncio.to_thread(self.resolve_binary)
         if not binary:
             return []
 
@@ -244,7 +244,8 @@ class CodexEngine(AcpEngineBase):
         clear: dict[str, bool] | None = None,
         confirmed: dict[str, bool] | None = None,
     ) -> None:
-        config_store.set_codex_config(
+        await asyncio.to_thread(
+            config_store.set_codex_config,
             sandbox_mode=str(values.get("sandbox_mode") or ""),
             model_reasoning_effort=str(values.get("model_reasoning_effort") or ""),
             approval_policy=str(values.get("approval_policy") or ""),
@@ -271,23 +272,26 @@ class CodexEngine(AcpEngineBase):
         ``config_overrides`` 覆盖 sandbox_mode / model_reasoning_effort /
         approval_policy（空值回退全局配置）。
         """
-        binary = self.resolve_binary()
+        binary = await asyncio.to_thread(self.resolve_binary)
         if not binary:
             yield InternalEvent(type="error", data={"message": "codex binary not found"})
             return
 
         codex_config = self.merge_config_overrides(
-            config_store.get_codex_config(), config_overrides
+            await asyncio.to_thread(config_store.get_codex_config), config_overrides
         )
         compaction_args = self._compaction_config_args(codex_config)
-        provider_runtime = self.resolve_provider_runtime(
+        provider_runtime = await asyncio.to_thread(
+            self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),
             model=model,
         )
         model = provider_runtime.model
         from services.skill_runtime import codex_skills_config
 
-        skill_override = codex_skills_config(self.project_skills(cwd))
+        skill_override = await asyncio.to_thread(
+            lambda: codex_skills_config(self.project_skills(cwd))
+        )
         run_prompt = prompt
         resume_session = session_id or None
         self._escalate_sandbox = False
@@ -554,6 +558,23 @@ class CodexEngine(AcpEngineBase):
                 tool_use_id = str(tool_call.get("tool_call_id") or "")
                 interaction_id = str(event.data.get("interaction_id") or "")
                 signature = self._permission_signatures.pop(interaction_id, "")
+                runtime_decision = self.runtime_permission_decision()
+                if runtime_decision is not None:
+                    if runtime_decision:
+                        self._escalate_sandbox = True
+                        content = (
+                            "权限模式已允许该命令，沙箱权限已提升，请重新尝试："
+                            f"{command}"
+                        )
+                    else:
+                        content = f"当前只读权限拒绝了该命令：{command}"
+                    yield InternalEvent(type="live_message", data={
+                        "message_id": f"approval:{tool_use_id or 'unknown'}",
+                        "content": content,
+                        "status": "delivered",
+                        "session_id": self._thread_id,
+                    })
+                    return
                 if signature and signature in self._session_reject:
                     # 本运行内已记住「拒绝本次运行」：不再弹窗，直接注入决定。
                     yield InternalEvent(type="live_message", data={

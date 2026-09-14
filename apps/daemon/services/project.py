@@ -26,6 +26,9 @@ from models import (
     ALL_MODELS,
 )
 from models.fields import utc_now
+from models.chat_session import ChatSession, ProjectSetting
+from models.gen_session import WorkflowGenSession
+from models.channel import Channel
 from services.project_database import ProjectDatabaseExecutor
 from settings import settings
 
@@ -289,6 +292,23 @@ class ProjectManager:
                 db_proxy.reset(token)
         return None
 
+    async def find_project_for_task_async(self, task_id: str) -> "Project | None":
+        """Locate a task without executing any Peewee query on the event loop."""
+        import asyncio
+
+        projects = tuple(self._projects.values())
+        matches = await asyncio.gather(*(
+            self.run_db(
+                project.id,
+                lambda _project: Task.get_or_none(Task.id == task_id) is not None,
+            )
+            for project in projects
+        ))
+        return next(
+            (project for project, matched in zip(projects, matches) if matched),
+            None,
+        )
+
     def activate_project_by_id(self, project_id: str) -> ProjectContext:
         """Return a scoped database activation for a project ID."""
         proj = self.get_project_by_id(project_id)
@@ -349,6 +369,21 @@ class ProjectManager:
             updated_at=now,
         )
         logger.info("Created default workflow for %s", proj.path)
+
+    def _restore_project_identity(self, proj: Project, project_id: str | None = None) -> None:
+        """Keep project-scoped rows reachable after removing the global registry entry."""
+        identity_path = proj.path / settings.workstep_dir / "project.json"
+        identity = json.loads(identity_path.read_text()) if identity_path.exists() else {}
+        saved_id = identity.get("id")
+        if not project_id and not saved_id:
+            # Older workspaces kept their identity only in project-scoped rows.
+            for model in (ChatSession, WorkflowGenSession, ProjectSetting, Channel):
+                row = model.select(model.project_id).where(model.project_id != "").first()
+                if row:
+                    saved_id = row.project_id
+                    break
+        proj.id = project_id or saved_id or proj.id
+        identity_path.write_text(json.dumps({"id": proj.id}) + "\n")
 
     def _sync_project_workflows(self, proj: Project) -> None:
         """Load workflows from DB into the Project dataclass and update cached steps."""
@@ -640,6 +675,7 @@ class ProjectManager:
 
         # Seed the canonical workflows table directly.
         with ProjectContext(project):
+            self._restore_project_identity(project)
             self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
@@ -672,6 +708,7 @@ class ProjectManager:
 
         # Ensure the canonical workflows table is usable, then sync the cache.
         with ProjectContext(project):
+            self._restore_project_identity(project, project_id)
             self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
@@ -745,27 +782,30 @@ class ProjectManager:
             # per-workflow state (e.g. running tasks) so queries hit the
             # correct database.
             with self.activate_project(path_str):
-                workflows = [
-                    {
-                        "id": w["id"],
-                        "name": w["name"],
-                        "is_default": w["is_default"],
-                        "deleted": w["deleted"],
-                        "running": self.workflow_has_running_tasks(w["id"]),
-                        "failed": self.workflow_has_failed_tasks(w["id"]),
-                        "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
-                    }
-                    for w in proj.workflows
-                ]
-            entry = {
-                "id": proj.id,
-                "path": str(proj.path),
-                "name": proj.name,
-                "steps": proj.steps,
-                "workflows": workflows,
-            }
-            result.append(entry)
+                result.append(self.project_summary(proj))
         return result
+
+    def project_summary(self, proj: Project) -> dict:
+        """Serialize a project while its database is active."""
+        workflows = [
+            {
+                "id": w["id"],
+                "name": w["name"],
+                "is_default": w["is_default"],
+                "deleted": w["deleted"],
+                "running": self.workflow_has_running_tasks(w["id"]),
+                "failed": self.workflow_has_failed_tasks(w["id"]),
+                "nodeCount": len(w.get("steps", {}).get("nodes", []) or w.get("steps", {}).get("steps", [])),
+            }
+            for w in proj.workflows
+        ]
+        return {
+            "id": proj.id,
+            "path": str(proj.path),
+            "name": proj.name,
+            "steps": proj.steps,
+            "workflows": workflows,
+        }
 
     def get_project(self, path: str | Path) -> Project | None:
         """Get a registered project by path."""

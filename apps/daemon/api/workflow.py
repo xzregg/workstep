@@ -137,11 +137,11 @@ async def create_workflow(req: CreateWorkflowRequest, pid: str = Query(..., alia
     """Create a new workflow for a project."""
     steps = req.steps
     if steps is None and req.template_id:
-        steps = _resolve_template_steps(req.template_id)
+        steps = await asyncio.to_thread(_resolve_template_steps, req.template_id)
         if steps is None:
             raise HTTPException(status_code=404, detail=f"Template not found: {req.template_id}")
     if steps is not None:
-        _validate_steps(steps)
+        await asyncio.to_thread(_validate_steps, steps)
 
     def create(proj):
         wf = project_manager.create_workflow(proj, name=req.name, steps=steps, is_default=req.is_default)
@@ -166,7 +166,7 @@ async def get_workflow(workflow_id: str, pid: str = Query(..., alias="project_id
 async def update_workflow(workflow_id: str, req: UpdateWorkflowRequest, pid: str = Query(..., alias="project_id")):
     """Update workflow name and/or steps."""
     if req.steps is not None:
-        _validate_steps(req.steps)
+        await asyncio.to_thread(_validate_steps, req.steps)
 
     def update(proj):
         wf = project_manager.update_workflow(proj, workflow_id, name=req.name, steps=req.steps)

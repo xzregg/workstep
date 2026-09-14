@@ -243,13 +243,18 @@ class _StreamingClient:
         tool_kind = getattr(tool_call, "kind", None)
         should_allow = (
             self.permission_mode is None
-            or self.permission_mode in {"auto", "bypassPermissions"}
+            or self.permission_mode in {
+                "auto",
+                "bypassPermissions",
+                "workspace-write",
+                "danger-full-access",
+            }
             or (
                 self.permission_mode == "acceptEdits"
                 and tool_kind == "edit"
             )
             or (
-                self.permission_mode == "plan"
+                self.permission_mode in {"plan", "read-only"}
                 and tool_kind in {"read", "search", "think", "fetch"}
             )
         )
@@ -357,6 +362,20 @@ class AcpEngineBase(BaseLLMEngine):
     def get_permission_mode(self) -> str | None:
         return None
 
+    async def set_permission_mode(self, mode: str) -> None:
+        await super().set_permission_mode(mode)
+        if self._handler is not None:
+            self._handler.permission_mode = mode or self.get_permission_mode()
+
+    def runtime_permission_decision(self) -> bool | None:
+        """Resolve modes that WorkStep can enforce at its approval bridge."""
+        mode = self.runtime_permission_mode()
+        if mode in {"auto", "workspace-write", "danger-full-access"}:
+            return True
+        if mode == "read-only":
+            return False
+        return None
+
     async def inspect_capabilities(
         self,
         project_root: str | None = None,
@@ -383,7 +402,7 @@ class AcpEngineBase(BaseLLMEngine):
         commands: list[dict[str, str]] = []
         session_id: str | None = None
         handler = _StreamingClient(self.get_permission_mode())
-        skill_env = self.project_skill_env(cwd)
+        skill_env = await asyncio.to_thread(self.project_skill_env, cwd)
         cmd = self.get_command()
         try:
             process_env = dict(os.environ)
@@ -572,7 +591,7 @@ class AcpEngineBase(BaseLLMEngine):
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
         """Read the ACP session's model configuration options."""
-        skill_env = self.project_skill_env(cwd)
+        skill_env = await asyncio.to_thread(self.project_skill_env, cwd)
         cmd = self.get_command()
         if not cmd:
             return []
@@ -1066,18 +1085,26 @@ class AcpEngineBase(BaseLLMEngine):
         config_overrides: dict | None = None,
         thinking_effort: str | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        provider_runtime = self.resolve_provider_runtime(
-            provider_id=str((config_overrides or {}).get("provider_id") or ""),
-            model=model,
+        def prepare_spawn():
+            provider_runtime = self.resolve_provider_runtime(
+                provider_id=str((config_overrides or {}).get("provider_id") or ""),
+                model=model,
+            )
+            return (
+                provider_runtime,
+                self.project_skill_env(cwd),
+                self.get_command(),
+                self.get_permission_mode(),
+            )
+
+        provider_runtime, skill_env, cmd, permission_mode = await asyncio.to_thread(
+            prepare_spawn
         )
         model = provider_runtime.model
-        skill_env = self.project_skill_env(cwd)
-        cmd = self.get_command()
         if not cmd:
             yield InternalEvent(type="error", data={"message": f"{self.ENGINE_ID}: no command configured"})
             return
 
-        permission_mode = self.get_permission_mode()
         if self.REQUIRES_PERMISSION_MODE and not permission_mode:
             yield InternalEvent(type="error", data={
                 "message": "Claude Code 权限模式尚未确认，请先在设置中选择权限模式",
@@ -1087,7 +1114,7 @@ class AcpEngineBase(BaseLLMEngine):
         logger.info("ACP spawn: %s (cwd=%s)", " ".join(cmd), cwd)
         yield InternalEvent(type="status", data={"status": "initializing"})
 
-        handler = _StreamingClient(permission_mode)
+        handler = _StreamingClient(self.runtime_permission_mode() or permission_mode)
         self._handler = handler
         self._last_cwd = cwd
         try:
@@ -1209,10 +1236,13 @@ class AcpEngineBase(BaseLLMEngine):
                     init_resp, "prompt_capabilities", "image"
                 ):
                     raise RuntimeError("ACP Agent 未声明图片 Prompt 支持")
+                prompt_blocks = await asyncio.to_thread(
+                    self._acp_prompt_blocks, prompt, images
+                )
                 prompt_task = asyncio.create_task(
                     client.prompt(
                         session_id=active_session_id,
-                        prompt=self._acp_prompt_blocks(prompt, images),
+                        prompt=prompt_blocks,
                     )
                 )
                 while not prompt_task.done() or not handler.updates.empty():
@@ -1398,7 +1428,9 @@ class AcpEngineBase(BaseLLMEngine):
             workstep_tools=workstep_tools,
         )
         if images and not self.capabilities.supports_vision:
-            guarded_prompt = self.render_image_prompt(guarded_prompt, images)
+            guarded_prompt = await asyncio.to_thread(
+                self.render_image_prompt, guarded_prompt, images
+            )
         spawn_kwargs: dict[str, Any] = {}
         if workstep_tools and self.capabilities.supports_workstep_tools:
             spawn_kwargs["workstep_tools"] = True
@@ -1648,7 +1680,7 @@ class AcpEngineBase(BaseLLMEngine):
                 data["raw_output"] = update.raw_output
             if update.field_meta is not None:
                 data["_meta"] = self._json_value(update.field_meta)
-            if self.get_permission_mode() == "ask":
+            if (self.runtime_permission_mode() or self.get_permission_mode()) == "ask":
                 data["needs_approval"] = True
             return InternalEvent(type="tool_call", data=data)
         if isinstance(update, schema.ToolCallProgress):

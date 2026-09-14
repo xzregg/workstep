@@ -16,6 +16,7 @@ from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
 from agent_assistants.base import extract_uploaded_images
 from agent_assistants.chat_session import DEFAULT_QUICK_BUTTONS, SYSTEM_PROMPT, ChatSessionModule
+from agent_assistants.event_truncation import LARGE_PAYLOAD_LIMIT
 from engines.core.events import InternalEvent
 from services.project import ProjectManager
 from streaming.bus import EventBus
@@ -506,6 +507,43 @@ async def test_cross_engine_handoff_continues_the_same_session(chat_module, monk
 
 
 @pytest.mark.anyio
+async def test_resumed_chat_prompt_view_keeps_custom_system_injection_visible(
+    chat_module, monkeypatch
+):
+    """查看提示词应展示引擎会话中仍然生效的项目自定义系统提示。"""
+    import agent_assistants.chat_session as chat_service
+
+    module, _bus, _manager, project, _ = chat_module
+    custom_system = "你是项目专属架构助手。"
+    module.set_system_prompt(project.id, custom_system)
+    session = module.create_session(project.id, title="系统提示展示", engine="claude")
+    sent_prompts: list[str] = []
+
+    class ResumeEngine(FakeEngine):
+        supports_resume = True
+
+    monkeypatch.setattr(chat_service, "create_engine", lambda _engine_id: ResumeEngine())
+
+    async def fake_invoke(
+        engine_id, model, cwd, prompt, session_id, on_event=None,
+        message_history=None,
+    ):
+        sent_prompts.append(prompt)
+        return "完成", [], "engine-session"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    first = module.submit_message(project.id, session["id"], "第一次", "chat-display-1")
+    assert await _wait_turn(module, first.turn_id) == "completed"
+    second = module.submit_message(project.id, session["id"], "第二次", "chat-display-2")
+    assert await _wait_turn(module, second.turn_id) == "completed"
+
+    assert custom_system not in sent_prompts[1]
+    visible_prompt = module.get_session(project.id, session["id"])["messages"][-1]["prompt"]
+    assert visible_prompt.startswith(custom_system)
+    assert "第二次" in visible_prompt
+
+
+@pytest.mark.anyio
 async def test_repeated_engine_handoffs_append_only_new_visible_messages(
     chat_module,
     monkeypatch,
@@ -819,6 +857,42 @@ async def test_permission_mode_persists_on_session_and_submit(chat_module):
             idempotency_key="perm-key-2",
             permission_mode="bogus",
         )
+
+
+@pytest.mark.anyio
+async def test_update_permission_mode_applies_to_running_engine_immediately(chat_module):
+    """Changing a session permission updates both the active turn and persistence."""
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(
+        project.id, "wf-live-permission", permission_mode="read-only"
+    )
+
+    class RunningEngine:
+        def __init__(self):
+            self.permission_modes: list[str] = []
+
+        async def set_permission_mode(self, mode: str) -> None:
+            self.permission_modes.append(mode)
+
+    engine = RunningEngine()
+    turn_id = "running-permission-turn"
+    module._turn_states[turn_id] = {
+        "session_id": session["id"],
+        "status": "running",
+        "permission_mode": "read-only",
+    }
+    module._running_engines[turn_id] = engine
+
+    updated = await module.update_permission_mode(
+        project.id, session["id"], "danger-full-access"
+    )
+
+    assert engine.permission_modes == ["danger-full-access"]
+    assert module._turn_states[turn_id]["permission_mode"] == "danger-full-access"
+    assert updated["permission_mode"] == "danger-full-access"
+    assert module.get_session(project.id, session["id"])["permission_mode"] == (
+        "danger-full-access"
+    )
 
 
 @pytest.mark.anyio
@@ -1218,6 +1292,9 @@ async def test_running_history_uses_journal_snapshot_and_details_are_separate(
     module, _bus, _manager, project, _ = chat_module
     invoke_started = asyncio.Event()
     release_invoke = asyncio.Event()
+    # 超过思考聚合的字符预算（512）→ 立即合并落日志；
+    # 运行中的历史快照（journal snapshot）应立刻可见该思考流。
+    thought_text = "内部思考" + "缓" * 600
 
     async def streaming_invoke(
         engine_id, model, cwd, prompt, session_id, on_event=None, **kwargs
@@ -1228,7 +1305,7 @@ async def test_running_history_uses_journal_snapshot_and_details_are_separate(
         ))
         await on_event(InternalEvent(
             type="agent_thought_chunk",
-            data={"content": {"text": "内部思考"}},
+            data={"content": {"text": thought_text}},
         ))
         invoke_started.set()
         await release_invoke.wait()
@@ -1244,18 +1321,50 @@ async def test_running_history_uses_journal_snapshot_and_details_are_separate(
     detail = module.get_session(project.id, session["id"])
     assistant = detail["messages"][-1]
     assert assistant["content"] == "已经生成"
-    assert assistant["event_summary"]["thought_characters"] == 4
+    assert assistant["event_summary"]["thought_characters"] == len(thought_text)
     assert "内部思考" not in json.dumps(detail, ensure_ascii=False)
 
     events = module.message_events(project.id, session["id"], assistant["id"])
     assert any(
         event["type"] == "REASONING_MESSAGE_CHUNK"
-        and event["delta"] == "内部思考"
+        and event["delta"] == thought_text
         for event in events["events"]
     )
 
     release_invoke.set()
     assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+
+def test_history_messages_truncate_large_tool_payloads(chat_module):
+    """history 出口必须截断超大工具载荷。
+
+    events_json 按全量保真落库（单条 raw_output 可达数十 MB）；随 history
+    整包下发会让前端 store 常驻数百 MB（多会话缓存叠加后压垮渲染进程）。
+    """
+    module, _bus, _manager, project, _ = chat_module
+    session = module.create_session(project.id)
+    huge = "x" * (LARGE_PAYLOAD_LIMIT * 2)
+    message_id = "assistant-huge-history"
+    with module._project_ctx(project.id):
+        ChatMessage.create(
+            id=message_id,
+            session=session["id"],
+            role="assistant",
+            content="done",
+            status="succeeded",
+            events_json=json.dumps([{
+                "type": "tool_call_update",
+                "seq": 1,
+                "data": {"tool_call_id": "t1", "raw_output": huge},
+            }], ensure_ascii=False),
+            created_at=utc_now(),
+        )
+
+    detail = module.get_session(project.id, session["id"])
+    message = next(item for item in detail["messages"] if item["id"] == message_id)
+    payload = json.dumps(message["events"], ensure_ascii=False)
+    assert len(payload) < len(huge)
+    assert "已截断" in payload
 
 
 def test_startup_recovery_finalizes_interrupted_running_message(chat_module):
@@ -1740,6 +1849,42 @@ async def test_chat_http_contract(tmp_path, monkeypatch):
             )
             assert resp.status_code == 200
             assert resp.json()["id"] == session_id
+
+            # Permission persistence stays on the project DB executor, so a
+            # slow SQLite write cannot stall unrelated event-loop traffic.
+            original_permission_execute_sql = project.db.execute_sql
+            permission_write_started = threading.Event()
+
+            def slow_permission_update(sql, params=None, commit=None):
+                if (
+                    not permission_write_started.is_set()
+                    and 'UPDATE "chat_sessions"' in sql
+                ):
+                    permission_write_started.set()
+                    time.sleep(0.35)
+                return original_permission_execute_sql(sql, params)
+
+            monkeypatch.setattr(project.db, "execute_sql", slow_permission_update)
+            permission_started_at = time.perf_counter()
+            permission_request = asyncio.create_task(client.patch(
+                f"/api/chat-sessions/{session_id}/permission-mode",
+                json={
+                    "project_id": project.id,
+                    "permission_mode": "workspace-write",
+                },
+            ))
+            await asyncio.sleep(0.05)
+            permission_health = await client.get("/api/health")
+            permission_health_elapsed = time.perf_counter() - permission_started_at
+            resp = await permission_request
+            assert resp.status_code == 200
+            assert resp.json()["permission_mode"] == "workspace-write"
+            assert permission_write_started.is_set()
+            assert permission_health.status_code == 200
+            assert permission_health_elapsed < 0.2
+            monkeypatch.setattr(
+                project.db, "execute_sql", original_permission_execute_sql
+            )
 
             # fork with explicit history handoff
             resp = await client.post(

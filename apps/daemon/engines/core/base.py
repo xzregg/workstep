@@ -315,6 +315,14 @@ class BaseLLMEngine(ABC):
     def set_binary_override(cls, path: str | None) -> None:
         cls._binary_override = path or None
 
+    async def set_permission_mode(self, mode: str) -> None:
+        """Apply a unified permission mode to the current engine run."""
+        self._runtime_permission_mode = mode or None
+
+    def runtime_permission_mode(self) -> str | None:
+        """Return the live per-run permission override, when one is active."""
+        return getattr(self, "_runtime_permission_mode", None)
+
 
     @classmethod
     def get_binary_override(cls) -> str | None:
@@ -496,31 +504,41 @@ class BaseLLMEngine(ABC):
         own_provider_field = any(
             field.key == "provider_id" for field in self.config_schema()
         )
-        previous_provider_id = str(
-            self.get_config_values().get("provider_id") or ""
-        ).strip()
         provider_id = str(values.get("provider_id") or "").strip()
-        if self.supported_provider_protocols():
-            config_store = self.provider_config_store()
-            if not own_provider_field:
-                previous_provider_id = config_store.get_engine_provider(self.ENGINE_ID)
-            if provider_id:
-                self.resolve_provider_runtime(provider_id=provider_id)
-        await self.save_config_values(values, clear, confirmed)
-        if self.supported_provider_protocols() and not own_provider_field:
-            config_store.set_engine_provider(self.ENGINE_ID, provider_id)
-        if provider_id and provider_id != previous_provider_id:
-            config_store = self.provider_config_store()
 
-            default_model = config_store.get_engine_default_model(self.ENGINE_ID)
-            cached = config_store.get_provider_models(provider_id)
-            model_ids = {
-                str(item.get("id") or "")
-                for item in cached.get("models", [])
-                if isinstance(item, dict)
-            }
-            if default_model and default_model not in model_ids:
-                self.clear_provider_default_model()
+        def prepare() -> str:
+            previous_provider_id = str(
+                self.get_config_values().get("provider_id") or ""
+            ).strip()
+            if self.supported_provider_protocols():
+                config_store = self.provider_config_store()
+                if not own_provider_field:
+                    previous_provider_id = config_store.get_engine_provider(
+                        self.ENGINE_ID
+                    )
+                if provider_id:
+                    self.resolve_provider_runtime(provider_id=provider_id)
+            return previous_provider_id
+
+        previous_provider_id = await asyncio.to_thread(prepare)
+        await self.save_config_values(values, clear, confirmed)
+
+        def finish() -> None:
+            config_store = self.provider_config_store()
+            if self.supported_provider_protocols() and not own_provider_field:
+                config_store.set_engine_provider(self.ENGINE_ID, provider_id)
+            if provider_id and provider_id != previous_provider_id:
+                default_model = config_store.get_engine_default_model(self.ENGINE_ID)
+                cached = config_store.get_provider_models(provider_id)
+                model_ids = {
+                    str(item.get("id") or "")
+                    for item in cached.get("models", [])
+                    if isinstance(item, dict)
+                }
+                if default_model and default_model not in model_ids:
+                    self.clear_provider_default_model()
+
+        await asyncio.to_thread(finish)
 
     # --- Install (runtime bootstrap) ---
 
@@ -583,10 +601,16 @@ class BaseLLMEngine(ABC):
         """
         from services.skill_center import skill_center
 
-        resolved_root = Path(project_root).expanduser().resolve() if project_root else None
+        resolved_root = (
+            await asyncio.to_thread(Path(project_root).expanduser().resolve)
+            if project_root
+            else None
+        )
         skills = []
         if resolved_root is not None:
-            selection = skill_center.runtime_selection(resolved_root)
+            selection = await asyncio.to_thread(
+                skill_center.runtime_selection, resolved_root
+            )
             skills = [
                 {
                     "name": skill.name,

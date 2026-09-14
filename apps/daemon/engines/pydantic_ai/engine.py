@@ -130,21 +130,22 @@ class PydanticAIEngine(AcpEngineBase):
 
         无工具、无项目上下文、无会话记忆：仅用于轻量单轮改写等快速场景。
         """
-        if not cls.is_installed():
+        if not await asyncio.to_thread(cls.is_installed):
             raise RuntimeError("Pydantic AI 未安装")
         get_config = getattr(config_store, "get_pydantic_ai_engine_config", None)
         if get_config is None:
             raise RuntimeError("Pydantic AI 尚未配置")
-        config = get_config()
+        config = await asyncio.to_thread(get_config)
         model_name = str(config.get("model") or "")
         try:
-            runtime = cls().resolve_provider_runtime(
+            runtime = await asyncio.to_thread(
+                cls().resolve_provider_runtime,
                 provider_id=str(config.get("provider_id") or ""),
                 model=model_name,
             )
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
-        provider = config_store.get_provider(runtime.provider_id)
+        provider = await asyncio.to_thread(config_store.get_provider, runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
         loaded_model = cls.build_model(provider=provider, model_name=model_name)
@@ -245,19 +246,22 @@ class PydanticAIEngine(AcpEngineBase):
         provider_id = str(values.get("provider_id") or "").strip()
         if not provider_id:
             raise ValueError("请选择供应商")
-        provider = config_store.get_provider(provider_id)
+        provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None or not provider.get("enabled", True):
             raise ValueError("所选供应商不存在或已停用")
-        current = config_store.get_pydantic_ai_engine_config()
-        config_store.set_pydantic_ai_engine_config(
-            provider_id=provider_id,
-            model=str(current["model"]),
-            mcp_servers=current["mcp_servers"],
-            # harness 扩展始终自动：已安装 pydantic-ai-harness 时挂载
-            # 压缩与会话持久化，否则回退 message_history，不由用户选择。
-            harness="auto",
-            sandbox=str(values.get("sandbox") or current["sandbox"]),
-        )
+        def save() -> None:
+            current = config_store.get_pydantic_ai_engine_config()
+            config_store.set_pydantic_ai_engine_config(
+                provider_id=provider_id,
+                model=str(current["model"]),
+                mcp_servers=current["mcp_servers"],
+                # harness 扩展始终自动：已安装 pydantic-ai-harness 时挂载
+                # 压缩与会话持久化，否则回退 message_history，不由用户选择。
+                harness="auto",
+                sandbox=str(values.get("sandbox") or current["sandbox"]),
+            )
+
+        await asyncio.to_thread(save)
 
     async def inspect_capabilities(
         self,
@@ -267,8 +271,10 @@ class PydanticAIEngine(AcpEngineBase):
         skills: list[dict] = []
         resolved_root: Path | None = None
         if project_root:
-            resolved_root = Path(project_root).expanduser().resolve()
-            selection = self.project_skills(str(resolved_root))
+            resolved_root = await asyncio.to_thread(
+                Path(project_root).expanduser().resolve
+            )
+            selection = await asyncio.to_thread(self.project_skills, str(resolved_root))
             skills = [
                 {
                     "name": skill.name,
@@ -291,7 +297,7 @@ class PydanticAIEngine(AcpEngineBase):
             for skill in skills
             if skill["name"] not in known_names
         )
-        config = config_store.get_pydantic_ai_engine_config()
+        config = await asyncio.to_thread(config_store.get_pydantic_ai_engine_config)
         mcp_servers = [
             {
                 "name": server["name"],
@@ -354,13 +360,15 @@ class PydanticAIEngine(AcpEngineBase):
         Defaults to the locally saved copy; ``refresh=True`` re-fetches from
         the provider address and saves the result.
         """
-        config = config_store.get_pydantic_ai_engine_config()
-        provider = config_store.get_provider(provider_id or config["provider_id"])
+        config = await asyncio.to_thread(config_store.get_pydantic_ai_engine_config)
+        provider = await asyncio.to_thread(
+            config_store.get_provider, provider_id or config["provider_id"]
+        )
         if provider is None:
             return []
-        entry = config_store.get_provider_models(provider["id"])
+        entry = await asyncio.to_thread(config_store.get_provider_models, provider["id"])
         if not refresh and entry:
-            return provider_service.saved_models(provider["id"])
+            return await asyncio.to_thread(provider_service.saved_models, provider["id"])
         return await provider_service.fetch_and_save_models(provider)
 
     @staticmethod
@@ -637,6 +645,9 @@ class PydanticAIEngine(AcpEngineBase):
         tool_input: dict[str, Any],
     ) -> bool:
         """Request ACP-style permission for a mutating in-process tool."""
+        runtime_decision = self.runtime_permission_decision()
+        if runtime_decision is not None:
+            return runtime_decision
         if tool_name in self._interaction_permission_grants:
             return True
         if tool_name in self._interaction_permission_rejects:
@@ -712,13 +723,15 @@ class PydanticAIEngine(AcpEngineBase):
         from pydantic_ai.capabilities import Thinking, WebFetch, WebSearch
         from pydantic_ai_harness import Skills
 
-        root = Path(cwd).resolve()
+        root = await asyncio.to_thread(Path(cwd).resolve)
 
         # Refresh the fail-closed SkillCenter mirror before handing that single
         # project-owned library to the harness Skills capability.
-        self.project_skills(str(root))
+        await asyncio.to_thread(self.project_skills, str(root))
 
-        harness_capabilities = self._harness_capabilities(root, session_id)
+        harness_capabilities = await asyncio.to_thread(
+            self._harness_capabilities, root, session_id
+        )
         effort = resolve_thinking_effort(thinking_effort)
         allowed = list(PYDANTIC_AI_CODER_COMMANDS)
         if sandbox in ("workspace-write", "danger-full-access"):
@@ -736,7 +749,7 @@ class PydanticAIEngine(AcpEngineBase):
         self._last_plan_snapshot = None
         capabilities = [coder]
         skill_library = root / ".workstep" / "skills"
-        if skill_library.is_dir():
+        if await asyncio.to_thread(skill_library.is_dir):
             capabilities.append(Skills(skill_library))
         if effort:
             if effort == "minimal":
@@ -848,7 +861,9 @@ class PydanticAIEngine(AcpEngineBase):
                     stream_kwargs["message_history"] = seeded_history
                 result = await self._stream_agent_run(
                     agent,
-                    prompt=self._build_user_content(prompt, images),
+                    prompt=await asyncio.to_thread(
+                        self._build_user_content, prompt, images
+                    ),
                     on_event=on_event,
                     conversation_id=(
                         session_id if harness_capabilities else None
@@ -1201,13 +1216,13 @@ class PydanticAIEngine(AcpEngineBase):
             not session_id
             or not cls._harness_enabled()
             or root is None
-            or not root.is_dir()
+            or not await asyncio.to_thread(root.is_dir)
         ):
             return None
         try:
             from pydantic_ai_harness.step_persistence import continue_run
 
-            store = cls._harness_store(root)
+            store = await asyncio.to_thread(cls._harness_store, root)
             runs = await store.list_runs(conversation_id=session_id)
             # StepPersistence registers the new retry run before WorkStep asks
             # for continuation history. That newest run has no snapshot yet;
@@ -1270,18 +1285,23 @@ class PydanticAIEngine(AcpEngineBase):
         workstep_tools: bool = False,
     ) -> AsyncIterator[InternalEvent]:
         config = self.merge_config_overrides(
-            config_store.get_pydantic_ai_engine_config(), config_overrides
+            await asyncio.to_thread(config_store.get_pydantic_ai_engine_config),
+            config_overrides,
         )
         model_name = model or config["model"]
         try:
-            provider_runtime = self.resolve_provider_runtime(
-                provider_id=config["provider_id"], model=model_name
+            provider_runtime = await asyncio.to_thread(
+                self.resolve_provider_runtime,
+                provider_id=config["provider_id"],
+                model=model_name,
             )
         except ValueError as exc:
             yield InternalEvent(type="error", data={"message": str(exc)})
             return
         model_name = provider_runtime.model
-        provider = config_store.get_provider(provider_runtime.provider_id)
+        provider = await asyncio.to_thread(
+            config_store.get_provider, provider_runtime.provider_id
+        )
         if provider is None or not provider.get("base_url") or not model_name:
             yield InternalEvent(
                 type="error",

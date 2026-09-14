@@ -4,6 +4,7 @@ import asyncio
 import json
 import sqlite3
 import stat
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -297,6 +298,27 @@ def _add_provider(
 
 
 @pytest.mark.anyio
+async def test_engine_refresh_does_not_block_health_check(engine_client, monkeypatch):
+    client, _ = engine_client
+
+    def slow_refresh(*, invalidate_scan=True):
+        time.sleep(0.25)
+
+    monkeypatch.setattr(engine_api, "refresh_registry", slow_refresh)
+    monkeypatch.setattr(engine_api, "_engine_summaries", lambda: [])
+    started = time.perf_counter()
+    refresh = asyncio.create_task(client.post("/api/engine/refresh"))
+    await asyncio.sleep(0.02)
+    health = await client.get("/api/health")
+    elapsed = time.perf_counter() - started
+    refreshed = await refresh
+
+    assert health.status_code == 200
+    assert refreshed.status_code == 200
+    assert elapsed < 0.15
+
+
+@pytest.mark.anyio
 async def test_engine_quota_uses_optional_backend_capability(engine_client, monkeypatch):
     client, _ = engine_client
     captured = {}
@@ -551,11 +573,42 @@ async def test_provider_test_and_models(engine_client, monkeypatch):
     assert tested.json()["success"] is True
     assert store.get_provider(provider["id"])["verified"] is True
 
-    models = await client.get(f"/api/provider/{provider['id']}/models")
+    models = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
     assert models.json()["models"] == [
         {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
     ]
     assert models.json()["error"] is None
+
+
+@pytest.mark.anyio
+async def test_provider_save_only_fetches_models_after_explicit_refresh(
+    engine_client, monkeypatch
+):
+    client, _ = engine_client
+    calls = {"count": 0}
+
+    async def fake_models(provider, transport=None):
+        calls["count"] += 1
+        return [EngineModel(id="cached-model", label="Cached Model")]
+
+    monkeypatch.setattr(provider_api.provider_service, "fetch_models", fake_models)
+
+    created = await client.post("/api/provider", json={
+        "name": "按需刷新",
+        "type": "custom",
+        "protocol": "openai_chat_completions",
+        "base_url": "https://gateway.example.com/v1",
+        "api_key": "secret",
+    })
+    provider_id = created.json()["provider"]["id"]
+    cached = await client.get(f"/api/provider/{provider_id}/models")
+
+    assert calls["count"] == 0
+    assert cached.json()["models"] == []
+
+    refreshed = await client.get(f"/api/provider/{provider_id}/models?refresh=1")
+    assert calls["count"] == 1
+    assert refreshed.json()["models"][0]["id"] == "cached-model"
 
 
 @pytest.mark.anyio
@@ -567,7 +620,7 @@ async def test_provider_models_error_is_surfaced(engine_client, monkeypatch):
         raise RuntimeError("401 Unauthorized")
 
     monkeypatch.setattr(provider_api.provider_service, "fetch_models", boom)
-    models = await client.get(f"/api/provider/{provider['id']}/models")
+    models = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
     assert models.json()["models"] == []
     assert "401" in models.json()["error"]
 
@@ -585,8 +638,12 @@ async def test_provider_models_returns_saved_copy_without_refetch(engine_client,
 
     monkeypatch.setattr(provider_api.provider_service, "fetch_models", fake_models)
 
-    first = await client.get(f"/api/provider/{provider['id']}/models")
-    assert first.json()["models"] == [
+    empty = await client.get(f"/api/provider/{provider['id']}/models")
+    assert empty.json()["models"] == []
+    assert calls["count"] == 0
+
+    refreshed = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
+    assert refreshed.json()["models"] == [
         {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
     ]
     assert calls["count"] == 1
@@ -599,8 +656,8 @@ async def test_provider_models_returns_saved_copy_without_refetch(engine_client,
     # 第二次读取走本地保存副本，不再调供应商。
     assert calls["count"] == 1
 
-    refreshed = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
-    assert refreshed.json()["models"] == [
+    refreshed_again = await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
+    assert refreshed_again.json()["models"] == [
         {"id": "deepseek-chat", "label": "DeepSeek Chat", "description": None}
     ]
     assert calls["count"] == 2
@@ -619,7 +676,7 @@ async def test_provider_list_includes_saved_model_status(engine_client, monkeypa
         ]
 
     monkeypatch.setattr(provider_api.provider_service, "fetch_models", fake_models)
-    await client.get(f"/api/provider/{provider['id']}/models")
+    await client.get(f"/api/provider/{provider['id']}/models?refresh=1")
 
     listed = await client.get("/api/provider/list")
     row = next(item for item in listed.json()["providers"] if item["id"] == provider["id"])
@@ -648,14 +705,17 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
         fake_models,
     )
 
-    first = await client.get("/api/engine/pydantic_ai/models")
-    assert first.json()["models"] != []
+    empty = await client.get("/api/engine/pydantic_ai/models")
+    assert empty.json()["models"] == []
+    assert calls["count"] == 0
+    refreshed = await client.get("/api/engine/pydantic_ai/models?refresh=1")
+    assert refreshed.json()["models"] != []
     assert calls["count"] == 1
     second = await client.get("/api/engine/pydantic_ai/models")
     assert second.json()["models"] != []
     assert calls["count"] == 1
-    refreshed = await client.get("/api/engine/pydantic_ai/models?refresh=1")
-    assert refreshed.json()["models"] != []
+    refreshed_again = await client.get("/api/engine/pydantic_ai/models?refresh=1")
+    assert refreshed_again.json()["models"] != []
     assert calls["count"] == 2
 
 
@@ -675,10 +735,12 @@ async def test_native_engine_models_are_persisted_and_reused(engine_client, monk
     monkeypatch.setattr(engine_api, "create_engine", lambda _engine_id: NativeEngine())
     monkeypatch.setattr(engine_api, "refresh_registry", lambda **_kwargs: None)
 
-    first = await client.get("/api/engine/native/models")
+    empty = await client.get("/api/engine/native/models")
+    first = await client.get("/api/engine/native/models?refresh=1")
     second = await client.get("/api/engine/native/models")
     refreshed = await client.get("/api/engine/native/models?refresh=1")
 
+    assert empty.json()["models"] == []
     assert first.json()["models"] == second.json()["models"] == [{
         "id": "native-model",
         "label": "Native Model",
@@ -718,9 +780,11 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
         engine if engine_id == "deepseek_harness" else None
     ))
 
-    first = await client.get("/api/engine/deepseek_harness/models")
+    empty = await client.get("/api/engine/deepseek_harness/models")
+    first = await client.get("/api/engine/deepseek_harness/models?refresh=1")
     refreshed = await client.get("/api/engine/deepseek_harness/models?refresh=1")
 
+    assert empty.json()["models"] == []
     assert first.status_code == 200
     assert first.json()["models"] == [{
         "id": "deepseek-v4-flash",
@@ -753,7 +817,7 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
         "fetch_models",
         fake_models,
     )
-    response = await client.get("/api/engine/pydantic_ai/models")
+    response = await client.get("/api/engine/pydantic_ai/models?refresh=1")
     assert response.status_code == 200
     payload = response.json()
     assert payload["engine_id"] == "pydantic_ai"
@@ -789,7 +853,7 @@ async def test_engine_pydantic_ai_models_provider_override(engine_client, monkey
         fake_models,
     )
     response = await client.get(
-        f"/api/engine/pydantic_ai/models?provider_id={other['id']}"
+        f"/api/engine/pydantic_ai/models?provider_id={other['id']}&refresh=1"
     )
     assert response.status_code == 200
     assert called["provider"]["id"] == other["id"]
@@ -1294,6 +1358,51 @@ async def test_engine_config_rejects_incompatible_common_provider(engine_client)
         json={"engine": "", "model": "", "fast_model": "", "vision_model": "orphan-vision-model"},
     )
     assert vision_response.status_code == 400
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("outcome", ["success", "error"])
+async def test_engine_connection_does_not_pollute_daemon_directory(
+    engine_client, monkeypatch, tmp_path, outcome,
+):
+    from pathlib import Path
+
+    from services.skill_center import SkillCenter
+
+    client, store = engine_client
+    daemon_dir = tmp_path / "daemon"
+    daemon_dir.mkdir()
+    monkeypatch.chdir(daemon_dir)
+    monkeypatch.setattr(
+        "services.skill_center.skill_center",
+        SkillCenter(source_roots={"empty": tmp_path / "no-skills"}),
+    )
+    working_dirs = []
+
+    async def spawn(self, *, cwd, **kwargs):
+        root = Path(cwd)
+        working_dirs.append(root)
+        await asyncio.to_thread(self.project_skills, cwd)
+        assert (root / ".workstep/skills/.workstep-manifest.json").is_file()
+        if outcome == "error":
+            raise RuntimeError("connection failed")
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "WORKSTEP_ENGINE_OK"}},
+        )
+
+    monkeypatch.setattr(PydanticAIEngine, "spawn", spawn)
+    response = await client.post(
+        "/api/engine/test",
+        json={"engine_id": "pydantic_ai", "timeout_seconds": 3},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["success"] is (outcome == "success")
+    assert store.is_engine_verified("pydantic_ai") is (outcome == "success")
+    assert not (daemon_dir / ".workstep").exists()
+    assert working_dirs
+    assert all(not root.exists() for root in working_dirs)
 
 
 @pytest.mark.anyio

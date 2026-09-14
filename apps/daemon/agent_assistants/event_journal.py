@@ -8,10 +8,12 @@ record events, and request either a compact snapshot or a detailed timeline.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +59,52 @@ class TurnEventJournal:
         self._flush_interval = flush_interval
         self._flush_bytes = flush_bytes
         self._states: dict[Path, _WriterState] = {}
+        self._io_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="workstep-event-journal",
+        )
+        self._io_closed = False
+
+    async def _run_io(self, operation, /, *args, **kwargs):
+        """Serialize journal storage work outside the daemon event loop."""
+        if self._io_closed:
+            raise RuntimeError("Turn event journal is closed")
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            self._io_executor,
+            functools.partial(operation, *args, **kwargs),
+        )
+
+    async def astart(self, *args, **kwargs) -> JournalRef:
+        return await self._run_io(self.start, *args, **kwargs)
+
+    async def arecord(self, *args, **kwargs) -> int:
+        return await self._run_io(self.record, *args, **kwargs)
+
+    async def amove_to_conversation(self, *args, **kwargs) -> JournalRef:
+        return await self._run_io(self.move_to_conversation, *args, **kwargs)
+
+    async def async_flush(self, *args, **kwargs) -> None:
+        await self._run_io(self.sync, *args, **kwargs)
+
+    async def afinish(self, *args, **kwargs) -> None:
+        await self._run_io(self.finish, *args, **kwargs)
+
+    async def asnapshot(self, *args, **kwargs) -> dict[str, Any]:
+        return await self._run_io(self.snapshot, *args, **kwargs)
+
+    async def atimeline(self, *args, **kwargs) -> dict[str, Any]:
+        return await self._run_io(self.timeline, *args, **kwargs)
+
+    async def adelete_session(self, *args, **kwargs) -> None:
+        await self._run_io(self.delete_session, *args, **kwargs)
+
+    async def aclose(self) -> None:
+        if self._io_closed:
+            return
+        await self._run_io(self._close_files)
+        self._io_closed = True
+        await asyncio.to_thread(self._io_executor.shutdown, True)
 
     @staticmethod
     def _segment(value: str) -> str:
@@ -322,10 +370,17 @@ class TurnEventJournal:
         except OSError:
             pass
 
-    def close(self) -> None:
+    def _close_files(self) -> None:
         for state in tuple(self._states.values()):
             self.sync(state.ref, durable=True)
         self._states.clear()
+
+    def close(self) -> None:
+        if self._io_closed:
+            return
+        self._close_files()
+        self._io_closed = True
+        self._io_executor.shutdown(wait=True)
 
     def _read(self, ref: JournalRef) -> list[dict[str, Any]]:
         path = self.resolve(ref.root, ref)

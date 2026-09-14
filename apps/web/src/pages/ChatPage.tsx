@@ -11,6 +11,7 @@ import Input from '../components/Input'
 import PendingMessageInserts, {
   type PendingMessageInsert,
 } from '../components/PendingMessageInserts'
+import OpenLocationButton from '../components/OpenLocationButton'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import {
   assistantApi,
@@ -471,6 +472,23 @@ export default function ChatPage() {
     }
   }, [sessionId, activeProject?.id, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, permissionMode, planMode, t])
 
+  const changePermissionMode = useCallback(async (mode: string) => {
+    const previousMode = permissionMode
+    setPermissionMode(mode)
+    if (!sessionId || !activeProject?.id) return
+    setSendError('')
+    try {
+      await chatSessionApi.updatePermissionMode(sessionId, activeProject.id, mode)
+    } catch (reason) {
+      setPermissionMode(previousMode)
+      setSendError(
+        reason instanceof Error
+          ? reason.message
+          : t('chatSession.permissionUpdateFailed'),
+      )
+    }
+  }, [activeProject?.id, permissionMode, sessionId, t])
+
   const send = useCallback(async (contentOverride?: string) => {
     const content = (contentOverride ?? input).trim()
     if (!content || !sessionId) {
@@ -911,6 +929,7 @@ export default function ChatPage() {
             >
               {t('common.delete')}
             </Button>
+            <OpenLocationButton activeProject={activeProject} t={t} />
             <Button
               variant="ghost"
               size="sm"
@@ -992,8 +1011,7 @@ export default function ChatPage() {
         }}
         permission={{
           value: permissionMode,
-          onChange: setPermissionMode,
-          disabled: running,
+          onChange: (mode) => void changePermissionMode(mode),
         }}
         plan={{
           active: planMode,

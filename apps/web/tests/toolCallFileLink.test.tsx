@@ -162,12 +162,13 @@ test('process trace resolves tool file targets when a project is available', () 
     { type: 'tool_result', data: { tool_use_id: 'tool-1', content: 'file body' } },
   ]
 
+  // running → disclosure 初始展开；折叠时 body 不渲染（巨型 trace 零 DOM）
   const withProject = renderRow(
-    <ProcessTrace events={events as never} projectId="project-1" />,
+    <ProcessTrace events={events as never} projectId="project-1" running />,
   )
   assert.match(withProject, /class="markdown-file-link"/)
   assert.match(withProject, />example\.tsx</)
 
-  const withoutProject = renderRow(<ProcessTrace events={events as never} />)
+  const withoutProject = renderRow(<ProcessTrace events={events as never} running />)
   assert.doesNotMatch(withoutProject, /markdown-file-link/)
 })

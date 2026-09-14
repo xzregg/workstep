@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import {
   engineApi,
   type EngineConfigField,
+  type EngineModel,
   type EngineConfigPayload,
   type EngineConfigSaveInput,
   type EngineConfigSchema,
@@ -29,6 +30,10 @@ interface Props {
   onSaved?: (result: EngineConfigSchema) => void
   /** Reports save availability so an external save button stays in sync. */
   onFormStateChange?: (state: { saving: boolean; canSave: boolean }) => void
+  modelOptions?: EngineModel[]
+  modelOptionsLoading?: boolean
+  modelOptionsError?: string
+  onRefreshModelOptions?: () => void
 }
 
 /**
@@ -41,7 +46,17 @@ interface Props {
  * embedded payload.
  */
 const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function EngineConfigForm(
-  { engineId, config, footerSlot, onSaved, onFormStateChange },
+  {
+    engineId,
+    config,
+    footerSlot,
+    onSaved,
+    onFormStateChange,
+    modelOptions = [],
+    modelOptionsLoading = false,
+    modelOptionsError = '',
+    onRefreshModelOptions,
+  },
   ref,
 ) {
   const { t } = useI18n()
@@ -298,7 +313,11 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
             id={`engine-config-${engineId}-${field.key}`}
             value={value}
             disabled={saving}
+            modelOptions={modelOptions}
+            modelOptionsLoading={modelOptionsLoading}
+            modelOptionsError={modelOptionsError}
             onChange={(nextValue) => setFieldValue(field.key, nextValue)}
+            onRefresh={onRefreshModelOptions}
           />
         ) : (
           <Input

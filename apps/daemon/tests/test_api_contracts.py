@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 import json
+from pathlib import Path
 import uuid
 from unittest.mock import AsyncMock
 
@@ -125,6 +126,117 @@ async def api_context(tmp_path, monkeypatch):
     await runtime.shutdown()
     await bus.close()
     manager.close_all()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("endpoint", ["init", "register"])
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_reopen_project_restores_sessions_and_workflows(api_context, monkeypatch, endpoint, legacy):
+    import main
+    from agent_assistants.chat_session import ChatSessionModule
+    from models.chat_session import ChatSession, ChatMessage
+
+    client, tmp_path = api_context
+    manager = main.project_manager
+    module = ChatSessionModule(EventBus(), manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    path = tmp_path / "reopened"
+    opened = await client.post("/api/project/init", json={"path": str(path)})
+    pid = opened.json()["id"]
+
+    def seed(project):
+        workflow = manager.create_workflow(project, "旧流程", {"nodes": [], "connections": []})
+        ChatSession.create(id="old-session", project_id=pid, workflow_id=workflow["id"],
+                           title="旧会话", engine="codex", created_at=1, updated_at=1)
+        ChatMessage.create(id="old-message", session="old-session", role="assistant",
+                           content="以前的内容", created_at=1)
+        return workflow["id"]
+
+    workflow_id = await manager.run_db(pid, seed)
+    assert (await client.delete(f"/api/project/{pid}")).status_code == 200
+    # Old workspaces predate local identity metadata.
+    if legacy:
+        (path / ".workstep" / "project.json").unlink(missing_ok=True)
+    reopened = await client.post(f"/api/project/{endpoint}", json={"path": str(path)})
+    assert reopened.status_code == 200
+    restored = reopened.json()
+    sessions = await client.get("/api/chat-sessions", params={"project_id": restored["id"]})
+    assert [s["id"] for s in sessions.json()["sessions"]] == ["old-session"]
+    history = await client.get("/api/chat-sessions/old-session", params={"project_id": restored["id"]})
+    assert history.json()["messages"][0]["content"] == "以前的内容"
+    assert workflow_id in [w["id"] for w in restored["workflows"]]
+    assert restored["id"] == pid
+    await module.shutdown()
+
+
+@pytest.mark.anyio
+async def test_chat_history_with_multiple_old_project_ids_stays_project_local(api_context, monkeypatch):
+    import main
+    from agent_assistants.chat_session import ChatSessionModule
+    from models.chat_session import ChatSession, ChatMessage
+
+    client, tmp_path = api_context
+    manager = main.project_manager
+    module = ChatSessionModule(EventBus(), manager)
+    monkeypatch.setattr(main, "chat_session_module", module)
+    project = (await client.post("/api/project/init", json={"path": str(tmp_path / "sales")})).json()
+    other = (await client.post("/api/project/init", json={"path": str(tmp_path / "other")})).json()
+
+    def seed(_project):
+        for index, old_id in enumerate(["old-desktop", "old-container"]):
+            ChatSession.create(id=f"old-{index}", project_id=old_id, workflow_id="",
+                               title="旧会话", engine="codex", created_at=1, updated_at=1)
+            ChatMessage.create(id=f"message-{index}", session=f"old-{index}", role="assistant",
+                               content=f"历史内容{index}", created_at=1)
+
+    await manager.run_db(project["id"], seed)
+    params = {"project_id": project["id"]}
+    listed = await client.get("/api/chat-sessions", params=params)
+    assert {s["id"] for s in listed.json()["sessions"]} == {"old-0", "old-1"}
+    assert {s["project_id"] for s in listed.json()["sessions"]} == {project["id"]}
+    for index in range(2):
+        history = await client.get(f"/api/chat-sessions/old-{index}", params=params)
+        assert history.json()["project_id"] == project["id"]
+        assert history.json()["messages"][0]["content"] == f"历史内容{index}"
+        events = await client.get(f"/api/chat-sessions/old-{index}/messages/message-{index}/events", params=params)
+        assert events.status_code == 200
+    other_params = {"project_id": other["id"]}
+    assert (await client.get("/api/chat-sessions", params=other_params)).json()["sessions"] == []
+    assert (await client.get("/api/chat-sessions/old-0", params=other_params)).status_code == 404
+    assert (await client.get("/api/chat-sessions/old-0/messages/message-0/events", params=other_params)).status_code == 404
+    await module.shutdown()
+
+
+@pytest.mark.anyio
+async def test_reopen_project_slow_sql_does_not_block_health(api_context, monkeypatch):
+    import peewee
+
+    client, tmp_path = api_context
+    path = tmp_path / "slow-reopen"
+    opened = await client.post("/api/project/init", json={"path": str(path)})
+    await client.delete(f"/api/project/{opened.json()['id']}")
+    (path / ".workstep" / "project.json").unlink()
+    started = threading.Event()
+    release = threading.Event()
+    original = peewee.SqliteDatabase.execute_sql
+
+    def slow_query(db, sql, *args, **kwargs):
+        if sql.startswith("SELECT") and '"chat_sessions"' in sql:
+            started.set()
+            assert release.wait(2)
+        return original(db, sql, *args, **kwargs)
+
+    monkeypatch.setattr(peewee.SqliteDatabase, "execute_sql", slow_query)
+    reopening = asyncio.create_task(client.post("/api/project/init", json={"path": str(path)}))
+    try:
+        assert await asyncio.to_thread(started.wait, 1)
+        health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        assert health.status_code == 200
+        assert not reopening.done()
+    finally:
+        release.set()
+        response = await reopening
+    assert response.status_code == 200
 
 
 @pytest.mark.anyio
@@ -457,6 +569,39 @@ async def test_workflow_completion_write_lock_does_not_block_health_check(
 
 
 @pytest.mark.anyio
+async def test_cancel_task_lookup_does_not_block_health_check(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-cancel-lookup"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Cancel lookup", "cwd": str(project_dir), "auto_start": False},
+    )
+    task_id = created.json()["id"]
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+
+    def slow_task_lookup(sql, params=None, commit=None):
+        if 'FROM "tasks"' in sql:
+            time.sleep(0.25)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_task_lookup)
+    started = time.perf_counter()
+    cancel = asyncio.create_task(client.post("/api/task/cancel", json={"task_id": task_id}))
+    await asyncio.sleep(0.02)
+    health = await client.get("/api/health")
+    elapsed = time.perf_counter() - started
+    cancelled = await cancel
+
+    assert health.status_code == 200
+    assert cancelled.status_code == 200
+    assert elapsed < 0.15
+
+
+@pytest.mark.anyio
 async def test_task_creation_auto_starts_the_selected_stage(api_context, monkeypatch):
     import main
 
@@ -710,6 +855,38 @@ async def test_upload_image_returns_project_relative_path(api_context):
     assert via_name.status_code == 200
     assert via_name.content == b"\x89PNG\r\n\x1a\nfake-image-bytes"
 
+
+@pytest.mark.anyio
+async def test_slow_filesystem_write_does_not_block_health_check(
+    api_context, monkeypatch
+):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "nonblocking-upload"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    original_write_bytes = Path.write_bytes
+
+    def slow_upload(path, content):
+        if path.parent.name == "uploads":
+            time.sleep(0.25)
+        return original_write_bytes(path, content)
+
+    monkeypatch.setattr(Path, "write_bytes", slow_upload)
+    started = time.perf_counter()
+    upload = asyncio.create_task(client.post(
+        "/api/fs/upload/file",
+        params={"project_id": project_id},
+        json={"filename": "probe.txt", "data_url": "data:text/plain;base64,cHJvYmU="},
+    ))
+    await asyncio.sleep(0.02)
+    health = await client.get("/api/health")
+    elapsed = time.perf_counter() - started
+    uploaded = await upload
+
+    assert health.status_code == 200
+    assert uploaded.status_code == 200
+    assert elapsed < 0.15
 
 @pytest.mark.anyio
 async def test_upload_file_returns_project_relative_markdown_target(api_context):
@@ -1527,7 +1704,7 @@ async def test_engine_models_delegate_to_the_adapter(api_context, monkeypatch):
         lambda engine_id: "smart",
     )
 
-    response = await client.get("/api/engine/claude/models")
+    response = await client.get("/api/engine/claude/models?refresh=1")
 
     assert response.status_code == 200
     result = response.json()
@@ -2659,9 +2836,17 @@ async def _wait_for_task_status(client, project_id, task_id, expected, timeout=2
 
 
 @pytest.mark.anyio
-async def test_review_flow_end_to_end_via_api(api_context):
+async def test_review_flow_end_to_end_via_api(api_context, monkeypatch):
     """整个审核流程：跳过审核 → 自动审核重试 → 人工审核 → 驳回注入反馈 → 通过。"""
     client, tmp_path = api_context
+    from services.config import config_store
+
+    monkeypatch.setattr(config_store, "get_user_name", lambda: "张三")
+    monkeypatch.setattr(
+        config_store,
+        "get_device_identity",
+        lambda: {"device_id": "device-a", "device_name": "MacBook"},
+    )
     project_dir = tmp_path / "review-flow-project"
     project_dir.mkdir()
     initialized = await client.post(
@@ -2797,6 +2982,32 @@ async def test_review_flow_end_to_end_via_api(api_context):
         assert steps == {
             "plan": "passed", "build": "passed", "verify": "passed",
         }
+        reviews = (await client.get(
+            f"/api/task/{task_id}/reviews?project_id={project_id}"
+        )).json()["reviews"]
+        approved_review = next(
+            review for review in reviews
+            if review["id"] == verify_reviews[0]["id"]
+        )
+        assert approved_review["reviewer_name"] == "张三"
+        assert approved_review["reviewer_device_id"] == "device-a"
+        assert approved_review["reviewer_device_name"] == "MacBook"
+
+        history = (await client.get(
+            f"/api/task/{task_id}/history?project_id={project_id}&limit=300"
+        )).json()["messages"]
+        approved_message = next(
+            message for message in history
+            if message["channel"] == "review"
+            and any(
+                event.get("type") == "review_context"
+                and event.get("data", {}).get("review_run_id") == approved_review["id"]
+                for event in message["events"]
+            )
+        )
+        assert approved_message["author_name"] == "张三"
+        assert approved_message["author_device_id"] == "device-a"
+        assert approved_message["author_device_name"] == "MacBook"
     finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

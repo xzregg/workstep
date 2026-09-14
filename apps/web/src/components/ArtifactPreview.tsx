@@ -80,6 +80,26 @@ function CopyTextButton({ content }: { content: string }) {
   )
 }
 
+function DownloadFileButton({ href, filename }: { href: string; filename: string }) {
+  const { t } = useI18n()
+
+  return (
+    <a
+      className="artifact-download-button"
+      href={href}
+      download={filename}
+      aria-label={t('artifact.downloadFile')}
+      title={t('artifact.downloadFile')}
+    >
+      <Icon name="download" size={14} strokeWidth={2} />
+    </a>
+  )
+}
+
+function filenameFromPath(path: string) {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'download'
+}
+
 export default function ArtifactPreview({ path, line, isDir = false, onClose, projectId }: ArtifactPreviewProps) {
   const { t } = useI18n()
   const [view, setView] = useState<PreviewView>(() =>
@@ -302,7 +322,9 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
       : fsApi.fileUrl(view.path)
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.file'))}
+        {fileHeader(t('artifact.file'), (
+          <DownloadFileButton href={fallbackUrl} filename={filenameFromPath(view.path)} />
+        ))}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', gap: 12 }}>
           {t('artifact.loadFailed', { error: previewError })}
           <a className="artifact-open-link" href={fallbackUrl} target="_blank" rel="noopener noreferrer">
@@ -335,11 +357,14 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   const rawUrl = projectId
     ? fsApi.projectFileUrl(preview.relative_path || view.path, projectId)
     : fsApi.fileUrl(view.path)
+  const downloadButton = (
+    <DownloadFileButton href={rawUrl} filename={filenameFromPath(preview.relative_path || view.path)} />
+  )
 
   if (isImage) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.imageAlt'))}
+        {fileHeader(t('artifact.imageAlt'), downloadButton)}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
           <img
             src={content}
@@ -357,6 +382,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.htmlFile'), (
           <>
+            {downloadButton}
             <CopyTextButton content={content} />
             <a
               href={rawUrl}
@@ -398,10 +424,13 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
         {fileHeader(t('artifact.pdfFile'), (
-          <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
-            <Icon name="external-link" size={13} />
-            {t('artifact.openFile')}
-          </a>
+          <>
+            {downloadButton}
+            <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
+              <Icon name="external-link" size={13} />
+              {t('artifact.openFile')}
+            </a>
+          </>
         ))}
         <iframe
           className="artifact-pdf-frame"
@@ -416,7 +445,12 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   if (isCode) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.codeFile', { extension }), <CopyTextButton content={content} />)}
+        {fileHeader(t('artifact.codeFile', { extension }), (
+          <>
+            {downloadButton}
+            <CopyTextButton content={content} />
+          </>
+        ))}
         <div style={{ flex: 1, minHeight: 0 }}>
           <Suspense fallback={(
             <div className="artifact-preview-loading">
@@ -435,7 +469,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   if (type === 'binary') {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.file'))}
+        {fileHeader(t('artifact.file'), downloadButton)}
         <div className="artifact-binary-state">
           <span className="artifact-binary-icon" aria-hidden="true">
             <Icon name="file" size={24} strokeWidth={1.6} />
@@ -454,7 +488,12 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   // Default text preview
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-      {fileHeader(t('artifact.textPreview', { name: extension || t('artifact.file') }), <CopyTextButton content={content} />)}
+      {fileHeader(t('artifact.textPreview', { name: extension || t('artifact.file') }), (
+        <>
+          {downloadButton}
+          <CopyTextButton content={content} />
+        </>
+      ))}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 16 }}>
         <pre style={{ margin: 0, fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
           {content}

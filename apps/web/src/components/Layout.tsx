@@ -203,7 +203,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
     document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
+    document.body.style.userSelect = ''
   }
 
   useEffect(() => { fetchProjects() }, [fetchProjects])
@@ -625,7 +625,6 @@ export default function Layout({ onSelectProject, children }: Props) {
                 style={{
                   ...projectItemStyle(activeProject?.id === p.id),
                   position: 'relative',
-                  userSelect: 'none',
                   opacity: dragProjectId === p.id ? 0.4 : 1,
                   outline: dropProjectId === p.id ? '1px solid var(--accent)' : 'none',
                   ...(dropProjectId === p.id ? { background: 'var(--accent-light)' } : {}),
@@ -774,7 +773,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     return (
                       <>
                         <div
-                          style={{ ...nestedSectionLabel, cursor: 'pointer', userSelect: 'none' }}
+                          style={{ ...nestedSectionLabel, cursor: 'pointer' }}
                           onClick={(e) => {
                             e.stopPropagation()
                             setFlowSectionOpen((prev) => ({ ...prev, [p.id]: !flowOpen }))
@@ -940,8 +939,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     <div
                       style={{
                         ...nestedSectionLabel,
-                        cursor: 'pointer', userSelect: 'none',
-                        margin: '14px 12px 2px 28px',
+                        cursor: 'pointer',                        margin: '14px 12px 2px 28px',
                         padding: '10px 6px 0 0',
                         borderTop: '1px solid var(--border-soft)',
                       }}

@@ -221,10 +221,19 @@ class NativePlanTracker:
             is_subagent_call = call_id in self._subagent_calls
             self._subagent_calls.discard(call_id)
             current = self._tasks.pop(provisional, None) or {}
-            try:
-                parsed = json.loads(str(raw_output or ""))
-            except (json.JSONDecodeError, TypeError):
-                parsed = {}
+            metadata = event.data.get("_meta")
+            provider_result = (
+                metadata.get("provider_result")
+                if isinstance(metadata, Mapping)
+                else None
+            )
+            if isinstance(provider_result, Mapping):
+                parsed = provider_result
+            else:
+                try:
+                    parsed = json.loads(str(raw_output or ""))
+                except (json.JSONDecodeError, TypeError):
+                    parsed = {}
             task = parsed.get("task") if isinstance(parsed, Mapping) else None
             if not isinstance(task, Mapping):
                 task = {}

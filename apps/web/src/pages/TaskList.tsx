@@ -10,7 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTaskStore, selectWorkflowTasks, type LiveMessage } from '../stores/taskStore'
 import { useProjectStore } from '../stores/projectStore'
 import { setDetailTaskIds } from '../hooks/useWebSocket'
-import { fsApi, scheduleApi, type DirectoryOpener } from '../api/client'
+import { fsApi, scheduleApi } from '../api/client'
 import TaskDetail from './TaskDetail'
 import { isTaskCompleted, isTaskNotStarted } from './taskDetailChat'
 import Button from '../components/Button'
@@ -23,6 +23,7 @@ import MarkdownEditor from '../components/MarkdownEditor'
 import AiTaskCreateChat from '../components/AiTaskCreateChat'
 import ReviewOverridesEditor from '../components/ReviewOverridesEditor'
 import MarqueeText from '../components/MarqueeText'
+import OpenLocationButton from '../components/OpenLocationButton'
 import ProjectShareDialog from '../components/ProjectShareDialog'
 import ProjectSettingsPanel from '../components/ProjectSettingsPanel'
 import ArchiveExperienceProgress from '../components/ArchiveExperienceProgress'
@@ -102,33 +103,6 @@ const STAGE_COLORS: Record<string, string> = {
   backend: '#d97706', test: '#dc2626', deploy: '#16a34a',
 }
 
-const FALLBACK_OPENERS: DirectoryOpener[] = [
-  { id: 'file_manager', label: 'file_manager', available: true },
-]
-
-function OpenerIcon({ id }: { id: string }) {
-  const visual: Record<string, { text: string; bg: string; color: string }> = {
-    vscode: { text: '⌁', bg: 'var(--accent-light)', color: '#168bd2' },
-    sublime: { text: 'S', bg: '#333', color: '#ff9800' },
-    file_manager: { text: '⌂', bg: 'var(--accent-light)', color: '#2684ff' },
-    terminal: { text: '>_', bg: '#454545', color: 'var(--accent-fg)' },
-    iterm: { text: '$', bg: '#3e2945', color: '#59e391' },
-    intellij: { text: 'IJ', bg: '#ef476f', color: 'var(--accent-fg)' },
-    pycharm: { text: 'PC', bg: '#32c787', color: 'var(--accent-fg)' },
-  }
-  const item = visual[id] || visual.file_manager
-  return (
-    <span style={{
-      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      background: item.bg, color: item.color, fontSize: id === 'terminal' ? 8 : 10,
-      fontWeight: 700, lineHeight: 1,
-    }}>
-      {item.text}
-    </span>
-  )
-}
-
 function getLanesFromSteps(steps: any, t: TFunction): Lane[] {
   if (steps?.nodes?.length) {
     return steps.nodes.map((n: any) => {
@@ -182,8 +156,6 @@ export default function TaskList() {
   const { t, locale } = useI18n()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const openerDisplayLabel = (opener: DirectoryOpener) =>
-    opener.id === 'file_manager' ? t('taskList.openLocation') : opener.label
   const {
     tasks, loading, fetchTasks, createTask, runTask, deleteTask, archiveTask,
     getArchiveExperienceDraft, prepareArchiveExperience, stopArchiveExperience, confirmArchiveExperience,
@@ -268,12 +240,6 @@ export default function TaskList() {
     overrides: Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }>
   }>({ title: '', desc: '', autoStart: false, startMode: 'manual', scheduledStart: '', startStepKey: null, overrides: {} })
   const [directoryNotice, setDirectoryNotice] = useState('')
-  const [directoryOpeners, setDirectoryOpeners] = useState<DirectoryOpener[]>(FALLBACK_OPENERS)
-  const [selectedOpener, setSelectedOpener] = useState(
-    () => localStorage.getItem('workstep-directory-opener') || 'file_manager'
-  )
-  const [showOpenerMenu, setShowOpenerMenu] = useState(false)
-  const openerMenuRef = useRef<HTMLDivElement>(null)
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
 
@@ -318,36 +284,6 @@ export default function TaskList() {
     setShowArchived(false)
   }, [activeProject?.path])
 
-  useEffect(() => {
-    fsApi.directoryOpeners()
-      .then(({ openers }) => {
-        const available = openers.filter((opener) => opener.available)
-        setDirectoryOpeners(available.length ? available : FALLBACK_OPENERS)
-        if (!available.some((opener) => opener.id === selectedOpener)) {
-          setSelectedOpener('file_manager')
-          localStorage.setItem('workstep-directory-opener', 'file_manager')
-        }
-      })
-      .catch(() => setDirectoryOpeners(FALLBACK_OPENERS))
-  }, [selectedOpener])
-
-  useEffect(() => {
-    if (!showOpenerMenu) return
-    const closeMenu = (event: MouseEvent) => {
-      if (!openerMenuRef.current?.contains(event.target as Node)) {
-        setShowOpenerMenu(false)
-      }
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowOpenerMenu(false)
-    }
-    document.addEventListener('mousedown', closeMenu)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('mousedown', closeMenu)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
-  }, [showOpenerMenu])
 
   const lanes = useMemo(() => getLanesFromSteps(activeProject?.steps, t), [activeProject?.steps, t])
   const createLane = lanes.find((lane) => lane.key === createStartStepKey) || lanes[0]
@@ -558,19 +494,6 @@ export default function TaskList() {
     openTask(taskId, activeProject?.name, activeWorkflowId || undefined)
   }
 
-  const openProjectDirectory = async (openerId = selectedOpener) => {
-    if (!activeProject || activeProject.type === 'remote') return
-    try {
-      const result = await fsApi.openDirectory(activeProject.path, openerId)
-      setDirectoryNotice(t('taskList.opened', { path: result.path }))
-    } catch (error) {
-      setDirectoryNotice(
-        t('taskList.openFailed', { error: error instanceof Error ? error.message : t('common.unknownError') })
-      )
-    }
-    setTimeout(() => setDirectoryNotice(''), 3000)
-  }
-
   const copyWorkflowId = async () => {
     try {
       await navigator.clipboard.writeText(activeWorkflowId || 'default')
@@ -639,13 +562,6 @@ export default function TaskList() {
     } else {
       setShowMemoryPanel(false)
     }
-  }
-
-  const selectDirectoryOpener = (opener: DirectoryOpener) => {
-    setSelectedOpener(opener.id)
-    localStorage.setItem('workstep-directory-opener', opener.id)
-    setShowOpenerMenu(false)
-    void openProjectDirectory(opener.id)
   }
 
   const deleteCard = (e: React.MouseEvent, taskId: string) => {
@@ -1008,76 +924,12 @@ export default function TaskList() {
           <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? t('taskList.backBoard') : t('taskList.viewArchived')}
         </Button>
-        <div ref={openerMenuRef} style={{ display: 'flex', position: 'relative' }}>
-          <Button
-            variant="ghost"
-            onClick={() => void openProjectDirectory()}
-            disabled={!activeProject || activeProject.type === 'remote'}
-            title={activeProject?.type === 'remote'
-              ? t('taskList.remoteNoLocalDirectory')
-              : activeProject
-              ? t('taskList.openWithTitle', {
-                  opener: openerDisplayLabel(
-                    directoryOpeners.find((item) => item.id === selectedOpener)
-                      ?? { id: 'file_manager', label: '', available: true },
-                  ),
-                  path: activeProject.path,
-                })
-              : t('taskList.selectProjectFirst')}
-            style={{
-              fontSize: 'calc(13px * var(--font-scale))', gap: 6, borderTopRightRadius: 0,
-              borderBottomRightRadius: 0, paddingRight: 10,
-            }}
-          >
-            <OpenerIcon id={selectedOpener} />
-            {t('taskList.openLocation')}
-          </Button>
-          <Button
-            variant="ghost"
-            aria-label={t('taskList.chooseOpener')}
-            aria-expanded={showOpenerMenu}
-            onClick={() => setShowOpenerMenu((value) => !value)}
-            disabled={!activeProject || activeProject.type === 'remote'}
-            style={{
-              width: 30, padding: 0, justifyContent: 'center',
-              borderLeft: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0,
-            }}
-          >
-            <Icon name="chevron-down" size={13} strokeWidth={2.2} />
-          </Button>
-          {showOpenerMenu && (
-            <div
-              role="menu"
-              aria-label={t('taskList.openerMenuAria')}
-              style={{
-                position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1200,
-                width: 230, padding: 8, background: 'var(--bg)',
-                border: '1px solid var(--border)', borderRadius: 14,
-                boxShadow: '0 14px 36px rgba(0,0,0,0.16)',
-              }}
-            >
-              {directoryOpeners.map((opener) => (
-                <button
-                  key={opener.id}
-                  role="menuitem"
-                  onClick={() => selectDirectoryOpener(opener)}
-                  style={{
-                    width: '100%', height: 40, padding: '0 10px', gap: 10,
-                    justifyContent: 'flex-start', borderRadius: 9,
-                    background: opener.id === selectedOpener ? 'var(--surface)' : 'transparent',
-                    color: 'var(--fg)', fontSize: 'calc(13px * var(--font-scale))',
-                  }}
-                >
-                  <OpenerIcon id={opener.id} />
-                  {openerDisplayLabel(opener)}
-                  {opener.id === selectedOpener && (
-                    <span style={{ marginLeft: 'auto', color: 'var(--accent)' }}>✓</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <OpenLocationButton
+          activeProject={activeProject}
+          t={t}
+          showInlineNotice={false}
+          onNoticeChange={setDirectoryNotice}
+        />
         <Button
           variant="ghost"
           onClick={() => setShowSettingsPanel(true)}
@@ -1535,8 +1387,7 @@ export default function TaskList() {
               title={t('layout.dragResizeChat')}
               style={{
                 width: 8, flexShrink: 0, cursor: 'col-resize', position: 'relative',
-                background: 'transparent', userSelect: 'none',
-              }}
+                background: 'transparent',              }}
             >
               <div style={{
                 position: 'absolute', insetBlock: 0, left: '50%', width: 1,

@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
@@ -58,9 +58,42 @@ function MarkdownMessage({
 }: MarkdownMessageProps) {
   const { t } = useI18n()
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
-  const markdown = streaming ? closeStreamingFence(content) : content
+  const rootRef = useRef<HTMLDivElement>(null)
+  const latestRenderRef = useRef({ content, streaming })
+  latestRenderRef.current = { content, streaming }
+  const [selectionSnapshot, setSelectionSnapshot] = useState<{
+    content: string
+    streaming: boolean
+  } | null>(null)
+  const watchSelection = streaming || selectionSnapshot !== null
 
-  const components = {
+  useEffect(() => {
+    if (!watchSelection) return
+    const ownerDocument = rootRef.current?.ownerDocument
+    if (!ownerDocument) return
+    const handleSelectionChange = () => {
+      const root = rootRef.current
+      const selection = ownerDocument.getSelection()
+      const anchor = selection?.anchorNode
+      const focus = selection?.focusNode
+      const selectedInside = Boolean(
+        root && selection && !selection.isCollapsed
+        && ((anchor && root.contains(anchor)) || (focus && root.contains(focus))),
+      )
+      setSelectionSnapshot((current) => {
+        if (selectedInside) return current ?? latestRenderRef.current
+        return null
+      })
+    }
+    ownerDocument.addEventListener('selectionchange', handleSelectionChange)
+    return () => ownerDocument.removeEventListener('selectionchange', handleSelectionChange)
+  }, [watchSelection])
+
+  const renderedContent = selectionSnapshot?.content ?? content
+  const renderedStreaming = selectionSnapshot?.streaming ?? streaming
+  const markdown = renderedStreaming ? closeStreamingFence(renderedContent) : renderedContent
+
+  const components = useMemo(() => ({
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
       ? <div className="markdown-compact-paragraph">{children}</div>
       : <p>{children}</p>,
@@ -104,18 +137,19 @@ function MarkdownMessage({
         </a>
       )
     },
-  }
+  }), [compactParagraphs, onImageClick, projectId, t])
 
   return (
     <>
       <div
-        className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
-        aria-live={streaming ? 'polite' : undefined}
+        ref={rootRef}
+        className={`markdown-message${renderedStreaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
+        aria-live={renderedStreaming ? 'polite' : undefined}
       >
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
           {markdown}
         </ReactMarkdown>
-        {streaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
+        {renderedStreaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
       </div>
       {previewFile && projectId && (
         <FilePreviewDialog

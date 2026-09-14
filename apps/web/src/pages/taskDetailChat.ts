@@ -113,6 +113,15 @@ interface MessageReview {
   status?: string
   mode?: string
   started_at?: string | null
+  reviewer_name?: string | null
+  reviewer_device_name?: string | null
+}
+
+export function reviewActorLabel(review: MessageReview): string | undefined {
+  const name = review.reviewer_name?.trim()
+  if (!name) return undefined
+  const deviceName = review.reviewer_device_name?.trim()
+  return deviceName ? `${name} · ${deviceName}` : name
 }
 
 function hasMessageContent(content: unknown): boolean {
@@ -368,13 +377,22 @@ export function liveExecutionStatus(
   t: TFunction = zhCNT,
   hasPendingInserts = false,
 ): string {
-  const latest = [...events].reverse().find((event) => [
-    'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started', 'subagent',
-    'TOOL_CALL_START', 'TOOL_CALL_RESULT', 'REASONING_MESSAGE_CHUNK',
-    'RUN_STARTED', 'TEXT_MESSAGE_START',
-  ].includes(event.type || '')
-    || isCustom(event, CUSTOM.subagent)
-    || isCustom(event, CUSTOM.status))
+  // 倒序遍历代替 [...events].reverse()：running 消息每次渲染都要取最新状态
+  // 事件，整数组复制在数千条事件时是纯粹的内存/CPU 浪费。
+  let latest: (typeof events)[number] | undefined
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]
+    if ([
+      'tool_use', 'tool_result', 'thinking_delta', 'status', 'message_started', 'subagent',
+      'TOOL_CALL_START', 'TOOL_CALL_RESULT', 'REASONING_MESSAGE_CHUNK',
+      'RUN_STARTED', 'TEXT_MESSAGE_START',
+    ].includes(event.type || '')
+      || isCustom(event, CUSTOM.subagent)
+      || isCustom(event, CUSTOM.status)) {
+      latest = event
+      break
+    }
+  }
   if (latest && (latest.type === 'subagent' || isCustom(latest, CUSTOM.subagent))) {
     const value = isCustom(latest, CUSTOM.subagent)
       ? customValue(latest)
@@ -425,6 +443,21 @@ export function isNearConversationBottom(
   threshold = 80,
 ): boolean {
   return scrollHeight - scrollTop - clientHeight <= threshold
+}
+
+type TextSelection = Pick<Selection, 'anchorNode' | 'focusNode' | 'isCollapsed'>
+
+/** 用户正在会话区选择文字时暂停自动跟随，避免新 token 把选区拖离视口。 */
+export function hasActiveSelectionWithin(
+  element: Element | null,
+  selection: TextSelection | null | undefined,
+): boolean {
+  if (!element || !selection || selection.isCollapsed) return false
+  const { anchorNode, focusNode } = selection
+  return Boolean(
+    (anchorNode && element.contains(anchorNode))
+    || (focusNode && element.contains(focusNode)),
+  )
 }
 
 /**

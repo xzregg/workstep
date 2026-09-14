@@ -439,7 +439,37 @@ yield InternalEvent("status", {"status": "done"})
 
 没有真实数据时填 `0`，禁止伪造估算值。`usage_update` 应在消息完成前产出，前端只在完成后展示统计。
 
-金额（`usage_update.data.cost`，`{amount, currency}`）来自各引擎提供方的账单字段：Claude Agent SDK / Claude Code CLI 的 `total_cost_usd`、Pydantic AI 的 `RunUsage.cost`（内置模型定价）、ACP/Hermes 的 cost 字段；Codex CLI / Codex SDK / OpenAI 风格 API 的 usage 不含金额，需要按模型定价表自行计算。`used` / `size`（上下文窗口用量）仅在引擎原生提供时写入，不合成默认值。
+#### 累计用量与当前上下文快照
+
+`usage_update` 同时承载 Token/费用统计和上下文快照，适配器必须先区分两者的时间语义：
+
+| 类型 | 典型来源 | 是否可携带 `size` | 压缩后表现 |
+|---|---|---|---|
+| 当前上下文快照 | ACP `usage_update.used/size`、Codex SDK `token_usage.last`、Claude SDK `get_context_usage()` | 可以 | `used` 可以下降 |
+| 单次模型请求 usage | Claude assistant message usage 等 | 仅在已知该请求的窗口时可以 | 压缩后下一次请求会变小 |
+| 会话/运行累计 usage | Claude `ResultMessage.usage`、Codex SDK `token_usage.total`、账单合计 | **禁止** | 单调增长，压缩不会清零 |
+
+强制不变量：
+
+- `size` 是“这条事件可用于计算上下文百分比”的语义标记，不是普通的模型元数据。
+- 不得给累计 usage 补默认窗口；否则多轮合计会被误报为 `100%`，并在压缩后仍不下降。
+- 缓存创建/读取 Token 只能在**单次请求快照**中加入当前上下文；禁止对会话累计缓存 Token 求和后当作当前上下文。
+- Provider 只给累计用量时，仍应上报 Token/费用，但省略 `size`；前端将不显示不可信的百分比。
+- 前端必须忽略快照自身 `used > size` 的不可能历史数据，但仍可在合法快照之后叠加未被快照覆盖的流式事件估算。
+- `compacted` 只表示引擎确实发生压缩，不得人工清零累计 usage 或伪造新快照。
+
+当前引擎口径：
+
+- Claude Agent SDK：优先使用 `get_context_usage()` 的 `totalTokens/rawMaxTokens`；旧版本或控制请求不可用时，回退到 assistant message 的单次 usage。
+- Claude Code CLI：使用 assistant message 的单次 usage，未上报窗口时按 WorkStep 的 Claude 默认 `256000`；`result.usage` 仅用于累计 Token/费用。
+- Codex SDK：仅 `token_usage.last` 可与 `model_context_window` 组成快照；降级到 `token_usage.total` 时必须省略 `size`。
+- ACP/Hermes：直接使用协议原生 `used/size`。
+- Pydantic AI：从压缩后的当前消息历史估算 `used`，窗口由实际模型解析；这与 run 累计 usage 分开。
+- Codex CLI、Qoder SDK、DeepSeek Harness、OpenClaw：当前只有 Token 统计时不补 `size`，直到接入可验证的当前快照来源。
+
+新引擎的契约测试必须同时覆盖：当前快照能输出 `used/size`；累计 usage 即使超过窗口也不含 `size`；压缩后保留 Token/费用累计，但百分比跟随新的当前快照。
+
+金额（`usage_update.data.cost`，`{amount, currency}`）来自各引擎提供方的账单字段：Claude Agent SDK / Claude Code CLI 的 `total_cost_usd`、Pydantic AI 的 `RunUsage.cost`（内置模型定价）、ACP/Hermes 的 cost 字段；Codex CLI / Codex SDK / OpenAI 风格 API 的 usage 不含金额，需要按模型定价表自行计算。`used` / `size`（上下文窗口用量）只能来自已确认的当前快照；只有适配器明确记录的窗口默认值可作降级，且绝不得与累计 usage 组合。
 
 ### 5.4 实时流要求
 

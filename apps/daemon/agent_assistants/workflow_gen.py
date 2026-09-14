@@ -52,8 +52,8 @@ SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流�
   "nodes": [
     {"id": 1, "type": "req", "title": "需求", "autoStart": true, "engine": "claude", "model": "", "color": "#888888",
      "prompt": "该阶段给 LLM 的提示词（可选）",
-     "inputs": [{"name": "输入", "type": "document", "outputs": [{"name": "需求规格", "type": "document"}]}],
-     "outputs": [{"name": "需求规格", "type": "document"}]}
+     "inputs": [{"name": "输入", "type": "document", "outputs": [{"name": "需求规格", "type": "directory"}]}]
+     }
   ],
   "connections": [{"from": 1, "fromPort": 0, "to": 2, "toPort": 0, "kind": "solid"}]
 }
@@ -601,7 +601,7 @@ class WorkflowGenModule(AssistantRuntime):
         first_error: str | None = None
         for item in proposals:
             try:
-                WorkflowDefinition.load(item["steps"]).validate()
+                self._validate_proposal_steps(item["steps"])
                 valid.append(item)
             except WorkflowValidationError as exc:
                 if first_error is None:
@@ -632,7 +632,7 @@ class WorkflowGenModule(AssistantRuntime):
                 return reply, [], events
             for item in fixed_proposals:
                 try:
-                    WorkflowDefinition.load(item["steps"]).validate()
+                    self._validate_proposal_steps(item["steps"])
                     valid.append(item)
                 except WorkflowValidationError:
                     continue
@@ -650,6 +650,37 @@ class WorkflowGenModule(AssistantRuntime):
             ]
 
         return reply, valid, []
+
+    @staticmethod
+    def _validate_proposal_steps(steps: dict) -> None:
+        """Require the canvas fields consumed by the editor, then validate the DAG."""
+        nodes = steps.get("nodes")
+        if isinstance(nodes, list):
+            if "edges" in steps:
+                raise WorkflowValidationError(
+                    "edges: use the canvas field 'connections'"
+                )
+            for index, node in enumerate(nodes):
+                if not isinstance(node, dict):
+                    raise WorkflowValidationError(
+                        f"nodes[{index}]: expected an object"
+                    )
+                node_id = node.get("id")
+                if (
+                    not isinstance(node_id, int)
+                    or isinstance(node_id, bool)
+                    or node_id <= 0
+                ):
+                    raise WorkflowValidationError(
+                        f"nodes[{index}].id: expected a positive integer"
+                    )
+                for field in ("type", "title"):
+                    value = node.get(field)
+                    if not isinstance(value, str) or not value.strip():
+                        raise WorkflowValidationError(
+                            f"nodes[{index}].{field}: value is required"
+                        )
+        WorkflowDefinition.load(steps).validate()
 
     async def _publish_proposals(
         self,

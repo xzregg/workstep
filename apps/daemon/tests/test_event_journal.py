@@ -1,9 +1,50 @@
 """Turn event journal behavior through its public interface."""
 
 import asyncio
+import time
 
 from agent_assistants.event_journal import TurnEventJournal
 from engines.core.agui import to_agui_events
+
+
+async def test_async_journal_io_does_not_block_the_event_loop(tmp_path, monkeypatch):
+    """Slow journal storage must not delay unrelated daemon coroutines."""
+    journal = TurnEventJournal()
+    original_read = journal._read
+
+    def slow_read(ref):
+        time.sleep(0.25)
+        return original_read(ref)
+
+    monkeypatch.setattr(journal, "_read", slow_read)
+    started = time.perf_counter()
+
+    async def canary():
+        await asyncio.sleep(0.02)
+        return time.perf_counter() - started
+
+    canary_task = asyncio.create_task(canary())
+    ref = await journal.astart(tmp_path, "session-async", "message-async")
+    elapsed = await canary_task
+    await journal.aclose()
+
+    assert ref.relative_path.endswith("message-async.jsonl")
+    assert elapsed < 0.15
+
+
+async def test_async_journal_preserves_record_order(tmp_path):
+    journal = TurnEventJournal()
+    ref = await journal.astart(tmp_path, "session-order", "message-order")
+
+    await asyncio.gather(*(
+        journal.arecord(ref, {"type": "status", "data": {"index": index}})
+        for index in range(20)
+    ))
+    await journal.afinish(ref)
+    timeline = await journal.atimeline(ref)
+    await journal.aclose()
+
+    assert [event["data"]["index"] for event in timeline["events"]] == list(range(20))
 
 
 def test_journal_recovers_snapshot_without_exposing_thoughts_in_summary(tmp_path):

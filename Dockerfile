@@ -47,7 +47,14 @@ RUN npm --version && uv --version && git --version && curl --version | head -1
 WORKDIR /app/apps/daemon
 COPY apps/daemon/pyproject.toml apps/daemon/uv.lock apps/daemon/.python-version ./
 RUN uv sync --no-dev --frozen \
+    && uv pip install --python .venv/bin/python pip \
     && rm -rf /tmp/uv-cache
+
+# 引擎安装到独立持久化目录；不挂载镜像的 Node/Python 运行环境。
+ENV NPM_CONFIG_PREFIX=/opt/workstep-engines/npm \
+    WORKSTEP_ENGINE_PACKAGE_DIR=/opt/workstep-engines/python \
+    PYTHONPATH=/opt/workstep-engines/python \
+    PATH="/opt/workstep-engines/npm/bin:${PATH}"
 
 # 后端源码（清理字节码缓存）
 COPY apps/daemon ./
@@ -59,7 +66,7 @@ COPY --from=web-build /app/apps/web/dist ../web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
 
 # 数据 / 配置 / 会话目录：~/.workstep、~/.codex、~/.claude
-VOLUME ["/root/.workstep", "/root/.codex", "/root/.claude"]
+VOLUME ["/root/.workstep", "/root/.codex", "/root/.claude", "/opt/workstep-engines"]
 
 EXPOSE 8765
 

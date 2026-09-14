@@ -205,33 +205,67 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
   }
   // New format: { nodes, connections }
   if (stepsJson?.nodes?.length) {
-    const nodes: StepNodeData[] = stepsJson.nodes.map((n: any) => ({
-      nodeId: n.id,
-      key: n.type || n.key || '',
-      label: n.title || n.label || n.type,
-      autoStart: Boolean(n.autoStart),
-      engine: n.engine || DEFAULT_EXECUTION_ENGINE,
-      model: n.model || '',
-      color: n.color || 'var(--meta)',
-      prompt: n.prompt || '',
-      config: normalizeStepConfig(n.config),
-      review: { ...(n.review || emptyReview()), config: normalizeStepConfig(n.review?.config) },
-      position: n.position,
-      inputs: (n.inputs || []).map((inp: any) => ({
-        name: inp.name || '', type: inp.type || DEFAULT_OUTPUT_TYPE,
-        outputs: (inp.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
-      })),
-      outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })),
-      kind: n.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
-      dispatch: n.dispatch,
-    }))
+    const rawNodes = stepsJson.nodes as any[]
+    const usedNodeIds = new Set<number>()
+    let nextNodeId = 1
+    const nodeIds = rawNodes.map((node) => {
+      const rawId = node?.id
+      if (Number.isInteger(rawId) && rawId > 0 && !usedNodeIds.has(rawId)) {
+        usedNodeIds.add(rawId)
+        return rawId
+      }
+      while (usedNodeIds.has(nextNodeId)) nextNodeId += 1
+      const nodeId = nextNodeId
+      usedNodeIds.add(nodeId)
+      nextNodeId += 1
+      return nodeId
+    })
+    const nodeIdByRawId = new Map(
+      rawNodes.map((node, index) => [String(node?.id ?? nodeIds[index]), nodeIds[index]]),
+    )
+    const normalizeOutput = (output: any): OutputField => ({
+      name: typeof output === 'string' ? output : String(output?.name || ''),
+      type: typeof output === 'object' && output?.type ? String(output.type) : DEFAULT_OUTPUT_TYPE,
+    })
+    const nodes: StepNodeData[] = rawNodes.map((n: any, index: number) => {
+      const key = String(n.type || n.key || n.id || '')
+      return {
+        nodeId: nodeIds[index],
+        key,
+        label: String(n.title || n.label || n.name || key || `Step ${index + 1}`),
+        autoStart: Boolean(n.autoStart),
+        engine: n.engine || DEFAULT_EXECUTION_ENGINE,
+        model: n.model || '',
+        color: n.color || 'var(--meta)',
+        prompt: n.prompt || '',
+        config: normalizeStepConfig(n.config),
+        review: { ...(n.review || emptyReview()), config: normalizeStepConfig(n.review?.config) },
+        position: n.position,
+        inputs: (Array.isArray(n.inputs) ? n.inputs : []).map((inp: any) => ({
+          name: typeof inp === 'string' ? inp : String(inp?.name || ''),
+          type: typeof inp === 'object' && inp?.type ? String(inp.type) : DEFAULT_OUTPUT_TYPE,
+          outputs: (typeof inp === 'object' && Array.isArray(inp?.outputs) ? inp.outputs : []).map(normalizeOutput),
+        })),
+        outputs: (Array.isArray(n.outputs) ? n.outputs : []).map(normalizeOutput),
+        kind: n.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
+        dispatch: n.dispatch,
+      }
+    })
     const nodeById = new Map(nodes.map((node) => [node.nodeId, node]))
-    const connections: CanvasConnection[] = (stepsJson.connections || [])
+    const rawConnections = Array.isArray(stepsJson.connections)
+      ? stepsJson.connections
+      : Array.isArray(stepsJson.edges)
+        ? stepsJson.edges
+        : rawNodes.slice(1).map((_, index) => ({
+          from: rawNodes[index]?.id ?? nodeIds[index],
+          to: rawNodes[index + 1]?.id ?? nodeIds[index + 1],
+        }))
+    const connections: CanvasConnection[] = rawConnections
       .map((c: any) => ({
-        from: c.from, fromPort: c.fromPort || 0,
-        to: c.to, toPort: c.toPort || 0,
+        from: nodeIdByRawId.get(String(c.from)), fromPort: c.fromPort || 0,
+        to: nodeIdByRawId.get(String(c.to)), toPort: c.toPort || 0,
         label: c.label || '',
-        kind: c.kind === 'dashed' ? 'dashed' : 'solid',
+        kind: c.kind === 'dashed' || /dashed|rework/.test(String(c.style || '')) ? 'dashed' : 'solid',
       }))
       .filter((connection: CanvasConnection) => {
         const source = nodeById.get(connection.from)
@@ -303,7 +337,8 @@ const handleStyle: React.CSSProperties = {
 }
 
 /* ── Port layout constants ── */
-const HEADER_H = 44
+const NODE_WIDTH = 280
+const HEADER_H = 56
 const PROMPT_H = 28
 const PORT_ROW_H = 20
 const SUB_ROW_H = 16
@@ -334,7 +369,7 @@ function StepNode({ data }: { data: StepNodeData }) {
 
   return (
     <div style={{
-      width: 220, height: totalH,
+      width: NODE_WIDTH, height: totalH,
       background: 'var(--bg)',
       border: `1.5px solid ${data.color || 'var(--border)'}`,
       borderRadius: 'var(--radius-md)',
@@ -360,11 +395,11 @@ function StepNode({ data }: { data: StepNodeData }) {
 
       {/* Header */}
       <div style={{ height: HEADER_H, padding: '0 12px', borderBottom: '1px solid var(--border-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ width: 24, height: 24, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
+        <div style={{ width: 24, height: 24, flexShrink: 0, borderRadius: 6, background: `${data.color}20`, color: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
           {data.label.charAt(0)}
         </div>
-        <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, flex: 1 }}>{data.label}</span>
-          <span style={{ fontSize: 'calc(11px * var(--font-scale))', padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
+        <span title={data.label} style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, lineHeight: 1.3, flex: 1, minWidth: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{data.label}</span>
+        <span title={isDispatch ? '流程' : data.engine} style={{ maxWidth: 96, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'calc(11px * var(--font-scale))', padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
       </div>
 
       {hasPrompt && (

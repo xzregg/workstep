@@ -20,7 +20,7 @@ from engines.core.base import (
     sdk_turn_watchdog,
 )
 
-from engines.core.plans import subagent_event_from_message, route_subagent_message
+from engines.core.claude_usage import claude_context_snapshot
 from engines.core.events import (
     InternalEvent,
     compacted_event,
@@ -29,6 +29,7 @@ from engines.core.events import (
     tool_call_update_event,
     usage_update_event,
 )
+from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
 from services.config import (
@@ -37,6 +38,7 @@ from services.config import (
     config_store,
     normalize_claude_model_map,
 )
+from services.chat_permissions import map_permission_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,22 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
 
     ENGINE_ID = "claude_agent_sdk"
     UPDATE_PACKAGE = "claude-agent-sdk"
+
+    async def set_permission_mode(self, mode: str) -> None:
+        await super().set_permission_mode(mode)
+        client = self._client
+        if client is None:
+            return
+        mapped = (
+            map_permission_overrides(self.ENGINE_ID, mode).get("permission_mode", "")
+            if mode
+            else str(
+                (await asyncio.to_thread(config_store.get_claude_agent_sdk_config))
+                .get("permission_mode")
+                or "acceptEdits"
+            )
+        )
+        await client.set_permission_mode("default" if mapped == "manual" else mapped)
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:
@@ -224,7 +242,8 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             raise ValueError("bypassPermissions 需要明确确认风险")
         # 先校验映射再落盘，避免映射非法时其它字段已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
-        config_store.set_claude_agent_sdk_config(
+        await asyncio.to_thread(
+            config_store.set_claude_agent_sdk_config,
             max_turns=str(values.get("max_turns") or ""),
             permission_mode=mode,
             fallback_model=str(values.get("fallback_model") or ""),
@@ -496,6 +515,18 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                         title=str(getattr(block, "name", "") or "tool"),
                         raw_input=getattr(block, "input", {}) or {},
                     ))
+            usage = getattr(msg, "usage", None)
+            message = getattr(msg, "message", None)
+            if usage is None and message is not None:
+                usage = getattr(message, "usage", None)
+            if usage is not None:
+                raw_usage = self._as_dict(usage)
+                context_used, context_size = claude_context_snapshot(raw_usage)
+                events.append(usage_update_event(
+                    raw_usage,
+                    used=context_used,
+                    size=context_size,
+                ))
             return events
 
         if mtype == "user":
@@ -530,7 +561,8 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             if usage is None and result is not msg:
                 usage = getattr(result, "usage", None)
             if usage is not None:
-                usage_data = normalize_token_usage(self._as_dict(usage))
+                raw_usage = self._as_dict(usage)
+                usage_data = normalize_token_usage(raw_usage)
                 cost_usd = getattr(msg, "total_cost_usd", None)
                 if cost_usd is None and result is not msg:
                     cost_usd = getattr(result, "total_cost_usd", None)
@@ -571,8 +603,9 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
         thinking_effort: str | None = None,
         config_overrides: dict | None = None,
     ) -> AsyncIterator[InternalEvent]:
-        prompt = self.render_image_prompt(prompt, images)
-        binary = self.resolve_binary()
+        prompt, binary = await asyncio.to_thread(
+            lambda: (self.render_image_prompt(prompt, images), self.resolve_binary())
+        )
         if not binary:
             yield InternalEvent(
                 type="error", data={"message": "claude binary not found"}
@@ -608,16 +641,20 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             return PermissionResultDeny(message="用户拒绝了该操作")
 
         sdk_config = self.merge_config_overrides(
-            config_store.get_claude_agent_sdk_config(), config_overrides
+            await asyncio.to_thread(config_store.get_claude_agent_sdk_config),
+            config_overrides,
         )
-        provider_runtime = self.resolve_provider_runtime(
+        provider_runtime = await asyncio.to_thread(
+            self.resolve_provider_runtime,
             provider_id=str((config_overrides or {}).get("provider_id") or ""),
             model=model,
         )
         model = provider_runtime.model
         from services.skill_runtime import prepare_claude_plugin
 
-        plugin_dir, skill_names = prepare_claude_plugin(self.project_skills(cwd))
+        plugin_dir, skill_names = await asyncio.to_thread(
+            lambda: prepare_claude_plugin(self.project_skills(cwd))
+        )
         options = ClaudeAgentOptions(
             cwd=cwd,
             model=model or None,
@@ -746,7 +783,27 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
         async def receive() -> None:
             try:
                 async for message in client.receive_messages():
-                    if self._msg_type(message) == "result":
+                    is_result = self._msg_type(message) == "result"
+                    if is_result:
+                        get_context_usage = getattr(client, "get_context_usage", None)
+                        if callable(get_context_usage):
+                            try:
+                                context_usage = await asyncio.wait_for(
+                                    get_context_usage(), timeout=3
+                                )
+                                context_used = int(context_usage.get("totalTokens", 0))
+                                context_size = int(context_usage.get("rawMaxTokens", 0))
+                                if context_used > 0 and context_size > 0:
+                                    await event_queue.put(usage_update_event(
+                                        context_usage,
+                                        used=context_used,
+                                        size=context_size,
+                                    ))
+                            except Exception:
+                                logger.debug(
+                                    "Claude Agent SDK context usage unavailable",
+                                    exc_info=True,
+                                )
                         turn_ended.set()
                     for event in self._map_message(message, state):
                         await event_queue.put(event)

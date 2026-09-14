@@ -1,8 +1,61 @@
 """pydantic-ai-harness 扩展：上下文压缩（TieredCompaction/WarnNearLimits）与会话持久化（StepPersistence）。"""
 
+import asyncio
+import time
+from types import SimpleNamespace
+
 import pytest
 
 from engines.pydantic_ai import PydanticAIEngine
+from engines.pydantic_ai.coder import WorkStepFileSystem, WorkStepShell
+
+
+@pytest.mark.asyncio
+async def test_coder_file_reads_do_not_block_the_event_loop(tmp_path, monkeypatch):
+    target = tmp_path / "large.txt"
+    target.write_text("content", encoding="utf-8")
+    toolset = WorkStepFileSystem(root_dir=tmp_path).get_toolset()
+    original_read_bytes = type(target).read_bytes
+
+    def slow_read(path):
+        time.sleep(0.25)
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(type(target), "read_bytes", slow_read)
+    started = time.perf_counter()
+    read_task = asyncio.create_task(toolset.read_file("large.txt"))
+    await asyncio.sleep(0.02)
+    elapsed = time.perf_counter() - started
+    result = await read_task
+
+    assert "content" in result
+    assert elapsed < 0.15
+
+
+@pytest.mark.asyncio
+async def test_background_command_output_read_does_not_block_event_loop(
+    tmp_path, monkeypatch
+):
+    toolset = WorkStepShell(cwd=tmp_path).get_toolset()
+    toolset._background["probe"] = SimpleNamespace(
+        proc=SimpleNamespace(returncode=None),
+        finished=False,
+        exit_code=None,
+    )
+
+    def slow_output(_background):
+        time.sleep(0.25)
+        return "stdout", ""
+
+    monkeypatch.setattr(toolset, "_read_bg_output", slow_output)
+    started = time.perf_counter()
+    output_task = asyncio.create_task(toolset.check_command("probe"))
+    await asyncio.sleep(0.02)
+    elapsed = time.perf_counter() - started
+    result = await output_task
+
+    assert "stdout" in result
+    assert elapsed < 0.15
 
 
 def test_harness_extension_off_by_config(monkeypatch):
@@ -304,7 +357,7 @@ async def test_run_agent_uses_harness_capabilities_without_private_memory(
     capabilities = captured["capabilities"]
     capability_names = [type(capability).__name__ for capability in capabilities]
     assert capability_names[2:12] == [
-        "FileSystem",
+        "WorkStepFileSystem",
         "WorkStepShell",
         "RepoContext",
         "Planning",

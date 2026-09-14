@@ -184,7 +184,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   initProject: async (path, name) => {
     if (name && hasWhitespace(name)) throw new Error(zhCNT('taskList.projectNameWhitespace'))
     const proj = await projectApi.init(path, name)
-    set((s) => ({ projects: [...s.projects, proj] }))
+    set((s) => ({
+      projects: s.projects.some((p) => p.id === proj.id)
+        ? s.projects.map((p) => p.id === proj.id ? proj : p)
+        : [...s.projects, proj],
+    }))
     return proj
   },
 

@@ -24,6 +24,7 @@ import {
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
+import EngineInstallProgress from '../components/EngineInstallProgress'
 import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
@@ -279,7 +280,7 @@ function AgentAssistantSettings() {
 
   useEffect(() => {
     if (engineSupportsProvider) {
-      // 切换供应商读取已保存的模型列表；未保存过才由后端拉取一次并保存。
+      // 切换供应商只读已保存的模型列表；远端请求仅由刷新按钮触发。
       void loadAssistantModels(engine, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -678,7 +679,7 @@ function PromptEnhanceSettings() {
             onClick={() => {
               setModelsLoading(true)
               setModelError('')
-              providerApi.models(providerId)
+              providerApi.models(providerId, true)
                 .then((result) => {
                   setModels(result.models || [])
                   setModelError(result.error || '')
@@ -1083,6 +1084,8 @@ export default function SettingsPage({
   }
 
   const toggleConfig = (engineId: string) => {
+    const isExpanded = expandedConfigs[engineId] === true
+    if (!isExpanded) void loadEngineModels(engineId, false)
     setExpandedConfigs((current) => ({ ...current, [engineId]: !current[engineId] }))
   }
 
@@ -1448,7 +1451,7 @@ export default function SettingsPage({
                     borderRadius: 12,
                     border: `1px solid ${onboardingCompatible ? 'var(--accent)' : engine.installed ? 'var(--border)' : 'var(--border-soft)'}`,
                     background: 'var(--bg)',
-                    opacity: engine.installed ? 1 : 0.62,
+                    opacity: engine.installed || isInstalling ? 1 : 0.62,
                   }}
                 >
                   <div style={{
@@ -1619,12 +1622,21 @@ export default function SettingsPage({
                     </Button>
                   )}
                   </div>
+                  <EngineInstallProgress
+                    active={isInstalling && !installResult}
+                    completed={installResult?.success === true && !installResult.already_installed}
+                    label={t('settings.installingEngine', { name: engineLabel(engine.id, t) })}
+                  />
                   <div style={{ display: isExpanded ? undefined : 'none' }}>
                   {engine.config && (
                     <EngineConfigForm
                       ref={(el) => { engineFormRefs.current[engine.id] = el }}
                       engineId={engine.id}
                       config={engine.config}
+                      modelOptions={engineModels}
+                      modelOptionsLoading={Boolean(modelsLoading[engine.id])}
+                      modelOptionsError={modelErrors[engine.id] || ''}
+                      onRefreshModelOptions={() => void loadEngineModels(engine.id, true)}
                       footerSlot={engine.installed ? (
                         <>
                           {modelSelectRow}

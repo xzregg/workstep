@@ -31,6 +31,7 @@ from engines.core.events import (
 from engines.core.interactions import elicitation_request
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from services.config import QODER_PERMISSION_MODES, config_store
+from services.chat_permissions import map_permission_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,22 @@ class QoderSDKEngine(AcpEngineBase):
     Authentication priority: stored PAT → ``QODER_PERSONAL_ACCESS_TOKEN`` env
     → local ``qodercli`` login (``qodercli_auth()``).
     """
+
+    async def set_permission_mode(self, mode: str) -> None:
+        await super().set_permission_mode(mode)
+        client = self._client
+        if client is None:
+            return
+        mapped = (
+            map_permission_overrides(self.ENGINE_ID, mode).get("permission_mode", "")
+            if mode
+            else str(
+                (await asyncio.to_thread(config_store.get_qoder_sdk_config))
+                .get("permission_mode")
+                or "default"
+            )
+        )
+        await client.set_permission_mode(mapped)
 
     ENGINE_ID = "qoder_sdk"
     UPDATE_PACKAGE = "qoder-agent-sdk"
@@ -278,7 +295,8 @@ class QoderSDKEngine(AcpEngineBase):
             values.get("include_partial_messages") or ""
         ).lower() in {"true", "1", "on"}
 
-        config_store.set_qoder_sdk_config(
+        await asyncio.to_thread(
+            config_store.set_qoder_sdk_config,
             personal_access_token=token,
             permission_mode=mode,
             model=str(values.get("model") or "").strip(),
@@ -583,13 +601,13 @@ class QoderSDKEngine(AcpEngineBase):
                 type="error", data={"message": "qoder-agent-sdk 未安装"}
             )
             return
-        binary = self.resolve_binary()
+        binary = await asyncio.to_thread(self.resolve_binary)
         if not binary:
             yield InternalEvent(
                 type="error", data={"message": "qodercli binary not found"}
             )
             return
-        if not self.is_configured():
+        if not await asyncio.to_thread(self.is_configured):
             yield InternalEvent(type="error", data={
                 "message": (
                     "Qoder 尚未登录：请运行 qodercli login，或在设置中配置 "
@@ -647,7 +665,8 @@ class QoderSDKEngine(AcpEngineBase):
             return await self.request_interaction(event, event_queue.put)
 
         config = self.merge_config_overrides(
-            config_store.get_qoder_sdk_config(), config_overrides
+            await asyncio.to_thread(config_store.get_qoder_sdk_config),
+            config_overrides,
         )
         token = str(config.get("personal_access_token") or "").strip()
         if token:
@@ -659,7 +678,9 @@ class QoderSDKEngine(AcpEngineBase):
 
         from services.skill_runtime import prepare_qoder_plugin
 
-        plugin_dir, skill_names = prepare_qoder_plugin(self.project_skills(cwd))
+        plugin_dir, skill_names = await asyncio.to_thread(
+            lambda: prepare_qoder_plugin(self.project_skills(cwd))
+        )
         options = QoderAgentOptions(
             auth=auth,
             cwd=cwd,

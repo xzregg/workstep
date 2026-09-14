@@ -425,7 +425,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const previousUserSelect = document.body.style.userSelect
     const cursor = getComputedStyle(event.currentTarget).cursor
     document.body.style.cursor = cursor
-    document.body.style.userSelect = 'none'
+    document.body.style.userSelect = ''
 
     const handleMove = (moveEvent: PointerEvent) => {
       setPanelBounds(resizePanelBounds(
@@ -482,7 +482,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const previousCursor = document.body.style.cursor
     const previousUserSelect = document.body.style.userSelect
     document.body.style.cursor = 'move'
-    document.body.style.userSelect = 'none'
+    document.body.style.userSelect = ''
 
     const handleMove = (moveEvent: PointerEvent) => {
       setPanelBounds(clampPanelBounds({
@@ -609,7 +609,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         loadedEvents.push(...page.events)
         complete = page.complete || page.next_cursor === null
         nextCursor = page.next_cursor
-        if (!complete && page.next_cursor !== null) cursor = page.next_cursor
+        if (!complete) {
+          // 游标必须推进，否则 while 会无限翻页拉取（内存无界增长直至崩溃）。
+          if (nextCursor === null || nextCursor === cursor) {
+            throw new Error('Event detail cursor did not advance')
+          }
+          cursor = nextCursor
+        }
       }
       setHistoryMessages((current) => mergeLoadedTaskMessageEvents(
         current,
@@ -1746,6 +1752,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onLoadOlderHistory={loadOlderHistory}
         onLoadMessageEvents={(messageId) => void loadMessageEvents(messageId)}
         liveMessages={liveMessages}
+        livePromptOverrides={livePromptOverrides}
         availableCommands={availableCommands}
         events={events}
         content={content}

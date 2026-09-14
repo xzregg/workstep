@@ -110,15 +110,17 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     global task_service, workflow_runtime, coordinator_module, workflow_gen_module, task_draft_module, schedule_module, chat_session_module, channel_chat_module, channel_manager
     logger.info("WorkStep Daemon starting on %s:%d", settings.host, settings.port)
-    config_store.migrate_legacy_config()
-    ensure_global_templates()
+    await asyncio.to_thread(config_store.migrate_legacy_config)
+    await asyncio.to_thread(ensure_global_templates)
     await asyncio.to_thread(project_manager._load_saved_projects)
     # Load concurrency limits into the in-memory gate (global defaults +
     # every project's persisted override) before any workflow starts.
     from services.concurrency import concurrency_gate
     from services.project_settings import sync_all_project_configs
 
-    concurrency_gate.configure(**config_store.get_concurrency_config())
+    concurrency_gate.configure(
+        **await asyncio.to_thread(config_store.get_concurrency_config)
+    )
     await sync_all_project_configs(project_manager)
     task_service = TaskService(event_bus)
     workflow_runtime = WorkflowRuntime(event_bus, project_manager)
@@ -181,6 +183,9 @@ async def lifespan(app: FastAPI):
         await remote_project_client.close()
         await coordinator_module.shutdown()
         await workflow_runtime.shutdown()
+        shutdown_task_service = getattr(task_service, "shutdown", None)
+        if callable(shutdown_task_service):
+            await shutdown_task_service()
         await event_bus.close()
         await asyncio.to_thread(project_manager.close_all)
 
@@ -271,14 +276,16 @@ if web_dist.exists() or landing_dist.exists():
             rel = fullpath[len("landing/") :] if fullpath.startswith("landing/") else ""
             if _landing_dist_index is not None:
                 if rel:
-                    candidate = _resolve_static(landing_dist, rel)
+                    candidate = await asyncio.to_thread(
+                        _resolve_static, landing_dist, rel
+                    )
                     if candidate is not None:
                         return _FileResponse(candidate)
                 return _FileResponse(_landing_dist_index)
             return _JSONResponse({"detail": "Not found"}, status_code=404)
         # Web 应用接管 home。
         if fullpath:
-            candidate = _resolve_static(web_dist, fullpath)
+            candidate = await asyncio.to_thread(_resolve_static, web_dist, fullpath)
             if candidate is not None:
                 return _FileResponse(candidate)
         if _web_dist_index is not None:

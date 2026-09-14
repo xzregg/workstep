@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.event_truncation import truncate_large_tool_payloads
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import map_legacy_event
 from models.message import Message
@@ -68,7 +69,10 @@ def translate_events(
     for event in events:
         if not isinstance(event, dict):
             continue
-        mapped = map_legacy_event(event)
+        # 出口统一截断超大工具载荷（与 chat 历史 / WS 广播出口一致）：任务历史
+        # 回放整包随 HTTP 下发，数十 MB 的 raw_output 会直接进前端 store，
+        # 多消息叠加后压垮渲染进程；完整内容展开时经 messageEvents 按需分页拉取。
+        mapped = truncate_large_tool_payloads(map_legacy_event(event))
         ctx.event_sequence = (
             event.get("event_sequence")
             if event.get("event_sequence") is not None

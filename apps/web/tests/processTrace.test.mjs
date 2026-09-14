@@ -17,7 +17,9 @@ test('thinking process renders ordered reasoning timeline items', () => {
 })
 
 test('thinking process expands inline instead of opening a popup', () => {
-  assert.match(source, /<details[\s\S]*className="process-trace-session"/)
+  // 受控 disclosure（div 头部 + 条件渲染 body），不再是原生 details/summary
+  assert.match(source, /className="process-trace-session" data-open=\{open \? 'true' : undefined\}/)
+  assert.match(source, /role="button"/)
   assert.doesNotMatch(source, /document\.addEventListener\('mousedown'/)
   assert.doesNotMatch(source, /processTracePanelAvailableWidth/)
   assert.doesNotMatch(
@@ -56,7 +58,10 @@ test('compact process stream uses the available message width', () => {
 
 test('message metadata shares the summary row without narrowing the process body', () => {
   assert.match(source, /summaryMeta\?:\s*ReactNode/)
-  assert.match(source, /<summary>[\s\S]*\{summaryMeta\}[\s\S]*<\/summary>/)
+  // meta 与标签/chevron 同处头部行（交互元素不在 <summary> 内），
+  // body 是头部的兄弟节点且仅在展开时渲染 → 全宽、折叠时零 DOM。
+  assert.match(source, /process-trace-session-summary[\s\S]*\{summaryMeta\}/)
+  assert.match(source, /\{open && \(\s*<div className="process-trace-body">/)
   assert.match(messageMetaBarSource, /summaryMeta=\{/)
   assert.match(messageMetaBarSource, /className="message-meta-details"/)
 })
@@ -89,7 +94,7 @@ test('thinking copy action appears only while the thinking block is hovered or f
   )
   assert.match(
     styles,
-    /\.process-trace-thinking-block:hover[\s\S]*\.process-trace-thinking-copy[\s\S]*\.process-trace-thinking-block:focus-within[\s\S]*\.process-trace-thinking-copy\s*\{[\s\S]*?opacity:\s*1;/,
+    /\.process-trace-thinking-row:hover[\s\S]*\.process-trace-thinking-copy[\s\S]*\.process-trace-thinking-row:focus-within[\s\S]*\.process-trace-thinking-copy\s*\{[\s\S]*?opacity:\s*1;/,
   )
 })
 

@@ -1,5 +1,7 @@
 """Project-level skill center API."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -53,21 +55,26 @@ def _payload(project, skills) -> dict:
 @router.get("")
 async def list_skills(project_id: str = Query(default="")):
     project = _project(project_id)
-    return _payload(project, skill_center.list_project(project.path))
+    skills = await asyncio.to_thread(skill_center.list_project, project.path)
+    return _payload(project, skills)
 
 
 @router.post("/rescan")
 async def rescan_skills(project_id: str = Query(default="")):
     project = _project(project_id)
-    return _payload(project, skill_center.rescan(project.path))
+    skills = await asyncio.to_thread(skill_center.rescan, project.path)
+    return _payload(project, skills)
 
 
 @router.put("/projects/{project_id}")
 async def set_project_skill(project_id: str, request: ProjectSkillToggleRequest):
     project = _project(project_id)
     try:
-        skills = skill_center.set_enabled(
-            project.path, request.skill_id, request.enabled
+        skills = await asyncio.to_thread(
+            skill_center.set_enabled,
+            project.path,
+            request.skill_id,
+            request.enabled,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc).strip("'")) from None
@@ -82,8 +89,11 @@ async def set_project_skills_batch(
 ):
     project = _project(project_id)
     try:
-        skills = skill_center.set_enabled_batch(
-            project.path, request.skill_ids, request.enabled
+        skills = await asyncio.to_thread(
+            skill_center.set_enabled_batch,
+            project.path,
+            request.skill_ids,
+            request.enabled,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc).strip("'")) from None

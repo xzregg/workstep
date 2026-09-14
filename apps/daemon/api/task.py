@@ -78,6 +78,9 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             if req.title.strip()
             else f"{(req.description or '').strip()[:10]}..."
         )
+        default_engine = await asyncio.to_thread(
+            config_store.get_execution_default_engine
+        )
         result = await create_project_task(
             project_manager=project_manager,
             task_service=task_service,
@@ -88,7 +91,7 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             description=req.description,
             engine=(
                 req.engine
-                or config_store.get_execution_default_engine()
+                or default_engine
                 or DEFAULT_EXECUTION_ENGINE
             ),
             start_step_key=req.start_step_key,
@@ -505,6 +508,10 @@ async def get_task_reviews(
             "report": json.loads(row.report_json) if row.report_json else None,
             "decision": row.decision,
             "decision_comment": row.decision_comment,
+            "reviewer_id": row.reviewer_id,
+            "reviewer_name": row.reviewer_name,
+            "reviewer_device_id": row.reviewer_device_id,
+            "reviewer_device_name": row.reviewer_device_name,
             "started_at": row.started_at,
             "ended_at": row.ended_at,
         } for row in rows]

@@ -393,6 +393,13 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .btn-icon:hover { background: var(--surface); color: var(--fg); }
 
 /* 用户消息操作按钮：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
+/* 对话消息组件:始终允许选中文字(默认浏览器蓝色高亮) */
+.chat-message-row,
+.chat-message-row * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .chat-message-row .chat-message-action { opacity: 0; }
 .chat-message-row:hover .chat-message-action,
 .chat-message-row:focus-within .chat-message-action { opacity: 1; }
@@ -556,7 +563,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   max-width: 100%;
 }
 
-.process-trace-compact .process-trace-session > summary {
+.process-trace-compact .process-trace-session-summary {
   min-height: 24px;
   padding: 0;
   border-bottom: 0;
@@ -580,7 +587,7 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   display: none;
 }
 
-.process-trace-session > summary,
+.process-trace-session-summary,
 .process-trace-tool > summary {
   display: flex;
   align-items: center;
@@ -588,17 +595,23 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   min-height: 30px;
   color: var(--muted);
   cursor: pointer;
-  user-select: none;
+  user-select: text;
 }
 
-.process-trace-session > summary {
+.process-trace-session-summary {
   padding: 4px 2px 8px;
   border-bottom: 1px solid var(--border-soft);
   font-size: calc(13px * var(--font-scale));
   font-weight: 500;
 }
 
-.process-trace-session > summary:hover,
+.process-trace-session-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.process-trace-session-summary:hover,
 .process-trace-tool > summary:hover {
   color: var(--fg-2);
 }
@@ -630,6 +643,11 @@ details[open] > summary > .process-trace-chevron {
   transform: rotate(0deg); /* 展开：箭头指向下 ▾ */
 }
 
+/* 受控 disclosure 版的展开箭头（会话块头部是 div，不是 summary） */
+.process-trace-session[data-open] > .process-trace-session-summary > .process-trace-chevron {
+  transform: rotate(0deg);
+}
+
 .process-trace-body {
   display: flex;
   flex-direction: column;
@@ -649,14 +667,28 @@ details[open] > summary > .process-trace-chevron {
   cursor: pointer;
 }
 
+/* 思考块行级壳：复制按钮移出 <summary>（交互元素进 summary 触发浏览器
+   可访问性告警），绝对定位到行右上角，不挤占思考正文宽度。 */
+.process-trace-thinking-row {
+  position: relative;
+  min-width: 0;
+}
+
+.process-trace-thinking-row .process-trace-section-title {
+  /* 为悬停复制按钮预留位置，避免 chevron 与其重叠 */
+  padding-right: 30px;
+}
+
 .process-trace-thinking-copy {
-  margin-left: auto;
+  position: absolute;
+  top: 0;
+  right: 0;
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease);
 }
 
-.process-trace-thinking-block:hover .process-trace-thinking-copy,
-.process-trace-thinking-block:focus-within .process-trace-thinking-copy {
+.process-trace-thinking-row:hover .process-trace-thinking-copy,
+.process-trace-thinking-row:focus-within .process-trace-thinking-copy {
   opacity: 1;
 }
 
@@ -692,7 +724,7 @@ details[open] > summary > .process-trace-chevron {
 
 .process-trace-tools-group > summary {
   cursor: pointer;
-  user-select: none;
+  user-select: text;
 }
 
 .process-trace-tools-group > summary:hover {
@@ -766,6 +798,19 @@ details[open] > summary > .process-trace-chevron {
 .process-trace-empty {
   padding: 4px 0;
   font-style: italic;
+}
+
+/* 「显示全部 N 项」按钮：过程事件渲染封顶时的显式加载入口。 */
+.process-trace-show-all {
+  margin-left: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-style: normal;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 /* ── Plan Checklist (aicss-inspired) ── */
@@ -1693,7 +1738,6 @@ details[open] > summary > .process-trace-chevron {
   border-right: 1px solid var(--border-soft);
   color: var(--meta);
   text-align: right;
-  user-select: none;
 }
 
 .code-preview-line-content {
@@ -1751,6 +1795,31 @@ details[open] > summary > .process-trace-chevron {
 .artifact-open-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.artifact-download-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-decoration: none;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+
+.artifact-download-button:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.artifact-download-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .artifact-pdf-frame {

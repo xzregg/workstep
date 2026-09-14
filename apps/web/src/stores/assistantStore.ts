@@ -177,6 +177,31 @@ export interface AssistantStoreConfig {
 
 const DEFAULT_MAX_SESSIONS = 30
 
+/**
+ * 单条消息在前端 live 保留的过程事件上限。子代理/长工具回合可产生上万条事件，
+ * 不设上限会让 pushEvent 的整数组复制退化为 O(n²) 并让时间线全量渲染 → 主线程冻结。
+ * 超过上限只保留最近若干条；完整事件流服务端持久化，展开时经 messageEvents 懒加载。
+ */
+const MAX_LIVE_EVENTS_PER_MESSAGE = 2000
+
+/** 封顶追加：超限只保留最近 N 条（live 增量与正文 chunk 共用同一上限）。 */
+function appendCappedEvent(
+  events: AssistantChatEvent[] | undefined,
+  event: AssistantChatEvent,
+): AssistantChatEvent[] {
+  const combined = [...(events || []), event]
+  return combined.length > MAX_LIVE_EVENTS_PER_MESSAGE
+    ? combined.slice(-MAX_LIVE_EVENTS_PER_MESSAGE)
+    : combined
+}
+
+/** 历史消息进 store 前同样封顶：条数可达数万，全量常驻会随会话缓存叠加撑爆内存。 */
+function capHistoryEvents(message: AssistantChatMessage): AssistantChatMessage {
+  return message.events && message.events.length > MAX_LIVE_EVENTS_PER_MESSAGE
+    ? { ...message, events: message.events.slice(-MAX_LIVE_EVENTS_PER_MESSAGE) }
+    : message
+}
+
 function eventIdentity(event: AssistantChatEvent): string {
   const sequence = event.seq ?? event.event_sequence ?? event.sequence
   if (sequence !== undefined) return `sequence:${sequence}:${event.type}`
@@ -272,7 +297,7 @@ export function createAssistantStore(
         // Merge: keep any live messages (running turn) and backfill history.
         const existingIds = new Set(session.messages.map((m) => m.id))
         const merged = [
-          ...messages.filter((m) => !existingIds.has(m.id)),
+          ...messages.filter((m) => !existingIds.has(m.id)).map(capHistoryEvents),
           ...session.messages,
         ]
         // 历史事件兼容两种形状：内部词汇（``type: 'a2ui'``，data 为载荷）与
@@ -361,9 +386,13 @@ export function createAssistantStore(
           if (!id) return
           const index = findIndex(id)
           if (index !== -1) {
+            // Live 事件封顶：子代理等异常回合可产生上万条事件，逐条整数组复制是
+            // O(n²)（即便切走仍在后台跑，占满主线程），且 buildMessageTimeline /
+            // ProcessTrace 会全量渲染。只保留最近 N 条；完整日志服务端已持久化，
+            // 可经 messageEvents 按需懒加载。文本正文走 content，不在此裁剪。
             messages[index] = {
               ...messages[index],
-              events: [...(messages[index].events || []), event],
+              events: appendCappedEvent(messages[index].events, event),
             }
           }
         }
@@ -458,7 +487,9 @@ export function createAssistantStore(
               ...current,
               role: event.role === 'user' ? 'user' : current.role,
               content: appendMessageContent(current.content, event),
-              events: [...(current.events || []), event],
+              // chunk 事件同样封顶：长回复每个 token 一条，不封顶则单条消息
+              // 事件数组无界增长（且每次追加整数组复制 → O(n²)）。
+              events: appendCappedEvent(current.events, event),
             }
           }
           if (event.role !== 'user') running = true

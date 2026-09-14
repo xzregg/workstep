@@ -1,4 +1,6 @@
+import asyncio
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -7,6 +9,44 @@ from fastapi import FastAPI
 
 import api.skills as skills_api
 from services.skill_center import SkillCenter
+
+
+@pytest.mark.asyncio
+async def test_slow_skill_scan_does_not_block_other_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = SimpleNamespace(id="p1", name="Demo", path=tmp_path / "project")
+    center = SkillCenter(source_roots={})
+    manager = SimpleNamespace(get_project_by_id=lambda _project_id: project)
+    original_list = center.list_project
+
+    def slow_list(project_root):
+        time.sleep(0.25)
+        return original_list(project_root)
+
+    monkeypatch.setattr(center, "list_project", slow_list)
+    monkeypatch.setattr(skills_api, "project_manager", manager)
+    monkeypatch.setattr(skills_api, "skill_center", center)
+    app = FastAPI()
+    app.include_router(skills_api.router)
+
+    @app.get("/health")
+    async def health():
+        return {"ok": True}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        started = time.perf_counter()
+        listing = asyncio.create_task(client.get("/api/skills", params={"project_id": "p1"}))
+        await asyncio.sleep(0.02)
+        health_response = await client.get("/health")
+        elapsed = time.perf_counter() - started
+        listed = await listing
+
+    assert health_response.status_code == 200
+    assert listed.status_code == 200
+    assert elapsed < 0.15
 
 
 def _write_skill(root: Path, name: str) -> None:

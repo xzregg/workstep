@@ -16,6 +16,8 @@ test('token usage reader accepts the unified usage_update events', () => {
 })
 
 test('process trace backfills legacy durations when ended_at is missing', () => {
-  assert.match(processTraceSource, /Math\.min\(\.\.\.eventTimes\)/)
-  assert.match(processTraceSource, /startedMs >= Math\.max\(\.\.\.eventTimes\)/)
+  // 事件时间范围已改为单趟扫描 min/max（Math.min(...arr) 大数组展开有爆栈
+  // 风险）；回补逻辑本身保留：startedAt 不早于最后事件时用它当终点。
+  assert.match(processTraceSource, /minEventMs/)
+  assert.match(processTraceSource, /startedMs >= maxEventMs/)
 })

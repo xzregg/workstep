@@ -104,6 +104,39 @@ def test_register_existing_project(tmp_path, manager):
     m2.close_all()
 
 
+def test_reopen_empty_project_preserves_identity(tmp_path, manager):
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    project_id = project.id
+    workflow_id = project.default_workflow()["id"]
+    m.unregister(project_id)
+
+    reopened = m.init_project(tmp_path)
+
+    assert reopened.id == project_id
+    assert reopened.default_workflow()["id"] == workflow_id
+
+
+def test_legacy_workflow_assistant_identity_is_restored(tmp_path, manager):
+    from models.gen_session import WorkflowGenSession
+
+    m, _, _ = manager
+    project = m.init_project(tmp_path)
+    workflow_id = project.default_workflow()["id"]
+    WorkflowGenSession.create(
+        id=f"{project.id}:{workflow_id}", project_id=project.id,
+        workflow_id=workflow_id, engine="codex", messages_json='[{"content":"旧流程对话"}]',
+        created_at=1, updated_at=1,
+    )
+    m.unregister(project.id)
+    (tmp_path / ".workstep" / "project.json").unlink()
+
+    reopened = m.register(tmp_path)
+
+    assert reopened.id == project.id
+    assert reopened.default_workflow()["id"] == workflow_id
+
+
 def test_register_does_not_import_legacy_steps_json(tmp_path, manager):
     """Legacy steps.json is no longer a workflow data source."""
     m, _, _ = manager

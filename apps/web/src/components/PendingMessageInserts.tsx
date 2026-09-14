@@ -1,4 +1,5 @@
-import { useState, type DragEvent } from 'react'
+import { useContext, useState, type DragEvent } from 'react'
+import { ComposerOverlayHostContext } from '../hooks/useComposerOverlayClearance'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 import Textarea from './Textarea'
@@ -48,6 +49,8 @@ export default function PendingMessageInserts({
   reorderHint,
 }: PendingMessageInsertsProps) {
   const { t } = useI18n()
+  // 会话区宿主（若有）会测量面板高度，给会话内容留出底部空间。
+  const registerOverlay = useContext(ComposerOverlayHostContext)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   if (items.length === 0) return null
@@ -95,6 +98,7 @@ export default function PendingMessageInserts({
 
   return (
     <div
+      ref={registerOverlay ?? undefined}
       role="region"
       aria-label={title}
       aria-live="polite"

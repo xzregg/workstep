@@ -5,7 +5,7 @@ import time
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -59,20 +59,6 @@ def _public_provider(provider: dict) -> dict:
     }
 
 
-async def _refresh_models_in_background(provider_id: str) -> None:
-    """Fetch + save a provider's model list once (best effort)."""
-    provider = config_store.get_provider(provider_id)
-    if provider is None:
-        return
-    try:
-        await asyncio.wait_for(
-            provider_service.fetch_and_save_models(provider),
-            timeout=20,
-        )
-    except Exception:
-        pass
-
-
 def _public_candidate(candidate: dict) -> dict:
     """Mask secrets when returning cc-switch import candidates."""
     public = dict(candidate)
@@ -116,18 +102,18 @@ def _require_provider(provider_id: str) -> dict:
 @router.get("/list")
 async def list_providers(project_id: str = ""):
     """Return all providers (masked) plus built-in type presets."""
-    providers = config_store.get_providers()
-    return {
-        "providers": [_public_provider(item) for item in providers],
-        "types": provider_service.list_provider_types(),
-    }
+    def load() -> dict:
+        providers = config_store.get_providers()
+        return {
+            "providers": [_public_provider(item) for item in providers],
+            "types": provider_service.list_provider_types(),
+        }
+
+    return await asyncio.to_thread(load)
 
 
 @router.post("")
-async def save_provider(
-    req: ProviderSaveRequest,
-    background_tasks: BackgroundTasks,
-):
+async def save_provider(req: ProviderSaveRequest):
     """Create or update a provider; API keys keep engine-style masking."""
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
@@ -144,8 +130,13 @@ async def save_provider(
         return {"saved": False, "message": error, "provider": None}
 
     provider_id = str(req.id or "").strip()
-    if provider_id and config_store.get_provider(provider_id) is not None:
-        current = config_store.get_provider(provider_id)
+    current = (
+        await asyncio.to_thread(config_store.get_provider, provider_id)
+        if provider_id
+        else None
+    )
+    if provider_id and current is not None:
+        pass
     elif provider_id:
         return {"saved": False, "message": "供应商不存在", "provider": None}
     else:
@@ -174,26 +165,31 @@ async def save_provider(
             "%Y-%m-%dT%H:%M:%S"
         ),
     }
-    config_store.save_provider(provider)
-    config_store.set_engine_verified(f"provider:{provider_id}", False)
-    refresh_registry()
-    # 配置供应商即拉取一次模型列表并保存；失败不阻塞，可手动刷新。
-    background_tasks.add_task(_refresh_models_in_background, provider_id)
+    def save() -> dict:
+        config_store.save_provider(provider)
+        config_store.set_engine_verified(f"provider:{provider_id}", False)
+        refresh_registry()
+        return _public_provider(provider)
+
+    public_provider = await asyncio.to_thread(save)
     return {
         "saved": True,
         "message": "供应商已保存",
-        "provider": _public_provider(provider),
+        "provider": public_provider,
     }
 
 
 @router.get("/import/sources")
 async def import_sources():
     """Discover third-party sources that can feed providers into WorkStep."""
-    candidates = [
+    candidates = await asyncio.to_thread(lambda: [
         candidate
         for candidate in provider_service.scan_cc_switch_providers()
         if candidate.get("base_url")
-    ]
+    ])
+    existing_names = await asyncio.to_thread(
+        lambda: {str(item.get("name")) for item in config_store.get_providers()}
+    )
     sources = []
     if candidates:
         sources.append({
@@ -204,7 +200,7 @@ async def import_sources():
             "providers": [
                 {
                     **_public_candidate(candidate),
-                    "already_exists": _provider_name_exists(candidate["name"]),
+                    "already_exists": candidate["name"] in existing_names,
                 }
                 for candidate in candidates
             ],
@@ -215,17 +211,18 @@ async def import_sources():
 @router.post("/import/cc-switch")
 async def import_cc_switch(req: ProviderImportRequest):
     """Import selected CC Switch provider configurations into WorkStep."""
-    candidates = {
-        item["id"]: item
-        for item in provider_service.scan_cc_switch_providers()
-    }
+    candidates, existing_names = await asyncio.to_thread(
+        lambda: (
+            {
+                item["id"]: item
+                for item in provider_service.scan_cc_switch_providers()
+            },
+            {str(item.get("name")) for item in config_store.get_providers()},
+        )
+    )
     imported: list[dict] = []
     skipped: list[dict] = []
     errors: list[dict] = []
-    existing_names = {
-        str(item.get("name"))
-        for item in config_store.get_providers()
-    }
     for provider_id in req.provider_ids:
         candidate = candidates.get(provider_id)
         if candidate is None:
@@ -261,12 +258,17 @@ async def import_cc_switch(req: ProviderImportRequest):
             "verified": False,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
-        config_store.save_provider(provider)
-        _prefill_claude_model_maps(candidate)
+        public_provider = await asyncio.to_thread(
+            lambda: (
+                config_store.save_provider(provider),
+                _prefill_claude_model_maps(candidate),
+                _public_provider(provider),
+            )[2]
+        )
         existing_names.add(name)
-        imported.append(_public_provider(provider))
+        imported.append(public_provider)
     if imported:
-        refresh_registry()
+        await asyncio.to_thread(refresh_registry)
     return {
         "source": "cc-switch",
         "imported": imported,
@@ -278,30 +280,38 @@ async def import_cc_switch(req: ProviderImportRequest):
 @router.delete("/{provider_id}")
 async def delete_provider(provider_id: str):
     """Delete a provider; refuse while an engine still references it."""
-    if config_store.get_provider(provider_id) is None:
+    provider = await asyncio.to_thread(config_store.get_provider, provider_id)
+    if provider is None:
         raise HTTPException(status_code=404, detail="供应商不存在")
-    if config_store.is_provider_in_use(provider_id):
+    if await asyncio.to_thread(config_store.is_provider_in_use, provider_id):
         raise HTTPException(
             status_code=400,
             detail="该供应商正被引擎或助手使用，请先切换其它供应商",
         )
-    config_store.delete_provider(provider_id)
-    config_store.clear_provider_models(provider_id)
-    config_store.set_engine_verified(f"provider:{provider_id}", False)
-    refresh_registry()
+    def delete() -> None:
+        config_store.delete_provider(provider_id)
+        config_store.clear_provider_models(provider_id)
+        config_store.set_engine_verified(f"provider:{provider_id}", False)
+        refresh_registry()
+
+    await asyncio.to_thread(delete)
     return {"deleted": True}
 
 
 @router.post("/{provider_id}/test")
 async def test_provider(provider_id: str, req: ProviderTestRequest):
     """Probe connectivity by fetching the provider's model list."""
-    provider = _require_provider(provider_id)
+    provider = await asyncio.to_thread(_require_provider, provider_id)
     result = await provider_service.test_connection(
         provider,
         timeout_seconds=req.timeout_seconds,
     )
-    config_store.save_provider({**provider, "verified": result.success})
-    refresh_registry()
+    await asyncio.to_thread(
+        lambda: (
+            config_store.save_provider({**provider, "verified": result.success}),
+            refresh_registry(),
+        )
+    )
     return {
         "provider_id": provider_id,
         **asdict(result),
@@ -315,13 +325,26 @@ async def provider_models(provider_id: str, refresh: bool = False):
     Defaults to the locally saved copy; ``refresh=1`` re-fetches from the
     provider address and saves the result.
     """
-    provider = _require_provider(provider_id)
-    entry = config_store.get_provider_models(provider_id)
-    if not refresh and entry:
+    provider, entry = await asyncio.to_thread(
+        lambda: (
+            _require_provider(provider_id),
+            config_store.get_provider_models(provider_id),
+        )
+    )
+    if not refresh:
         return {
             "provider_id": provider_id,
-            "models": [asdict(model) for model in provider_service.saved_models(provider_id)],
-            "fetched_at": entry.get("fetched_at"),
+            "models": (
+                [
+                    asdict(model)
+                    for model in await asyncio.to_thread(
+                        provider_service.saved_models, provider_id
+                    )
+                ]
+                if entry
+                else []
+            ),
+            "fetched_at": entry.get("fetched_at") if entry else None,
             "error": None,
         }
     try:
@@ -339,7 +362,9 @@ async def provider_models(provider_id: str, refresh: bool = False):
     return {
         "provider_id": provider_id,
         "models": [asdict(model) for model in models],
-        "fetched_at": config_store.get_provider_models(provider_id).get("fetched_at"),
+        "fetched_at": (
+            await asyncio.to_thread(config_store.get_provider_models, provider_id)
+        ).get("fetched_at"),
         "error": error,
     }
 
@@ -347,7 +372,7 @@ async def provider_models(provider_id: str, refresh: bool = False):
 @router.get("/{provider_id}/balance")
 async def provider_balance(provider_id: str):
     """Query provider quota/balance (placeholder — phase 2)."""
-    _require_provider(provider_id)
+    await asyncio.to_thread(_require_provider, provider_id)
     return {
         "provider_id": provider_id,
         "supported": False,
@@ -359,7 +384,7 @@ async def provider_balance(provider_id: str):
 @router.post("/{provider_id}/reveal")
 async def reveal_provider_key(provider_id: str):
     """Return the stored API key after an explicit reveal action."""
-    provider = _require_provider(provider_id)
+    provider = await asyncio.to_thread(_require_provider, provider_id)
     return JSONResponse(
         {"key": "api_key", "value": provider.get("api_key") or None},
         headers={"Cache-Control": "no-store"},

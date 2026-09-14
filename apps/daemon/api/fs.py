@@ -190,7 +190,9 @@ async def read_memory(pid: str = Query(..., alias="project_id")):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     memory_path = project.workstep_dir / "MEMORY.md"
-    content = memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
+    content = await asyncio.to_thread(
+        lambda: memory_path.read_text(encoding="utf-8") if memory_path.is_file() else ""
+    )
     return {"path": str(memory_path), "content": content}
 
 
@@ -210,8 +212,11 @@ async def write_memory(
     if len(req.content) > 500_000:
         raise HTTPException(status_code=400, detail="记忆内容超过 500KB 上限")
     memory_path = project.workstep_dir / "MEMORY.md"
-    memory_path.parent.mkdir(parents=True, exist_ok=True)
-    memory_path.write_text(req.content, encoding="utf-8")
+    def persist_memory() -> None:
+        memory_path.parent.mkdir(parents=True, exist_ok=True)
+        memory_path.write_text(req.content, encoding="utf-8")
+
+    await asyncio.to_thread(persist_memory)
     return {"path": str(memory_path), "saved": True}
 
 
@@ -248,7 +253,7 @@ async def upload_image(
     content_type = match.group(1)
     b64data = match.group(2)
     try:
-        content = base64.b64decode(b64data)
+        content = await asyncio.to_thread(base64.b64decode, b64data)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 data")
 
@@ -268,10 +273,12 @@ async def upload_image(
     else:
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     filepath = upload_dir / filename
-    filepath.write_bytes(content)
+    def persist_upload() -> None:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        filepath.write_bytes(content)
+
+    await asyncio.to_thread(persist_upload)
 
     # Relative path kept in markdown as-is so it stays meaningful for LLM
     # prompts; the frontend maps it back to /api/fs/serve/... for preview.
@@ -302,7 +309,9 @@ async def upload_file(
         raise HTTPException(status_code=400, detail="Invalid data URL format")
     content_type, b64data = match.groups()
     try:
-        content = base64.b64decode(b64data, validate=True)
+        content = await asyncio.to_thread(
+            base64.b64decode, b64data, validate=True
+        )
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 data")
     if len(content) > 25_000_000:
@@ -323,8 +332,11 @@ async def upload_file(
     else:
         upload_dir = CONFIG_DIR / "data" / "uploads"
         rel_path = f"data/uploads/{filename}"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    (upload_dir / filename).write_bytes(content)
+    def persist_upload() -> None:
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        (upload_dir / filename).write_bytes(content)
+
+    await asyncio.to_thread(persist_upload)
     return {"url": rel_path, "filename": filename, "size": len(content)}
 
 
@@ -351,7 +363,9 @@ async def serve_upload(
 ):
     """Serve an uploaded file from a project or the global uploads dir."""
     if not pid:
-        return _serve_upload_file(CONFIG_DIR / "data" / "uploads", filename)
+        return await asyncio.to_thread(
+            _serve_upload_file, CONFIG_DIR / "data" / "uploads", filename
+        )
     from main import project_manager
     if not project_manager:
         raise HTTPException(status_code=503, detail="Service not initialized")
@@ -359,7 +373,9 @@ async def serve_upload(
         project = _project(pid)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    return _serve_upload_file(Path(project.workstep_dir) / "uploads", filename)
+    return await asyncio.to_thread(
+        _serve_upload_file, Path(project.workstep_dir) / "uploads", filename
+    )
 
 
 @uploads_router.get("/{project_name}/.workstep/uploads/{filename}")
@@ -375,7 +391,9 @@ async def serve_upload_by_project_name(project_name: str, filename: str):
     project = project_manager.get_project_by_name(project_name)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return _serve_upload_file(Path(project.workstep_dir) / "uploads", filename)
+    return await asyncio.to_thread(
+        _serve_upload_file, Path(project.workstep_dir) / "uploads", filename
+    )
 
 
 def _assert_project_path(path: Path, project_id: str | None) -> None:
@@ -432,36 +450,33 @@ def _project_relative_path(path: Path, project_id: str | None) -> str | None:
 @router.get("/browse")
 async def browse_directory(path: str | None = None, project_id: str | None = Query(None)):
     """List directory contents for the file picker."""
-    if path is None:
-        target = Path.home()
-    else:
-        target = Path(path).expanduser().resolve()
-    _assert_project_path(target, project_id)
+    def browse() -> dict:
+        target = Path.home() if path is None else Path(path).expanduser().resolve()
+        _assert_project_path(target, project_id)
+        if not target.exists():
+            raise HTTPException(status_code=404, detail=f"Directory not found: {target}")
+        if not target.is_dir():
+            raise HTTPException(status_code=400, detail=f"Not a directory: {target}")
+        entries = []
+        try:
+            for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+                if item.name.startswith('.'):
+                    continue
+                entries.append({
+                    "name": item.name,
+                    "type": "directory" if item.is_dir() else "file",
+                    "path": str(item),
+                })
+        except PermissionError:
+            raise HTTPException(status_code=403, detail=f"Permission denied: {target}")
+        return {
+            "path": str(target),
+            "name": target.name or str(target),
+            "parent": str(target.parent) if target.parent != target else None,
+            "entries": entries,
+        }
 
-    if not target.exists():
-        raise HTTPException(status_code=404, detail=f"Directory not found: {target}")
-    if not target.is_dir():
-        raise HTTPException(status_code=400, detail=f"Not a directory: {target}")
-
-    entries = []
-    try:
-        for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
-            if item.name.startswith('.'):
-                continue
-            entries.append({
-                "name": item.name,
-                "type": "directory" if item.is_dir() else "file",
-                "path": str(item),
-            })
-    except PermissionError:
-        raise HTTPException(status_code=403, detail=f"Permission denied: {target}")
-
-    return {
-        "path": str(target),
-        "name": target.name or str(target),
-        "parent": str(target.parent) if target.parent != target else None,
-        "entries": entries,
-    }
+    return await asyncio.to_thread(browse)
 
 
 @router.post("/mkdir")
@@ -480,48 +495,58 @@ async def mkdir_directory(req: MkdirRequest):
             status_code=400,
             detail="Folder name must not be empty, start with '.', or contain whitespace or '/'",
         )
-    parent = Path(req.parent).expanduser().resolve()
-    if not parent.exists():
-        raise HTTPException(status_code=404, detail=f"Directory not found: {parent}")
-    if not parent.is_dir():
-        raise HTTPException(status_code=400, detail=f"Not a directory: {parent}")
-    target = parent / name
-    if target.exists():
-        raise HTTPException(status_code=409, detail=f"Already exists: {target}")
-    try:
-        target.mkdir()
-    except (PermissionError, OSError) as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create directory: {target}"
-        ) from exc
+    def create_directory() -> Path:
+        parent = Path(req.parent).expanduser().resolve()
+        if not parent.exists():
+            raise HTTPException(status_code=404, detail=f"Directory not found: {parent}")
+        if not parent.is_dir():
+            raise HTTPException(status_code=400, detail=f"Not a directory: {parent}")
+        target = parent / name
+        if target.exists():
+            raise HTTPException(status_code=409, detail=f"Already exists: {target}")
+        try:
+            target.mkdir()
+        except (PermissionError, OSError) as exc:
+            raise HTTPException(
+                status_code=500, detail=f"Failed to create directory: {target}"
+            ) from exc
+        return target
+
+    target = await asyncio.to_thread(create_directory)
     return {"path": str(target), "name": name}
 
 
 @router.get("/file")
 async def serve_file(path: str, project_id: str | None = Query(None)):
     """Serve a raw file over HTTP (used for HTML preview links / downloads)."""
-    file_path = Path(path).expanduser().resolve()
-    _assert_project_path(file_path, project_id)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-    if not file_path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+    def response() -> FileResponse:
+        file_path = Path(path).expanduser().resolve()
+        _assert_project_path(file_path, project_id)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+
+    return await asyncio.to_thread(response)
 
 
 @router.get("/raw/{full_path:path}")
 async def serve_raw_file(full_path: str, project_id: str | None = Query(None)):
     """Serve a file at a URL mirroring its filesystem path so relative assets
     inside HTML resolve correctly (e.g. /api/fs/raw/Users/me/proj/index.html)."""
-    file_path = Path("/" + full_path).expanduser().resolve()
-    _assert_project_path(file_path, project_id)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-    if not file_path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+    def response() -> FileResponse:
+        file_path = Path("/" + full_path).expanduser().resolve()
+        _assert_project_path(file_path, project_id)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+
+    return await asyncio.to_thread(response)
 
 
 @router.get("/project-raw/{project_ref}/{full_path:path}")
@@ -532,18 +557,21 @@ async def serve_project_raw_file(
     absolute: bool = Query(False),
 ):
     """Serve a project file from a stable URL so HTML relative assets still work."""
-    requested_path = f"/{full_path}" if absolute else full_path
-    file_path = _resolve_project_file(
-        requested_path,
-        project_id or project_ref,
-        allow_absolute=absolute,
-    )
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
-    if not file_path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
-    content_type, _ = mimetypes.guess_type(str(file_path))
-    return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+    def response() -> FileResponse:
+        requested_path = f"/{full_path}" if absolute else full_path
+        file_path = _resolve_project_file(
+            requested_path,
+            project_id or project_ref,
+            allow_absolute=absolute,
+        )
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Not a file: {file_path}")
+        content_type, _ = mimetypes.guess_type(str(file_path))
+        return FileResponse(file_path, media_type=content_type or "application/octet-stream")
+
+    return await asyncio.to_thread(response)
 
 
 @router.get("/preview")
@@ -553,6 +581,10 @@ async def preview_file(
     absolute: bool = Query(False),
 ):
     """Preview a file content for display."""
+    return await asyncio.to_thread(_preview_file_sync, path, project_id, absolute)
+
+
+def _preview_file_sync(path: str, project_id: str | None, absolute: bool):
     file_path = _resolve_project_file(path, project_id, allow_absolute=absolute)
 
     if not file_path.exists():
@@ -616,10 +648,13 @@ async def preview_file(
 @router.post("/open-directory")
 async def open_directory(req: OpenDirectoryRequest):
     """Open the directory containing a local artifact."""
-    target = Path(req.path).expanduser().resolve()
-    if not target.exists():
-        raise HTTPException(status_code=404, detail=f"Path not found: {target}")
-    directory = target if target.is_dir() else target.parent
+    def resolve_directory() -> Path:
+        target = Path(req.path).expanduser().resolve()
+        if not target.exists():
+            raise HTTPException(status_code=404, detail=f"Path not found: {target}")
+        return target if target.is_dir() else target.parent
+
+    directory = await asyncio.to_thread(resolve_directory)
     if req.opener == "file_manager":
         await _open_directory(directory)
     else:
@@ -642,13 +677,15 @@ async def open_session_journal(req: OpenSessionJournalRequest):
     directory: Path | None = None
     message_id = (req.message_id or "").strip()
     if message_id and _SAFE_SEGMENT.fullmatch(message_id):
-        matches = sorted(event_logs.rglob(f"{message_id}.jsonl"))
+        matches = await asyncio.to_thread(
+            lambda: sorted(event_logs.rglob(f"{message_id}.jsonl"))
+        )
         if matches:
             directory = matches[0].parent
     session_id = (req.session_id or "").strip()
     if directory is None and session_id and _SAFE_SEGMENT.fullmatch(session_id):
         candidate = event_logs / session_id
-        if candidate.is_dir():
+        if await asyncio.to_thread(candidate.is_dir):
             directory = candidate
     if directory is None:
         raise HTTPException(status_code=404, detail="Session journal not found")
@@ -659,4 +696,7 @@ async def open_session_journal(req: OpenSessionJournalRequest):
 @router.get("/directory-openers")
 async def directory_openers():
     """List supported applications that can open a project directory."""
-    return {"platform": platform.system(), "openers": _directory_openers()}
+    return {
+        "platform": platform.system(),
+        "openers": await asyncio.to_thread(_directory_openers),
+    }

@@ -318,8 +318,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
                   title={t('layout.dragResizeChat')}
                   style={{
                     width: 3, flexShrink: 0, cursor: 'col-resize', position: 'relative',
-                    background: 'transparent', userSelect: 'none',
-                  }}
+                    background: 'transparent',                  }}
                 >
                   <div style={{
                     position: 'absolute', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)',
@@ -360,7 +359,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
             style={{
               position: 'absolute', right: 0, bottom: 0, width: 20, height: 20,
               cursor: 'nwse-resize', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-              padding: 3, color: 'var(--meta)', userSelect: 'none', zIndex: 5,
+              padding: 3, color: 'var(--meta)', zIndex: 5,
             }}
           >
             <Icon name="resize-corner" size={11} />
