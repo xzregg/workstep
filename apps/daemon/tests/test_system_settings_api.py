@@ -72,6 +72,31 @@ async def test_user_name_rejects_blank_value(system_settings_client):
     assert response.status_code == 400
 
 
+async def test_default_project_directory_round_trip_and_clear(system_settings_client, tmp_path):
+    client, _ = system_settings_client
+    assert (await client.get("/api/system-settings")).json()["default_project_directory"] == ""
+    directory = tmp_path / "My Projects"
+    directory.mkdir()
+    response = await client.put("/api/system-settings", json={"default_project_directory": str(directory)})
+    assert response.status_code == 200
+    assert response.json()["default_project_directory"] == str(directory)
+    assert ConfigStore().get("default_project_directory") == str(directory)
+    await client.put("/api/system-settings", json={"open_mode": True})
+    assert (await client.get("/api/system-settings")).json()["default_project_directory"] == str(directory)
+    response = await client.put("/api/system-settings", json={"default_project_directory": "   "})
+    assert response.json()["default_project_directory"] == ""
+
+
+@pytest.mark.parametrize("path", ["missing", "config.json", "relative/path"])
+async def test_default_project_directory_rejects_invalid_paths(system_settings_client, tmp_path, path):
+    client, _ = system_settings_client
+    await client.get("/api/system-settings")
+    value = path if path.startswith("relative") else str(tmp_path / path)
+    response = await client.put("/api/system-settings", json={"default_project_directory": value})
+    assert response.status_code == 400
+    assert (await client.get("/api/system-settings")).json()["default_project_directory"] == ""
+
+
 async def test_model_pricing_round_trip_persists_currency_rate_and_prices(
     system_settings_client,
 ):

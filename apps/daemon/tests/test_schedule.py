@@ -99,6 +99,8 @@ def test_user_can_create_pause_and_resume_a_project_schedule(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    manager.create_workflow(project, "测试流程", DEFAULT_STEPS)
     workflow_id = project.default_workflow()["id"]
     module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
 
@@ -130,6 +132,8 @@ def test_user_can_create_schedule_without_a_task_title(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    manager.create_workflow(project, "测试流程", DEFAULT_STEPS)
     workflow_id = project.default_workflow()["id"]
     module = ScheduleModule(manager, task_service=None, workflow_runtime=None)
 
@@ -198,6 +202,8 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     workflow_id = project.default_workflow()["id"]
     module = ScheduleModule(manager, TaskService(EventBus()), workflow_runtime=None)
     created = module.create(
@@ -395,6 +401,8 @@ def test_deleting_a_workflow_invalidates_its_schedules(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    manager.create_workflow(project, "测试流程", DEFAULT_STEPS)
     with manager.activate_project_by_id(project.id):
         workflow = manager.create_workflow(project, "scheduled")
     module = ScheduleModule(manager, None, None)
@@ -423,6 +431,8 @@ async def test_queue_overlap_waits_for_previous_run_then_creates_task(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     module = ScheduleModule(manager, TaskService(EventBus()), None)
     schedule = module.create(
         project.id, name="Queued", workflow_id=project.default_workflow()["id"],
@@ -453,6 +463,8 @@ def test_removing_scheduled_start_step_invalidates_schedule(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    manager.create_workflow(project, "测试流程", DEFAULT_STEPS)
     workflow = project.default_workflow()
     first_key = workflow["steps"]["nodes"][0]["type"]
     module = ScheduleModule(manager, None, None)
@@ -536,6 +548,8 @@ async def test_agent_mode_run_creates_task_from_agent_result(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     workflow = project.default_workflow()
     agent = StubTaskAgent([{
         "title": "Agent task",
@@ -576,6 +590,8 @@ async def test_agent_mode_run_retries_with_feedback_then_succeeds(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     workflow = project.default_workflow()
     agent = StubTaskAgent([
         RuntimeError("engine down"),
@@ -648,6 +664,8 @@ def test_deleting_candidate_workflow_prunes_agent_schedule(tmp_path):
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
+    from services.project import DEFAULT_STEPS
+    manager.create_workflow(project, "测试流程", DEFAULT_STEPS)
     with manager.activate_project_by_id(project.id):
         workflow = manager.create_workflow(project, "scheduled")
     module = ScheduleModule(manager, None, None)

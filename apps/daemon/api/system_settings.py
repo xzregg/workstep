@@ -1,6 +1,7 @@
 """Global system settings stored in ~/.workstep/config.json."""
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from typing import Literal
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/api/system-settings")
 class SystemSettingsRequest(BaseModel):
     user_name: str | None = Field(default=None, max_length=80)
     open_mode: bool | None = None
+    default_project_directory: str | None = Field(default=None, max_length=4096)
 
 
 class ModelPriceRequest(BaseModel):
@@ -111,6 +113,7 @@ async def get_system_settings():
         return {
             "user_name": config_store.get_user_name(),
             "open_mode": config_store.get_open_mode(),
+            "default_project_directory": config_store.get("default_project_directory", ""),
             **config_store.get_device_identity(),
         }
 
@@ -119,6 +122,20 @@ async def get_system_settings():
 
 @router.put("")
 async def set_system_settings(req: SystemSettingsRequest):
+    directory = req.default_project_directory
+    if directory is not None:
+        def validate_directory() -> str:
+            if not directory.strip():
+                return ""
+            try:
+                path = Path(directory.strip()).expanduser()
+                if not path.is_absolute() or not path.is_dir():
+                    raise ValueError()
+                return str(path.resolve())
+            except (ValueError, OSError, RuntimeError):
+                raise HTTPException(status_code=400, detail="请选择已存在的目录，或输入绝对路径（支持 ~）")
+
+        directory = await asyncio.to_thread(validate_directory)
     if req.user_name is not None:
         user_name = req.user_name.strip()
         if not user_name:
@@ -126,6 +143,8 @@ async def set_system_settings(req: SystemSettingsRequest):
         await asyncio.to_thread(config_store.set_user_name, user_name)
     if req.open_mode is not None:
         await asyncio.to_thread(config_store.set_open_mode, req.open_mode)
+    if directory is not None:
+        await asyncio.to_thread(config_store.set, "default_project_directory", directory)
     return await get_system_settings()
 
 

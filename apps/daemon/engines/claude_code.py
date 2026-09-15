@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
@@ -139,6 +140,7 @@ _APPROVAL_DENIAL_PATTERN = re.compile(
 
 class ClaudeCodeEngine(AcpEngineBase):
     ENGINE_ID = "claude"
+    RUNTIME_PACKAGE = RuntimePackage('@anthropic-ai/claude-code', 'npm', '0', None)
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:

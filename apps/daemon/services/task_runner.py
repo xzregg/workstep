@@ -332,7 +332,11 @@ class TaskRunner:
 
             task.status = "running"
             task.updated_at = utc_now()
-            task.save()
+            # 只写状态列：整行 save() 会用可能已过期的实例字段覆盖并发写入。
+            Task.update(
+                status="running",
+                updated_at=task.updated_at,
+            ).where(Task.id == task.id).execute()
 
             persisted_completed: set[str] = set()
             # A task may intentionally start from a later stage. Persisted
@@ -387,8 +391,17 @@ class TaskRunner:
             else:
                 task.status = "paused"  # some failed
         finally:
-            task.updated_at = utc_now()
-            await self._run_db(task.save)
+            final_status = task.status
+            finished_at = utc_now()
+
+            def persist_pipeline_status():
+                Task.update(
+                    status=final_status,
+                    updated_at=finished_at,
+                ).where(Task.id == task.id).execute()
+
+            task.updated_at = finished_at
+            await self._run_db(persist_pipeline_status)
 
     async def _execute_dag(
         self,
@@ -539,6 +552,32 @@ class TaskRunner:
                     model=resolved_model,
                     started_at=utc_now(),
                 )
+
+            # 阶段确实开始执行，任务与运行必须回到 running。中断的重复派发（例如
+            # 另一个 daemon 实例的启动恢复）可能已把行写成 paused/failed，而真正
+            # 在跑的这条流水线不会自己回写状态，前端就会在整轮重跑/重审期间一直
+            # 显示「暂停」。条件 UPDATE 只修过期行，也不覆盖其它并发字段。
+            Task.update(
+                status="running",
+                updated_at=utc_now(),
+            ).where(
+                (Task.id == task.id) & (Task.status != "running")
+            ).execute()
+            task.status = "running"
+            if workflow_run is not None:
+                WorkflowRun.update(
+                    status="running",
+                    ended_at=None,
+                ).where(
+                    (WorkflowRun.id == workflow_run.id)
+                    & (
+                        (WorkflowRun.status != "running")
+                        | WorkflowRun.ended_at.is_null(False)
+                    )
+                ).execute()
+                workflow_run.status = "running"
+                workflow_run.ended_at = None
+
             pending_handoff = None
             if ts.pending_handoff_json:
                 try:

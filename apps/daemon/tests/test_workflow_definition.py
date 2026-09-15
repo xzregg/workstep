@@ -120,6 +120,26 @@ def test_auto_start_uses_the_stage_selected_for_task_creation():
     assert workflow.auto_start_enabled("build") is True
 
 
+def test_empty_stage_engine_compiles_to_current_execution_default():
+    from services.config import config_store
+
+    raw = {
+        "nodes": [
+            {"id": 1, "type": "build", "title": "Build", "engine": ""},
+        ],
+        "connections": [],
+    }
+    original = config_store.get_execution_default_engine()
+    try:
+        config_store.set_execution_default_engine("codex")
+        assert WorkflowDefinition.load(raw).compile().to_steps_config()["steps"][0]["engine"] == "codex"
+
+        config_store.set_execution_default_engine("claude")
+        assert WorkflowDefinition.load(raw).compile().to_steps_config()["steps"][0]["engine"] == "claude"
+    finally:
+        config_store.set_execution_default_engine(original)
+
+
 def test_duplicate_step_keys_are_rejected_with_the_node_location():
     raw = {
         "nodes": [
@@ -542,3 +562,14 @@ def test_review_config_rejects_non_dict():
 
     with pytest.raises(WorkflowValidationError, match="expected a dict"):
         WorkflowDefinition.load(raw).compile()
+
+
+def test_bookmarks_are_canvas_metadata_not_executable_steps():
+    raw = {
+        "nodes": [{"id": 1, "type": "build", "title": "Build", "engine": "codex"}],
+        "connections": [],
+        "bookmarks": [{"id": "note-1", "text": "发布前检查", "position": {"x": 40, "y": 80}}],
+    }
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()
+    assert [step["key"] for step in compiled["steps"]] == ["build"]
+    assert "bookmarks" not in compiled

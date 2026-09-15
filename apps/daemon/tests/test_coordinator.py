@@ -407,6 +407,13 @@ async def _create_task(client, tmp_path):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    from services.project import DEFAULT_STEPS
+    import main
+
+    await main.project_manager.run_db(
+        project_id,
+        lambda project: main.project_manager.create_workflow(project, "测试流程", DEFAULT_STEPS),
+    )
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={

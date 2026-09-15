@@ -11,7 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from services.config import DEFAULT_EXECUTION_ENGINE
+from services.config import resolve_execution_engine
 
 
 class WorkflowValidationError(ValueError):
@@ -318,7 +318,7 @@ class WorkflowDefinition:
         normalized = {
             "key": step.get("key", step.get("id", "")),
             "label": step.get("label", step.get("name", "")),
-            "engine": step.get("engine", DEFAULT_EXECUTION_ENGINE),
+            "engine": resolve_execution_engine(step.get("engine")),
             "model": step.get("model", ""),
             "config": dict(config),
             "prompt": step.get("prompt", ""),

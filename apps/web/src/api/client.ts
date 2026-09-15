@@ -61,6 +61,7 @@ function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
 export interface SystemSettings {
   user_name: string
   open_mode: boolean
+  default_project_directory: string
   device_id?: string
   device_name?: string
 }
@@ -99,6 +100,10 @@ export type ModelSettings = ModelPricingSettings
 
 export const systemSettingsApi = {
   get: () => request<SystemSettings>('/system-settings'),
+  updateDefaultProjectDirectory: (directory: string) => request<SystemSettings>('/system-settings', {
+    method: 'PUT',
+    body: JSON.stringify({ default_project_directory: directory }),
+  }),
   updateUserName: (userName: string) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
     body: JSON.stringify({ user_name: userName }),
@@ -1640,6 +1645,7 @@ export interface EngineInfo {
   version: string | null
   mode: 'cli' | 'acp' | 'agent' | 'sdk' | null
   config: EngineConfigPayload | null
+  runtime_manageable?: boolean
   installable: boolean
   install_command: string | null
   updatable: boolean
@@ -1656,6 +1662,35 @@ export interface EngineInfo {
   provider_protocols: string[]
   binary_path: string | null
   configured_path: string | null
+}
+
+export interface EngineRuntimeCatalog {
+  engine_id: string
+  current_version: string | null
+  default_version: string | null
+  minimum_version: string
+  rollback_version: string | null
+  configured_path: string | null
+  requires_terms: boolean
+  terms_url: string | null
+  size_scope: 'primary_package'
+  versions: { version: string; size_bytes: number | null; prerelease: boolean }[]
+  history: { from_version: string | null; to_version: string; action: string; at: string }[]
+  error: string | null
+}
+
+export interface EngineRuntimeOperation {
+  id: string
+  engine_id: string
+  action: 'install' | 'rollback'
+  target_version: string
+  previous_version: string | null
+  status: 'queued' | 'running' | 'succeeded' | 'failed'
+  stage: 'preparing' | 'downloading' | 'installing' | 'verifying' | 'completed' | 'failed'
+  downloaded_bytes: number
+  total_bytes: number | null
+  size_scope: 'primary_package'
+  message: string
 }
 
 export interface EngineInstallResult {
@@ -2010,6 +2045,12 @@ export const engineApi = {
         clear: config?.clear ?? {},
         model: model ?? '',
       }),
+    }),
+  runtime: (engineId: string) => request<EngineRuntimeCatalog>(`/engine/${encodeURIComponent(engineId)}/runtime`),
+  runtimeOperation: (engineId: string) => request<EngineRuntimeOperation | null>(`/engine/${encodeURIComponent(engineId)}/runtime/operation`),
+  startRuntimeOperation: (engineId: string, input: { version?: string; rollback: boolean; accept_third_party_terms: boolean }) =>
+    request<EngineRuntimeOperation>(`/engine/${encodeURIComponent(engineId)}/runtime/operation`, {
+      method: 'POST', body: JSON.stringify(input),
     }),
   install: (engineId: string, acceptThirdPartyTerms = false) =>
     request<EngineInstallResult>(`/engine/${encodeURIComponent(engineId)}/install`, {

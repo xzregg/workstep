@@ -128,6 +128,35 @@ async def api_context(tmp_path, monkeypatch):
     manager.close_all()
 
 
+async def _create_test_workflow(client, project_id):
+    """Tests that execute tasks explicitly install their workflow fixture."""
+    from services.project import DEFAULT_STEPS
+
+    response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={"name": "测试流程", "steps": DEFAULT_STEPS},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("endpoint", ["init", "register"])
+async def test_new_project_stays_empty_after_reopening(api_context, endpoint):
+    client, tmp_path = api_context
+    path = str(tmp_path / "blank-project")
+    response = await client.post("/api/project/init", json={"path": path})
+    assert response.status_code == 200
+    project = response.json()
+    assert project["workflows"] == []
+    assert project["steps"] == {}
+    await client.delete(f"/api/project/{project['id']}")
+    reopened = await client.post(f"/api/project/{endpoint}", json={"path": path})
+    assert reopened.status_code == 200
+    assert reopened.json()["workflows"] == []
+    assert reopened.json()["steps"] == {}
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize("endpoint", ["init", "register"])
 @pytest.mark.parametrize("legacy", [False, True])
@@ -302,6 +331,7 @@ async def test_sqlite_write_lock_does_not_block_health_check(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     database_path = project_dir / ".workstep" / "workstep.db"
 
     locked = threading.Event()
@@ -358,6 +388,7 @@ async def test_schedule_write_does_not_block_health_check(api_context, monkeypat
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     workflows = await client.get(
         "/api/workflow/list",
         params={"project_id": project_id},
@@ -415,6 +446,7 @@ async def test_workflow_start_write_lock_does_not_block_health_check(api_context
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={
@@ -575,6 +607,7 @@ async def test_cancel_task_lookup_does_not_block_health_check(api_context, monke
     project_dir.mkdir()
     initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Cancel lookup", "cwd": str(project_dir), "auto_start": False},
@@ -1050,6 +1083,7 @@ async def test_default_workflow_can_be_saved_and_reloaded(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
 
     default_response = await client.get("/api/project/default-steps")
     assert default_response.status_code == 200
@@ -1077,6 +1111,7 @@ async def test_task_http_crud_lifecycle(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
 
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
@@ -1148,6 +1183,7 @@ async def test_task_archive_contract(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
 
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
@@ -1201,6 +1237,7 @@ async def test_archive_experience_is_not_persisted_before_user_confirmation(
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Review before writing", "cwd": str(project_dir)},
@@ -1243,6 +1280,7 @@ async def test_archive_experience_reuses_the_previous_draft(api_context, monkeyp
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Reuse draft", "cwd": str(project_dir)},
@@ -1291,6 +1329,7 @@ async def test_archive_with_no_worthy_experience_skips_memory(api_context, monke
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Nothing to record", "cwd": str(project_dir)},
@@ -1331,6 +1370,7 @@ async def test_confirmed_archive_experience_is_appended_to_memory(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Confirmed lesson", "cwd": str(project_dir)},
@@ -1369,6 +1409,7 @@ async def test_task_search_filters_the_requested_project(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
 
     for title in ("Find this task", "Ignore this task"):
         response = await client.post(
@@ -1405,6 +1446,7 @@ async def test_global_task_search_merges_projects_and_counts_before_pagination(a
             json={"path": str(project_dir)},
         )
         project_id = initialized.json()["id"]
+        await _create_test_workflow(client, project_id)
         for title in titles:
             created = await client.post(
                 f"/api/task/create?project_id={project_id}",
@@ -1433,6 +1475,7 @@ async def test_session_list_returns_tasks_from_the_requested_project(api_context
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
 
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
@@ -1469,6 +1512,7 @@ async def test_session_list_without_filter_combines_registered_projects(api_cont
             json={"path": str(project_dir)},
         )
         project_id = initialized.json()["id"]
+        await _create_test_workflow(client, project_id)
         created = await client.post(
             f"/api/task/create?project_id={project_id}",
             json={
@@ -2034,6 +2078,7 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Artifact task", "cwd": str(project_dir)},
@@ -2076,6 +2121,7 @@ async def test_task_artifacts_include_directories_with_manifest_metadata(api_con
         json={"path": str(project_dir)},
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Directory artifact task", "cwd": str(project_dir)},
@@ -2467,6 +2513,7 @@ async def test_step_history_binds_the_requested_project(api_context):
     first_dir.mkdir()
     first = await client.post("/api/project/init", json={"path": str(first_dir)})
     first_id = first.json()["id"]
+    await _create_test_workflow(client, first_id)
     created = await client.post(
         f"/api/task/create?project_id={first_id}",
         json={"title": "History", "cwd": str(first_dir), "engine": "codex"},
@@ -2537,6 +2584,7 @@ async def test_step_history_returns_jsonl_summary_without_detailed_thoughts(api_
     project_dir.mkdir()
     initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Journal history", "cwd": str(project_dir)},
@@ -2604,6 +2652,7 @@ async def test_task_message_events_pages_detailed_jsonl_timeline(api_context):
     project_dir.mkdir()
     initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     created = await client.post(
         f"/api/task/create?project_id={project_id}",
         json={"title": "Journal detail", "cwd": str(project_dir)},
@@ -2738,6 +2787,7 @@ async def test_workflow_soft_delete_and_restore_via_api(api_context):
     )
     assert initialized.status_code == 200, initialized.text
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     workflow = await client.post(
         f"/api/workflow/create?project_id={project_id}",
         json={"name": "Restorable"},
@@ -3047,7 +3097,7 @@ async def test_reorder_workflows_persists_new_order(api_context):
     )
     project_id = initialized.json()["id"]
 
-    # Initial project seeds a default workflow; create two more.
+    # Create workflows explicitly in the empty project.
     listed = await client.get(f"/api/workflow/list?project_id={project_id}")
     initial_ids = [w["id"] for w in listed.json()["workflows"]]
     extra_a = await _create_workflow(client, project_id, "FlowA")
@@ -3058,7 +3108,7 @@ async def test_reorder_workflows_persists_new_order(api_context):
     listed = await client.get(f"/api/workflow/list?project_id={project_id}")
     assert [w["id"] for w in listed.json()["workflows"]] == original
 
-    # Move the default workflow to the end.
+    # Move the first workflow to the end.
     reordered = original[1:] + [original[0]]
     response = await client.post(
         f"/api/workflow/reorder?project_id={project_id}",
@@ -3090,6 +3140,7 @@ async def test_reorder_workflows_ignores_unknown_ids(api_context):
         "/api/project/init", json={"path": str(project_dir)}
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     listed = await client.get(f"/api/workflow/list?project_id={project_id}")
     ids = [w["id"] for w in listed.json()["workflows"]]
 
@@ -3287,6 +3338,7 @@ async def test_stage_execution_config_rejects_changes_while_stage_runs(
         "/api/project/init", json={"path": str(project_dir)}
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     workflows = await client.get(
         "/api/workflow/list", params={"project_id": project_id}
     )
@@ -3330,6 +3382,7 @@ async def test_stage_execution_config_write_does_not_block_health_check(api_cont
         "/api/project/init", json={"path": str(project_dir)}
     )
     project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
     workflows = await client.get(
         "/api/workflow/list", params={"project_id": project_id}
     )

@@ -1,3 +1,4 @@
+import './helpers/domEnv'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
@@ -5,9 +6,10 @@ import { act, createRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ReactFlowProvider } from '@xyflow/react'
 import FlowCanvas, { type FlowCanvasHandle } from '../src/components/FlowCanvas'
-import { I18nProvider } from '../src/i18n'
+import { I18nProvider, useLocaleStore } from '../src/i18n'
 
 function installDom() {
+  useLocaleStore.getState().setLocale('zh-CN')
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -56,6 +58,90 @@ test('renders an applied AI proposal that uses the historical assistant shape', 
     assert.deepEqual(canvasRef.current?.getSteps().connections, [
       { from: 1, fromPort: 0, to: 2, toPort: 0, kind: 'solid' },
     ])
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('bookmarks round-trip separately from executable stages and can be added from the stage menu', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  const bookmark = { id: 'note-1', text: '发布前检查', position: { x: 40, y: 80 }, width: 420, height: 280 }
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas ref={canvasRef} initialSteps={{ nodes: [], connections: [], bookmarks: [bookmark] }} onSave={() => {}} />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    assert.deepEqual(canvasRef.current?.getSteps().bookmarks, [bookmark])
+    assert.deepEqual(canvasRef.current?.getSteps().nodes, [])
+    assert.equal(canvasRef.current?.validate(), null)
+    const textarea = container.querySelector('textarea')!
+    assert.equal(textarea.value, '发布前检查')
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, '检查完成\n可以发布')
+      textarea.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].text, '检查完成\n可以发布')
+    const menu = [...container.querySelectorAll('button')].find(button => /阶段.*▾/.test(button.textContent || ''))!
+    await act(async () => menu.click())
+    const addBookmark = [...document.querySelectorAll('button')].find(button => button.textContent === '书签')
+    assert.ok(addBookmark)
+    await act(async () => addBookmark.click())
+    assert.equal(canvasRef.current?.getSteps().bookmarks.length, 2)
+    assert.deepEqual(canvasRef.current?.getSteps().nodes, [])
+    const saved = canvasRef.current?.getSteps()
+    await act(async () => canvasRef.current?.loadSteps(saved))
+    assert.deepEqual(canvasRef.current?.getSteps(), saved)
+    const remove = container.querySelector<HTMLButtonElement>('button[aria-label="删除书签"]')!
+    await act(async () => remove.click())
+    assert.equal(canvasRef.current?.getSteps().bookmarks.length, 2)
+    const confirm = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === '确认') as HTMLButtonElement
+    await act(async () => confirm.click())
+    assert.equal(canvasRef.current?.getSteps().bookmarks.length, 1)
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas ref={canvasRef} readOnly initialSteps={saved} onSave={() => {}} />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    assert.equal(container.querySelector('textarea')?.readOnly, true)
+    assert.equal(container.querySelector('button[aria-label="删除书签"]'), null)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('an executable stage with an empty engine follows the default and new stages start on it', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas
+          ref={canvasRef}
+          initialSteps={{ nodes: [{ id: 1, type: 'build', title: '构建', engine: '' }], connections: [] }}
+          onSave={() => {}}
+        />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    assert.equal(canvasRef.current?.getSteps().nodes[0].engine, '')
+
+    const menu = [...container.querySelectorAll('button')].find(button => /阶段.*▾/.test(button.textContent || ''))!
+    await act(async () => menu.click())
+    const addStage = [...document.querySelectorAll('button')].find(button => button.textContent === '+ 阶段')
+    assert.ok(addStage)
+    await act(async () => addStage.click())
+
+    const added = canvasRef.current?.getSteps().nodes.at(-1)
+    assert.equal(added.engine, '')
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

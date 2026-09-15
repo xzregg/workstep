@@ -14,10 +14,8 @@ services:
       - ./data/engines:/opt/workstep-engines
       # 全局配置 / 模板 / 任务元数据（容器独立目录，不与宿主机 ~/.workstep 冲突）
       - ./data/workstep:/root/.workstep
-      # 复用宿主机 Codex 登录态与会话（本机已 codex login 则容器免再次登录）
-      - ${HOME}/.codex:/root/.codex
-      # 复用宿主机 Claude Code 登录态与会话（本机已登录则容器免再次登录）
-      - ${HOME}/.claude:/root/.claude
+      # Codex rollout / 登录态：线程 id 存在项目库里，恢复时必须有对应 rollout
+      - ./data/codex:/root/.codex
       # 项目数据目录：应用内创建项目时路径填 /data/projects/<名称>
       - ${WORKSTEP_PROJECTS_DIR:-./data/projects}:/data/projects
     healthcheck:

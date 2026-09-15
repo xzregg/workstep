@@ -1,5 +1,6 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import MobileSheet from './MobileSheet'
+import FlowBookmark, { BookmarkContext, loadBookmarks, saveBookmarks } from './FlowBookmark'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button'
@@ -34,7 +35,7 @@ import {
   type WorkflowSummary,
 } from '../api/client'
 import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
-import { DEFAULT_EXECUTION_ENGINE } from '../engineMeta'
+import { DEFAULT_EXECUTION_ENGINE, engineLabel } from '../engineMeta'
 import { initialStageConfig, normalizeStepConfig } from '../utils/stageConfig'
 import StageConfigFields from './StageConfigFields'
 import { useI18n } from '../i18n'
@@ -234,7 +235,9 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
         key,
         label: String(n.title || n.label || n.name || key || `Step ${index + 1}`),
         autoStart: Boolean(n.autoStart),
-        engine: n.engine || DEFAULT_EXECUTION_ENGINE,
+        engine: n.engine === undefined || n.engine === null
+          ? ''
+          : String(n.engine),
         model: n.model || '',
         color: n.color || 'var(--meta)',
         prompt: n.prompt || '',
@@ -294,7 +297,9 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
       nodeId: i + 1,
       key: s.key || s.id || '',
       label: s.label || s.name || s.key,
-      engine: s.engine || DEFAULT_EXECUTION_ENGINE,
+      engine: s.engine === undefined || s.engine === null
+        ? ''
+        : String(s.engine),
       model: s.model || '',
       color: s.color || 'var(--meta)',
       prompt: s.prompt || '',
@@ -345,7 +350,11 @@ const SUB_ROW_H = 16
 const PORT_PAD = 8
 
 function StepNode({ data }: { data: StepNodeData }) {
+  const { t } = useI18n()
   const isDispatch = data.kind === 'task_dispatch'
+  const engineText = isDispatch
+    ? t('flow.newDispatchStage')
+    : data.engine || t('settings.defaultExecutionEngine')
   const hasPrompt = !!data.prompt && !isDispatch
   const topOffset = (hasPrompt ? HEADER_H + PROMPT_H : HEADER_H) + PORT_PAD
 
@@ -399,7 +408,7 @@ function StepNode({ data }: { data: StepNodeData }) {
           {data.label.charAt(0)}
         </div>
         <span title={data.label} style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, lineHeight: 1.3, flex: 1, minWidth: 0, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{data.label}</span>
-        <span title={isDispatch ? '流程' : data.engine} style={{ maxWidth: 96, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'calc(11px * var(--font-scale))', padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{isDispatch ? '流程' : data.engine}</span>
+        <span title={engineText} style={{ maxWidth: 96, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'calc(11px * var(--font-scale))', padding: '2px 6px', borderRadius: 4, background: 'var(--surface)', color: 'var(--muted)' }}>{engineText}</span>
       </div>
 
       {hasPrompt && (
@@ -439,7 +448,7 @@ function StepNode({ data }: { data: StepNodeData }) {
   )
 }
 
-const nodeTypes: NodeTypes = { step: StepNode }
+const nodeTypes: NodeTypes = { step: StepNode, bookmark: FlowBookmark }
 
 /* ══════════════════════════════════════════
    Section title style
@@ -526,12 +535,13 @@ function randomStageColor(currentColor?: string) {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
   node: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
   enginesLoading: boolean
   enginesError: string
+  defaultExecutionEngine: string
   onValidationChange: (error: string) => void
   onSave: (data: StepNodeData) => void
   onRequestDelete: () => void
@@ -585,14 +595,15 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   const selectableEngines = engines.filter(
     (engine) => engine.installed && engine.configured
   )
-  const currentEngineSelectable = selectableEngines.some(
-    (engine) => engine.id === draft.engine
+  const effectiveStageEngine = draft.engine || defaultExecutionEngine
+  const currentEngineSelectable = !draft.engine || selectableEngines.some(
+    (engine) => engine.id === effectiveStageEngine
   )
   const review: ReviewConfig = draft.review || emptyReview()
   const updateReview = (field: keyof ReviewConfig, value: string | number | boolean | Record<string, string>) => {
     updateDraft('review', { ...review, [field]: value })
   }
-  const reviewEngine = review.engine || draft.engine
+  const reviewEngine = review.engine || effectiveStageEngine
 
   const engineConfigById = (engineId: string) =>
     engines.find((engine) => engine.id === engineId)?.config ?? null
@@ -857,10 +868,18 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
                     ...current,
                     engine: engineId,
                     model: '',
-                    config: initialStageConfig(engineConfigById(engineId)),
+                    config: engineId
+                      ? initialStageConfig(engineConfigById(engineId))
+                      : {},
                   }))
                 }}
                 disabled={enginesLoading}
+                defaultOption={{
+                  value: '',
+                  label: t('flow.defaultExecutionEngineOption', {
+                    engine: engineLabel(defaultExecutionEngine, t),
+                  }),
+                }}
                 ariaLabel={t('flow.stageEngineAria')}
                 style={{ height: 32 }}
               />
@@ -885,7 +904,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
               <Select
                 value={draft.model}
-                disabled={stageModelsLoading}
+                disabled={!draft.engine || stageModelsLoading}
                 onChange={(e) => updateDraft('model', e.target.value)}
                 style={{ height: 32 }}
               >
@@ -1133,7 +1152,7 @@ function FlowCanvasInner({
   const readOnly = requestedReadOnly || compactLayout
   const { fitView } = useReactFlow()
   const initial = loadCanvasData(initialSteps)
-  const [nodes, setNodes, onNodesChange] = useNodesState(canvasToFlowNodes(initial.nodes))
+  const [nodes, setNodes, onNodesChange] = useNodesState([...canvasToFlowNodes(initial.nodes), ...loadBookmarks(initialSteps)])
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(initial.connections, initial.nodes))
   const [previewNode, setPreviewNode] = useState<StepNodeData | null>(null)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
@@ -1211,7 +1230,7 @@ function FlowCanvasInner({
     if (loadedKey.current === stepsKey) return
     loadedKey.current = stepsKey
     const { nodes: nn, connections: nc } = loadCanvasData(initialSteps)
-    setNodes(canvasToFlowNodes(nn))
+    setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(initialSteps)])
     setEdges(canvasToFlowEdges(nc, nn))
     setSelectedNode(null)
     setNodeConfigError('')
@@ -1234,25 +1253,28 @@ function FlowCanvasInner({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const tag = (e.target as HTMLElement)?.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (nodes.some(node => node.selected && node.type === 'bookmark')) setDirty(true)
         setNodes((nds) => nds.filter((n) => !n.selected))
         setEdges((eds) => eds.filter((ed) => !ed.selected))
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setNodes, setEdges, readOnly])
+  }, [setNodes, setEdges, readOnly, nodes, setDirty])
 
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
   }, [setEdges])
 
   const onNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    if (node.type === 'bookmark') return
     setSelectedNode(node.data as StepNodeData)
     setContextMenu(null)
   }, [])
 
   const onNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
     e.preventDefault()
+    if (node.type === 'bookmark') return
     setContextMenu({ x: e.clientX, y: e.clientY, nodeId: node.id })
   }, [])
 
@@ -1273,7 +1295,7 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), kind: 'llm', autoStart: false, engine: defaultExecutionEngine, model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), kind: 'llm', autoStart: false, engine: '', model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -1396,12 +1418,13 @@ function FlowCanvasInner({
   }
 
   const handleAutoLayout = useCallback(() => {
+    const stageNodes = nodes.filter(node => node.type !== 'bookmark')
     const levels: Record<string, number> = {}
     const inDeg: Record<string, number> = {}
-    nodes.forEach((n) => { inDeg[n.id] = 0 })
+    stageNodes.forEach((n) => { inDeg[n.id] = 0 })
     edges.forEach((e) => { inDeg[e.target] = (inDeg[e.target] || 0) + 1 })
 
-    const queue = nodes.filter((n) => inDeg[n.id] === 0).map((n) => n.id)
+    const queue = stageNodes.filter((n) => inDeg[n.id] === 0).map((n) => n.id)
     const visited = new Set<string>()
     while (queue.length > 0) {
       const nid = queue.shift()!
@@ -1414,10 +1437,10 @@ function FlowCanvasInner({
         if (inDeg[e.target] === 0) queue.push(e.target)
       })
     }
-    nodes.forEach((n) => { if (levels[n.id] === undefined) levels[n.id] = 0 })
+    stageNodes.forEach((n) => { if (levels[n.id] === undefined) levels[n.id] = 0 })
 
     const groups: Record<number, string[]> = {}
-    nodes.forEach((n) => {
+    stageNodes.forEach((n) => {
       const l = levels[n.id]
       if (!groups[l]) groups[l] = []
       groups[l].push(n.id)
@@ -1425,7 +1448,7 @@ function FlowCanvasInner({
 
     setNodes((nds) => nds.map((n) => ({
       ...n,
-      position: { x: 100 + (levels[n.id] || 0) * 320, y: 100 + (groups[levels[n.id] || 0]?.indexOf(n.id) || 0) * 180 },
+      position: n.type === 'bookmark' ? n.position : { x: 100 + (levels[n.id] || 0) * 320, y: 100 + (groups[levels[n.id] || 0]?.indexOf(n.id) || 0) * 180 },
     })))
     setTimeout(() => fitView({ padding: 0.2 }), 100)
   }, [nodes, edges, setNodes, fitView])
@@ -1433,7 +1456,7 @@ function FlowCanvasInner({
   // Build canvas-editor JSON for save/preview
   const buildCanvasJsonFromNodes = (nds: typeof nodes, conns: typeof edges) => {
     const idToNum = new Map(nds.map((n) => [n.id, (n.data as StepNodeData).nodeId]))
-    const nodesArr = nds.map((n) => {
+    const nodesArr = nds.filter(n => n.type !== 'bookmark').map((n) => {
       const d = n.data as StepNodeData
       return {
         id: d.nodeId, type: d.key, title: d.label, color: d.color,
@@ -1458,13 +1481,13 @@ function FlowCanvasInner({
         kind: (e.data as { kind?: string })?.kind === 'dashed' ? 'dashed' : 'solid',
       }
     })
-    return { nodes: nodesArr, connections: connsArr }
+    return { nodes: nodesArr, connections: connsArr, bookmarks: saveBookmarks(nds) }
   }
   const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 
   const computeStepError = (): string | null => {
     if (nodeConfigError) return t('flow.stageConfigIncomplete', { error: nodeConfigError })
-    const stepTypes = nodes.map((node, index) => {
+    const stepTypes = nodes.filter(node => node.type !== 'bookmark').map((node, index) => {
       const data = node.data as StepNodeData
       return {
         index,
@@ -1502,7 +1525,7 @@ function FlowCanvasInner({
     loadSteps: (steps: any) => {
       if (readOnly) return
       const { nodes: nn, connections: nc } = loadCanvasData(steps)
-      setNodes(canvasToFlowNodes(nn))
+      setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(steps)])
       setEdges(canvasToFlowEdges(nc, nn))
       setSelectedNode(null)
       setNodeConfigError('')
@@ -1515,7 +1538,7 @@ function FlowCanvasInner({
     try {
       const full = await templateApi.get(template.id)
       const { nodes: tNodes, connections: tConns } = loadCanvasData(full.steps ?? full)
-      setNodes(canvasToFlowNodes(tNodes))
+      setNodes([...canvasToFlowNodes(tNodes), ...loadBookmarks(full.steps ?? full)])
       setEdges(canvasToFlowEdges(tConns, tNodes))
       setSelectedNode(null)
       setNodeConfigError('')
@@ -1648,7 +1671,7 @@ function FlowCanvasInner({
         throw new Error(t('flow.jsonShapeError'))
       }
       const { nodes: impNodes, connections: impConns } = loadCanvasData(parsed)
-      setNodes(canvasToFlowNodes(impNodes))
+      setNodes([...canvasToFlowNodes(impNodes), ...loadBookmarks(parsed)])
       setEdges(canvasToFlowEdges(impConns, impNodes))
       setSelectedNode(null)
       setNodeConfigError('')
@@ -1689,7 +1712,7 @@ function FlowCanvasInner({
           <div><dt>{t('flow.stageKey')}</dt><dd>{previewNode.key}</dd></div>
           <div><dt>{t('flow.autoStart')}</dt><dd>{t(previewNode.autoStart ? 'common.yes' : 'common.no')}</dd></div>
           {previewNode.kind === 'task_dispatch' ? <div><dt>{t('flow.dispatchTarget')}</dt><dd><pre>{JSON.stringify(previewNode.dispatch, null, 2)}</pre></dd></div> : <>
-            <div><dt>{t('flow.engine')}</dt><dd>{previewNode.engine || t('common.none')}</dd></div>
+            <div><dt>{t('flow.engine')}</dt><dd>{previewNode.engine || t('settings.defaultExecutionEngine')}</dd></div>
             <div><dt>{t('flow.modelOptional')}</dt><dd>{previewNode.model || t('flow.engineDefaultModel')}</dd></div>
             <div><dt>{t('flow.prompt')}</dt><dd className="mobile-node-prompt">{previewNode.prompt || t('common.none')}</dd></div>
             {Object.keys(previewNode.config || {}).length > 0 && <div><dt>{t('flow.stageConfig')}</dt><dd><pre>{JSON.stringify(previewNode.config, null, 2)}</pre></dd></div>}
@@ -1724,6 +1747,13 @@ function FlowCanvasInner({
             <>
               <MenuItem onClick={() => { close(); handleAddNode() }}>{t('flow.addStage')}</MenuItem>
               <MenuItem onClick={() => { close(); handleAddDispatchNode() }}>{t('flow.addDispatchStage')}</MenuItem>
+              <MenuItem onClick={() => {
+                close()
+                const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+                setNodes(nds => [...nds, ...loadBookmarks({ bookmarks: [{ id, text: '', position: { x: 300, y: 150 } }] })])
+                setDirty(true)
+                setTimeout(() => fitView({ padding: 0.2 }), 100)
+              }}>{t('flow.bookmark')}</MenuItem>
               <MenuItem onClick={() => { close(); void openCopyModal() }}>{t('flow.copyNodeFromWorkflow')}</MenuItem>
             </>
           )}
@@ -1735,10 +1765,11 @@ function FlowCanvasInner({
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1 }} onClick={() => { if (selectedNode && !nodeConfigDirty) { setNodeConfigError(""); setSelectedNode(null); setNodeConfigDirty(false); } } }>
+          <BookmarkContext.Provider value={{ readOnly, onChange: () => setDirty(true) }}>
           <ReactFlow nodes={nodes} edges={edges}
-            onNodesChange={readOnly ? changes => onNodesChange(changes.filter(change => change.type === 'dimensions' || change.type === 'select')) : onNodesChange} onEdgesChange={readOnly ? undefined : onEdgesChange}
+            onNodesChange={readOnly ? changes => onNodesChange(changes.filter(change => change.type === 'dimensions' || change.type === 'select')) : changes => { onNodesChange(changes); if (changes.some(change => change.type === 'position' || change.type === 'remove' || (change.type === 'dimensions' && Boolean(change.resizing)))) setDirty(true) }} onEdgesChange={readOnly ? undefined : onEdgesChange}
             nodesDraggable={!readOnly} nodesConnectable={!readOnly} edgesReconnectable={!readOnly}
-            onNodeClick={readOnly ? (event, node) => { event.stopPropagation(); setPreviewNode(node.data as StepNodeData) } : undefined}
+            onNodeClick={readOnly ? (event, node) => { event.stopPropagation(); if (node.type !== 'bookmark') setPreviewNode(node.data as StepNodeData) } : undefined}
             onConnect={readOnly ? undefined : onConnect} onNodeDoubleClick={readOnly ? undefined : onNodeDoubleClick}
             onNodeContextMenu={readOnly ? undefined : onNodeContextMenu} onEdgeDoubleClick={readOnly ? undefined : onEdgeDoubleClick}
             nodeTypes={nodeTypes} fitView minZoom={0.1} deleteKeyCode={null}
@@ -1746,6 +1777,7 @@ function FlowCanvasInner({
             style={{ background: 'var(--surface)' }}>
             <Controls position="top-right" showInteractive={!readOnly} /><Background gap={20} size={1} color="var(--border)" />
           </ReactFlow>
+          </BookmarkContext.Provider>
         </div>
 
         {/* Config panel */}
@@ -1756,6 +1788,7 @@ function FlowCanvasInner({
             engines={availableEngines}
             enginesLoading={enginesLoading}
             enginesError={enginesError}
+            defaultExecutionEngine={defaultExecutionEngine}
             unavailableKeys={nodes
               .map((node) => node.data as StepNodeData)
               .filter((node) => node.nodeId !== selectedNode.nodeId)

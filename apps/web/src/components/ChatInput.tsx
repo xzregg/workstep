@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type DragEvent,
   type ReactNode,
   type Ref,
 } from 'react'
@@ -23,6 +24,7 @@ import {
   type MarkdownTextSegment,
 } from '../utils/markdownImages'
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
+import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 
 const inputItemIcon = (item: EngineInputItem) => {
   if (item.kind === 'skill') return 'sparkles' as const
@@ -226,6 +228,7 @@ export default function ChatInput({
   const permissionButtonRef = useRef<HTMLButtonElement>(null)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
   const [slashCursor, setSlashCursor] = useState(value.length)
@@ -235,6 +238,7 @@ export default function ChatInput({
   const [skillsError, setSkillsError] = useState(false)
   const [skillIndex, setSkillIndex] = useState(0)
   const attachInputRef = useRef<HTMLInputElement>(null)
+  const attachFileInputRef = useRef<HTMLInputElement>(null)
   const canSend = !disabled
     && (!running || allowSendWhileRunning)
     && !stopping
@@ -424,14 +428,17 @@ export default function ChatInput({
     }
   }
 
-  // ── Image attach (single implementation shared by every chat) ──────────
-  const handleAttachImage = async (file: File) => {
-    if (!imageAttach || !file.type.startsWith('image/')) return
+  // ── Attachments (single implementation shared by every chat) ───────────
+  const handleAttach = async (file: File) => {
+    if (!imageAttach) return
+    const isImage = file.type.startsWith('image/')
     imageAttach.onError?.('')
     setUploadingImage(true)
     try {
-      const uploaded = await fsApi.uploadImage(file, imageAttach.projectId, imageAttach.prefix)
-      const markdown = `![${imageAlt}](${uploaded.url})`
+      const uploaded = isImage
+        ? await fsApi.uploadImage(file, imageAttach.projectId, imageAttach.prefix)
+        : await fsApi.uploadFile(file, imageAttach.projectId, imageAttach.prefix)
+      const markdown = formatMarkdownAttachment(file, uploaded.url)
       const cursor = Math.max(0, Math.min(slashCursor, value.length))
       const before = value.slice(0, cursor)
       const after = value.slice(cursor)
@@ -443,20 +450,33 @@ export default function ChatInput({
       setSlashCursor(nextCursor)
       requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
     } catch (reason) {
-      imageAttach.onError?.(reason instanceof Error ? reason.message : t('chatInput.imageUploadFailed'))
+      imageAttach.onError?.(reason instanceof Error
+        ? reason.message
+        : isImage ? t('chatInput.imageUploadFailed') : t('chatInput.fileUploadFailed'))
     } finally {
       setUploadingImage(false)
     }
   }
 
-  const handleImagePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleAttachPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(event.clipboardData?.items || [])
-    const imageItem = items.find((item) => item.type.startsWith('image/'))
-    if (!imageItem) return
-    const file = imageItem.getAsFile()
+    const fileItem = items.find((item) => item.kind === 'file')
+    const file = fileItem?.getAsFile()
     if (!file) return
     event.preventDefault()
-    void handleAttachImage(file)
+    void handleAttach(file)
+  }
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!imageAttach) return
+    const files = Array.from(event.dataTransfer?.files || [])
+    setDragActive(false)
+    if (files.length === 0) return
+    event.preventDefault()
+    void files.reduce(
+      (chain, file) => chain.then(() => handleAttach(file)),
+      Promise.resolve(),
+    )
   }
 
   const updateTextSegment = (
@@ -539,16 +559,42 @@ export default function ChatInput({
       )}
       <div
         data-focused={focused}
+        data-dragging={imageAttach ? dragActive : undefined}
+        onDragEnter={imageAttach ? (event) => {
+          if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+          event.preventDefault()
+          setDragActive(true)
+        } : undefined}
+        onDragOver={imageAttach ? (event) => {
+          if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+        } : undefined}
+        onDragLeave={imageAttach ? (event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setDragActive(false)
+          }
+        } : undefined}
+        onDrop={imageAttach ? handleDrop : undefined}
         style={{
+          position: 'relative',
           border: '0.5px solid transparent',
           borderRadius: 12,
           background: 'var(--bg)',
           transition: 'box-shadow 0.15s',
-          boxShadow: focused
-            ? '0 0 0 0.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
-            : '0 0 0 0.5px var(--border-soft), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)',
+          boxShadow: dragActive
+            ? '0 0 0 1.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
+            : focused
+              ? '0 0 0 0.5px var(--accent), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)'
+              : '0 0 0 0.5px var(--border-soft), 0 1px 2px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02)',
         }}
       >
+        {imageAttach && dragActive && (
+          <div className="chat-input-drop-hint" aria-hidden="true">
+            <Icon name="paperclip" size={14} strokeWidth={1.8} />
+            <span>{t('chatInput.dropHint')}</span>
+          </div>
+        )}
         <div
           className="chat-input-editor"
           style={{ minHeight, maxHeight }}
@@ -627,7 +673,7 @@ export default function ChatInput({
                     }
                   }}
                   onKeyDown={handleKeyDown}
-                  onPaste={imageAttach ? handleImagePaste : onPaste}
+                  onPaste={imageAttach ? handleAttachPaste : onPaste}
                 />
               )
             })
@@ -645,7 +691,18 @@ export default function ChatInput({
                 disabled={uploadingImage}
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) void handleAttachImage(file)
+                  if (file) void handleAttach(file)
+                  e.target.value = ''
+                }}
+              />
+              <input
+                ref={attachFileInputRef}
+                type="file"
+                hidden
+                disabled={uploadingImage}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void handleAttach(file)
                   e.target.value = ''
                 }}
               />
@@ -708,6 +765,19 @@ export default function ChatInput({
                           <Icon name="image" size={14} strokeWidth={1.8} />
                         </span>
                         <span className="chat-input-menu-name">{t('chatInput.attachImage')}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="chat-input-menu-item"
+                        onClick={() => {
+                          setAttachMenuOpen(false)
+                          attachFileInputRef.current?.click()
+                        }}
+                      >
+                        <span className="chat-input-menu-icon">
+                          <Icon name="paperclip" size={14} strokeWidth={1.8} />
+                        </span>
+                        <span className="chat-input-menu-name">{t('chatInput.attachFile')}</span>
                       </button>
                       {plan && (
                         <button

@@ -1,9 +1,9 @@
+import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import Icon from '../components/Icon'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Button from '../components/Button'
-import ConfirmDialog from '../components/ConfirmDialog'
 import Input from '../components/Input'
 import Select from '../components/Select'
 import SegmentedControl from '../components/SegmentedControl'
@@ -17,14 +17,13 @@ import {
   type AssistantConfigInfo,
   type EngineInfo,
   type EngineInspectResult,
-  type EngineInstallResult,
   type EngineModel,
   type EngineTestResult,
   type ProviderInfo,
 } from '../api/client'
 import EngineConfigForm, { type EngineConfigFormHandle } from '../components/EngineConfigForm'
 import EngineSelect from '../components/EngineSelect'
-import EngineInstallProgress from '../components/EngineInstallProgress'
+import EngineRuntimeControl from '../components/EngineRuntimeControl'
 import { THINKING_EFFORT_LEVELS } from '../components/CoordinatorConfigBar'
 import TemplateSettings from './TemplateSettings'
 import ProviderSettings from './ProviderSettings'
@@ -759,10 +758,6 @@ export default function SettingsPage({
   const [error, setError] = useState('')
   const [testingEngine, setTestingEngine] = useState<string | null>(null)
   const [testResults, setTestResults] = useState<Record<string, EngineTestResult>>({})
-  const [installingEngine, setInstallingEngine] = useState<string | null>(null)
-  const [updatingEngine, setUpdatingEngine] = useState<string | null>(null)
-  const [termsEngine, setTermsEngine] = useState<EngineInfo | null>(null)
-  const [installResults, setInstallResults] = useState<Record<string, EngineInstallResult>>({})
   const [models, setModels] = useState<Record<string, EngineModel[]>>({})
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({})
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
@@ -954,65 +949,6 @@ export default function SettingsPage({
       }))
     } finally {
       setTestingEngine(null)
-    }
-  }
-
-  const installEngine = async (engineId: string, acceptThirdPartyTerms = false) => {
-    setInstallingEngine(engineId)
-    setInstallResults((current) => {
-      const next = { ...current }
-      delete next[engineId]
-      return next
-    })
-    try {
-      const result = await engineApi.install(engineId, acceptThirdPartyTerms)
-      setInstallResults((current) => ({ ...current, [engineId]: result }))
-      if (result.success) {
-        // 安装成功后重新扫描，让该引擎进入可用列表
-        await loadEngines(true)
-      }
-    } catch (installError) {
-      setInstallResults((current) => ({
-        ...current,
-        [engineId]: {
-          engine_id: engineId,
-          success: false,
-          already_installed: false,
-          message: installError instanceof Error
-            ? installError.message
-            : t('settings.installFailed', { error: '' }),
-        },
-      }))
-    } finally {
-      setInstallingEngine(null)
-    }
-  }
-
-  const updateEngine = async (engineId: string) => {
-    setUpdatingEngine(engineId)
-    setInstallResults((current) => {
-      const next = { ...current }
-      delete next[engineId]
-      return next
-    })
-    try {
-      const result = await engineApi.update(engineId)
-      setInstallResults((current) => ({ ...current, [engineId]: result }))
-      if (result.success) await loadEngines(true)
-    } catch (updateError) {
-      setInstallResults((current) => ({
-        ...current,
-        [engineId]: {
-          engine_id: engineId,
-          success: false,
-          already_installed: true,
-          message: updateError instanceof Error
-            ? updateError.message
-            : t('settings.updateFailed', { error: '' }),
-        },
-      }))
-    } finally {
-      setUpdatingEngine(null)
     }
   }
 
@@ -1341,10 +1277,7 @@ export default function SettingsPage({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {sortedEngines.map((engine) => {
                 const testResult = testResults[engine.id]
-                const installResult = installResults[engine.id]
                 const isTesting = testingEngine === engine.id
-                const isInstalling = installingEngine === engine.id
-                const isUpdating = updatingEngine === engine.id
                 const engineModels = models[engine.id] || []
                 const savedDefaultModel = defaultModels[engine.id] || ''
                 const usesCustomModel = Boolean(
@@ -1451,7 +1384,7 @@ export default function SettingsPage({
                     borderRadius: 12,
                     border: `1px solid ${onboardingCompatible ? 'var(--accent)' : engine.installed ? 'var(--border)' : 'var(--border-soft)'}`,
                     background: 'var(--bg)',
-                    opacity: engine.installed || isInstalling ? 1 : 0.62,
+                    opacity: engine.installed || engine.runtime_manageable ? 1 : 0.62,
                   }}
                 >
                   <div style={{
@@ -1518,18 +1451,7 @@ export default function SettingsPage({
                         {testResult.duration_ms > 0 && ` · ${testResult.duration_ms}ms`}
                       </div>
                     )}
-                    {installResult && (
-                      <div
-                        role="status"
-                        style={{
-                          marginTop: 7, fontSize: 'calc(11px * var(--font-scale))',
-                          color: installResult.success ? 'var(--success)' : 'var(--danger)',
-                          overflowWrap: 'anywhere',
-                        }}
-                      >
-                        {installResult.success ? '✓' : '×'} {installResult.message}
-                      </div>
-                    )}
+
                   </div>
                   {engine.installed && (
                     <Button
@@ -1543,41 +1465,6 @@ export default function SettingsPage({
                     </Button>
                   )}
 
-                  {engine.installed && engine.updatable && (
-                    <Button
-                      variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
-                      disabled={updatingEngine !== null || installingEngine !== null || testingEngine !== null}
-                      loading={isUpdating}
-                      title={engine.update_command
-                        ? `${t('settings.updateHint')}：${engine.update_command}`
-                        : undefined}
-                      onClick={() => void updateEngine(engine.id)}
-                    >
-                      {t('settings.update')}
-                    </Button>
-                  )}
-
-                  {!engine.installed && engine.installable && (
-                    <Button
-                      variant="ghost"
-                      style={{ minWidth: 62, height: 30, justifyContent: 'center' }}
-                      disabled={installingEngine !== null}
-                      loading={isInstalling}
-                      title={engine.install_command
-                        ? `${t('settings.installHint')}：${engine.install_command}`
-                        : undefined}
-                      onClick={() => {
-                        if (engine.requires_third_party_terms_acceptance) {
-                          setTermsEngine(engine)
-                        } else {
-                          void installEngine(engine.id)
-                        }
-                      }}
-                    >
-                      {t('settings.install')}
-                    </Button>
-                  )}
                   {engine.id === 'pydantic_ai' && engine.installed && (
                     <Button
                       variant="ghost"
@@ -1622,11 +1509,9 @@ export default function SettingsPage({
                     </Button>
                   )}
                   </div>
-                  <EngineInstallProgress
-                    active={isInstalling && !installResult}
-                    completed={installResult?.success === true && !installResult.already_installed}
-                    label={t('settings.installingEngine', { name: engineLabel(engine.id, t) })}
-                  />
+                  {engine.runtime_manageable && (
+                    <EngineRuntimeControl engineId={engine.id} onChanged={() => loadEngines(true)} />
+                  )}
                   <div style={{ display: isExpanded ? undefined : 'none' }}>
                   {engine.config && (
                     <EngineConfigForm
@@ -1825,6 +1710,7 @@ export default function SettingsPage({
                 </div>
               )}
             </div>
+            <ProjectDirectorySetting />
             <div style={{ paddingBottom: 22, marginBottom: 22, borderBottom: '1px solid var(--border-soft)' }}>
               <h2 style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 650, marginBottom: 5 }}>{t('settings.openMode')}</h2>
               <button
@@ -1905,30 +1791,7 @@ export default function SettingsPage({
           <AgentAssistantSettings />
         )}
       </section>
-      <ConfirmDialog
-        open={termsEngine !== null}
-        title={t('settings.thirdPartyTermsTitle')}
-        message={t('settings.thirdPartyTermsMessage', { engine: termsEngine ? engineLabel(termsEngine.id) : '' })}
-        confirmText={t('settings.acceptAndInstall')}
-        loading={Boolean(termsEngine && installingEngine === termsEngine.id)}
-        onCancel={() => setTermsEngine(null)}
-        onConfirm={() => {
-          if (!termsEngine) return
-          const engineId = termsEngine.id
-          void installEngine(engineId, true).finally(() => setTermsEngine(null))
-        }}
-      >
-        {termsEngine?.third_party_terms_url && (
-          <a
-            href={termsEngine.third_party_terms_url}
-            target="_blank"
-            rel="noreferrer"
-            style={{ display: 'inline-block', marginTop: 10, fontSize: 'calc(12px * var(--font-scale))' }}
-          >
-            {t('settings.reviewThirdPartyTerms')}
-          </a>
-        )}
-      </ConfirmDialog>
+
       </div>
       </div>
       {(inspecting || inspectResult || inspectError) && (

@@ -354,22 +354,6 @@ class ProjectManager:
             })
         return result
 
-    def _ensure_default_workflow(self, proj: Project) -> None:
-        """Seed the database with the built-in default workflow when empty."""
-        if Workflow.select().count() > 0:
-            return
-        now = utc_now()
-        wf_id = str(uuid.uuid4())[:8]
-        Workflow.create(
-            id=wf_id,
-            name="默认流程",
-            steps_json=json.dumps(DEFAULT_STEPS, ensure_ascii=False),
-            is_default=1,
-            created_at=now,
-            updated_at=now,
-        )
-        logger.info("Created default workflow for %s", proj.path)
-
     def _restore_project_identity(self, proj: Project, project_id: str | None = None) -> None:
         """Keep project-scoped rows reachable after removing the global registry entry."""
         identity_path = proj.path / settings.workstep_dir / "project.json"
@@ -673,10 +657,9 @@ class ProjectManager:
         project = Project(path=path, db=db, steps={}, name=name or path.name, id=str(uuid.uuid4())[:8])
         self._projects[path_str] = project
 
-        # Seed the canonical workflows table directly.
+        # Load existing workflows; new projects start empty.
         with ProjectContext(project):
             self._restore_project_identity(project)
-            self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
         self._save_config()
@@ -706,10 +689,9 @@ class ProjectManager:
         project = Project(path=path, db=db, steps={}, name=name or path.name, id=project_id or str(uuid.uuid4())[:8])
         self._projects[path_str] = project
 
-        # Ensure the canonical workflows table is usable, then sync the cache.
+        # Restore existing workflows without seeding empty projects.
         with ProjectContext(project):
             self._restore_project_identity(project, project_id)
-            self._ensure_default_workflow(project)
             self._sync_project_workflows(project)
 
         logger.info("Registered project: %s (id=%s)", path_str, project.id)

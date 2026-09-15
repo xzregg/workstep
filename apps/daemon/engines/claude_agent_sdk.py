@@ -11,6 +11,7 @@ import uuid
 from typing import Any, AsyncIterator, Mapping
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
@@ -53,6 +54,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "claude_agent_sdk"
+    RUNTIME_PACKAGE = RuntimePackage('claude-agent-sdk', 'pypi', '0.1.0', None)
     UPDATE_PACKAGE = "claude-agent-sdk"
 
     async def set_permission_mode(self, mode: str) -> None:

@@ -36,6 +36,7 @@ import { useI18n } from '../i18n'
 import { clearDraft, loadDraft, saveDraft } from '../utils/chatDraft'
 import { clearInsertQueue, loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
 import {
+  clearIncompatibleProvider,
   clearChatEngineConfig,
   EMPTY_ENGINE_CONFIG,
   hasChatEngineConfig,
@@ -307,12 +308,20 @@ export default function ChatPage() {
         // 且用户可能改过配置但尚未发消息）。无记录时思考强度归默认。
         const saved = loadChatEngineConfig(activeProject.id, sessionParam)
         if (hasChatEngineConfig(saved)) {
-          setSelectedEngine(saved.engine)
-          setSelectedProvider(saved.providerId)
-          setSelectedModel(saved.model)
-          setSelectedFastModel(saved.fastModel)
-          setSelectedVisionModel(saved.visionModel)
-          setSelectedThinkingEffort(saved.thinkingEffort)
+          const restored = clearIncompatibleProvider(
+            saved,
+            sharedEngines,
+            providers,
+          )
+          if (restored.providerId !== saved.providerId) {
+            saveChatEngineConfig(activeProject.id, sessionParam, restored)
+          }
+          setSelectedEngine(restored.engine)
+          setSelectedProvider(restored.providerId)
+          setSelectedModel(restored.model)
+          setSelectedFastModel(restored.fastModel)
+          setSelectedVisionModel(restored.visionModel)
+          setSelectedThinkingEffort(restored.thinkingEffort)
         } else {
           setSelectedThinkingEffort('')
         }
@@ -350,7 +359,7 @@ export default function ChatPage() {
         navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
       })
     return () => { active = false }
-  }, [sessionParam, activeProject?.id, projectParam, workflowParam, navigate, resetEnhance])
+  }, [sessionParam, activeProject?.id, projectParam, workflowParam, navigate, resetEnhance, sharedEngines, providers])
 
   // Keep the sidebar session list fresh (titles/previews after turns).
   useEffect(() => {
@@ -424,7 +433,10 @@ export default function ChatPage() {
     saveInsertQueue(target.projectId, target.sessionId, pendingInserts)
   }, [pendingInserts])
 
-  const sendMessageNow = useCallback(async (content: string): Promise<boolean> => {
+  const sendMessageNow = useCallback(async (
+    content: string,
+    options: { useSessionDefaults?: boolean } = {},
+  ): Promise<boolean> => {
     if (!content || !sessionId) {
       if (!sessionId) setSendError(t('chatSession.noSession'))
       return false
@@ -434,12 +446,12 @@ export default function ChatPage() {
     try {
       useChatSessionStore.getState().addUserMessage(sessionId, content)
       const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomId(), {
-        engine: selectedEngine || undefined,
-        provider_id: selectedProvider || undefined,
-        model: selectedModel || undefined,
-        fast_model: selectedFastModel || undefined,
-        vision_model: selectedVisionModel || undefined,
-        thinking_effort: selectedThinkingEffort || undefined,
+        engine: options.useSessionDefaults ? undefined : selectedEngine || undefined,
+        provider_id: options.useSessionDefaults ? undefined : selectedProvider || undefined,
+        model: options.useSessionDefaults ? undefined : selectedModel || undefined,
+        fast_model: options.useSessionDefaults ? undefined : selectedFastModel || undefined,
+        vision_model: options.useSessionDefaults ? undefined : selectedVisionModel || undefined,
+        thinking_effort: options.useSessionDefaults ? undefined : selectedThinkingEffort || undefined,
         permission_mode: permissionMode || undefined,
         plan_mode: planMode || undefined,
       })
@@ -525,7 +537,7 @@ export default function ChatPage() {
     const content = items.map((item) => item.content).join('\n\n')
     // 引擎已完成（竞态：用户输入时 running，点击发送时已结束）→ 降级为新 turn
     if (!running) {
-      const ok = await sendMessageNow(content)
+      const ok = await sendMessageNow(content, { useSessionDefaults: true })
       if (ok) {
         setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
         setEditingInsertId(null)
@@ -547,7 +559,7 @@ export default function ChatPage() {
       const msg = reason instanceof Error ? reason.message : ''
       if (msg.includes('not running')) {
         // 后端也认为已结束 → 降级为新 turn
-        const ok = await sendMessageNow(content)
+        const ok = await sendMessageNow(content, { useSessionDefaults: true })
         if (ok) {
           setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
           setEditingInsertId(null)
@@ -596,7 +608,7 @@ export default function ChatPage() {
     autoDrainingRef.current = true
     setSendingInsertIds([first.id])
     setSendError('')
-    void sendMessageNow(first.content).then((ok) => {
+    void sendMessageNow(first.content, { useSessionDefaults: true }).then((ok) => {
       if (ok) {
         setPendingInserts((current) => current.filter((item) => item.id !== first.id))
         setEditingInsertId(null)

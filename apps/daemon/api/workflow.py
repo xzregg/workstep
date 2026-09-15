@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 from schemas.project import CreateWorkflowRequest, UpdateWorkflowRequest
 from engines.core.registry import list_all_engines
 from services import config as config_service
+from services.config import resolve_execution_engine
 from services.project import project_manager
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 
@@ -86,6 +87,7 @@ def _validate_stage_provider(
         raise HTTPException(status_code=422, detail=f"{location}供应商不存在")
     if not provider.get("enabled", True):
         raise HTTPException(status_code=422, detail=f"{location}供应商已停用")
+    engine_id = resolve_execution_engine(engine_id)
     engine_cls = list_all_engines().get(engine_id.replace("-", "_"))
     if engine_cls is None or not engine_cls.supports_provider(provider):
         raise HTTPException(

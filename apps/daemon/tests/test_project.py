@@ -41,8 +41,8 @@ def manager(tmp_path):
     m.close_all()
 
 
-def test_init_project_persists_default_workflow_without_steps_json(tmp_path, manager):
-    """init_project stores the default workflow only in workstep.db."""
+def test_init_project_starts_without_workflows_or_steps_json(tmp_path, manager):
+    """init_project creates a database but no workflows."""
     m, _, _ = manager
     proj = m.init_project(tmp_path)
 
@@ -50,8 +50,8 @@ def test_init_project_persists_default_workflow_without_steps_json(tmp_path, man
     assert ws_dir.exists()
     assert not (ws_dir / "steps.json").exists()
     assert (ws_dir / "workstep.db").exists()
-    assert proj.default_workflow() is not None
-    assert proj.default_workflow()["steps"] == DEFAULT_STEPS
+    assert proj.default_workflow() is None
+    assert proj.workflows == []
 
 
 def test_init_project_adds_workstep_to_git_and_docker_ignore_files(tmp_path, manager):
@@ -73,7 +73,7 @@ def test_init_project_returns_project(tmp_path, manager):
     proj = m.init_project(tmp_path)
 
     assert proj.path == tmp_path.resolve()
-    assert proj.steps == DEFAULT_STEPS
+    assert proj.steps == {}
     assert proj.db is not None
     assert not proj.db.is_closed()
 
@@ -86,7 +86,7 @@ def test_init_project_idempotent(tmp_path, manager):
 
     assert proj1 is proj2
     assert not (tmp_path / ".workstep" / "steps.json").exists()
-    assert proj1.default_workflow()["steps"] == DEFAULT_STEPS
+    assert proj1.workflows == []
 
 
 def test_register_existing_project(tmp_path, manager):
@@ -100,7 +100,7 @@ def test_register_existing_project(tmp_path, manager):
     with patch("services.project.config_store", store):
         proj = m2.register(tmp_path)
         assert proj.path == tmp_path.resolve()
-        assert proj.steps == DEFAULT_STEPS
+        assert proj.steps == {}
     m2.close_all()
 
 
@@ -108,13 +108,12 @@ def test_reopen_empty_project_preserves_identity(tmp_path, manager):
     m, _, _ = manager
     project = m.init_project(tmp_path)
     project_id = project.id
-    workflow_id = project.default_workflow()["id"]
     m.unregister(project_id)
 
     reopened = m.init_project(tmp_path)
 
     assert reopened.id == project_id
-    assert reopened.default_workflow()["id"] == workflow_id
+    assert reopened.workflows == []
 
 
 def test_legacy_workflow_assistant_identity_is_restored(tmp_path, manager):
@@ -122,7 +121,7 @@ def test_legacy_workflow_assistant_identity_is_restored(tmp_path, manager):
 
     m, _, _ = manager
     project = m.init_project(tmp_path)
-    workflow_id = project.default_workflow()["id"]
+    workflow_id = m.create_workflow(project, "旧流程", DEFAULT_STEPS)["id"]
     WorkflowGenSession.create(
         id=f"{project.id}:{workflow_id}", project_id=project.id,
         workflow_id=workflow_id, engine="codex", messages_json='[{"content":"旧流程对话"}]',
@@ -151,7 +150,7 @@ def test_register_does_not_import_legacy_steps_json(tmp_path, manager):
 
     project = m.register(tmp_path)
 
-    assert project.default_workflow()["steps"] == DEFAULT_STEPS
+    assert project.workflows == []
 
 
 def test_register_nonexistent_raises(tmp_path, manager):
@@ -546,8 +545,10 @@ def test_workflow_running_flag_is_computed_per_project(tmp_path, manager):
     proj_b.mkdir()
     pa = m.init_project(proj_a)
     pb = m.init_project(proj_b)
-    wf_a = pa.workflows[0]["id"]
-    wf_b = pb.workflows[0]["id"]
+    with m.activate_project(proj_a):
+        wf_a = m.create_workflow(pa, "Flow A")["id"]
+    with m.activate_project(proj_b):
+        m.create_workflow(pb, "Flow B")
 
     with m.activate_project(proj_a):
         _seed_workflow_task_data(m, pa, wf_a, task_id="task-a")

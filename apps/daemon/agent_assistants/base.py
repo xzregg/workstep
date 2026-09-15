@@ -56,6 +56,15 @@ SESSION_TTL_SECONDS = 60 * 60
 
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
+_CODEX_ROLLOUT_MISSING_RE = re.compile(
+    r"no rollout found for thread id\s+\S+",
+    re.IGNORECASE,
+)
+
+
+def is_missing_codex_rollout_error(error: BaseException | str) -> bool:
+    """Return True only for Codex's explicit missing-rollout resume error."""
+    return bool(_CODEX_ROLLOUT_MISSING_RE.search(str(error)))
 
 
 def extract_uploaded_images(project, cwd: str, content: str) -> list[EngineImage]:
@@ -1790,15 +1799,39 @@ class AssistantRuntime:
                 invoke_kwargs = {"message_history": session.engine_state}
                 if images:
                     invoke_kwargs["images"] = images
-                raw, _events, resolved = await self._invoke(
-                    session.engine,
-                    turn_model,
-                    session.cwd,
-                    prompt,
-                    session.resolved_session_id,
-                    make_live_callback(journaled_events),
-                    **invoke_kwargs,
-                )
+                try:
+                    raw, _events, resolved = await self._invoke(
+                        session.engine,
+                        turn_model,
+                        session.cwd,
+                        prompt,
+                        session.resolved_session_id,
+                        make_live_callback(journaled_events),
+                        **invoke_kwargs,
+                    )
+                except RuntimeError as exc:
+                    if (
+                        not session.resolved_session_id
+                        or not is_missing_codex_rollout_error(exc)
+                    ):
+                        raise
+                    logger.warning(
+                        "Engine session %s lost its rollout; rebuilding from history",
+                        session.resolved_session_id,
+                    )
+                    rebuild_prompt = await asyncio.to_thread(
+                        self._build_rebuild_prompt,
+                        session,
+                    )
+                    raw, _events, resolved = await self._invoke(
+                        session.engine,
+                        turn_model,
+                        session.cwd,
+                        rebuild_prompt,
+                        None,
+                        make_live_callback(journaled_events),
+                        **invoke_kwargs,
+                    )
                 # 回合结束：先冲刷聚合器里剩余的思考流，再补录非实时事件。
                 for pending in thought_aggregator.flush():
                     await emit_aggregated(pending)
@@ -2152,6 +2185,25 @@ class AssistantRuntime:
             workstep_tools=self._config.workstep_tools,
             config_overrides=config_overrides,
             live_message_queue=turn_state.get("live_message_queue"),
+        )
+
+    def _build_rebuild_prompt(self, session: AssistantSession) -> str:
+        """Build a stateless prompt after an engine session was lost."""
+        turns = [
+            item
+            for item in session.messages
+            if not (
+                item.get("role") == "assistant"
+                and item.get("status") == "running"
+            )
+        ][-self._config.max_history_turns * 2:]
+        history = "\n\n".join(
+            f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+            for item in turns
+        )
+        return (
+            f"{self._config.system_prompt}"
+            f"\n\n历史对话：\n{history}\n\n请继续。"
         )
 
     async def _publish(

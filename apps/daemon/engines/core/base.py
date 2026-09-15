@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, ClassVar
 
 logger = logging.getLogger(__name__)
 
+from engines.core.packages import RuntimePackage
 from engines.core.events import InternalEvent
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 
@@ -207,9 +208,12 @@ async def run_install_command(
     )
     try:
         output, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
-        proc.kill()
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+        if proc.returncode is None:
+            proc.kill()
         await proc.wait()
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         raise RuntimeError(f"安装超时（超过 {timeout:g} 秒）") from None
     return proc.returncode, output.decode(errors="replace").strip()
 
@@ -542,6 +546,7 @@ class BaseLLMEngine(ABC):
 
     # --- Install (runtime bootstrap) ---
 
+    RUNTIME_PACKAGE: ClassVar[RuntimePackage | None] = None
     UPDATE_PACKAGE: ClassVar[str | None] = None
 
 

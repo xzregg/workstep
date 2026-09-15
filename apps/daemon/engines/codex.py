@@ -15,6 +15,7 @@ from typing import AsyncIterator
 import re
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
@@ -72,6 +73,7 @@ def _escalate_sandbox(mode: str) -> str:
 
 class CodexEngine(AcpEngineBase):
     ENGINE_ID = "codex"
+    RUNTIME_PACKAGE = RuntimePackage('@openai/codex', 'npm', '0', None)
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:

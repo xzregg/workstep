@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from models import Task
-from services.project import ProjectManager
+from services.project import DEFAULT_STEPS, ProjectManager
 from streaming.bus import EventBus
 
 
@@ -87,6 +87,7 @@ async def draft_module(tmp_path, monkeypatch):
     bus = EventBus()
     module = task_draft_service.TaskDraftModule(bus, manager)
     project = manager.init_project(tmp_path / "draft-proj")
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     project.workstep_dir.joinpath("MEMORY.md").write_text(
         "# 约定\n\n只使用简体中文。", encoding="utf-8"
     )
@@ -322,6 +323,7 @@ async def test_task_draft_http_contract(tmp_path, monkeypatch):
     module = task_draft_service.TaskDraftModule(bus, manager)
     monkeypatch.setattr(main, "task_draft_module", module)
     project = manager.init_project(tmp_path / "http-draft")
+    await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
 
     async def fake_invoke(*args, **kwargs):
         return json.dumps({"reply": "ok", "task_draft": None}), [], None

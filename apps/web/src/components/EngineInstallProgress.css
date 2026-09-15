@@ -30,7 +30,6 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 300ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -41,4 +40,18 @@
   .engine-install-progress .spinner {
     animation: none;
   }
+}
+
+.engine-install-progress-label { flex-wrap: wrap; }
+.engine-install-progress-value { font-variant-numeric: tabular-nums; }
+.engine-install-progress-fill.is-indeterminate {
+  width: 30%;
+  animation: engine-install-pending 1.5s ease-in-out infinite;
+}
+@keyframes engine-install-pending {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .engine-install-progress-fill.is-indeterminate { animation: none; }
 }

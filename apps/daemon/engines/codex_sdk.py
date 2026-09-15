@@ -11,6 +11,7 @@ import uuid
 from typing import Any, AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
@@ -53,6 +54,7 @@ class CodexSDKEngine(AcpEngineBase):
     """
 
     ENGINE_ID = "codex_sdk"
+    RUNTIME_PACKAGE = RuntimePackage('openai-codex', 'pypi', '0.147.0', None)
     UPDATE_PACKAGE = "openai-codex"
     QUOTA_TIMEOUT_SECONDS = 5
 

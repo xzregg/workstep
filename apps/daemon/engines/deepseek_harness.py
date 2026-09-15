@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineCapabilities,
     EngineInstallResult,
@@ -40,6 +41,7 @@ class DeepSeekHarnessEngine(AcpEngineBase):
     """Run the official local DeepSeek Harness composition through its SDK."""
 
     ENGINE_ID = "deepseek_harness"
+    RUNTIME_PACKAGE = RuntimePackage('deepseek-harness-sdk', 'pypi', '0.1.0rc6', '0.1.0rc6')
     UPDATE_PACKAGE = "deepseek-harness-sdk"
 
     @classmethod

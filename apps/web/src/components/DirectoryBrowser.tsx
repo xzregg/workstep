@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Button from './Button'
 import Input from './Input'
+import Spinner from './Spinner'
 import { useI18n } from '../i18n'
 import { fsApi, type DirectoryBrowseResult, type DirectoryEntry } from '../api/client'
 
@@ -14,25 +15,34 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
   const { t } = useI18n()
   const [current, setCurrent] = useState<DirectoryBrowseResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [browseError, setBrowseError] = useState('')
   const [creating, setCreating] = useState(false)
   const [creatingBusy, setCreatingBusy] = useState(false)
   const [newName, setNewName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
 
-  const browse = async (path?: string) => {
+  const browse = async (path?: string, fallbackToHome = false) => {
     setLoading(true)
+    setBrowseError('')
     try {
       const data = await fsApi.browse(path)
       setCurrent(data)
     } catch (e) {
-      console.error('Browse failed:', e)
+      setBrowseError(e instanceof Error ? e.message : String(e))
+      if (fallbackToHome && path) {
+        try {
+          setCurrent(await fsApi.browse())
+        } catch (reason) {
+          setBrowseError(reason instanceof Error ? reason.message : String(reason))
+        }
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    browse(initialPath)
+    void browse(initialPath, true)
   }, [initialPath])
 
   const handleDoubleClick = (entry: DirectoryEntry) => {
@@ -149,6 +159,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
         </div>
       )}
 
+      {browseError && <div role="alert" style={{ padding: '8px 12px', color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{browseError}</div>}
       {/* File list */}
       <div style={{
         maxHeight: 300, overflowY: 'auto',
@@ -156,6 +167,7 @@ export default function DirectoryBrowser({ onSelect, selectedPath, initialPath }
       }} role="listbox" aria-label={t('browser.directoryList')}>
         {loading && (
           <div style={{ padding: 12, textAlign: 'center', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))' }}>
+            <Spinner size={12} />{' '}
             {t('common.loading')}
           </div>
         )}

@@ -1656,6 +1656,86 @@ async def test_failed_turn_persists_started_engine_session_for_next_turn(
 
 
 @pytest.mark.anyio
+async def test_missing_codex_rollout_rebuilds_session_with_history(
+    chat_module, monkeypatch
+):
+    """Codex rollout 丢失时，下一轮重建线程并带上已有对话历史。"""
+    import agent_assistants.chat_session as chat_service
+
+    module, _bus, _manager, project, _ = chat_module
+    resumable_engine = FakeEngine()
+    resumable_engine.supports_resume = True
+    monkeypatch.setattr(
+        chat_service,
+        "create_engine",
+        lambda _engine_id: resumable_engine,
+    )
+
+    session = module.create_session(project.id, title="历史会话", engine="codex_sdk")
+    with module._project_ctx(project.id):
+        row = ChatSession.get_by_id(session["id"])
+        row.engine_session_id = "01a0a357-3f26-7e41-b07a-cd0881953ede"
+        row.save(only=[ChatSession.engine_session_id])
+        base_time = utc_now()
+        ChatMessage.create(
+            id="history-user",
+            session=row,
+            role="user",
+            content="之前讨论的实现方案",
+            created_at=base_time,
+        )
+        ChatMessage.create(
+            id="history-assistant",
+            session=row,
+            role="assistant",
+            content="之前已经完成了登录模块。",
+            status="succeeded",
+            created_at=base_time + timedelta(seconds=1),
+        )
+
+    calls: list[tuple[str | None, str]] = []
+
+    async def fake_invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+    ):
+        calls.append((session_id, prompt))
+        if session_id:
+            raise RuntimeError(
+                "JSON-RPC error -32600: no rollout found for "
+                f"thread id {session_id}"
+            )
+        return "继续完成", [], "rebuilt-session"
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "继续补测试",
+        "idem-missing-rollout",
+        engine="codex_sdk",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert calls[0][0] == "01a0a357-3f26-7e41-b07a-cd0881953ede"
+    assert calls[1][0] is None
+    assert "之前讨论的实现方案" in calls[1][1]
+    assert "之前已经完成了登录模块。" in calls[1][1]
+    assert "继续补测试" in calls[1][1]
+    detail = module.get_session(project.id, session["id"])
+    assert detail["engine_session_id"] == "rebuilt-session"
+    assert any(
+        item["content"] == "继续完成"
+        for item in detail["messages"]
+    )
+
+
+@pytest.mark.anyio
 async def test_stopped_turn_persists_started_engine_session_for_next_turn(
     chat_module, monkeypatch
 ):

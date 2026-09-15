@@ -1319,6 +1319,29 @@ class ChatSessionModule(AssistantRuntime):
         tail = f"历史对话：\n{history}\n\n请继续。"
         return f"{prompt}\n\n{tail}" if prompt else tail
 
+    def _build_rebuild_prompt(self, session) -> str:
+        """Rebuild a lost engine thread from the persisted conversation."""
+        prompt = self._build_prompt(session)
+        if session.resolved_session_id:
+            turns = [
+                item for item in session.messages
+                if not (
+                    item.get("role") == "assistant"
+                    and item.get("status") == "running"
+                )
+            ][-self._config.max_history_turns * 2:]
+            history = "\n\n".join(
+                f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+                for item in turns
+            )
+            tail = f"历史对话：\n{history}\n\n请继续。"
+            prompt = (
+                f"{self.get_system_prompt(session.project_id)}\n\n{tail}"
+                if self.get_system_prompt(session.project_id)
+                else tail
+            )
+        return prompt
+
     def _system_prompt_for_display(self, session) -> str:
         """Show the project-specific instruction, including on resumed turns."""
         return self.get_system_prompt(session.project_id)

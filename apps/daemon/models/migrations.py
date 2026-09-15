@@ -100,6 +100,10 @@ _ADDITIVE_COLUMNS = {
         "pending_handoff_json": "TEXT",
         "session_provider": "TEXT",
     },
+    "workflow_runs": {
+        "owner_id": "TEXT",
+        "heartbeat_at": "DATETIME",
+    },
 }
 
 

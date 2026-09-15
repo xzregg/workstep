@@ -167,6 +167,8 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        from services.engine_runtime import runtime_manager
+        await runtime_manager.shutdown()
         logger.info("WorkStep Daemon shutting down")
         if workflow_gen_module is not None:
             await workflow_gen_module.shutdown()

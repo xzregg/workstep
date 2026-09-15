@@ -23,6 +23,7 @@ from services.config import (
     config_store,
 )
 from services import providers as provider_service
+from services import engine_runtime
 from services.project import project_manager
 
 router = APIRouter(prefix="/api/engine")
@@ -64,6 +65,12 @@ class EngineConfigSaveRequest(BaseModel):
 
 class EngineConfigRevealRequest(BaseModel):
     key: str = Field(min_length=1, max_length=200)
+
+
+class EngineRuntimeRequest(BaseModel):
+    version: str | None = Field(default=None, max_length=100, pattern=r"^[0-9][0-9A-Za-z.+-]*$")
+    rollback: bool = False
+    accept_third_party_terms: bool = False
 
 
 class EngineInstallRequest(BaseModel):
@@ -260,9 +267,46 @@ async def test_engine(req: EngineTestRequest):
     }
 
 
+@router.get("/{engine_id}/runtime")
+async def engine_runtime_catalog(engine_id: str):
+    try:
+        return await engine_runtime.runtime_manager.catalog(engine_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{engine_id}/runtime/operation")
+async def engine_runtime_operation(engine_id: str):
+    try:
+        return await engine_runtime.runtime_manager.operation(engine_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{engine_id}/runtime/operation", status_code=202)
+async def start_engine_runtime_operation(engine_id: str, req: EngineRuntimeRequest):
+    try:
+        return await engine_runtime.runtime_manager.start(
+            engine_id, req.version, rollback=req.rollback,
+            accept_terms=req.accept_third_party_terms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/{engine_id}/install")
 async def install_engine(engine_id: str, req: EngineInstallRequest | None = None):
-    """Install an engine's runtime (CLI binary / Python SDK) on this host."""
+    try:
+        async with engine_runtime.runtime_manager.legacy_operation():
+            return await _install_engine(engine_id, req)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+async def _install_engine(engine_id: str, req: EngineInstallRequest | None):
+    """Compatibility endpoint for clients predating version selection."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")
@@ -305,7 +349,15 @@ async def install_engine(engine_id: str, req: EngineInstallRequest | None = None
 
 @router.post("/{engine_id}/update")
 async def update_engine(engine_id: str):
-    """Update an installed SDK engine package in the daemon environment."""
+    try:
+        async with engine_runtime.runtime_manager.legacy_operation():
+            return await _update_engine(engine_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+async def _update_engine(engine_id: str):
+    """Compatibility endpoint for clients predating version selection."""
     cls = list_all_engines().get(engine_id)
     if cls is None:
         raise HTTPException(status_code=404, detail="未知引擎")

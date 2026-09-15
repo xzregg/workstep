@@ -9,7 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from models import Message, ReviewRun, StepRun, Task, WorkflowRun
-from services.project import ProjectManager
+from services.project import DEFAULT_STEPS, ProjectManager
 from services.statistics import StatisticsModule, StatisticsQuery, _usage_cost
 
 
@@ -77,7 +77,9 @@ def statistics_fixture(tmp_path, monkeypatch):
     project_a_path.mkdir()
     project_b_path.mkdir()
     project_a = manager.init_project(project_a_path)
+    manager.create_workflow(project_a, "测试流程", DEFAULT_STEPS)
     project_b = manager.init_project(project_b_path)
+    manager.create_workflow(project_b, "测试流程", DEFAULT_STEPS)
 
     base = datetime(2026, 8, 10, 0, 0, tzinfo=timezone.utc)
     workflow_a = project_a.default_workflow()

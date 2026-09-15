@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ============================================================
 # 阶段 1：前端构建（web + landing）
 # 完整 node:24-bookworm 提供 yarn（corepack）与编译工具，产物仅拷贝进最终镜像
@@ -8,13 +6,21 @@ FROM node:24-bookworm AS web-build
 
 WORKDIR /app/apps/web
 COPY apps/web/package.json apps/web/yarn.lock ./
-RUN corepack enable && corepack prepare yarn@1.22.22 --activate && yarn install --frozen-lockfile
+RUN sed -i 's#https://registry.yarnpkg.com#https://registry.npmmirror.com#g; s#https://registry.npmjs.org#https://registry.npmmirror.com#g' yarn.lock \
+    && npm config set registry https://registry.npmmirror.com \
+    && corepack enable && corepack prepare yarn@1.22.22 --activate \
+    && yarn config set registry https://registry.npmmirror.com \
+    && yarn install --frozen-lockfile
 COPY apps/web ./
 RUN yarn build
 
 WORKDIR /app/apps/landing
 COPY apps/landing/package.json apps/landing/yarn.lock ./
-RUN corepack enable && corepack prepare yarn@1.22.22 --activate && yarn install --frozen-lockfile
+RUN sed -i 's#https://registry.yarnpkg.com#https://registry.npmmirror.com#g; s#https://registry.npmjs.org#https://registry.npmmirror.com#g' yarn.lock \
+    && npm config set registry https://registry.npmmirror.com \
+    && corepack enable && corepack prepare yarn@1.22.22 --activate \
+    && yarn config set registry https://registry.npmmirror.com \
+    && yarn install --frozen-lockfile
 COPY apps/landing ./
 # 官网以 /landing 子路径托管（与 start.sh 生产模式一致），否则资源路径错误
 RUN LANDING_BASE=/landing/ yarn build
@@ -32,6 +38,8 @@ FROM node:24-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git curl \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm config set registry https://registry.npmmirror.com
 
 # uv —— Python 依赖与解释器管理；UV_CACHE_DIR 指向 /tmp 便于构建后清理
 ENV UV_PYTHON=3.14 \
@@ -66,7 +74,8 @@ COPY --from=web-build /app/apps/web/dist ../web/dist
 COPY --from=web-build /app/apps/landing/dist ../landing/dist
 
 # 数据 / 配置 / 会话目录：~/.workstep、~/.codex、~/.claude
-VOLUME ["/root/.workstep", "/root/.codex", "/root/.claude", "/opt/workstep-engines"]
+# Codex / Claude 配置由容器自身维护；compose 持久化 Codex rollout。
+VOLUME ["/root/.workstep", "/root/.codex", "/opt/workstep-engines"]
 
 EXPOSE 8765
 

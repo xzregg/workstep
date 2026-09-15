@@ -23,6 +23,7 @@ from models.base import db_proxy
 from services.task_runner import TaskRunner
 from services.task_dispatch import TaskDispatchService
 from services.workflow_definition import WorkflowDefinition
+from services.config import resolve_execution_engine
 from services.messages import create_task_message, new_message_id
 from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import TurnEventJournal
@@ -35,6 +36,12 @@ logger = logging.getLogger(__name__)
 
 _VALID_TASK_SOURCES = {"manual", "schedule", "scheduled_start"}
 _ACTIVE_STAGE_CONFIG_STATUSES = {"running", "retrying", "rework"}
+
+# WorkflowRun 租约：一个 run 同时只能被一个 daemon 实例执行。心跳按固定周期续约，
+# 启动恢复只接管租约已失效（或来自无租约旧库）的 run，避免重复派发把任务状态写脏。
+RUN_LEASE_HEARTBEAT_SECONDS = 5.0
+RUN_LEASE_STALE_SECONDS = 30.0
+
 
 
 def resolve_message_step_key(
@@ -93,6 +100,11 @@ class WorkflowRuntime:
         self._active_tasks: set[asyncio.Task[str]] = set()
         self._operation_locks: dict[str, asyncio.Lock] = {}
         self._graceful_shutdown = False
+        # 每个 runtime 实例拥有独立身份，用于 WorkflowRun 租约归属判定与心跳续约。
+        self._instance_id = uuid.uuid4().hex
+        self._leased_runs: dict[str, str] = {}
+        self._lease_task: asyncio.Task | None = None
+        self._lease_retry_tasks: set[asyncio.Task] = set()
         self._dispatch_service = TaskDispatchService(
             project_manager, event_bus, self
         )
@@ -269,6 +281,8 @@ class WorkflowRuntime:
                 ensure_ascii=False,
                 sort_keys=True,
             ),
+            owner_id=self._instance_id,
+            heartbeat_at=now,
             started_at=now,
         )
 
@@ -333,6 +347,7 @@ class WorkflowRuntime:
             stage_followups=stage_followups,
         )
         self._runners[task.id] = runner
+        self._register_lease(workflow_run.id, prepared.project_id)
 
         completion = asyncio.create_task(
             self._execute(
@@ -724,6 +739,8 @@ class WorkflowRuntime:
         workflow_run = review.workflow_run
         workflow_run.status = "running"
         workflow_run.ended_at = None
+        workflow_run.owner_id = self._instance_id
+        workflow_run.heartbeat_at = now
         workflow_run.save()
         return task, workflow_run
 
@@ -745,6 +762,7 @@ class WorkflowRuntime:
             database_executor=getattr(project, "database_executor", None),
         )
         self._runners[task.id] = runner
+        self._register_lease(workflow_run.id, project.id)
         completion = asyncio.create_task(
             self._execute(
                 project_id=project.id,
@@ -837,10 +855,12 @@ class WorkflowRuntime:
             logger.exception("Failed to start requeued task %s", task_id)
 
     async def _recover_project_runs(self, project) -> int:
-        prepared = await self._run_db(
+        prepared, contended = await self._run_db(
             project.id,
             lambda _project: self._prepare_project_recovery_sync(project),
         )
+        for run_id in contended:
+            self._schedule_recovery_retry(project, run_id)
         recovered = 0
         for task, workflow_run, stale_keys, now in prepared:
             try:
@@ -871,6 +891,7 @@ class WorkflowRuntime:
 
     def _prepare_project_recovery_sync(self, project):
         prepared = []
+        contended = []
         interrupted = list(
             WorkflowRun.select().where(WorkflowRun.status == "running")
         )
@@ -879,6 +900,17 @@ class WorkflowRuntime:
             if task.id in self._runners:
                 continue
             now = utc_now()
+            if self._lease_held_by_live_owner(workflow_run, now):
+                # Another daemon still holds a fresh lease. Do NOT touch the run
+                # (that would clobber the live instance's status writes); retry
+                # recovery once the lease is expected to have gone stale.
+                logger.warning(
+                    "Skipping recovery of run %s: lease still held by live daemon %s",
+                    workflow_run.id,
+                    workflow_run.owner_id,
+                )
+                contended.append(workflow_run.id)
+                continue
             stale_keys = set()
             for step_run in StepRun.select().where(
                 (StepRun.run == workflow_run)
@@ -946,9 +978,11 @@ class WorkflowRuntime:
             workflow_run.recovered_count = (
                 workflow_run.recovered_count or 0
             ) + 1
+            workflow_run.owner_id = self._instance_id
+            workflow_run.heartbeat_at = now
             workflow_run.save()
             prepared.append((task, workflow_run, stale_keys, now))
-        return prepared
+        return prepared, contended
 
     def _current_workflow_steps(self, project, task: Task) -> dict:
         """Return the project's latest workflow steps for ``task``.
@@ -1046,7 +1080,7 @@ class WorkflowRuntime:
                 except (TypeError, json.JSONDecodeError):
                     configured = None
             resolved = {
-                "engine": str(resolved_stage.get("engine") or ""),
+                "engine": resolve_execution_engine(resolved_stage.get("engine")),
                 "model": str(resolved_stage.get("model") or ""),
                 "config": dict(resolved_stage.get("config") or {}),
             }
@@ -1484,6 +1518,8 @@ class WorkflowRuntime:
                 workflow_snapshot_json=snapshot_json,
                 parent_run_id=parent.id,
                 restart_from_step_key=step_key,
+                owner_id=self._instance_id,
+                heartbeat_at=now,
                 started_at=now,
             )
             reusable = {
@@ -1573,6 +1609,89 @@ class WorkflowRuntime:
                 source.parent.mkdir(parents=True, exist_ok=True)
                 destination.rename(source)
 
+    def _register_lease(self, run_id: str, project_id: str) -> None:
+        """Record that this instance owns a run and start the heartbeat loop."""
+        self._leased_runs[run_id] = project_id
+        self._ensure_lease_task()
+
+    def _release_lease(self, run_id: str) -> None:
+        self._leased_runs.pop(run_id, None)
+
+    def _ensure_lease_task(self) -> None:
+        if self._lease_task is None or self._lease_task.done():
+            self._lease_task = asyncio.create_task(self._lease_heartbeat_loop())
+
+    def _lease_held_by_live_owner(
+        self, workflow_run: WorkflowRun, now
+    ) -> bool:
+        """Return True when another live daemon still holds this run's lease.
+
+        An empty ``owner_id`` or ``heartbeat_at`` means the row predates leasing
+        (or was released), so it is treated as unowned and safely recovered.
+        """
+        owner = getattr(workflow_run, "owner_id", None)
+        heartbeat = getattr(workflow_run, "heartbeat_at", None)
+        if not owner or heartbeat is None:
+            return False
+        if owner == self._instance_id:
+            return False
+        return (now - heartbeat).total_seconds() < RUN_LEASE_STALE_SECONDS
+
+    def _schedule_recovery_retry(self, project, run_id: str) -> None:
+        """Retry a run skipped by a live lease after the lease should expire.
+
+        Without this, a daemon that restarts within the stale window of a
+        genuinely crashed predecessor would orphan the run forever, since
+        startup recovery only sweeps once.
+        """
+
+        async def _retry():
+            try:
+                await asyncio.sleep(RUN_LEASE_STALE_SECONDS)
+                current = await self._run_db(
+                    project.id, lambda _project: project
+                )
+                await self._recover_project_runs(current)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "Deferred recovery retry failed for run %s", run_id
+                )
+
+        task = asyncio.create_task(
+            _retry(), name=f"workflow-lease-retry:{run_id}"
+        )
+        self._lease_retry_tasks.add(task)
+        task.add_done_callback(self._lease_retry_tasks.discard)
+
+    async def _lease_heartbeat_loop(self) -> None:
+        """Periodically renew this instance's run leases via the project DB."""
+        while True:
+            try:
+                await asyncio.sleep(RUN_LEASE_HEARTBEAT_SECONDS)
+            except asyncio.CancelledError:
+                raise
+            leased = dict(self._leased_runs)
+            if not leased:
+                continue
+            by_project: dict[str, list[str]] = {}
+            for run_id, project_id in leased.items():
+                by_project.setdefault(project_id, []).append(run_id)
+            for project_id, run_ids in by_project.items():
+                def refresh(_project, run_ids=tuple(run_ids)):
+                    WorkflowRun.update(heartbeat_at=utc_now()).where(
+                        (WorkflowRun.id.in_(run_ids))
+                        & (WorkflowRun.owner_id == self._instance_id)
+                    ).execute()
+
+                try:
+                    await self._run_db(project_id, refresh)
+                except Exception:
+                    logger.exception(
+                        "Failed to renew run leases for project %s", project_id
+                    )
+
     async def shutdown(self) -> None:
         """Stop every workflow owned by this runtime.
 
@@ -1595,6 +1714,19 @@ class WorkflowRuntime:
             completion.cancel()
         if active:
             await asyncio.gather(*active, return_exceptions=True)
+        # Stop the heartbeat loop and release any leases that outlived the runs
+        # so a restarting daemon can recover them immediately.
+        if self._lease_task is not None:
+            self._lease_task.cancel()
+            try:
+                await self._lease_task
+            except asyncio.CancelledError:
+                pass
+            self._lease_task = None
+        for retry_task in tuple(self._lease_retry_tasks):
+            retry_task.cancel()
+        self._lease_retry_tasks.clear()
+        self._leased_runs.clear()
 
     def _consume_completion(
         self,
@@ -1659,9 +1791,13 @@ class WorkflowRuntime:
             def finalize_run():
                 if not (interrupted and self._graceful_shutdown):
                     workflow_run.ended_at = utc_now()
+                # 释放租约：把 owner/heartbeat 写回 NULL，让后续实例可正常接管或收尾。
+                workflow_run.owner_id = None
+                workflow_run.heartbeat_at = None
                 workflow_run.save()
 
             await runner._run_db(finalize_run)
+            self._release_lease(workflow_run.id)
             try:
                 await runner.close()
             except Exception:

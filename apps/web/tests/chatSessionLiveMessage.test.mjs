@@ -45,6 +45,15 @@ test('session chat treats a running assistant bubble as an active turn', () => {
   )
 })
 
+test('pending inserts fall back to the session configuration, not page overrides', () => {
+  assert.match(pageSource, /sendMessageNow\(first\.content, \{ useSessionDefaults: true \}\)/)
+  assert.match(pageSource, /sendMessageNow\(content, \{ useSessionDefaults: true \}\)/)
+  assert.match(
+    pageSource,
+    /engine: options\.useSessionDefaults \? undefined : selectedEngine \|\| undefined[\s\S]{0,320}provider_id: options\.useSessionDefaults \? undefined : selectedProvider \|\| undefined/,
+  )
+})
+
 test('task and session chats reuse one pending-insert panel with edit and retry actions', () => {
   assert.match(pendingSource, /export default function PendingMessageInserts/)
   assert.match(pendingSource, /onSend/)

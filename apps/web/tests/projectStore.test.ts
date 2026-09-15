@@ -12,6 +12,26 @@ const project = (id: string): Project => ({
   workflows: [{ id: `${id}-workflow`, name: 'Default', is_default: true, nodeCount: 0 }],
 })
 
+test('creating an empty project clears the previous workflow selection without creating a workflow', async () => {
+  const previous = project('existing')
+  const blank: Project = { id: 'blank', path: '/tmp/blank', name: 'blank', steps: {}, workflows: [] }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), '/api/project/init')
+    assert.equal(init?.method, 'POST')
+    return Response.json(blank)
+  }
+  useProjectStore.setState({ projects: [previous], activeProject: previous, activeWorkflowId: 'existing-workflow' })
+  try {
+    const created = await useProjectStore.getState().initProject(blank.path)
+    useProjectStore.getState().setActiveProject(created)
+    assert.deepEqual(useProjectStore.getState().activeProject, blank)
+    assert.equal(useProjectStore.getState().activeWorkflowId, null)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('opening an existing project restores workflow selection without duplicating it', async () => {
   const restored = project('existing')
   const originalFetch = globalThis.fetch

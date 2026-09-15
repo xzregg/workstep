@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { useI18n } from '../i18n'
 import { useProjectStore } from '../stores/projectStore'
 import type { Project } from '../api/client'
@@ -25,6 +26,13 @@ export default function ProjectConnectionDialog({
   const [addingRemote, setAddingRemote] = useState(false)
   const [path, setPath] = useState('')
   const [error, setError] = useState('')
+  const defaultDirectory = useUserSettingsStore((state) => state.defaultProjectDirectory)
+  const settingsLoaded = useUserSettingsStore((state) => state.loaded)
+  const loadSettings = useUserSettingsStore((state) => state.load)
+
+  useEffect(() => {
+    if (open) void loadSettings()
+  }, [open, loadSettings])
 
   if (!open) return null
 
@@ -95,7 +103,7 @@ export default function ProjectConnectionDialog({
               <div style={{ marginBottom: 8, color: 'var(--fg-2)', fontSize: 'calc(13px * var(--font-scale))' }}>
                 {t('browser.selectHint')}
               </div>
-              <DirectoryBrowser onSelect={setPath} selectedPath={path} />
+              {settingsLoaded && <DirectoryBrowser onSelect={setPath} selectedPath={path} initialPath={defaultDirectory || undefined} />}
               {error && (
                 <div style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
                   {error}

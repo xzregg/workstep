@@ -199,6 +199,7 @@ def get_available_engines() -> list[dict]:
                 "config": _engine_config_payload(resolved),
                 "supports_provider": bool(resolved.supported_provider_protocols()),
                 "provider_protocols": sorted(resolved.supported_provider_protocols()),
+                "runtime_manageable": resolved.RUNTIME_PACKAGE is not None,
                 "installable": resolved.install_command() is not None,
                 "install_command": resolved.install_command(),
                 "updatable": resolved.update_command() is not None,
@@ -239,6 +240,7 @@ def get_available_engines() -> list[dict]:
                 "provider_protocols": (
                     sorted(target.supported_provider_protocols()) if target else []
                 ),
+                "runtime_manageable": bool(target) and target.RUNTIME_PACKAGE is not None,
                 "installable": bool(target) and target.install_command() is not None,
                 "install_command": target.install_command() if target else None,
                 "updatable": bool(target) and target.update_command() is not None,

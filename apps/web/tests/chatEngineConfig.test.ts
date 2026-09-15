@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  clearIncompatibleProvider,
   clearChatEngineConfig,
   EMPTY_ENGINE_CONFIG,
   hasChatEngineConfig,
@@ -98,4 +99,55 @@ test('hasChatEngineConfig reflects any non-empty field', () => {
   assert.equal(hasChatEngineConfig(EMPTY_ENGINE_CONFIG), false)
   assert.equal(hasChatEngineConfig({ ...EMPTY_ENGINE_CONFIG, thinkingEffort: 'low' }), true)
   assert.equal(hasChatEngineConfig({ ...EMPTY_ENGINE_CONFIG, providerId: 'p' }), true)
+})
+
+test('clears a restored provider that is incompatible with its engine', () => {
+  const config = {
+    ...EMPTY_ENGINE_CONFIG,
+    engine: 'pydantic_ai',
+    providerId: 'anthropic',
+    model: 'stale-model',
+  }
+  const sanitized = clearIncompatibleProvider(
+    config,
+    [{ id: 'pydantic_ai', supports_provider: true, provider_protocols: ['openai_compatible'] }],
+    [{ id: 'anthropic', protocol: 'anthropic', enabled: true }],
+  )
+
+  assert.equal(sanitized.providerId, '')
+  assert.equal(sanitized.engine, 'pydantic_ai')
+  assert.equal(sanitized.model, 'stale-model')
+})
+
+test('keeps a restored provider when engine and protocol are compatible', () => {
+  const config = {
+    ...EMPTY_ENGINE_CONFIG,
+    engine: 'pydantic_ai',
+    providerId: 'openai',
+  }
+  const sanitized = clearIncompatibleProvider(
+    config,
+    [{ id: 'pydantic_ai', supports_provider: true, provider_protocols: ['openai_compatible'] }],
+    [{ id: 'openai', protocol: 'openai_compatible', enabled: true }],
+  )
+
+  assert.equal(sanitized, config)
+})
+
+test('does not clear a provider before compatibility data is available', () => {
+  const config = {
+    ...EMPTY_ENGINE_CONFIG,
+    engine: 'pydantic_ai',
+    providerId: 'openai',
+  }
+
+  assert.equal(clearIncompatibleProvider(config, [], []), config)
+  assert.equal(
+    clearIncompatibleProvider(
+      config,
+      [{ id: 'pydantic_ai', supports_provider: true, provider_protocols: ['openai_compatible'] }],
+      [],
+    ),
+    config,
+  )
 })

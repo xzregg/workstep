@@ -13,6 +13,7 @@ import uuid
 from typing import Any, AsyncIterator, Mapping
 
 from engines.core.acp_base import AcpEngineBase
+from engines.core.packages import RuntimePackage
 from engines.core.base import (
     EngineInstallResult,
     EngineModel,
@@ -76,6 +77,7 @@ class QoderSDKEngine(AcpEngineBase):
         await client.set_permission_mode(mapped)
 
     ENGINE_ID = "qoder_sdk"
+    RUNTIME_PACKAGE = RuntimePackage('qoder-agent-sdk', 'pypi', '1.0.11', None)
     UPDATE_PACKAGE = "qoder-agent-sdk"
 
     def __init__(self):

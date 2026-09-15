@@ -19,6 +19,10 @@ class WorkflowRun(BaseModel):
     restart_from_step_key = pw.TextField(null=True)
     recovered_at = UTCDateTimeField(null=True)
     recovered_count = pw.IntegerField(default=0)
+    # 执行该 run 的 daemon 实例身份与续约心跳：一个 run 同时只能被一个实例执行，
+    # 启动恢复只接管租约已失效（或来自无租约旧库）的 run。
+    owner_id = pw.TextField(null=True)
+    heartbeat_at = UTCDateTimeField(null=True)
     started_at = UTCDateTimeField(null=True)
     ended_at = UTCDateTimeField(null=True)
 

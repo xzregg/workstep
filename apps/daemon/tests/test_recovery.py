@@ -479,7 +479,19 @@ async def test_e2e_three_stage_run_resumes_after_crash(tmp_path):
 
         # The daemon "crashes": runtime1 is abandoned without graceful
         # shutdown, so the run stays ``running`` in the DB with stage b in
-        # flight. A fresh daemon instance recovers it.
+        # flight. A dead process stops renewing its run lease, so expire the
+        # heartbeat (and halt runtime1's lease loop) before a fresh daemon
+        # instance recovers it.
+        if runtime1._lease_task is not None:
+            runtime1._lease_task.cancel()
+        from datetime import timedelta
+
+        from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+
+        with pm.activate_project(project.path):
+            WorkflowRun.update(
+                heartbeat_at=utc_now() - timedelta(seconds=RUN_LEASE_STALE_SECONDS + 5)
+            ).where(WorkflowRun.id == run_id).execute()
         assert await runtime2.recover_running_workflows() == 1
 
         with pm.activate_project(project.path):
@@ -539,5 +551,128 @@ async def test_e2e_three_stage_run_resumes_after_crash(tmp_path):
         await runtime1.shutdown()
         await bus1.close()
         await bus2.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+
+
+@pytest.mark.anyio
+async def test_recovery_skips_run_leased_by_live_daemon(tmp_path):
+    """A live peer's fresh lease must not be clobbered by startup recovery."""
+    original, pm, project, run_id = _project_with_run(tmp_path)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        with pm.activate_project(project.path):
+            WorkflowRun.update(
+                owner_id="some-other-daemon",
+                heartbeat_at=utc_now(),
+            ).where(WorkflowRun.id == run_id).execute()
+
+        assert await runtime.recover_running_workflows() == 0
+
+        with pm.activate_project(project.path):
+            run = WorkflowRun.get_by_id(run_id)
+            # Nothing was rewritten: the in-flight step stays running and the
+            # owner is untouched, so the live peer's status writes are safe.
+            assert run.owner_id == "some-other-daemon"
+            assert run.status == "running"
+            assert run.recovered_count == 0
+            b_step = StepRun.get(
+                (StepRun.run == run) & (StepRun.step_key == "b")
+            )
+            assert b_step.status == "running"
+            assert Task.get_by_id("task-rec").status == "running"
+        # A stale-lease retry is scheduled so a genuinely crashed peer is
+        # still recovered instead of orphaned.
+        assert runtime._lease_retry_tasks
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY as _reg
+        _reg.clear()
+        _reg.update(original)
+
+
+@pytest.mark.anyio
+async def test_recovery_takes_over_expired_lease(tmp_path):
+    """An expired lease from a crashed peer is recovered as before."""
+    from datetime import timedelta
+
+    from services.workflow_runtime import RUN_LEASE_STALE_SECONDS
+
+    original, pm, project, run_id = _project_with_run(tmp_path)
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        with pm.activate_project(project.path):
+            WorkflowRun.update(
+                owner_id="crashed-daemon",
+                heartbeat_at=utc_now()
+                - timedelta(seconds=RUN_LEASE_STALE_SECONDS + 5),
+            ).where(WorkflowRun.id == run_id).execute()
+
+        assert await runtime.recover_running_workflows() == 1
+        with pm.activate_project(project.path):
+            await _wait_until(
+                lambda: Task.get_by_id("task-rec").status == "ready"
+            )
+            run = WorkflowRun.get_by_id(run_id)
+            assert run.status == "succeeded"
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        from engines.core.registry import ENGINE_REGISTRY as _reg
+        _reg.clear()
+        _reg.update(original)
+
+
+@pytest.mark.anyio
+async def test_run_lease_claimed_on_start_and_released_on_finish(tmp_path):
+    """A started run carries this instance's owner; finishing clears it."""
+    from engines.core.registry import ENGINE_REGISTRY
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RecoveryFakeEngine
+    RecoveryFakeEngine.delay = 0.0
+    RecoveryFakeEngine.prompts = []
+
+    pm = ProjectManager()
+    project = pm.init_project(tmp_path / "proj", name="Lease")
+    now = utc_now()
+    with pm.activate_project(project.path):
+        task = Task.create(
+            id="task-lease",
+            title="Lease",
+            cwd=str(project.path),
+            engine="claude",
+            created_at=now,
+            updated_at=now,
+        )
+        TaskStep.create(task=task, step_key="a", status="pending", engine="claude")
+    project.steps = {
+        "nodes": [
+            {"id": 1, "type": "a", "title": "A", "engine": "claude", "prompt": "Do A"},
+        ],
+        "connections": [],
+    }
+
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, pm)
+    try:
+        handle = await runtime.start(project.id, "task-lease", "")
+        with pm.activate_project(project.path):
+            run = WorkflowRun.get_by_id(handle.id)
+            assert run.owner_id == runtime._instance_id
+            assert run.heartbeat_at is not None
+        await asyncio.wait_for(runtime.wait(handle), timeout=5)
+        with pm.activate_project(project.path):
+            run = WorkflowRun.get_by_id(handle.id)
+            assert run.owner_id is None
+            assert run.heartbeat_at is None
+            assert run.status == "succeeded"
+        assert handle.id not in runtime._leased_runs
+    finally:
+        await runtime.shutdown()
+        await bus.close()
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)

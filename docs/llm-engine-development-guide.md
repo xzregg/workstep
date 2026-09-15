@@ -16,6 +16,8 @@
 - 引擎管理 API：`apps/daemon/api/engine.py`
 - 前端引擎元数据：`apps/web/src/engineMeta.ts`
 
+安装包元数据、真实下载进度和回退约束见 [引擎版本管理](engine-runtime-management.md)。新增可管理引擎时声明 `RUNTIME_PACKAGE`，复用统一服务及前端组件。
+
 ## 0. 基类层次（先读）
 
 **所有引擎都必须继承 `AcpEngineBase`**；`AcpEngineBase` 继承 `BaseLLMEngine`。上层调用（`task_runner` / `coordinator` / `assistant_base` / API）只依赖 `AcpEngineBase`，不感知引擎类型。

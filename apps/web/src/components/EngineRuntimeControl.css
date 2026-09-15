@@ -1,0 +1,15 @@
+.engine-runtime-control { padding: 0 14px 12px; }
+.engine-runtime-body { border-top: 1px solid var(--border-soft); margin-top: 8px; padding-top: 12px; }
+.engine-runtime-heading, .engine-runtime-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.engine-runtime-heading { justify-content: space-between; margin-bottom: 12px; }
+.engine-runtime-actions label { font-weight: 600; }
+.engine-runtime-actions .ws-select { width: auto; min-width: 140px; max-width: 100%; flex: 1 1 160px; }
+.engine-runtime-body p, .engine-runtime-body details { font-size: calc(12px * var(--font-scale)); line-height: 1.6; overflow-wrap: anywhere; }
+.engine-runtime-note { color: var(--fg-2); }
+.engine-runtime-body [role="alert"] { color: var(--danger); }
+.engine-runtime-body .engine-install-progress { padding: 12px 0 0; }
+.engine-runtime-body summary { cursor: pointer; }
+.engine-runtime-body ul { padding-left: 20px; }
+.engine-runtime-body time { font-variant-numeric: tabular-nums; }
+.engine-runtime-terms { display: flex; align-items: flex-start; gap: 8px; }
+.engine-runtime-terms input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 4px; }

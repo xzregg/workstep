@@ -4,6 +4,8 @@ import { systemSettingsApi } from '../api/client'
 interface UserSettingsState {
   userName: string
   openMode: boolean
+  defaultProjectDirectory: string
+  saveDefaultProjectDirectory: (directory: string) => Promise<void>
   deviceId: string
   deviceName: string
   loaded: boolean
@@ -17,6 +19,11 @@ interface UserSettingsState {
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   userName: '',
   openMode: false,
+  defaultProjectDirectory: '',
+  saveDefaultProjectDirectory: async (directory) => {
+    const settings = await systemSettingsApi.updateDefaultProjectDirectory(directory.trim())
+    set({ defaultProjectDirectory: settings.default_project_directory || '' })
+  },
   deviceId: '',
   deviceName: '',
   loaded: false,
@@ -27,6 +34,7 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     set({ loading: true, error: '' })
     try {
       const settings = await systemSettingsApi.get()
+      set({ defaultProjectDirectory: settings.default_project_directory || '' })
       set({ userName: settings.user_name, openMode: settings.open_mode, deviceId: settings.device_id || '', deviceName: settings.device_name || '', loaded: true })
     } catch (reason) {
       set({

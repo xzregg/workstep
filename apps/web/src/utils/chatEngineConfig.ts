@@ -23,6 +23,18 @@ export interface ChatEngineConfigState {
 
 const PREFIX = 'workstep-chat-engine-config'
 
+interface EngineProviderCompatibility {
+  id: string
+  provider_protocols?: string[]
+  supports_provider?: boolean
+}
+
+interface ProviderCompatibility {
+  id: string
+  protocol?: string
+  enabled?: boolean
+}
+
 export const EMPTY_ENGINE_CONFIG: ChatEngineConfigState = {
   engine: '',
   providerId: '',
@@ -96,4 +108,20 @@ export function clearChatEngineConfig(projectId: string, sessionId: string): voi
   } catch {
     /* ignore */
   }
+}
+
+export function clearIncompatibleProvider(
+  config: ChatEngineConfigState,
+  engines: readonly EngineProviderCompatibility[],
+  providers: readonly ProviderCompatibility[],
+): ChatEngineConfigState {
+  if (!config.engine || !config.providerId) return config
+  const engine = engines.find((item) => item.id === config.engine)
+  const provider = providers.find((item) => item.id === config.providerId)
+  if (!engine || !provider || !provider.protocol) return config
+  const compatible = Boolean(
+    engine.supports_provider
+    && (engine.provider_protocols || []).includes(provider.protocol),
+  )
+  return compatible ? config : { ...config, providerId: '' }
 }

@@ -18,6 +18,16 @@ CONFIG_DIR = Path(
 CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULT_EXECUTION_ENGINE = "pydantic_ai"
 
+
+def resolve_execution_engine(engine_id: str | None) -> str:
+    """Resolve an optional per-stage engine to the current global default."""
+    normalized = str(engine_id or "").strip()
+    return (
+        normalized
+        or config_store.get_execution_default_engine()
+        or DEFAULT_EXECUTION_ENGINE
+    )
+
 CLAUDE_PERMISSION_MODES = {
     "acceptEdits",
     "auto",
