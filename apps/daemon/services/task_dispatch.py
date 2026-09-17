@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 
 from models import Task
+from services.artifact_rounds import select_upstream_round
 from services.task import TaskService
 from services.workflow_definition import WorkflowDefinition
 from services.remote_project import RemoteHttpRequest
@@ -200,13 +201,20 @@ class TaskDispatchService:
     ) -> list[dict]:
         files = []
         for source_step_key in source_step_keys:
-            source_root = artifacts_dir / source_workflow / task_id / source_step_key
-            if not source_root.is_dir():
+            selected = select_upstream_round(
+                artifacts_dir,
+                source_workflow,
+                task_id,
+                source_step_key,
+            )
+            if selected is None:
                 continue
+            source_root = selected.path
             for source in sorted(source_root.rglob("*")):
-                if source.is_file():
+                if source.is_file() and source.name != "manifest.json":
                     files.append({
                         "source_step_key": source_step_key,
+                        "source_round": selected.round,
                         "name": source.name,
                         "relative_path": str(source.relative_to(source_root)),
                         "content_b64": base64.b64encode(source.read_bytes()).decode(),
@@ -242,11 +250,17 @@ class TaskDispatchService:
         target_root = target_workstep_dir / "task-inputs" / dispatch_id
         manifest: list[dict] = []
         for step_key in source_step_keys:
-            source_root = source_artifacts_dir / source_workflow / source_task.id / step_key
-            if not source_root.is_dir():
+            selected = select_upstream_round(
+                source_artifacts_dir,
+                source_workflow,
+                source_task.id,
+                step_key,
+            )
+            if selected is None:
                 continue
+            source_root = selected.path
             for source in sorted(source_root.rglob("*")):
-                if not source.is_file():
+                if not source.is_file() or source.name == "manifest.json":
                     continue
                 relative = source.relative_to(source_root)
                 destination = target_root / step_key / relative
@@ -256,6 +270,7 @@ class TaskDispatchService:
                     "source_project_id": source_project_id,
                     "source_task_id": source_task.id,
                     "source_step_key": step_key,
+                    "source_round": selected.round,
                     "name": source.name,
                     "path": str(destination),
                 })

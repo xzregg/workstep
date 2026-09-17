@@ -1,7 +1,7 @@
 /** Artifact Preview Component - shows file contents or a directory listing. */
 
 import Icon from './Icon'
-import { lazy, Suspense, useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import {
   fsApi,
   type DirectoryBrowseResult,
@@ -10,16 +10,17 @@ import {
 } from '../api/client'
 import Button from './Button'
 import { useI18n } from '../i18n'
-import Spinner from './Spinner'
-
-const CodeFilePreview = lazy(() => import('./CodeFilePreview'))
+import MarkdownMessage from './MarkdownMessage'
+import CodeFilePreview from './CodeFilePreview'
 
 interface ArtifactPreviewProps {
   path: string
+  name?: string
   line?: number
   isDir?: boolean
   onClose?: () => void
   projectId?: string
+  standalone?: boolean
 }
 
 type PreviewView =
@@ -100,13 +101,28 @@ function filenameFromPath(path: string) {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'download'
 }
 
-export default function ArtifactPreview({ path, line, isDir = false, onClose, projectId }: ArtifactPreviewProps) {
+function previewWindowUrl(path: string, name: string, projectId: string, line?: number) {
+  const params = new URLSearchParams({ path, name, project_id: projectId })
+  if (line !== undefined) params.set('line', String(line))
+  return `/file-preview?${params.toString()}`
+}
+
+export default function ArtifactPreview({
+  path,
+  name,
+  line,
+  isDir = false,
+  onClose,
+  projectId,
+  standalone = false,
+}: ArtifactPreviewProps) {
   const { t } = useI18n()
   const [view, setView] = useState<PreviewView>(() =>
     isDir
       ? { kind: 'listing', path }
       : { kind: 'file', path, parent: '' }
   )
+  const [showMarkdownSource, setShowMarkdownSource] = useState(false)
 
   const [listing, setListing] = useState<DirectoryBrowseResult | null>(null)
   const [listingLoading, setListingLoading] = useState(false)
@@ -120,6 +136,10 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   useEffect(() => {
     setView(isDir ? { kind: 'listing', path } : { kind: 'file', path, parent: '' })
   }, [path, isDir])
+
+  useEffect(() => {
+    setShowMarkdownSource(false)
+  }, [path])
 
   // Load the directory listing.
   useEffect(() => {
@@ -350,9 +370,10 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   const isText = type === 'text'
   const ext = extension.slice(1).toLowerCase()
   const isHtml = isText && ['html', 'htm'].includes(ext)
-  const isCode = isText && !isHtml && [
+  const isMarkdown = isText && ['md', 'markdown'].includes(ext)
+  const isCode = isText && !isHtml && !isMarkdown && [
     'bash', 'c', 'cc', 'cpp', 'css', 'go', 'h', 'hpp', 'java', 'js', 'jsx', 'json',
-    'md', 'mjs', 'py', 'rb', 'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'xml', 'yaml', 'yml', 'zsh',
+    'mjs', 'py', 'rb', 'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'xml', 'yaml', 'yml', 'zsh',
   ].includes(ext)
   const rawUrl = projectId
     ? fsApi.projectFileUrl(preview.relative_path || view.path, projectId)
@@ -360,11 +381,27 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   const downloadButton = (
     <DownloadFileButton href={rawUrl} filename={filenameFromPath(preview.relative_path || view.path)} />
   )
+  const openWindowButton = projectId ? (
+    <Button
+      variant="primary"
+      className="artifact-open-window-button"
+      onClick={() => {
+        window.open(
+          previewWindowUrl(view.path, name || filenameFromPath(view.path), projectId, line),
+          '_blank',
+          'noopener,noreferrer',
+        )
+      }}
+    >
+      <Icon name="external-link" size={13} />
+      {t('artifact.openWindow')}
+    </Button>
+  ) : null
 
   if (isImage) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.imageAlt'), downloadButton)}
+        {fileHeader(t('artifact.imageAlt'), <>{downloadButton}{openWindowButton}</>)}
         <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', borderRadius: 8 }}>
           <img
             src={content}
@@ -384,24 +421,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
           <>
             {downloadButton}
             <CopyTextButton content={content} />
-            <a
-              href={rawUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: 'var(--accent)', color: '#fff',
-                padding: '5px 12px', borderRadius: 'var(--radius-sm)',
-                fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, textDecoration: 'none',
-                whiteSpace: 'nowrap',
-                transition: 'background var(--motion-fast) var(--ease)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-hover)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent)' }}
-            >
-              <Icon name="external-link" size={13} />
-              {t('artifact.openHtml')}
-            </a>
+            {openWindowButton}
           </>
         ))}
         <div style={{
@@ -426,10 +446,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
         {fileHeader(t('artifact.pdfFile'), (
           <>
             {downloadButton}
-            <a className="artifact-open-link" href={rawUrl} target="_blank" rel="noopener noreferrer">
-              <Icon name="external-link" size={13} />
-              {t('artifact.openFile')}
-            </a>
+            {openWindowButton}
           </>
         ))}
         <iframe
@@ -442,6 +459,39 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
     )
   }
 
+  if (isMarkdown) {
+    return (
+      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
+        {fileHeader(t('artifact.markdownFile'), (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="artifact-markdown-mode-button"
+              onClick={() => setShowMarkdownSource((current) => !current)}
+            >
+              <Icon name={showMarkdownSource ? 'eye' : 'file'} size={13} strokeWidth={1.9} />
+              {showMarkdownSource ? t('artifact.viewRendered') : t('artifact.viewSource')}
+            </Button>
+            {downloadButton}
+            <CopyTextButton content={content} />
+            {openWindowButton}
+          </>
+        ))}
+        {showMarkdownSource ? (
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <CodeFilePreview filename={view.path} content={content} line={line} />
+          </div>
+        ) : (
+          <div className="artifact-markdown-preview" data-standalone={standalone ? 'true' : undefined}>
+            <MarkdownMessage content={content} projectId={projectId} />
+          </div>
+        )}
+        {fileFooter(content_type, file_size)}
+      </div>
+    )
+  }
+
   if (isCode) {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
@@ -449,17 +499,11 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
           <>
             {downloadButton}
             <CopyTextButton content={content} />
+            {openWindowButton}
           </>
         ))}
         <div style={{ flex: 1, minHeight: 0 }}>
-          <Suspense fallback={(
-            <div className="artifact-preview-loading">
-              <Spinner size={16} />
-              {t('common.loading')}
-            </div>
-          )}>
-            <CodeFilePreview filename={view.path} content={content} line={line} />
-          </Suspense>
+          <CodeFilePreview filename={view.path} content={content} line={line} />
         </div>
         {fileFooter(content_type, file_size)}
       </div>
@@ -469,7 +513,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
   if (type === 'binary') {
     return (
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: 16 }}>
-        {fileHeader(t('artifact.file'), downloadButton)}
+        {fileHeader(t('artifact.file'), <>{downloadButton}{openWindowButton}</>)}
         <div className="artifact-binary-state">
           <span className="artifact-binary-icon" aria-hidden="true">
             <Icon name="file" size={24} strokeWidth={1.6} />
@@ -492,6 +536,7 @@ export default function ArtifactPreview({ path, line, isDir = false, onClose, pr
         <>
           {downloadButton}
           <CopyTextButton content={content} />
+          {openWindowButton}
         </>
       ))}
       <div style={{ flex: 1, overflow: 'auto', background: 'var(--surface)', borderRadius: 8, padding: 16 }}>

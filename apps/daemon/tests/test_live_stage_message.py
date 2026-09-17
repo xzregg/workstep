@@ -438,6 +438,7 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path):
         assert post_insert.content == "第二段输出"
         assert pre_insert.run_status == "succeeded"
         assert post_insert.run_status == "succeeded"
+        assert json.loads(post_insert.prompt_json)["prompt"] == "插入内容"
         assert pre_insert.sequence < inserted.sequence < post_insert.sequence
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
         assert "第二段" not in (tmp_path / pre_insert.event_log_path).read_text()

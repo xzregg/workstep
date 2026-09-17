@@ -5,20 +5,20 @@ from pathlib import Path
 
 from models import StageSupplement
 from models.task import Task
+from services.artifact_rounds import select_upstream_round, step_round_dir
 from services.pipeline import Step
 
 # Config path relative to this file
 _OUTPUT_TYPES_PATH = Path(__file__).resolve().parent.parent / "data" / "output-types.json"
-_DEFAULT_CONSTRAINT = "UTF-8 编码的通用文本文件，内容结构清晰、可直接阅读。"
+_DEFAULT_CONSTRAINT = "Generic UTF-8 text; clear structure and directly readable."
+_OUTPUT_GUIDANCE = "Decide from the stage requirements and available context whether outputs are ready. If information is insufficient, you may omit artifacts or leave them empty; do not invent filler or placeholders just to satisfy the output list. Explain the reason in your reply. Generated artifacts must keep their declared names, types, and paths."
 
 # System prompt injected at the start of every step
-SYSTEM_PROMPT = """你是 WorkStep 工作流中的一个执行阶段。
-请根据阶段要求完成任务，产出指定的产物内容。
-工作目录是当前项目根目录。
-产物按「输出规范」写入 .workstep/artifacts/<工作流>/<任务>/<阶段>/ 下。
-判定规则：目录型产物（类型为 directory）才创建同名目录 <产物名>/；文件型产物（如 md/json 等带后缀类型）直接写入单个文件 <产物名>.<扩展名>，不要再为它包一层同名目录。
-
-严格按「输出规范」中声明的类型和名称产出产物。"""
+SYSTEM_PROMPT = """You are executing one stage in a WorkStep workflow.
+Work in the current project root and produce outputs only when the stage has enough information.
+Write artifacts under .workstep/artifacts/<workflow>/<task>/<stage>/<round>/.
+For a directory output, create a directory named <artifact>/. For a file output, write the file directly as <artifact>.<extension>.
+Follow the declared output names, types, and paths; an empty artifact is allowed when appropriate."""
 
 
 def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None:
@@ -65,6 +65,8 @@ def assemble_prompt(
     step: Step,
     artifacts_dir: Path,
     user_input: str = "",
+    artifact_round: int | None = None,
+    input_rounds: dict[str, int] | None = None,
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -78,10 +80,10 @@ def assemble_prompt(
 
     memory = _load_project_memory(artifacts_dir)
     if memory:
-        parts.append(f"## 项目记忆\n{memory}")
+        parts.append(f"## Project memory\n{memory}")
 
     if task.description:
-        parts.append(f"## 任务说明\n{task.description}")
+        parts.append(f"## Task description\n{task.description}")
 
     if task.input_manifest_json:
         try:
@@ -90,7 +92,7 @@ def assemble_prompt(
             external_inputs = []
         if isinstance(external_inputs, list) and external_inputs:
             parts.append(
-                "## 外部输入产物（来自上游任务）\n"
+                "## External input artifacts (from upstream tasks)\n"
                 + "\n".join(
                     f"- {item.get('path')}"
                     for item in external_inputs
@@ -100,13 +102,19 @@ def assemble_prompt(
 
     # Upstream artifacts
     workflow_name = task.workflow_id or "default"
-    upstream = _collect_upstream_artifacts(task, step, artifacts_dir, workflow_name)
+    upstream = _collect_upstream_artifacts(
+        task,
+        step,
+        artifacts_dir,
+        workflow_name,
+        input_rounds=input_rounds,
+    )
     if upstream:
         parts.append(_format_artifact_refs(upstream))
 
     # Step prompt
     if step.prompt:
-        parts.append(f"## 阶段要求\n{step.prompt}")
+        parts.append(f"## Stage requirements\n{step.prompt}")
 
     supplements = list(
         StageSupplement.select()
@@ -119,30 +127,42 @@ def assemble_prompt(
     )
     if supplements:
         parts.append(
-            "## 用户确认的阶段补充\n"
+            "## User-confirmed stage supplements\n"
             + "\n\n".join(item.content for item in supplements)
         )
 
     # Output specifications (type constraints)
     if step.outputs:
-        parts.append(_format_output_specs(step.outputs, task.id, step.key, workflow_name))
+        parts.append(
+            _format_output_specs(
+                step.outputs,
+                task.id,
+                step.key,
+                workflow_name,
+                artifact_round=artifact_round,
+            )
+        )
 
     # User input
     if user_input:
-        parts.append(f"## 用户输入\n{user_input}")
+        parts.append(f"## User input\n{user_input}")
 
-    # Output directory (workflow / task / stage /)
-    out_dir = artifacts_dir / workflow_name / task.id / step.key
-    parts.append(f"## 产物输出目录\n{out_dir}")
+    # Output directory (workflow / task / stage / round)
+    out_dir = (
+        step_round_dir(artifacts_dir, workflow_name, task.id, step.key, artifact_round)
+        if artifact_round is not None
+        else artifacts_dir / workflow_name / task.id / step.key
+    )
+    parts.append(f"## Artifact output directory\n{out_dir}")
     if step.outputs:
         out_labels = []
         for i, out in enumerate(step.outputs, 1):
-            name = out.get("name", f"产物{i}")
+            name = out.get("name", f"artifact-{i}")
             otype = out.get("type", "file")
             path_label, output_path = _output_path(out_dir, name, otype)
-            suffix = "/" if path_label == "输出目录" else ""
+            suffix = "/" if path_label == "output directory" else ""
             out_labels.append(f"- {name}: {output_path}{suffix}")
-        parts.append("各产物写入路径:\n" + "\n".join(out_labels))
+        parts.append("Artifact output paths:\n" + "\n".join(out_labels))
 
     return "\n\n".join(parts)
 
@@ -152,6 +172,7 @@ def assemble_followup_prompt(
     step: Step,
     artifacts_dir: Path,
     user_input: str,
+    artifact_round: int | None = None,
 ) -> str:
     """Build a compact prompt for an existing stage engine session.
 
@@ -159,21 +180,25 @@ def assemble_followup_prompt(
     user ``@stage`` follow-up therefore only needs the new message plus the
     output contract that must still be honoured.
     """
-    parts = [f"## 用户消息\n{user_input.strip()}"]
+    parts = [f"## User message\n{user_input.strip()}"]
     workflow_name = task.workflow_id or "default"
-    out_dir = artifacts_dir / workflow_name / task.id / step.key
+    out_dir = (
+        step_round_dir(artifacts_dir, workflow_name, task.id, step.key, artifact_round)
+        if artifact_round is not None
+        else artifacts_dir / workflow_name / task.id / step.key
+    )
 
     if step.outputs:
         paths = []
         for i, out in enumerate(step.outputs, 1):
-            name = out.get("name", f"产物{i}")
+            name = out.get("name", f"artifact-{i}")
             otype = out.get("type", "file")
             path_label, output_path = _output_path(out_dir, name, otype)
-            suffix = "/" if path_label == "输出目录" else ""
-            paths.append(f"- {name}（{otype}）: {output_path}{suffix}")
+            suffix = "/" if path_label == "output directory" else ""
+            paths.append(f"- {name} ({otype}): {output_path}{suffix}")
         parts.append(
-            "## 产物要求\n"
-            "完成本次修改后，必须生成或更新以下产物，并保持名称、类型和路径：\n"
+            "## Artifact requirements\n"
+            + _OUTPUT_GUIDANCE + "\nArtifacts that may be generated or updated this turn:\n"
             + "\n".join(paths)
         )
 
@@ -185,30 +210,49 @@ def _collect_upstream_artifacts(
     step: Step,
     artifacts_dir: Path,
     workflow_name: str = "default",
+    input_rounds: dict[str, int] | None = None,
 ) -> list[dict[str, str]]:
-    """Scan upstream dependency directories for artifact files."""
+    """Scan selected upstream rounds for artifact files."""
     result = []
     for dep_key in step.depends_on:
-        dep_base = artifacts_dir / workflow_name / task.id / dep_key
-        if dep_base.is_dir():
-            for f in sorted(dep_base.rglob("*")):
-                if f.is_file():
-                    result.append({
-                        "step": dep_key,
-                        "path": str(f),
-                        "name": f.name,
-                    })
+        requested = (input_rounds or {}).get(dep_key)
+        selected = select_upstream_round(
+            artifacts_dir,
+            workflow_name,
+            task.id,
+            dep_key,
+            requested,
+        )
+        if selected is None:
+            continue
+        manifest = selected.path / "manifest.json"
+        if manifest.is_file():
+            result.append({
+                "step": dep_key,
+                "round": str(selected.round),
+                "path": str(manifest),
+                "name": "manifest.json",
+            })
+        for f in sorted(selected.path.rglob("*")):
+            if f.is_file() and f.name != "manifest.json":
+                result.append({
+                    "step": dep_key,
+                    "round": str(selected.round),
+                    "path": str(f),
+                    "name": f.name,
+                })
     return result
 
 
 def _format_artifact_refs(artifacts: list[dict[str, str]]) -> str:
     """Format artifact references as a readable block."""
-    lines = ["## 上游产物（已完成，可引用）"]
+    lines = ["## Upstream artifacts (completed; may be referenced)"]
     current_step = ""
     for art in artifacts:
         if art["step"] != current_step:
             current_step = art["step"]
-            lines.append(f"\n### 阶段: {current_step}")
+            round_suffix = f" (round {art['round']})" if art.get("round") else ""
+            lines.append(f"\n### Stage: {current_step}{round_suffix}")
         lines.append(f"- {art['path']}")
     return "\n".join(lines)
 
@@ -248,35 +292,44 @@ def _output_path(out_base: str, name: str, otype: str) -> tuple[str, str]:
     concrete single-file path with the proper extension.
     """
     if str(otype).lower() == "directory":
-        return "输出目录", f"{out_base}/{name}"
-    return "输出路径", f"{out_base}/{name}{_artifact_extension(otype, name)}"
+        return "output directory", f"{out_base}/{name}"
+    return "output path", f"{out_base}/{name}{_artifact_extension(otype, name)}"
 
 
-def _format_output_specs(outputs: list[dict], task_id: str, step_key: str, workflow_name: str = "default") -> str:
-    """Format output specifications as strict constraints for the LLM."""
-    lines = ["## 输出规范（必须严格遵守）"]
-    lines.append("请按以下列表精确产出内容，每个产物写入指定的输出路径：\n")
+def _format_output_specs(
+    outputs: list[dict],
+    task_id: str,
+    step_key: str,
+    workflow_name: str = "default",
+    *,
+    artifact_round: int | None = None,
+) -> str:
+    """Describe optional outputs and the format required when produced."""
+    lines = ["## Output specification"]
+    lines.append(_OUTPUT_GUIDANCE)
+    lines.append("The list below defines artifact format and output paths when generated:\n")
 
-    out_base = f".workstep/artifacts/{workflow_name}/{task_id}/{step_key}"
+    round_suffix = f"/{int(artifact_round)}" if artifact_round is not None else ""
+    out_base = f".workstep/artifacts/{workflow_name}/{task_id}/{step_key}{round_suffix}"
 
     for i, out in enumerate(outputs, 1):
-        name = out.get("name", f"产物{i}")
+        name = out.get("name", f"artifact-{i}")
         otype = out.get("type", "file")
         constraint = OUTPUT_TYPE_CONSTRAINTS.get(otype, _DEFAULT_CONSTRAINT)
         lines.append(f"{i}. **{name}**")
-        lines.append(f"   - 类型: `{otype}`")
-        lines.append(f"   - 格式要求: {constraint}")
+        lines.append(f"   - type: `{otype}`")
+        lines.append(f"   - format requirement: {constraint}")
         path_label, output_path = _output_path(out_base, name, otype)
-        suffix = "/" if path_label == "输出目录" else ""
+        suffix = "/" if path_label == "output directory" else ""
         lines.append(f"   - {path_label}: `{output_path}{suffix}`")
 
     if len(outputs) > 1:
         lines.append(_format_subagent_guidance(len(outputs)))
 
-    lines.append(f"\n每个产物写入 `{out_base}/` 下的对应路径：")
-    lines.append("- 目录型产物（类型为 `directory`）：创建同名目录 `<产物名>/`，目录内可含多个文件和子目录（按需）。")
-    lines.append("- 文件型产物（如 `md`、`json` 等带后缀类型）：直接产出 `<产物名>.<扩展名>` 单个文件，不要为文件型产物再创建同名子目录。")
-    lines.append("文件的扩展名必须与「输出规范」中的类型一致，避免使用未声明的文件格式。")
+    lines.append(f"\nWrite generated artifacts to the matching paths under `{out_base}/`:")
+    lines.append("- Directory artifact (`directory`): create a directory named `<artifact>/`; it may contain multiple files and subdirectories.")
+    lines.append("- File artifact (such as `md` or `json`): write one file named `<artifact>.<extension>`; do not wrap it in another same-named directory.")
+    lines.append("File extensions must match the declared output specification; do not use undeclared formats.")
 
     return "\n".join(lines)
 
@@ -284,11 +337,11 @@ def _format_output_specs(outputs: list[dict], task_id: str, step_key: str, workf
 def _format_subagent_guidance(count: int) -> str:
     """Guide the main engine to produce each output via a subagent in one session."""
     return (
-        f"\n### 分工方式（本阶段共 {count} 个产物）\n"
-        "本阶段的所有产物必须在**同一个会话**内完成，不要为每个产物启动新的引擎会话。\n"
-        "推荐调用你的「子代理 / 子任务」工具，为每个产物分别派发一个子代理执行：\n"
-        f"- 共派发 {count} 个子代理，每个子代理只负责一个产物；\n"
-        "- 子代理入参中写明：产物名称、格式要求与输出路径；\n"
-        "- 子代理执行结束后，把它的产出摘要、关键结论与耗时作为工具返回内容交回主会话；\n"
-        "- 主会话汇总所有子代理结果，并核验每个产物都已写入对应的输出路径。"
+        f"\n### Delegation (this stage has {count} artifacts)\n"
+        "Complete all artifacts for this stage in the **same conversation**; do not start a new engine session per artifact.\n"
+        "Prefer your subagent/subtask tool and assign one subagent per artifact:\n"
+        f"- Dispatch {count} subagents, one artifact each;\n"
+        "- Give each subagent the artifact name, format requirement, and output path;\n"
+        "- Return each subagent summary, key findings, and elapsed time to the main conversation;\n"
+        "- The main conversation aggregates results, verifies each artifact path, and explains any missing or empty artifact."
     )

@@ -400,6 +400,28 @@ async def resume_stage(
     return accepted
 
 
+@router.post("/{task_id}/step/{step_key}/restart")
+async def restart_stage_with_fresh_session(
+    task_id: str,
+    step_key: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Rebuild a lost engine session and re-run the stage from scratch."""
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    _project(pid)
+    try:
+        accepted = await workflow_runtime.restart_stage_with_fresh_session(
+            pid,
+            task_id,
+            step_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return accepted
+
+
 @router.patch("/{task_id}/coordinator-config")
 async def update_coordinator_config(
     task_id: str,

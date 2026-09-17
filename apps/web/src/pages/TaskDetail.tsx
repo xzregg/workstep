@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
+import { randomUuid } from '../utils/uuid'
 import { useOverlay } from '../hooks/useOverlay'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import Button from '../components/Button'
@@ -29,17 +30,16 @@ import {
   type TaskArtifact,
   type TaskStepState,
 } from '../api/client'
-import ArtifactPreview from '../components/ArtifactPreview'
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import MarkdownEditor from '../components/MarkdownEditor'
-import PromptViewerDialog from '../components/PromptViewerDialog'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
-import TaskDetailView from '../components/TaskDetailView'
+import TaskDetailPage from '../components/TaskDetailPage'
 import TaskStageConfigController from '../components/TaskStageConfigController'
 import {
   createOptimisticUserMessage,
+  resolveTaskDetailAdvanceState,
   isVisibleLiveExecutionMessage,
   isUnpersistedLiveMessage,
   isTaskCompleted,
@@ -47,9 +47,11 @@ import {
   isStageResumableWithMessage,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
+  findPreferredArtifact,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import { loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
+import { clearTaskDraft, loadTaskDraft, saveTaskDraft } from '../utils/chatDraft'
 import { useI18n, type TKey } from '../i18n'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
@@ -308,6 +310,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
   const [chatError, setChatError] = useState('')
   const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
+  const [restartingStageKeys, setRestartingStageKeys] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stageResuming, setStageResuming] = useState(false)
   const [stageInserts, setStageInserts] = useState<Array<{
@@ -887,7 +890,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const resumableKeys = new Set(
       stageProgress
         .filter((progress) => (
-          isStageResumableWithMessage(progress.status)
+          isStageResumableWithMessage(progress.status, progress.has_history)
         ))
         .map((progress) => progress.step_key),
     )
@@ -931,7 +934,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   ): Promise<boolean> => {
     if (!taskId || !projectId || !targetStage) return false
     setChatError('')
-    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticId = `pending-${randomUuid()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
       promptText,
@@ -987,14 +990,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       if (activeStageRunning) {
         setStageInserts((current) => [
           ...current,
-          { id: `insert-${crypto.randomUUID()}`, content: submittedPrompt },
+          { id: `insert-${randomUuid()}`, content: submittedPrompt },
         ])
         setPrompt('')
+        clearTaskDraft(taskId)
         setChatError('')
         return
       }
       if (!targetStage) return
       setPrompt('')
+      clearTaskDraft(taskId)
       await resumeStageWithPrompt(submittedPrompt, {
         onErrorRestore: () => setPrompt(submittedPrompt),
       })
@@ -1003,7 +1008,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const submittedPrompt = prompt.trim()
     if (!submittedPrompt) return
     shouldFollowMessagesRef.current = true
-    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticId = `pending-${randomUuid()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
       submittedPrompt,
@@ -1015,13 +1020,14 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setChatError('')
     setHistoryMessages((current) => [...current, optimisticMessage])
     setPrompt('')
+    clearTaskDraft(taskId)
     setCoordinatorRunning(true)
     try {
       const accepted = await taskApi.chat(
         taskId,
         submittedPrompt,
         projectId,
-        crypto.randomUUID(),
+        randomUuid(),
       )
       setHistoryMessages((current) => current.map((message) => (
         message.id === optimisticId
@@ -1083,12 +1089,31 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
+  /** 引擎会话丢失（rollout / session 文件被清理）：清空会话，用同一阶段提示词重跑。 */
+  const handleRestartStageWithFreshSession = async (stepKey: string) => {
+    if (!taskId || !projectId) return
+    if (restartingStageKeys.includes(stepKey)) return
+    setChatError('')
+    setRestartingStageKeys((current) => [...current, stepKey])
+    try {
+      await taskApi.restartStageWithFreshSession(taskId, stepKey, projectId)
+      shouldFollowMessagesRef.current = true
+      await refreshTask(taskId, projectId)
+    } catch (reason) {
+      setChatError(
+        reason instanceof Error ? reason.message : t('taskDetail.lostSessionRestartFailed'),
+      )
+    } finally {
+      setRestartingStageKeys((current) => current.filter((key) => key !== stepKey))
+    }
+  }
+
   const sendStageInserts = async (items: Array<{ id: string; content: string }>) => {
     if (!taskId || !projectId || !targetStage) return
     if (!items.length) return
     const submitted = items.map((item) => item.content).join('\n\n')
     setChatError('')
-    const optimisticId = `pending-${crypto.randomUUID()}`
+    const optimisticId = `pending-${randomUuid()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
       submitted,
@@ -1215,11 +1240,46 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setStageInserts(loadInsertQueue(projectId, taskId))
   }, [taskId, projectId])
 
+  // 任务详情的输入框按 taskId 保留草稿，避免切换流程/回到任务时丢失。
+  const taskDraftRef = useRef<{ taskId: string } | null>(null)
+  const promptRef = useRef(prompt)
+  const restoredTaskDraftRef = useRef<string | null>(null)
+  const skipNextTaskDraftSaveRef = useRef(false)
+  useEffect(() => {
+    const previous = taskDraftRef.current
+    taskDraftRef.current = taskId ? { taskId } : null
+    if (previous && previous.taskId !== taskId) {
+      saveTaskDraft(previous.taskId, promptRef.current)
+    }
+    const restored = taskId ? loadTaskDraft(taskId) : ''
+    restoredTaskDraftRef.current = taskId ? restored : null
+    skipNextTaskDraftSaveRef.current = true
+    setPrompt(restored)
+  }, [taskId])
+
+  useEffect(() => {
+    promptRef.current = prompt
+  }, [prompt])
+
   useEffect(() => {
     const target = stageQueueRef.current
     if (!target) return
     saveInsertQueue(target.projectId, target.taskId, stageInserts)
   }, [stageInserts])
+
+  useEffect(() => {
+    if (!taskId) return
+    if (skipNextTaskDraftSaveRef.current) {
+      // taskId 变化后的首帧仍带着旧 prompt，不能把它写到新任务下。
+      skipNextTaskDraftSaveRef.current = false
+      return
+    }
+    if (restoredTaskDraftRef.current === prompt) {
+      restoredTaskDraftRef.current = null
+      return
+    }
+    saveTaskDraft(taskId, prompt)
+  }, [taskId, prompt])
 
   // A2UI protocol: clicks inside rendered UI bubbles (buttons, pickers, ...)
   // arrive as client actions. Relay them to the coordinator as a user message
@@ -1230,7 +1290,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       'taskDetail.a2uiActionMessage',
       a2uiActionMessageParams(action),
     )
-    const optimisticId = `pending-a2ui-${crypto.randomUUID()}`
+    const optimisticId = `pending-a2ui-${randomUuid()}`
     const optimisticMessage = createOptimisticUserMessage(
       optimisticId,
       content,
@@ -1242,7 +1302,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setChatError('')
     setHistoryMessages((current) => [...current, optimisticMessage])
     setCoordinatorRunning(true)
-    taskApi.chat(taskId, content, projectId, crypto.randomUUID())
+    taskApi.chat(taskId, content, projectId, randomUuid())
       .then((accepted) => {
         setHistoryMessages((current) => current.map((message) => (
           message.id === optimisticId
@@ -1612,59 +1672,19 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const globalAdvanceState = (() => {
-    if (taskNotStarted) {
-      return {
-        label: running ? t('taskDetail.starting') : t('taskList.start'),
-        disabled: running,
-      }
-    }
-    if (
-      task.status === 'ready'
-      && task.steps.every(
-        (step) => step.status === 'passed' || step.status === 'skipped'
-      )
-    ) {
-      return { label: t('taskDetail.workflowCompleted'), disabled: true }
-    }
-    if (activeStepStatus === 'awaiting_review') {
-      return {
-        label: t('taskDetail.approveAndAdvance'),
-        disabled: reviewActionPending || !activeReview,
-      }
-    }
-    if (activeStepStatus === 'rejected') {
-      return {
-        label: t('taskDetail.forceApproveAndAdvance'),
-        disabled: reviewActionPending || !activeReview,
-      }
-    }
-    if (activeStepStatus === 'reviewing') {
-      return { label: t('taskDetail.reviewing'), disabled: true }
-    }
-    if (activeStepStatus === 'retrying') {
-      return { label: t('taskDetail.autoRerunning'), disabled: true }
-    }
-    if (activeStepStatus === 'running') {
-      return { label: t('taskDetail.stageRunning'), disabled: true }
-    }
-    return { label: t('taskDetail.waitForStage'), disabled: true }
-  })()
+  const globalAdvanceState = resolveTaskDetailAdvanceState({
+    taskNotStarted,
+    running,
+    taskStatus: task.status,
+    stepStates: task.steps,
+    activeStepStatus,
+    reviewActionPending,
+    hasActiveReview: Boolean(activeReview),
+    t,
+  })
 
   const findArtifact = (name: string, preferredStepKey?: string, source?: TaskArtifact[]) => {
-    const normalize = (value: string) =>
-      value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
-    const normalizedName = normalize(name)
-    const list = source || artifacts
-    const candidates = preferredStepKey
-      ? list.filter((artifact) => artifact.step_key === preferredStepKey)
-      : list
-    return candidates.find((artifact) => artifact.logical_name === name)
-      || candidates.find((artifact) => {
-        const artifactName = normalize(artifact.logical_name || artifact.name)
-        return artifactName.includes(normalizedName)
-          || normalizedName.includes(artifactName)
-      })
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
   }
 
   const openArtifact = (name: string, preferredStepKey?: string) => {
@@ -1742,7 +1762,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         stepKey={chatTargetStageKey}
         running={activeStageRunning}
       >
-        {({ inputConfig: stageEngineConfig, loading: stageEngineConfigLoading, error: stageEngineConfigError }) => <TaskDetailView
+        {({ inputConfig: stageEngineConfig, loading: stageEngineConfigLoading, error: stageEngineConfigError }) => <TaskDetailPage
         task={task}
         stages={stages}
         stageProgress={stageProgress}
@@ -1781,6 +1801,8 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         stoppingStepKeys={stoppingStepKeys}
         stageResuming={stageResuming}
         onStopStage={handleStopStage}
+        onRestartStageWithFreshSession={handleRestartStageWithFreshSession}
+        restartingStageKeys={restartingStageKeys}
         chatInputRef={chatInputRef}
         stageInserts={stageInserts}
         onStageInsertRemove={handleStageInsertRemove}
@@ -1937,6 +1959,82 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onViewingPromptChange={setViewingPrompt}
         running={running}
         projectId={projectId}
+        primaryAction={{
+          label: globalAdvanceState.label,
+          disabled: globalAdvanceState.disabled,
+          loading: reviewActionPending,
+          onClick: globalAdvance,
+        }}
+        previewArtifact={previewArtifact}
+        onCloseArtifactPreview={() => setPreviewArtifact(null)}
+        onOpenArtifactDirectory={openArtifactDirectory}
+        canOpenArtifactDirectory={detailProject?.type !== 'remote'}
+        viewingPrompt={viewingPrompt}
+        onCloseViewingPrompt={() => setViewingPrompt(null)}
+        artifactNotice={artifactNotice}
+        overlays={<>
+          {showPromptEditor && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={t('taskDetail.quickEditPromptAria', { stage: currentStage.label })}
+              style={{
+                position: 'fixed', inset: 0, zIndex: 1275,
+                background: 'rgba(0,0,0,0.35)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: 24,
+              }}
+              onClick={() => !promptSaving && setShowPromptEditor(false)}
+            >
+              <div
+                style={{
+                  width: 'min(680px, 90vw)', background: 'var(--bg)',
+                  borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
+                  overflow: 'hidden',
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="dialog-header">
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
+                    <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
+                  </div>
+                  <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
+                </div>
+                <div style={{ padding: 18 }}>
+                  <MarkdownEditor
+                    value={promptDraft}
+                    onChange={setPromptDraft}
+                    projectId={projectId}
+                    placeholder={t('taskDetail.promptEditorPlaceholder')}
+                    minHeight={260}
+                    maxHeight="55vh"
+                    autoFocus
+                    ariaLabel={t('taskDetail.stagePromptAria', { stage: currentStage.label })}
+                  />
+                  {promptSaveError && (
+                    <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>
+                      {promptSaveError}
+                    </div>
+                  )}
+                </div>
+                <div className="dialog-footer">
+                  <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>{t('common.cancel')}</Button>
+                  <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStagePrompt}>
+                    {t('taskDetail.savePrompt')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          <ShareDialog
+            open={shareOpen && !!task}
+            taskId={taskId}
+            projectId={projectId}
+            onClose={() => setShareOpen(false)}
+          />
+        </>}
         onClose={onClose}
         chatScrollRef={chatScrollRef}
         chatEndRef={chatEndRef}
@@ -1948,156 +2046,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onUnreadMessagesChange={setHasUnreadMessages}
         />}
       </TaskStageConfigController>
-      <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0 }}>
-        <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
-        <Button
-          variant="primary"
-          disabled={globalAdvanceState.disabled}
-          loading={reviewActionPending}
-          onClick={globalAdvance}
-          style={globalAdvanceState.disabled ? {
-            background: 'var(--border)',
-            color: 'var(--meta)',
-            borderColor: 'var(--border)',
-            cursor: 'not-allowed',
-            opacity: 1,
-          } : undefined}
-        >
-          {globalAdvanceState.label}
-        </Button>
-      </div>
-
-      {artifactNotice && (
-        <div style={{
-          position: 'fixed', top: 18, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 1300, padding: '8px 16px', borderRadius: 6,
-          background: 'var(--fg)', color: 'var(--bg)', fontSize: 'calc(13px * var(--font-scale))',
-          boxShadow: 'var(--elev-raised)',
-        }}>
-          {artifactNotice}
-        </div>
-      )}
-
-      {viewingPrompt && (
-        <PromptViewerDialog
-          prompt={viewingPrompt}
-          projectId={projectId || undefined}
-          onClose={() => setViewingPrompt(null)}
-        />
-      )}
-
-      {showPromptEditor && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('taskDetail.quickEditPromptAria', { stage: currentStage.label })}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1275,
-            background: 'rgba(0,0,0,0.35)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 24,
-          }}
-          onClick={() => !promptSaving && setShowPromptEditor(false)}
-        >
-          <div
-            style={{
-              width: 'min(680px, 90vw)', background: 'var(--bg)',
-              borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              overflow: 'hidden',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header">
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: currentStageColor }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{t('taskDetail.quickEditPrompt')}</div>
-                <div style={{ marginTop: 2, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>{currentStage.label} · {currentStage.key}</div>
-              </div>
-              <Button variant="icon" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>✕</Button>
-            </div>
-            <div style={{ padding: 18 }}>
-              <MarkdownEditor
-                value={promptDraft}
-                onChange={setPromptDraft}
-                projectId={projectId}
-                placeholder={t('taskDetail.promptEditorPlaceholder')}
-                minHeight={260}
-                maxHeight="55vh"
-                autoFocus
-                ariaLabel={t('taskDetail.stagePromptAria', { stage: currentStage.label })}
-              />
-              {promptSaveError && (
-                <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>
-                  {promptSaveError}
-                </div>
-              )}
-            </div>
-            <div className="dialog-footer">
-              <Button variant="ghost" disabled={promptSaving} onClick={() => setShowPromptEditor(false)}>{t('common.cancel')}</Button>
-              <Button variant="primary" disabled={promptSaving} loading={promptSaving} onClick={saveStagePrompt}>
-                {t('taskDetail.savePrompt')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {previewArtifact && (
-        <div
-          role="dialog"
-          aria-label={t('taskDetail.artifactPreviewAria', { name: previewArtifact.logical_name || previewArtifact.name })}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1250,
-            background: 'rgba(0,0,0,0.35)', padding: '5vh 6vw',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={() => setPreviewArtifact(null)}
-        >
-          <div
-            style={{
-              width: 'min(900px, 90vw)', height: 'min(720px, 88vh)',
-              background: 'var(--bg)', borderRadius: 12, overflow: 'hidden',
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex', flexDirection: 'column',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header" style={{ padding: '12px 16px' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                  {previewArtifact.logical_name || previewArtifact.name}
-                </div>
-                <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {previewArtifact.path}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                disabled={detailProject?.type === 'remote'}
-                title={detailProject?.type === 'remote' ? t('taskList.remoteNoLocalDirectory') : undefined}
-                onClick={openArtifactDirectory}
-              >
-                {t('taskDetail.openDirectory')}
-              </Button>
-              <Button variant="icon" onClick={() => setPreviewArtifact(null)}>✕</Button>
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <ArtifactPreview
-                path={previewArtifact.path}
-                isDir={!!previewArtifact.is_dir}
-                projectId={projectId}
-                onClose={() => setPreviewArtifact(null)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-      <ShareDialog
-        open={shareOpen && !!task}
-        taskId={taskId}
-        projectId={projectId}
-        onClose={() => setShareOpen(false)}
-      />
     </div>
   )
 }

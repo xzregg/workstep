@@ -38,6 +38,9 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
 
         workflows = {column.name for column in db.get_columns("workflows")}
         assert "sort_order" in workflows
+
+        task_shares = {column.name for column in db.get_columns("task_shares")}
+        assert "mode" in task_shares
     finally:
         db.close()
 

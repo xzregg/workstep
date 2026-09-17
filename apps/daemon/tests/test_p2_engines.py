@@ -456,7 +456,7 @@ async def test_codex_denial_reject_injects_decision_without_escalation(monkeypat
     })
     await asyncio.wait_for(consumer, timeout=5)
 
-    assert any("用户拒绝" in content for content in decisions)
+    assert any("user rejected" in content for content in decisions)
     resume_cmd = spawned[1]
     assert "sandbox_mode=" not in " ".join(resume_cmd)
 
@@ -562,8 +562,8 @@ async def test_codex_denial_reject_for_session_auto_denies(monkeypatch):
     assert "resume" in " ".join(spawned[1])
     assert "resume" in " ".join(spawned[2])
     assert len(decisions) == 2
-    assert all("用户拒绝" in content for content in decisions)
-    assert all("自动拒绝" in content for content in decisions)
+    assert all("user rejected" in content for content in decisions)
+    assert all("rejected" in content for content in decisions)
 
 
 def test_claude_code_maps_subagent_task_frames():
@@ -913,7 +913,7 @@ async def test_claude_code_denial_round_trip(monkeypatch):
     content = injected["message"]["content"][0]
     assert content["type"] == "tool_result"
     assert content["tool_use_id"] == "toolu-1"
-    assert "已批准" in content["content"]
+    assert "approved" in content["content"]
 
 
 @pytest.mark.anyio
@@ -1033,7 +1033,7 @@ async def test_claude_code_allow_always_auto_approves_same_command(monkeypatch):
     injected = _json.loads(tool_result_lines[-1])
     content = injected["message"]["content"][0]
     assert content["tool_use_id"] == "toolu-2"
-    assert "自动放行" in content["content"]
+    assert "will be allowed" in content["content"]
 
 
 def test_claude_code_append_permission_rule_merges_settings(tmp_path):
@@ -1168,7 +1168,7 @@ async def test_claude_code_reject_for_session_auto_denies_same_command(monkeypat
     injected = _json.loads(tool_result_lines[-1])
     content = injected["message"]["content"][0]
     assert content["tool_use_id"] == "toolu-2"
-    assert "自动拒绝" in content["content"]
+    assert "will be rejected" in content["content"]
 
 
 def test_codex_map_turn_completed():
@@ -1402,6 +1402,94 @@ async def test_claude_spawn_passes_compaction_override_only_to_child(monkeypatch
 
     assert captured["env"]["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "5"
     assert os.environ.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") is None
+
+
+@pytest.mark.anyio
+async def test_claude_spawn_injects_custom_settings_env_and_flags(monkeypatch):
+    """custom_settings: env 注入子进程环境，其余键合并进 --settings 传给 CLI。"""
+    import json as _json
+
+    captured = {}
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured["cmd"] = [program, *args]
+        captured["env"] = kwargs.get("env")
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_permission_mode",
+        lambda: "default",
+    )
+    custom = _json.dumps({
+        "env": {
+            "ANTHROPIC_BASE_URL": "http://192.168.50.21:3000",
+            "CLAUDE_CODE_EFFORT_LEVEL": "max",
+        },
+        "permissions": {"ask": ["Bash(rm\\s)"]},
+        "model": "sonnet",
+    })
+    monkeypatch.setattr(
+        "engines.claude_code.config_store.get_claude_code_config",
+        lambda: {"model_map": "", "custom_settings": custom},
+    )
+
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd="/tmp"):
+        pass
+
+    cmd = captured["cmd"]
+    assert captured["env"]["ANTHROPIC_BASE_URL"] == "http://192.168.50.21:3000"
+    assert captured["env"]["CLAUDE_CODE_EFFORT_LEVEL"] == "max"
+    assert os.environ.get("CLAUDE_CODE_EFFORT_LEVEL") is None
+    settings_index = cmd.index("--settings")
+    merged = _json.loads(cmd[settings_index + 1])
+    # 其余键（不含 env）合并进 settings；skillOverrides 保留。
+    assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
+    assert merged["model"] == "sonnet"
+    assert "env" not in merged
+    assert merged["skillOverrides"] == {}
+
+
+@pytest.mark.anyio
+async def test_codex_spawn_injects_custom_config_and_skips_managed_keys(monkeypatch):
+    """自定义 config 覆盖按 key=value 透传 -c；已托管的键不重复注入。"""
+    captured = {}
+
+    async def fake_create_subprocess_exec(program, *args, **kwargs):
+        captured["cmd"] = [program, *args]
+        return _FakeCodexProcess(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr(
+        "engines.codex.config_store.get_codex_config",
+        lambda: {
+            "sandbox_mode": "workspace-write",
+            "model_reasoning_effort": "high",
+            "approval_policy": "never",
+            "custom_config": (
+                "model_context_window = 128000\n"
+                "# comment line\n"
+                "model_reasoning_effort = low\n"
+                "model_max_output_tokens = 8192\n"
+            ),
+        },
+    )
+
+    async for _event in CodexEngine().spawn(prompt="hello", cwd="/tmp"):
+        pass
+
+    cmd = captured["cmd"]
+    joined = list(zip(cmd, cmd[1:]))
+    configs = [value for flag, value in joined if flag == "-c"]
+    assert "model_context_window=128000" in configs
+    assert "model_max_output_tokens=8192" in configs
+    # 已由 WorkStep 的推理强度设置的键，自定义覆盖不得重复注入。
+    assert not any(item.startswith("model_reasoning_effort=") and item.endswith("=low") for item in configs)
+    assert "model_reasoning_effort=high" in configs
 
 
 @pytest.mark.anyio
@@ -2539,6 +2627,70 @@ async def test_claude_agent_sdk_spawn_uses_modern_query_api(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_claude_agent_sdk_spawn_injects_custom_settings_env_and_options(monkeypatch):
+    """custom_settings: env 进子进程环境，其余键合并进 SDK settings。"""
+    import claude_agent_sdk as sdk_module
+    import json as _json
+
+    captured = {}
+
+    class _ClaudeClientCapture:
+        def __init__(self, options=None, transport=None):
+            self.options = options
+            captured["client"] = self
+
+        async def connect(self, prompt=None):
+            pass
+
+        async def query(self, prompt, session_id="default", **kwargs):
+            if hasattr(prompt, "__aiter__"):
+                async for _message in prompt:
+                    pass
+
+        async def receive_messages(self):
+            if False:  # pragma: no cover
+                yield None
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(sdk_module, "ClaudeSDKClient", _ClaudeClientCapture)
+    monkeypatch.setattr(
+        ClaudeAgentSDKEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    custom = _json.dumps({
+        "env": {"ANTHROPIC_AUTH_TOKEN": "sk-test", "CLAUDE_CODE_EFFORT_LEVEL": "max"},
+        "permissions": {"ask": ["Bash(rm\\s)"]},
+        "model": "sonnet",
+    })
+    monkeypatch.setattr(
+        "engines.claude_agent_sdk.config_store.get_claude_agent_sdk_config",
+        lambda: {
+            "permission_mode": "acceptEdits",
+            "max_turns": "",
+            "fallback_model": "",
+            "model_map": "",
+            "custom_settings": custom,
+        },
+    )
+
+    events = [
+        event
+        async for event in ClaudeAgentSDKEngine().spawn(prompt="hi", cwd="/tmp")
+    ]
+    assert [event.type for event in events] == ["status"]
+    options = captured["client"].options
+    assert options.env["ANTHROPIC_AUTH_TOKEN"] == "sk-test"
+    assert options.env["CLAUDE_CODE_EFFORT_LEVEL"] == "max"
+    assert os.environ.get("ANTHROPIC_AUTH_TOKEN") is None
+    merged = _json.loads(options.settings)
+    assert merged["permissions"] == {"ask": ["Bash(rm\\s)"]}
+    assert merged["model"] == "sonnet"
+    assert "env" not in merged
+    assert merged["skillOverrides"] == {}
+
+
+@pytest.mark.anyio
 async def test_claude_agent_sdk_can_use_tool_permission_round_trip(monkeypatch):
     """can_use_tool 权限回调 → interaction_request 弹窗 → 用户允许 → PermissionResultAllow。
 
@@ -2958,6 +3110,71 @@ def test_codex_sdk_completed_text_falls_back_only_when_no_delta():
     assert events == []
 
 
+def test_codex_sdk_marks_intermediate_unphased_messages_as_commentary():
+    engine = CodexSDKEngine()
+    state = {"emitted_text": False, "tool_emitted": set()}
+
+    first = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                id="progress",
+                text="我先定位实现。",
+            ))),
+        ),
+        state,
+    )
+    assert first == []
+
+    tool = engine._map_notification(
+        _SdkFake(
+            method="item/started",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="commandExecution",
+                id="tool-1",
+                command="rg phase",
+            ))),
+        ),
+        state,
+    )
+    assert [event.type for event in tool] == [
+        "agent_message_chunk", "tool_call",
+    ]
+    assert tool[0].data["phase"] == "commentary"
+    assert tool[0].data["source_item_id"] == "progress"
+
+    final = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                id="answer",
+                text="已完成。",
+            ))),
+        ),
+        state,
+    )
+    assert final == []
+
+    completed = engine._map_notification(
+        _SdkFake(
+            method="turn/completed",
+            payload=_SdkFake(turn=_SdkFake(
+                status=_SdkFake(value="completed"),
+                error=None,
+            )),
+        ),
+        state,
+    )
+    assert [event.type for event in completed] == [
+        "agent_message_chunk", "status",
+    ]
+    assert completed[0].data["content"]["text"] == "已完成。"
+    assert completed[0].data.get("phase") is None
+    assert completed[0].data["source_item_id"] == "answer"
+
+
 def test_codex_sdk_maps_usage_with_cache():
     engine = CodexSDKEngine()
     notification = _SdkFake(
@@ -3093,6 +3310,60 @@ def test_codex_sdk_spawn_error_without_sdk(monkeypatch):
 
     events = asyncio.run(run())
     assert [event.type for event in events] == ["error"]
+
+
+@pytest.mark.anyio
+async def test_codex_sdk_spawn_injects_custom_config_and_skips_managed_keys(monkeypatch):
+    """自定义 config 写入 thread config；已托管的键不被覆盖。"""
+    import openai_codex as codex_module
+
+    captured = {}
+
+    class FakeTurn:
+        async def stream(self):
+            if False:
+                yield None
+
+    class FakeThread:
+        id = "thread-1"
+
+        async def turn(self, prompt, model=None):
+            return FakeTurn()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self._client = SimpleNamespace(
+                _sync=SimpleNamespace(_approval_handler=None)
+            )
+
+        async def thread_start(self, **kwargs):
+            captured["start_kwargs"] = kwargs
+            return FakeThread()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(codex_module, "AsyncCodex", FakeClient)
+    monkeypatch.setattr(
+        "engines.codex_sdk.config_store.get_codex_sdk_config",
+        lambda: {
+            "model_reasoning_effort": "high",
+            "approval_mode": "",
+            "sandbox": "workspace-write",
+            "custom_config": (
+                "model_context_window = 128000\n"
+                "model_reasoning_effort = low\n"
+            ),
+        },
+    )
+
+    async for _event in CodexSDKEngine().spawn(prompt="hi", cwd="/tmp"):
+        pass
+
+    config = captured["start_kwargs"]["config"]
+    assert config["model_context_window"] == "128000"
+    # WorkStep 的推理强度优先，自定义的 low 不得覆盖。
+    assert config["model_reasoning_effort"] == "high"
 
 
 @pytest.mark.anyio
@@ -3361,7 +3632,7 @@ def test_engine_config_schemas_are_declared():
     assert PydanticAIEngine.config_schema()[0].type == "select"
 
     claude_fields = {field.key: field for field in ClaudeCodeEngine.config_schema()}
-    assert set(claude_fields) == {"permission_mode", "model_map"}
+    assert set(claude_fields) == {"permission_mode", "model_map", "custom_settings"}
     assert "bypassPermissions" in claude_fields["permission_mode"].confirm_values
     assert claude_fields["model_map"].type == "model_map"
     assert claude_fields["model_map"].stage_hidden is True
@@ -3371,9 +3642,11 @@ def test_engine_config_schemas_are_declared():
         "sandbox_mode",
         "model_reasoning_effort",
         "approval_policy",
+        "custom_config",
     }
     assert codex_fields["sandbox_mode"].type == "select"
     assert codex_fields["sandbox_mode"].default == "workspace-write"
+    assert codex_fields["custom_config"].stage_hidden is True
 
     claude_sdk_fields = {
         field.key: field for field in ClaudeAgentSDKEngine.config_schema()
@@ -3383,6 +3656,7 @@ def test_engine_config_schemas_are_declared():
         "max_turns",
         "fallback_model",
         "model_map",
+        "custom_settings",
     }
     assert claude_sdk_fields["max_turns"].type == "number"
     assert claude_sdk_fields["model_map"].type == "model_map"
@@ -3394,8 +3668,10 @@ def test_engine_config_schemas_are_declared():
         "model_reasoning_effort",
         "approval_mode",
         "sandbox",
+        "custom_config",
     }
     assert codex_sdk_fields["approval_mode"].type == "select"
+    assert codex_sdk_fields["custom_config"].stage_hidden is True
 
     from engines.core.base import BaseLLMEngine
     assert BaseLLMEngine.config_schema() == []
@@ -4467,3 +4743,24 @@ def test_config_overrides_can_clear_a_saved_value_for_a_draft_test():
         "approval_policy": "",
         "sandbox_mode": "read-only",
     }
+
+
+def test_claude_sandbox_env_only_for_bypass_permissions():
+    """只有 bypassPermissions 才注入 IS_SANDBOX（容器 root 下的必需声明）。"""
+    from services.config import claude_sandbox_env
+
+    assert claude_sandbox_env("bypassPermissions") == {"IS_SANDBOX": "1"}
+    for mode in ("acceptEdits", "default", "plan", "manual", "", None):
+        assert claude_sandbox_env(mode) == {}
+
+
+def test_claude_engines_inject_sandbox_env_for_bypass_permissions():
+    """CLI 与 SDK 引擎都必须把 IS_SANDBOX 合并进子进程环境。"""
+    from services.config import claude_sandbox_env
+
+    cli_env = {"ANTHROPIC_BASE_URL": "http://x", **claude_sandbox_env("bypassPermissions")}
+    assert cli_env["IS_SANDBOX"] == "1"
+
+    sdk_env = {"ANTHROPIC_BASE_URL": "http://x", **claude_sandbox_env("bypassPermissions")}
+    assert sdk_env["IS_SANDBOX"] == "1"
+    assert claude_sandbox_env("acceptEdits").get("IS_SANDBOX") is None

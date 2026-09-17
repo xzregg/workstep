@@ -36,6 +36,22 @@ _SUMMARY_EVENT_TYPES = {
 }
 
 
+def _event_time_ms(value: Any) -> int | None:
+    """Event timestamp -> epoch milliseconds for summaries."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return int(number) if number >= 1_000_000_000_000 else int(number * 1000)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return int(parsed.timestamp() * 1000)
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class JournalRef:
     root: Path
@@ -289,17 +305,31 @@ class TurnEventJournal:
         tool_ids: set[str] = set()
         summary_events: list[dict[str, Any]] = []
         latest_usage: dict[str, Any] | None = None
+        first_event_ms: int | None = None
+        first_output_at: str | None = None
+        last_event_ms: int | None = None
         for event in events:
             event_type = event.get("type")
             data = event.get("data") or {}
+            event_ms = _event_time_ms(event.get("timestamp"))
+            if event_ms is not None:
+                if first_event_ms is None or event_ms < first_event_ms:
+                    first_event_ms = event_ms
+                if last_event_ms is None or event_ms > last_event_ms:
+                    last_event_ms = event_ms
             if event_type == "agent_message_chunk":
                 text = str((data.get("content") or {}).get("text", ""))
+                if text and first_output_at is None and event_ms is not None:
+                    first_output_at = event.get("timestamp")
                 if data.get("phase") == "commentary":
                     commentary_characters += len(text)
                 else:
                     content_parts.append(text)
             elif event_type == "agent_thought_chunk":
-                thought_characters += len(str((data.get("content") or {}).get("text", "")))
+                text = str((data.get("content") or {}).get("text", ""))
+                if text and first_output_at is None and event_ms is not None:
+                    first_output_at = event.get("timestamp")
+                thought_characters += len(text)
             elif event_type in {"tool_call", "tool_call_update"}:
                 tool_id = str(data.get("tool_call_id") or data.get("id") or "")
                 if tool_id:
@@ -318,15 +348,20 @@ class TurnEventJournal:
                 })
         if latest_usage is not None:
             summary_events.append(latest_usage)
+        summary: dict[str, Any] = {
+            "event_count": len(events),
+            "last_event_seq": int(events[-1].get("seq") or 0) if events else 0,
+            "thought_characters": thought_characters,
+            "commentary_characters": commentary_characters,
+            "tool_count": len(tool_ids),
+        }
+        if first_output_at is not None:
+            summary["first_output_at"] = first_output_at
+        if first_event_ms is not None and last_event_ms is not None:
+            summary["elapsed_ms"] = last_event_ms - first_event_ms
         return {
             "content": "".join(content_parts),
-            "summary": {
-                "event_count": len(events),
-                "last_event_seq": int(events[-1].get("seq") or 0) if events else 0,
-                "thought_characters": thought_characters,
-                "commentary_characters": commentary_characters,
-                "tool_count": len(tool_ids),
-            },
+            "summary": summary,
             "events": summary_events,
         }
 

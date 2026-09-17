@@ -1259,8 +1259,8 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
 
     assert seen, "expected _invoke to be called"
     _cwd, prompt = seen[0]
-    assert "当前流程标题：发布流程" in prompt
-    assert "当前画布 JSON" in prompt
+    assert "Current flow title: 发布流程" in prompt
+    assert "Current canvas JSON" in prompt
     assert '"type": "req"' in prompt
 
     # Unchanged canvas → no repeated title or canvas section.
@@ -1275,8 +1275,8 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
     status = await _wait_turn(module, follow.turn_id)
     assert status == "completed"
     assert seen
-    assert "当前画布 JSON" not in seen[0][1]
-    assert "当前流程标题" not in seen[0][1]
+    assert "Current canvas JSON" not in seen[0][1]
+    assert "Current flow title" not in seen[0][1]
 
     # Changed live canvas → inject the new unsaved snapshot without the title.
     changed_steps = {"nodes": [], "connections": []}
@@ -1290,8 +1290,8 @@ async def test_current_canvas_json_is_injected_into_prompt(gen_module, monkeypat
         context_mode="canvas_updated",
     )
     assert await _wait_turn(module, changed.turn_id) == "completed"
-    assert "当前画布已更新" in seen[0][1]
-    assert "当前流程标题" not in seen[0][1]
+    assert "Current canvas updated" in seen[0][1]
+    assert "Current flow title" not in seen[0][1]
 
     session = module._sessions[(project.id, accepted.session_id)]
     assert session.steps == changed_steps
@@ -1983,9 +1983,9 @@ async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeyp
         workflow_id="wf-resume",
     )
     assert await _wait_turn(module, first.turn_id) == "completed"
-    assert "历史对话" not in seen[0]
+    assert "Conversation history" not in seen[0]
     assert "帮我设计发布流程" in seen[0]
-    assert "你是 WorkStep 的流程设计助手" in seen[0]
+    assert "WorkStep workflow design assistant" in seen[0]
 
     follow = module.submit_message(
         project.id,
@@ -1996,10 +1996,10 @@ async def test_build_prompt_omits_history_for_resume_engines(gen_module, monkeyp
     )
     assert await _wait_turn(module, follow.turn_id) == "completed"
     # 续轮：历史与系统提示都不再拼入，只发当前画布与用户消息。
-    assert "历史对话" not in seen[1]
+    assert "Conversation history" not in seen[1]
     assert "帮我设计发布流程" not in seen[1]
     assert "去掉测试阶段" in seen[1]
-    assert "你是 WorkStep 的流程设计助手" not in seen[1]
+    assert "WorkStep workflow design assistant" not in seen[1]
 
 
 @pytest.mark.anyio
@@ -2248,7 +2248,7 @@ async def test_default_assistant_prompt_omits_history_for_resume_engines(
     )
     prompt = runtime._build_prompt(session)
     assert "系统提示" in prompt
-    assert "历史对话" not in prompt
+    assert "Conversation history" not in prompt
     assert "第一问" not in prompt
     assert "第二问" in prompt
 
@@ -2268,5 +2268,75 @@ async def test_default_assistant_prompt_omits_history_for_resume_engines(
         assistant_base, "create_engine", lambda engine_id: StatelessEngine()
     )
     prompt = runtime._build_prompt(session)
-    assert "历史对话" in prompt
+    assert "Conversation history" in prompt
     assert "第一问" in prompt
+
+
+@pytest.mark.anyio
+async def test_incremental_patch_merges_into_canvas(gen_module, monkeypatch):
+    """A patch proposal is merged against the live canvas and tagged with stages."""
+    module, bus, _manager, project, _ = gen_module
+    queue = bus.subscribe()
+
+    base = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "需求"},
+            {"id": 2, "type": "dev", "title": "开发"},
+        ],
+        "connections": [{"from": 1, "fromPort": 0, "to": 2, "toPort": 0}],
+    }
+    raw = json.dumps(
+        {
+            "reply": "改开发并加测试",
+            "flow_proposals": [
+                {
+                    "title": "增量调整",
+                    "summary": "更新开发阶段并新增测试",
+                    "steps": {
+                        "upsertNodes": [
+                            {"id": 2, "type": "dev", "title": "开发v2"},
+                            {"type": "test", "title": "测试"},
+                        ],
+                        "removeNodeIds": [],
+                    },
+                }
+            ],
+        }
+    )
+
+    async def fake_invoke(*args, **kwargs):
+        return raw, [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "把开发改一下并加测试",
+        "idem-patch",
+        steps=base,
+        context_mode="canvas_updated",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    cards = None
+    while True:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event["type"] == "CUSTOM" and event["name"] == "workstep.flow_proposals":
+            cards = event["value"]["proposals"]
+            break
+    assert len(cards) == 1
+    card = cards[0]
+    # Merged canvas keeps the untouched stage and appends the new one.
+    node_ids = [node["id"] for node in card["steps"]["nodes"]]
+    assert node_ids == [1, 2, 3]
+    assert card["steps"]["nodes"][1]["title"] == "开发v2"
+    assert card["steps"]["nodes"][2]["title"] == "测试"
+    changes = {entry["id"]: entry["change"] for entry in card["stageChanges"]}
+    assert changes == {2: "updated", 3: "added"}
+    # A multi-stage patch is never auto-applied wholesale.
+    assert card["autoApply"] is False
+    # The new stage carries its server-assigned id so a subset can be applied.
+    upsert_ids = {node["id"] for node in card["patch"]["upsertNodes"]}
+    assert upsert_ids == {2, 3}
+    WorkflowDefinition.load(card["steps"]).validate()

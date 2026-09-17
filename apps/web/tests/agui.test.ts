@@ -139,6 +139,41 @@ test('assistant store ignores events from other channels', () => {
   assert.equal(store.getState().sessions['other'], undefined)
 })
 
+test('assistant store creates an unopened target-channel session on demand', () => {
+  const store = createAssistantStore({ channel: 'flow_gen' })
+  const before = store.getState().sessions
+  store.getState().handleWsEvent({
+    type: 'TEXT_MESSAGE_START',
+    channel: 'flow_gen',
+    session_id: 'unopened-session',
+    messageId: 'm-1',
+  })
+  assert.notEqual(store.getState().sessions, before)
+  assert.equal(
+    store.getState().sessions['unopened-session']?.messages[0]?.id,
+    'm-1',
+  )
+})
+
+test('assistant store caps live A2UI payloads per message', () => {
+  const store = createAssistantStore({ channel: 'session_chat' })
+  store.getState().newSession('a2ui')
+  for (let index = 0; index < 2200; index += 1) {
+    store.getState().handleWsEvent({
+      type: 'CUSTOM',
+      name: 'a2ui.surface',
+      channel: 'session_chat',
+      session_id: 'a2ui',
+      messageId: 'message-a2ui',
+      value: { version: 'v0.9', marker: index },
+    })
+  }
+  const payloads = store.getState().sessions.a2ui.a2uiMessages?.['message-a2ui'] ?? []
+  assert.equal(payloads.length, 2000)
+  assert.equal(payloads[0]?.marker, 200)
+  assert.equal(payloads.at(-1)?.marker, 2199)
+})
+
 test('assistant store replaces session commands without a message id', () => {
   const store = createAssistantStore({ channel: 'session_chat' })
   store.getState().newSession('session-commands')

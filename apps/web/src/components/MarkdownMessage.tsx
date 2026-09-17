@@ -1,10 +1,7 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { resolveMarkdownImageSrc } from '../utils/markdownImages'
-import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
-import { useI18n } from '../i18n'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import type { ProjectFileLink } from '../utils/markdownFilePreview'
 import FilePreviewDialog from './FilePreviewDialog'
+import MarkdownContent from './MarkdownContent'
 
 interface MarkdownMessageProps {
   content: string
@@ -14,33 +11,16 @@ interface MarkdownMessageProps {
   className?: string
   /** Render paragraphs as compact blocks for nested process/event timelines. */
   compactParagraphs?: boolean
+  /**
+   * Treat the content as literal text: a typed newline stays a normal-height
+   * line break and Markdown block syntax (`#`, `-`, blank lines, …) is never
+   * parsed into `<p>`/`<li>`/headings. Only inline image (`![]()`) and link
+   * (`[]()`) syntax are honoured, so user chat bubbles keep showing uploaded
+   * attachments while reading like plain text.
+   */
+  plainText?: boolean
   /** When set, images render as clickable thumbnails calling this with (src, alt). */
   onImageClick?: (src: string, alt: string) => void
-}
-
-/**
- * ReactMarkdown's default URL transform strips any scheme outside its
- * allow-list (http/https/irc/mailto/...), turning `file://` links into empty
- * hrefs before the custom `a` component ever sees them. Preserve `file://`
- * so `MarkdownMessage` can resolve it as a previewable project file; defer
- * every other URL to the default (sanitising) transform.
- */
-const fileAwareUrlTransform: UrlTransform = (url) =>
-  /^file:\/\//i.test(url) ? url : defaultUrlTransform(url)
-
-function closeStreamingFence(markdown: string): string {
-  let openFence = ''
-  for (const line of markdown.split('\n')) {
-    const match = line.match(/^\s*(`{3,}|~{3,})/)
-    if (!match) continue
-    const marker = match[1][0]
-    if (!openFence) {
-      openFence = marker.repeat(match[1].length)
-    } else if (openFence[0] === marker) {
-      openFence = ''
-    }
-  }
-  return openFence ? `${markdown}\n${openFence}` : markdown
 }
 
 /**
@@ -54,9 +34,9 @@ function MarkdownMessage({
   projectId,
   className,
   compactParagraphs = false,
+  plainText = false,
   onImageClick,
 }: MarkdownMessageProps) {
-  const { t } = useI18n()
   const [previewFile, setPreviewFile] = useState<ProjectFileLink | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const latestRenderRef = useRef({ content, streaming })
@@ -91,66 +71,21 @@ function MarkdownMessage({
 
   const renderedContent = selectionSnapshot?.content ?? content
   const renderedStreaming = selectionSnapshot?.streaming ?? streaming
-  const markdown = renderedStreaming ? closeStreamingFence(renderedContent) : renderedContent
-
-  const components = useMemo(() => ({
-    p: ({ children }: { children?: React.ReactNode }) => compactParagraphs
-      ? <div className="markdown-compact-paragraph">{children}</div>
-      : <p>{children}</p>,
-    img: (props: { src?: string; alt?: string }) => {
-      const alt = props.alt ?? ''
-      if (!props.src) return null
-      const resolved = resolveMarkdownImageSrc(props.src, projectId)
-      if (!onImageClick) {
-        return <img src={resolved} alt={alt} />
-      }
-      return (
-        <button
-          type="button"
-          className="markdown-image-click"
-          title={t('md.preview')}
-          aria-label={`${t('md.preview')}：${alt || t('md.image')}`}
-          onClick={() => onImageClick(props.src as string, alt)}
-        >
-          <img src={resolved} alt={alt} />
-        </button>
-      )
-    },
-    a: (props: { href?: string; children?: React.ReactNode; title?: string }) => {
-      const file = classifyProjectFileLink(props.href, projectId)
-      if (!file) {
-        return <a href={props.href} title={props.title}>{props.children}</a>
-      }
-      return (
-        <a
-          href={props.href}
-          title={t('md.previewFile', { name: file.name })}
-          aria-label={t('md.previewFile', { name: file.name })}
-          className="markdown-file-link"
-          data-file-preview="true"
-          onClick={(event) => {
-            event.preventDefault()
-            setPreviewFile(file)
-          }}
-        >
-          {props.children}
-        </a>
-      )
-    },
-  }), [compactParagraphs, onImageClick, projectId, t])
+  const handleFileClick = useCallback((file: ProjectFileLink) => setPreviewFile(file), [])
 
   return (
     <>
-      <div
-        ref={rootRef}
-        className={`markdown-message${renderedStreaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
-        aria-live={renderedStreaming ? 'polite' : undefined}
-      >
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
-          {markdown}
-        </ReactMarkdown>
-        {renderedStreaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
-      </div>
+      <MarkdownContent
+        content={renderedContent}
+        streaming={renderedStreaming}
+        projectId={projectId}
+        className={className}
+        compactParagraphs={compactParagraphs}
+        plainText={plainText}
+        onImageClick={onImageClick}
+        onFileClick={handleFileClick}
+        rootRef={rootRef}
+      />
       {previewFile && projectId && (
         <FilePreviewDialog
           path={previewFile.path}

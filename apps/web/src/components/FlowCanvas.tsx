@@ -27,7 +27,6 @@ import {
   projectApi,
   templateApi,
   workflowApi,
-  type EngineConfigField,
   type EngineInfo,
   type EngineModel,
   type Project,
@@ -629,10 +628,6 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
       updateReview('config', next)
     }
   }
-  const [confirmStageField, setConfirmStageField] = useState<EngineConfigField | null>(null)
-  const [confirmReviewField, setConfirmReviewField] = useState<EngineConfigField | null>(null)
-  const stageConfirmValues = (config: Record<string, string>, fields: EngineConfigField[]) =>
-    fields.find((field) => (field.confirm_values || []).includes(config[field.key] ?? '')) || null
 
   useEffect(() => {
     if (draft.kind !== 'task_dispatch') return
@@ -760,19 +755,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             variant="primary"
             style={{ fontSize: 'calc(13px * var(--font-scale))', padding: '4px 12px' }}
             disabled={Boolean(keyError)}
-            onClick={() => {
-              const stageConfirm = stageConfirmValues(draft.config || {}, stageFields)
-              const reviewConfirm = stageConfirmValues(review.config || {}, reviewFields)
-              if (stageConfirm) {
-                setConfirmStageField(stageConfirm)
-                return
-              }
-              if (reviewConfirm) {
-                setConfirmReviewField(reviewConfirm)
-                return
-              }
-              onSave({ ...draft, key: normalizedKey })
-            }}
+            onClick={() => onSave({ ...draft, key: normalizedKey })}
           >
             {t('flow.stash')}
           </Button>
@@ -857,6 +840,136 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               ariaLabel={t('flow.stagePromptAria')}
             />
           </div>
+          <InputEditor
+            inputs={draft.inputs}
+            onChange={(inputs) => updateDraft('inputs', inputs)}
+          />
+          <div>
+            <div style={sectionTitle}>{t('flow.stageReview')}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                  {([
+                    ['skip', t('flow.reviewSkip')],
+                    ['auto', t('flow.autoReview')],
+                    ['manual', t('flow.manualReview')],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => updateReview('mode', value)}
+                      style={{
+                        padding: '3px 10px', fontSize: 'calc(12px * var(--font-scale))', borderRadius: 999,
+                        border: review.mode === value ? '1px solid var(--accent)' : '1px solid var(--border)',
+                        background: review.mode === value ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
+                        color: review.mode === value ? 'var(--accent)' : 'var(--fg-2)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {review.mode === 'auto' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(13px * var(--font-scale))' }}>
+                    <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={review.maxRetries}
+                      onChange={(e) => updateReview(
+                        'maxRetries',
+                        Math.max(0, Number.parseInt(e.target.value || '0', 10)),
+                      )}
+                      style={{ width: 48, height: 24, fontSize: 'calc(13px * var(--font-scale))', padding: '0 6px' }}
+                    />
+                  </div>
+                )}
+                {review.mode === 'skip' && (
+                  <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
+                    {t('flow.reviewSkipHint')}
+                  </div>
+                )}
+                {review.mode === 'manual' && (
+                  <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
+                    {t('flow.reviewPauseHint')}
+                  </div>
+                )}
+              </div>
+              {review.mode === 'auto' && (
+                <>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewEngine')}</label>
+                      <EngineSelect
+                        engines={engines}
+                        value={review.engine}
+                        onChange={(engineId) => {
+                          updateDraft('review', {
+                            ...review,
+                            engine: engineId,
+                            model: '',
+                            config: initialStageConfig(engineConfigById(engineId || draft.engine)),
+                          })
+                        }}
+                        disabled={enginesLoading}
+                        defaultOption={{ value: '', label: t('flow.inheritStageEngine') }}
+                        ariaLabel={t('flow.reviewEngine')}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewModel')}</label>
+                      <Select
+                        value={review.model}
+                        disabled={reviewModelsLoading}
+                        onChange={(e) => updateReview('model', e.target.value)}
+                      >
+                        <option value="">
+                          {reviewModelsLoading
+                            ? t('flow.modelsLoading')
+                            : review.engine
+                              ? t('flow.reviewEngineDefaultModel')
+                              : t('flow.inheritStageModel')}
+                        </option>
+                        {review.model && !reviewModels.some((model) => model.id === review.model) && (
+                          <option value={review.model}>{review.model}{t('flow.currentConfigSuffix')}</option>
+                        )}
+                        {reviewModels.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.label || model.id}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  </div>
+                  {reviewFields.length > 0 && (
+                    <div>
+                      <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewConfig')}</label>
+                      <StageConfigFields
+                        engineId={reviewEngine}
+                        fields={reviewFields}
+                        values={review.config || {}}
+                        onChange={(key, value) => updateReviewConfig(key, value)}
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
+                    <MarkdownEditor
+                      value={review.prompt}
+                      onChange={(v) => updateReview('prompt', v)}
+                      projectId={projectId}
+                      minHeight={96}
+                      maxHeight={200}
+                      placeholder={t('flow.reviewPromptPlaceholder')}
+                      ariaLabel={t('flow.reviewPromptAria')}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
@@ -938,164 +1051,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
         </div>
       </div>
 
-      <div>
-        <div style={sectionTitle}>{t('flow.stageReview')}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              {([
-                ['skip', t('flow.reviewSkip')],
-                ['auto', t('flow.autoReview')],
-                ['manual', t('flow.manualReview')],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => updateReview('mode', value)}
-                  style={{
-                    padding: '3px 10px', fontSize: 'calc(12px * var(--font-scale))', borderRadius: 999,
-                    border: review.mode === value ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    background: review.mode === value ? 'color-mix(in oklab, var(--accent), transparent 88%)' : 'transparent',
-                    color: review.mode === value ? 'var(--accent)' : 'var(--fg-2)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {review.mode === 'auto' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'calc(13px * var(--font-scale))' }}>
-                <span style={{ color: 'var(--meta)', whiteSpace: 'nowrap' }}>{t('flow.retry')}</span>
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={review.maxRetries}
-                  onChange={(e) => updateReview(
-                    'maxRetries',
-                    Math.max(0, Number.parseInt(e.target.value || '0', 10)),
-                  )}
-                  style={{ width: 48, height: 24, fontSize: 'calc(13px * var(--font-scale))', padding: '0 6px' }}
-                />
-              </div>
-            )}
-            {review.mode === 'skip' && (
-              <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
-                {t('flow.reviewSkipHint')}
-              </div>
-            )}
-            {review.mode === 'manual' && (
-              <div style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
-                {t('flow.reviewPauseHint')}
-              </div>
-            )}
-          </div>
-          {review.mode === 'auto' && (
-            <>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewEngine')}</label>
-                  <EngineSelect
-                    engines={engines}
-                    value={review.engine}
-                    onChange={(engineId) => {
-                      updateDraft('review', {
-                        ...review,
-                        engine: engineId,
-                        model: '',
-                        config: initialStageConfig(engineConfigById(engineId || draft.engine)),
-                      })
-                    }}
-                    disabled={enginesLoading}
-                    defaultOption={{ value: '', label: t('flow.inheritStageEngine') }}
-                    ariaLabel={t('flow.reviewEngine')}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewModel')}</label>
-                  <Select
-                    value={review.model}
-                    disabled={reviewModelsLoading}
-                    onChange={(e) => updateReview('model', e.target.value)}
-                  >
-                    <option value="">
-                      {reviewModelsLoading
-                        ? t('flow.modelsLoading')
-                        : review.engine
-                          ? t('flow.reviewEngineDefaultModel')
-                          : t('flow.inheritStageModel')}
-                    </option>
-                    {review.model && !reviewModels.some((model) => model.id === review.model) && (
-                      <option value={review.model}>{review.model}{t('flow.currentConfigSuffix')}</option>
-                    )}
-                    {reviewModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label || model.id}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-              {reviewFields.length > 0 && (
-                <div>
-                  <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewConfig')}</label>
-                  <StageConfigFields
-                    engineId={reviewEngine}
-                    fields={reviewFields}
-                    values={review.config || {}}
-                    onChange={(key, value) => updateReviewConfig(key, value)}
-                  />
-                </div>
-              )}
-              <div>
-                <label style={{ fontSize: 'calc(13px * var(--font-scale))', display: 'block', marginBottom: 4 }}>{t('flow.reviewPrompt')}</label>
-                <MarkdownEditor
-                  value={review.prompt}
-                  onChange={(v) => updateReview('prompt', v)}
-                  projectId={projectId}
-                  minHeight={96}
-                  maxHeight={200}
-                  placeholder={t('flow.reviewPromptPlaceholder')}
-                  ariaLabel={t('flow.reviewPromptAria')}
-                />
-              </div>
-            </>
-          )}
-        </div>
-      </div>
 
-      <InputEditor
-        inputs={draft.inputs}
-        onChange={(inputs) => updateDraft('inputs', inputs)}
-      />
-
-      <ConfirmDialog
-        open={confirmStageField !== null}
-        title={t('flow.configConfirmTitle')}
-        message={confirmStageField
-          ? t('flow.configConfirmMessage', { label: confirmStageField.label })
-          : undefined}
-        confirmText={t('common.confirm')}
-        onConfirm={() => {
-          setConfirmStageField(null)
-          onSave({ ...draft, key: normalizedKey })
-        }}
-        onCancel={() => setConfirmStageField(null)}
-      />
-      <ConfirmDialog
-        open={confirmReviewField !== null}
-        title={t('flow.configConfirmTitle')}
-        message={confirmReviewField
-          ? t('flow.configConfirmMessage', { label: confirmReviewField.label })
-          : undefined}
-        confirmText={t('common.confirm')}
-        onConfirm={() => {
-          setConfirmReviewField(null)
-          onSave({ ...draft, key: normalizedKey })
-        }}
-        onCancel={() => setConfirmReviewField(null)}
-      />
     </div>
   )
 }

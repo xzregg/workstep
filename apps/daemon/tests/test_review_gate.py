@@ -260,7 +260,22 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
         )
 
         assert Task.get_by_id(task.id).status == "ready"
-        assert StepRun.select().where(StepRun.run == workflow_run).count() == 2
+        step_runs = list(
+            StepRun.select()
+            .where(StepRun.run == workflow_run)
+            .order_by(StepRun.attempt)
+        )
+        assert len(step_runs) == 2
+        assert [run.artifact_round for run in step_runs] == [1, 2]
+        assert (
+            tmp_path / "artifacts" / "default" / task.id / "build" / "1"
+        ).is_dir()
+        assert (
+            tmp_path / "artifacts" / "default" / task.id / "build" / "2"
+        ).is_dir()
+        assert "第 2 轮" not in calls[0]
+        assert "/1" in calls[0]
+        assert "/2" in calls[2]
         reviews = list(
             ReviewRun.select()
             .where(ReviewRun.workflow_run == workflow_run)
@@ -947,7 +962,7 @@ class ResumableSessionEngine:
         return True
 
     async def spawn(self, prompt, cwd, **kwargs):
-        if prompt.startswith("你是 WorkStep 的阶段审核 Agent"):
+        if prompt.startswith("You are the WorkStep stage review agent"):
             call_index = len(self.review_sessions)
             self.review_sessions.append(kwargs.get("session_id"))
             passed = call_index >= 1

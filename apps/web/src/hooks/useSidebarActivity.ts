@@ -29,7 +29,8 @@ export function useSidebarActivity(activeSessionId: string | null) {
   const activeWorkflowId = useProjectStore((state) => state.activeWorkflowId)
   const fetchProjects = useProjectStore((state) => state.fetchProjects)
   const tasks = useTaskStore((state) => state.tasks)
-  const sessions = useChatListStore((state) => state.sessions)
+  const sessionsByProject = useChatListStore((state) => state.sessionsByProject)
+  const sessions = useMemo(() => Object.values(sessionsByProject).flat(), [sessionsByProject])
   const completedWorkflows = useSidebarActivityStore((state) => state.completedWorkflows)
   const completedSessions = useSidebarActivityStore((state) => state.completedSessions)
   // Failures the user already opened. The indicator must not stay lit just because

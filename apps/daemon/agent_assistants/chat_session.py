@@ -67,17 +67,14 @@ PREVIEW_LENGTH = 60
 ENHANCE_MAX_LENGTH = 4000
 
 ENHANCE_SYSTEM_PROMPT = (
-    "你是提示词改写助手。把用户输入的提示词改写为更清晰、具体、可直接执行的版本："
-    "明确目标、补充必要的上下文与约束、定义期望的输出格式与语气；不要改变用户原意。"
-    "只输出改写后的提示词本身，不要任何解释、前后缀或 Markdown 代码块。"
+    "You rewrite prompts to be clear, specific, and directly executable. "
+    "Preserve intent; clarify goals, constraints, context, output format, and tone. "
+    "Output only the rewritten prompt."
 )
 
-SYSTEM_PROMPT = """你是 WorkStep 的会话聊天助手。你以当前项目目录为工作环境，帮助用户完成编程与研发相关任务：回答问题、解释代码与项目结构、生成方案与实现思路、设计单元测试、评审代码质量、排查问题等。
+SYSTEM_PROMPT = """You are the WorkStep chat assistant. Work in the project root and help with programming and research: answer questions, explain code and project structure, propose solutions, design tests, review code, and debug.
 
-工作方式：
-1. 多轮对话保持上下文连贯；信息不足时先简短追问，不要长篇罗列假设。
-2. 回复精炼、直接、可操作；给出代码时使用 Markdown 代码块。
-3. 默认使用与用户相同的语言回复。"""
+Keep multi-turn context. Ask one brief question when information is missing. Be concise and actionable. Use Markdown code blocks for code. Reply in the user's language."""
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -1292,7 +1289,7 @@ class ChatSessionModule(AssistantRuntime):
             )
             return "\n\n".join(
                 part
-                for part in (prompt, handoff_prompt, f"当前请求：\n{user_message}")
+                for part in (prompt, handoff_prompt, f"Current request:\n{user_message}")
                 if part
             )
         engine = create_engine(session.engine)
@@ -1313,10 +1310,10 @@ class ChatSessionModule(AssistantRuntime):
             if not (item.get("role") == "assistant" and item.get("status") == "running")
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
             for item in turns
         )
-        tail = f"历史对话：\n{history}\n\n请继续。"
+        tail = f"Conversation history:\n{history}\n\nContinue."
         return f"{prompt}\n\n{tail}" if prompt else tail
 
     def _build_rebuild_prompt(self, session) -> str:
@@ -1331,10 +1328,10 @@ class ChatSessionModule(AssistantRuntime):
                 )
             ][-self._config.max_history_turns * 2:]
             history = "\n\n".join(
-                f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+                f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
                 for item in turns
             )
-            tail = f"历史对话：\n{history}\n\n请继续。"
+            tail = f"Conversation history:\n{history}\n\nContinue."
             prompt = (
                 f"{self.get_system_prompt(session.project_id)}\n\n{tail}"
                 if self.get_system_prompt(session.project_id)

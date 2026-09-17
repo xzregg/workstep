@@ -2,7 +2,7 @@
 
 Each task has at most one active share. A share is gated by a password;
 on successful unlock the service mints a short-lived session token that
-is used for REST and WebSocket access to the read-only share view.
+is used for REST and WebSocket access to the share view.
 """
 
 import hashlib
@@ -11,7 +11,9 @@ import logging
 import secrets
 import uuid
 
-from models import Task, TaskShare, TaskStep, Workflow
+from peewee import fn
+
+from models import Task, TaskShare, TaskStep, StepRun, Workflow, WorkflowRun
 from models.fields import utc_now
 
 logger = logging.getLogger(__name__)
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 # Session tokens are kept in memory — they expire when the daemon restarts,
 # which is acceptable for a local-first read-only share view.
 _SHARE_SESSIONS: dict[str, dict] = {}  # session_token → {share_id, task_id, project_id}
+
+SHARE_MODES = {"read_only", "interactive"}
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -51,7 +55,12 @@ def get_share_for_task(task_id: str) -> dict | None:
     return _share_to_dict(share)
 
 
-def create_share(task_id: str, password: str | None = None, title: str | None = None) -> dict:
+def create_share(
+    task_id: str,
+    password: str | None = None,
+    title: str | None = None,
+    mode: str = "read_only",
+) -> dict:
     """Create or replace a share link for a task.
 
     If the password is empty/None, the share link will be publicly
@@ -59,6 +68,8 @@ def create_share(task_id: str, password: str | None = None, title: str | None = 
     revoked) exists for this task it is deleted first so the
     unique(task_id) constraint is respected.
     """
+    if mode not in SHARE_MODES:
+        raise ValueError("unsupported share mode")
     try:
         Task.get_by_id(task_id)
     except Task.DoesNotExist as exc:
@@ -83,6 +94,7 @@ def create_share(task_id: str, password: str | None = None, title: str | None = 
         title=title or None,
         password_hash=password_hash,
         salt=salt,
+        mode=mode,
         revoked=0,
         created_at=now,
     )
@@ -172,6 +184,7 @@ def verify_share_password(token: str, password: str) -> str | None:
             "token": share.token,
             "task_id": share.task_id,
             "project_id": project.id,
+            "mode": share.mode,
         }
         return session_token
     return None
@@ -212,6 +225,7 @@ def resolve_share_session(session_token: str) -> dict | None:
             "token": share.token,
             "task_id": share.task_id,
             "project_id": ctx["project_id"],
+            "mode": share.mode or "read_only",
         }
     # The share was revoked or its project is no longer registered.
     _SHARE_SESSIONS.pop(session_token, None)
@@ -232,6 +246,34 @@ def load_shared_task(task_id: str) -> dict | None:
     # Re-use TaskService._task_to_dict logic via a fresh instance would need
     # event_bus; instead build the payload manually here.
     import json as _json
+    from models import Message
+    executed_step_keys = {
+        row.step_key
+        for row in (
+            Message.select(Message.step_key)
+            .where(
+                (Message.task == task_id)
+                & (Message.channel == "execution")
+                & (Message.role.in_(["user", "assistant"]))
+            )
+            .group_by(Message.step_key)
+        )
+    }
+    latest_artifact_round_by_step = {
+        row.step_key: row.max_round
+        for row in (
+            StepRun.select(
+                StepRun.step_key,
+                fn.MAX(StepRun.artifact_round).alias("max_round"),
+            )
+            .join(WorkflowRun)
+            .where(
+                (WorkflowRun.task == task_id)
+                & (StepRun.artifact_round.is_null(False))
+            )
+            .group_by(StepRun.step_key)
+        )
+    }
     steps = []
     for step in (
         TaskStep.select()
@@ -245,6 +287,11 @@ def load_shared_task(task_id: str) -> dict | None:
             "started_at": step.started_at,
             "ended_at": step.ended_at,
             "error": step.error,
+            "artifact_round": latest_artifact_round_by_step.get(step.step_key),
+            "has_history": (
+                step.step_key in executed_step_keys
+                or step.started_at is not None
+            ),
         })
     workflow = None
     if task.workflow_id:
@@ -272,7 +319,12 @@ def load_shared_task(task_id: str) -> dict | None:
     }
 
 
-def load_shared_history(task_id: str, limit: int = 200, offset: int = 0) -> list[dict]:
+def load_shared_history(
+    task_id: str,
+    limit: int = 200,
+    offset: int = 0,
+    mode: str = "read_only",
+) -> list[dict]:
     """Load message history for a shared task.
 
     Only the ``execution`` channel is exposed through the share view; the
@@ -310,7 +362,7 @@ def load_shared_history(task_id: str, limit: int = 200, offset: int = 0) -> list
             channel=msg.channel,
             engine=msg.engine,
             model=msg.model,
-        ))
+        ), mode=mode)
         result.append({
             "id": msg.id,
             "role": msg.role,
@@ -338,18 +390,23 @@ _SCRUBBED_CUSTOM_NAMES = {
 }
 
 
-def _scrub_events(events: list[dict]) -> list[dict]:
+def _scrub_events(events: list[dict], mode: str = "read_only") -> list[dict]:
     """Drop events that shouldn't be visible to external share viewers.
 
     AG-UI 统一词汇下按 ``CUSTOM name`` 脱敏（``workstep.interaction_*``、
     ``workstep.engine_state``）。
     """
+    scrubbed = (
+        _SCRUBBED_CUSTOM_NAMES
+        if mode != "interactive"
+        else {"workstep.engine_state"}
+    )
     return [
         event
         for event in events
         if not (
             event.get("type") == "CUSTOM"
-            and event.get("name") in _SCRUBBED_CUSTOM_NAMES
+            and event.get("name") in scrubbed
         )
     ]
 
@@ -364,6 +421,7 @@ def _share_to_dict(
         "task_id": share.task_id,
         "token": share.token,
         "title": share.title,
+        "mode": share.mode or "read_only",
         "revoked": bool(share.revoked),
         "has_password": share.password_hash is not None,
         "created_at": share.created_at,

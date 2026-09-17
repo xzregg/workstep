@@ -65,7 +65,7 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
   )
   const restoreApis = installApiStubs()
   useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
-  useChatListStore.setState({ sessions: [], quickButtons: [], listLoading: false })
+  useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
   useChatSessionStore.setState({ sessions: {} })
 
   const PANEL_HEIGHT = 96

@@ -137,9 +137,10 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
   const [dragProjectId, setDragProjectId] = useState<string | null>(null)
   const [dropProjectId, setDropProjectId] = useState<string | null>(null)
-  const sessions = useChatListStore((s) => s.sessions)
+  const sessionsByProject = useChatListStore((s) => s.sessionsByProject)
   const tasks = useTaskStore((s) => s.tasks)
   const selectedIds = useChatListStore((s) => s.selectedIds)
+  const selectionProjectId = useChatListStore((s) => s.selectionProjectId)
   const bulkDeleting = useChatListStore((s) => s.bulkDeleting)
   const handleSelect = useChatListStore((s) => s.handleSelect)
   const clearSelection = useChatListStore((s) => s.clearSelection)
@@ -169,14 +170,15 @@ export default function Layout({ onSelectProject, children }: Props) {
   const projectMenuRef = useRef<HTMLDivElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const sessionMenuRef = useRef<HTMLDivElement>(null)
-  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; title: string } | null>(null)
+  const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string } | null>(null)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
+  const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
   const [renameSessionValue, setRenameSessionValue] = useState('')
-  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; title: string } | null>(null)
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ sessionId: string; projectId: string; title: string } | null>(null)
   const [sessionDeleteError, setSessionDeleteError] = useState('')
   const [storedSidebarSections] = useState(loadSidebarSectionState)
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(
-    storedSidebarSections.expandedProjectId,
+  const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(
+    storedSidebarSections.expandedProjectIds,
   )
   const [sessionSectionOpen, setSessionSectionOpen] = useState<Record<string, boolean>>(
     storedSidebarSections.conversationsByProject,
@@ -210,11 +212,11 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   useEffect(() => {
     saveSidebarSectionState({
-      expandedProjectId,
+      expandedProjectIds,
       flowsByProject: flowSectionOpen,
       conversationsByProject: sessionSectionOpen,
     })
-  }, [expandedProjectId, flowSectionOpen, sessionSectionOpen])
+  }, [expandedProjectIds, flowSectionOpen, sessionSectionOpen])
 
   // Re-focus inputs each time they open (autoFocus only fires on first mount)
   useEffect(() => {
@@ -273,17 +275,31 @@ export default function Layout({ onSelectProject, children }: Props) {
   useEffect(() => {
     if (projectName || activeProject || projects.length === 0) return
     const rememberedProject = projects.find(
-      (project) => project.id === storedSidebarSections.expandedProjectId,
+      (project) => storedSidebarSections.expandedProjectIds.includes(project.id),
     )
     if (rememberedProject) setActiveProject(rememberedProject)
-  }, [projectName, projects, activeProject, setActiveProject, storedSidebarSections.expandedProjectId])
+  }, [projectName, projects, activeProject, setActiveProject, storedSidebarSections.expandedProjectIds])
+
+  const isProjectExpanded = (projectId: string) => expandedProjectIds.includes(projectId)
+
+  const toggleProjectExpanded = (projectId: string) => {
+    setExpandedProjectIds((current) => (
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId]
+    ))
+  }
 
   useEffect(() => {
-    if (activeProject?.id) setExpandedProjectId(activeProject.id)
-  }, [activeProject?.id])
+    if (projects.length === 0 || expandedProjectIds.length === 0) return
+    for (const projectId of expandedProjectIds) {
+      if (projects.some((project) => project.id === projectId)) {
+        void useChatListStore.getState().fetchSessions(projectId)
+      }
+    }
+  }, [expandedProjectIds, projects])
 
   const handleSelectProject = (p: Project) => {
-    setExpandedProjectId(p.id)
     setActiveProject(p)
     onSelectProject(p)
   }
@@ -300,9 +316,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   }, [clearSelection])
 
   const handleBulkDelete = async () => {
-    if (!activeProject?.id) return
+    if (!selectionProjectId) return
     try {
-      await bulkRemove(activeProject.id)
+      await bulkRemove(selectionProjectId)
       setBulkDeleteError('')
     } catch {
       setBulkDeleteError(t('chatSession.deleteFailed'))
@@ -422,7 +438,7 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
-  const openSessionMenu = (e: React.MouseEvent, sessionId: string, title: string) => {
+  const openSessionMenu = (e: React.MouseEvent, projectId: string, sessionId: string, title: string) => {
     e.preventDefault()
     e.stopPropagation()
     setProjectContextMenu(null)
@@ -433,6 +449,7 @@ export default function Layout({ onSelectProject, children }: Props) {
       x: Math.min(atCursor ? e.clientX : rect.left, window.innerWidth - 176),
       y: Math.min(atCursor ? e.clientY : rect.bottom + 4, window.innerHeight - 128),
       sessionId,
+      projectId,
       title,
     })
   }
@@ -463,33 +480,37 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
-  const handleRenameSession = async (sessionId: string, title: string) => {
+  const handleRenameSession = async (sessionId: string, title: string, projectId?: string) => {
     const trimmed = title.trim()
     if (!trimmed) { setRenameSessionId(null); return }
-    if (!activeProject?.id) { setRenameSessionId(null); return }
+    const ownerProjectId = projectId || renameSessionProjectId || activeProject?.id
+    if (!ownerProjectId) { setRenameSessionId(null); return }
     try {
-      const updated = await chatSessionApi.rename(sessionId, activeProject.id, trimmed)
+      const updated = await chatSessionApi.rename(sessionId, ownerProjectId, trimmed)
       useChatListStore.getState().renameSession(sessionId, updated.title)
     } catch {
       // Keep the old title on failure.
     }
     setRenameSessionId(null)
+    setRenameSessionProjectId(null)
   }
 
   const handleDeleteSession = async () => {
-    if (!deleteSessionTarget || !activeProject?.id) return
+    if (!deleteSessionTarget) return
     setSessionDeleteError('')
     try {
-      await chatSessionApi.remove(deleteSessionTarget.sessionId, activeProject.id)
+      await chatSessionApi.remove(deleteSessionTarget.sessionId, deleteSessionTarget.projectId)
       useChatListStore.getState().removeSession(deleteSessionTarget.sessionId)
       useChatSessionStore.getState().resetSession(deleteSessionTarget.sessionId)
       if (activeSessionId === deleteSessionTarget.sessionId) {
-        const remaining = useChatListStore.getState().sessions
+        const remaining = useChatListStore.getState().sessionsByProject[deleteSessionTarget.projectId] || []
         const next = remaining[0]
+        const owner = projects.find((project) => project.id === deleteSessionTarget.projectId)
+        const ownerName = owner?.name || activeProject?.name || ''
         if (next) {
-          navigate(`/chat?project=${encodeURIComponent(activeProject.name)}&session=${encodeURIComponent(next.id)}`, { replace: true })
+          navigate(`/chat?project=${encodeURIComponent(ownerName)}&session=${encodeURIComponent(next.id)}`, { replace: true })
         } else {
-          navigate(`/chat?project=${encodeURIComponent(activeProject.name)}`, { replace: true })
+          navigate(`/chat?project=${encodeURIComponent(ownerName)}`, { replace: true })
         }
       }
       setDeleteSessionTarget(null)
@@ -563,14 +584,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                 onClick={() => {
                   markProjectRead(p.id)
                   handleSelectProject(p)
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation()
-                  setExpandedProjectId((current) => current === p.id ? null : p.id)
-                  if (expandedProjectId !== p.id) {
-                    markProjectRead(p.id)
-                    handleSelectProject(p)
-                  }
+                  toggleProjectExpanded(p.id)
                 }}
                 draggable={p.type === 'local' && renameId !== p.path}
                 onDragStart={(e) => {
@@ -636,21 +650,17 @@ export default function Layout({ onSelectProject, children }: Props) {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    setExpandedProjectId((current) => current === p.id ? null : p.id)
-                    if (expandedProjectId !== p.id) {
-                      markProjectRead(p.id)
-                      handleSelectProject(p)
-                    }
+                    toggleProjectExpanded(p.id)
                   }}
                   onDoubleClick={(e) => e.stopPropagation()}
-                  aria-expanded={expandedProjectId === p.id}
+                  aria-expanded={isProjectExpanded(p.id)}
                   aria-controls={`sidebar-project-${p.id}`}
-                  aria-label={t(expandedProjectId === p.id ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
-                  title={t(expandedProjectId === p.id ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
-                  style={{ width: 20, height: 20, padding: 0, flexShrink: 0, color: expandedProjectId === p.id ? 'var(--accent)' : 'var(--meta)' }}
+                  aria-label={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
+                  title={t(isProjectExpanded(p.id) ? 'layout.collapseProject' : 'layout.expandProject', { name: p.name })}
+                  style={{ width: 20, height: 20, padding: 0, flexShrink: 0, color: isProjectExpanded(p.id) ? 'var(--accent)' : 'var(--meta)' }}
                 >
                   <Icon
-                    name={p.type === 'remote' ? 'external-link' : expandedProjectId === p.id ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
+                    name={p.type === 'remote' ? 'external-link' : isProjectExpanded(p.id) ? 'folder-open' : 'folder'} size={16.4} strokeWidth={2}
                   />
                 </Button>
                 {renameId === p.path ? (
@@ -719,7 +729,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )}
                   </span>
                 )}
-                {expandedProjectId !== p.id && (() => {
+                {!isProjectExpanded(p.id) && (() => {
                   // Real-time signals (always fresh):
                   //  - local task running state (from WS events)
                   //  - live chat session running state
@@ -742,7 +752,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     failedTitle={t('layout.failedState')}
                     completedTitle={t('layout.completedUnread')}
                   />
-                ) : expandedProjectId !== p.id ? (
+                ) : !isProjectExpanded(p.id) ? (
                   <SidebarStatusIndicator
                     failed={projectHasFailure(p.id)}
                     completed={Object.values(completedWorkflows).includes(p.id)}
@@ -766,7 +776,7 @@ export default function Layout({ onSelectProject, children }: Props) {
               )}
 
               {/* Workflow list + sessions under the selected project */}
-              {expandedProjectId === p.id && (
+              {isProjectExpanded(p.id) && (
                 <div id={`sidebar-project-${p.id}`}>
                   {(() => {
                     const flowOpen = flowSectionOpen[p.id] !== false
@@ -799,6 +809,9 @@ export default function Layout({ onSelectProject, children }: Props) {
                   const deleted = !!wf.deleted
                   const isDragSource = dragWfId === wf.id
                   const isDropTarget = dropWfId === wf.id
+                  const workflowSelected = location.pathname !== '/chat'
+                    && activeProject?.id === p.id
+                    && activeWorkflowId === wf.id
                   return (
                     <div key={wf.id}>
                     <div
@@ -861,10 +874,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                         marginLeft: 28, padding: '4px 10px', borderRadius: 6,
                         cursor: deleted ? 'default' : 'pointer',
                         fontSize: 'calc(14px * var(--font-scale))',
-                        color: deleted ? 'var(--meta)' : (activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent)' : 'var(--meta)'),
+                        color: deleted ? 'var(--meta)' : workflowSelected ? 'var(--accent)' : 'var(--meta)',
                         background: isDropTarget
                           ? 'var(--accent-light)'
-                          : activeProject?.id === p.id && activeWorkflowId === wf.id ? 'var(--accent-light)' : 'transparent',
+                          : workflowSelected ? 'var(--accent-light)' : 'transparent',
                         opacity: isDragSource ? 0.4 : 1,
                         outline: isDropTarget ? '1px solid var(--accent)' : 'none',
                         display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
@@ -968,7 +981,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                     {open && (
                     <div style={{ margin: '0 12px 6px 28px', display: 'flex', flexDirection: 'column', gap: 1 }}>
                       {/* Bulk action bar (visible when 2+ sessions selected) */}
-                      {selectedIds.size >= 2 && (
+                      {selectionProjectId === p.id && selectedIds.size >= 2 && (
                         <div
                           style={{
                             display: 'flex', alignItems: 'center', gap: 6,
@@ -1000,19 +1013,19 @@ export default function Layout({ onSelectProject, children }: Props) {
                           </Button>
                         </div>
                       )}
-                      {sessions.map(session => {
+                      {(sessionsByProject[p.id] || []).map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = Boolean(runningChatSessions[session.id])
-                        const isSelected = selectedIds.has(session.id)
-                        const isMultiSelect = selectedIds.size > 1
+                        const isSelected = selectionProjectId === p.id && selectedIds.has(session.id)
+                        const isMultiSelect = selectionProjectId === p.id && selectedIds.size > 1
                         return (
                         <div
                           key={session.id}
                           onClick={(e) => {
                             e.stopPropagation()
                             if (renameSessionId === session.id) return
-                            handleSelect(session.id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })
+                            handleSelect(session.id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey }, p.id)
                             // Only navigate on plain click (no modifiers)
                             if (!e.metaKey && !e.ctrlKey && !e.shiftKey) {
                               useSidebarActivityStore.getState().markSessionRead(session.id)
@@ -1023,9 +1036,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                             e.stopPropagation()
                             clearSelection()
                             setRenameSessionId(session.id)
+                            setRenameSessionProjectId(p.id)
                             setRenameSessionValue(session.title)
                           }}
-                          onContextMenu={(e) => openSessionMenu(e, session.id, session.title)}
+                          onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
                           onMouseEnter={() => setHoveredSessionId(session.id)}
                           onMouseLeave={() => setHoveredSessionId(null)}
                           className="ws-row"
@@ -1055,7 +1069,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setDragSessionId(null)
                             setDropSessionId(null)
                             if (!dragId || dragId === targetId) return
-                            const ids = sessions.map((item) => item.id)
+                            const ids = (sessionsByProject[p.id] || []).map((item) => item.id)
                             if (!ids.includes(dragId) || !ids.includes(targetId)) return
                             const rect = e.currentTarget.getBoundingClientRect()
                             const before = e.clientY < rect.top + rect.height / 2
@@ -1063,7 +1077,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             const targetIndex = next.indexOf(targetId)
                             next.splice(before ? targetIndex : targetIndex + 1, 0, dragId)
                             if (next.join(',') !== ids.join(',')) {
-                              void useChatListStore.getState().reorderSessions(activeProject?.id || p.id, next)
+                              void useChatListStore.getState().reorderSessions(p.id, next)
                             }
                           }}
                           onDragEnd={() => { setDragSessionId(null); setDropSessionId(null) }}
@@ -1104,10 +1118,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                               value={renameSessionValue}
                               onChange={(e) => setRenameSessionValue(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') { void handleRenameSession(session.id, renameSessionValue) }
-                                if (e.key === 'Escape') setRenameSessionId(null)
+                                if (e.key === 'Enter') { void handleRenameSession(session.id, renameSessionValue, p.id) }
+                                if (e.key === 'Escape') { setRenameSessionId(null); setRenameSessionProjectId(null) }
                               }}
-                              onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue) }}
+                              onBlur={() => { if (renameSessionId === session.id) void handleRenameSession(session.id, renameSessionValue, p.id) }}
                               onClick={(e) => e.stopPropagation()}
                               style={{ flex: 1, height: 25, fontSize: 'calc(12.8px * var(--font-scale))', padding: '0 4px', border: '1px solid var(--accent)', borderRadius: 4, outline: 'none', background: 'var(--bg)', color: 'var(--fg)', minWidth: 0 }}
                             />
@@ -1127,7 +1141,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                               <Button
                                 variant="icon"
                                 className="ws-more-btn"
-                                onClick={(e) => openSessionMenu(e, session.id, session.title)}
+                                onClick={(e) => openSessionMenu(e, p.id, session.id, session.title)}
                                 title={t('layout.moreActions')}
                                 aria-label={t('layout.moreActions')}
                                 style={{ width: 24, height: 24, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--meta)', fontSize: 'calc(13px * var(--font-scale))', lineHeight: '22px', padding: 0, flexShrink: 0 }}
@@ -1399,6 +1413,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           <div
             onClick={() => {
               setRenameSessionId(sessionMenu.sessionId)
+              setRenameSessionProjectId(sessionMenu.projectId)
               setRenameSessionValue(sessionMenu.title)
               setSessionMenu(null)
             }}

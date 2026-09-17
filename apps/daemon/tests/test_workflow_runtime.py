@@ -166,6 +166,9 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
             ("req", "succeeded"),
             ("ui", "succeeded"),
         ]
+        assert [run.artifact_round for run in step_runs] == [1, 1]
+        assert (tmp_path / ".workstep" / "artifacts" / "default" / "task-1" / "req" / "1").is_dir()
+        assert (tmp_path / ".workstep" / "artifacts" / "default" / "task-1" / "ui" / "1").is_dir()
     finally:
         await bus.close()
         ENGINE_REGISTRY.clear()
@@ -247,6 +250,76 @@ async def test_restart_without_parent_reuses_passed_upstream_steps(tmp_path):
             ("solution", "reused"),
             ("closure", "succeeded"),
         }
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
+    """显式沿用上游产物时，轮次必须存在且可被下游继承。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.artifact_rounds import write_round_manifest
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-invalid-input-round",
+        title="Invalid input round",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-invalid-input-round",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "req", "title": "Requirement", "engine": "claude"},
+                {"id": 2, "type": "ui", "title": "UI", "engine": "claude"},
+            ],
+            "connections": [{"from": 1, "to": 2}],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    write_round_manifest(
+        artifacts_root=tmp_path / ".workstep" / "artifacts",
+        workflow_id=None,
+        task_id=task.id,
+        step_key="req",
+        artifact_round=1,
+        status="passed",
+        eligible_for_downstream=True,
+    )
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    try:
+        with pytest.raises(ValueError, match="不可沿用"):
+            await runtime.restart_from_stage(
+                project.id,
+                task.id,
+                "ui",
+                input_rounds={"req": 2},
+            )
+        with pytest.raises(ValueError, match="不是目标阶段"):
+            await runtime.restart_from_stage(
+                project.id,
+                task.id,
+                "ui",
+                input_rounds={"missing": 1},
+            )
+        assert TaskStep.select().where(TaskStep.task == task).count() == 0
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()
@@ -1548,6 +1621,412 @@ async def test_resume_stage_rejects_empty_or_unstopped_stage(tmp_path):
             await runtime.resume_stage_with_message(
                 project.id, task.id, "missing", "重新来"
             )
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_resume_stage_allows_pending_stage_with_execution_history(tmp_path):
+    """已经执行过的阶段回到 pending 后，仍可带消息重新执行。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-resume-history",
+        title="Resume with history",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    parent = WorkflowRun.create(
+        id="run-resume-history",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(
+            {
+                "nodes": [
+                    {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+                ],
+                "connections": [],
+            }
+        ),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="pending",
+        engine="claude",
+        started_at=None,
+        ended_at=None,
+    )
+    Message.create(
+        id="older-output",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="assistant",
+        engine="claude",
+        content="previous output",
+        run_status="failed",
+        position=1,
+        started_at=now,
+        ended_at=now,
+        created_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-resume-history",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        accepted = await runtime.resume_stage_with_message(
+            project.id, task.id, "do", "重新来"
+        )
+        assert accepted["step_key"] == "do"
+        assert accepted["message_id"]
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_resume_stage_rejects_running_stage_even_with_history(tmp_path):
+    """执行中的阶段不接受带消息重跑：实时注入走独立接口。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-resume-running",
+        title="Resume running",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    parent = WorkflowRun.create(
+        id="run-resume-running",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(
+            {
+                "nodes": [
+                    {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+                ],
+                "connections": [],
+            }
+        ),
+        started_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="running",
+        engine="claude",
+        started_at=now,
+    )
+    Message.create(
+        id="older-output-running",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="assistant",
+        engine="claude",
+        content="previous output",
+        run_status="succeeded",
+        position=1,
+        started_at=now,
+        ended_at=now,
+        created_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-resume-running",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        with pytest.raises(ValueError, match="阶段当前不可重新执行"):
+            await runtime.resume_stage_with_message(
+                project.id, task.id, "do", "重新来"
+            )
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_stage_with_fresh_session_clears_session_and_reruns(tmp_path):
+    """引擎会话丢失时清掉 session_id，并用完整阶段提示词重跑。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message
+    from services.workflow_runtime import WorkflowRuntime
+
+    prompts: list[str] = []
+    received_sessions: list[str | None] = []
+
+    class FreshSessionEngine(RuntimeFakeEngine):
+        @property
+        def supports_resume(self):
+            return True
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            prompts.append(prompt)
+            received_sessions.append(kwargs.get("session_id"))
+            yield InternalEvent(
+                type="session_started",
+                data={"session_id": "session-fresh"},
+            )
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "rebuilt"}},
+            )
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-fresh-session",
+        title="Fresh session re-run",
+        cwd=str(tmp_path),
+        engine="resumable",
+        created_at=now,
+        updated_at=now,
+    )
+    parent = WorkflowRun.create(
+        id="run-fresh-session",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(
+            {
+                "nodes": [
+                    {"id": 1, "type": "do", "title": "执行", "engine": "resumable"}
+                ],
+                "connections": [],
+            }
+        ),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="failed",
+        engine="resumable",
+        session_id="01a0aa38-2890-7ed3-9a30-ecfbe37f3056",
+        session_provider="prov-1",
+        started_at=now,
+        ended_at=now,
+    )
+    Message.create(
+        id="lost-rollout-output",
+        task=task,
+        channel="execution",
+        step_key="do",
+        sequence=1,
+        role="assistant",
+        engine="resumable",
+        content="",
+        run_status="failed",
+        position=1,
+        started_at=now,
+        ended_at=now,
+        created_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-fresh-session",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "resumable"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["resumable"] = FreshSessionEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        accepted = await runtime.restart_stage_with_fresh_session(
+            project.id, task.id, "do"
+        )
+        assert accepted["step_key"] == "do"
+        for _ in range(500):
+            if task.id not in runtime._runners:
+                break
+            await asyncio.sleep(0.01)
+        # 旧会话已被清空，新会话以完整提示词（非 followup）启动。
+        assert received_sessions and received_sessions[0] is None
+        assert prompts and "User message" not in prompts[0]
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "do")
+        )
+        assert step.session_id == "session-fresh"
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_stage_with_fresh_session_rejects_running_stage(tmp_path):
+    """执行中的阶段不能重建会话。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-fresh-running",
+        title="Fresh session running",
+        cwd=str(tmp_path),
+        engine="resumable",
+        created_at=now,
+        updated_at=now,
+    )
+    TaskStep.create(
+        task=task,
+        step_key="do",
+        status="running",
+        engine="resumable",
+        started_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-fresh-running",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "resumable"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["resumable"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        with pytest.raises(ValueError, match="不能重建会话"):
+            await runtime.restart_stage_with_fresh_session(
+                project.id, task.id, "do"
+            )
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_run_heals_missing_task_cwd_to_project_root(tmp_path):
+    """容器时代遗留的 /data 路径在运行前回退到真实项目根目录。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    project_root = tmp_path / "sass"
+    project_root.mkdir()
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-heal-cwd",
+        title="Heal cwd",
+        cwd="/data/projects/sass",
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    project = SimpleNamespace(
+        id="project-heal-cwd",
+        path=project_root,
+        workstep_dir=project_root / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        await runtime.run(project.id, task.id, "")
+        assert Task.get_by_id(task.id).cwd == str(project_root)
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

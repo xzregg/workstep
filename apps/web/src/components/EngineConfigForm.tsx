@@ -21,6 +21,22 @@ export interface EngineConfigFormHandle {
   getTestInput: () => EngineConfigSaveInput
 }
 
+/** Returns an i18n error key when a json field's value is not a valid object. */
+function jsonFieldError(value: string): 'engineForm.jsonInvalid' | 'engineForm.jsonNotObject' | '' {
+  const text = value.trim()
+  if (!text) return ''
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return 'engineForm.jsonInvalid'
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return 'engineForm.jsonNotObject'
+  }
+  return ''
+}
+
 interface Props {
   engineId: string
   /** Config template + masked values, embedded in /api/engine/list. */
@@ -121,6 +137,11 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
 
   const save = () => {
     if (!config || fields.length === 0) return
+    const blocked = fields.some((field) => (
+      (field.required && !((values[field.key] ?? '').trim()))
+      || (field.type === 'json' && jsonFieldError(values[field.key] ?? '') !== '')
+    ))
+    if (blocked) return
     const field = needsConfirmation()
     if (field) {
       setConfirmField(field)
@@ -171,10 +192,14 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     field.required && !((values[field.key] ?? '').trim())
   ))
 
+  const hasJsonErrors = fields.some((field) => (
+    field.type === 'json' && jsonFieldError(values[field.key] ?? '') !== ''
+  ))
+
   useEffect(() => {
     const next = {
       saving,
-      canSave: Boolean(config && fields.length > 0) && !saving && !hasRequiredGaps,
+      canSave: Boolean(config && fields.length > 0) && !saving && !hasRequiredGaps && !hasJsonErrors,
     }
     const prev = reportedSaveState.current
     if (
@@ -200,10 +225,11 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
     const isPassword = field.type === 'password'
     const isCheckbox = field.type === 'checkbox'
     const isTextarea = field.type === 'textarea'
+    const isJson = field.type === 'json'
     const isModelMap = field.type === 'model_map'
 
     return (
-      <div key={field.key} style={{ minWidth: 0, gridColumn: isModelMap ? '1 / -1' : undefined }}>
+      <div key={field.key} style={{ minWidth: 0, gridColumn: isModelMap || isTextarea || isJson ? '1 / -1' : undefined }}>
         <label
           htmlFor={`engine-config-${engineId}-${field.key}`}
           style={{ display: 'block', marginBottom: 4, fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600 }}
@@ -308,6 +334,21 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
             rows={3}
             style={{ resize: 'vertical' }}
           />
+        ) : isJson ? (
+          <Textarea
+            id={`engine-config-${engineId}-${field.key}`}
+            value={value}
+            disabled={saving}
+            onChange={(event) => setFieldValue(field.key, event.target.value)}
+            placeholder={field.placeholder}
+            rows={5}
+            spellCheck={false}
+            aria-invalid={jsonFieldError(value) !== ''}
+            style={{
+              resize: 'vertical',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            }}
+          />
         ) : isModelMap ? (
           <ModelMapEditor
             id={`engine-config-${engineId}-${field.key}`}
@@ -364,6 +405,14 @@ const EngineConfigForm = forwardRef<EngineConfigFormHandle, Props>(function Engi
         {field.required && !value.trim() && (
           <div style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}>
             {t('engineForm.requiredField')}
+          </div>
+        )}
+        {isJson && jsonFieldError(value) !== '' && (
+          <div
+            role="alert"
+            style={{ marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--danger)' }}
+          >
+            {t(jsonFieldError(value) as 'engineForm.jsonInvalid' | 'engineForm.jsonNotObject')}
           </div>
         )}
       </div>

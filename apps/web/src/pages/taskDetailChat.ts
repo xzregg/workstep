@@ -170,7 +170,32 @@ export function resolveMessageError(events?: readonly any[] | null): string {
   return ''
 }
 
+const LOST_ENGINE_SESSION_PATTERNS = [
+  /no rollout found for thread id/i,
+  /No conversation found with session ID/i,
+  /session not found/i,
+  /invalid session/i,
+  /session id .* (?:not found|does not exist)/i,
+]
+
+/**
+ * 引擎会话在磁盘上丢失（Codex rollout 被清理、Claude 会话文件缺失等）。
+ * 这类错误可以用同一个阶段提示词重新建会话重跑，不需要用户重写上下文。
+ */
+export function isLostEngineSessionError(error?: string | null): boolean {
+  if (!error) return false
+  return LOST_ENGINE_SESSION_PATTERNS.some((pattern) => pattern.test(error))
+}
+
 const TERMINAL_EXECUTION_STATUSES = ['cancelled', 'stopped', 'failed']
+// 阶段正在执行时只能实时注入，不能按「带消息重跑」处理。
+const ACTIVE_STAGE_STATUSES = [
+  'running',
+  'reviewing',
+  'retrying',
+  'rework',
+  'rework_waiting',
+]
 const MESSAGE_RESUMABLE_STAGE_STATUSES = [
   'cancelled',
   'failed',
@@ -180,8 +205,21 @@ const MESSAGE_RESUMABLE_STAGE_STATUSES = [
   'skipped',
 ]
 
-export function isStageResumableWithMessage(status?: string): boolean {
-  return status !== undefined && MESSAGE_RESUMABLE_STAGE_STATUSES.includes(status)
+/**
+ * 是否可以把消息发给某个阶段并（重新）执行它。
+ *
+ * 规则：只要该阶段执行过一次（不管成功还是失败），就允许 @。
+ * 执行中的阶段不接受重跑（走实时注入），从未执行过的 `pending` 阶段也不允许。
+ */
+export function isStageResumableWithMessage(
+  status?: string,
+  hasHistory?: boolean,
+): boolean {
+  if (status !== undefined && ACTIVE_STAGE_STATUSES.includes(status)) return false
+  if (status !== undefined && MESSAGE_RESUMABLE_STAGE_STATUSES.includes(status)) {
+    return true
+  }
+  return hasHistory === true
 }
 
 export function isSelectedStageRunning(
@@ -189,6 +227,43 @@ export function isSelectedStageRunning(
   runningStageKeys: readonly string[],
 ): boolean {
   return target !== 'coordinator' && runningStageKeys.includes(target)
+}
+
+export interface ArtifactRoundChoice {
+  step_key: string
+  round: number
+  is_latest: boolean
+  is_selected: boolean
+  logical_name?: string | null
+  name: string
+}
+
+export function findPreferredArtifact<T extends ArtifactRoundChoice>(
+  artifacts: readonly T[],
+  name: string,
+  preferredStepKey?: string,
+): T | undefined {
+  const normalize = (value: string) =>
+    value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
+  const normalizedName = normalize(name)
+  const candidates = preferredStepKey
+    ? artifacts.filter((artifact) => artifact.step_key === preferredStepKey)
+    : artifacts
+  const preferred = candidates.filter((artifact) => artifact.is_selected)
+  const latest = candidates.filter((artifact) => artifact.is_latest)
+  const ordered = [...preferred, ...latest, ...candidates]
+  return (
+    ordered.find((artifact) => artifact.logical_name === name) ||
+    ordered.find((artifact) => {
+      const artifactName = normalize(
+        artifact.logical_name || artifact.name,
+      )
+      return (
+        artifactName.includes(normalizedName) ||
+        normalizedName.includes(artifactName)
+      )
+    })
+  )
 }
 
 export function resolveMessageReview<T extends MessageReview>(
@@ -562,6 +637,70 @@ export function isTaskCompleted(steps: TaskStepStartState[]): boolean {
   return steps.length > 0
     && !isTaskNotStarted(steps)
     && steps.every((step) => step.status === 'passed' || step.status === 'skipped')
+}
+
+interface TaskDetailAdvanceStateInput {
+  taskNotStarted: boolean
+  running: boolean
+  taskStatus?: string
+  stepStates: Array<{ status?: string }>
+  activeStepStatus?: string
+  reviewActionPending: boolean
+  hasActiveReview: boolean
+  t: TFunction
+}
+
+/**
+ * 任务详情底部主操作按钮的文案与禁用状态。owner 弹窗与分享页共用，
+ * 避免两处状态机漂移。
+ */
+export function resolveTaskDetailAdvanceState({
+  taskNotStarted,
+  running,
+  taskStatus,
+  stepStates,
+  activeStepStatus,
+  reviewActionPending,
+  hasActiveReview,
+  t,
+}: TaskDetailAdvanceStateInput): { label: string; disabled: boolean } {
+  if (taskNotStarted) {
+    return {
+      label: running ? t('taskDetail.starting') : t('taskList.start'),
+      disabled: running,
+    }
+  }
+  if (
+    taskStatus === 'ready'
+    && stepStates.length > 0
+    && stepStates.every(
+      (step) => step.status === 'passed' || step.status === 'skipped',
+    )
+  ) {
+    return { label: t('taskDetail.workflowCompleted'), disabled: true }
+  }
+  if (activeStepStatus === 'awaiting_review') {
+    return {
+      label: t('taskDetail.approveAndAdvance'),
+      disabled: reviewActionPending || !hasActiveReview,
+    }
+  }
+  if (activeStepStatus === 'rejected') {
+    return {
+      label: t('taskDetail.forceApproveAndAdvance'),
+      disabled: reviewActionPending || !hasActiveReview,
+    }
+  }
+  if (activeStepStatus === 'reviewing') {
+    return { label: t('taskDetail.reviewing'), disabled: true }
+  }
+  if (activeStepStatus === 'retrying') {
+    return { label: t('taskDetail.autoRerunning'), disabled: true }
+  }
+  if (activeStepStatus === 'running') {
+    return { label: t('taskDetail.stageRunning'), disabled: true }
+  }
+  return { label: t('taskDetail.waitForStage'), disabled: true }
 }
 
 export function createOptimisticUserMessage(

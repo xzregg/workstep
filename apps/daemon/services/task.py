@@ -7,8 +7,18 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from peewee import fn
+
 from agent_assistants.event_journal import TurnEventJournal
-from models import ActionProposal, CoordinatorSession, Task, TaskStep, Message, WorkflowRun
+from models import (
+    ActionProposal,
+    CoordinatorSession,
+    Task,
+    TaskStep,
+    Message,
+    StepRun,
+    WorkflowRun,
+)
 from models.base import db_proxy
 from models.fields import utc_now
 from engines.core.registry import create_engine
@@ -605,12 +615,43 @@ class TaskService:
 
     def _task_to_dict(self, task: Task) -> dict:
         steps = list(TaskStep.select().where(TaskStep.task == task))
+        # 「执行过」判定：阶段是否有 execution 频道的用户/助手消息。
+        # 一次分组查询取回所有已执行阶段，避免逐阶段查询。
+        executed_step_keys = {
+            row.step_key
+            for row in (
+                Message.select(Message.step_key)
+                .where(
+                    (Message.task == task)
+                    & (Message.channel == "execution")
+                    & (Message.role.in_(["user", "assistant"]))
+                )
+                .group_by(Message.step_key)
+            )
+        }
         coordinator_session = CoordinatorSession.get_or_none(
             CoordinatorSession.task == task
         )
         coordinator_session_id = (
             coordinator_session.session_id if coordinator_session else None
         )
+        # 每阶段最新产物轮数：以 StepRun.artifact_round 为权威来源，取该阶段
+        # 所有执行记录的最大轮数。一次分组查询取回所有阶段，避免逐阶段查询。
+        latest_artifact_round_by_step = {
+            row.step_key: row.max_round
+            for row in (
+                StepRun.select(
+                    StepRun.step_key,
+                    fn.MAX(StepRun.artifact_round).alias("max_round"),
+                )
+                .join(WorkflowRun)
+                .where(
+                    (WorkflowRun.task == task)
+                    & (StepRun.artifact_round.is_null(False))
+                )
+                .group_by(StepRun.step_key)
+            )
+        }
         run_round = 1
         restart_from_step_key = None
         recovered_at = None
@@ -722,6 +763,13 @@ class TaskService:
                     "started_at": step.started_at,
                     "ended_at": step.ended_at,
                     "error": step.error,
+                    "artifact_round": latest_artifact_round_by_step.get(
+                        step.step_key
+                    ),
+                    "has_history": (
+                        step.step_key in executed_step_keys
+                        or step.started_at is not None
+                    ),
                 }
                 for step in steps
             ],

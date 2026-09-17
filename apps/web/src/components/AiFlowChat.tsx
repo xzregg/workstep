@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { randomUuid } from '../utils/uuid'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import AssistantChatPanel from './AssistantChatPanel'
+import FlowStageApplyPanel from './FlowStageApplyPanel'
 import {
   a2uiActionMessageParams,
   pendingAutoApplyProposal,
@@ -65,13 +67,6 @@ function workflowSessionId(projectId: string, workflowId: string): string {
   return `wf:${projectId}:${workflowId}`
 }
 
-function randomId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `gen-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
 const EMPTY_PROPOSALS: GenProposalCard[] = []
 
 export default function AiFlowChat({
@@ -125,6 +120,13 @@ export default function AiFlowChat({
   const latestProposals = session?.latestProposals ?? EMPTY_PROPOSALS
   const rejectionMessage = session?.rejectionMessage
   const lastCanvasSnapshotRef = useRef<string | null>(null)
+  // Patch proposals that were not auto-applied (multi-stage edits, removals)
+  // can be applied stage-by-stage through the inline picker.
+  const partialApplyCards = latestProposals.filter(
+    (card) => !!card.patch
+      && card.autoApply !== true
+      && (card.stageChanges?.length ?? 0) > 0,
+  )
   const getCanvasStepsRef = useRef(getCanvasSteps)
   getCanvasStepsRef.current = getCanvasSteps
 
@@ -244,7 +246,7 @@ export default function AiFlowChat({
     setSendError('')
     let sid = sessionId
     if (!sid) {
-      sid = workflowId ? workflowSessionId(projectId, workflowId) : randomId()
+      sid = workflowId ? workflowSessionId(projectId, workflowId) : randomUuid()
       useWorkflowGenStore.getState().newSession(sid)
       setSessionId(sid)
     }
@@ -266,7 +268,7 @@ export default function AiFlowChat({
           snapshot: JSON.stringify(currentSteps),
         }
     try {
-      const accepted = await workflowGenApi.chat(projectId, content, sid, randomId(), {
+      const accepted = await workflowGenApi.chat(projectId, content, sid, randomUuid(), {
         engine: selectedEngine || undefined,
         providerId: selectedProvider || undefined,
         model: selectedModel || undefined,
@@ -425,6 +427,15 @@ export default function AiFlowChat({
           </Button>
         ) : undefined}
         afterMessages={<>
+        {partialApplyCards.length > 0 && (
+          <FlowStageApplyPanel
+            cards={partialApplyCards}
+            currentSteps={() => getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }}
+            onApply={(steps, card) => applyFlowSteps(steps, card.id)}
+            appliedCardId={appliedCardId}
+            disabled={running}
+          />
+        )}
         {rejectionMessage && latestProposals.length === 0 && (
           <div style={{
             marginTop: 2, padding: '7px 10px', borderRadius: 8, fontSize: 'calc(13px * var(--font-scale))',

@@ -3,8 +3,11 @@ import Button from './Button'
 import Input from './Input'
 import Icon from './Icon'
 import ConfirmDialog from './ConfirmDialog'
+import SegmentedControl from './SegmentedControl'
 import { taskApi, type ShareInfo } from '../api/client'
 import { useI18n } from '../i18n'
+
+type ShareMode = 'read_only' | 'interactive'
 
 interface Props {
   open: boolean
@@ -30,6 +33,7 @@ export default function ShareDialog({
   const [copied, setCopied] = useState(false)
   const [password, setPassword] = useState('')
   const [title, setTitle] = useState('')
+  const [mode, setMode] = useState<ShareMode>('read_only')
   const [error, setError] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState(false)
 
@@ -38,6 +42,7 @@ export default function ShareDialog({
     if (!open) return
     setPassword('')
     setTitle('')
+    setMode('read_only')
     setError(null)
     setCopied(false)
     setConfirmRevoke(false)
@@ -85,10 +90,12 @@ export default function ShareDialog({
         projectId,
         password || null,
         title.trim() || null,
+        mode,
       )
       setShare(created)
       setPassword('')
       setTitle('')
+      setMode('read_only')
       onChanged?.(created)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -106,6 +113,11 @@ export default function ShareDialog({
     } catch {
       // Fallback: select input text.
     }
+  }
+
+  const handleOpenWindow = () => {
+    if (!shareUrl) return
+    window.open(shareUrl, '_blank', 'noopener,noreferrer')
   }
 
   const handleRevoke = async () => {
@@ -205,6 +217,10 @@ export default function ShareDialog({
                     <Icon name={copied ? 'check' : 'copy'} size={13} />
                     {copied ? t('share.linkCopied') : t('share.copyLink')}
                   </Button>
+                  <Button variant="ghost" onClick={handleOpenWindow} style={{ fontSize: 'calc(12px * var(--font-scale))', height: 28 }}>
+                    <Icon name="external-link" size={13} />
+                    {t('share.openWindow')}
+                  </Button>
                 </div>
                 {share.title && (
                   <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--fg-2)' }}>{share.title}</div>
@@ -253,6 +269,26 @@ export default function ShareDialog({
                     placeholder={t('share.titlePlaceholder')}
                   />
                 </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: 'calc(12px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)' }}>
+                    {t('share.modeLabel')}
+                  </span>
+                  <SegmentedControl
+                    ariaLabel={t('share.modeLabel')}
+                    value={mode}
+                    options={[
+                      { value: 'read_only', label: t('share.modeReadOnly') },
+                      { value: 'interactive', label: t('share.modeInteractive') },
+                    ]}
+                    onChange={setMode}
+                    style={{ justifyContent: 'flex-start' }}
+                  />
+                  <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--muted)', lineHeight: 1.5 }}>
+                    {mode === 'interactive'
+                      ? t('share.modeInteractiveHint')
+                      : t('share.modeReadOnlyHint')}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
                   <Button
                     variant="primary"

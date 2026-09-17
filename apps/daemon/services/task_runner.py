@@ -17,6 +17,11 @@ from models import (
     WorkflowRun,
 )
 from models.fields import utc_now
+from services.artifact_rounds import (
+    next_artifact_round,
+    step_round_dir,
+    write_round_manifest,
+)
 from services.pipeline import DAGScheduler, Step
 from services.prompt import assemble_followup_prompt, assemble_prompt
 from services.review_gate import ReviewGate
@@ -119,12 +124,14 @@ class TaskRunner:
         source_project_id=None,
         database_executor=None,
         stage_followups: dict[str, str] | None = None,
+        input_rounds_by_step: dict[str, dict[str, int]] | None = None,
     ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
         self._source_project_id = source_project_id
         self._database_executor = database_executor
         self._stage_followups = stage_followups or {}
+        self._input_rounds_by_step = input_rounds_by_step or {}
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
@@ -532,6 +539,8 @@ class TaskRunner:
             ts.save()
 
             step_run = None
+            artifact_round = None
+            input_rounds = {}
             if workflow_run is not None:
                 attempt = (
                     StepRun.select()
@@ -542,11 +551,38 @@ class TaskRunner:
                     .count()
                     + 1
                 )
+                latest_round_row = (
+                    StepRun.select(StepRun.artifact_round)
+                    .join(WorkflowRun)
+                    .where(
+                        (WorkflowRun.task == task)
+                        & (StepRun.step_key == step_key)
+                        & (StepRun.artifact_round.is_null(False))
+                    )
+                    .order_by(StepRun.artifact_round.desc())
+                    .first()
+                )
+                artifact_round = next_artifact_round(
+                    artifacts_dir,
+                    task.workflow_id,
+                    task.id,
+                    step_key,
+                    database_round=(
+                        latest_round_row.artifact_round
+                        if latest_round_row is not None else 0
+                    ),
+                )
+                input_rounds = self._input_rounds_by_step.get(step_key, {})
                 step_run = StepRun.create(
                     id=str(uuid.uuid4()),
                     run=workflow_run,
                     step_key=step_key,
                     attempt=attempt,
+                    artifact_round=artifact_round,
+                    input_rounds_json=(
+                        json.dumps(input_rounds, ensure_ascii=False)
+                        if input_rounds else None
+                    ),
                     status="running",
                     engine=step.engine,
                     model=resolved_model,
@@ -591,9 +627,19 @@ class TaskRunner:
                 rework_feedback,
                 manual_review_feedback,
                 pending_handoff,
+                artifact_round,
+                input_rounds,
             )
 
-        ts, step_run, rework_feedback, manual_review_feedback, pending_handoff = (
+        (
+            ts,
+            step_run,
+            rework_feedback,
+            manual_review_feedback,
+            pending_handoff,
+            artifact_round,
+            input_rounds,
+        ) = (
             await self._run_db(prepare_step_state)
         )
 
@@ -624,6 +670,16 @@ class TaskRunner:
                     await self._persist_step_run_status(
                         step_run.id, "failed", error, utc_now()
                     )
+                await self._finalize_artifact_round(
+                    artifacts_dir,
+                    task,
+                    step,
+                    workflow_run,
+                    step_run,
+                    artifact_round,
+                    input_rounds,
+                    "failed",
+                )
             else:
                 await self._persist_step_status(
                     task.id, step_key, "passed", None, utc_now()
@@ -634,6 +690,16 @@ class TaskRunner:
                     await self._persist_step_run_status(
                         step_run.id, "succeeded", None, utc_now()
                     )
+                await self._finalize_artifact_round(
+                    artifacts_dir,
+                    task,
+                    step,
+                    workflow_run,
+                    step_run,
+                    artifact_round,
+                    input_rounds,
+                    "passed",
+                )
                 await self._publish(task.id, step_key, {
                     "type": "status",
                     "data": {"status": "passed", "step_key": step_key},
@@ -649,11 +715,23 @@ class TaskRunner:
         followup = self._stage_followups.get(step_key, "").strip()
         if followup and ts.session_id and engine is not None and engine.supports_resume:
             prompt = await asyncio.to_thread(
-                assemble_followup_prompt, task, step, artifacts_dir, followup
+                assemble_followup_prompt,
+                task,
+                step,
+                artifacts_dir,
+                followup,
+                artifact_round,
             )
         else:
             prompt = await self._run_db(
-                lambda: assemble_prompt(task, step, artifacts_dir, user_input)
+                lambda: assemble_prompt(
+                    task,
+                    step,
+                    artifacts_dir,
+                    user_input,
+                    artifact_round,
+                    input_rounds,
+                )
             )
         if pending_handoff:
             handoff_reference = await asyncio.to_thread(
@@ -694,9 +772,18 @@ class TaskRunner:
                 "不要改变输出格式、文件扩展名或目录结构。**"
             )
 
-        # Ensure artifact output directory (workflow / task / stage)
-        wf_name = task.workflow_id or "default"
-        out_dir = artifacts_dir / wf_name / task.id / step_key
+        # Ensure artifact output directory (workflow / task / stage / round)
+        out_dir = (
+            step_round_dir(
+                artifacts_dir,
+                task.workflow_id,
+                task.id,
+                step_key,
+                artifact_round,
+            )
+            if artifact_round is not None
+            else artifacts_dir / (task.workflow_id or "default") / task.id / step_key
+        )
         msg_id = new_message_id()
         message_started_at = utc_now()
         engine_session_id = (
@@ -775,6 +862,16 @@ class TaskRunner:
                     step_run.save()
 
             await self._run_db(persist_unavailable_engine)
+            await self._finalize_artifact_round(
+                artifacts_dir,
+                task,
+                step,
+                workflow_run,
+                step_run,
+                artifact_round,
+                input_rounds,
+                "failed",
+            )
             running.discard(step_key)
             return
 
@@ -892,6 +989,7 @@ class TaskRunner:
                 elif event.type == "live_message":
                     live_data = event.data or {}
                     live_message_id = live_data.get("message_id")
+                    live_message_content = ""
                     if live_message_id:
                         def finish_live_message():
                             live_message = Message.get_by_id(live_message_id)
@@ -902,14 +1000,21 @@ class TaskRunner:
                             )
                             live_message.ended_at = utc_now()
                             live_message.save()
+                            return live_message.content
                         try:
-                            await self._run_db(finish_live_message)
+                            live_message_content = await self._run_db(
+                                finish_live_message
+                            )
                         except Message.DoesNotExist:
                             pass
                     if live_data.get("status") == "delivered":
                         # 引擎确认收到插入消息：封口当前执行段并开启新的响应段，
                         # 历史消息呈现「阶段输出 → 用户插入 → 阶段响应」的分段结构。
                         seal_time = utc_now()
+                        prompt_after_insert = (
+                            live_message_content
+                            or str(live_data.get("content") or "")
+                        ).strip()
                         def seal_current_message():
                             sealed = Message.get_by_id(msg_id)
                             self._event_journal.finish(journal_ref)
@@ -958,6 +1063,14 @@ class TaskRunner:
                                 run_id=new_msg_id,
                                 run_status="running",
                                 event_log_path=journal_ref.relative_path,
+                                prompt_json=(
+                                    json.dumps(
+                                        {"prompt": prompt_after_insert},
+                                        ensure_ascii=False,
+                                    )
+                                    if prompt_after_insert
+                                    else None
+                                ),
                                 position=1,
                                 started_at=seal_time,
                                 created_at=seal_time,
@@ -972,7 +1085,14 @@ class TaskRunner:
                             "model": resolved_model,
                             "event_sequence": 0,
                             "type": "message_started",
-                            "data": {"content": ""},
+                            "data": {
+                                "content": "",
+                                **(
+                                    {"prompt": prompt_after_insert}
+                                    if prompt_after_insert
+                                    else {}
+                                ),
+                            },
                             "created_at": seal_time.isoformat(),
                         })
                 await self._publish(task.id, step_key, {
@@ -1170,6 +1290,7 @@ class TaskRunner:
                             review_config=review_config,
                             mode=review_mode,
                             message_id=review_message_id,
+                            artifact_round=artifact_round,
                         )
                         if review_message_id is not None and review_journal_ref is not None:
                             await self._finish_automatic_review_message(
@@ -1239,6 +1360,7 @@ class TaskRunner:
                                 execution_prompt=prompt,
                                 review_config=review_config,
                                 mode="manual",
+                                artifact_round=artifact_round,
                             )
                             review_message_persisted = False
                             ts = await self._persist_step_status(
@@ -1449,6 +1571,17 @@ class TaskRunner:
                         None if execution_succeeded else ts.error,
                         utc_now(),
                     )
+            if step_run is not None and artifact_round is not None:
+                await self._finalize_artifact_round(
+                    artifacts_dir,
+                    task,
+                    step,
+                    workflow_run,
+                    step_run,
+                    artifact_round,
+                    input_rounds,
+                    ts.status,
+                )
 
         if retry_feedback is not None:
             await self._run_step(
@@ -1542,6 +1675,35 @@ class TaskRunner:
             return row
 
         return await self._run_db(persist)
+
+    async def _finalize_artifact_round(
+        self,
+        artifacts_dir,
+        task,
+        step,
+        workflow_run,
+        step_run,
+        artifact_round,
+        input_rounds,
+        status,
+    ):
+        if step_run is None or artifact_round is None:
+            return
+        await self._run_db(
+            lambda: write_round_manifest(
+                artifacts_root=artifacts_dir,
+                workflow_id=task.workflow_id,
+                task_id=task.id,
+                step_key=step.key,
+                artifact_round=artifact_round,
+                workflow_run_id=workflow_run.id if workflow_run else None,
+                step_run_id=step_run.id,
+                input_rounds=input_rounds,
+                status=status,
+                eligible_for_downstream=status == "passed",
+                outputs=step.outputs,
+            )
+        )
 
     @staticmethod
     def _fail_live_message(message_id):

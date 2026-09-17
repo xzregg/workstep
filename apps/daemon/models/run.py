@@ -38,6 +38,8 @@ class StepRun(BaseModel):
     run = pw.ForeignKeyField(WorkflowRun, backref="step_runs")
     step_key = pw.TextField()
     attempt = pw.IntegerField()
+    artifact_round = pw.IntegerField(null=True)
+    input_rounds_json = pw.TextField(null=True)
     status = pw.TextField(default="running")
     engine = pw.TextField(null=True)
     model = pw.TextField(null=True)

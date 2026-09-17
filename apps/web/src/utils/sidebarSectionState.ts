@@ -3,13 +3,13 @@ export const SIDEBAR_SECTION_STATE_KEY = 'workstep.sidebar.expanded-sections.v1'
 type SidebarStorage = Pick<Storage, 'getItem' | 'setItem'>
 
 export interface SidebarSectionState {
-  expandedProjectId: string | null
+  expandedProjectIds: string[]
   flowsByProject: Record<string, boolean>
   conversationsByProject: Record<string, boolean>
 }
 
 const EMPTY_STATE: SidebarSectionState = {
-  expandedProjectId: null,
+  expandedProjectIds: [],
   flowsByProject: {},
   conversationsByProject: {},
 }
@@ -30,16 +30,24 @@ function booleanMap(value: unknown): Record<string, boolean> {
   )
 }
 
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 export function loadSidebarSectionState(
   storage: Pick<SidebarStorage, 'getItem'> | null = browserStorage(),
 ): SidebarSectionState {
   if (!storage) return EMPTY_STATE
   try {
     const parsed = JSON.parse(storage.getItem(SIDEBAR_SECTION_STATE_KEY) || 'null')
+    const expandedProjectIds = Array.isArray(parsed?.expandedProjectIds)
+      ? stringArray(parsed.expandedProjectIds)
+      : typeof parsed?.expandedProjectId === 'string'
+        ? [parsed.expandedProjectId]
+        : []
     return {
-      expandedProjectId: typeof parsed?.expandedProjectId === 'string'
-        ? parsed.expandedProjectId
-        : null,
+      expandedProjectIds,
       flowsByProject: booleanMap(parsed?.flowsByProject),
       conversationsByProject: booleanMap(parsed?.conversationsByProject),
     }

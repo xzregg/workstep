@@ -84,6 +84,30 @@ export function estimateTokens(content: string): number {
   return Math.max(1, Math.round(cjk + other / 4))
 }
 
+
+/**
+ * Estimate the active thinking rate from one timeline. Both the process trace
+ * and the response footer use this so the same reasoning stream cannot show
+ * two different t/s numbers.
+ */
+export function thinkingRateFromTimeline(
+  timeline: MessageTimelineItem[],
+  now: DateTimeValue,
+): number | null {
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const item = timeline[index]
+    if (item.type !== 'thinking') continue
+    const startedAt = item.startedAt
+    const endedAt = item.endedAt ?? toMilliseconds(now)
+    if (startedAt === undefined || endedAt === null) return null
+    const elapsedMs = endedAt - startedAt
+    if (elapsedMs <= 0) return null
+    const tokens = estimateTokens(item.content)
+    return tokens > 0 ? Math.max(1, Math.round(tokens / (elapsedMs / 1000))) : null
+  }
+  return null
+}
+
 export function buildMessageTimeline(
   events: MessageTimelineEvent[],
 ): MessageTimelineItem[] {

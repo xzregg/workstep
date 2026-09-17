@@ -1,7 +1,6 @@
 """Engine-backed task coordinator conversation module."""
 
 import asyncio
-import hashlib
 import json
 import logging
 import re
@@ -49,6 +48,7 @@ from services.task_runner import extract_usage_json
 from services.remote_project import current_actor_event_fields
 from services.tool_registry import workstep_cli_instruction
 from services.workflow_definition import WorkflowDefinition
+from services.artifact_rounds import artifact_id_for, iter_artifact_rounds
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
@@ -65,11 +65,11 @@ COORDINATOR_CONFIG = AssistantConfig(
     channel=COORDINATOR_CHANNEL,
     scope=SCOPE_TASK,
     system_prompt=(
-        "任务协调 Agent：理解任务与工作流上下文，回答用户问题，"
-        "可调用 WorkStep 内部工具（workstep_call）查询项目与任务，"
-        "变更类操作需用户明确授权（confirm='yes'）；必要时提出不超过"
-        "一个动作提案（supplement_stage / rerun_from_stage / "
-        "review_decision），从不直接执行工作流动作。"
+        "You are the WorkStep task coordinator. Use task and workflow context to "
+        "answer questions. You may call WorkStep read tools via workstep_call. "
+        "Mutating actions require explicit user authorization (confirm='yes'). "
+        "At most one action proposal (supplement_stage / rerun_from_stage / "
+        "review_decision) may be proposed. Never execute workflow actions directly."
     ),
     engine_label="Coordinator engine",
     workstep_tools=True,
@@ -153,13 +153,15 @@ class CoordinatorModule:
             "proposal": None,
         }
         prompt = (
-            "你正在为归档任务提炼可复用的错误经验，这不是任务总结。"
-            "只记录有直接证据的错误、失误或踩坑；成功过程、任务概述、成果、客套话都不要写。"
-            "最多 3 条，每条只写一行，格式为“- 错误：…；原因：…；纠正：…”。"
-            "合计不超过 600 个汉字；没有错误证据时回复“- 未发现值得记录的错误经验。”。"
-            "不要猜测，也不要执行任何操作。内容将先由用户审阅，当前绝不能写入 Memory。"
-            f"返回符合以下结构的 JSON：{json.dumps(schema, ensure_ascii=False)}\n\n"
-            f"任务全过程证据：\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
+            "Extract reusable error lessons for an archived task; this is not a task summary. "
+            "Record only directly evidenced mistakes or pitfalls; omit successes, summaries, "
+            "outcomes, and pleasantries. Use at most 3 one-line entries in the format "
+            "\"- Error: ...; Cause: ...; Fix: ...\". Keep the total under 600 Chinese "
+            "characters equivalent; if there is no error evidence, reply "
+            "\"- No reusable error lessons found.\" Do not guess or execute anything. "
+            "The content will be reviewed by the user and must not be written to Memory now. "
+            f"Return JSON matching this shape: {json.dumps(schema, ensure_ascii=False)}\n\n"
+            f"Task evidence:\n{json.dumps(evidence, ensure_ascii=False, default=str)}"
         )
         run_key = self._archive_experience_run_key(
             project_id,
@@ -235,15 +237,15 @@ class CoordinatorModule:
             {
                 "content": {
                     "text": (
-                        f"已读取任务记录：{len(steps)} 个阶段、"
-                        f"{len(reviews)} 次审核、{len(messages)} 条消息。"
+                        f"Read task record: {len(steps)} stages, "
+                        f"{len(reviews)} reviews, {len(messages)} messages."
                     )
                 }
             },
         )
         await publish(
             "agent_thought_chunk",
-            {"content": {"text": "已提交给协调助手，等待协调助手响应。"}},
+            {"content": {"text": "Submitted to the coordinator; waiting for a response."}},
         )
         try:
             if run_key in self._cancelled_archive_experience_runs:
@@ -833,11 +835,20 @@ class CoordinatorModule:
                         payload,
                     )
                 elif proposal_type == "rerun_from_stage":
+                    requested_rounds = (
+                        payload.get("input_rounds")
+                        if isinstance(payload, dict) else None
+                    )
+                    input_rounds = self._normalize_input_rounds(
+                        requested_rounds,
+                        action["target_step_key"] or "",
+                    )
                     handle = await self._workflow_runtime.restart_from_stage(
                         project_id,
                         task_id,
                         action["target_step_key"] or "",
                         expected_run_id=action["expected_workflow_run_id"],
+                        input_rounds=input_rounds or None,
                     )
                     result = {"run_id": handle.id, "status": "started"}
                 else:
@@ -1586,7 +1597,9 @@ class CoordinatorModule:
             "supplement_stage, rerun_from_stage, review_decision. For a proposal "
             "return {type, target_step_key, payload}. supplement payload requires "
             "content; review_decision requires review_run_id and decision; rerun "
-            "requires a target step. If active_workflow_run_id is null, rerun starts "
+            "requires a target step. To reuse a specific upstream artifact round, "
+            "rerun payload may include input_rounds mapping stage keys to round "
+            "numbers from artifacts. If active_workflow_run_id is null, rerun starts "
             "a new first workflow run from that stage. Request artifacts only by "
             "artifact_id. If the user's message references an image and your model "
             "cannot accept image input, use coordinator_vision_model to analyze the "
@@ -1777,29 +1790,83 @@ class CoordinatorModule:
             for step_dir in task_dir.iterdir():
                 if not step_dir.is_dir():
                     continue
-                for path in step_dir.rglob("*"):
-                    if not path.is_file() or path.is_symlink():
-                        continue
-                    resolved = path.resolve()
-                    try:
-                        relative = resolved.relative_to(step_dir.resolve())
-                    except ValueError:
-                        continue
-                    digest = hashlib.sha256(
-                        f"{workflow_dir.name}/{step_dir.name}/{relative}".encode()
-                    ).hexdigest()[:20]
-                    artifact_id = f"artifact-{digest}"
-                    result[artifact_id] = (
-                        {
-                            "artifact_id": artifact_id,
-                            "step_key": step_dir.name,
-                            "workflow": workflow_dir.name,
-                            "relative_path": str(relative),
-                            "size": resolved.stat().st_size,
-                        },
-                        resolved,
-                    )
+                rounds = iter_artifact_rounds(
+                    root,
+                    workflow_dir.name,
+                    task.id,
+                    step_dir.name,
+                )
+                latest_round = max((item.round for item in rounds), default=0)
+                latest_success_round = max(
+                    (
+                        item.round
+                        for item in rounds
+                        if item.eligible_for_downstream
+                    ),
+                    default=-1,
+                )
+                for artifact_round in rounds:
+                    round_dir = artifact_round.path.resolve()
+                    for path in artifact_round.path.rglob("*"):
+                        if not path.is_file() or path.is_symlink():
+                            continue
+                        relative = path.relative_to(artifact_round.path)
+                        if artifact_round.legacy and relative.parts and relative.parts[0].isdigit():
+                            continue
+                        if path.name == "manifest.json":
+                            continue
+                        resolved = path.resolve()
+                        try:
+                            resolved.relative_to(round_dir)
+                        except ValueError:
+                            continue
+                        artifact_id = artifact_id_for(
+                            workflow_dir.name,
+                            step_dir.name,
+                            artifact_round.round,
+                            str(relative),
+                        )
+                        result[artifact_id] = (
+                            {
+                                "artifact_id": artifact_id,
+                                "step_key": step_dir.name,
+                                "workflow": workflow_dir.name,
+                                "round": artifact_round.round,
+                                "is_latest_success": (
+                                    artifact_round.eligible_for_downstream
+                                    and artifact_round.round == latest_success_round
+                                ),
+                                "is_selected": (
+                                    artifact_round.round == latest_success_round
+                                ),
+                                "eligible_for_downstream": artifact_round.eligible_for_downstream,
+                                "relative_path": str(relative),
+                                "size": resolved.stat().st_size,
+                            },
+                            resolved,
+                        )
         return result
+
+    @staticmethod
+    def _normalize_input_rounds(
+        value,
+        target_step_key: str,
+    ) -> dict[str, int]:
+        if not isinstance(value, dict):
+            return {}
+        normalized: dict[str, int] = {}
+        for raw_step, raw_round in value.items():
+            step_key = str(raw_step).strip()
+            if not step_key or step_key == target_step_key:
+                continue
+            try:
+                round_number = int(raw_round)
+            except (TypeError, ValueError):
+                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
+            if round_number < 1:
+                raise ValueError(f"非法产物轮次: {raw_step}={raw_round}")
+            normalized[step_key] = round_number
+        return normalized
 
     def _read_artifacts(self, artifacts, requested: list[str]) -> str:
         blocks = []
@@ -1848,6 +1915,13 @@ class CoordinatorModule:
             if not content:
                 return None
             payload = {"content": content}
+        elif proposal_type == "rerun_from_stage":
+            payload = {
+                "input_rounds": self._normalize_input_rounds(
+                    payload.get("input_rounds"),
+                    target_step_key or "",
+                )
+            }
         elif proposal_type == "review_decision":
             review_id = str(payload.get("review_run_id", ""))
             decision = str(payload.get("decision", "")).replace("-", "_")

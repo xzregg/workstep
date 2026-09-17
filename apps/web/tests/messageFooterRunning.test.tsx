@@ -249,6 +249,103 @@ test('finished footer keeps the first-token delay', async () => {
   assert.doesNotMatch(summary, /t\/s/)
 })
 
+test('finished footer restores first-token delay from a persisted summary', async () => {
+  const startedAt = Date.now() - 60_000
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content="hi"
+      usage={{ input_tokens: 100, output_tokens: 50, total_tokens: 150 }}
+      events={[]}
+      eventSummary={{ first_output_at: new Date(startedAt + 12_400).toISOString(), estimated_output_tokens: 50 }}
+      engine="pydantic_ai"
+      model="model-x"
+      startedAt={startedAt}
+      endedAt={Date.now()}
+    />
+  ))
+  assert.match(summary, /首t 12秒/)
+  assert.doesNotMatch(summary, /t\/s/)
+})
+
+test('finished footer keeps the rate when a summary records the duration', async () => {
+  const startedAt = Date.now() - 60_000
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content="hi"
+      usage={{ input_tokens: 100, output_tokens: 50, total_tokens: 150 }}
+      events={[]}
+      eventSummary={{
+        first_output_at: new Date(startedAt + 12_400).toISOString(),
+        elapsed_ms: 5000,
+        estimated_output_tokens: 50,
+      }}
+      engine="pydantic_ai"
+      model="model-x"
+      startedAt={startedAt}
+      endedAt={Date.now()}
+    />
+  ))
+  assert.match(summary, /10 t\/s/)
+  assert.match(summary, /首t 12秒/)
+})
+
+test('finished footer keeps a zero first-token delay from a persisted summary', async () => {
+  const startedAt = Date.now() - 60_000
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content="hi"
+      usage={{ input_tokens: 100, output_tokens: 50, total_tokens: 150 }}
+      events={[]}
+      eventSummary={{ first_output_at: new Date(startedAt).toISOString() }}
+      engine="pydantic_ai"
+      model="model-x"
+      startedAt={startedAt}
+      endedAt={Date.now()}
+    />
+  ))
+  assert.match(summary, /首t 0秒/)
+})
+
+test('rate counts reasoning-only token usage when output tokens are absent', async () => {
+  const startedAt = Date.now() - 6000
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content=""
+      usage={{
+        input_tokens: 100,
+        output_tokens: 0,
+        reasoning_output_tokens: 60,
+        total_tokens: 100,
+      }}
+      events={[]}
+      engine="codex"
+      model="gpt-5"
+      startedAt={startedAt}
+      running
+    />
+  ))
+  assert.match(summary, /10 t\/s/)
+})
+
+test('running footer reuses the active thinking rate while a command is running', async () => {
+  const startedAt = Date.now() - 4000
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content=""
+      events={[
+        { type: 'REASONING_MESSAGE_CHUNK', delta: '让我想想 '.repeat(40), timestamp: new Date(startedAt).toISOString() },
+        { type: 'REASONING_MESSAGE_CHUNK', delta: '继续思考 '.repeat(40), timestamp: new Date(startedAt + 2000).toISOString() },
+        { type: 'TOOL_CALL_START', toolCallId: 'tool-1', toolCallName: 'Bash', timestamp: new Date(startedAt + 2500).toISOString() },
+      ]}
+      engine="codex"
+      model="gpt-5"
+      startedAt={startedAt}
+      running
+    />
+  ))
+  assert.match(summary, /136 t\/s/)
+})
+
 test('optimistic thinking placeholder can carry the usage footer', async () => {
   const summary = await renderSummary((
     <AssistantThinkingMessage

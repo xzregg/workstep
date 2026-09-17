@@ -28,6 +28,11 @@ from agent_assistants.base import (
     extract_streaming_reply,
 )
 from agent_assistants.event_journal import TurnEventJournal
+from agent_assistants.workflow_patch import (
+    WorkflowPatchError,
+    apply_patch,
+    is_patch,
+)
 from services.config import CONFIG_DIR, config_store
 from services.workflow_definition import (
     WorkflowDefinition,
@@ -40,44 +45,19 @@ MAX_HISTORY_TURNS = 8
 MAX_SESSIONS = 200
 SESSION_TTL_SECONDS = 60 * 60
 
-SYSTEM_PROMPT = """你是 WorkStep 的流程设计助手（协调 Agent 的流程生成模式）。你通过多轮对话帮用户设计一个可执行的工作流（workflow），最终输出画布 JSON。
-
-工作方式：
-1. 第一轮先澄清关键信息，最多追问 2 个问题（每次只问当前最关键的问题）：目标产物、输入与输出、约束或偏好（是否需要审核、是否并行分支、使用哪些阶段）。
-2. 信息足够后，输出自然语言说明 + 2~3 个不同的完整流程方案（flow_proposals），供用户选择。方案之间要有实质差异（例如：简洁版 / 标准版（含并行或审核）/ 完整版），每个方案包含方案标题、建议流程名称、一句话摘要与完整画布 JSON。
-3. 用户后续会用自然语言调整（如"去掉测试阶段"、"加一个审核"、"这两段并行执行"），你要基于最新会话历史返回一个完整方案到 flow_proposals，不要只给增量。编辑已有流程且调整目标明确时只返回 1 个方案，并设置 "autoApply": true，由前端直接应用到画布。
-
-画布 JSON 规范：
-{
-  "nodes": [
-    {"id": 1, "type": "req", "title": "需求", "autoStart": true, "engine": "claude", "model": "", "color": "#888888",
-     "prompt": "该阶段给 LLM 的提示词（可选）",
-     "inputs": [{"name": "输入", "type": "document", "outputs": [{"name": "需求规格", "type": "directory"}]}]
-     }
-  ],
-  "connections": [{"from": 1, "fromPort": 0, "to": 2, "toPort": 0, "kind": "solid"}]
-}
-
-规则：
-- nodes.id：正整数，唯一；type：小写英文字母与连字符（如 req、ui-design、dev-backend、test、publish），同一流程内不能重复；title：中文阶段名。
-- engine 可选，默认 "claude"；color 可选；review 可选（{"auto": true/false, "maxRetries": 1, "prompt": "审核标准"}）。
-- connections 可省略，缺省表示按 nodes 顺序串行；from/to 必须是已有节点 id；fromPort/toPort 在对应端口范围内；kind 为 "solid"（数据流）或 "dashed"（返工反馈）。
-
-回复必须是合法 JSON，格式：{"reply": "给用户的自然语言回复（markdown）", "flow_proposals": [{"title": "方案标题", "workflowName": "建议流程名称（不能包含空白字符）", "summary": "一句话说明", "steps": <画布JSON>, "autoApply": false}]}
-当还在澄清阶段时 flow_proposals 必须为空数组 []。
-- reply 只能包含给用户看的说明和 A2UI 控件，严禁在 reply 中输出画布 JSON、```json 代码块或“当前完整画布 JSON 如下”等内容。完整画布只能放入 flow_proposals[].steps。
-- 首次给出 2~3 个备选方案时 autoApply 必须为 false 或省略；用户已明确选择方案、或要求直接修改当前流程时，返回唯一一个完整方案并设置 autoApply: true，前端会自动加载到画布。
-
-A2UI 交互控件（方案/选项必须给用户可点选的界面）：
-向用户展示方案或选项时，reply 中必须包含完整的 ```a2ui 代码块，输出 A2UI v0.9.1 JSONL 交互界面（方案选择按钮、澄清问题选项等），不要只用纯文本罗列。如果 reply 中没有 a2ui 方案按钮，后端会自动为 flow_proposals 追加方案选择界面。每条 JSON 消息占一行，先 createSurface 再 updateComponents：
-{"version":"v0.9.1","createSurface":{"surfaceId":"plan-select","catalogId":"basic"}}
-{"version":"v0.9.1","updateComponents":{"surfaceId":"plan-select","components":[{"component":"Column","id":"root","children":["hint","b1","b2"]},{"component":"Text","id":"hint","text":"请选择一个方案"},{"component":"Text","id":"b1-label","text":"简洁版"},{"component":"Button","id":"b1","child":"b1-label","variant":"primary","action":{"event":{"name":"apply_flow","context":{"proposal":1}}}},{"component":"Text","id":"b2-label","text":"标准版"},{"component":"Button","id":"b2","child":"b2-label","action":{"event":{"name":"apply_flow","context":{"proposal":2}}}}]}}
-- 组件树必须有一个 id 固定为 "root" 的 Column 容器，children 只引用同一条 updateComponents 里已声明的组件 id；Button/Card 的 child 也必须引用已声明的组件 id（按钮文字用单独的 Text 标签组件，不要直接把文案填进 child）。
-- 方案选择按钮的 action.event.name 固定为 apply_flow；context.proposal 填该方案在同一条回复 flow_proposals 中的序号（从 1 开始）。用户点选后前端会把对应方案应用到画布。
-- 方案按钮必须与同条回复的 flow_proposals 一一对应，数量一致。
-- 澄清阶段参考简报问卷来组织控件：选项使用 ChoicePicker（displayStyle 为 chips，单选用 mutuallyExclusive、多选用 multipleSelection），需要用户补充的内容使用 TextField（长文本用 variant: longText），最后提供一个提交 Button。
-- ChoicePicker/TextField 的 value 可直接给 [] / "" 初始值；提交 Button 使用普通 action（例如 submit_clarification，不要带 apply_flow），context 中将每个答案写成 {"path":"/a2ui/<surfaceId>/<componentId>/value"}，这样用户选择与输入后的当前值会随点击一起返回对话。
-- ```a2ui 代码块要完整闭合（前后各三个反引号独占一行），前端只渲染完整闭合的代码块。"""
+SYSTEM_PROMPT = """You are the WorkStep workflow design assistant. Return canvas JSON for an executable workflow.
++
++Ask at most two questions about goal, I/O, constraints, review, parallelism, and stages. When ready, return short text plus materially different proposals. For edits, return a patch unless a full redesign is requested or the canvas is empty; if clear, use one proposal with autoApply true.
++
++Patch: upsertNodes (full changed nodes; existing id updates, omitted id adds), removeNodeIds, optional connections (merged list; omit to keep links).
++Canvas JSON: {"nodes":[...],"connections":[...]}. Node fields: id, type, title, autoStart, engine, model, color, prompt, inputs. Connection fields: from, fromPort, to, toPort, kind.
++Rules: id is a unique positive integer. type is unique, lowercase letters/hyphens: req, ui-design, dev-backend, test, publish. engine defaults to "claude". review is optional: {"auto":true,"maxRetries":1,"prompt":"review criteria"}. connections may be omitted for serial order. kind is "solid" or "dashed".
++
++Return valid JSON:
++{"reply":"Markdown reply","flow_proposals":[{"title":"title","workflowName":"name without whitespace","summary":"one sentence","steps":<canvas JSON>,"autoApply":false}]}
++During clarification flow_proposals is []. reply has user text and A2UI controls only; never put canvas JSON, ```json, or "current full canvas JSON" in reply. Full canvas goes only in flow_proposals[].steps. Initial options use autoApply false or omitted. After a choice or clear edit request, return one full proposal with autoApply true.
++
++For proposals or choices, include a complete ```a2ui block, one JSON per line: createSurface then updateComponents with Column id "root"; child refs must be declared. Proposal buttons use action.event.name "apply_flow" and context.proposal as the 1-based index; count must match flow_proposals. Clarification uses ChoicePicker chips, TextField longText, and submit Button with a normal action. Answers go in context as {"path":"/a2ui/<surfaceId>/<componentId>/value"}. Close the fence with three backticks."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,14 +299,15 @@ class WorkflowGenModule(AssistantRuntime):
         if context_mode == "initial":
             workflow_name = session.extra.get("workflow_name") or "未命名流程"
             canvas_json = (
-                f"\n\n当前流程标题：{workflow_name}"
-                "\n当前画布 JSON（用户正在编辑的流程，基于它调整或重排，"
-                "不要从零设计；节点 id/type 尽量沿用）：\n"
+                f"\n\nCurrent flow title: {workflow_name}"
+                "\nCurrent canvas JSON (the workflow the user is editing; edit or "
+                "reorder it instead of starting over; keep node id/type when possible):\n"
                 f"{json.dumps(steps, ensure_ascii=False)}"
             )
         elif context_mode == "canvas_updated":
             canvas_json = (
-                "\n\n当前画布已更新（可能包含尚未保存的改动，请以此版本为准）：\n"
+                "\n\nCurrent canvas updated (it may contain unsaved changes; treat "
+                "this version as authoritative):\n"
                 f"{json.dumps(steps, ensure_ascii=False)}"
             )
         engine = create_engine(session.engine)
@@ -347,15 +328,49 @@ class WorkflowGenModule(AssistantRuntime):
         # 否则多轮对话将完全失去上下文。
         turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
         history = "\n\n".join(
-            f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
             for item in turns
         )
         return (
             f"{SYSTEM_PROMPT}"
-            f"{canvas_json}\n\n历史对话：\n{history}\n\n请继续。"
+            f"{canvas_json}\n\nConversation history:\n{history}\n\nContinue."
         )
 
-    # ── response parsing & proposal publishing ──────────────────────────
+    # ── response parsing & proposal publishing ─────────────────────────
+
+    def _merge_patch_proposals(
+        self,
+        session,
+        proposals: list[dict],
+    ) -> list[dict]:
+        """Merge incremental patches into the session canvas.
+
+        Proposals carrying a full ``steps`` canvas pass through untouched;
+        patches are merged against the current canvas so downstream validation
+        and the editor only ever see complete flows. Each merged proposal keeps
+        a ``stageChanges`` list (added / updated / removed stages) so the editor
+        can let the user apply a subset of stages.
+        """
+        if not proposals:
+            return proposals
+        merged: list[dict] = []
+        for item in proposals:
+            steps = item.get("steps")
+            if not is_patch(steps):
+                merged.append(item)
+                continue
+            try:
+                full, changes, resolved = apply_patch(session.steps, steps)
+            except WorkflowPatchError:
+                continue
+            item = {**item, "steps": full}
+            if changes:
+                item["stageChanges"] = changes
+                # Keep the resolved patch so the editor can apply a subset of
+                # stages by id (new stages carry their server-assigned id).
+                item["patch"] = resolved
+            merged.append(item)
+        return merged
 
     async def _resolve_proposal(
         self,
@@ -597,6 +612,9 @@ class WorkflowGenModule(AssistantRuntime):
             )
             reply, proposals = self._parse_reply(repaired)
 
+        # Merge incremental patches against the live canvas before validating so
+        # validation (and the editor) always see a complete flow.
+        proposals = self._merge_patch_proposals(session, proposals)
         valid: list[dict] = []
         first_error: str | None = None
         for item in proposals:
@@ -630,6 +648,7 @@ class WorkflowGenModule(AssistantRuntime):
                 _reply, fixed_proposals = self._parse_reply(repaired)
             except RuntimeError:
                 return reply, [], events
+            fixed_proposals = self._merge_patch_proposals(session, fixed_proposals)
             for item in fixed_proposals:
                 try:
                     self._validate_proposal_steps(item["steps"])
@@ -693,17 +712,29 @@ class WorkflowGenModule(AssistantRuntime):
         proposal_cards = []
         for index, item in enumerate(proposals):
             steps = item["steps"]
-            proposal_cards.append(
-                {
-                    "id": f"p{index + 1}",
-                    "title": item.get("title") or f"方案 {index + 1}",
-                    "workflowName": item.get("workflowName", ""),
-                    "summary": item.get("summary", ""),
-                    "steps": steps,
-                    "nodeCount": len(steps.get("nodes") or steps.get("steps") or []),
-                    "autoApply": bool(item.get("autoApply", False)),
-                }
-            )
+            stage_changes = item.get("stageChanges") or []
+            card = {
+                "id": f"p{index + 1}",
+                "title": item.get("title") or f"方案 {index + 1}",
+                "workflowName": item.get("workflowName", ""),
+                "summary": item.get("summary", ""),
+                "steps": steps,
+                "nodeCount": len(steps.get("nodes") or steps.get("steps") or []),
+                "autoApply": bool(item.get("autoApply", False)),
+            }
+            if stage_changes:
+                card["stageChanges"] = stage_changes
+                if isinstance(item.get("patch"), dict):
+                    card["patch"] = item["patch"]
+                # A multi-stage patch is applied stage-by-stage by the editor,
+                # so never auto-apply it wholesale over the user's canvas.
+                node_changes = [
+                    entry for entry in stage_changes
+                    if entry.get("change") in ("added", "updated")
+                ]
+                if len(stage_changes) > 1 or not node_changes:
+                    card["autoApply"] = False
+            proposal_cards.append(card)
         data = {"proposals": proposal_cards}
         seq = await self._publish(
             session,

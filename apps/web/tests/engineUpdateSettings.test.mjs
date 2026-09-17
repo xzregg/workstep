@@ -6,5 +6,9 @@ const settings = await readFile(new URL('../src/pages/SettingsPage.tsx', import.
 test('settings assembles the self-managed runtime control for supported engines', () => {
   assert.match(settings, /engine\.runtime_manageable/)
   assert.match(settings, /<EngineRuntimeControl[\s\S]*?engineId=\{engine\.id\}/)
+  assert.ok(
+    settings.indexOf('<EngineRuntimeControl') < settings.indexOf("t('settings.test')"),
+    '安装与版本按钮应位于测试按钮左侧',
+  )
   assert.doesNotMatch(settings, /const (installEngine|updateEngine) =/)
 })

@@ -4,11 +4,11 @@ import test from 'node:test'
 
 const source = await readFile(new URL('../src/components/Layout.tsx', import.meta.url), 'utf8')
 
-test('project folder button toggles its nested sidebar content independently of selection', () => {
-  assert.match(source, /const \[expandedProjectId, setExpandedProjectId\] = useState<string \| null>/)
-  assert.match(source, /setExpandedProjectId\(\(current\) => current === p\.id \? null : p\.id\)/)
-  assert.match(source, /aria-expanded=\{expandedProjectId === p\.id\}/)
-  assert.match(source, /expandedProjectId === p\.id && \(/)
+test('clicking a project row toggles its nested sidebar content without collapsing other projects', () => {
+  assert.match(source, /const toggleProjectExpanded = \(projectId: string\)/)
+  assert.match(source, /current\.includes\(projectId\)/)
+  assert.match(source, /aria-expanded=\{isProjectExpanded\(p\.id\)\}/)
+  assert.match(source, /isProjectExpanded\(p\.id\) && \(/)
   assert.doesNotMatch(source, /\{activeProject\?\.id === p\.id && \(/)
-  assert.match(source, /if \(activeProject\?\.id\) setExpandedProjectId\(activeProject\.id\)/)
+  assert.match(source, /\(project\) => storedSidebarSections\.expandedProjectIds\.includes\(project\.id\)/)
 })

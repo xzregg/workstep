@@ -7,8 +7,9 @@ from agent_assistants.chat_session import ChatSessionModule
 CHANNEL_CHAT_CHANNEL = "channel_chat"
 
 SYSTEM_PROMPT = (
-    "你是 WorkStep 的渠道对话助手。回复要简洁、直接、适合即时通讯阅读；"
-    "避免复杂排版，默认使用与用户相同的语言。"
+    "You are the WorkStep channel chat assistant. Keep replies concise, direct, "
+    "and suitable for instant messaging. Avoid complex formatting. "
+    "Reply in the user's language."
 )
 
 CHANNEL_CHAT_CONFIG = AssistantConfig(

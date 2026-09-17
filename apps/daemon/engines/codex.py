@@ -26,6 +26,7 @@ from engines.core.base import (
 
 from engines.core.events import (
     InternalEvent,
+    UnphasedMessageClassifier,
     agent_message_chunk,
     extract_reasoning_text,
     normalize_cost,
@@ -43,6 +44,8 @@ from services.config import (
     CODEX_REASONING_EFFORTS,
     CODEX_SANDBOX_MODES,
     config_store,
+    normalize_codex_custom_config,
+    parse_codex_custom_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,16 @@ logger = logging.getLogger(__name__)
 
 def _noop_publish(_event: InternalEvent) -> None:
     """CLI 引擎的事件由 ``_parse_stdout`` 直接 yield，无需再入队。"""
+
+
+def _is_codex_terminal_event(event: InternalEvent) -> bool:
+    if event.type in {"usage_update", "error"}:
+        return True
+    return (
+        event.type == "status"
+        and event.data.get("status") in {"done", "cancelled"}
+    )
+
 
 # codex exec 模式没有执行中审批协议：沙箱/策略拒绝只表现为失败的
 # command_execution 项。以下特征串用于识别「权限拒绝」而非普通命令失败。
@@ -235,6 +248,17 @@ class CodexEngine(AcpEngineBase):
                 placeholder="默认不覆盖",
                 help="等价于 config.toml 的 approval_policy，控制自动审批级别。",
             ),
+            EngineConfigField(
+                key="custom_config",
+                label="自定义配置覆盖",
+                type="textarea",
+                stage_hidden=True,
+                placeholder="model_context_window = 128000\nmodel_max_output_tokens = 8192",
+                help=(
+                    "每行一条 key=value，透传给 codex -c（等价 config.toml 覆盖）。"
+                    "# 开头为注释。已由 WorkStep / 供应商设置的键优先，此处只补充。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -251,6 +275,7 @@ class CodexEngine(AcpEngineBase):
             sandbox_mode=str(values.get("sandbox_mode") or ""),
             model_reasoning_effort=str(values.get("model_reasoning_effort") or ""),
             approval_policy=str(values.get("approval_policy") or ""),
+            custom_config=str(values.get("custom_config") or ""),
         )
 
     async def spawn(
@@ -343,6 +368,20 @@ class CodexEngine(AcpEngineBase):
             for item in provider_runtime.engine_config:
                 cmd.extend(["-c", item])
             cmd.extend(["-c", skill_override])
+
+            # 自定义覆盖只补充：WorkStep / 供应商已设置的键优先，不重复注入。
+            managed_keys = {
+                cmd[index + 1].split("=", 1)[0].strip()
+                for index, token in enumerate(cmd[:-1])
+                if token == "-c"
+            }
+            for key, value in parse_codex_custom_config(
+                codex_config.get("custom_config")
+            ):
+                if key in managed_keys:
+                    continue
+                managed_keys.add(key)
+                cmd.extend(["-c", f"{key}={value}"])
 
             logger.info("Spawning: %s", " ".join(cmd))
 
@@ -495,15 +534,20 @@ class CodexEngine(AcpEngineBase):
         resume 重启会话。
         """
         assert self._process is not None
+        unphased = UnphasedMessageClassifier()
         while True:
             if live_message_queue is not None and not live_message_queue.empty():
                 message_id, content = live_message_queue.get_nowait()
-                yield InternalEvent(type="live_message", data={
+                live_event = InternalEvent(type="live_message", data={
                     "message_id": message_id,
                     "content": content,
                     "status": "delivered",
                     "session_id": self._thread_id,
                 })
+                for event in unphased.offer(live_event, split=True):
+                    yield event
+                for event in unphased.flush():
+                    yield event
                 return
             try:
                 # 分块读取：codex 单条 JSONL（大 tool 输出 / 长消息）可能超过
@@ -544,10 +588,19 @@ class CodexEngine(AcpEngineBase):
             item = obj.get("item") or {}
             if item.get("type") == "collab_agent_tool_call":
                 for child_event in codex_subagent_events(item):
-                    yield child_event
+                    for event in unphased.offer(child_event, split=True):
+                        yield event
             event = self._map_event(obj)
             if event is None:
                 continue
+            classified = unphased.offer(
+                event,
+                terminal=_is_codex_terminal_event(event),
+                split=True,
+            )
+            for item_event in classified:
+                if item_event is not event:
+                    yield item_event
             if (
                 event.type == "interaction_request"
                 and event.data.get("method") == "session/request_permission"
@@ -579,15 +632,19 @@ class CodexEngine(AcpEngineBase):
                     return
                 if signature and signature in self._session_reject:
                     # 本运行内已记住「拒绝本次运行」：不再弹窗，直接注入决定。
-                    yield InternalEvent(type="live_message", data={
+                    live_event = InternalEvent(type="live_message", data={
                         "message_id": f"approval:{tool_use_id or 'unknown'}",
                         "content": (
-                            f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
-                            f"本次运行内相同命令将自动拒绝。"
+                            f"The user rejected this command: {command}. Use another approach or skip it."
+                            f"The same command will be rejected automatically for this run."
                         ),
                         "status": "delivered",
                         "session_id": self._thread_id,
                     })
+                    for item_event in unphased.offer(live_event, split=True):
+                        yield item_event
+                    for item_event in unphased.flush():
+                        yield item_event
                     return
                 yield event
                 response = await self.request_interaction(event, _noop_publish)
@@ -596,25 +653,33 @@ class CodexEngine(AcpEngineBase):
                 if option_id == "allow_once":
                     self._escalate_sandbox = True
                     content = (
-                        f"用户已批准执行被拒的命令，沙箱权限已提升，"
+                        f"The user approved the previously rejected command; sandbox permissions were raised. "
                         f"请重新尝试该命令：{command}"
                     )
                 else:
                     if option_id == "reject_for_session" and signature:
                         self._session_reject.add(signature)
                         content = (
-                            f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
-                            f"本次运行内相同命令将自动拒绝。"
+                            f"The user rejected this command: {command}. Use another approach or skip it."
+                            f"The same command will be rejected automatically for this run."
                         )
                     else:
-                        content = f"用户拒绝了该命令：{command}，请改用其他方式或跳过。"
-                yield InternalEvent(type="live_message", data={
+                        content = f"The user rejected this command: {command}. Use another approach or skip it."
+                live_event = InternalEvent(type="live_message", data={
                     "message_id": f"approval:{tool_use_id or 'unknown'}",
                     "content": content,
                     "status": "delivered",
                     "session_id": self._thread_id,
                 })
+                for item_event in unphased.offer(live_event, split=True):
+                    yield item_event
+                for item_event in unphased.flush():
+                    yield item_event
                 return
+            for item_event in classified:
+                if item_event is event:
+                    yield item_event
+        for event in unphased.flush():
             yield event
 
     def _map_event(self, obj: dict) -> InternalEvent | None:

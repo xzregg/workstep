@@ -164,7 +164,9 @@ def test_assemble_prompt_basic(tmp_path):
     prompt = assemble_prompt(task, step, artifacts_dir)
     assert SYSTEM_PROMPT in prompt
     assert "MEMORY" not in SYSTEM_PROMPT
-    assert "## 任务说明\nCurrent task context" in prompt
+    assert "You are" in SYSTEM_PROMPT
+    assert all(ord(char) < 128 for char in SYSTEM_PROMPT)
+    assert "## Task description\nCurrent task context" in prompt
     assert "Write a PRD" in prompt
     assert str(artifacts_dir / "default" / task.id / "req") in prompt
     db.close()
@@ -188,9 +190,9 @@ def test_assemble_prompt_injects_project_memory(tmp_path):
     )
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## 项目记忆\n# 项目记忆" in prompt
+    assert "## Project memory\n# 项目记忆" in prompt
     assert "使用中文注释" in prompt
-    assert "请查看" not in prompt
+    assert "Please view" not in prompt
     db.close()
 
 
@@ -212,9 +214,86 @@ def test_assemble_prompt_with_upstream(tmp_path):
     step = Step(key="ui", label="UI", prompt="Design UI", depends_on=["req"])
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    assert "上游产物" in prompt
+    assert "Upstream artifacts" in prompt
     assert "prd.md" in prompt
     assert "Design UI" in prompt
+    db.close()
+
+
+def test_assemble_prompt_selects_latest_eligible_upstream_round(tmp_path):
+    from models import init_db, Task
+    from services.artifact_rounds import write_round_manifest
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    artifacts_dir = tmp_path / "artifacts"
+    write_round_manifest(
+        artifacts_root=artifacts_dir,
+        workflow_id="default",
+        task_id=task.id,
+        step_key="req",
+        artifact_round=1,
+        status="passed",
+        eligible_for_downstream=True,
+    )
+    write_round_manifest(
+        artifacts_root=artifacts_dir,
+        workflow_id="default",
+        task_id=task.id,
+        step_key="req",
+        artifact_round=2,
+        status="failed",
+        eligible_for_downstream=False,
+    )
+    step = Step(key="ui", label="UI", prompt="Design UI", depends_on=["req"])
+
+    prompt = assemble_prompt(task, step, artifacts_dir)
+
+    assert "req (round 1)" in prompt
+    assert "req/1/manifest.json" in prompt
+    assert "req/2/manifest.json" not in prompt
+    db.close()
+
+
+def test_assemble_prompt_honours_explicit_upstream_round(tmp_path):
+    from models import init_db, Task
+    from services.artifact_rounds import write_round_manifest
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Test", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    artifacts_dir = tmp_path / "artifacts"
+    for round_number in (1, 2):
+        write_round_manifest(
+            artifacts_root=artifacts_dir,
+            workflow_id="default",
+            task_id=task.id,
+            step_key="req",
+            artifact_round=round_number,
+            status="passed",
+            eligible_for_downstream=True,
+        )
+    step = Step(key="ui", label="UI", prompt="Design UI", depends_on=["req"])
+
+    prompt = assemble_prompt(
+        task,
+        step,
+        artifacts_dir,
+        input_rounds={"req": 1},
+        artifact_round=3,
+    )
+
+    assert "req (round 1)" in prompt
+    assert "req/1/manifest.json" in prompt
+    assert "req/2/manifest.json" not in prompt
+    assert "ui/3" in prompt
     db.close()
 
 
@@ -262,7 +341,8 @@ def test_assemble_followup_prompt_only_contains_message_and_output_requirements(
     assert "旧阶段要求不应重复发送" not in prompt
     assert SYSTEM_PROMPT not in prompt
     assert "交付文档.md" in prompt
-    assert "必须生成或更新" in prompt
+    assert "必须生成或更新" not in prompt
+    assert "you may omit artifacts or leave them empty" in prompt
     db.close()
 
 
@@ -283,9 +363,9 @@ def test_assemble_prompt_unknown_output_type_uses_default_constraint(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## 输出规范" in prompt
+    assert "## Output specification" in prompt
     assert "mystery" in prompt
-    assert "格式要求" in prompt
+    assert "format requirement" in prompt
     db.close()
 
 
@@ -308,7 +388,7 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## 输出规范" in prompt
+    assert "## Output specification" in prompt
     db.close()
 
 
@@ -330,10 +410,14 @@ def test_assemble_prompt_multi_output_suggests_subagents(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## 输出规范" in prompt
-    assert "子代理" in prompt
-    assert "同一个会话" in prompt
+    assert "## Output specification" in prompt
+    assert "subagent" in prompt
+    assert "same conversation" in prompt
     assert "b1" in prompt and "b2" in prompt
+    assert "you may omit artifacts or leave them empty" in prompt
+    assert "every artifact has been written" not in prompt
+    assert "produce exactly the following list" not in prompt
+    assert "strictly follow the declared output specification" not in prompt
     db.close()
 
 
@@ -354,8 +438,8 @@ def test_assemble_prompt_single_output_no_subagent_section(tmp_path):
     artifacts_dir.mkdir()
 
     prompt = assemble_prompt(task, step, artifacts_dir)
-    assert "## 输出规范" in prompt
-    assert "子代理" not in prompt
+    assert "## Output specification" in prompt
+    assert "subagent" not in prompt
     db.close()
 
 
@@ -379,14 +463,14 @@ def test_assemble_prompt_file_output_uses_single_file_path(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    assert "## 产物输出目录\n" + str(artifacts_dir / "default" / task.id / "do") in prompt
+    assert "## Artifact output directory\n" + str(artifacts_dir / "default" / task.id / "do") in prompt
     assert "说明: " + str(artifacts_dir / "default" / task.id / "do" / "说明.md") in prompt
     assert "数据: " + str(artifacts_dir / "default" / task.id / "do" / "数据.json") in prompt
     assert ".workstep/artifacts/default/" + task.id + "/do/说明.md" in prompt
     assert "数据.json" in prompt
-    assert "每个产物写入" in prompt
-    assert "单个文件" in prompt
-    assert "不要为文件型产物再创建同名子目录" in prompt
+    assert "Write generated artifacts" in prompt
+    assert "one file" in prompt
+    assert "do not wrap it in another same-named directory" in prompt
     db.close()
 
 
@@ -408,11 +492,11 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    assert "类型: `directory`" in prompt
-    assert "目录型产物" in prompt
-    assert "创建多个文件和子目录" in prompt
-    assert "不要将所有内容合并为单个文件" in prompt
-    assert "目录内的文件类型和数量按阶段要求确定" in prompt
+    assert "type: `directory`" in prompt
+    assert "Directory artifact" in prompt
+    assert "multiple files and subdirectories" in prompt
+    assert "do not merge everything into one file" in prompt
+    assert "it may contain multiple files and subdirectories" in prompt
     db.close()
 
 
@@ -843,13 +927,13 @@ async def test_task_runner_persists_usage_json(tmp_path):
         msg = Message.select().where(Message.task == task).get()
         persisted_prompt = _json.loads(msg.prompt_json)["prompt"]
         assert received_prompts == [persisted_prompt]
-        assert persisted_prompt.startswith("你是 WorkStep 工作流中的一个执行阶段。")
-        assert "## 项目记忆\n统一使用公开消息边界" in persisted_prompt
-        assert "## 任务说明\n实现完整提示词展示" in persisted_prompt
+        assert persisted_prompt.startswith("You are executing one stage")
+        assert "## Project memory\n统一使用公开消息边界" in persisted_prompt
+        assert "## Task description\n实现完整提示词展示" in persisted_prompt
         assert persisted_prompt.endswith(
             str(artifacts_dir / "default" / task.id / "a")
         )
-        assert "## 阶段要求\nDo A" in persisted_prompt
+        assert "## Stage requirements\nDo A" in persisted_prompt
         assert msg.usage_json is not None
         usage = _json.loads(msg.usage_json)
         assert usage["input_tokens"] == 300

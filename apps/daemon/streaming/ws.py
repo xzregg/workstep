@@ -263,6 +263,7 @@ def register_websocket_routes(app: FastAPI) -> None:
             return
 
         task_id = ctx["task_id"]
+        interactive = ctx.get("mode") == "interactive"
         await ws.accept()
 
         def share_predicate(event: dict[str, Any]) -> bool:
@@ -273,7 +274,12 @@ def register_websocket_routes(app: FastAPI) -> None:
             # assistant traffic, which is private.
             if channel is not None and channel != "execution":
                 return False
-            if event.get("type") in _SHARE_SCRUBBED_EVENT_TYPES:
+            scrubbed_types = (
+                _SHARE_SCRUBBED_EVENT_TYPES - {"interaction_request", "interaction_response"}
+                if interactive
+                else _SHARE_SCRUBBED_EVENT_TYPES
+            )
+            if event.get("type") in scrubbed_types:
                 return False
             return True
 

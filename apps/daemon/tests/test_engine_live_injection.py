@@ -89,6 +89,57 @@ async def test_codex_cli_preserves_explicit_phase_and_unmarked_answers(monkeypat
 
 
 @pytest.mark.anyio
+async def test_codex_cli_marks_intermediate_unphased_messages_as_commentary(monkeypatch):
+    """Codex CLI 旧协议不带 phase：只有最后一个未标记消息应作为结果。"""
+    frames = [
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "id": "p1", "text": "我先定位实现。",
+        }},
+        {"type": "item.started", "item": {
+            "type": "command_execution", "id": "c1", "command": "rg phase",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "command_execution", "id": "c1", "output": "ok", "exit_code": 0,
+        }},
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "id": "p2", "text": "我会继续修改并验证。",
+        }},
+        {"type": "item.started", "item": {
+            "type": "command_execution", "id": "c2", "command": "pytest",
+        }},
+        {"type": "item.completed", "item": {
+            "type": "command_execution", "id": "c2", "output": "passed", "exit_code": 0,
+        }},
+        {"type": "item.completed", "item": {
+            "type": "agent_message", "id": "final", "text": "已完成。",
+        }},
+        {"type": "turn.completed", "usage": {}},
+    ]
+    process = _LiveFakeCodexProcess(
+        stdout=("\n".join(json.dumps(frame) for frame in frames) + "\n").encode()
+    )
+
+    async def spawn(*args, **kwargs):
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(CodexEngine, "resolve_binary", staticmethod(lambda: "/fake/codex"))
+    monkeypatch.setattr("engines.codex.config_store.get_codex_config", _codex_config)
+
+    events = [event async for event in CodexEngine().spawn(prompt="检查", cwd="/tmp")]
+
+    assert [
+        (event.data.get("phase"), event.data.get("source_item_id"), event.data["content"]["text"])
+        for event in events
+        if event.type == "agent_message_chunk"
+    ] == [
+        ("commentary", "p1", "我先定位实现。"),
+        ("commentary", "p2", "我会继续修改并验证。"),
+        (None, "final", "已完成。"),
+    ]
+
+
+@pytest.mark.anyio
 async def test_codex_spawn_restarts_with_resume_on_live_message(monkeypatch):
     """codex exec 无注入协议：插入消息时终止当前进程，用新消息 resume 重启会话。"""
     first = _LiveFakeCodexProcess(

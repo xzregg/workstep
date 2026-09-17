@@ -1,6 +1,54 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { findPreferredArtifact } from '../src/pages/taskDetailChat.ts'
+
+test('prefers the selected latest artifact round over older eligible rounds', () => {
+  const artifacts = [
+    {
+      step_key: 'req',
+      round: 1,
+      is_latest: false,
+      is_selected: false,
+      logical_name: 'PRD',
+      name: 'prd.md',
+    },
+    {
+      step_key: 'req',
+      round: 2,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'PRD',
+      name: 'prd.md',
+    },
+  ]
+
+  assert.equal(findPreferredArtifact(artifacts, 'PRD', 'req')?.round, 2)
+})
+
+test('keeps preferred stage filtering when artifacts share a logical name', () => {
+  const artifacts = [
+    {
+      step_key: 'design',
+      round: 1,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'Spec',
+      name: 'spec.md',
+    },
+    {
+      step_key: 'req',
+      round: 2,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'Spec',
+      name: 'spec.md',
+    },
+  ]
+
+  assert.equal(findPreferredArtifact(artifacts, 'Spec', 'req')?.step_key, 'req')
+})
+
 import {
   createOptimisticUserMessage,
   isAutoShrinkClamp,
@@ -14,6 +62,7 @@ import {
   shouldPauseConversationFollow,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isLostEngineSessionError,
   isStageResumableWithMessage,
   isSelectedStageRunning,
   liveExecutionStatus,
@@ -235,15 +284,47 @@ test('shows only stage execution replies in the main task conversation', () => {
   }), true)
 })
 
+test('detects a lost engine session so the stage can be re-run with a fresh session', () => {
+  assert.equal(
+    isLostEngineSessionError(
+      'JSON-RPC error -32600: no rollout found for thread id 01a0aa38-2890-7ed3-9a30-ecfbe37f3056',
+    ),
+    true,
+  )
+  assert.equal(
+    isLostEngineSessionError(
+      'Claude Code returned an error result: No conversation found with session ID: a6b27625',
+    ),
+    true,
+  )
+  assert.equal(isLostEngineSessionError('Process exited with code 1'), false)
+  assert.equal(isLostEngineSessionError(''), false)
+  assert.equal(isLostEngineSessionError(undefined), false)
+})
+
 test('allows a message to rerun stopped, failed, review-waiting, or completed stages', () => {
   for (const status of [
     'cancelled', 'failed', 'rejected', 'awaiting_review', 'passed', 'skipped',
   ]) {
     assert.equal(isStageResumableWithMessage(status), true)
   }
-  for (const status of ['pending', 'running', 'reviewing', 'retrying']) {
+  for (const status of ['pending', 'running', 'reviewing', 'retrying', 'rework', 'rework_waiting']) {
     assert.equal(isStageResumableWithMessage(status), false)
   }
+})
+
+test('allows @ on any stage that ran before, even while it is pending again', () => {
+  // 只要执行过一次（成功或失败），不管当前状态是否为 pending 都能发消息重跑。
+  assert.equal(isStageResumableWithMessage('pending', true), true)
+  assert.equal(isStageResumableWithMessage('failed', true), true)
+  assert.equal(isStageResumableWithMessage('cancelled', true), true)
+  // 从未执行过的 pending 阶段不能 @。
+  assert.equal(isStageResumableWithMessage('pending', false), false)
+  assert.equal(isStageResumableWithMessage('pending'), false)
+  // 正在执行的阶段只走实时注入，历史标志不能把它变成重跑目标。
+  assert.equal(isStageResumableWithMessage('running', true), false)
+  assert.equal(isStageResumableWithMessage('reviewing', true), false)
+  assert.equal(isStageResumableWithMessage('rework', true), false)
 })
 
 test('keeps running execution and review messages visible and uses the stage as its avatar', () => {

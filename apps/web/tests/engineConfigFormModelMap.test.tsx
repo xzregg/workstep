@@ -90,3 +90,98 @@ test('engine config form renders a full-width model map and submits its JSON val
     await window.happyDOM.close()
   }
 })
+
+test('engine config form flags invalid JSON fields and blocks saving them', async () => {
+  const window = installDom()
+  const original = engineApi.saveConfig
+  const baseField = {
+    key: 'custom_settings',
+    label: '自定义配置 (JSON)',
+    type: 'json',
+    placeholder: '',
+    options: null,
+    required: false,
+    help: '',
+    default: '',
+    sensitive: false,
+    confirm_values: [],
+    stage_hidden: true,
+  } as const
+  let saveCalls = 0
+  engineApi.saveConfig = async () => {
+    saveCalls += 1
+    return {
+      engine_id: 'claude',
+      fields: [] as never,
+      values: {},
+      secrets: {},
+      configured: true,
+      installed: true,
+      saved: true,
+      engine: {} as never,
+    }
+  }
+
+  const renderWith = async (value: string) => {
+    const config: EngineConfigPayload = {
+      fields: [baseField],
+      stage_fields: [],
+      values: { custom_settings: value },
+      secrets: {},
+    }
+    const container = document.body.appendChild(document.createElement('div'))
+    const root = createRoot(container)
+    const ref = createRef<EngineConfigFormHandle>()
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <EngineConfigForm ref={ref} engineId="claude" config={config} />
+        </I18nProvider>,
+      )
+    })
+    return { container, root, ref }
+  }
+
+  try {
+    const invalid = await renderWith('{not json')
+    try {
+      const textarea = invalid.container.querySelector('textarea') as HTMLTextAreaElement
+      assert.equal(textarea.getAttribute('aria-invalid'), 'true')
+      assert.equal(
+        invalid.container.querySelector('[role="alert"]')?.textContent,
+        '自定义配置必须是合法 JSON',
+      )
+      await act(async () => { invalid.ref.current?.save(); await Promise.resolve() })
+      assert.equal(saveCalls, 0, 'invalid JSON must not be saved')
+    } finally {
+      await act(async () => invalid.root.unmount())
+      invalid.container.remove()
+    }
+
+    const notObject = await renderWith('[]')
+    try {
+      assert.equal(
+        notObject.container.querySelector('[role="alert"]')?.textContent,
+        '自定义配置必须是 JSON 对象',
+      )
+    } finally {
+      await act(async () => notObject.root.unmount())
+      notObject.container.remove()
+    }
+
+    const valid = await renderWith('{"env": {"FOO": "bar"}}')
+    try {
+      const textarea = valid.container.querySelector('textarea') as HTMLTextAreaElement
+      assert.equal(textarea.getAttribute('aria-invalid'), 'false')
+      assert.equal(valid.container.querySelector('[role="alert"]'), null)
+      await act(async () => { valid.ref.current?.save(); await Promise.resolve() })
+      assert.equal(saveCalls, 1)
+    } finally {
+      await act(async () => valid.root.unmount())
+      valid.container.remove()
+    }
+  } finally {
+    engineApi.saveConfig = original
+    await window.happyDOM.close()
+  }
+})

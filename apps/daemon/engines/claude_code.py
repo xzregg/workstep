@@ -38,8 +38,12 @@ from engines.core.schema import EngineConfigField, EngineConfigOption, EngineIma
 from engines.core.stream_lines import iter_stream_lines
 from services.config import (
     CLAUDE_PERMISSION_MODES,
+    claude_custom_settings_env,
+    claude_custom_settings_rest,
+    claude_sandbox_env,
     claude_model_map_env,
     config_store,
+    normalize_claude_custom_settings,
     normalize_claude_model_map,
 )
 
@@ -112,22 +116,22 @@ def _append_claude_permission_rule(path: Path, rule: str) -> bool:
 
 
 _PERMISSION_ALLOW_ONCE_CONTENT = (
-    "用户已批准执行该命令，请重新尝试。"
-    "若仍被 Claude 权限策略拒绝，请改用其他工具或询问用户。"
+    "The user approved this command; retry it. "
+    "If Claude permission policy still rejects it, use another tool or ask the user."
 )
 _PERMISSION_ALLOW_FOR_SESSION_CONTENT = (
-    "用户已批准执行该命令，请重新尝试。"
-    "本次会话内相同命令将自动放行，无需再次询问。"
+    "The user approved this command; retry it. "
+    "The same command will be allowed for this session without asking again."
 )
 _PERMISSION_ALLOW_ALWAYS_CONTENT = (
-    "用户已批准执行该命令，请重新尝试。"
-    "相同命令已写入项目权限设置（.claude/settings.local.json），"
-    "后续运行将自动放行。"
+    "The user approved this command; retry it. "
+    "The same command was written to project permissions (.claude/settings.local.json) "
+    "and will be allowed in later runs."
 )
-_PERMISSION_REJECT_ONCE_CONTENT = "用户拒绝了该命令，请改用其他方式或跳过。"
+_PERMISSION_REJECT_ONCE_CONTENT = "The user rejected this command; use another approach or skip it."
 _PERMISSION_REJECT_FOR_SESSION_CONTENT = (
-    "用户拒绝了该命令，请改用其他方式或跳过。"
-    "本次会话内相同命令将自动拒绝，无需再次询问。"
+    "The user rejected this command; use another approach or skip it. "
+    "The same command will be rejected for this session without asking again."
 )
 # Claude CLI 在 -p 模式下没有执行中审批通道：被策略拒绝的命令以
 # is_error tool_result 返回。这些特征串用于识别「权限拒绝」而非普通命令失败。
@@ -266,12 +270,29 @@ class ClaudeCodeEngine(AcpEngineBase):
                     "按引擎独立保存，需先保存配置再生效。"
                 ),
             ),
+            EngineConfigField(
+                key="custom_settings",
+                label="自定义配置 (JSON)",
+                type="json",
+                stage_hidden=True,
+                placeholder=(
+                    '{"env": {"ANTHROPIC_BASE_URL": "..."}, '
+                    '"permissions": {"ask": ["Bash(rm\\\\s)"]}}'
+                ),
+                help=(
+                    "整段 Claude Code settings JSON。env 会注入子进程环境；"
+                    "其余键作为 --settings 覆盖与 WorkStep 技能配置合并。"
+                    "按引擎独立保存，需先保存配置再生效。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
+        config = config_store.get_claude_code_config()
         return {
             "permission_mode": config_store.get_claude_permission_mode(),
-            "model_map": config_store.get_claude_code_config()["model_map"],
+            "model_map": config["model_map"],
+            "custom_settings": config["custom_settings"],
         }
 
     async def save_config_values(
@@ -287,10 +308,17 @@ class ClaudeCodeEngine(AcpEngineBase):
             "permission_mode"
         ):
             raise ValueError("bypassPermissions 需要明确确认风险")
-        # 先校验映射再落盘，避免映射非法时权限模式已写一半。
+        # 先校验映射与自定义配置再落盘，避免非法输入时其它字段已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
+        custom_settings = normalize_claude_custom_settings(
+            values.get("custom_settings")
+        )
         await asyncio.to_thread(config_store.set_claude_permission_mode, mode)
-        await asyncio.to_thread(config_store.set_claude_code_model_map, model_map)
+        await asyncio.to_thread(
+            config_store.set_claude_code_config,
+            model_map=model_map,
+            custom_settings=custom_settings,
+        )
 
     # --- Execution ---
 
@@ -391,9 +419,19 @@ class ClaudeCodeEngine(AcpEngineBase):
         plugin_dir, skill_names = await asyncio.to_thread(
             lambda: prepare_claude_plugin(self.project_skills(cwd))
         )
-        skill_settings = json.dumps({
+        custom_settings = config_store.get_claude_code_config().get(
+            "custom_settings"
+        )
+        settings_payload = {
+            **claude_custom_settings_rest(custom_settings),
+            # WorkStep 管理的技能开关优先于用户自定义，避免绕过技能白名单。
             "skillOverrides": {name: "on" for name in skill_names},
-        })
+        }
+        skill_settings = json.dumps(settings_payload, ensure_ascii=False)
+        # 已有配置优先：供应商 base url / 鉴权、模型映射以及供应商显式清理的键
+        # 都不允许被自定义 JSON 覆盖，textarea 只补充缺失的环境变量。
+        protected_env_keys = set(provider_runtime.env) | set(provider_runtime.unset_env)
+        custom_env = claude_custom_settings_env(custom_settings, protected_env_keys)
         cmd = self.build_command(
             binary,
             permission_mode,
@@ -422,6 +460,18 @@ class ClaudeCodeEngine(AcpEngineBase):
             "limit": 1024 * 256,
         }
         compact_pct = (config_overrides or {}).get("autocompact_pct_override")
+        sandbox_env = claude_sandbox_env(permission_mode)
+        needs_child_env = bool(
+            provider_runtime.provider_id
+            or provider_runtime.env
+            or sandbox_env
+            or custom_env
+            or compact_pct not in (None, "")
+        )
+        if needs_child_env:
+            # env 非空也可能只是模型映射（未绑供应商），此时同样要落进子进程。
+            process_kwargs["env"] = provider_runtime.child_env()
+            process_kwargs["env"].update(custom_env)
         if compact_pct not in (None, ""):
             try:
                 compact_pct_value = int(compact_pct)
@@ -429,13 +479,11 @@ class ClaudeCodeEngine(AcpEngineBase):
                 raise ValueError("autocompact_pct_override must be an integer") from exc
             if not 1 <= compact_pct_value <= 100:
                 raise ValueError("autocompact_pct_override must be between 1 and 100")
-            process_kwargs["env"] = provider_runtime.child_env()
             process_kwargs["env"]["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
                 compact_pct_value
             )
-        elif provider_runtime.provider_id or provider_runtime.env:
-            # env 非空也可能只是模型映射（未绑供应商），此时同样要落进子进程。
-            process_kwargs["env"] = provider_runtime.child_env()
+        if sandbox_env:
+            process_kwargs["env"].update(sandbox_env)
         self._process = await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
         self._running = True
 

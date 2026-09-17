@@ -1,4 +1,5 @@
 import { useCompactLayout } from '../hooks/useCompactLayout'
+import { randomUuid } from '../utils/uuid'
 import {
   ComposerOverlayHostContext,
   useComposerOverlayClearance,
@@ -50,8 +51,10 @@ import {
   isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isLostEngineSessionError,
   isStageResumableWithMessage,
   isSelectedStageRunning,
+  findPreferredArtifact,
   isNearConversationBottom,
   hasActiveSelectionWithin,
   shouldPauseConversationFollow,
@@ -169,6 +172,8 @@ function lastEventTimestamp(events: any[]): number | null {
 export interface TaskDetailViewProps {
   /** Hides all editing controls — suitable for the shared read-only view. */
   readOnly?: boolean
+  /** Allows execution interactions (messages/reviews) without configuration editors. */
+  interactionOnly?: boolean
 
   // ── Task data ──
   task: {
@@ -238,6 +243,10 @@ export interface TaskDetailViewProps {
   stoppingStepKeys?: string[]
   stageResuming?: boolean
   onStopStage?: (stepKey: string) => void
+  /** 引擎会话丢失时，清空会话并用完整阶段提示词重跑。 */
+  onRestartStageWithFreshSession?: (stepKey: string) => void
+  /** 正在重建会话重跑的阶段 key，用于禁用重复点击。 */
+  restartingStageKeys?: string[]
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
 
   // ── Stage inserts (edit mode only) ──
@@ -347,6 +356,7 @@ export interface TaskDetailViewProps {
 
 export default function TaskDetailView({
   readOnly,
+  interactionOnly = false,
   task,
   stages,
   stageProgress,
@@ -383,6 +393,8 @@ export default function TaskDetailView({
   stoppingStepKeys,
   stageResuming,
   onStopStage,
+  onRestartStageWithFreshSession,
+  restartingStageKeys,
   chatInputRef,
   // Stage inserts
   stageInserts,
@@ -490,13 +502,13 @@ export default function TaskDetailView({
   const resumableStages = stages.filter((stage) => (
     stageProgress.some((progress) => (
       progress.step_key === stage.key
-      && isStageResumableWithMessage(progress.status)
+      && isStageResumableWithMessage(progress.status, progress.has_history)
     ))
   ))
   const resumableStatusOf = (stageKey: string): string | null => {
     const progress = stageProgress.find((item) => item.step_key === stageKey)
     const status = progress?.status
-    return isStageResumableWithMessage(status)
+    return isStageResumableWithMessage(status, progress?.has_history)
       ? (status ?? null)
       : null
   }
@@ -762,25 +774,7 @@ export default function TaskDetailView({
     preferredStepKey?: string,
     source?: TaskArtifact[],
   ) => {
-    const normalize = (value: string) =>
-      value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
-    const normalizedName = normalize(name)
-    const list = source || artifacts
-    const candidates = preferredStepKey
-      ? list.filter((artifact) => artifact.step_key === preferredStepKey)
-      : list
-    return (
-      candidates.find((artifact) => artifact.logical_name === name) ||
-      candidates.find((artifact) => {
-        const artifactName = normalize(
-          artifact.logical_name || artifact.name,
-        )
-        return (
-          artifactName.includes(normalizedName) ||
-          normalizedName.includes(artifactName)
-        )
-      })
-    )
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
   }
 
   const renderMessageArtifacts = (
@@ -827,7 +821,14 @@ export default function TaskDetailView({
               background: stageColor || 'var(--accent)', flexShrink: 0,
             }} />
           )}
-          <span style={{ flex: 1, fontWeight: 500 }}>{artifact.name}</span>
+          <span style={{ flex: 1, fontWeight: 500 }}>
+            {artifact.name}
+            {artifact.round ? (
+              <span style={{ marginLeft: 6, color: 'var(--muted)' }}>
+                {t('taskDetail.artifactRound', { round: artifact.round })}
+              </span>
+            ) : null}
+          </span>
           <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--accent)' }}>
             {t('common.open')}
           </span>
@@ -1064,7 +1065,7 @@ export default function TaskDetailView({
                 </span>
               )}
             </div>
-            {!readOnly && !editingDescription && (
+            {!readOnly && !interactionOnly && !editingDescription && (
               <Button
                 variant="ghost"
                 aria-label={t('taskDetail.editDescriptionAria')}
@@ -1225,10 +1226,26 @@ export default function TaskDetailView({
               const restartIndex = stages.findIndex(
                 (item: any) => item.key === task?.restart_from_step_key,
               )
-              const stageRound =
+              const runRoundForStage =
                 restartIndex >= 0 && i < restartIndex
                   ? Math.max(1, currentRound - 1)
                   : currentRound
+              // 进度条轮数以该阶段产物轮数为准：优先取后端 StepRun.artifact_round
+              // （权威来源）；对没有 StepRun 记录的旧产物，回退到产物列表里的轮数；
+              // 两者都没有（待执行 / 尚未产出）时回退到工作流重跑轮数。
+              const stepArtifactRound = progress?.artifact_round ?? 0
+              const listedArtifactRound = artifacts
+                .filter((artifact) => artifact.step_key === stage.key)
+                .reduce(
+                  (maxRound, artifact) => Math.max(maxRound, artifact.round || 0),
+                  0,
+                )
+              const stageArtifactRound = Math.max(
+                stepArtifactRound,
+                listedArtifactRound,
+              )
+              const stageRound =
+                stageArtifactRound > 0 ? stageArtifactRound : runRoundForStage
               const stageRoundColor = 'var(--accent)'
               const finishedDuration = progress?.ended_at
                 ? formatDurationBetween(
@@ -1606,8 +1623,6 @@ export default function TaskDetailView({
                 {t('taskDetail.ioInput')}
               </div>
               {(() => {
-                const isStageDone =
-                  stageProgress[selectedStage]?.visualState === 'completed'
                 const nextStageIdx = selectedStage + 1
                 const nextStage =
                   nextStageIdx < stages.length
@@ -1708,48 +1723,55 @@ export default function TaskDetailView({
                         {subOutputs.map(
                           (out: any, outIdx: number) => {
                             const nextInput = nextInputs[outIdx]
-                            const statusDone = isStageDone
                             const outArtifact = findArtifact(
                               out.name,
                               currentStage.key,
                             )
+                            const outputReady = Boolean(outArtifact)
                             return (
                               <div
                                 key={outIdx}
-                                role="button"
-                                tabIndex={0}
-                                aria-label={t(
-                                  'taskDetail.openOutputAria',
-                                  { name: out.name },
-                                )}
-                                onClick={() =>
-                                  onOpenArtifact(
-                                    out.name,
-                                    currentStage.key,
+                                role={outputReady ? 'button' : undefined}
+                                tabIndex={outputReady ? 0 : undefined}
+                                aria-label={outputReady
+                                  ? t(
+                                    'taskDetail.openOutputAria',
+                                    { name: out.name },
                                   )
-                                }
-                                onKeyDown={(event) => {
-                                  if (
-                                    event.key === 'Enter' ||
-                                    event.key === ' '
-                                  ) {
-                                    event.preventDefault()
+                                  : undefined}
+                                onClick={outputReady
+                                  ? () =>
                                     onOpenArtifact(
                                       out.name,
                                       currentStage.key,
                                     )
+                                  : undefined}
+                                onKeyDown={outputReady
+                                  ? (event) => {
+                                    if (
+                                      event.key === 'Enter' ||
+                                      event.key === ' '
+                                    ) {
+                                      event.preventDefault()
+                                      onOpenArtifact(
+                                        out.name,
+                                        currentStage.key,
+                                      )
+                                    }
                                   }
-                                }}
-                                title={t('taskDetail.openFileTitle', {
-                                  name: out.name,
-                                })}
+                                  : undefined}
+                                title={outputReady
+                                  ? t('taskDetail.openFileTitle', {
+                                    name: out.name,
+                                  })
+                                  : undefined}
                                 style={{
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: 6,
                                   marginLeft: 18,
                                   padding: '4px 8px',
-                                  cursor: 'pointer',
+                                  cursor: outputReady ? 'pointer' : 'default',
                                   borderRadius: 4,
                                 }}
                               >
@@ -1774,7 +1796,9 @@ export default function TaskDetailView({
                                       width: 6,
                                       height: 6,
                                       borderRadius: '50%',
-                                      background: 'var(--success)',
+                                      background: outputReady
+                                        ? 'var(--success)'
+                                        : 'var(--border-soft)',
                                       flexShrink: 0,
                                     }}
                                   />
@@ -1782,18 +1806,24 @@ export default function TaskDetailView({
                                 <span
                                   style={{
                                     fontSize: 'calc(13px * var(--font-scale))',
-                                    flex: 1,
-                                  }}
-                                >
+                                  flex: 1,
+                                }}
+                              >
                                   {out.name}
                                 </span>
                                 <span
                                   style={{
                                     fontSize: 'calc(11px * var(--font-scale))',
-                                    color: 'var(--accent)',
+                                    color: 'var(--meta)',
+                                    background: 'var(--surface)',
+                                    border: '1px solid var(--border-soft)',
+                                    padding: '0 3px',
+                                    borderRadius: 2,
                                   }}
                                 >
-                                  {t('common.open')}
+                                  {outputReady
+                                    ? t('taskDetail.outputDone')
+                                    : t('taskDetail.outputPending')}
                                 </span>
                                 <span
                                   style={{
@@ -1807,27 +1837,32 @@ export default function TaskDetailView({
                                 >
                                   {out.type}
                                 </span>
-                                <span
-                                  style={{
-                                    fontSize: 'calc(11px * var(--font-scale))',
-                                    fontWeight: 500,
-                                    padding: '1px 5px',
-                                    borderRadius: 3,
-                                    background: statusDone
-                                      ? 'color-mix(in oklab, var(--success), transparent 85%)'
-                                      : 'var(--surface)',
-                                    color: statusDone
-                                      ? 'var(--success)'
-                                      : 'var(--meta)',
-                                    border: statusDone
-                                      ? 'none'
-                                      : '1px solid var(--border-soft)',
-                                  }}
-                                >
-                                  {statusDone
-                                    ? t('taskDetail.outputDone')
-                                    : t('taskDetail.outputPending')}
-                                </span>
+                                {outArtifact?.round ? (
+                                  <span
+                                    style={{
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      color: 'var(--meta)',
+                                      background: 'var(--surface)',
+                                      border: '1px solid var(--border-soft)',
+                                      padding: '0 3px',
+                                      borderRadius: 2,
+                                    }}
+                                  >
+                                    {t('taskDetail.artifactRound', {
+                                      round: outArtifact.round,
+                                    })}
+                                  </span>
+                                ) : null}
+                                {outputReady && (
+                                  <span
+                                    style={{
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      color: 'var(--accent)',
+                                    }}
+                                  >
+                                    {t('common.open')}
+                                  </span>
+                                )}
                                 {nextInput && (
                                   <span
                                     style={{
@@ -2024,7 +2059,7 @@ export default function TaskDetailView({
         )}
 
         {/* Review config drawer (edit mode only) */}
-        {!readOnly && (
+        {!readOnly && !interactionOnly && (
           <div style={{ marginTop: 20 }}>
             <button
               onClick={() =>
@@ -2493,10 +2528,18 @@ export default function TaskDetailView({
                           )
                         const msgArtifacts =
                           isReview || isLastExecutionResponse
-                            ? artifacts.filter(
-                                (artifact) =>
-                                  artifact.step_key === stageKey,
-                              )
+                            ? (() => {
+                                const stageArtifacts = artifacts.filter(
+                                  (artifact) => artifact.step_key === stageKey,
+                                )
+                                const selected = stageArtifacts.filter(
+                                  (artifact) => artifact.is_selected,
+                                )
+                                const latest = stageArtifacts.filter(
+                                  (artifact) => artifact.is_latest,
+                                )
+                                return selected.length ? selected : latest
+                              })()
                             : []
                         const processEvents =
                           Array.isArray(
@@ -2599,6 +2642,36 @@ export default function TaskDetailView({
                             content={messageContent}
                             projectId={projectId}
                             error={resolveMessageError(processEvents) || undefined}
+                            errorActions={(() => {
+                              const msgError = resolveMessageError(processEvents)
+                              if (
+                                readOnly
+                                || !onRestartStageWithFreshSession
+                                || !isLostEngineSessionError(msgError)
+                              ) {
+                                return undefined
+                              }
+                              const restarting = (restartingStageKeys ?? []).includes(stageKey)
+                              return (
+                                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <span style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                                    {t('taskDetail.lostSessionHint')}
+                                  </span>
+                                  <div>
+                                    <Button
+                                      size="sm"
+                                      loading={restarting}
+                                      disabled={restarting}
+                                      onClick={() => onRestartStageWithFreshSession(stageKey)}
+                                    >
+                                      {restarting
+                                        ? t('taskDetail.lostSessionRestarting')
+                                        : t('taskDetail.lostSessionRestart')}
+                                    </Button>
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             streaming={
                               msg.run_status ===
                               'running'
@@ -3446,15 +3519,17 @@ export default function TaskDetailView({
                       chatTarget === stage.key
                     }
                     title={t(
-                      resumableStatusOf(stage.key) === 'passed'
-                        || resumableStatusOf(stage.key) === 'skipped'
-                        ? 'taskDetail.stageTabTitle'
-                        : resumableStatusOf(stage.key) === 'failed'
-                        || resumableStatusOf(stage.key) === 'rejected'
-                        ? 'taskDetail.failedStageTabTitle'
-                        : resumableStatusOf(stage.key) === 'awaiting_review'
-                          ? 'taskDetail.reviewWaitingStageTabTitle'
-                          : 'taskDetail.stoppedStageTabTitle',
+                      resumableStatusOf(stage.key) === 'pending'
+                        ? 'taskDetail.pendingStageTabTitle'
+                        : resumableStatusOf(stage.key) === 'passed'
+                          || resumableStatusOf(stage.key) === 'skipped'
+                          ? 'taskDetail.stageTabTitle'
+                          : resumableStatusOf(stage.key) === 'failed'
+                            || resumableStatusOf(stage.key) === 'rejected'
+                            ? 'taskDetail.failedStageTabTitle'
+                            : resumableStatusOf(stage.key) === 'awaiting_review'
+                              ? 'taskDetail.reviewWaitingStageTabTitle'
+                              : 'taskDetail.stoppedStageTabTitle',
                       {
                         stage: stage.label,
                       },
@@ -3482,7 +3557,9 @@ export default function TaskDetailView({
                     ? 'taskDetail.failedStageHint'
                     : resumableStatusOf(resumableTarget.key) === 'awaiting_review'
                       ? 'taskDetail.reviewWaitingStageHint'
-                      : 'taskDetail.stoppedStageHint', {
+                      : resumableStatusOf(resumableTarget.key) === 'pending'
+                        ? 'taskDetail.pendingStageHint'
+                        : 'taskDetail.stoppedStageHint', {
                     stage: resumableTarget.label,
                   })}
                 </span>
@@ -3641,13 +3718,14 @@ export default function TaskDetailView({
                     onCoordinatorEngineChange?.(
                       '',
                     ),
-                    } as ChatInputEngineConfig
+                      } as ChatInputEngineConfig
               }
               disabled={composerState.disabled || (
-                chatTarget !== 'coordinator'
+                !interactionOnly
+                && chatTarget !== 'coordinator'
                 && (stageEngineConfigLoading || !stageEngineConfig || Boolean(stageEngineConfig.saving))
               )}
-              running={composerState.running}
+              running={interactionOnly ? false : composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
@@ -3795,7 +3873,22 @@ export default function TaskDetailView({
         <div className="task-detail-conversation">{renderConversation()}</div>
         {compact && <div className="task-detail-artifacts">
           {!artifacts.length && <p>{t('mobile.noArtifacts')}</p>}
-          {artifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}</span></button>)}
+          {Array.from(
+            artifacts.reduce((groups, artifact) => {
+              const key = `${artifact.step_key}:${artifact.round}`
+              const current = groups.get(key) || []
+              current.push(artifact)
+              groups.set(key, current)
+              return groups
+            }, new Map<string, TaskArtifact[]>()),
+          ).map(([key, roundArtifacts]) => (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
+                {roundArtifacts[0]?.step_key} · {t('taskDetail.artifactRound', { round: roundArtifacts[0]?.round || 1 })}
+              </div>
+              {roundArtifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.round}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}{artifact.round ? ` · ${t('taskDetail.artifactRound', { round: artifact.round })}` : ''}</span></button>)}
+            </div>
+          ))}
         </div>}
       </div>
     </>
@@ -3834,7 +3927,7 @@ function CoordinatorProposalCard({
           taskId,
           current.id,
           projectId,
-          crypto.randomUUID(),
+          randomUuid(),
         ),
       )
     } catch (reason) {

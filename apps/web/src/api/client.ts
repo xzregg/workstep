@@ -1033,6 +1033,10 @@ export interface TaskStepState {
   started_at: string | null
   ended_at: string | null
   error: string | null
+  /** 该阶段最新产物轮数（权威来源：后端 StepRun.artifact_round 的最大值）。 */
+  artifact_round?: number | null
+  /** 该阶段是否执行过（含失败 / 停止）；用于决定「发给谁」里能否 @ 该阶段。 */
+  has_history?: boolean
 }
 
 export interface ReviewRun {
@@ -1067,6 +1071,11 @@ export interface ReviewRun {
 
 export interface TaskArtifact {
   step_key: string
+  round: number
+  is_latest: boolean
+  is_selected: boolean
+  manifest_status: string | null
+  eligible_for_downstream: boolean
   name: string
   logical_name: string | null
   artifact_type: string | null
@@ -1259,6 +1268,11 @@ export const taskApi = {
         body: JSON.stringify({ content }),
       },
     ),
+  restartStageWithFreshSession: (taskId: string, stepKey: string, projectId: string) =>
+    request<{ step_key: string; run_id: string; status: 'queued' }>(
+      `/task/${taskId}/step/${encodeURIComponent(stepKey)}/restart?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'POST' },
+    ),
   stageExecutionConfig: (taskId: string, stepKey: string, projectId: string) =>
     request<StageExecutionConfig>(
       `/task/${encodeURIComponent(taskId)}/step/${encodeURIComponent(stepKey)}/config?project_id=${encodeURIComponent(projectId)}`,
@@ -1422,12 +1436,22 @@ export const taskApi = {
       request<ShareInfo>(
         `/task-share/${encodeURIComponent(taskId)}?project_id=${encodeURIComponent(projectId)}`,
       ),
-    create: (taskId: string, projectId: string, password?: string | null, title?: string | null) =>
+    create: (
+      taskId: string,
+      projectId: string,
+      password?: string | null,
+      title?: string | null,
+      mode: 'read_only' | 'interactive' = 'read_only',
+    ) =>
       request<ShareInfo>(
         `/task-share/${encodeURIComponent(taskId)}/create?project_id=${encodeURIComponent(projectId)}`,
         {
           method: 'POST',
-          body: JSON.stringify({ password: password || null, title: title ?? null }),
+          body: JSON.stringify({
+            password: password || null,
+            title: title ?? null,
+            mode,
+          }),
         },
       ),
     revoke: (taskId: string, projectId: string) =>
@@ -1445,6 +1469,7 @@ export interface ShareInfo {
   task_id: string
   token: string
   title: string | null
+  mode: 'read_only' | 'interactive'
   revoked: boolean
   has_password: boolean
   created_at: string
@@ -1454,6 +1479,7 @@ export interface ShareInfo {
 export interface ShareMeta {
   token: string
   title: string | null
+  mode: 'read_only' | 'interactive'
   task_id: string
   has_password: boolean
   created_at: string
@@ -1534,6 +1560,89 @@ export const shareApi = {
     shareRequest<{ artifacts: TaskArtifact[] }>(
       `/task-share/public/${encodeURIComponent(token)}/artifacts`,
       sessionToken,
+    ),
+  reviews: (token: string, sessionToken: string) =>
+    shareRequest<{ reviews: ReviewRun[] }>(
+      `/task-share/public/${encodeURIComponent(token)}/reviews`,
+      sessionToken,
+    ),
+  sendStageMessage: (
+    token: string,
+    sessionToken: string,
+    taskId: string,
+    stepKey: string,
+    content: string,
+  ) =>
+    shareRequest<{
+      message_id: string
+      step_key: string
+      status: 'queued'
+      sequence?: number
+      created_at?: string
+    }>(
+      `/task-share/public/${encodeURIComponent(token)}/steps/${encodeURIComponent(stepKey)}/message`,
+      sessionToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ task_id: taskId, content }),
+      },
+    ),
+  resumeStage: (
+    token: string,
+    sessionToken: string,
+    stepKey: string,
+    content: string,
+  ) =>
+    shareRequest<{
+      message_id: string
+      step_key: string
+      run_id: string
+      status: 'queued'
+      sequence?: number
+      created_at?: string
+    }>(
+      `/task-share/public/${encodeURIComponent(token)}/steps/${encodeURIComponent(stepKey)}/resume`,
+      sessionToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      },
+    ),
+  cancelStage: (token: string, sessionToken: string, stepKey: string) =>
+    shareRequest<{ cancelled: boolean }>(
+      `/task-share/public/${encodeURIComponent(token)}/steps/${encodeURIComponent(stepKey)}/cancel`,
+      sessionToken,
+      { method: 'POST' },
+    ),
+  decideReview: (
+    token: string,
+    sessionToken: string,
+    stepKey: string,
+    reviewRunId: string,
+    decision: 'approve' | 'reject' | 'force-approve',
+    comment?: string,
+  ) =>
+    shareRequest<{ decision: string; resumed: boolean; run_id: string | null }>(
+      `/task-share/public/${encodeURIComponent(token)}/steps/${encodeURIComponent(stepKey)}/review/${encodeURIComponent(decision)}`,
+      sessionToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ review_run_id: reviewRunId, comment }),
+      },
+    ),
+  respondInteraction: (
+    token: string,
+    sessionToken: string,
+    interactionId: string,
+    data: Record<string, unknown>,
+  ) =>
+    shareRequest<{ delivered: boolean }>(
+      `/task-share/public/${encodeURIComponent(token)}/intervention/respond`,
+      sessionToken,
+      {
+        method: 'POST',
+        body: JSON.stringify({ intervention_id: interactionId, data }),
+      },
     ),
   buildWsUrl: (sessionToken: string): string => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -1796,7 +1905,7 @@ export interface EngineConfigOption {
 export interface EngineConfigField {
   key: string
   label: string
-  type: 'text' | 'password' | 'select' | 'textarea' | 'number' | 'checkbox' | 'model_map'
+  type: 'text' | 'password' | 'select' | 'textarea' | 'json' | 'number' | 'checkbox' | 'model_map'
   placeholder: string
   options: EngineConfigOption[] | null
   required: boolean

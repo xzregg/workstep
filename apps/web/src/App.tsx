@@ -9,6 +9,7 @@ import SchedulePage from './pages/SchedulePage'
 import ChatPage from './pages/ChatPage'
 import ChannelsPage from './pages/ChannelsPage'
 import SharedTaskView from './pages/SharedTaskView'
+import FilePreviewPage from './pages/FilePreviewPage'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
@@ -39,6 +40,14 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/share/:token" element={<SharedTaskView />} />
+      </Routes>
+    )
+  }
+
+  if (location.pathname === '/file-preview') {
+    return (
+      <Routes>
+        <Route path="/file-preview" element={<FilePreviewPage />} />
       </Routes>
     )
   }

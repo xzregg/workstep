@@ -8,5 +8,5 @@ const source = await readFile(
 )
 
 test('WebSocket subscribes to every session shown in the sidebar', () => {
-  assert.match(source, /useChatListStore\.getState\(\)\.sessions/)
+  assert.match(source, /Object\.values\(useChatListStore\.getState\(\)\.sessionsByProject\)/)
 })

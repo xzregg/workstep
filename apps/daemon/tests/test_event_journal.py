@@ -158,3 +158,33 @@ async def test_journal_flushes_a_quiet_tail_after_the_buffer_interval(tmp_path):
 
     path = journal.resolve(tmp_path, ref)
     assert '"agent_message_chunk"' in path.read_text(encoding="utf-8")
+
+
+def test_journal_summary_keeps_first_output_and_elapsed_times(tmp_path):
+    journal = TurnEventJournal()
+    ref = journal.start(tmp_path, "session-ttft", "message-ttft")
+
+    journal.record(ref, {
+        "type": "status",
+        "data": {"status": "running"},
+        "timestamp": "2026-09-17T00:00:00.000000+00:00",
+    })
+    journal.record(ref, {
+        "type": "agent_thought_chunk",
+        "data": {"content": {"text": "thinking"}},
+        "timestamp": "2026-09-17T00:00:00.500000+00:00",
+    })
+    journal.record(ref, {
+        "type": "agent_message_chunk",
+        "data": {"content": {"text": "answer"}},
+        "timestamp": "2026-09-17T00:00:01.000000+00:00",
+    })
+    journal.record(ref, {
+        "type": "status",
+        "data": {"status": "done"},
+        "timestamp": "2026-09-17T00:00:02.000000+00:00",
+    })
+
+    summary = journal.snapshot(ref)["summary"]
+    assert summary["first_output_at"] == "2026-09-17T00:00:00.500000+00:00"
+    assert summary["elapsed_ms"] == 2000

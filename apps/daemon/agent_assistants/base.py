@@ -1437,12 +1437,12 @@ class AssistantRuntime:
             if not (item.get("role") == "assistant" and item.get("status") == "running")
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
             for item in turns
         )
         return (
             f"{self._config.system_prompt}"
-            f"\n\n历史对话：\n{history}\n\n请继续。"
+            f"\n\nConversation history:\n{history}\n\nContinue."
         )
 
     def _system_prompt_for_display(self, session: AssistantSession) -> str:
@@ -1497,6 +1497,7 @@ class AssistantRuntime:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
                 display_prompt = self._display_prompt(session, prompt)
+                active_prompt = [display_prompt]
                 user_messages = [
                     message
                     for message in session.messages
@@ -1687,6 +1688,9 @@ class AssistantRuntime:
                                     inserted["ended_at"] = utc_now().isoformat()
                                 delivered = event.data.get("status") == "delivered"
                                 if delivered:
+                                    active_prompt[0] = str(
+                                        (inserted or {}).get("content") or ""
+                                    ).strip()
                                     ended_at = utc_now().isoformat()
                                     sealed = active_message[0]
                                     sealed.update({
@@ -1745,6 +1749,7 @@ class AssistantRuntime:
                                         "role": "assistant",
                                         "content": "",
                                         "id": next_message_id,
+                                        "prompt": active_prompt[0],
                                         "engine": session.engine,
                                         "model": session.model,
                                         "status": "running",
@@ -1784,7 +1789,7 @@ class AssistantRuntime:
                                         session,
                                         next_message_id,
                                         "message_started",
-                                        {"prompt": ""},
+                                        {"prompt": active_prompt[0]},
                                         seq_holder[0],
                                     )
                                     seq_holder[0] += 1
@@ -1901,7 +1906,7 @@ class AssistantRuntime:
                         "status": "succeeded",
                         "created_at": active_started_at[0],
                         "ended_at": utc_now().isoformat(),
-                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "prompt": active_prompt[0],
                         "events": _prune_events(active_segment_events)
                         + [
                             event
@@ -1937,7 +1942,7 @@ class AssistantRuntime:
                         "status": "stopped",
                         "created_at": active_started_at[0],
                         "ended_at": ended_at,
-                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "prompt": active_prompt[0],
                         "events": _prune_events(active_segment_events),
                     }
                 )
@@ -1977,7 +1982,7 @@ class AssistantRuntime:
                         "status": "error",
                         "created_at": active_started_at[0],
                         "ended_at": utc_now().isoformat(),
-                        "prompt": display_prompt if live_split_count[0] == 0 else "",
+                        "prompt": active_prompt[0],
                         "events": _prune_events(active_segment_events),
                     }
                 )
@@ -2198,12 +2203,12 @@ class AssistantRuntime:
             )
         ][-self._config.max_history_turns * 2:]
         history = "\n\n".join(
-            f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+            f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
             for item in turns
         )
         return (
             f"{self._config.system_prompt}"
-            f"\n\n历史对话：\n{history}\n\n请继续。"
+            f"\n\nConversation history:\n{history}\n\nContinue."
         )
 
     async def _publish(

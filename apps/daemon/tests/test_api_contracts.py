@@ -1133,6 +1133,8 @@ async def test_task_http_crud_lifecycle(api_context):
     assert fetched.json()["steps"]
     assert all(step["status"] == "pending" for step in fetched.json()["steps"])
     assert fetched.json()["steps"][0]["step_key"] == "req"
+    # 未执行过的阶段带 has_history=false，前端据此判断能否 @。
+    assert all(step["has_history"] is False for step in fetched.json()["steps"])
 
     updated = await client.patch(
         f"/api/task/{task_id}?project_id={project_id}",
@@ -1828,6 +1830,7 @@ async def test_claude_permission_mode_requires_dangerous_confirmation(
         "provider_id": "",
         "permission_mode": "bypassPermissions",
         "model_map": "",
+        "custom_settings": "",
     }
 
 
@@ -2101,6 +2104,11 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
     assert response.status_code == 200
     assert response.json()["artifacts"] == [{
         "step_key": "req",
+        "round": 1,
+        "is_latest": True,
+        "is_selected": True,
+        "manifest_status": None,
+        "eligible_for_downstream": True,
         "name": "prd.md",
         "logical_name": "PRD 文档",
         "artifact_type": "Markdown",
@@ -2167,6 +2175,54 @@ async def test_task_artifacts_include_directories_with_manifest_metadata(api_con
     directories = [item for item in artifacts if item["is_dir"]]
     assert [item["relative_path"] for item in directories] == ["docs/"]
     assert not any(item["name"] == ".hidden" for item in artifacts)
+
+
+@pytest.mark.anyio
+async def test_task_artifacts_are_listed_by_round(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "artifact-round-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={"title": "Artifact round task", "cwd": str(project_dir)},
+    )
+    task_id = created.json()["id"]
+
+    round_one = (
+        project_dir / ".workstep" / "artifacts" / "default" / task_id / "req" / "1"
+    )
+    round_two = round_one.parent / "2"
+    round_one.mkdir(parents=True)
+    round_two.mkdir(parents=True)
+    (round_one / "prd.md").write_text("# First")
+    (round_two / "prd.md").write_text("# Second")
+    for round_dir, eligible in ((round_one, False), (round_two, True)):
+        (round_dir / "manifest.json").write_text(json.dumps({
+            "round": int(round_dir.name),
+            "status": "passed" if eligible else "rejected",
+            "eligible_for_downstream": eligible,
+            "artifacts": [
+                {"name": "PRD 文档", "type": "Markdown", "path": "prd.md"},
+            ],
+        }))
+
+    response = await client.get(
+        f"/api/task/{task_id}/artifacts",
+        params={"project_id": project_id},
+    )
+    assert response.status_code == 200
+    artifacts = response.json()["artifacts"]
+    assert [item["round"] for item in artifacts] == [1, 2]
+    assert [item["is_selected"] for item in artifacts] == [False, True]
+    assert [item["eligible_for_downstream"] for item in artifacts] == [False, True]
+    assert artifacts[1]["manifest_status"] == "passed"
+    assert artifacts[1]["relative_path"] == "prd.md"
 
 
 @pytest.mark.anyio
@@ -3193,6 +3249,69 @@ async def test_resume_stage_message_routes_to_runtime(api_context, monkeypatch):
         "do",
         "请改用中文输出",
     )
+
+
+@pytest.mark.anyio
+async def test_restart_stage_with_fresh_session_routes_to_runtime(api_context, monkeypatch):
+    """引擎会话丢失时，重建会话重跑接口透传到 runtime。"""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "restart-stage-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.restart_stage_with_fresh_session = AsyncMock(
+        return_value={
+            "step_key": "do",
+            "run_id": "run-2",
+            "status": "queued",
+        }
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    response = await client.post(
+        f"/api/task/task-1/step/do/restart?project_id={project_id}",
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    runtime.restart_stage_with_fresh_session.assert_awaited_once_with(
+        project_id,
+        "task-1",
+        "do",
+    )
+
+
+@pytest.mark.anyio
+async def test_restart_stage_reports_conflict_for_running_stage(api_context, monkeypatch):
+    """执行中的阶段重建会话返回冲突。"""
+    import main
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "restart-stage-conflict-project"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+
+    runtime = AsyncMock()
+    runtime.restart_stage_with_fresh_session = AsyncMock(
+        side_effect=ValueError("阶段执行中，不能重建会话: do")
+    )
+    monkeypatch.setattr(main, "workflow_runtime", runtime)
+
+    response = await client.post(
+        f"/api/task/task-1/step/do/restart?project_id={project_id}",
+    )
+    assert response.status_code == 409
+    assert "不能重建会话" in response.json()["detail"]
 
 
 @pytest.mark.anyio

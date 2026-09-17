@@ -23,7 +23,7 @@ class EngineConfigOption:
 class EngineConfigField:
     key: str
     label: str
-    type: str = "text"  # text | password | select | textarea | number | checkbox | model_map
+    type: str = "text"  # text | password | select | textarea | json | number | checkbox | model_map
     placeholder: str = ""
     options: tuple[EngineConfigOption, ...] | None = None
     required: bool = False

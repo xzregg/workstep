@@ -767,6 +767,104 @@ class ProjectManager:
                 result.append(self.project_summary(proj))
         return result
 
+    def provider_references(self, provider_id: str) -> list[dict]:
+        """Find every project row that still points at a provider ID.
+
+        Providers live in the global config, but workflows, tasks and chat
+        sessions persist their own copies of ``provider_id`` in per-project
+        databases. Deleting a provider without checking these leaves dangling
+        references that only surface as runtime failures ("供应商不存在") when a
+        stage or the coordinator tries to resolve them.
+        """
+        target = str(provider_id or "").strip()
+        if not target:
+            return []
+        references: list[dict] = []
+        for path_str, proj in self._projects.items():
+            with self.activate_project(path_str):
+                for workflow in Workflow.select():
+                    try:
+                        steps = json.loads(workflow.steps_json or "{}")
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                    for node in self._iter_workflow_stages(steps):
+                        if not isinstance(node, dict):
+                            continue
+                        for location, config in self._stage_provider_configs(node):
+                            if str(config.get("provider_id") or "").strip() == target:
+                                references.append({
+                                    "project_id": proj.id,
+                                    "project_name": proj.name,
+                                    "kind": "workflow",
+                                    "location": (
+                                        f"工作流「{workflow.name}」阶段「"
+                                        f"{node.get('title') or node.get('type') or node.get('key') or ''}"
+                                        f"」{location}"
+                                    ),
+                                })
+                task_rows = Task.select().where(
+                    Task.coordinator_provider_id == target
+                )
+                for task in task_rows:
+                    references.append({
+                        "project_id": proj.id,
+                        "project_name": proj.name,
+                        "kind": "task",
+                        "location": f"任务「{task.title or task.id}」协调器",
+                    })
+                task_step_rows = TaskStep.select().where(
+                    TaskStep.execution_config_json.contains(target)
+                )
+                for step in task_step_rows:
+                    try:
+                        override = json.loads(step.execution_config_json or "{}")
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                    if not isinstance(override, dict):
+                        continue
+                    if (
+                        str((override.get("config") or {}).get("provider_id") or "").strip()
+                        == target
+                    ):
+                        references.append({
+                            "project_id": proj.id,
+                            "project_name": proj.name,
+                            "kind": "task_step",
+                            "location": f"任务阶段「{step.step_key}」执行配置",
+                        })
+                for session in ChatSession.select().where(
+                    ChatSession.provider_id == target
+                ):
+                    references.append({
+                        "project_id": proj.id,
+                        "project_name": proj.name,
+                        "kind": "chat_session",
+                        "location": f"会话「{session.title or session.id}」",
+                    })
+        return references
+
+    @staticmethod
+    def _iter_workflow_stages(steps: object):
+        """Yield workflow stage nodes from either the nodes or legacy steps form."""
+        if not isinstance(steps, dict):
+            return
+        raw_steps = steps.get("nodes") or steps.get("steps") or []
+        if isinstance(raw_steps, list):
+            for node in raw_steps:
+                yield node
+
+    @staticmethod
+    def _stage_provider_configs(node: dict):
+        """Yield (location, config) pairs that may carry a provider override."""
+        config = node.get("config")
+        if isinstance(config, dict):
+            yield ("执行配置", config)
+        review = node.get("review")
+        if isinstance(review, dict):
+            review_config = review.get("config")
+            if isinstance(review_config, dict):
+                yield ("评审配置", review_config)
+
     def project_summary(self, proj: Project) -> dict:
         """Serialize a project while its database is active."""
         workflows = [

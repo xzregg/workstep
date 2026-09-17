@@ -492,7 +492,7 @@ async def test_archive_experience_uses_coordinator_with_task_history(
     assert response.json()["experience"] == "- 问题：构建失败\n- 经验：先核对类型错误"
     assert len(CoordinatorFakeEngine.calls) == 1
     assert "曾遇到构建失败，需要修正类型错误" in CoordinatorFakeEngine.calls[0]["prompt"]
-    assert "只记录有直接证据的错误" in CoordinatorFakeEngine.calls[0]["prompt"]
+    assert "Record only directly evidenced mistakes" in CoordinatorFakeEngine.calls[0]["prompt"]
 
 
 @pytest.mark.anyio
@@ -546,10 +546,10 @@ async def test_archive_experience_streams_visible_coordinator_progress(
         "TEXT_MESSAGE_END",
     ]
     assert all(event["channel"] == "archive_experience" for event in events)
-    assert "任务全过程证据" in events[0]["prompt"]
-    assert "当前绝不能写入 Memory" in events[0]["prompt"]
-    assert "不是任务总结" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
-    assert "最多 3 条" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
+    assert "Task evidence" in events[0]["prompt"]
+    assert "must not be written to Memory now" in events[0]["prompt"]
+    assert "not a task summary" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
+    assert "at most 3" in ArchiveProgressCoordinatorFakeEngine.calls[0]["prompt"]
 
     reopened = await client.get(
         f"/api/task/{task_id}/archive-experience/draft?project_id={project_id}"
@@ -557,7 +557,7 @@ async def test_archive_experience_streams_visible_coordinator_progress(
     assert reopened.status_code == 200
     history = reopened.json()
     assert history["found"] is True
-    assert "任务全过程证据" in history["prompt"]
+    assert "Task evidence" in history["prompt"]
     assert [event["type"] for event in history["events"]] == [
         event["type"] for event in events
     ]
@@ -639,8 +639,8 @@ async def test_archive_experience_reports_progress_before_engine_reply(
             for event in events
             if event.get("type") == "REASONING_MESSAGE_CHUNK"
         ]
-        assert any("已读取任务记录" in item for item in progress)
-        assert any("等待协调助手响应" in item for item in progress)
+        assert any("Read task record" in item for item in progress)
+        assert any("waiting for a response" in item for item in progress)
     finally:
         await client.post(
             f"/api/task/{task_id}/archive-experience/stop"
@@ -895,6 +895,68 @@ def test_coordinator_root_falls_back_to_task_cwd(tmp_path):
     task = SimpleNamespace(workflow_id=None, cwd=str(tmp_path))
     root = CoordinatorModule._coordinator_root(project, task)
     assert root == str(tmp_path)
+
+
+def test_normalize_input_rounds_rejects_invalid_and_ignores_target():
+    assert CoordinatorModule._normalize_input_rounds(
+        {"req": "2", "ui": 1, "build": 3},
+        "build",
+    ) == {"req": 2, "ui": 1}
+    with pytest.raises(ValueError, match="非法产物轮次"):
+        CoordinatorModule._normalize_input_rounds({"req": "bad"}, "build")
+    with pytest.raises(ValueError, match="非法产物轮次"):
+        CoordinatorModule._normalize_input_rounds({"req": 0}, "build")
+
+
+def test_artifact_index_marks_only_latest_eligible_round_selected(tmp_path):
+    from models import Task, init_db
+    from services.artifact_rounds import write_round_manifest
+
+    db = init_db(str(tmp_path / "coordinator-artifact-rounds.db"))
+    try:
+        task = Task.create(
+            id="artifact-round-task",
+            title="Artifact rounds",
+            cwd=str(tmp_path),
+            workflow_id="dev",
+            engine="claude",
+            created_at=1,
+            updated_at=1,
+        )
+        artifacts_root = tmp_path / ".workstep" / "artifacts"
+        for round_number in (1, 2):
+            write_round_manifest(
+                artifacts_root=artifacts_root,
+                workflow_id="dev",
+                task_id=task.id,
+                step_key="req",
+                artifact_round=round_number,
+                status="passed",
+                eligible_for_downstream=True,
+            )
+            (artifacts_root / "dev" / task.id / "req" / str(round_number) / "prd.md").write_text(
+                f"round {round_number}",
+                encoding="utf-8",
+            )
+
+        project = SimpleNamespace(
+            workstep_dir=str(tmp_path / ".workstep"),
+            id="project-artifact-rounds",
+        )
+        index = CoordinatorModule._artifact_index(None, project, task)
+        selected = [
+            metadata
+            for metadata, _path in index.values()
+            if metadata["is_selected"]
+        ]
+
+        assert [item["round"] for item in selected] == [2]
+        assert all(
+            metadata["eligible_for_downstream"]
+            for metadata, _path in index.values()
+        )
+    finally:
+        db.close()
 
 
 def test_assemble_context_includes_coordinator_root_dir(tmp_path):
@@ -1827,7 +1889,7 @@ async def test_coordinator_can_start_from_stage_before_any_workflow_run(
 
 
 @pytest.mark.anyio
-async def test_restart_from_stage_creates_child_run_and_archives_outputs(
+async def test_restart_from_stage_creates_child_run_and_keeps_outputs(
     api_context,
     monkeypatch,
 ):
@@ -1882,8 +1944,14 @@ async def test_restart_from_stage_creates_child_run_and_archives_outputs(
                 break
         await asyncio.sleep(0.01)
 
-    req_dir = project_dir / ".workstep" / "artifacts" / "req" / task_id
-    ui_dir = project_dir / ".workstep" / "artifacts" / "ui" / task_id
+    req_dir = (
+        project_dir / ".workstep" / "artifacts" / workflow.json()["id"]
+        / task_id / "req" / "1"
+    )
+    ui_dir = (
+        project_dir / ".workstep" / "artifacts" / workflow.json()["id"]
+        / task_id / "ui" / "1"
+    )
     req_dir.mkdir(parents=True, exist_ok=True)
     ui_dir.mkdir(parents=True, exist_ok=True)
     (req_dir / "req.md").write_text("keep", encoding="utf-8")
@@ -1912,16 +1980,15 @@ async def test_restart_from_stage_creates_child_run_and_archives_outputs(
         assert reused.source_step_run_id
         assert task.active_workflow_run_id == child.id
     assert (req_dir / "req.md").read_text(encoding="utf-8") == "keep"
-    archived = (
+    assert (ui_dir / "ui.md").read_text(encoding="utf-8") == "archive"
+    assert not (
         project_dir
         / ".workstep"
         / "artifact-history"
         / task_id
         / parent_run_id
         / "ui"
-        / "ui.md"
-    )
-    assert archived.read_text(encoding="utf-8") == "archive"
+    ).exists()
 
 
 class StoppableStreamingEngine(StreamingCoordinatorFakeEngine):

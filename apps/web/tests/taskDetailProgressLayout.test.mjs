@@ -61,3 +61,16 @@ test('keeps name, round and time rows in fixed slots', () => {
   assert.match(source, /height: 20,\s+marginTop: 2,\s+display: 'flex',\s+alignItems: 'center',\s+justifyContent: 'center'/)
   assert.match(source, /minHeight: 32,\s+marginTop: 2,\s+display: 'flex',\s+flexDirection: 'column',\s+alignItems: 'center',\s+gap: 2/)
 })
+
+test('shows pending outputs before the file type and only opens generated files', () => {
+  const outputReadyPos = source.indexOf('const outputReady = Boolean(outArtifact)')
+  const statusPos = source.indexOf("t('taskDetail.outputDone')", outputReadyPos)
+  const typePos = source.indexOf('{out.type}', statusPos)
+
+  assert.ok(outputReadyPos >= 0, 'output readiness guard missing')
+  assert.ok(statusPos > outputReadyPos, 'output status badge missing')
+  assert.ok(typePos > statusPos, 'output status badge should precede the file type')
+  assert.match(source, /outputReady &&[\s\S]*\{t\('common\.open'\)\}/)
+  assert.match(source, /role=\{outputReady \? 'button' : undefined\}/)
+  assert.match(source, /cursor: outputReady \? 'pointer' : 'default'/)
+})

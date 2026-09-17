@@ -12,6 +12,11 @@ import {
   estimateUsageFromEvents,
   estimateUsageFromEventSummary,
 } from '../utils/contextUsage.js'
+import {
+  buildMessageTimeline,
+  thinkingRateFromTimeline,
+  type MessageTimelineEvent,
+} from '../utils/messageTimeline'
 import { useI18n, zhCNT, type TFunction } from '../i18n'
 
 export {
@@ -194,7 +199,16 @@ const OUTPUT_EVENT_TYPES = new Set([
 export function firstTokenDelaySeconds(
   events: unknown[] | undefined,
   startedAt?: DateTimeValue,
+  eventSummary?: Record<string, unknown> | null,
 ): number | null {
+  const summaryFirstOutputAt = eventSummary?.first_output_at
+  if (typeof summaryFirstOutputAt === 'string' && startedAt) {
+    const start = toMilliseconds(startedAt)
+    const firstOutput = toMilliseconds(summaryFirstOutputAt)
+    if (start !== null && firstOutput !== null && firstOutput >= start) {
+      return (firstOutput - start) / 1000
+    }
+  }
   let earliest: number | null = null
   let firstOutput: number | null = null
   for (const raw of events ?? []) {
@@ -298,16 +312,24 @@ export default function MessageResponseFooter({
   const elapsedMs = running
     ? durationMilliseconds(toMilliseconds(startedAt) ?? earliestEventMs, now)
     : null
-  const rate = running
-    ? tokensPerSecond(
-        usageValue(effectiveUsage, 'output_tokens', 'completion_tokens'),
-        elapsedMs,
-      )
-    : null
+  const thinkingRate = useMemo(
+    () => running ? thinkingRateFromTimeline(buildMessageTimeline((events ?? []) as MessageTimelineEvent[]), now) : null,
+    [running, events, now],
+  )
+  const outputTokens = usageValue(effectiveUsage, 'output_tokens', 'completion_tokens')
+  const summaryOutputTokens = outputTokens > 0
+    ? outputTokens
+    : usageValue(effectiveUsage, 'reasoning_output_tokens', 'thought_tokens')
+  const rateElapsedMs = running
+    ? elapsedMs
+    : typeof eventSummary?.elapsed_ms === 'number'
+      ? eventSummary.elapsed_ms
+      : null
+  const rate = thinkingRate ?? tokensPerSecond(summaryOutputTokens, rateElapsedMs)
   // 首 token 时延：开始 → 第一条吐词事件；进行中与结束后都展示。memo 同上。
   const ttftSeconds = useMemo(
-    () => firstTokenDelaySeconds(events, startedAt),
-    [events, startedAt],
+    () => firstTokenDelaySeconds(events, startedAt, eventSummary),
+    [events, startedAt, eventSummary],
   )
 
   // 进行中也展示引擎与模型：Token 估算 · t/s · 首t · 引擎 * 模型

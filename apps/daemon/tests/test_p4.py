@@ -149,6 +149,23 @@ def test_intervention_double_deliver():
     asyncio.run(_test())
 
 
+def test_intervention_deliver_response_can_be_scoped_to_task():
+    """A scoped response only resolves an intervention for the same task."""
+    mgr = InterventionManager()
+
+    async def _test():
+        task = asyncio.create_task(
+            mgr.request_response("int-5", "task-a", "s", {"q": "?"})
+        )
+        await asyncio.sleep(0.01)
+        assert mgr.deliver_response("int-5", {"a": 1}, task_id="task-b") is False
+        assert mgr.pending_count == 1
+        assert mgr.deliver_response("int-5", {"a": 1}, task_id="task-a") is True
+        assert await task == {"a": 1}
+
+    asyncio.run(_test())
+
+
 # --- History replay ---
 
 @pytest.fixture

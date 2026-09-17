@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { shareApi, workflowApi } from '../src/api/client.ts'
+import { shareApi, taskApi, workflowApi } from '../src/api/client.ts'
 
 const workflowResponse = {
   id: 'e3606e86',
@@ -82,4 +82,29 @@ test('does not deduplicate concurrent writes', async (t) => {
   ])
 
   assert.equal(calls, 2)
+})
+
+test('task share creation sends the selected interactive mode', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+
+  let body: Record<string, unknown> | null = null
+  globalThis.fetch = async (_input, init) => {
+    body = JSON.parse(String(init?.body || '{}'))
+    return Response.json({
+      id: 'share-1',
+      task_id: 'task-1',
+      token: 'token-1',
+      title: null,
+      mode: 'interactive',
+      revoked: false,
+      has_password: false,
+      created_at: '',
+      revoked_at: null,
+    })
+  }
+
+  await taskApi.share.create('task-1', 'project-1', null, null, 'interactive')
+
+  assert.equal(body?.mode, 'interactive')
 })

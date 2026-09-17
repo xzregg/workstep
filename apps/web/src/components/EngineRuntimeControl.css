@@ -1,5 +1,5 @@
-.engine-runtime-control { padding: 0 14px 12px; }
-.engine-runtime-body { border-top: 1px solid var(--border-soft); margin-top: 8px; padding-top: 12px; }
+.engine-runtime-control { display: contents; }
+.engine-runtime-body { order: 1; flex: 1 0 100%; border-top: 1px solid var(--border-soft); margin-top: 8px; padding: 12px 14px; }
 .engine-runtime-heading, .engine-runtime-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .engine-runtime-heading { justify-content: space-between; margin-bottom: 12px; }
 .engine-runtime-actions label { font-weight: 600; }

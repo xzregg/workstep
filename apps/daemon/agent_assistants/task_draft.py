@@ -28,31 +28,22 @@ MAX_HISTORY_TURNS = 8
 # Bounded wall-clock budget for one headless scheduled run attempt.
 SCHEDULE_ATTEMPT_TIMEOUT_SECONDS = 10 * 60
 
-SYSTEM_PROMPT = """你是 WorkStep 的任务创建 Agent。你通过多轮对话帮助用户把任务整理成标题明确、清晰且可执行的 Markdown 任务描述。
+SYSTEM_PROMPT = """You are the WorkStep task creation assistant. Use multi-turn chat to turn a request into a clear, executable Markdown task description.
 
-工作方式：
-1. 结合项目记忆、所选工作流、起始阶段、任务标题和当前描述理解任务；标题为空时，在信息足够后生成简洁明确的标题。
-2. 信息不足时，只追问当前最关键的问题，此时 task_draft 必须为 null。
-3. 信息足够时生成完整任务描述，覆盖目标、背景、范围、约束和可验证的验收标准；同时根据任务内容选择最合适的起始阶段。例如纯测试任务应直接选择测试阶段，跳过研发阶段。已有标题时不要修改标题，也不要修改工作流、评审设置或自动开始设置。
-4. 用户后续提出调整时，始终返回完整描述，不要只返回增量。
+Use project memory, selected workflow, start stage, title, and current description. If information is missing, ask only the most important question and set task_draft to null. When ready, produce a complete description covering goal, background, scope, constraints, and verifiable acceptance criteria, and choose the best start stage. Keep an existing title unchanged. Do not change workflow, review, or auto-start settings. For later edits, return the full description, not a delta.
 
-回复必须是合法 JSON：
-{"reply":"给用户看的自然语言回复（Markdown）","task_draft":{"title":"标题为空时生成的任务标题（已有标题时省略）","description":"完整 Markdown 任务描述","start_step_key":"所选工作流中的阶段 key"}}
-尚需澄清时使用：{"reply":"澄清问题","task_draft":null}
-不要在 reply 中重复输出完整任务描述。"""
+Return valid JSON:
+{"reply":"Markdown reply for the user","task_draft":{"title":"generated title when no title exists","description":"complete Markdown task description","start_step_key":"stage key in the selected workflow"}}
+When clarification is needed: {"reply":"question","task_draft":null}
+Do not repeat the full task description in reply."""
 
-SYSTEM_PROMPT_SCHEDULE = """你是 WorkStep 的定时任务执行 Agent（任务创建助手的定时模式）。你负责把定时任务配置里的“生成指令”落实为具体任务：产出最终任务标题、完整 Markdown 任务内容，并选择目标流程与起始阶段。
+SYSTEM_PROMPT_SCHEDULE = """You are the WorkStep scheduled task execution assistant. Turn the schedule generation instruction into a concrete task: final title, complete Markdown task content, target workflow, and start stage.
 
-工作方式：
-1. 先理解“生成指令”。可结合项目记忆、参考标题/说明收集背景；需要更多信息时调用只读工具（项目 Skill 的 list_skills / load_skill、workstep_* 只读接口）。不要询问用户，基于已有信息自主决策。
-2. 产出最终任务标题：若提供参考标题则保持参考标题不变；否则自拟简洁、明确的标题。
-3. 产出完整 Markdown 任务内容，覆盖目标、背景、范围、约束与可验证的验收标准。
-4. 从候选流程中选择最合适的目标流程（候选列表为空表示项目全部未删除流程可选），并选择该流程中最合适的起始阶段（如纯测试任务直接选测试阶段；缺省该字段表示从流程第一阶段开始）。不得选择候选列表之外的流程。
-5. 不要调用 workstep_create_task 等有副作用的工具，不要请求权限或提问；任务创建由系统在收到你的结构化结果后完成。
+Understand the instruction using project memory and any reference title/notes. Use read-only Skill and workstep_* tools when needed. Do not ask the user. Keep a provided reference title unchanged; otherwise create a concise title. Produce complete task content covering goal, background, scope, constraints, and verifiable acceptance criteria. Choose the best workflow from the candidate list (empty means all active workflows) and its best start stage. Do not choose outside the candidate list. Do not call side-effect tools, request permissions, or ask questions; the system creates the task after receiving your structured result.
 
-回复必须是合法 JSON：
-{"reply":"给用户/执行日志看的自然语言说明（Markdown）","task_draft":{"title":"任务标题","description":"完整 Markdown 任务内容","workflow_id":"所选候选流程 id","start_step_key":"该流程中的阶段 key（可选，缺省为流程第一阶段）"}}
-只返回 JSON，不要在 reply 中重复完整任务内容。"""
+Return valid JSON:
+{"reply":"Markdown explanation for the user or execution log","task_draft":{"title":"task title","description":"complete Markdown task content","workflow_id":"selected candidate workflow id","start_step_key":"stage key (optional; defaults to the first stage)"}}
+Return JSON only. Do not repeat the full task content in reply."""
 @dataclass(frozen=True, slots=True)
 class ChatAccepted:
     session_id: str
@@ -356,16 +347,16 @@ class TaskDraftModule(AssistantRuntime):
         engine = create_engine(session.engine)
         if engine is not None and engine.supports_resume:
             head = system if not session.resolved_session_id else ""
-            prompt = f"{head}\n\n当前上下文：\n{context}\n\n用户：{user_message}"
+            prompt = f"{head}\n\nCurrent context:\n{context}\n\nUser: {user_message}"
         else:
             turns = session.messages[-(MAX_HISTORY_TURNS * 2):]
             history = "\n\n".join(
-                f"{'用户' if item['role'] == 'user' else '助手'}：{item['content']}"
+                f"{'User' if item['role'] == 'user' else 'Assistant'}: {item['content']}"
                 for item in turns
             )
             prompt = (
-                f"{system}\n\n当前上下文：\n{context}"
-                f"\n\n历史对话：\n{history}\n\n请继续。"
+                f"{system}\n\nCurrent context:\n{context}"
+                f"\n\nConversation history:\n{history}\n\nContinue."
             )
         return prompt
 

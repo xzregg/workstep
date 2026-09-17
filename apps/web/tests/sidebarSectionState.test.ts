@@ -22,7 +22,7 @@ class MemoryStorage {
 test('sidebar section state round-trips per project in browser storage', () => {
   const storage = new MemoryStorage()
   const state: SidebarSectionState = {
-    expandedProjectId: 'local',
+    expandedProjectIds: ['local', 'remote'],
     flowsByProject: { local: false, remote: true },
     conversationsByProject: { local: true, remote: false },
   }
@@ -35,20 +35,33 @@ test('sidebar section state round-trips per project in browser storage', () => {
 test('sidebar section state ignores invalid or non-boolean stored values', () => {
   const storage = new MemoryStorage()
   storage.setItem('workstep.sidebar.expanded-sections.v1', JSON.stringify({
-    expandedProjectId: 123,
+    expandedProjectIds: ['kept', 123],
     flowsByProject: { kept: false, ignored: 'false' },
     conversationsByProject: { kept: true, ignored: 1 },
   }))
 
   assert.deepEqual(loadSidebarSectionState(storage), {
-    expandedProjectId: null,
+    expandedProjectIds: ['kept'],
     flowsByProject: { kept: false },
     conversationsByProject: { kept: true },
   })
 
   storage.setItem('workstep.sidebar.expanded-sections.v1', '{broken')
   assert.deepEqual(loadSidebarSectionState(storage), {
-    expandedProjectId: null,
+    expandedProjectIds: [],
+    flowsByProject: {},
+    conversationsByProject: {},
+  })
+})
+
+test('sidebar section state migrates the previous single-project format', () => {
+  const storage = new MemoryStorage()
+  storage.setItem('workstep.sidebar.expanded-sections.v1', JSON.stringify({
+    expandedProjectId: 'legacy',
+  }))
+
+  assert.deepEqual(loadSidebarSectionState(storage), {
+    expandedProjectIds: ['legacy'],
     flowsByProject: {},
     conversationsByProject: {},
   })

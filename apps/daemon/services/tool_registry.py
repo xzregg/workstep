@@ -59,7 +59,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         ),
         method="GET",
         path="/api/project/list",
-        parameters={"project_id": {"type": "string", "description": "项目 id"}},
+        parameters={"project_id": {"type": "string", "description": "project id"}},
         required=("project_id",),
         read_only=True,
     ),
@@ -72,8 +72,8 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         method="GET",
         path="/api/task/list",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "archived": {"type": "boolean", "description": "只看已归档任务，默认 false"},
+            "project_id": {"type": "string", "description": "project id"},
+            "archived": {"type": "boolean", "description": "show archived tasks only; default false"},
         },
         required=("project_id",),
         read_only=True,
@@ -85,8 +85,8 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         method="GET",
         path="/api/task/{task_id}",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "task_id": {"type": "string", "description": "任务 id"},
+            "project_id": {"type": "string", "description": "project id"},
+            "task_id": {"type": "string", "description": "task id"},
         },
         required=("project_id", "task_id"),
         read_only=True,
@@ -111,12 +111,12 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         method="POST",
         path="/api/project/init",
         parameters={
-            "path": {"type": "string", "description": "项目目录绝对路径"},
-            "name": {"type": "string", "description": "项目名称，缺省用目录名"},
+            "path": {"type": "string", "description": "absolute project directory path"},
+            "name": {"type": "string", "description": "project name; defaults to the directory name"},
         },
         required=("path",),
         read_only=False,
-        side_effect="初始化项目目录并注册到 WorkStep",
+        side_effect="initialize a project directory and register it in WorkStep",
         body_params=("path", "name"),
     ),
     WorkstepTool(
@@ -128,14 +128,14 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         method="POST",
         path="/api/task/create",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "title": {"type": "string", "description": "任务标题"},
-            "cwd": {"type": "string", "description": "工作目录，缺省为项目路径"},
-            "description": {"type": "string", "description": "任务说明（可选）"},
+            "project_id": {"type": "string", "description": "project id"},
+            "title": {"type": "string", "description": "task title"},
+            "cwd": {"type": "string", "description": "working directory; defaults to the project path"},
+            "description": {"type": "string", "description": "task description (optional)"},
         },
         required=("project_id", "title"),
         read_only=False,
-        side_effect="在项目中新建一个任务",
+        side_effect="create a task in the project",
         query_params=("project_id",),
         body_params=("title", "cwd", "description"),
     ),
@@ -143,7 +143,7 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         name="workstep_list_schedules",
         description="List project schedules with status and next run time.",
         method="GET", path="/api/schedule/list",
-        parameters={"project_id": {"type": "string", "description": "项目 id"}},
+        parameters={"project_id": {"type": "string", "description": "project id"}},
         required=("project_id",), query_params=("project_id",),
     ),
     WorkstepTool(
@@ -151,8 +151,8 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         description="Get one project schedule and its normalized rule.",
         method="GET", path="/api/schedule/{schedule_id}",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "schedule_id": {"type": "string", "description": "定时任务 id"},
+            "project_id": {"type": "string", "description": "project id"},
+            "schedule_id": {"type": "string", "description": "schedule id"},
         },
         required=("project_id", "schedule_id"), path_params=("schedule_id",),
         query_params=("project_id",),
@@ -165,16 +165,16 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         ),
         method="POST", path="/api/schedule/create",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "workflow_id": {"type": "string", "description": "流程 id"},
-            "name": {"type": "string", "description": "定时配置名称"},
-            "task_template": {"type": "object", "description": "任务模板，必须含 title"},
-            "rule": {"type": "object", "description": "结构化时间规则"},
+            "project_id": {"type": "string", "description": "project id"},
+            "workflow_id": {"type": "string", "description": "workflow id"},
+            "name": {"type": "string", "description": "schedule name"},
+            "task_template": {"type": "object", "description": "task template; must include title"},
+            "rule": {"type": "object", "description": "structured schedule rule"},
             "execution_mode": {"type": "string", "description": "workflow/immediate/manual"},
             "overlap_policy": {"type": "string", "description": "skip/parallel/queue"},
         },
         required=("project_id", "workflow_id", "name", "task_template", "rule"),
-        read_only=False, side_effect="创建并启用项目定时任务",
+        read_only=False, side_effect="create and enable a project schedule",
         query_params=("project_id",),
         body_params=("workflow_id", "name", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
@@ -183,17 +183,17 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         description="Update an existing project schedule and recalculate its next run.",
         method="PATCH", path="/api/schedule/{schedule_id}",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "schedule_id": {"type": "string", "description": "定时任务 id"},
-            "name": {"type": "string", "description": "新名称"},
-            "workflow_id": {"type": "string", "description": "新流程 id"},
-            "task_template": {"type": "object", "description": "完整任务模板"},
-            "rule": {"type": "object", "description": "结构化时间规则"},
+            "project_id": {"type": "string", "description": "project id"},
+            "schedule_id": {"type": "string", "description": "schedule id"},
+            "name": {"type": "string", "description": "new name"},
+            "workflow_id": {"type": "string", "description": "new workflow id"},
+            "task_template": {"type": "object", "description": "complete task template"},
+            "rule": {"type": "object", "description": "structured schedule rule"},
             "execution_mode": {"type": "string", "description": "workflow/immediate/manual"},
             "overlap_policy": {"type": "string", "description": "skip/parallel/queue"},
         },
         required=("project_id", "schedule_id"), read_only=False,
-        side_effect="修改并重新计算项目定时任务",
+        side_effect="update and recalculate a project schedule",
         path_params=("schedule_id",), query_params=("project_id",),
         body_params=("name", "workflow_id", "task_template", "rule", "execution_mode", "overlap_policy"),
     ),
@@ -204,11 +204,11 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
             method="POST" if action != "delete" else "DELETE",
             path=f"/api/schedule/{{schedule_id}}/{action}" if action != "delete" else "/api/schedule/{schedule_id}",
             parameters={
-                "project_id": {"type": "string", "description": "项目 id"},
-                "schedule_id": {"type": "string", "description": "定时任务 id"},
+                "project_id": {"type": "string", "description": "project id"},
+                "schedule_id": {"type": "string", "description": "schedule id"},
             },
             required=("project_id", "schedule_id"), read_only=False,
-            side_effect={"pause": "暂停定时任务", "resume": "恢复定时任务", "delete": "删除定时任务及其调度日志"}[action],
+            side_effect={"pause": "pause the schedule", "resume": "resume the schedule", "delete": "delete the schedule and its run logs"}[action],
             path_params=("schedule_id",), query_params=("project_id",),
         )
         for action in ("pause", "resume", "delete")
@@ -218,10 +218,10 @@ WORKSTEP_TOOLS: list[WorkstepTool] = [
         description="List execution logs of one project schedule.",
         method="GET", path="/api/schedule/{schedule_id}/runs",
         parameters={
-            "project_id": {"type": "string", "description": "项目 id"},
-            "schedule_id": {"type": "string", "description": "定时任务 id"},
-            "limit": {"type": "integer", "description": "返回数量，默认 50"},
-            "offset": {"type": "integer", "description": "分页偏移"},
+            "project_id": {"type": "string", "description": "project id"},
+            "schedule_id": {"type": "string", "description": "schedule id"},
+            "limit": {"type": "integer", "description": "result count; default 50"},
+            "offset": {"type": "integer", "description": "pagination offset"},
         },
         required=("project_id", "schedule_id"), path_params=("schedule_id",),
         query_params=("project_id", "limit", "offset"),
@@ -244,22 +244,24 @@ def tool_documentation() -> str:
     ]
     for tool in WORKSTEP_TOOLS:
         lines.append(f"## {tool.name}")
-        lines.append(f"- 用途：{tool.description}")
+        lines.append(f"- Purpose: {tool.description}")
         if tool.parameters:
-            params = "、".join(
-                f"{key}（{value.get('description', key)}）"
+            params = ", ".join(
+                f"{key} ({value.get('description', key)})"
                 for key, value in tool.parameters.items()
             )
-            lines.append(f"- 参数：{params}")
+            lines.append(f"- Parameters: {params}")
         if tool.required:
-            lines.append(f"- 必填：{'、'.join(tool.required)}")
+            lines.append(f"- Required: {', '.join(tool.required)}")
         if not tool.read_only:
-            lines.append(f"- 副作用：{tool.side_effect or '有副作用'}")
-            lines.append("- 调用必须携带 confirm='yes'，且仅当用户明确要求执行该操作")
+            lines.append(f"- Side effect: {tool.side_effect or 'has side effects'}")
+            lines.append(
+                "- Mutating calls require confirm='yes' and explicit user intent."
+            )
         lines.append("")
     lines.append(
         "Rules: read-only operations are safe to use for inspection. Mutating "
-        "mutating operations require confirm='yes' and explicit user intent. "
+        "operations require confirm='yes' and explicit user intent. "
         "Never fabricate ids — look them up first with the list/get operations."
     )
     return "\n".join(lines)
@@ -270,9 +272,10 @@ def workstep_tools_instruction() -> str:
     return (
         tool_documentation()
         + "\n\n"
-        "使用约束：只读操作（list/get）可直接用于查询；创建、修改、暂停、"
-        "恢复和删除操作有副作用，必须携带 confirm='yes'，且仅当用户明确"
-        "授权时才可调用。不要编造 id —— 先用 list/get 查出来。"
+        "Rules: read-only operations (list/get) may be used directly. "
+        "Create, update, pause, resume, and delete operations have side effects; "
+        "use them only with explicit user authorization and confirm='yes'. "
+        "Never invent ids; look them up with list/get first."
     )
 
 

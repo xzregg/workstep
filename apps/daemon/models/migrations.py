@@ -104,6 +104,13 @@ _ADDITIVE_COLUMNS = {
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
     },
+    "step_runs": {
+        "artifact_round": "INTEGER",
+        "input_rounds_json": "TEXT",
+    },
+    "task_shares": {
+        "mode": "TEXT DEFAULT 'read_only'",
+    },
 }
 
 

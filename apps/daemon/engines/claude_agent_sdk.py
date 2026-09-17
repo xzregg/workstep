@@ -35,8 +35,12 @@ from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
 from services.config import (
     CLAUDE_PERMISSION_MODES,
+    claude_custom_settings_env,
+    claude_custom_settings_rest,
+    claude_sandbox_env,
     claude_model_map_env,
     config_store,
+    normalize_claude_custom_settings,
     normalize_claude_model_map,
 )
 from services.chat_permissions import map_permission_overrides
@@ -224,6 +228,21 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                     "按引擎独立保存，需先保存配置再生效。"
                 ),
             ),
+            EngineConfigField(
+                key="custom_settings",
+                label="自定义配置 (JSON)",
+                type="json",
+                stage_hidden=True,
+                placeholder=(
+                    '{"env": {"ANTHROPIC_BASE_URL": "..."}, '
+                    '"permissions": {"ask": ["Bash(rm\\\\s)"]}}'
+                ),
+                help=(
+                    "整段 Claude Code settings JSON。env 会注入子进程环境；"
+                    "其余键与 WorkStep 技能配置合并后作为 SDK settings 覆盖。"
+                    "按引擎独立保存，需先保存配置再生效。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -242,14 +261,18 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             "permission_mode"
         ):
             raise ValueError("bypassPermissions 需要明确确认风险")
-        # 先校验映射再落盘，避免映射非法时其它字段已写一半。
+        # 先校验映射与自定义配置再落盘，避免非法输入时其它字段已写一半。
         model_map = normalize_claude_model_map(values.get("model_map"))
+        custom_settings = normalize_claude_custom_settings(
+            values.get("custom_settings")
+        )
         await asyncio.to_thread(
             config_store.set_claude_agent_sdk_config,
             max_turns=str(values.get("max_turns") or ""),
             permission_mode=mode,
             fallback_model=str(values.get("fallback_model") or ""),
             model_map=model_map,
+            custom_settings=custom_settings,
         )
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
@@ -628,6 +651,16 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             return
 
         event_queue: asyncio.Queue[InternalEvent | None] = asyncio.Queue()
+        stderr_lines: list[str] = []
+
+        def on_stderr(line: str) -> None:
+            """Keep the CLI's stderr so spawn failures can surface the real cause."""
+            text = str(line).rstrip()
+            if not text:
+                return
+            stderr_lines.append(text)
+            del stderr_lines[:-20]
+            logger.warning("claude-agent-sdk stderr: %s", text)
 
         async def can_use_tool(tool_name, input_data, context):
             allowed, updated_input = await self.handle_tool_permission(
@@ -657,6 +690,21 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
         plugin_dir, skill_names = await asyncio.to_thread(
             lambda: prepare_claude_plugin(self.project_skills(cwd))
         )
+        custom_settings = sdk_config.get("custom_settings")
+        # 已有配置优先：供应商 base url / 鉴权、模型映射以及供应商显式清理的键
+        # 都不允许被自定义 JSON 覆盖，textarea 只补充缺失的环境变量。
+        protected_env_keys = set(provider_runtime.env) | set(provider_runtime.unset_env)
+        custom_env = claude_custom_settings_env(custom_settings, protected_env_keys)
+        settings_payload = {
+            **claude_custom_settings_rest(custom_settings),
+            # WorkStep 管理的技能开关优先于用户自定义，避免绕过技能白名单。
+            "skillOverrides": {name: "on" for name in skill_names},
+        }
+        sandbox_env = claude_sandbox_env(sdk_config["permission_mode"])
+        if provider_runtime.provider_id or provider_runtime.env or sandbox_env or custom_env:
+            child_env = {**provider_runtime.child_env(), **custom_env, **sandbox_env}
+        else:
+            child_env = {}
         options = ClaudeAgentOptions(
             cwd=cwd,
             model=model or None,
@@ -665,17 +713,12 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
             resume=session_id or None,
             include_partial_messages=True,
             can_use_tool=can_use_tool,
-            env=(
-                provider_runtime.child_env()
-                if provider_runtime.provider_id or provider_runtime.env
-                else {}
-            ),
+            stderr=on_stderr,
+            env=child_env,
             plugins=[{"type": "local", "path": str(plugin_dir)}],
             skills=skill_names,
             setting_sources=[],
-            settings=json.dumps({
-                "skillOverrides": {name: "on" for name in skill_names},
-            }),
+            settings=json.dumps(settings_payload, ensure_ascii=False),
         )
         if add_dirs:
             options.add_dirs = list(add_dirs)
@@ -709,7 +752,19 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
 
         client = ClaudeSDKClient(options=options)
         self._client = client
-        await client.connect()
+        try:
+            await client.connect()
+        except Exception as exc:
+            detail = "\n".join(stderr_lines[-5:]).strip()
+            message = str(exc)
+            if detail and detail not in message:
+                message = f"{message}\n{detail}"
+            yield InternalEvent(type="error", data={"message": message})
+            try:
+                await client.disconnect()
+            except Exception:
+                logger.debug("claude-agent-sdk disconnect after connect failure", exc_info=True)
+            return
 
         turn_ended = asyncio.Event()
         end_prompt = asyncio.Event()

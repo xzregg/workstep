@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/task-dispatch", tags=["流程阶段"])
 
 class DispatchFile(BaseModel):
     source_step_key: str
+    source_round: int
     name: str
     relative_path: str
     content_b64: str
@@ -62,6 +63,7 @@ async def receive_dispatch(req: ReceiveDispatchRequest, project_id: str = Query(
                 destination.write_bytes(base64.b64decode(item.content_b64, validate=True))
                 manifest.append({
                     "source_step_key": item.source_step_key,
+                    "source_round": item.source_round,
                     "name": item.name,
                     "path": str(destination),
                 })

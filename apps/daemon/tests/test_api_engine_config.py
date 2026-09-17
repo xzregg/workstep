@@ -52,11 +52,13 @@ class MemoryEngineConfigStore:
         self.engine_providers = {}
         self.claude_permission_mode = ""
         self.claude_code_model_map = ""
+        self.claude_code_custom_settings = ""
         self.claude_agent_sdk_config = {
             "permission_mode": "",
             "max_turns": "",
             "fallback_model": "",
             "model_map": "",
+            "custom_settings": "",
         }
 
     # --- providers ---
@@ -135,13 +137,28 @@ class MemoryEngineConfigStore:
         self.claude_agent_sdk_config["permission_mode"] = mode
 
     def get_claude_code_config(self):
-        return {"model_map": self.claude_code_model_map}
+        return {
+            "model_map": self.claude_code_model_map,
+            "custom_settings": self.claude_code_custom_settings,
+        }
+
+    def set_claude_code_config(self, model_map=None, custom_settings=None):
+        from services.config import (
+            claude_model_map_json,
+            normalize_claude_custom_settings,
+            normalize_claude_model_map,
+        )
+        if model_map is not None:
+            self.claude_code_model_map = claude_model_map_json(
+                normalize_claude_model_map(model_map)
+            )
+        if custom_settings is not None:
+            self.claude_code_custom_settings = normalize_claude_custom_settings(
+                custom_settings
+            )
 
     def set_claude_code_model_map(self, model_map):
-        from services.config import claude_model_map_json, normalize_claude_model_map
-        self.claude_code_model_map = claude_model_map_json(
-            normalize_claude_model_map(model_map)
-        )
+        self.set_claude_code_config(model_map=model_map)
 
     def get_claude_agent_sdk_config(self):
         return dict(self.claude_agent_sdk_config)
@@ -152,10 +169,15 @@ class MemoryEngineConfigStore:
         permission_mode=None,
         fallback_model="",
         model_map=None,
+        custom_settings=None,
     ):
         if permission_mode is not None:
             self.set_claude_permission_mode(permission_mode)
-        from services.config import claude_model_map_json, normalize_claude_model_map
+        from services.config import (
+            claude_model_map_json,
+            normalize_claude_custom_settings,
+            normalize_claude_model_map,
+        )
         self.claude_agent_sdk_config.update({
             "max_turns": str(max_turns or ""),
             "fallback_model": str(fallback_model or ""),
@@ -163,6 +185,10 @@ class MemoryEngineConfigStore:
         if model_map is not None:
             self.claude_agent_sdk_config["model_map"] = claude_model_map_json(
                 normalize_claude_model_map(model_map)
+            )
+        if custom_settings is not None:
+            self.claude_agent_sdk_config["custom_settings"] = (
+                normalize_claude_custom_settings(custom_settings)
             )
 
     # --- Pydantic AI engine ---
@@ -1110,14 +1136,19 @@ async def test_engine_list_drops_api_engine_and_embeds_provider_select(engine_cl
         "permission_mode",
         "provider_id",
         "model_map",
+        "custom_settings",
     }
     claude_fields = {field["key"]: field for field in engines["claude"]["config"]["fields"]}
     assert claude_fields["model_map"]["type"] == "model_map"
     assert claude_fields["model_map"]["stage_hidden"] is True
-    # 结构化映射不进阶段配置模板，避免阶段覆盖整段替换全局映射。
-    assert "model_map" not in {
+    assert claude_fields["custom_settings"]["type"] == "json"
+    assert claude_fields["custom_settings"]["stage_hidden"] is True
+    # 结构化映射与自定义 JSON 不进阶段配置模板，避免阶段覆盖整段替换全局值。
+    stage_keys = {
         field["key"] for field in engines["claude"]["config"]["stage_fields"]
     }
+    assert "model_map" not in stage_keys
+    assert "custom_settings" not in stage_keys
 
 
 @pytest.mark.anyio
@@ -1299,6 +1330,45 @@ async def test_engine_config_save_persists_and_echoes_model_map(engine_client):
     assert rejected.json()["saved"] is False
     assert "格式不正确" in rejected.json()["message"]
     assert store.get_claude_code_config()["model_map"] == body["values"]["model_map"]
+
+
+@pytest.mark.anyio
+async def test_engine_config_save_persists_custom_settings_for_both_claude_engines(engine_client):
+    client, store = engine_client
+    custom = json.dumps({
+        "env": {"ANTHROPIC_BASE_URL": "http://192.168.50.21:3000"},
+        "permissions": {"ask": ["Bash(rm\\s)"]},
+        "model": "sonnet",
+    }, ensure_ascii=False)
+
+    for engine_id in ("claude", "claude-agent-sdk"):
+        saved = await client.put(
+            f"/api/engine/{engine_id}/config",
+            json={
+                "values": {
+                    "permission_mode": "acceptEdits",
+                    "custom_settings": custom,
+                }
+            },
+        )
+        body = saved.json()
+        assert body["saved"] is True, body
+        assert json.loads(body["values"]["custom_settings"])["env"] == {
+            "ANTHROPIC_BASE_URL": "http://192.168.50.21:3000",
+        }
+        # 保存不改写用户文本：空格与换行原样回显。
+        assert body["values"]["custom_settings"] == custom
+    assert json.loads(store.get_claude_code_config()["custom_settings"])["model"] == "sonnet"
+    assert json.loads(
+        store.get_claude_agent_sdk_config()["custom_settings"]
+    )["model"] == "sonnet"
+
+    rejected = await client.put(
+        "/api/engine/claude/config",
+        json={"values": {"permission_mode": "acceptEdits", "custom_settings": "{bad"}},
+    )
+    assert rejected.json()["saved"] is False
+    assert "JSON" in rejected.json()["message"]
 
 
 @pytest.mark.anyio
@@ -2035,37 +2105,64 @@ def test_claude_agent_sdk_and_codex_configs_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
     store = ConfigStore()
 
+    custom = json.dumps({"env": {"FOO": "bar"}, "permissions": {"ask": ["Bash(rm\\s)"]}})
     store.set_claude_agent_sdk_config(
         max_turns="25",
         permission_mode="acceptEdits",
         fallback_model="claude-haiku-latest",
+        custom_settings=custom,
     )
     sdk = store.get_claude_agent_sdk_config()
     assert sdk["max_turns"] == "25"
     assert sdk["fallback_model"] == "claude-haiku-latest"
     assert sdk["permission_mode"] == "acceptEdits"
+    assert json.loads(sdk["custom_settings"]) == {
+        "env": {"FOO": "bar"},
+        "permissions": {"ask": ["Bash(rm\\s)"]},
+    }
 
+    codex_custom = "model_context_window = 128000\n# comment\nmodel_max_output_tokens = 8192\n"
     store.set_codex_config(
         sandbox_mode="danger-full-access",
         model_reasoning_effort="high",
         approval_policy="never",
+        custom_config=codex_custom,
     )
     assert store.get_codex_config() == {
         "sandbox_mode": "danger-full-access",
         "model_reasoning_effort": "high",
         "approval_policy": "never",
+        "custom_config": codex_custom,
     }
 
     store.set_codex_sdk_config(
         model_reasoning_effort="medium",
         approval_mode="deny_all",
         sandbox="read-only",
+        custom_config=codex_custom,
     )
     assert store.get_codex_sdk_config() == {
         "model_reasoning_effort": "medium",
         "approval_mode": "deny_all",
         "sandbox": "read-only",
+        "custom_config": codex_custom,
     }
+
+
+def test_claude_custom_settings_preserves_user_whitespace(tmp_path, monkeypatch):
+    """保存不应重排 JSON：用户输入的空格与换行原样保留。"""
+    config_dir = tmp_path / ".workstep"
+    config_file = config_dir / "config.json"
+    monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+    store = ConfigStore()
+
+    pretty = '{\n  "env": {\n    "FOO": "bar"\n  },\n  "model": "sonnet"\n}\n'
+    store.set_claude_code_config(custom_settings=pretty)
+    store.set_claude_agent_sdk_config(custom_settings=pretty)
+
+    assert store.get_claude_code_config()["custom_settings"] == pretty
+    assert store.get_claude_agent_sdk_config()["custom_settings"] == pretty
 
 
 def test_claude_agent_sdk_and_codex_configs_validate_input(tmp_path, monkeypatch):
@@ -2078,9 +2175,19 @@ def test_claude_agent_sdk_and_codex_configs_validate_input(tmp_path, monkeypatch
     with pytest.raises(ValueError):
         store.set_claude_agent_sdk_config(max_turns="abc")
     with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(custom_settings="{not json")
+    with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(custom_settings="[]")
+    with pytest.raises(ValueError):
+        store.set_claude_agent_sdk_config(custom_settings='{"env": []}')
+    with pytest.raises(ValueError):
         store.set_claude_agent_sdk_config(max_turns="0")
     with pytest.raises(ValueError):
         store.set_codex_config(sandbox_mode="weird")
+    with pytest.raises(ValueError):
+        store.set_codex_config(custom_config="not-a-kv-line")
+    with pytest.raises(ValueError):
+        store.set_codex_sdk_config(custom_config="=missing-key")
     with pytest.raises(ValueError):
         store.set_codex_config(model_reasoning_effort="ultra")
     with pytest.raises(ValueError):
@@ -2306,3 +2413,43 @@ def test_engine_list_stage_fields_exclude_sensitive():
     for field in stage_fields:
         assert field["type"] != "password"
         assert field["sensitive"] is not True
+
+
+@pytest.mark.anyio
+async def test_provider_delete_blocked_by_project_reference(engine_client, monkeypatch):
+    """删除被项目流程/任务引用的供应商时返回 400 并列出位置。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+
+    class FakeProjectManager:
+        def provider_references(self, provider_id):
+            assert provider_id == provider["id"]
+            return [
+                {"project_name": "sass", "location": "阶段「需求」执行配置"},
+                {"project_name": "sass", "location": "阶段「UI 设计」执行配置"},
+            ]
+
+    monkeypatch.setattr(provider_api, "project_manager", FakeProjectManager())
+    blocked = await client.delete(f"/api/provider/{provider['id']}")
+    assert blocked.status_code == 400
+    detail = blocked.json()["detail"]
+    assert "2 处流程或任务引用" in detail
+    assert "sass：阶段「需求」执行配置" in detail
+    assert store.get_provider(provider["id"]) is not None
+
+
+@pytest.mark.anyio
+async def test_provider_delete_allowed_without_references(engine_client, monkeypatch):
+    """无任何引用时供应商可正常删除。"""
+    client, store = engine_client
+    provider = _add_provider(store)
+
+    class FakeProjectManager:
+        def provider_references(self, provider_id):
+            return []
+
+    monkeypatch.setattr(provider_api, "project_manager", FakeProjectManager())
+    deleted = await client.delete(f"/api/provider/{provider['id']}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True}
+    assert store.get_provider(provider["id"]) is None

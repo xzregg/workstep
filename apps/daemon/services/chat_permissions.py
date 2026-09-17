@@ -73,9 +73,9 @@ def map_permission_overrides(engine_id: str, mode: str) -> dict:
 # ── Plan mode (Codex-style lightbulb) ──────────────────────────────────
 
 PLAN_MODE_INSTRUCTION = (
-    "【计划模式】当前为计划模式：只进行研究、分析和制定方案，"
-    "不要修改、创建或删除任何文件，不要执行任何写操作；"
-    "输出清晰的实施计划并等待用户确认。"
+    "Plan mode: research, analyze, and plan only. Do not modify, create, or delete "
+    "files and do not perform write operations. Output a clear implementation plan "
+    "and wait for user confirmation."
 )
 
 

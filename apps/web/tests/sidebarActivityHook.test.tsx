@@ -61,7 +61,7 @@ function seedProjectState() {
     fetchProjects: async () => {},
   })
   useTaskStore.setState({ tasks: [] })
-  useChatListStore.setState({ sessions: [], fetchSessions: async () => {} })
+  useChatListStore.setState({ sessionsByProject: {}, fetchSessions: async () => {} })
   useChatSessionStore.setState({ sessions: {} } as never)
   useSidebarActivityStore.setState({
     completedWorkflows: {},
@@ -104,7 +104,7 @@ test('sidebar activity subscribes to live message status without an unstable sna
     fetchProjects: async () => {},
   })
   useTaskStore.setState({ tasks: [] })
-  useChatListStore.setState({ sessions: [], fetchSessions: async () => {} })
+  useChatListStore.setState({ sessionsByProject: {}, fetchSessions: async () => {} })
   useChatSessionStore.setState({
     sessions: {
       'session-1': {
@@ -140,7 +140,9 @@ function seedFailedSession() {
   })
   useTaskStore.setState({ tasks: [] })
   useChatListStore.setState({
-    sessions: [{ id: 'session-1', project_id: 'project-1', running: false }] as never,
+    sessionsByProject: {
+      'project-1': [{ id: 'session-1', project_id: 'project-1', running: false }] as never,
+    },
     fetchSessions: async () => {},
   } as never)
   useChatSessionStore.setState({
@@ -249,7 +251,7 @@ test('opening a failed workflow clears its red unread indicator', async () => {
     fetchProjects: async () => {},
   })
   useTaskStore.setState({ tasks: [] })
-  useChatListStore.setState({ sessions: [], fetchSessions: async () => {} })
+  useChatListStore.setState({ sessionsByProject: {}, fetchSessions: async () => {} })
   useChatSessionStore.setState({ sessions: {} } as never)
   useSidebarActivityStore.setState({ completedWorkflows: {}, readFailedWorkflows: {} })
   const container = document.body.appendChild(document.createElement('div'))
@@ -300,9 +302,11 @@ test('acknowledging a project keeps its roll-up dark for sessions loaded later',
     // The project's chat sessions only arrive after it becomes active.
     await act(async () => {
       useChatListStore.setState({
-        sessions: [
-          { id: 'session-1', project_id: 'project-1', running: false, last_message_status: 'error' },
-        ] as never,
+        sessionsByProject: {
+          'project-1': [
+            { id: 'session-1', project_id: 'project-1', running: false, last_message_status: 'error' },
+          ] as never,
+        },
       } as never)
     })
     assert.equal(container.textContent, 'readack')
@@ -317,7 +321,9 @@ test('a project roll-up lights up again when a later session turn fails', async 
   const window = setupDom('http://localhost/chat')
   seedProjectState()
   useChatListStore.setState({
-    sessions: [{ id: 'session-1', project_id: 'project-1', running: false }] as never,
+    sessionsByProject: {
+      'project-1': [{ id: 'session-1', project_id: 'project-1', running: false }] as never,
+    },
     fetchSessions: async () => {},
   } as never)
   useChatSessionStore.setState({

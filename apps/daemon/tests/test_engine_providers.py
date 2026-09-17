@@ -346,6 +346,109 @@ def test_hermes_provider_runtime_uses_openai_compatible_environment(provider_sto
     }
 
 
+@pytest.mark.anyio
+async def test_claude_code_provider_env_wins_over_custom_settings(
+    provider_store, monkeypatch, tmp_path
+):
+    """绑定供应商时 ANTHROPIC_BASE_URL / 鉴权以供应商为准，自定义 env 不能覆盖。"""
+    provider_store.save_provider(
+        _provider("claude-gateway", "anthropic_messages", type_id="anthropic")
+    )
+    provider_store.set_engine_provider("claude", "claude-gateway")
+    provider_store.set_claude_permission_mode("acceptEdits")
+    provider_store.set_claude_code_config(custom_settings=json.dumps({
+        "env": {
+            "ANTHROPIC_BASE_URL": "http://custom.invalid",
+            "ANTHROPIC_AUTH_TOKEN": "custom-token",
+            "CLAUDE_CODE_EFFORT_LEVEL": "max",
+        },
+    }))
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*_args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+        pass
+
+    env = captured["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "https://claude-gateway.example.com/v1"
+    assert env["ANTHROPIC_API_KEY"] == "secret-claude-gateway"
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    # 与供应商无关的自定义变量仍然保留。
+    assert env["CLAUDE_CODE_EFFORT_LEVEL"] == "max"
+
+
+@pytest.mark.anyio
+async def test_claude_code_model_map_env_wins_over_custom_settings(
+    provider_store, monkeypatch, tmp_path
+):
+    """模型映射已生成的 ANTHROPIC_DEFAULT_* 变量同样优先于自定义 JSON。"""
+    provider_store.set_claude_permission_mode("acceptEdits")
+    provider_store.set_claude_code_model_map(_MODEL_MAP_PAYLOAD)
+    provider_store.set_claude_code_config(custom_settings=json.dumps({
+        "env": {
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": "should-not-win",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "custom-opus",
+        },
+    }))
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*_args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+        pass
+
+    env = captured["env"]
+    assert env["ANTHROPIC_DEFAULT_SONNET_MODEL"] == "qwen3.8-max"
+    # 映射没覆盖的档位仍可由自定义 env 补上。
+    assert env["ANTHROPIC_DEFAULT_OPUS_MODEL"] == "custom-opus"
+
+
+@pytest.mark.anyio
+async def test_claude_code_custom_env_applies_without_provider(
+    provider_store, monkeypatch, tmp_path
+):
+    """未绑供应商时自定义 env 可自由指定 base url / token（原生登录或第三方中转）。"""
+    provider_store.set_claude_permission_mode("acceptEdits")
+    provider_store.set_claude_code_config(custom_settings=json.dumps({
+        "env": {
+            "ANTHROPIC_BASE_URL": "http://192.168.50.21:3000",
+            "ANTHROPIC_AUTH_TOKEN": "sk-custom",
+        },
+    }))
+    captured: dict[str, object] = {}
+
+    async def fake_exec(*_args, **kwargs):
+        captured.update(kwargs)
+        return _FakeProcess()
+
+    monkeypatch.setattr(
+        ClaudeCodeEngine, "resolve_binary", staticmethod(lambda: "/fake/claude")
+    )
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    async for _event in ClaudeCodeEngine().spawn(prompt="hello", cwd=str(tmp_path)):
+        pass
+
+    env = captured["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "http://192.168.50.21:3000"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "sk-custom"
+
+
 class _FakeStdin:
     def write(self, _data):
         return None

@@ -1,22 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Spinner from '../components/Spinner'
-import ArtifactPreview from '../components/ArtifactPreview'
-import TaskDetailView, {
-  type StageData,
-  type StageProgress,
-  type StageVisualState,
+import TaskDetailPage from '../components/TaskDetailPage'
+import type {
+  StageData,
+  StageProgress,
+  StageVisualState,
 } from '../components/TaskDetailView'
 import {
   shareApi,
+  type ReviewRun,
   type ShareMeta,
   type SharedTask,
   type TaskArtifact,
 } from '../api/client'
+import {
+  createOptimisticUserMessage,
+  isStageResumableWithMessage,
+  isTaskCompleted,
+  isTaskNotStarted,
+  resolveTaskDetailAdvanceState,
+  findPreferredArtifact,
+} from './taskDetailChat'
+import { a2uiActionMessageParams } from '../utils/a2ui'
 import { useI18n } from '../i18n'
-import { isTaskCompleted } from './taskDetailChat'
 
 type Phase =
   | { kind: 'loading-meta' }
@@ -25,6 +35,21 @@ type Phase =
   | { kind: 'loading-task' }
   | { kind: 'ready'; sessionToken: string }
   | { kind: 'error'; message: string }
+
+const MAX_LIVE_SHARED_EVENTS = 2000
+
+function appendCappedSharedEvent(events: any[] | undefined, event: any): any[] {
+  const combined = [...(events ?? []), event]
+  return combined.length > MAX_LIVE_SHARED_EVENTS
+    ? combined.slice(-MAX_LIVE_SHARED_EVENTS)
+    : combined
+}
+
+function capSharedHistoryEvents(message: any): any {
+  return Array.isArray(message?.events) && message.events.length > MAX_LIVE_SHARED_EVENTS
+    ? { ...message, events: message.events.slice(-MAX_LIVE_SHARED_EVENTS) }
+    : message
+}
 
 export default function SharedTaskView() {
   const { token } = useParams<{ token: string }>()
@@ -35,6 +60,7 @@ export default function SharedTaskView() {
   const [task, setTask] = useState<SharedTask | null>(null)
   const [messages, setMessages] = useState<any[]>([])
   const [artifacts, setArtifacts] = useState<TaskArtifact[]>([])
+  const [reviews, setReviews] = useState<ReviewRun[]>([])
   const [previewArtifact, setPreviewArtifact] =
     useState<TaskArtifact | null>(null)
   const [artifactNotice, setArtifactNotice] = useState<string | null>(null)
@@ -43,6 +69,12 @@ export default function SharedTaskView() {
   const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'live'>('disconnected')
   const [selectedStage, setSelectedStage] = useState(0)
   const [durationNowMs, setDurationNowMs] = useState(() => Date.now())
+  const [chatTarget, setChatTarget] = useState<string | 'coordinator'>('coordinator')
+  const [prompt, setPrompt] = useState('')
+  const [chatError, setChatError] = useState('')
+  const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
+  const [reviewActionPending, setReviewActionPending] = useState(false)
+  const [reviewComment, setReviewComment] = useState('')
   const selectedStageTaskRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reunlockAttemptsRef = useRef(0)
@@ -53,14 +85,16 @@ export default function SharedTaskView() {
   const loadWithSession = useCallback(async (sessionToken: string) => {
     if (!token) return
     setPhase({ kind: 'loading-task' })
-    const [taskData, historyData, artifactsData] = await Promise.all([
+    const [taskData, historyData, artifactsData, reviewsData] = await Promise.all([
       shareApi.task(token, sessionToken),
       shareApi.history(token, sessionToken),
       shareApi.artifacts(token, sessionToken),
+      shareApi.reviews(token, sessionToken).catch(() => ({ reviews: [] })),
     ])
     setTask(taskData)
-    setMessages(historyData.messages)
+    setMessages(historyData.messages.map(capSharedHistoryEvents))
     setArtifacts(artifactsData.artifacts)
+    setReviews(reviewsData.reviews || [])
     setPhase({ kind: 'ready', sessionToken })
   }, [token])
 
@@ -167,6 +201,10 @@ export default function SharedTaskView() {
       const mid = ev?.messageId ?? ev?.message_id
       const isTextChunk = evType === 'text_delta' || evType === 'TEXT_MESSAGE_CHUNK'
       const isReasoning = evType === 'thinking_delta' || evType === 'REASONING_MESSAGE_CHUNK'
+      const isInteraction = evType === 'interaction_request'
+        || evType === 'interaction_response'
+        || ev?.name === 'workstep.interaction_request'
+        || ev?.name === 'workstep.interaction_response'
       if (isTextChunk || isReasoning) {
         const messageId = mid
         if (!messageId) return
@@ -192,7 +230,7 @@ export default function SharedTaskView() {
           if (isTextChunk) {
             next.content = (next.content ?? '') + (ev.delta ?? ev.text ?? '')
           } else {
-            next.events = [...(next.events ?? []), ev]
+            next.events = appendCappedSharedEvent(next.events, ev)
           }
           const copy = prev.slice()
           copy[idx] = next
@@ -213,7 +251,19 @@ export default function SharedTaskView() {
           const idx = prev.findIndex((m) => m.id === messageId)
           if (idx === -1) return prev
           const existing = prev[idx]
-          const next = { ...existing, events: [...(existing.events ?? []), ev] }
+          const next = { ...existing, events: appendCappedSharedEvent(existing.events, ev) }
+          const copy = prev.slice()
+          copy[idx] = next
+          return copy
+        })
+      } else if (isInteraction) {
+        const messageId = mid
+        if (!messageId) return
+        setMessages((prev) => {
+          const idx = prev.findIndex((m) => m.id === messageId)
+          if (idx === -1) return prev
+          const existing = prev[idx]
+          const next = { ...existing, events: appendCappedSharedEvent(existing.events, ev) }
           const copy = prev.slice()
           copy[idx] = next
           return copy
@@ -260,6 +310,10 @@ export default function SharedTaskView() {
           ev?.name === 'workstep.review_result'
         )
       ) {
+        const shouldRefreshReviews = evType === 'review_status'
+          || evType === 'review_result'
+          || ev?.name === 'workstep.review_status'
+          || ev?.name === 'workstep.review_result'
         shareApi
           .task(currentToken, sessionToken)
           .then((fresh) => {
@@ -268,6 +322,16 @@ export default function SharedTaskView() {
           .catch(() => {
             /* swallow */
           })
+        if (shouldRefreshReviews) {
+          shareApi
+            .reviews(currentToken, sessionToken)
+            .then((fresh) => {
+              if (!closed) setReviews(fresh.reviews || [])
+            })
+            .catch(() => {
+              /* swallow */
+            })
+        }
       }
     }
 
@@ -475,31 +539,189 @@ export default function SharedTaskView() {
   const activeStageColor = activeStage.color || 'var(--accent)'
   const executionStageModel = activeStage?.model || task?.model || ''
   const taskCompleted = isTaskCompleted(task?.steps || [])
+  const interactive = meta?.mode === 'interactive'
+  const runningStages = useMemo(
+    () => stages.filter((stage) => (
+      stageProgress.some((progress) => (
+        progress.step_key === stage.key && progress.status === 'running'
+      ))
+    )),
+    [stages, stageProgress],
+  )
+
+  const resumableStages = useMemo(
+    () => stages.filter((stage) => (
+      stageProgress.some((progress) => (
+        progress.step_key === stage.key
+        && isStageResumableWithMessage(progress.status, progress.has_history)
+      ))
+    )),
+    [stages, stageProgress],
+  )
+
+  useEffect(() => {
+    if (!interactive) return
+    setChatTarget((current) => {
+      if (runningStages.some((stage) => stage.key === current)) return current
+      if (resumableStages.some((stage) => stage.key === current)) return current
+      return runningStages[0]?.key ?? resumableStages[0]?.key ?? current
+    })
+  }, [interactive, runningStages, resumableStages])
+
+  const refreshSharedTask = useCallback(async (sessionToken: string) => {
+    if (!token) return
+    const fresh = await shareApi.task(token, sessionToken)
+    setTask(fresh)
+  }, [token])
+
+  const sendStageContent = useCallback(async (content: string): Promise<boolean> => {
+    if (!token || phase.kind !== 'ready' || !task) return false
+    const selectedTargetReady = chatTarget !== 'coordinator' && (
+      runningStages.some((stage) => stage.key === chatTarget)
+      || resumableStages.some((stage) => stage.key === chatTarget)
+    )
+    const target = selectedTargetReady
+      ? chatTarget
+      : runningStages[0]?.key || resumableStages[0]?.key
+    if (!target) {
+      setChatError(t('share.noInteractiveStage'))
+      return false
+    }
+    setChatError('')
+    try {
+      const stageProgressItem = stageProgress.find((item) => item.step_key === target)
+      const canResume = stageProgressItem
+        && isStageResumableWithMessage(
+          stageProgressItem.status,
+          stageProgressItem.has_history,
+        )
+      const accepted = canResume
+        ? await shareApi.resumeStage(token, phase.sessionToken, target, content)
+        : await shareApi.sendStageMessage(
+            token,
+            phase.sessionToken,
+            task.id,
+            target,
+            content,
+          )
+      setMessages((current) => [
+        ...current,
+        createOptimisticUserMessage(
+          accepted.message_id,
+          content,
+          target,
+          accepted.created_at || new Date().toISOString(),
+        ),
+      ])
+      await refreshSharedTask(phase.sessionToken)
+      return true
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+      return false
+    }
+  }, [
+    token,
+    phase,
+    task,
+    chatTarget,
+    stageProgress,
+    runningStages,
+    resumableStages,
+    t,
+    refreshSharedTask,
+  ])
+
+  const handleSend = useCallback(async () => {
+    const content = prompt.trim()
+    if (!content) return
+    const sent = await sendStageContent(content)
+    if (sent) setPrompt('')
+  }, [prompt, sendStageContent])
+
+  const handleA2uiAction = useCallback((action: A2uiClientAction) => {
+    const content = t(
+      'taskDetail.a2uiActionMessage',
+      a2uiActionMessageParams(action),
+    )
+    void sendStageContent(content)
+  }, [sendStageContent, t])
+
+  const handleStopStage = useCallback(async (stepKey: string) => {
+    if (!token || phase.kind !== 'ready') return
+    if (stoppingStepKeys.includes(stepKey)) return
+    setStoppingStepKeys((current) => [...current, stepKey])
+    setChatError('')
+    try {
+      await shareApi.cancelStage(token, phase.sessionToken, stepKey)
+      await refreshSharedTask(phase.sessionToken)
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
+    } finally {
+      setStoppingStepKeys((current) => current.filter((key) => key !== stepKey))
+    }
+  }, [
+    token,
+    phase,
+    stoppingStepKeys,
+    t,
+    refreshSharedTask,
+  ])
+
+  const handleReviewAction = useCallback(async (
+    decision: 'approve' | 'reject' | 'force-approve',
+    review?: ReviewRun,
+    stepKey?: string,
+  ) => {
+    if (!token || phase.kind !== 'ready' || !review || !stepKey) return
+    setReviewActionPending(true)
+    setChatError('')
+    try {
+      await shareApi.decideReview(
+        token,
+        phase.sessionToken,
+        stepKey,
+        review.id,
+        decision,
+        reviewComment.trim() || undefined,
+      )
+      setReviewComment('')
+      const [reviewsData] = await Promise.all([
+        shareApi.reviews(token, phase.sessionToken),
+        refreshSharedTask(phase.sessionToken),
+      ])
+      setReviews(reviewsData.reviews || [])
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('common.unknownError'))
+    } finally {
+      setReviewActionPending(false)
+    }
+  }, [
+    token,
+    phase,
+    reviewComment,
+    t,
+    refreshSharedTask,
+  ])
+
+  const handleInteractionRespond = useCallback(async (
+    interactionId: string,
+    response: Record<string, unknown>,
+  ) => {
+    if (!token || phase.kind !== 'ready') return
+    await shareApi.respondInteraction(
+      token,
+      phase.sessionToken,
+      interactionId,
+      response,
+    )
+  }, [token, phase])
 
   const findArtifact = (
     name: string,
     preferredStepKey?: string,
     source?: TaskArtifact[],
   ) => {
-    const normalize = (value: string) =>
-      value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
-    const normalizedName = normalize(name)
-    const list = source || artifacts
-    const candidates = preferredStepKey
-      ? list.filter((artifact) => artifact.step_key === preferredStepKey)
-      : list
-    return (
-      candidates.find((artifact) => artifact.logical_name === name) ||
-      candidates.find((artifact) => {
-        const artifactName = normalize(
-          artifact.logical_name || artifact.name,
-        )
-        return (
-          artifactName.includes(normalizedName) ||
-          normalizedName.includes(artifactName)
-        )
-      })
-    )
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
   }
 
   const openArtifact = (name: string, preferredStepKey?: string) => {
@@ -509,6 +731,32 @@ export default function SharedTaskView() {
     } else {
       setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
       window.setTimeout(() => setArtifactNotice(null), 3000)
+    }
+  }
+
+  // 底部主操作与 owner 弹窗共用同一状态机；分享页只开放可交互分享的推进动作。
+  const taskNotStarted = isTaskNotStarted(task?.steps || [])
+  const activeStageProgress = stageProgress[activeStageIndex]
+  const activeStepStatus = activeStageProgress?.status || 'pending'
+  const activeReview = reviews.find(
+    (review) => review.step_key === activeStage.key,
+  )
+  const shareAdvanceState = resolveTaskDetailAdvanceState({
+    taskNotStarted,
+    running: false,
+    taskStatus: task?.status,
+    stepStates: task?.steps || [],
+    activeStepStatus,
+    reviewActionPending,
+    hasActiveReview: Boolean(activeReview),
+    t,
+  })
+  const handleShareAdvance = () => {
+    if (!interactive || !activeReview) return
+    if (activeStepStatus === 'awaiting_review') {
+      void handleReviewAction('approve', activeReview, activeStage.key)
+    } else if (activeStepStatus === 'rejected') {
+      void handleReviewAction('force-approve', activeReview, activeStage.key)
     }
   }
 
@@ -648,115 +896,66 @@ export default function SharedTaskView() {
     </>
   )
 
+  const canAdvanceReview = interactive
+    && (activeStepStatus === 'awaiting_review' || activeStepStatus === 'rejected')
+  const sharePrimaryAction = canAdvanceReview
+    ? {
+        label: shareAdvanceState.label,
+        disabled: shareAdvanceState.disabled,
+        loading: reviewActionPending,
+        onClick: handleShareAdvance,
+      }
+    : undefined
+
   return (
     <SharePageShell>
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {artifactNotice && (
-          <div
-            role="status"
-            style={{
-              padding: '8px 16px',
-              fontSize: 'calc(13px * var(--font-scale))',
-              color: 'var(--warn, var(--meta))',
-              background: 'color-mix(in oklab, var(--warn, var(--border)), transparent 90%)',
-              borderBottom: '1px solid var(--border-soft)',
-              flexShrink: 0,
-            }}
-          >
-            {artifactNotice}
-          </div>
-        )}
-        <TaskDetailView
-          readOnly={true}
-          task={task}
-          stages={stages}
-          stageProgress={stageProgress}
-          selectedStage={selectedStage}
-          onStageClick={setSelectedStage}
-          historyMessages={messages}
-          liveMessages={{}}
-          events={[]}
-          content=""
-          reviews={[]}
-          artifacts={artifacts}
-          onOpenArtifact={openArtifact}
-          headerActions={headerActions}
-          locale={locale}
-          durationNowMs={durationNowMs}
-          currentStage={currentStage}
-          activeStage={activeStage}
-          currentStageColor={currentStageColor}
-          activeStageColor={activeStageColor}
-          taskCompleted={taskCompleted}
-          runningStages={[]}
-          executionStageModel={executionStageModel}
-          sessionIdForStep={() => null}
-          onViewingPromptChange={() => {}}
-          running={false}
-        />
-      </div>
-      {previewArtifact && (
-        <div
-          role="dialog"
-          aria-label={t('taskDetail.artifactPreviewAria', {
-            name: previewArtifact.logical_name || previewArtifact.name,
-          })}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1250,
-            background: 'rgba(0,0,0,0.35)',
-            padding: '5vh 6vw',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onClick={() => setPreviewArtifact(null)}
-        >
-          <div
-            style={{
-              width: 'min(900px, 90vw)',
-              height: 'min(720px, 88vh)',
-              background: 'var(--bg)',
-              borderRadius: 12,
-              overflow: 'hidden',
-              boxShadow: '0 18px 48px rgba(0,0,0,0.24)',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="dialog-header" style={{ padding: '12px 16px' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                  {previewArtifact.logical_name || previewArtifact.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 'calc(11px * var(--font-scale))',
-                    color: 'var(--meta)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {previewArtifact.path}
-                </div>
-              </div>
-              <Button variant="icon" onClick={() => setPreviewArtifact(null)}>
-                ✕
-              </Button>
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <ArtifactPreview
-                path={previewArtifact.path}
-                isDir={!!previewArtifact.is_dir}
-                onClose={() => setPreviewArtifact(null)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <TaskDetailPage
+        readOnly={!interactive}
+        interactionOnly={interactive}
+        task={task}
+        stages={stages}
+        stageProgress={stageProgress}
+        selectedStage={selectedStage}
+        onStageClick={setSelectedStage}
+        historyMessages={messages}
+        liveMessages={{}}
+        events={[]}
+        content=""
+        reviews={reviews}
+        reviewActionPending={reviewActionPending}
+        reviewComment={reviewComment}
+        onReviewCommentChange={setReviewComment}
+        onReviewAction={interactive ? handleReviewAction : undefined}
+        chatTarget={chatTarget}
+        onChatTargetChange={setChatTarget}
+        chatError={chatError}
+        prompt={prompt}
+        onPromptChange={setPrompt}
+        onSend={interactive ? handleSend : undefined}
+        onStopStage={interactive ? handleStopStage : undefined}
+        stoppingStepKeys={stoppingStepKeys}
+        onA2uiAction={interactive ? handleA2uiAction : undefined}
+        onInteractionRespond={interactive ? handleInteractionRespond : undefined}
+        artifacts={artifacts}
+        onOpenArtifact={openArtifact}
+        headerActions={headerActions}
+        locale={locale}
+        durationNowMs={durationNowMs}
+        currentStage={currentStage}
+        activeStage={activeStage}
+        currentStageColor={currentStageColor}
+        activeStageColor={activeStageColor}
+        taskCompleted={taskCompleted}
+        runningStages={interactive ? runningStages : []}
+        executionStageModel={executionStageModel}
+        sessionIdForStep={() => null}
+        onViewingPromptChange={() => {}}
+        running={task.status === 'running'}
+        primaryAction={sharePrimaryAction}
+        previewArtifact={previewArtifact}
+        onCloseArtifactPreview={() => setPreviewArtifact(null)}
+        artifactNotice={artifactNotice || undefined}
+      />
     </SharePageShell>
   )
 }

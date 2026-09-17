@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { randomUuid } from '../utils/uuid'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import {
@@ -36,13 +37,6 @@ export interface AiTaskCreateChatProps {
   onDraft: (draft: TaskDraftResult) => void
   onBusyChange?: (busy: boolean) => void
   onClose?: () => void
-}
-
-function randomId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `task-draft-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 export default function AiTaskCreateChat({
@@ -164,7 +158,7 @@ export default function AiTaskCreateChat({
     setSendError('')
     let sid = sessionId
     if (!sid) {
-      sid = randomId()
+      sid = randomUuid()
       useTaskDraftStore.getState().newSession(sid)
       setSessionId(sid)
     }
@@ -174,7 +168,7 @@ export default function AiTaskCreateChat({
     // 先让服务端订阅到该会话，再发起引擎调用，避免首条事件被过滤丢弃。
     flushWsSubscriptionNow()
     try {
-      const accepted = await taskDraftApi.chat(projectId, content, sid, randomId(), {
+      const accepted = await taskDraftApi.chat(projectId, content, sid, randomUuid(), {
         title: taskTitle,
         description: taskDescription,
         workflowId,

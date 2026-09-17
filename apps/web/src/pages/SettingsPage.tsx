@@ -1453,6 +1453,9 @@ export default function SettingsPage({
                     )}
 
                   </div>
+                  {engine.runtime_manageable && (
+                    <EngineRuntimeControl engineId={engine.id} onChanged={() => loadEngines(true)} />
+                  )}
                   {engine.installed && (
                     <Button
                       variant="ghost"
@@ -1509,9 +1512,6 @@ export default function SettingsPage({
                     </Button>
                   )}
                   </div>
-                  {engine.runtime_manageable && (
-                    <EngineRuntimeControl engineId={engine.id} onChanged={() => loadEngines(true)} />
-                  )}
                   <div style={{ display: isExpanded ? undefined : 'none' }}>
                   {engine.config && (
                     <EngineConfigForm

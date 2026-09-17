@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import threading
 from typing import get_args, get_type_hints
 
 import pytest
@@ -14,6 +15,7 @@ from engines.core.events import (
     usage_update_event,
 )
 from engines.core.registry import ENGINE_REGISTRY, get_available_engines, create_engine
+import engines.core.registry as engine_registry
 from engines.claude_code import ClaudeCodeEngine
 import engines.core.base as engine_base
 
@@ -202,6 +204,58 @@ def test_create_engine():
 def test_create_engine_unknown():
     """create_engine returns None for unknown backend."""
     assert create_engine("unknown") is None
+
+
+def test_create_engine_waits_for_registry_refresh(monkeypatch):
+    """聊天提交不得观察到刷新过程中被暂时清空的引擎注册表。"""
+    original_registry = ENGINE_REGISTRY.copy()
+    refresh_entered = threading.Event()
+    allow_refresh = threading.Event()
+
+    class RefreshProbeEngine(StubEngine):
+        def __init__(self):
+            super().__init__([])
+
+        @staticmethod
+        def is_installed():
+            refresh_entered.set()
+            assert allow_refresh.wait(timeout=2)
+            return True
+
+    monkeypatch.setattr(
+        engine_registry,
+        "_ALL_ENGINES",
+        {"refresh_probe": RefreshProbeEngine},
+    )
+    monkeypatch.setattr(engine_registry, "_apply_binary_overrides", lambda: None)
+    monkeypatch.setitem(ENGINE_REGISTRY, "refresh_probe", RefreshProbeEngine)
+
+    refresh_thread = threading.Thread(target=engine_registry.refresh_registry)
+    create_thread = None
+    try:
+        refresh_thread.start()
+        assert refresh_entered.wait(timeout=2)
+
+        result = []
+        create_thread = threading.Thread(
+            target=lambda: result.append(create_engine("refresh_probe"))
+        )
+        create_thread.start()
+        create_thread.join(timeout=0.05)
+
+        assert create_thread.is_alive()
+        allow_refresh.set()
+        refresh_thread.join(timeout=2)
+        create_thread.join(timeout=2)
+
+        assert isinstance(result[0], RefreshProbeEngine)
+    finally:
+        allow_refresh.set()
+        refresh_thread.join(timeout=2)
+        if create_thread is not None:
+            create_thread.join(timeout=2)
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original_registry)
 
 
 def test_engine_install_base_defaults():

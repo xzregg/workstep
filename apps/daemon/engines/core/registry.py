@@ -7,6 +7,7 @@
 import importlib
 import logging
 import pkgutil
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
@@ -65,6 +66,7 @@ COORDINATOR_FALLBACK_ORDER = _COORDINATOR_BASE_ORDER + [
 
 # Public registry: backend name → resolved engine class
 ENGINE_REGISTRY: dict[str, type[AcpEngineBase]] = {}
+_REGISTRY_LOCK = threading.RLock()
 
 
 def _apply_binary_overrides():
@@ -92,11 +94,12 @@ def refresh_registry(*, invalidate_scan: bool = True):
     ``invalidate_scan=False`` rebuilds the engine registry without dropping
     the cached engine list (used by read-only lookups such as model lists).
     """
-    ENGINE_REGISTRY.clear()
-    _apply_binary_overrides()
-    _resolve_registry()
-    if invalidate_scan:
-        _invalidated_scan_generation()
+    with _REGISTRY_LOCK:
+        ENGINE_REGISTRY.clear()
+        _apply_binary_overrides()
+        _resolve_registry()
+        if invalidate_scan:
+            _invalidated_scan_generation()
 
 
 _VERSION_CACHE: dict[str, tuple[float, str | None]] = {}
@@ -291,10 +294,11 @@ def create_engine(backend: str) -> AcpEngineBase | None:
 
     上层只依赖 ``AcpEngineBase``（ACP 协议接口）；自定义函数经基类继承获得。
     """
-    cls = ENGINE_REGISTRY.get(backend)
-    if not cls:
-        return None
-    return cls()
+    with _REGISTRY_LOCK:
+        cls = ENGINE_REGISTRY.get(backend)
+        if not cls:
+            return None
+        return cls()
 
 
 def list_all_engines() -> dict[str, type[AcpEngineBase]]:

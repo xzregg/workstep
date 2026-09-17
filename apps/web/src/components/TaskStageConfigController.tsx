@@ -5,7 +5,6 @@ import { initialStageConfig } from '../utils/stageConfig'
 import type { ChatInputEngineConfig } from './ChatInput'
 import ChatEngineHandoffDialog from './ChatEngineHandoffDialog'
 import { useI18n } from '../i18n'
-import ConfirmDialog from './ConfirmDialog'
 
 export interface TaskStageConfigState {
   inputConfig: ChatInputEngineConfig | null
@@ -37,10 +36,6 @@ export default function TaskStageConfigController({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [handoffTarget, setHandoffTarget] = useState<StageExecutionSelection | null>(null)
-  const [fieldConfirmation, setFieldConfirmation] = useState<{
-    label: string
-    selection: StageExecutionSelection
-  } | null>(null)
 
   // 阶段/任务切换时丢弃旧详情（引擎可用性变化时保留，避免下拉闪一下空白）。
   useEffect(() => {
@@ -48,7 +43,6 @@ export default function TaskStageConfigController({
     setError('')
     setNotice('')
     setHandoffTarget(null)
-    setFieldConfirmation(null)
   }, [projectId, taskId, stepKey])
 
   useEffect(() => {
@@ -140,7 +134,6 @@ export default function TaskStageConfigController({
         else config[key] = value
         const model = key === 'provider_id' ? '' : selection.model
         const next = { ...selection, model, config }
-        const field = stageFields.find((item) => item.key === key)
         // 同引擎换供应商：旧引擎会话绑定在另一个供应商端点上，先确认交接方式。
         if (
           key === 'provider_id'
@@ -150,11 +143,7 @@ export default function TaskStageConfigController({
           setHandoffTarget(next)
           return
         }
-        if (field?.confirm_values?.includes(value)) {
-          setFieldConfirmation({ label: field.label, selection: next })
-        } else {
-          void save(next)
-        }
+        void save(next)
       },
       onReset: () => {
         if (disabled) return
@@ -203,24 +192,6 @@ export default function TaskStageConfigController({
           if (!handoffTarget) return
           void save(handoffTarget, input.context_mode).then((saved) => {
             if (saved) setHandoffTarget(null)
-          })
-        }}
-      />
-      <ConfirmDialog
-        open={fieldConfirmation !== null}
-        title={fieldConfirmation
-          ? t('engineForm.confirmTitle', { label: fieldConfirmation.label })
-          : ''}
-        message={fieldConfirmation
-          ? t('engineForm.confirmMessage', { label: fieldConfirmation.label })
-          : undefined}
-        confirmText={t('engineForm.confirmSave')}
-        loading={saving}
-        onCancel={() => setFieldConfirmation(null)}
-        onConfirm={() => {
-          if (!fieldConfirmation) return
-          void save(fieldConfirmation.selection).then((saved) => {
-            if (saved) setFieldConfirmation(null)
           })
         }}
       />

@@ -99,7 +99,7 @@ test('chat session stays running when history or a stream chunk contains a runni
 })
 
 test('chat list store tracks the project session list', () => {
-  useChatListStore.setState({ sessions: [] })
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
   const store = useChatListStore.getState()
 
   store.addSession(summary('s1', '第一个会话'))
@@ -107,25 +107,90 @@ test('chat list store tracks the project session list', () => {
   store.addSession(summary('s3', '第三个会话'))
 
   assert.deepEqual(
-    useChatListStore.getState().sessions.map((s) => s.id),
+    useChatListStore.getState().sessionsByProject.p1.map((s) => s.id),
     ['s3', 's2', 's1'],
   )
 
   store.renameSession('s1', '改名了')
   assert.equal(
-    useChatListStore.getState().sessions.find((s) => s.id === 's1')?.title,
+    useChatListStore.getState().sessionsByProject.p1.find((s) => s.id === 's1')?.title,
     '改名了',
   )
 
   store.removeSession('s1')
   assert.deepEqual(
-    useChatListStore.getState().sessions.map((s) => s.id),
+    useChatListStore.getState().sessionsByProject.p1.map((s) => s.id),
     ['s3', 's2'],
   )
 })
 
+test('chat list store keeps sessions separated by project', () => {
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
+  const store = useChatListStore.getState()
+
+  store.addSession({ ...summary('p1-s1', '项目一'), project_id: 'p1' })
+  store.addSession({ ...summary('p2-s1', '项目二'), project_id: 'p2' })
+
+  assert.deepEqual(
+    useChatListStore.getState().sessionsByProject.p1.map((session) => session.id),
+    ['p1-s1'],
+  )
+  assert.deepEqual(
+    useChatListStore.getState().sessionsByProject.p2.map((session) => session.id),
+    ['p2-s1'],
+  )
+
+  store.renameSession('p1-s1', '项目一改名')
+  assert.equal(useChatListStore.getState().sessionsByProject.p1[0].title, '项目一改名')
+  assert.equal(useChatListStore.getState().sessionsByProject.p2[0].title, '项目二')
+})
+
+test('chat list selection is scoped to a single project', () => {
+  useChatListStore.setState({
+    sessionsByProject: {
+      p1: [{ ...summary('p1-s1', '项目一'), project_id: 'p1' }],
+      p2: [{ ...summary('p2-s1', '项目二'), project_id: 'p2' }],
+    },
+    selectedIds: new Set(),
+    selectionProjectId: null,
+    selectAnchor: null,
+  })
+  const store = useChatListStore.getState()
+
+  store.handleSelect('p1-s1', {}, 'p1')
+  assert.deepEqual([...useChatListStore.getState().selectedIds], ['p1-s1'])
+  assert.equal(useChatListStore.getState().selectionProjectId, 'p1')
+
+  store.handleSelect('p2-s1', { meta: true }, 'p2')
+  assert.deepEqual([...useChatListStore.getState().selectedIds], ['p2-s1'])
+  assert.equal(useChatListStore.getState().selectionProjectId, 'p2')
+})
+
+test('chat list store fetches projects concurrently without overwriting each other', async () => {
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
+  const originalFetch = globalThis.fetch
+  const resolvers: Record<string, (value: Response) => void> = {}
+  globalThis.fetch = (input) => {
+    const url = String(input)
+    const projectId = url.includes('project_id=p1') ? 'p1' : 'p2'
+    return new Promise<Response>((resolve) => { resolvers[projectId] = resolve })
+  }
+  try {
+    const p1 = useChatListStore.getState().fetchSessions('p1')
+    const p2 = useChatListStore.getState().fetchSessions('p2')
+    resolvers.p2(new Response(JSON.stringify({ sessions: [{ ...summary('p2-s1', '项目二'), project_id: 'p2' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    resolvers.p1(new Response(JSON.stringify({ sessions: [{ ...summary('p1-s1', '项目一'), project_id: 'p1' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    await Promise.all([p1, p2])
+
+    assert.deepEqual(useChatListStore.getState().sessionsByProject.p1.map((session) => session.id), ['p1-s1'])
+    assert.deepEqual(useChatListStore.getState().sessionsByProject.p2.map((session) => session.id), ['p2-s1'])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('chat list store reorders sessions optimistically and persists', async () => {
-  useChatListStore.setState({ sessions: [] })
+  useChatListStore.setState({ sessionsByProject: {}, listLoadingByProject: {} })
   useChatListStore.getState().addSession(summary('s1', '一'))
   useChatListStore.getState().addSession(summary('s2', '二'))
   useChatListStore.getState().addSession(summary('s3', '三'))
@@ -144,7 +209,7 @@ test('chat list store reorders sessions optimistically and persists', async () =
   try {
     await useChatListStore.getState().reorderSessions('p1', ['s3', 's1', 's2'])
     assert.deepEqual(
-      useChatListStore.getState().sessions.map((s) => s.id),
+      useChatListStore.getState().sessionsByProject.p1.map((s) => s.id),
       ['s3', 's1', 's2'],
     )
     assert.match(sentUrl, /chat-sessions\/reorder/)

@@ -8,6 +8,17 @@ import { ReactFlowProvider } from '@xyflow/react'
 import FlowCanvas, { type FlowCanvasHandle } from '../src/components/FlowCanvas'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 
+function setNativeValue(
+  window: Window,
+  element: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+) {
+  const prototype = element instanceof window.HTMLInputElement
+    ? window.HTMLInputElement.prototype
+    : window.HTMLTextAreaElement.prototype
+  Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value)
+}
+
 function installDom() {
   useLocaleStore.getState().setLocale('zh-CN')
   const window = new Window({ url: 'http://localhost/' })
@@ -70,7 +81,7 @@ test('bookmarks round-trip separately from executable stages and can be added fr
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
   const canvasRef = createRef<FlowCanvasHandle>()
-  const bookmark = { id: 'note-1', text: '发布前检查', position: { x: 40, y: 80 }, width: 420, height: 280 }
+  const bookmark = { id: 'note-1', title: '发布检查', text: '发布前检查', position: { x: 40, y: 80 }, width: 420, height: 280 }
   try {
     await act(async () => root.render(
       <I18nProvider><ReactFlowProvider>
@@ -80,10 +91,22 @@ test('bookmarks round-trip separately from executable stages and can be added fr
     assert.deepEqual(canvasRef.current?.getSteps().bookmarks, [bookmark])
     assert.deepEqual(canvasRef.current?.getSteps().nodes, [])
     assert.equal(canvasRef.current?.validate(), null)
+    const titleInput = container.querySelector('.flow-bookmark-header input[aria-label="书签标题"]')!
     const textarea = container.querySelector('textarea')!
+    assert.equal(titleInput.value, '发布检查')
     assert.equal(textarea.value, '发布前检查')
+    assert.equal(
+      textarea.classList.contains('nowheel'),
+      false,
+      'bookmark notes must not block canvas zoom',
+    )
     await act(async () => {
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, '检查完成\n可以发布')
+      setNativeValue(window, titleInput, '上线前')
+      titleInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].title, '上线前')
+    await act(async () => {
+      setNativeValue(window, textarea, '检查完成\n可以发布')
       textarea.dispatchEvent(new window.Event('input', { bubbles: true }))
     })
     assert.equal(canvasRef.current?.getSteps().bookmarks[0].text, '检查完成\n可以发布')
@@ -108,8 +131,58 @@ test('bookmarks round-trip separately from executable stages and can be added fr
         <FlowCanvas ref={canvasRef} readOnly initialSteps={saved} onSave={() => {}} />
       </ReactFlowProvider></I18nProvider>,
     ))
+    assert.equal(container.querySelector<HTMLInputElement>('input[aria-label="书签标题"]')?.readOnly, true)
     assert.equal(container.querySelector('textarea')?.readOnly, true)
     assert.equal(container.querySelector('button[aria-label="删除书签"]'), null)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('bookmark title and note keep IME drafts until composition ends', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  const bookmark = { id: 'note-ime', title: '发布检查', text: '备注', position: { x: 40, y: 80 } }
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas ref={canvasRef} initialSteps={{ nodes: [], connections: [], bookmarks: [bookmark] }} onSave={() => {}} />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    const titleInput = container.querySelector<HTMLInputElement>('.flow-bookmark-header input[aria-label="书签标题"]')!
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea')!
+
+    await act(async () => {
+      titleInput.dispatchEvent(new window.Event('compositionstart', { bubbles: true }))
+      setNativeValue(window, titleInput, 'fabu')
+      titleInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(titleInput.value, 'fabu')
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].title, '发布检查')
+    await act(async () => {
+      setNativeValue(window, titleInput, '发布')
+      titleInput.dispatchEvent(new window.Event('compositionend', { bubbles: true }))
+    })
+    assert.equal(titleInput.value, '发布')
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].title, '发布')
+
+    await act(async () => {
+      textarea.dispatchEvent(new window.Event('compositionstart', { bubbles: true }))
+      setNativeValue(window, textarea, 'beizhu')
+      textarea.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    assert.equal(textarea.value, 'beizhu')
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].text, '备注')
+    await act(async () => {
+      setNativeValue(window, textarea, '备注更新')
+      textarea.dispatchEvent(new window.Event('compositionend', { bubbles: true }))
+    })
+    assert.equal(textarea.value, '备注更新')
+    assert.equal(canvasRef.current?.getSteps().bookmarks[0].text, '备注更新')
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

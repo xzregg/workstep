@@ -29,6 +29,7 @@ from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.context_handoff import append_handoff_log
 from services.pipeline import DAGScheduler, Step
+from services.artifact_rounds import iter_artifact_rounds
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
 
@@ -42,6 +43,30 @@ _ACTIVE_STAGE_CONFIG_STATUSES = {"running", "retrying", "rework"}
 RUN_LEASE_HEARTBEAT_SECONDS = 5.0
 RUN_LEASE_STALE_SECONDS = 30.0
 
+
+def heal_task_cwd(task, project) -> bool:
+    """Persist the project root when a task's cwd no longer exists.
+
+    Tasks created inside the containerized layout store ``/data/projects/<name>``
+    paths that never exist on the host. Engines spawn with this cwd, so the
+    first write (skill plugin materialization) fails with a read-only filesystem
+    error. Repairing it here keeps every run path consistent.
+    """
+    cwd = str(task.cwd or "").strip()
+    if cwd and Path(cwd).is_dir():
+        return False
+    root = str(project.path)
+    if cwd == root:
+        return False
+    task.cwd = root
+    task.save(only=[Task.cwd])
+    logger.warning(
+        "Task %s cwd %r is unavailable; fell back to project root %s",
+        task.id,
+        cwd,
+        root,
+    )
+    return True
 
 
 def resolve_message_step_key(
@@ -265,6 +290,7 @@ class WorkflowRuntime:
             task = Task.get_by_id(task_id)
         except Task.DoesNotExist as exc:
             raise ValueError(f"Task not found: {task_id}") from exc
+        heal_task_cwd(task, project)
 
         workflow_data = self._current_workflow_steps(project, task)
         workflow = WorkflowDefinition.load(workflow_data)
@@ -335,6 +361,7 @@ class WorkflowRuntime:
         prepared: _PreparedWorkflowRun,
         user_input: str,
         stage_followups: dict[str, str] | None = None,
+        input_rounds_by_step: dict[str, dict[str, int]] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
@@ -345,6 +372,7 @@ class WorkflowRuntime:
             source_project_id=prepared.project_id,
             database_executor=prepared.database_executor,
             stage_followups=stage_followups,
+            input_rounds_by_step=input_rounds_by_step,
         )
         self._runners[task.id] = runner
         self._register_lease(workflow_run.id, prepared.project_id)
@@ -463,14 +491,36 @@ class WorkflowRuntime:
             )
             if step is None:
                 raise ValueError(f"Stage does not exist: {step_key}")
-            if step.status not in (
+            allowed_statuses = {
                 "cancelled",
                 "failed",
                 "rejected",
                 "awaiting_review",
                 "passed",
                 "skipped",
+            }
+            # 正在执行的阶段不接受 @ 重跑：实时注入走 message 接口。
+            if step.status in _ACTIVE_STAGE_CONFIG_STATUSES or step.status in (
+                "reviewing",
+                "rework_waiting",
             ):
+                raise ValueError(
+                    f"阶段当前不可重新执行: {step_key}（当前状态 {step.status}）"
+                )
+            # `pending` 通常代表从未启动；但只要有执行历史（曾经跑过又回到
+            # 待执行，例如上游重跑把下游重置），就按「执行过一次」处理，允许 @。
+            has_history = (
+                Message.select()
+                .where(
+                    (Message.task == task)
+                    & (Message.step_key == step_key)
+                    & (Message.channel == "execution")
+                    & (Message.role.in_(["user", "assistant"]))
+                )
+                .exists()
+                or step.started_at is not None
+            )
+            if step.status not in allowed_statuses and not has_history:
                 raise ValueError(
                     f"阶段当前不可重新执行: {step_key}（当前状态 {step.status}）"
                 )
@@ -554,6 +604,50 @@ class WorkflowRuntime:
             "status": "queued",
             "sequence": user_message.sequence,
             "created_at": user_message.created_at.isoformat(),
+        }
+
+    async def restart_stage_with_fresh_session(
+        self,
+        project_id: str,
+        task_id: str,
+        step_key: str,
+    ) -> dict:
+        """Drop the stage's engine session and re-run it with the full prompt.
+
+        Used when the engine reports a lost session (e.g. Codex
+        ``no rollout found``): the opaque session id can no longer be resumed,
+        but the stage prompt is self-contained, so clearing the saved session
+        and starting a fresh engine session reproduces the stage from scratch.
+        """
+        def reset_session():
+            task = Task.get_or_none(Task.id == task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            step = TaskStep.get_or_none(
+                (TaskStep.task == task) & (TaskStep.step_key == step_key)
+            )
+            if step is None:
+                raise ValueError(f"Stage does not exist: {step_key}")
+            if step.status in _ACTIVE_STAGE_CONFIG_STATUSES or step.status in (
+                "reviewing",
+                "rework_waiting",
+            ):
+                raise ValueError(f"阶段执行中，不能重建会话: {step_key}")
+            step.session_id = None
+            step.session_provider = None
+            step.pending_handoff_json = None
+            step.save(only=[
+                TaskStep.session_id,
+                TaskStep.session_provider,
+                TaskStep.pending_handoff_json,
+            ])
+
+        await self._run_db(project_id, lambda _project: reset_session())
+        handle = await self.restart_from_stage(project_id, task_id, step_key)
+        return {
+            "step_key": step_key,
+            "run_id": handle.id,
+            "status": "queued",
         }
 
     async def _skip_manual_review(
@@ -753,6 +847,7 @@ class WorkflowRuntime:
         """Resume downstream scheduling from persisted review state."""
         if task.id in self._runners:
             raise RuntimeError(f"Task is already running: {task.id}")
+        heal_task_cwd(task, project)
         snapshot = json.loads(workflow_run.workflow_snapshot_json)
         compiled = WorkflowDefinition.load(snapshot).compile()
         runner = TaskRunner(
@@ -899,6 +994,7 @@ class WorkflowRuntime:
             task = Task.get_by_id(workflow_run.task_id)
             if task.id in self._runners:
                 continue
+            heal_task_cwd(task, project)
             now = utc_now()
             if self._lease_held_by_live_owner(workflow_run, now):
                 # Another daemon still holds a fresh lease. Do NOT touch the run
@@ -1284,6 +1380,7 @@ class WorkflowRuntime:
         *,
         expected_run_id: str | None = None,
         stage_followup: str | None = None,
+        input_rounds: dict[str, int] | None = None,
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG stage.
 
@@ -1298,6 +1395,12 @@ class WorkflowRuntime:
                 task = Task.get_or_none(Task.id == task_id)
                 if task is None:
                     raise ValueError(f"Task not found: {task_id}")
+                self._validate_input_rounds(
+                    project,
+                    task,
+                    step_key,
+                    input_rounds,
+                )
                 parent_run_id = expected_run_id or task.active_workflow_run_id
                 if not parent_run_id:
                     return {"without_parent": True}
@@ -1343,7 +1446,10 @@ class WorkflowRuntime:
             inspected = await self._run_db(project_id, inspect_restart)
             if inspected["without_parent"]:
                 return await self._start_from_stage_without_parent_async(
-                    project_id, task_id, step_key
+                    project_id,
+                    task_id,
+                    step_key,
+                    input_rounds=input_rounds,
                 )
             parent_run_id = inspected["parent_run_id"]
             compiled = inspected["compiled"]
@@ -1364,30 +1470,21 @@ class WorkflowRuntime:
 
             def persist_restart(project):
                 task = Task.get_by_id(task_id)
+                heal_task_cwd(task, project)
                 parent = WorkflowRun.get_by_id(parent_run_id)
                 execution_keys = affected | interrupted
-                archived = self._archive_stage_artifacts(
-                    project,
+                task, child = self._create_restart_run(
                     task,
                     parent,
+                    compiled.schema_version,
+                    step_key,
                     execution_keys,
+                    json.dumps(
+                        workflow_data,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
                 )
-                try:
-                    task, child = self._create_restart_run(
-                        task,
-                        parent,
-                        compiled.schema_version,
-                        step_key,
-                        execution_keys,
-                        json.dumps(
-                            workflow_data,
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    )
-                except Exception:
-                    self._restore_archived_artifacts(archived)
-                    raise
                 return _PreparedWorkflowRun(
                     project_id=project.id,
                     database_executor=getattr(project, "database_executor", None),
@@ -1403,13 +1500,53 @@ class WorkflowRuntime:
                 prepared,
                 "",
                 {step_key: stage_followup} if stage_followup else None,
+                {step_key: input_rounds} if input_rounds else None,
             )
+
+    def _validate_input_rounds(
+        self,
+        project,
+        task: Task,
+        step_key: str,
+        input_rounds: dict[str, int] | None,
+    ) -> None:
+        """Validate explicit upstream artifact rounds before starting a run."""
+        if not input_rounds:
+            return
+        workflow_data = self._current_workflow_steps(project, task)
+        steps_config = WorkflowDefinition.load(workflow_data).compile().to_steps_config()
+        step_list = [Step.from_dict(item) for item in steps_config["steps"]]
+        scheduler = DAGScheduler(step_list)
+        if step_key not in scheduler.steps:
+            raise ValueError(f"Stage does not exist: {step_key}")
+        dependencies = set(scheduler.steps[step_key].depends_on)
+        artifacts_root = Path(project.workstep_dir) / "artifacts"
+        for dep_key, requested_round in input_rounds.items():
+            if dep_key not in dependencies:
+                raise ValueError(
+                    f"产物轮次 {dep_key} 不是目标阶段 {step_key} 的依赖"
+                )
+            rounds = iter_artifact_rounds(
+                artifacts_root,
+                task.workflow_id,
+                task.id,
+                dep_key,
+            )
+            selected = next(
+                (item for item in rounds if item.round == int(requested_round)),
+                None,
+            )
+            if selected is None or not selected.eligible_for_downstream:
+                raise ValueError(
+                    f"产物轮次 {dep_key} 第 {requested_round} 轮不可沿用"
+                )
 
     async def _start_from_stage_without_parent_async(
         self,
         project_id: str,
         task_id: str,
         step_key: str,
+        input_rounds: dict[str, int] | None = None,
     ) -> WorkflowRunHandle:
         prepared = await self._run_db(
             project_id,
@@ -1417,7 +1554,11 @@ class WorkflowRuntime:
                 project, task_id, step_key
             ),
         )
-        return self._launch_prepared_run(prepared, "")
+        return self._launch_prepared_run(
+            prepared,
+            "",
+            input_rounds_by_step={step_key: input_rounds} if input_rounds else None,
+        )
 
     def _prepare_start_from_stage_without_parent(
         self,
@@ -1426,6 +1567,7 @@ class WorkflowRuntime:
         step_key: str,
     ) -> _PreparedWorkflowRun:
         task = Task.get_by_id(task_id)
+        heal_task_cwd(task, project)
         workflow_data = self._current_workflow_steps(project, task)
         compiled = WorkflowDefinition.load(workflow_data).compile()
         steps_config = compiled.to_steps_config()
@@ -1548,6 +1690,7 @@ class WorkflowRuntime:
                     run=child,
                     step_key=reusable_key,
                     attempt=1,
+                    artifact_round=source.artifact_round,
                     status="reused",
                     engine=source.engine,
                     model=source.model,
@@ -1570,44 +1713,6 @@ class WorkflowRuntime:
             task.updated_at = now
             task.save()
         return task, child
-
-    def _archive_stage_artifacts(
-        self,
-        project,
-        task: Task,
-        workflow_run: WorkflowRun,
-        step_keys: set[str],
-    ) -> list[tuple[Path, Path]]:
-        artifacts_root = Path(project.workstep_dir) / "artifacts"
-        history_root = (
-            Path(project.workstep_dir)
-            / "artifact-history"
-            / task.id
-            / workflow_run.id
-        )
-        archived: list[tuple[Path, Path]] = []
-        for key in sorted(step_keys):
-            source = artifacts_root / key / task.id
-            if not source.exists():
-                continue
-            destination = history_root / key
-            if destination.exists():
-                raise RuntimeError(
-                    f"Artifact history already exists for stage '{key}'"
-                )
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            source.rename(destination)
-            archived.append((source, destination))
-        return archived
-
-    def _restore_archived_artifacts(
-        self,
-        archived: list[tuple[Path, Path]],
-    ) -> None:
-        for source, destination in reversed(archived):
-            if destination.exists() and not source.exists():
-                source.parent.mkdir(parents=True, exist_ok=True)
-                destination.rename(source)
 
     def _register_lease(self, run_id: str, project_id: str) -> None:
         """Record that this instance owns a run and start the heartbeat loop."""

@@ -116,6 +116,19 @@ def claude_model_map_env(
     return env
 
 
+def claude_sandbox_env(permission_mode: str | None) -> dict[str, str]:
+    """Claude Code 在 root 下用 bypassPermissions 需要显式声明沙盒环境。
+
+    CLI 的 ``isRootOutsideDeliberateSandbox()`` 会把「root + 未声明沙盒」判定为
+    危险组合并直接 exit 1（``--dangerously-skip-permissions cannot be used with
+    root/sudo privileges``）。容器化部署正是 root + 隔离文件系统，注入
+    ``IS_SANDBOX=1`` 后 CLI 认可这是刻意沙盒，bypassPermissions 才能生效。
+    """
+    if str(permission_mode or "").strip() != "bypassPermissions":
+        return {}
+    return {"IS_SANDBOX": "1"}
+
+
 def claude_model_map_json(
     model_map: dict[str, dict[str, str]],
 ) -> str:
@@ -123,6 +136,122 @@ def claude_model_map_json(
     if not model_map:
         return ""
     return json.dumps(model_map, sort_keys=True, ensure_ascii=False)
+
+
+def normalize_claude_custom_settings(raw: Any) -> str:
+    """校验引擎自定义配置并返回要存储的 JSON 文本。
+
+    接受 JSON 字符串或 dict；必须是对象，``env``（若有）必须是
+    ``{字符串: 字符串}``。空输入返回空串，表示不注入任何自定义配置。
+
+    传入字符串时只做校验、不做格式化：原样保留用户输入的空格与换行，
+    避免保存后回显被重排。传入 dict（测试或程序化调用）才序列化。
+    """
+    if raw is None:
+        return ""
+    original_text: str | None = None
+    if isinstance(raw, str):
+        original_text = raw
+        text = raw.strip()
+        if not text:
+            return ""
+        try:
+            raw = json.loads(text)
+        except ValueError:
+            raise ValueError("自定义配置必须是合法 JSON")
+    if isinstance(raw, dict) is False:
+        raise ValueError("自定义配置必须是 JSON 对象")
+    env = raw.get("env")
+    if env is not None:
+        if isinstance(env, dict) is False:
+            raise ValueError("env 必须是 JSON 对象")
+        for key, value in env.items():
+            if not isinstance(key, str) or isinstance(value, (dict, list)):
+                raise ValueError("env 的值必须是字符串")
+    if original_text is not None:
+        return original_text
+    return json.dumps(raw, sort_keys=True, ensure_ascii=False)
+
+
+def claude_custom_settings_json(raw: Any) -> str:
+    """读取路径的容错版本：存储值非法时返回空串而不抛错。"""
+    try:
+        return normalize_claude_custom_settings(raw)
+    except ValueError:
+        return ""
+
+
+def claude_custom_settings_payload(raw: Any) -> dict[str, Any]:
+    """解析自定义配置为 dict；无配置或存储值非法时返回空 dict。"""
+    normalized = claude_custom_settings_json(raw)
+    return json.loads(normalized) if normalized else {}
+
+
+def claude_custom_settings_env(
+    raw: Any,
+    exclude: set[str] | None = None,
+) -> dict[str, str]:
+    """提取自定义配置里的 ``env``，值统一转为字符串。
+
+    ``exclude`` 用于保护供应商管理的变量：绑定供应商后 base url 与鉴权
+    由供应商决定，自定义 JSON 不得覆盖，也不得重新加回供应商显式清理的键
+    （例如 ``ANTHROPIC_AUTH_TOKEN``）。
+    """
+    env = claude_custom_settings_payload(raw).get("env")
+    if not isinstance(env, dict):
+        return {}
+    blocked = exclude or set()
+    return {
+        str(key): str(value)
+        for key, value in env.items()
+        if str(key) not in blocked
+    }
+
+
+def claude_custom_settings_rest(raw: Any) -> dict[str, Any]:
+    """自定义配置去掉 ``env`` 后的部分，用于合并进 Claude Code settings。"""
+    payload = claude_custom_settings_payload(raw)
+    payload.pop("env", None)
+    return payload
+
+
+def normalize_codex_custom_config(raw: Any) -> str:
+    """校验 Codex 自定义 config 覆盖并返回要存储的文本。
+
+    Codex 的配置不是 JSON，而是 ``key=value`` 形式（对应 CLI 的 ``-c``）。
+    接受多行文本；空行与 ``#`` 注释行忽略。只校验、不格式化，原样保留
+    用户输入的空格与换行。
+    """
+    if raw is None:
+        return ""
+    text = str(raw)
+    if not text.strip():
+        return ""
+    for index, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" not in stripped:
+            raise ValueError(f"第 {index} 行不是 key=value 格式")
+        key, _value = stripped.split("=", 1)
+        if not key.strip():
+            raise ValueError(f"第 {index} 行缺少配置键")
+    return text
+
+
+def parse_codex_custom_config(raw: Any) -> list[tuple[str, str]]:
+    """把自定义覆盖解析为 ``[(key, value), ...]``；无配置返回空列表。"""
+    normalized = normalize_codex_custom_config(raw)
+    entries: list[tuple[str, str]] = []
+    if not normalized:
+        return entries
+    for line in normalized.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, value = stripped.split("=", 1)
+        entries.append((key.strip(), value.strip()))
+    return entries
 
 
 def default_provider_protocol(type_id: str) -> str:
@@ -679,10 +808,10 @@ class ConfigStore:
     # --- Claude Code CLI config ---
 
     def get_claude_code_config(self) -> dict[str, str]:
-        """Claude Code CLI engine section: ``{"model_map": 规范化 JSON 字符串}``.
+        """Claude Code CLI engine section.
 
-        ``model_map`` 走传输层字符串（引擎配置表单的 value 全是字符串），
-        无映射时为空串。
+        ``model_map`` 与 ``custom_settings`` 都走传输层字符串（引擎配置表单
+        的 value 全是字符串），无内容时为空串。
         """
         raw = self.get("claude_code_engine", {})
         if not isinstance(raw, dict):
@@ -691,16 +820,33 @@ class ConfigStore:
             "model_map": claude_model_map_json(
                 normalize_claude_model_map(raw.get("model_map"))
             ),
+            "custom_settings": claude_custom_settings_json(
+                raw.get("custom_settings")
+            ),
         }
 
     def set_claude_code_model_map(self, model_map: Any) -> None:
-        normalized = normalize_claude_model_map(model_map)
+        self.set_claude_code_config(model_map=model_map)
+
+    def set_claude_code_config(
+        self,
+        model_map: Any = None,
+        custom_settings: Any = None,
+    ) -> None:
         raw = self.get("claude_code_engine", {})
         raw = dict(raw) if isinstance(raw, dict) else {}
-        if normalized:
-            raw["model_map"] = normalized
-        else:
-            raw.pop("model_map", None)
+        if model_map is not None:
+            normalized = normalize_claude_model_map(model_map)
+            if normalized:
+                raw["model_map"] = normalized
+            else:
+                raw.pop("model_map", None)
+        if custom_settings is not None:
+            normalized_settings = normalize_claude_custom_settings(custom_settings)
+            if normalized_settings:
+                raw["custom_settings"] = normalized_settings
+            else:
+                raw.pop("custom_settings", None)
         self.set("claude_code_engine", raw)
 
     # --- Claude Agent SDK config ---
@@ -717,6 +863,9 @@ class ConfigStore:
             "model_map": claude_model_map_json(
                 normalize_claude_model_map(raw.get("model_map"))
             ),
+            "custom_settings": claude_custom_settings_json(
+                raw.get("custom_settings")
+            ),
         }
 
     def set_claude_agent_sdk_config(
@@ -725,6 +874,7 @@ class ConfigStore:
         permission_mode: str | None = None,
         fallback_model: str = "",
         model_map: str | dict[str, Any] | None = None,
+        custom_settings: str | dict[str, Any] | None = None,
     ) -> None:
         if permission_mode is not None:
             self.set_claude_permission_mode(permission_mode)
@@ -755,6 +905,12 @@ class ConfigStore:
                 raw["model_map"] = normalized_map
             else:
                 raw.pop("model_map", None)
+        if custom_settings is not None:
+            normalized_settings = normalize_claude_custom_settings(custom_settings)
+            if normalized_settings:
+                raw["custom_settings"] = normalized_settings
+            else:
+                raw.pop("custom_settings", None)
         self.set("claude_agent_sdk_engine", raw)
 
     # --- Codex CLI config ---
@@ -767,6 +923,9 @@ class ConfigStore:
             "sandbox_mode": raw.get("sandbox_mode", "workspace-write"),
             "model_reasoning_effort": raw.get("model_reasoning_effort", ""),
             "approval_policy": raw.get("approval_policy", ""),
+            "custom_config": normalize_codex_custom_config(
+                raw.get("custom_config")
+            ),
         }
 
     def set_codex_config(
@@ -774,6 +933,7 @@ class ConfigStore:
         sandbox_mode: str = "",
         model_reasoning_effort: str = "",
         approval_policy: str = "",
+        custom_config: str = "",
     ) -> None:
         sandbox_mode = str(sandbox_mode or "").strip() or "workspace-write"
         if sandbox_mode not in CODEX_SANDBOX_MODES:
@@ -784,10 +944,12 @@ class ConfigStore:
         policy = str(approval_policy or "").strip()
         if policy and policy not in CODEX_APPROVAL_POLICIES:
             raise ValueError("不支持的审批策略")
+        custom = normalize_codex_custom_config(custom_config)
         self.set("codex_engine", {
             "sandbox_mode": sandbox_mode,
             "model_reasoning_effort": effort,
             "approval_policy": policy,
+            "custom_config": custom,
         })
 
     # --- Qoder Agent SDK config ---
@@ -866,6 +1028,9 @@ class ConfigStore:
             "model_reasoning_effort": raw.get("model_reasoning_effort", ""),
             "approval_mode": raw.get("approval_mode", ""),
             "sandbox": raw.get("sandbox", "workspace-write"),
+            "custom_config": normalize_codex_custom_config(
+                raw.get("custom_config")
+            ),
         }
 
     def set_codex_sdk_config(
@@ -873,6 +1038,7 @@ class ConfigStore:
         model_reasoning_effort: str = "",
         approval_mode: str = "",
         sandbox: str = "",
+        custom_config: str = "",
     ) -> None:
         effort = str(model_reasoning_effort or "").strip()
         if effort and effort not in CODEX_REASONING_EFFORTS:
@@ -883,10 +1049,12 @@ class ConfigStore:
         sandbox = str(sandbox or "").strip() or "workspace-write"
         if sandbox not in CODEX_SANDBOX_MODES:
             raise ValueError("不支持的沙箱模式")
+        custom = normalize_codex_custom_config(custom_config)
         self.set("codex_sdk_engine", {
             "model_reasoning_effort": effort,
             "approval_mode": mode,
             "sandbox": sandbox,
+            "custom_config": custom,
         })
 
 

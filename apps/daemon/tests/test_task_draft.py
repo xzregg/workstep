@@ -435,7 +435,7 @@ async def test_run_schedule_returns_validated_result_without_creating_task(
         "start_step_key": first_key,
     }
     assert "生成日报任务" in prompts[0]
-    assert "定时模式" in prompts[0]
+    assert "scheduled task execution assistant" in prompts[0]
     with project.db.bind_ctx([Task]):
         assert Task.select().count() == 0
 

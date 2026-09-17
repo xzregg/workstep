@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { randomUuid } from '../utils/uuid'
 import AssistantChatPanel from '../components/AssistantChatPanel'
 import Button from '../components/Button'
 import ChatEngineHandoffDialog, { type HandoffEndpoint } from '../components/ChatEngineHandoffDialog'
@@ -57,13 +58,6 @@ import { requiresEngineHandoff } from '../utils/chatSessionFork'
    per-project quick buttons. All chat UI comes from existing shared components.
    ══════════════════════════════════════════ */
 
-function randomId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`
-}
-
 export default function ChatPage() {
   const { t, locale } = useI18n()
   const navigate = useNavigate()
@@ -81,8 +75,16 @@ export default function ChatPage() {
     setActiveWorkflow,
   } = useProjectStore()
 
+  // 草稿/队列等本地状态必须按 URL 中的项目归属保存；
+  // activeProject 可能因点击侧栏其他项目的流程而先行变化。
+  const routeProjectId = (
+    projectParam
+      ? projects.find((item) => item.name === projectParam)?.id
+      : activeProject?.id
+  ) || ''
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
-  const prevSessionIdRef = useRef<string | null>(null)
+  // 草稿必须写回它实际所属的项目；项目切换时 activeProject 可能已经变成目标项目。
+  const draftOwnerRef = useRef<{ projectId: string; sessionId: string } | null>(null)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
   const inputRef = useRef(input)
@@ -306,7 +308,7 @@ export default function ChatPage() {
         setSelectedVisionModel(detail.vision_model || '')
         // 优先恢复本地记录的用户选择（后端会话详情不含 thinking_effort，
         // 且用户可能改过配置但尚未发消息）。无记录时思考强度归默认。
-        const saved = loadChatEngineConfig(activeProject.id, sessionParam)
+        const saved = loadChatEngineConfig(routeProjectId || activeProject.id, sessionParam)
         if (hasChatEngineConfig(saved)) {
           const restored = clearIncompatibleProvider(
             saved,
@@ -314,7 +316,7 @@ export default function ChatPage() {
             providers,
           )
           if (restored.providerId !== saved.providerId) {
-            saveChatEngineConfig(activeProject.id, sessionParam, restored)
+            saveChatEngineConfig(routeProjectId || activeProject.id, sessionParam, restored)
           }
           setSelectedEngine(restored.engine)
           setSelectedProvider(restored.providerId)
@@ -359,7 +361,7 @@ export default function ChatPage() {
         navigate(`/chat?project=${encodeURIComponent(projectParam || '')}`, { replace: true })
       })
     return () => { active = false }
-  }, [sessionParam, activeProject?.id, projectParam, workflowParam, navigate, resetEnhance, sharedEngines, providers])
+  }, [sessionParam, activeProject?.id, projectParam, workflowParam, routeProjectId, navigate, resetEnhance, sharedEngines, providers])
 
   // Keep the sidebar session list fresh (titles/previews after turns).
   useEffect(() => {
@@ -371,20 +373,22 @@ export default function ChatPage() {
   // Save the previous session's input to localStorage before clearing,
   // then restore the target session's draft (if any).
   useEffect(() => {
-    const prevId = prevSessionIdRef.current
-    if (prevId && input.trim()) {
-      saveDraft(activeProject?.id ?? '', prevId, input)
+    const owner = draftOwnerRef.current
+    const currentInput = inputRef.current
+    if (owner && currentInput.trim()) {
+      saveDraft(owner.sessionId, currentInput)
     }
     // 切换前配置仍是旧会话的值 → 存回旧会话的 key（与草稿同一懒保存模式）。
-    if (prevId && activeProject?.id) {
-      saveChatEngineConfig(activeProject.id, prevId, engineConfigRef.current)
+    if (owner) {
+      saveChatEngineConfig(owner.projectId, owner.sessionId, engineConfigRef.current)
     }
-    prevSessionIdRef.current = sessionId
-    if (sessionId && activeProject?.id) {
-      const draft = loadDraft(activeProject.id, sessionId)
+    if (sessionId && routeProjectId) {
+      const draft = loadDraft(sessionId, routeProjectId)
       setInput(draft)
+      draftOwnerRef.current = { projectId: routeProjectId, sessionId }
     } else {
       setInput('')
+      draftOwnerRef.current = null
     }
     setSendError('')
     setStopping(false)
@@ -392,21 +396,25 @@ export default function ChatPage() {
     setEditingInsertId(null)
     setEditingInsertContent('')
     setSendingInsertIds([])
-  }, [sessionId])
+  }, [sessionId, routeProjectId])
 
   // 路由切换会卸载整个 ChatPage；保存最新 ref，避免草稿只在切换会话时落盘。
   useEffect(() => {
-    if (!sessionId || !activeProject?.id) return
-    const target = { projectId: activeProject.id, sessionId }
-    return () => saveDraft(target.projectId, target.sessionId, inputRef.current)
-  }, [sessionId, activeProject?.id])
+    if (!sessionId || !routeProjectId) return
+    return () => {
+      const owner = draftOwnerRef.current
+      if (owner) saveDraft(owner.sessionId, inputRef.current)
+    }
+  }, [sessionId, routeProjectId])
 
   // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
   useEffect(() => {
-    if (!sessionId || !activeProject?.id) return
-    const target = { projectId: activeProject.id, sessionId }
-    return () => saveChatEngineConfig(target.projectId, target.sessionId, engineConfigRef.current)
-  }, [sessionId, activeProject?.id])
+    if (!sessionId || !routeProjectId) return
+    return () => {
+      const owner = draftOwnerRef.current
+      if (owner) saveChatEngineConfig(owner.projectId, owner.sessionId, engineConfigRef.current)
+    }
+  }, [sessionId, routeProjectId])
 
   // ── 插入队列持久化 ─────────────────────────────
   // localStorage 按（项目, 会话）保存队列，刷新页面后恢复。
@@ -415,17 +423,17 @@ export default function ChatPage() {
   const queueStorageRef = useRef<{ projectId: string; sessionId: string } | null>(null)
 
   useEffect(() => {
-    queueStorageRef.current = sessionId && activeProject?.id
-      ? { projectId: activeProject.id, sessionId }
+    queueStorageRef.current = sessionId && routeProjectId
+      ? { projectId: routeProjectId, sessionId }
       : null
-  }, [sessionId, activeProject?.id])
+  }, [sessionId, routeProjectId])
 
   // 恢复队列：刷新页面时 activeProject 异步加载完成后再恢复；
   // 切换会话时在 reset effect 清空后恢复目标会话的队列。
   useEffect(() => {
-    if (!sessionId || !activeProject?.id) return
-    setPendingInserts(loadInsertQueue(activeProject.id, sessionId))
-  }, [sessionId, activeProject?.id])
+    if (!sessionId || !routeProjectId) return
+    setPendingInserts(loadInsertQueue(routeProjectId, sessionId))
+  }, [sessionId, routeProjectId])
 
   useEffect(() => {
     const target = queueStorageRef.current
@@ -445,7 +453,7 @@ export default function ChatPage() {
     setSendError('')
     try {
       useChatSessionStore.getState().addUserMessage(sessionId, content)
-      const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomId(), {
+      const accepted = await chatSessionApi.chat(sessionId, activeProject.id, content, randomUuid(), {
         engine: options.useSessionDefaults ? undefined : selectedEngine || undefined,
         provider_id: options.useSessionDefaults ? undefined : selectedProvider || undefined,
         model: options.useSessionDefaults ? undefined : selectedModel || undefined,
@@ -510,16 +518,16 @@ export default function ChatPage() {
     if (running) {
       setPendingInserts((current) => [
         ...current,
-        { id: `insert-${randomId()}`, content },
+        { id: `insert-${randomUuid()}`, content },
       ])
       setInput('')
-      clearDraft(activeProject?.id ?? '', sessionId)
+      clearDraft(sessionId, activeProject?.id ?? '')
       setSendError('')
       resetEnhance()
       return
     }
     setInput('')
-    clearDraft(activeProject?.id ?? '', sessionId)
+    clearDraft(sessionId, activeProject?.id ?? '')
     resetEnhance()
     await sendMessageNow(content)
   }, [input, running, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance])

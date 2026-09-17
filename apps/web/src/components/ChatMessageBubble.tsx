@@ -51,6 +51,8 @@ export interface ChatMessageBubbleProps {
   projectId?: string
   /** Error text rendered under the bubble (assistant only). */
   error?: string
+  /** Recovery actions rendered under the error (assistant only). */
+  errorActions?: ReactNode
   /** Optional badge rendered on the avatar's bottom-right corner. */
   badge?: ReactNode
   /** User: tagline above the row. Assistant: meta bar above the content. */
@@ -95,6 +97,7 @@ export default function ChatMessageBubble({
   streaming = false,
   projectId,
   error,
+  errorActions,
   badge,
   header,
   footer,
@@ -203,6 +206,7 @@ export default function ChatMessageBubble({
                   content={content}
                   projectId={projectId}
                   className="user-message-markdown"
+                  plainText
                   onImageClick={handleImageClick}
                 />
               ) : (
@@ -277,6 +281,7 @@ export default function ChatMessageBubble({
           {!isUser && error && (
             <div style={{ color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))', marginTop: 4 }}>{error}</div>
           )}
+          {!isUser && error && errorActions}
           {!isUser && plan && <PlanChecklist plan={plan} />}
           {!isUser && onInteractionRespond && interactions.map((item) => (
             <InteractionPrompt

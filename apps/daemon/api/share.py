@@ -1,12 +1,14 @@
 """Task share API routes — create, fetch, verify, and revoke share links."""
 
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from schemas.base import BaseSchema
 from services import share as share_service
+from services.intervention import intervention_manager
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +18,30 @@ router = APIRouter(prefix="/api/task-share", tags=["task-share"])
 class CreateShareRequest(BaseSchema):
     password: str | None = None
     title: str | None = None
+    mode: str = "read_only"
 
 
 class VerifyShareRequest(BaseSchema):
     password: str = ""
+
+
+class ShareStageMessageRequest(BaseSchema):
+    content: str
+
+
+class ShareReviewDecisionRequest(BaseSchema):
+    review_run_id: str
+    comment: str | None = None
+
+
+class ShareInteractionResponseRequest(BaseSchema):
+    intervention_id: str
+    data: dict
+
+
+def _require_interactive_share(ctx: dict) -> None:
+    if ctx.get("mode") != "interactive":
+        raise HTTPException(status_code=403, detail="Share is read-only")
 
 
 @router.post("/{task_id}/create")
@@ -33,7 +55,7 @@ async def create_share(task_id: str, req: CreateShareRequest, pid: str = Query(.
         share = await project_manager.run_db(
             pid,
             lambda _project: share_service.create_share(
-                task_id, req.password, req.title
+                task_id, req.password, req.title, req.mode
             ),
         )
     except ValueError as exc:
@@ -76,6 +98,7 @@ async def public_share_meta(token: str):
     return {
         "token": resolved["share"]["token"],
         "title": resolved["share"].get("title"),
+        "mode": resolved["share"].get("mode", "read_only"),
         "task_id": resolved["task_id"],
         "has_password": resolved["share"].get("has_password", False),
         "created_at": resolved["share"]["created_at"],
@@ -152,7 +175,7 @@ async def public_share_history(
     messages = await project_manager.run_db(
         ctx["project_id"],
         lambda _project: share_service.load_shared_history(
-            ctx["task_id"], limit=limit, offset=offset
+            ctx["task_id"], limit=limit, offset=offset, mode=ctx.get("mode", "read_only")
         ),
     )
     return {"messages": messages, "limit": limit, "offset": offset}
@@ -176,3 +199,178 @@ async def public_share_artifacts(token: str, request: Request):
         lambda _project: list_task_artifacts(project, ctx["task_id"]),
     )
     return {"artifacts": artifacts}
+
+
+@router.get("/public/{token}/reviews")
+async def public_share_reviews(token: str, request: Request):
+    """List review history for the shared task."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    from main import project_manager
+    from models import ReviewRun
+
+    def load_reviews():
+        rows = (
+            ReviewRun.select()
+            .where(ReviewRun.task == ctx["task_id"])
+            .order_by(ReviewRun.started_at.desc(), ReviewRun.id.desc())
+        )
+        return [{
+            "id": row.id,
+            "workflow_run_id": row.workflow_run_id,
+            "step_run_id": row.step_run_id,
+            "step_key": row.step_key,
+            "mode": row.mode,
+            "status": row.status,
+            "engine": row.engine,
+            "model": row.model,
+            "report": json.loads(row.report_json) if row.report_json else None,
+            "decision": row.decision,
+            "decision_comment": row.decision_comment,
+            "reviewer_id": row.reviewer_id,
+            "reviewer_name": row.reviewer_name,
+            "reviewer_device_id": row.reviewer_device_id,
+            "reviewer_device_name": row.reviewer_device_name,
+            "started_at": row.started_at,
+            "ended_at": row.ended_at,
+        } for row in rows]
+
+    return {"reviews": await project_manager.run_db(ctx["project_id"], lambda _project: load_reviews())}
+
+
+@router.post("/public/{token}/steps/{step_key}/message")
+async def public_share_send_stage_message(
+    token: str,
+    step_key: str,
+    req: ShareStageMessageRequest,
+    request: Request,
+):
+    """Inject a message into a running stage from an interactive share."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.send_stage_message(
+            ctx["project_id"],
+            ctx["task_id"],
+            step_key,
+            req.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/public/{token}/steps/{step_key}/resume")
+async def public_share_resume_stage(
+    token: str,
+    step_key: str,
+    req: ShareStageMessageRequest,
+    request: Request,
+):
+    """Persist a follow-up message and re-run a resumable stage."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        return await workflow_runtime.resume_stage_with_message(
+            ctx["project_id"],
+            ctx["task_id"],
+            step_key,
+            req.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/public/{token}/steps/{step_key}/cancel")
+async def public_share_cancel_stage(
+    token: str,
+    step_key: str,
+    request: Request,
+):
+    """Stop a running stage from an interactive share."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Workflow runtime not initialized")
+    try:
+        cancelled = await workflow_runtime.cancel_step(
+            ctx["project_id"],
+            ctx["task_id"],
+            step_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"cancelled": cancelled}
+
+
+@router.post("/public/{token}/steps/{step_key}/review/{decision}")
+async def public_share_review_decision(
+    token: str,
+    step_key: str,
+    decision: str,
+    req: ShareReviewDecisionRequest,
+    request: Request,
+):
+    """Approve, reject, or force-approve a pending manual review."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    normalized = decision.replace("-", "_")
+    if normalized not in {"approve", "reject", "force_approve"}:
+        raise HTTPException(status_code=404, detail="Unknown review decision")
+    from main import workflow_runtime
+    if not workflow_runtime:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        handle = await workflow_runtime.decide_review(
+            ctx["project_id"],
+            ctx["task_id"],
+            step_key,
+            req.review_run_id,
+            normalized,
+            req.comment,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "decision": normalized,
+        "resumed": handle is not None,
+        "run_id": handle.id if handle else None,
+    }
+
+
+@router.post("/public/{token}/intervention/respond")
+async def public_share_respond_interaction(
+    token: str,
+    req: ShareInteractionResponseRequest,
+    request: Request,
+):
+    """Respond to a pending engine interaction from an interactive share."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    delivered = intervention_manager.deliver_response(
+        req.intervention_id,
+        req.data,
+        ctx["task_id"],
+    )
+    if not delivered:
+        raise HTTPException(status_code=404, detail="Intervention not found or already resolved")
+    return {"delivered": True}

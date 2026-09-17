@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from engines.core.registry import refresh_registry
 from services import providers as provider_service
 from services.config import config_store, default_provider_protocol
+from services.project import project_manager
 
 router = APIRouter(prefix="/api/provider")
 
@@ -279,7 +280,7 @@ async def import_cc_switch(req: ProviderImportRequest):
 
 @router.delete("/{provider_id}")
 async def delete_provider(provider_id: str):
-    """Delete a provider; refuse while an engine still references it."""
+    """Delete a provider; refuse while any engine or project still references it."""
     provider = await asyncio.to_thread(config_store.get_provider, provider_id)
     if provider is None:
         raise HTTPException(status_code=404, detail="供应商不存在")
@@ -287,6 +288,21 @@ async def delete_provider(provider_id: str):
         raise HTTPException(
             status_code=400,
             detail="该供应商正被引擎或助手使用，请先切换其它供应商",
+        )
+    references = await asyncio.to_thread(
+        project_manager.provider_references, provider_id
+    )
+    if references:
+        preview = "、".join(
+            f"{item['project_name']}：{item['location']}" for item in references[:3]
+        )
+        suffix = "等" if len(references) > 3 else ""
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"该供应商仍被 {len(references)} 处流程或任务引用，请先切换："
+                f"{preview}{suffix}"
+            ),
         )
     def delete() -> None:
         config_store.delete_provider(provider_id)

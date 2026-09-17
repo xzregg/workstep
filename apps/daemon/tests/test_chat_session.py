@@ -1231,6 +1231,7 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     ]
     assert detail["messages"][1]["status"] == "succeeded"
     assert detail["messages"][3]["status"] == "succeeded"
+    assert detail["messages"][3]["prompt"] == "插入要求"
 
 
 @pytest.mark.anyio
@@ -2201,7 +2202,7 @@ async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
         None,
         plan_mode=True,
     )
-    assert "计划模式" in captured["prompt"]
+    assert "Plan mode" in captured["prompt"]
     assert captured["config_overrides"] == {"sandbox_mode": "read-only"}
 
     # Without plan mode the prompt stays untouched and no overrides are added.
@@ -2214,7 +2215,7 @@ async def test_invoke_engine_plan_mode_injects_instruction(monkeypatch):
         None,
         plan_mode=False,
     )
-    assert "计划模式" not in captured["prompt"]
+    assert "Plan mode" not in captured["prompt"]
     assert captured["config_overrides"] is None
 
 

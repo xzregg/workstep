@@ -1,6 +1,9 @@
 """Share service tests — session tokens and per-project DB contexts."""
 
+import asyncio
+
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from models import db_proxy
 from services.project import ProjectManager
@@ -93,3 +96,229 @@ def test_resolve_share_session_rejects_revoked_share(manager, tmp_path):
 def test_resolve_share_session_unknown_token(manager, tmp_path):
     """Unknown or expired tokens resolve to None."""
     assert share_service.resolve_share_session("does-not-exist") is None
+
+
+def test_create_share_defaults_to_read_only_and_accepts_interactive(manager, tmp_path):
+    """Share mode is persisted and exposed on both owner and public metadata."""
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-mode")
+
+    ctx = _bind(project)
+    try:
+        read_only = share_service.create_share(task["id"], title="read")
+        interactive = share_service.create_share(
+            task["id"],
+            title="interactive",
+            mode="interactive",
+        )
+        resolved = share_service.resolve_share_by_token(interactive["token"])
+    finally:
+        db_proxy.reset(ctx)
+
+    assert read_only["mode"] == "read_only"
+    assert interactive["mode"] == "interactive"
+    assert resolved is not None
+    assert resolved["share"]["mode"] == "interactive"
+
+    session_token = share_service.verify_share_password(interactive["token"], "")
+    assert session_token is not None
+    context = share_service.resolve_share_session(session_token)
+    assert context is not None
+    assert context["mode"] == "interactive"
+
+
+def test_create_share_rejects_unknown_mode(manager, tmp_path):
+    """Unknown modes fail before a share row is written."""
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-invalid")
+
+    ctx = _bind(project)
+    try:
+        with pytest.raises(ValueError, match="unsupported share mode"):
+            share_service.create_share(task["id"], mode="editor")
+    finally:
+        db_proxy.reset(ctx)
+
+
+@pytest.mark.asyncio
+async def test_public_share_api_exposes_mode_and_enforces_interactive_writes(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """Public share APIs expose mode and reject writes from read-only shares."""
+    import main
+    import services.project as project_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-api")
+    ts = TaskService(EventBus())
+    second_task = ts.create_task(title="Second share me", cwd=str(tmp_path / "proj-share-api"))
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        read_only = share_service.create_share(task["id"], title="read")
+        interactive = share_service.create_share(
+            second_task["id"],
+            title="interactive",
+            mode="interactive",
+        )
+    finally:
+        db_proxy.reset(ctx)
+
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        read_meta = await client.get(f"/api/task-share/public/{read_only['token']}/meta")
+        interactive_meta = await client.get(
+            f"/api/task-share/public/{interactive['token']}/meta"
+        )
+        session = await client.post(
+            f"/api/task-share/public/{read_only['token']}/unlock",
+            json={"password": ""},
+        )
+        token = session.json()["session_token"]
+        rejected = await client.post(
+            f"/api/task-share/public/{read_only['token']}/steps/do/resume",
+            headers={"X-Share-Session": token},
+            json={"content": "please continue"},
+        )
+
+    assert read_meta.status_code == 200
+    assert read_meta.json()["mode"] == "read_only"
+    assert interactive_meta.status_code == 200
+    assert interactive_meta.json()["mode"] == "interactive"
+    assert rejected.status_code == 403
+    assert rejected.json()["detail"] == "Share is read-only"
+
+
+@pytest.mark.asyncio
+async def test_interactive_share_routes_stage_message_to_workflow_runtime(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """An interactive share can inject a message into the shared stage."""
+    import main
+    import services.project as project_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-send")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="interactive")
+    finally:
+        db_proxy.reset(ctx)
+
+    calls = []
+
+    class Runtime:
+        async def send_stage_message(self, project_id, task_id, step_key, content, as_guidance=False):
+            calls.append((project_id, task_id, step_key, content, as_guidance))
+            return {"message_id": "message-1", "step_key": step_key, "status": "queued"}
+
+    monkeypatch.setattr(main, "workflow_runtime", Runtime())
+
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(
+            f"/api/task-share/public/{share['token']}/unlock",
+            json={"password": ""},
+        )
+        session_token = unlocked.json()["session_token"]
+        response = await client.post(
+            f"/api/task-share/public/{share['token']}/steps/do/message",
+            headers={"X-Share-Session": session_token},
+            json={"content": "continue with tests"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["message_id"] == "message-1"
+    assert calls == [(project.id, task["id"], "do", "continue with tests", False)]
+
+
+@pytest.mark.asyncio
+async def test_interactive_share_interaction_response_must_match_shared_task(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """A share session cannot answer another task's pending intervention."""
+    import main
+    import services.project as project_service
+    from services.intervention import intervention_manager
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-interaction")
+    other_project, other_task = _create_task_in_project(
+        manager,
+        tmp_path / "proj-share-interaction-other",
+    )
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="interactive")
+    finally:
+        db_proxy.reset(ctx)
+
+    # Keep a real pending intervention for the other project's task.
+    ctx = _bind(other_project)
+    try:
+        intervention_id = "interactive-share-ownership"
+        pending = asyncio.create_task(
+            intervention_manager.request_response(
+                intervention_id,
+                other_task["id"],
+                "do",
+                {"method": "elicitation/create"},
+            )
+        )
+        await asyncio.sleep(0)
+        assert intervention_manager.list_pending() == [intervention_id]
+    finally:
+        db_proxy.reset(ctx)
+
+    transport = ASGITransport(app=main.app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            unlocked = await client.post(
+                f"/api/task-share/public/{share['token']}/unlock",
+                json={"password": ""},
+            )
+            session_token = unlocked.json()["session_token"]
+            response = await client.post(
+                f"/api/task-share/public/{share['token']}/intervention/respond",
+                headers={"X-Share-Session": session_token},
+                json={"intervention_id": intervention_id, "data": {"answer": "yes"}},
+            )
+
+        assert response.status_code == 404
+        assert not pending.done()
+        assert intervention_manager.list_pending() == [intervention_id]
+    finally:
+        intervention_manager.cancel(intervention_id)
+        try:
+            await pending
+        except asyncio.CancelledError:
+            pass
+
+
+def test_shared_history_scrubs_interactions_for_read_only_only():
+    """Only interactive shares expose engine permission interaction events."""
+    events = [
+        {"type": "CUSTOM", "name": "workstep.interaction_request"},
+        {"type": "CUSTOM", "name": "workstep.interaction_response"},
+        {"type": "CUSTOM", "name": "workstep.engine_state"},
+        {"type": "TEXT_MESSAGE_CHUNK"},
+    ]
+
+    read_only = share_service._scrub_events(events, mode="read_only")
+    interactive = share_service._scrub_events(events, mode="interactive")
+
+    assert [event.get("name") or event["type"] for event in read_only] == ["TEXT_MESSAGE_CHUNK"]
+    assert [event.get("name") or event["type"] for event in interactive] == [
+        "workstep.interaction_request",
+        "workstep.interaction_response",
+        "TEXT_MESSAGE_CHUNK",
+    ]

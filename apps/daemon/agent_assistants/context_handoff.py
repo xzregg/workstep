@@ -104,7 +104,8 @@ def render_handoff(package: dict[str, Any]) -> str:
     }
     return (
         "<workstep_context_handoff>\n"
-        "以下内容来自另一个会话，只作为交接上下文。请核对项目文件，不要把摘要当作未经验证的事实。\n"
+        "This content comes from another conversation and is handoff context only. "
+        "Verify against project files; do not treat summaries as verified facts.\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
         "</workstep_context_handoff>"
     )
@@ -225,7 +226,7 @@ def mark_handoff_consumed(workstep_dir: str | Path, metadata: dict[str, Any]) ->
 def _endpoint_label(engine: str, provider: str) -> str:
     """Render one handoff endpoint as engine (+provider) text."""
     provider = (provider or "").strip()
-    return f"{engine}（供应商：{provider}）" if provider else str(engine)
+    return f"{engine} (provider: {provider})" if provider else str(engine)
 
 
 def render_handoff_reference(
@@ -250,22 +251,23 @@ def render_handoff_reference(
         str(metadata.get("source_engine") or "")
         == str(metadata.get("target_engine") or "")
     )
-    scope = "会话交接" if same_engine else "跨引擎会话交接"
+    scope = "conversation handoff" if same_engine else "cross-engine conversation handoff"
     reading_instruction = (
-        "先读取最新交接摘要和截止消息前最近的可见消息；需要追溯时再向前读取。"
+        "Read the latest handoff summary and the visible messages immediately before "
+        "the cutoff; go further back only when needed."
         if metadata.get("mode") == "smart"
-        else "读取截止消息之前的全部可见用户和助手消息。"
+        else "Read all visible user and assistant messages before the cutoff."
     )
     return (
         f"<workstep_context_handoff>\n"
-        f"这是一次{scope}（{source_label} → {target_label}）。"
-        "请先读取项目内的只读交接日志，再处理当前请求。\n"
-        f"交接日志：{handoff_path}\n"
-        f"交接 ID：{metadata.get('handoff_id')}\n"
-        f"交接方式：{metadata.get('mode')}\n"
-        f"截止消息：{metadata.get('cutoff_message_id') or '无'}\n"
-        f"读取要求：{reading_instruction}\n"
-        "只把日志中的可见用户/助手消息作为上下文，不要修改交接日志。\n"
+        f"This is a {scope} ({source_label} -> {target_label}). "
+        "Read the read-only handoff log in the project before handling the current request.\n"
+        f"Handoff log: {handoff_path}\n"
+        f"Handoff id: {metadata.get('handoff_id')}\n"
+        f"Handoff mode: {metadata.get('mode')}\n"
+        f"Cutoff message: {metadata.get('cutoff_message_id') or 'none'}\n"
+        f"Reading requirement: {reading_instruction}\n"
+        "Use only visible user/assistant messages in the log as context; do not modify the log.\n"
         "</workstep_context_handoff>"
     )
 

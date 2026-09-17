@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1060" role="img" aria-labelledby="task-stage-prompt-flow-title task-stage-prompt-flow-desc">
+    <title id="task-stage-prompt-flow-title">WorkStep 任务阶段提示词注入与审核流转</title>
+    <desc id="task-stage-prompt-flow-desc">左侧展示每个 LLM 阶段收到的提示词组成，右侧展示 DAG 调度、阶段执行、自动或人工审核、重试返工及下游推进路径，底部列出代码审查发现的空产物与条件路由缺口。</desc>
+    <defs><style>.sans{font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}.mono{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace}</style>
+      <marker id="arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#6e6e73"/></marker>
+      <marker id="arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#0071e3"/></marker>
+      <marker id="arrow-link" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0,9 3.5,0 7" fill="#0071e3"/></marker>
+      <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.8" fill="#1d1d1f" opacity="0.07"/></pattern>
+    </defs>
+
+    <rect width="1600" height="1060" fill="#fbfbfc"/>
+    <rect x="0" y="0" width="1600" height="1060" fill="url(#dots)" opacity="0.5"/>
+
+    <!-- zones -->
+    <rect x="40" y="44" width="576" height="748" rx="8" fill="#f5f5f7" stroke="#d2d2d7"/>
+    <rect x="644" y="44" width="916" height="748" rx="8" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="64" y="76" fill="#0071e3" font-size="12" font-weight="700" class="mono" letter-spacing="1.4">A · 每个 LLM 阶段的提示词注入栈</text>
+    <text x="668" y="76" fill="#0071e3" font-size="12" font-weight="700" class="mono" letter-spacing="1.4">B · DAG、执行与审核流转</text>
+
+    <!-- left: prompt stack -->
+    <rect x="68" y="100" width="520" height="72" rx="6" fill="#e6f0ff" stroke="#0071e3" stroke-width="1.2"/>
+    <rect x="80" y="112" width="84" height="20" rx="3" fill="#0071e3"/>
+    <text x="122" y="126" fill="#ffffff" font-size="10" font-weight="700" text-anchor="middle" class="mono">SYSTEM</text>
+    <text x="180" y="127" fill="#1d1d1f" font-size="14" font-weight="650" class="sans">阶段角色与产物规则</text>
+    <text x="80" y="151" fill="#424245" font-size="12" class="sans">自行判断是否具备产出条件；可不产出或留空文件；实际产出须遵守名称、类型和路径</text>
+
+    <rect x="68" y="188" width="252" height="76" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="84" y="212" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">项目记忆</text>
+    <text x="84" y="232" fill="#6e6e73" font-size="11" class="mono">.workstep/MEMORY.md</text>
+    <text x="84" y="250" fill="#86868b" font-size="11" class="sans">存在且非空时注入，最多 50,000 字符</text>
+    <rect x="336" y="188" width="252" height="76" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="352" y="212" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">任务说明</text>
+    <text x="352" y="232" fill="#6e6e73" font-size="11" class="mono">task.description</text>
+    <text x="352" y="250" fill="#86868b" font-size="11" class="sans">任务级目标与背景</text>
+
+    <rect x="68" y="280" width="252" height="84" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="84" y="304" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">外部输入产物</text>
+    <text x="84" y="324" fill="#6e6e73" font-size="11" class="mono">task.input_manifest_json</text>
+    <text x="84" y="344" fill="#86868b" font-size="11" class="sans">来自上游任务，只注入路径</text>
+    <rect x="336" y="280" width="252" height="84" rx="6" fill="#fff9ee" stroke="#d6b36a"/>
+    <text x="352" y="304" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">当前工作流上游产物</text>
+    <text x="352" y="324" fill="#6e6e73" font-size="11" class="mono">dependsOn → rglob(files)</text>
+    <text x="352" y="344" fill="#a16207" font-size="11" class="sans">仅列找到的文件路径；没有文件时整段缺席</text>
+
+    <rect x="68" y="380" width="252" height="84" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="84" y="404" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">阶段要求</text>
+    <text x="84" y="424" fill="#6e6e73" font-size="11" class="mono">step.prompt</text>
+    <text x="84" y="444" fill="#86868b" font-size="11" class="sans">流程节点自身的执行说明</text>
+    <rect x="336" y="380" width="252" height="84" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="352" y="404" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">用户确认的阶段补充</text>
+    <text x="352" y="424" fill="#6e6e73" font-size="11" class="mono">StageSupplement(active=true)</text>
+    <text x="352" y="444" fill="#86868b" font-size="11" class="sans">按创建顺序追加</text>
+
+    <rect x="68" y="480" width="520" height="106" rx="6" fill="#ffffff" stroke="#0071e3"/>
+    <text x="84" y="506" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">输出规范与真实写入路径</text>
+    <text x="84" y="528" fill="#6e6e73" font-size="11" class="mono">step.outputs + output-types.json</text>
+    <text x="84" y="550" fill="#424245" font-size="11" class="sans">名称 · 类型 · 格式约束 · .workstep/artifacts/&lt;workflow&gt;/&lt;task&gt;/&lt;step&gt;/</text>
+    <text x="84" y="570" fill="#a16207" font-size="11" class="sans">审查：多产物仍写“共派发 N 个子代理”，与可选产出存在张力</text>
+
+    <rect x="68" y="602" width="252" height="76" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="84" y="626" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">用户输入</text>
+    <text x="84" y="646" fill="#6e6e73" font-size="11" class="mono">user_input</text>
+    <text x="84" y="664" fill="#86868b" font-size="11" class="sans">启动工作流时提供，可为空</text>
+    <rect x="336" y="602" width="252" height="76" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
+    <text x="352" y="626" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">上下文交接</text>
+    <text x="352" y="646" fill="#6e6e73" font-size="11" class="mono">pending_handoff_json</text>
+    <text x="352" y="664" fill="#86868b" font-size="11" class="sans">存在时前置到完整提示词之前</text>
+
+    <rect x="68" y="694" width="520" height="72" rx="6" fill="#f7f2ff" stroke="#7c3aed"/>
+    <text x="84" y="718" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">仅重试 / 返工时追加</text>
+    <text x="84" y="740" fill="#424245" font-size="11" class="sans">上一轮验证或人工审核反馈 + 审核 Agent 原始输出 + 修复要求</text>
+    <text x="84" y="758" fill="#6e6e73" font-size="10.5" class="sans">可恢复会话的 @阶段 续聊则改用紧凑提示词：用户消息 + 可选产物约定</text>
+
+    <!-- right connectors first -->
+    <path d="M 784 150 H 812" fill="none" stroke="#6e6e73" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <path d="M 948 150 H 976" fill="none" stroke="#6e6e73" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <path d="M 1112 150 H 1140" fill="none" stroke="#0071e3" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <path d="M 1210 190 V 246" fill="none" stroke="#0071e3" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <path d="M 1140 304 H 1048 Q 1040 304 1040 312 V 370" fill="none" stroke="#0071e3" stroke-width="1.6" marker-end="url(#arrow-accent)"/>
+    <path d="M 1210 362 V 514" fill="none" stroke="#6e6e73" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <path d="M 1280 304 H 1432 Q 1440 304 1440 312 V 694 Q 1440 702 1432 702 H 1288" fill="none" stroke="#6e6e73" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+    <path d="M 1040 446 V 514" fill="none" stroke="#6e6e73" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <path d="M 1104 408 H 1372 Q 1380 408 1380 416 V 694 Q 1380 702 1372 702 H 1288" fill="none" stroke="#16803c" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <path d="M 976 552 H 924 Q 916 552 916 544 V 472 Q 916 464 908 464 H 864" fill="none" stroke="#6e6e73" stroke-width="1.4" marker-end="url(#arrow)"/>
+    <path d="M 1052 552 H 1140" fill="none" stroke="#6e6e73" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+    <path d="M 1210 590 V 694" fill="none" stroke="#16803c" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <path d="M 1140 552 H 900 Q 892 552 892 544 V 230 Q 892 222 900 222 H 1044 Q 1052 222 1052 190" fill="none" stroke="#c83333" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#arrow)"/>
+
+    <!-- connector labels with visible gaps -->
+    <rect x="1060" y="282" width="64" height="18" rx="3" fill="#fbfbfc"/><text x="1092" y="295" fill="#0071e3" font-size="11" font-weight="650" text-anchor="middle" class="sans">自动审核</text>
+    <rect x="1224" y="410" width="56" height="18" rx="3" fill="#fbfbfc"/><text x="1252" y="423" fill="#6e6e73" font-size="11" font-weight="650" text-anchor="middle" class="sans">人工审核</text>
+    <rect x="1392" y="326" width="64" height="18" rx="3" fill="#fbfbfc"/><text x="1424" y="339" fill="#6e6e73" font-size="11" font-weight="650" text-anchor="middle" class="sans">跳过审核</text>
+    <rect x="1048" y="466" width="40" height="18" rx="3" fill="#fbfbfc"/><text x="1068" y="479" fill="#16803c" font-size="11" font-weight="650" text-anchor="middle" class="sans">通过</text>
+    <rect x="930" y="472" width="40" height="18" rx="3" fill="#fbfbfc"/><text x="950" y="485" fill="#c83333" font-size="11" font-weight="650" text-anchor="middle" class="sans">驳回</text>
+    <rect x="1064" y="530" width="64" height="18" rx="3" fill="#fbfbfc"/><text x="1096" y="543" fill="#6e6e73" font-size="11" font-weight="650" text-anchor="middle" class="sans">次数耗尽</text>
+    <rect x="1224" y="626" width="40" height="18" rx="3" fill="#fbfbfc"/><text x="1244" y="639" fill="#16803c" font-size="11" font-weight="650" text-anchor="middle" class="sans">批准</text>
+    <rect x="904" y="205" width="72" height="18" rx="3" fill="#fbfbfc"/><text x="940" y="218" fill="#c83333" font-size="11" font-weight="650" text-anchor="middle" class="sans">驳回后重跑</text>
+
+    <!-- right nodes -->
+    <rect x="668" y="110" width="116" height="80" rx="6" fill="#ffffff" stroke="#424245"/>
+    <text x="726" y="138" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">编译流程</text>
+    <text x="726" y="158" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">validate + compile</text>
+    <text x="726" y="176" fill="#86868b" font-size="10.5" text-anchor="middle" class="sans">实线依赖 / 虚线返工</text>
+
+    <rect x="812" y="110" width="136" height="80" rx="6" fill="#ffffff" stroke="#424245"/>
+    <text x="880" y="138" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">DAG 选择就绪阶段</text>
+    <text x="880" y="158" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">all deps completed</text>
+    <text x="880" y="176" fill="#86868b" font-size="10.5" text-anchor="middle" class="sans">并行 fan-out</text>
+
+    <rect x="976" y="110" width="136" height="80" rx="6" fill="#e6f0ff" stroke="#0071e3" stroke-width="1.4"/>
+    <text x="1044" y="138" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">组装阶段提示词</text>
+    <text x="1044" y="158" fill="#0071e3" font-size="10.5" text-anchor="middle" class="mono">assemble_prompt()</text>
+    <text x="1044" y="176" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="sans">完整 / 可恢复续聊</text>
+
+    <rect x="1140" y="110" width="140" height="80" rx="6" fill="#e6f0ff" stroke="#0071e3" stroke-width="1.4"/>
+    <text x="1210" y="138" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">执行阶段 LLM</text>
+    <text x="1210" y="158" fill="#0071e3" font-size="10.5" text-anchor="middle" class="mono">engine.spawn()</text>
+    <text x="1210" y="176" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="sans">事件流 · 文件产物 · 会话</text>
+
+    <polygon points="1210,246 1280,304 1210,362 1140,304" fill="#ffffff" stroke="#424245" stroke-width="1.2"/>
+    <text x="1210" y="296" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">审核模式</text>
+    <text x="1210" y="316" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">skip / auto / manual</text>
+
+    <rect x="976" y="370" width="128" height="76" rx="6" fill="#ffffff" stroke="#0071e3"/>
+    <text x="1040" y="398" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">审核 LLM</text>
+    <text x="1040" y="418" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">ReviewGate.evaluate</text>
+    <text x="1040" y="434" fill="#86868b" font-size="10.5" text-anchor="middle" class="sans">只检查，不改文件</text>
+
+    <rect x="780" y="514" width="136" height="76" rx="6" fill="#fff9ee" stroke="#a16207"/>
+    <text x="848" y="542" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">重试 / 上游返工</text>
+    <text x="848" y="562" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">retrying / rework</text>
+    <text x="848" y="578" fill="#a16207" font-size="10.5" text-anchor="middle" class="sans">注入审核反馈后重跑</text>
+
+    <rect x="1140" y="514" width="140" height="76" rx="6" fill="#ffffff" stroke="#7c3aed"/>
+    <text x="1210" y="542" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">等待人工审核</text>
+    <text x="1210" y="562" fill="#6e6e73" font-size="10.5" text-anchor="middle" class="mono">awaiting_review</text>
+    <text x="1210" y="578" fill="#7c3aed" font-size="10.5" text-anchor="middle" class="sans">批准或驳回</text>
+
+    <rect x="1128" y="694" width="160" height="72" rx="20" fill="#eef8f1" stroke="#16803c" stroke-width="1.2"/>
+    <text x="1208" y="724" fill="#1d1d1f" font-size="13" font-weight="650" text-anchor="middle" class="sans">阶段 passed</text>
+    <text x="1208" y="746" fill="#16803c" font-size="11" text-anchor="middle" class="sans">解锁下游；全部完成则 ready</text>
+
+    <rect x="668" y="388" width="196" height="76" rx="6" fill="#f5f5f7" stroke="#86868b" stroke-dasharray="5 4"/>
+    <text x="684" y="412" fill="#1d1d1f" font-size="12.5" font-weight="650" class="sans">特殊阶段：task_dispatch</text>
+    <text x="684" y="434" fill="#6e6e73" font-size="10.5" class="sans">不组装 LLM 提示词，也不进入审核；</text>
+    <text x="684" y="452" fill="#6e6e73" font-size="10.5" class="sans">派发成功后直接 passed</text>
+
+    <!-- audit strip -->
+    <line x1="40" y1="824" x2="1560" y2="824" stroke="#d2d2d7"/>
+    <text x="40" y="856" fill="#c83333" font-size="12" font-weight="700" class="mono" letter-spacing="1.4">C · 代码审查发现</text>
+
+    <rect x="40" y="880" width="360" height="128" rx="6" fill="#fff5f5" stroke="#c83333"/>
+    <text x="60" y="908" fill="#c83333" font-size="12" font-weight="700" class="mono">01 · 上游“无产物”不可见</text>
+    <text x="60" y="934" fill="#424245" font-size="12" class="sans">下游只收到实际找到的文件路径。</text>
+    <text x="60" y="956" fill="#424245" font-size="12" class="sans">上游目录为空时，“上游产物”整段不出现，</text>
+    <text x="60" y="978" fill="#424245" font-size="12" class="sans">LLM 无法区分“无依赖”与“依赖产出为空”。</text>
+
+    <rect x="420" y="880" width="360" height="128" rx="6" fill="#fff9ee" stroke="#a16207"/>
+    <text x="440" y="908" fill="#a16207" font-size="12" font-weight="700" class="mono">02 · 审核输入没有空值元数据</text>
+    <text x="440" y="934" fill="#424245" font-size="12" class="sans">审核提示词包含完整执行 Prompt、执行回复、</text>
+    <text x="440" y="956" fill="#424245" font-size="12" class="sans">声明输出和文件路径列表，但没有 size / 摘要。</text>
+    <text x="440" y="978" fill="#424245" font-size="12" class="sans">是否为空依赖审核 Agent 主动读取文件。</text>
+
+    <rect x="800" y="880" width="360" height="128" rx="6" fill="#fff9ee" stroke="#a16207"/>
+    <text x="820" y="908" fill="#a16207" font-size="12" font-weight="700" class="mono">03 · 无审核时按执行成功放行</text>
+    <text x="820" y="934" fill="#424245" font-size="12" class="sans">review 未配置、mode=skip 或旧运行路径下，</text>
+    <text x="820" y="956" fill="#424245" font-size="12" class="sans">不会检查产物是否存在或为空，阶段直接 passed，</text>
+    <text x="820" y="978" fill="#424245" font-size="12" class="sans">随后 DAG 可调度下游阶段。</text>
+
+    <rect x="1180" y="880" width="380" height="128" rx="6" fill="#fff5f5" stroke="#c83333"/>
+    <text x="1200" y="908" fill="#c83333" font-size="12" font-weight="700" class="mono">04 · condition 路由未接入运行结果</text>
+    <text x="1200" y="934" fill="#424245" font-size="12" class="sans">DAGScheduler 支持 step:passed / failed 条件，</text>
+    <text x="1200" y="956" fill="#424245" font-size="12" class="sans">但 TaskRunner 调用 get_ready_steps 时未传</text>
+    <text x="1200" y="978" fill="#424245" font-size="12" class="sans">step_results，条件目前不会按真实结果分流。</text>
+
+    <!-- legend -->
+    <line x1="40" y1="1032" x2="1560" y2="1032" stroke="#d2d2d7"/>
+    <rect x="56" y="1042" width="22" height="8" rx="2" fill="#e6f0ff" stroke="#0071e3"/><text x="88" y="1050" fill="#6e6e73" font-size="10" class="sans">LLM 核心路径</text>
+    <line x1="196" y1="1046" x2="226" y2="1046" stroke="#6e6e73" stroke-dasharray="5 4"/><text x="236" y="1050" fill="#6e6e73" font-size="10" class="sans">可选 / 返回路径</text>
+    <text x="1544" y="1050" fill="#86868b" font-size="10" text-anchor="end" class="mono">SOURCE: apps/daemon/services/{prompt,pipeline,task_runner,review_gate}.py</text>
+  </svg>

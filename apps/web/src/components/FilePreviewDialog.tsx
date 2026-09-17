@@ -15,7 +15,13 @@ interface FilePreviewDialogProps {
   onClose: () => void
 }
 
-export default function FilePreviewDialog({ path, name, line, projectId, onClose }: FilePreviewDialogProps) {
+export default function FilePreviewDialog({
+  path,
+  name,
+  line,
+  projectId,
+  onClose,
+}: FilePreviewDialogProps) {
   const { t } = useI18n()
   const closeRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLElement>(null)
@@ -59,7 +65,12 @@ export default function FilePreviewDialog({ path, name, line, projectId, onClose
           </Button>
         </header>
         <div className="file-preview-dialog-body">
-          <ArtifactPreview path={path} line={line} projectId={projectId} />
+          <ArtifactPreview
+            path={path}
+            name={name}
+            line={line}
+            projectId={projectId}
+          />
         </div>
       </section>
     </div>,

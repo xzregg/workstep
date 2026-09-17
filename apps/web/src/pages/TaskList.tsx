@@ -1,4 +1,5 @@
 import Select from '../components/Select'
+import { randomUuid } from '../utils/uuid'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useOverlay } from '../hooks/useOverlay'
@@ -613,7 +614,7 @@ export default function TaskList() {
       setArchiveExperiencePhase('intro')
       return
     }
-    const lookupId = crypto.randomUUID()
+    const lookupId = randomUuid()
     archiveDraftLookupId.current = lookupId
     try {
       const draft = await getArchiveExperienceDraft(taskId, activeProject.id)
@@ -694,7 +695,7 @@ export default function TaskList() {
     if (archiveExperiencePhase === 'intro' || archiveExperiencePhase === 'stopped') {
       setArchiveExperienceError('')
       setArchiveExperiencePhase('generating')
-      const messageId = crypto.randomUUID()
+      const messageId = randomUuid()
       setArchiveExperienceMessageId(messageId)
       try {
         const draft = await prepareArchiveExperience(taskId, activeProject.id, messageId)

@@ -104,6 +104,22 @@ export interface AssistantProposalCard {
   steps: any
   nodeCount: number
   autoApply?: boolean
+  /** Stages this proposal touched (patch edits only), for partial apply. */
+  stageChanges?: AssistantStageChange[]
+  /** Raw incremental patch when the proposal came from a patch edit. */
+  patch?: {
+    upsertNodes?: Record<string, unknown>[]
+    removeNodeIds?: number[]
+    connections?: Record<string, unknown>[]
+  }
+}
+
+/** One stage touched by an incremental flow patch. */
+export interface AssistantStageChange {
+  id: number
+  key: string
+  title: string
+  change: 'added' | 'updated' | 'removed'
 }
 
 export interface AssistantSessionState {
@@ -190,6 +206,17 @@ function appendCappedEvent(
   event: AssistantChatEvent,
 ): AssistantChatEvent[] {
   const combined = [...(events || []), event]
+  return combined.length > MAX_LIVE_EVENTS_PER_MESSAGE
+    ? combined.slice(-MAX_LIVE_EVENTS_PER_MESSAGE)
+    : combined
+}
+
+/** 封顶追加 A2UI 载荷：流式界面更新可产生任意多条，不能让缓存无限增长。 */
+function appendCappedA2uiPayload(
+  payloads: Record<string, unknown>[] | undefined,
+  payload: Record<string, unknown>,
+): Record<string, unknown>[] {
+  const combined = [...(payloads || []), payload]
   return combined.length > MAX_LIVE_EVENTS_PER_MESSAGE
     ? combined.slice(-MAX_LIVE_EVENTS_PER_MESSAGE)
     : combined
@@ -323,7 +350,7 @@ export function createAssistantStore(
         for (const message of messages) {
           const a2uiPayloads = historyPayloads(message.events, 'a2ui', CUSTOM.a2ui)
           if (a2uiPayloads.length > 0) {
-            a2uiMessages[message.id] = a2uiPayloads
+            a2uiMessages[message.id] = a2uiPayloads.slice(-MAX_LIVE_EVENTS_PER_MESSAGE)
           }
           const proposalEvent = config.proposalEvent
           if (proposalEvent && config.proposalExtractor) {
@@ -576,7 +603,10 @@ export function createAssistantStore(
         } else if (isCustom(event, CUSTOM.a2ui) && mid) {
           a2uiMessages = {
             ...(a2uiMessages ?? {}),
-            [mid]: [...(a2uiMessages?.[mid] ?? []), customValue(event)],
+            [mid]: appendCappedA2uiPayload(
+              a2uiMessages?.[mid],
+              customValue(event),
+            ),
           }
         } else if ((isReasoningEvent(event) || isToolEvent(event)) && mid) {
           // Preserve process events so the message can render text and tools in sequence.

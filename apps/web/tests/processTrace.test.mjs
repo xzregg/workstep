@@ -10,6 +10,16 @@ const subagentSource = await readFile(
   new URL('../src/components/SubagentTimelineItem.tsx', import.meta.url),
   'utf8',
 )
+const messageFooterSource = await readFile(
+  new URL('../src/components/MessageResponseFooter.tsx', import.meta.url),
+  'utf8',
+)
+
+test('process trace and message footer share one thinking-rate helper', () => {
+  assert.match(source, /thinkingRateFromTimeline/)
+  assert.match(source, /thinkingRateFromTimeline\(timeline, now\)/)
+  assert.match(messageFooterSource, /thinkingRateFromTimeline/)
+})
 
 test('thinking process renders ordered reasoning timeline items', () => {
   assert.match(source, /item\.type === 'thinking'/)

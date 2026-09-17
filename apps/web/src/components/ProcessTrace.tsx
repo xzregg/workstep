@@ -14,6 +14,7 @@ import { useI18n } from '../i18n'
 import {
   buildMessageTimeline,
   estimateTokens,
+  thinkingRateFromTimeline,
   type MessageTimelineItem,
 } from '../utils/messageTimeline'
 import { isToolEvent, toolCallId } from '../utils/agui.ts'
@@ -65,14 +66,14 @@ function ThinkingTimelineItem({
   active,
   lastThinking,
   duration,
-  elapsedMs,
+  rate,
 }: {
   content: string
   active: boolean
   /** 是否为当前消息中最后一个思考块；只有最后一个思考块结束后不自动折叠。 */
   lastThinking: boolean
   duration: string
-  elapsedMs?: number
+  rate: number | null
 }) {
   const { t } = useI18n()
   const displayDuration = duration || formatDuration(0, t)
@@ -137,9 +138,7 @@ function ThinkingTimelineItem({
             ? t('trace.thinkingProgress', {
               count: estimateTokens(content),
               duration: displayDuration,
-              rate: elapsedMs && elapsedMs > 0
-                ? Math.max(1, Math.round(estimateTokens(content) / (elapsedMs / 1000)))
-                : '—',
+              rate: rate ?? '—',
             })
             : duration
               ? t('trace.thoughtCharactersDuration', {
@@ -254,6 +253,7 @@ export default function ProcessTrace({
     [processItems],
   )
   const lastThinkingItem = thinkingItems[thinkingItems.length - 1]
+  const thinkingRate = thinkingRateFromTimeline(timeline, now)
   const subagentItems = useMemo(
     () => processItems.filter(
       (item): item is Extract<MessageTimelineItem, { type: 'subagent' }> => item.type === 'subagent',
@@ -398,10 +398,7 @@ export default function ProcessTrace({
               content={item.content}
               active={running && item === lastProcessItem}
               lastThinking={item === lastThinkingItem}
-              elapsedMs={durationMilliseconds(
-                item.startedAt,
-                running && item === lastProcessItem ? now : item.endedAt,
-              ) ?? undefined}
+              rate={item === lastThinkingItem ? thinkingRate : thinkingRateFromTimeline([item], now)}
               duration={formatDuration(
                 durationMilliseconds(
                   item.startedAt,

@@ -38,14 +38,16 @@ export interface SelectOptions {
 }
 
 interface ChatListState {
-  /** Project-level sessions (manual order, newest first), as returned by the API. */
-  sessions: ChatSessionSummary[]
+  /** Sessions grouped by project so multiple expanded projects cannot share rows. */
+  sessionsByProject: Record<string, ChatSessionSummary[]>
   quickButtons: ChatQuickButton[]
-  listLoading: boolean
+  listLoadingByProject: Record<string, boolean>
 
   // ── Multi-select ──
   /** Session IDs currently selected for bulk operations. */
   selectedIds: Set<string>
+  /** The project that owns the current selection; prevents cross-project bulk actions. */
+  selectionProjectId: string | null
   /** Last clicked session used as anchor for Shift+Click range select. */
   selectAnchor: string | null
   /** True while a bulk-delete request is in flight. */
@@ -58,7 +60,7 @@ interface ChatListState {
   renameSession: (sessionId: string, title: string) => void
 
   /** Update selection based on click modifiers (plain / Cmd / Shift). */
-  handleSelect: (id: string, opts: SelectOptions) => void
+  handleSelect: (id: string, opts: SelectOptions, projectId?: string) => void
   /** Clear all selection and reset the anchor. */
   clearSelection: () => void
   /** Delete multiple sessions via the bulk API; removes them from local state. */
@@ -69,36 +71,48 @@ interface ChatListState {
 }
 
 export const useChatListStore = create<ChatListState>((set, get) => ({
-  sessions: [],
+  sessionsByProject: {},
   quickButtons: [],
-  listLoading: false,
+  listLoadingByProject: {},
 
   selectedIds: new Set<string>(),
+  selectionProjectId: null,
   selectAnchor: null,
   bulkDeleting: false,
 
   fetchSessions: async (projectId) => {
-    if (!projectId || get().listLoading) return
-    set({ listLoading: true, selectedIds: new Set(), selectAnchor: null })
+    if (!projectId || get().listLoadingByProject[projectId]) return
+    set((state) => ({
+      listLoadingByProject: { ...state.listLoadingByProject, [projectId]: true },
+      selectedIds: new Set(),
+      selectionProjectId: null,
+      selectAnchor: null,
+    }))
     try {
       const { sessions } = await chatSessionApi.list(projectId)
-      set({ sessions })
+      set((state) => ({
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+      }))
     } catch {
       // Keep whatever is cached; the next navigation retries.
     } finally {
-      set({ listLoading: false })
+      set((state) => ({
+        listLoadingByProject: { ...state.listLoadingByProject, [projectId]: false },
+      }))
     }
   },
 
   reorderSessions: async (projectId, orderedIds) => {
     const orderMap = new Map(orderedIds.map((id, index) => [id, index]))
     set((state) => {
-      const sessions = [...state.sessions].sort(
+      const sessions = [...(state.sessionsByProject[projectId] || [])].sort(
         (a, b) =>
           (orderMap.get(a.id) ?? Number.MAX_SAFE_INTEGER)
           - (orderMap.get(b.id) ?? Number.MAX_SAFE_INTEGER),
       )
-      return { sessions }
+      return {
+        sessionsByProject: { ...state.sessionsByProject, [projectId]: sessions },
+      }
     })
     try {
       await chatSessionApi.reorder(projectId, orderedIds)
@@ -109,67 +123,97 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
 
   addSession: (session) =>
     set((state) => {
-      return { sessions: [session, ...state.sessions.filter((item) => item.id !== session.id)] }
+      const projectSessions = state.sessionsByProject[session.project_id] || []
+      return {
+        sessionsByProject: {
+          ...state.sessionsByProject,
+          [session.project_id]: [
+            session,
+            ...projectSessions.filter((item) => item.id !== session.id),
+          ],
+        },
+      }
     }),
 
   removeSession: (sessionId) =>
     set((state) => {
       const selectedIds = new Set(state.selectedIds)
       selectedIds.delete(sessionId)
+      const sessionsByProject = Object.fromEntries(
+        Object.entries(state.sessionsByProject).map(([projectId, sessions]) => [
+          projectId,
+          sessions.filter((item) => item.id !== sessionId),
+        ]),
+      )
       return {
-        sessions: state.sessions.filter((item) => item.id !== sessionId),
+        sessionsByProject,
         selectedIds,
+        selectionProjectId: selectedIds.size === 0 ? null : state.selectionProjectId,
         selectAnchor: state.selectAnchor === sessionId ? null : state.selectAnchor,
       }
     }),
 
   renameSession: (sessionId, title) =>
-    set((state) => ({
-      sessions: state.sessions.map((item) =>
-        item.id === sessionId ? { ...item, title } : item,
-      ),
-    })),
+    set((state) => {
+      const sessionsByProject = Object.fromEntries(
+        Object.entries(state.sessionsByProject).map(([projectId, sessions]) => [
+          projectId,
+          sessions.map((item) => item.id === sessionId ? { ...item, title } : item),
+        ]),
+      )
+      return { sessionsByProject }
+    }),
 
   // ── Multi-select logic ──
 
-  handleSelect: (id, opts) => {
-    const { sessions, selectedIds, selectAnchor } = get()
+  handleSelect: (id, opts, projectId) => {
+    const { sessionsByProject, selectedIds, selectionProjectId, selectAnchor } = get()
+    const scopedProjectId = projectId || selectionProjectId
+    const sessions = scopedProjectId ? (sessionsByProject[scopedProjectId] || []) : []
+    const baseSelectedIds = scopedProjectId && selectionProjectId === scopedProjectId
+      ? selectedIds
+      : new Set<string>()
+    const baseAnchor = scopedProjectId && selectionProjectId === scopedProjectId ? selectAnchor : null
 
-    if (opts.shift && selectAnchor) {
+    if (opts.shift && baseAnchor) {
       // Range select from anchor to clicked item
       const ids = sessions.map((s) => s.id)
-      const anchorIdx = ids.indexOf(selectAnchor)
+      const anchorIdx = ids.indexOf(baseAnchor)
       const clickIdx = ids.indexOf(id)
       if (anchorIdx !== -1 && clickIdx !== -1) {
         const [start, end] = anchorIdx < clickIdx ? [anchorIdx, clickIdx] : [clickIdx, anchorIdx]
         const rangeIds = ids.slice(start, end + 1)
         // Union with existing non-range selections
-        const next = new Set(selectedIds)
+        const next = new Set(baseSelectedIds)
         for (const rid of rangeIds) next.add(rid)
-        set({ selectedIds: next, selectAnchor: id })
+        set({ selectedIds: next, selectionProjectId: scopedProjectId || null, selectAnchor: id })
         return
       }
     }
 
     if (opts.meta) {
       // Cmd/Ctrl+Click → toggle individual
-      const next = new Set(selectedIds)
+      const next = new Set(baseSelectedIds)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      set({ selectedIds: next, selectAnchor: id })
+      set({
+        selectedIds: next,
+        selectionProjectId: next.size > 0 ? scopedProjectId || null : null,
+        selectAnchor: id,
+      })
       return
     }
 
     // Plain click → single select (replace)
-    if (selectedIds.size > 1 && selectedIds.has(id)) {
+    if (baseSelectedIds.size > 1 && baseSelectedIds.has(id)) {
       // Clicking an already-selected item when multi-select is active → deselect all
-      set({ selectedIds: new Set(), selectAnchor: null })
+      set({ selectedIds: new Set(), selectionProjectId: null, selectAnchor: null })
     } else {
-      set({ selectedIds: new Set([id]), selectAnchor: id })
+      set({ selectedIds: new Set([id]), selectionProjectId: scopedProjectId || null, selectAnchor: id })
     }
   },
 
-  clearSelection: () => set({ selectedIds: new Set(), selectAnchor: null }),
+  clearSelection: () => set({ selectedIds: new Set(), selectionProjectId: null, selectAnchor: null }),
 
   bulkRemove: async (projectId) => {
     const { selectedIds, bulkDeleting } = get()
@@ -181,8 +225,14 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       // Remove deleted sessions from local state
       const deletedSet = new Set(result.deleted)
       set((state) => ({
-        sessions: state.sessions.filter((item) => !deletedSet.has(item.id)),
+        sessionsByProject: Object.fromEntries(
+          Object.entries(state.sessionsByProject).map(([projectId, sessions]) => [
+            projectId,
+            sessions.filter((item) => !deletedSet.has(item.id)),
+          ]),
+        ),
         selectedIds: new Set(),
+        selectionProjectId: null,
         selectAnchor: null,
       }))
       // Also reset assistant store for deleted sessions
@@ -191,7 +241,7 @@ export const useChatListStore = create<ChatListState>((set, get) => ({
       }
       return { deleted: result.deleted.length, skipped: result.skipped.length }
     } catch {
-      set({ selectedIds: new Set(), selectAnchor: null })
+      set({ selectedIds: new Set(), selectionProjectId: null, selectAnchor: null })
       return { deleted: 0, skipped: 0 }
     } finally {
       set({ bulkDeleting: false })

@@ -220,6 +220,56 @@ def is_commentary(event: InternalEvent | Mapping[str, Any]) -> bool:
     return kind == "agent_message_chunk" and data.get("phase") == "commentary"
 
 
+class UnphasedMessageClassifier:
+    """Delay unphased assistant messages until the turn shape is known.
+
+    Legacy Codex transports omit ``phase`` on agent messages. In a turn with
+    several messages, all but the last are progress narration, while the last
+    is the user-facing answer.
+    """
+
+    def __init__(self) -> None:
+        self._pending: InternalEvent | None = None
+
+    def offer(
+        self,
+        event: InternalEvent,
+        *,
+        terminal: bool = False,
+        split: bool = False,
+    ) -> list[InternalEvent]:
+        emitted: list[InternalEvent] = []
+        pending = self._pending
+        is_unphased = (
+            event.type == "agent_message_chunk"
+            and not event.data.get("phase")
+            and bool(event.data.get("source_item_id"))
+        )
+
+        if pending is not None:
+            if is_unphased:
+                pending.data["phase"] = "commentary"
+                emitted.append(pending)
+                self._pending = event
+                return emitted
+            if split and not terminal:
+                pending.data["phase"] = "commentary"
+            emitted.append(pending)
+            self._pending = None
+
+        if is_unphased:
+            self._pending = event
+            return emitted
+
+        emitted.append(event)
+        return emitted
+
+    def flush(self) -> list[InternalEvent]:
+        pending = self._pending
+        self._pending = None
+        return [pending] if pending is not None else []
+
+
 def agent_thought_chunk(text: str) -> InternalEvent:
     """ACP ``agent_thought_chunk`` — thinking/reasoning increment."""
     return InternalEvent(type="agent_thought_chunk", data={"content": _content_block(text)})

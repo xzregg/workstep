@@ -63,7 +63,7 @@ export function useWebSocket() {
   const draftSessionIds = useTaskDraftStore(useShallow((s) => Object.keys(s.sessions)))
   const chatSessionIds = useChatSessionStore(useShallow((s) => Object.keys(s.sessions)))
   const sidebarChatSessionIds = useChatListStore(
-    useShallow((s) => s.sessions.map((session) => session.id)),
+    useShallow((s) => Object.values(s.sessionsByProject).flat().map((session) => session.id)),
   )
   const activeProjectId = useProjectStore((s) => s.activeProject?.id)
 
@@ -82,7 +82,7 @@ export function useWebSocket() {
       ...Object.keys(useWorkflowGenStore.getState().sessions),
       ...Object.keys(useTaskDraftStore.getState().sessions),
       ...Object.keys(useChatSessionStore.getState().sessions),
-      ...useChatListStore.getState().sessions.map((session) => session.id),
+      ...Object.values(useChatListStore.getState().sessionsByProject).flat().map((session) => session.id),
     ])],
     channels: useProjectStore.getState().activeProject?.id ? ['channel_wechat'] : [],
   }), [])

@@ -22,6 +22,7 @@ from engines.core.base import (
 
 from engines.core.events import (
     InternalEvent,
+    UnphasedMessageClassifier,
     agent_message_chunk,
     compacted_event,
     extract_reasoning_text,
@@ -38,9 +39,20 @@ from services.config import (
     CODEX_SANDBOX_MODES,
     CODEX_SDK_APPROVAL_MODES,
     config_store,
+    normalize_codex_custom_config,
+    parse_codex_custom_config,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_codex_sdk_terminal_event(event: InternalEvent) -> bool:
+    if event.type in {"usage_update", "error"}:
+        return True
+    return (
+        event.type == "status"
+        and event.data.get("status") in {"done", "cancelled", "failed"}
+    )
 
 
 class CodexSDKEngine(AcpEngineBase):
@@ -166,6 +178,17 @@ class CodexSDKEngine(AcpEngineBase):
                 default="workspace-write",
                 help="工具执行沙箱；danger-full-access 对应 SDK 的 full-access。",
             ),
+            EngineConfigField(
+                key="custom_config",
+                label="自定义配置覆盖",
+                type="textarea",
+                stage_hidden=True,
+                placeholder="model_context_window = 128000\nmodel_max_output_tokens = 8192",
+                help=(
+                    "每行一条 key=value，写入 thread config（等价 config.toml 覆盖）。"
+                    "# 开头为注释。已由 WorkStep / 供应商设置的键优先，此处只补充。"
+                ),
+            ),
         ]
 
     def get_config_values(self) -> dict:
@@ -182,6 +205,7 @@ class CodexSDKEngine(AcpEngineBase):
             model_reasoning_effort=str(values.get("model_reasoning_effort") or ""),
             approval_mode=str(values.get("approval_mode") or ""),
             sandbox=str(values.get("sandbox") or ""),
+            custom_config=str(values.get("custom_config") or ""),
         )
 
     async def list_models(self, cwd: str) -> list[EngineModel]:
@@ -309,14 +333,27 @@ class CodexSDKEngine(AcpEngineBase):
         )
 
     def _map_notification(self, notification, state):
-        events = self._map_notification_content(notification, state)
+        state.setdefault("unphased", UnphasedMessageClassifier())
+        raw_events = self._map_notification_content(notification, state)
         payload = getattr(notification, "payload", None)
         root = self._root_of(getattr(payload, "item", None))
         if getattr(root, "type", "") == "collabAgentToolCall":
-            events.extend(codex_subagent_events({
+            raw_events.extend(codex_subagent_events({
                 "receiver_thread_ids": getattr(root, "receiver_thread_ids", []),
                 "agents_states": self._plain(getattr(root, "agents_states", {})),
             }))
+        events: list[InternalEvent] = []
+        for event in raw_events:
+            events.extend(state["unphased"].offer(
+                event,
+                terminal=_is_codex_sdk_terminal_event(event),
+                split=True,
+            ))
+            if (
+                event.type == "status"
+                and event.data.get("status") == "done"
+            ):
+                events.extend(state["unphased"].flush())
         return events
 
     def _map_notification_content(
@@ -345,7 +382,9 @@ class CodexSDKEngine(AcpEngineBase):
                 item = items.setdefault(item_id, {"text": "", "pending": ""})
                 if item.get("completed"):
                     return events
-                if item_id and not item.get("started"):
+                if item_id and (
+                    not item.get("started") or not item.get("phase")
+                ):
                     item["pending"] += str(delta)
                 else:
                     item["text"] += str(delta)
@@ -376,7 +415,7 @@ class CodexSDKEngine(AcpEngineBase):
                 phase = getattr(root, "phase", None)
                 item["started"] = True
                 item["phase"] = getattr(phase, "value", phase)
-                if item["pending"]:
+                if item["pending"] and item["phase"]:
                     events.append(agent_message_chunk(
                         item["pending"], phase=item["phase"], source_item_id=item_id,
                     ))
@@ -414,9 +453,10 @@ class CodexSDKEngine(AcpEngineBase):
                     remaining = item["pending"]
                 if remaining and (item_id or not state.get("emitted_text")):
                     state["emitted_text"] = True
-                    events.append(agent_message_chunk(
+                    message_event = agent_message_chunk(
                         remaining, phase=item.get("phase"), source_item_id=item_id,
-                    ))
+                    )
+                    events.append(message_event)
                 item.update(text=str(text), pending="", completed=True)
             elif rtype == "reasoning":
                 text = extract_reasoning_text(getattr(root, "content", None))
@@ -694,6 +734,11 @@ class CodexSDKEngine(AcpEngineBase):
         )
         if reasoning_effort:
             thread_config["model_reasoning_effort"] = reasoning_effort
+        # 自定义覆盖只补充：已由 WorkStep / 供应商设置的键优先。
+        for key, value in parse_codex_custom_config(
+            sdk_config.get("custom_config")
+        ):
+            thread_config.setdefault(key, value)
         thread_kwargs: dict[str, Any] = {
             "cwd": cwd,
             "model": model or None,
@@ -734,6 +779,7 @@ class CodexSDKEngine(AcpEngineBase):
                 "emitted_text": False,
                 "emitted_thinking": False,
                 "tool_emitted": set(),
+                "unphased": UnphasedMessageClassifier(),
             }
 
             async def stream_turn(turn: Any) -> None:
@@ -798,11 +844,20 @@ class CodexSDKEngine(AcpEngineBase):
                     # its actual text without guessing a phase or losing the tail.
                     for item_id, item in state.get("message_items", {}).items():
                         if item["pending"]:
-                            await event_queue.put(agent_message_chunk(
+                            pending_event = agent_message_chunk(
                                 item["pending"], phase=item.get("phase"), source_item_id=item_id,
-                            ))
+                            )
+                            if item.get("phase"):
+                                await event_queue.put(pending_event)
+                            else:
+                                for event in state["unphased"].offer(
+                                    pending_event, split=True,
+                                ):
+                                    await event_queue.put(event)
                             item["text"] += item["pending"]
                             item["pending"] = ""
+                    for event in state["unphased"].flush():
+                        await event_queue.put(event)
                     notification_task.cancel()
                     if live_task is not None:
                         live_task.cancel()

@@ -70,6 +70,8 @@ class InterventionManager:
     def __init__(self):
         # intervention_id → asyncio.Future waiting for user response
         self._pending: dict[str, asyncio.Future] = {}
+        # intervention_id → task_id, used to scope public share responses.
+        self._tasks: dict[str, str] = {}
 
     async def request_response(
         self,
@@ -85,6 +87,7 @@ class InterventionManager:
         """
         future = asyncio.get_event_loop().create_future()
         self._pending[intervention_id] = future
+        self._tasks[intervention_id] = task_id
 
         logger.info(
             "Intervention requested: id=%s task=%s step=%s",
@@ -99,13 +102,26 @@ class InterventionManager:
             return await future
         finally:
             self._pending.pop(intervention_id, None)
+            self._tasks.pop(intervention_id, None)
 
-    def deliver_response(self, intervention_id: str, data: dict[str, Any]) -> bool:
+    def deliver_response(
+        self,
+        intervention_id: str,
+        data: dict[str, Any],
+        task_id: str | None = None,
+    ) -> bool:
         """Called when user responds via WebSocket.
 
         Delivers the response to the waiting engine.
         Returns True if the intervention was found and delivered.
         """
+        if task_id is not None and self._tasks.get(intervention_id) != task_id:
+            logger.warning(
+                "Intervention %s does not belong to task %s",
+                intervention_id,
+                task_id,
+            )
+            return False
         future = self._pending.get(intervention_id)
         if not future:
             logger.warning("No pending intervention: %s", intervention_id)
@@ -121,6 +137,7 @@ class InterventionManager:
     def cancel(self, intervention_id: str) -> bool:
         """Cancel a pending intervention."""
         future = self._pending.pop(intervention_id, None)
+        self._tasks.pop(intervention_id, None)
         if future and not future.done():
             future.set_result({"error": "cancelled"})
             return True

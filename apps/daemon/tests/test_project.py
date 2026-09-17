@@ -200,6 +200,49 @@ def test_close_all(tmp_path, manager):
     assert m.list_projects() == []
 
 
+def test_provider_references_empty_input_is_noop(tmp_path, manager):
+    """An empty or unknown provider id never reports project references."""
+    m, _, _ = manager
+    m.init_project(tmp_path)
+    assert m.provider_references("") == []
+    assert m.provider_references("prov_missing") == []
+
+
+def test_provider_references_scans_workflow_stage(tmp_path, manager):
+    """A workflow stage bound to a removed provider is reported."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    steps = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "requirement",
+             "engine": "claude_agent_sdk",
+             "config": {"provider_id": "prov_stale"}},
+        ],
+        "connections": [],
+    }
+    m.create_workflow(proj, "flow-name", steps)
+    refs = m.provider_references("prov_stale")
+    assert len(refs) == 1
+    assert refs[0]["kind"] == "workflow"
+    assert "flow-name" in refs[0]["location"]
+
+
+def test_provider_references_reports_task_rows(tmp_path, manager):
+    """A task whose coordinator binds a removed provider is reported."""
+    m, _, _ = manager
+    proj = m.init_project(tmp_path)
+    Task.create(
+        id="task-provider",
+        title="21073",
+        cwd=str(proj.path),
+        coordinator_provider_id="prov_stale",
+        created_at=1,
+        updated_at=1,
+    )
+    refs = m.provider_references("prov_stale")
+    assert [item["kind"] for item in refs] == ["task"]
+
+
 async def test_database_work_runs_concurrently_across_projects(tmp_path, manager):
     """Independent project databases do not share a global writer."""
     m, _, _ = manager
