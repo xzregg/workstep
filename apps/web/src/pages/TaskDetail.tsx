@@ -38,19 +38,26 @@ import ShareDialog from '../components/ShareDialog'
 import TaskDetailPage from '../components/TaskDetailPage'
 import TaskStageConfigController from '../components/TaskStageConfigController'
 import {
+  createOptimisticCoordinatorMessage,
   createOptimisticUserMessage,
   resolveTaskDetailAdvanceState,
+  resolveTaskChatTarget,
   isVisibleLiveExecutionMessage,
   isUnpersistedLiveMessage,
   isTaskCompleted,
   isTaskNotStarted,
   isStageResumableWithMessage,
+  resolveStageDisplayStatus,
+  shouldAutoDrainStageInsert,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
   findPreferredArtifact,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
-import { loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
+import {
+  loadTaskInsertQueue,
+  saveTaskInsertQueue,
+} from '../utils/chatInsertQueue'
 import { clearTaskDraft, loadTaskDraft, saveTaskDraft } from '../utils/chatDraft'
 import { useI18n, type TKey } from '../i18n'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
@@ -75,6 +82,9 @@ interface StageData {
   key: string
   label: string
   color: string
+  nodeId?: string | number
+  dependsOn?: string[]
+  reworkDependsOn?: string[]
   engine?: string
   model?: string
   config?: Record<string, string>
@@ -291,9 +301,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       const value = customEvent.value ?? customEvent.data ?? {}
       return `custom:${customEvent.name}:${value.review_run_id || ''}:${value.status || ''}:${value.attempt || ''}`
     }
+    // 审核消息一开始就先补拉一次历史：即使错过了 TEXT_MESSAGE_START，
+    // 已落库的「审核中」消息也能出现在任务消息列表里。
     const liveReview = Object.values(liveMessages).find(
       (message) => message.channel === 'review'
-        && ['completed', 'succeeded', 'failed', 'cancelled'].includes(message.status),
+        && ['running', 'completed', 'succeeded', 'failed', 'cancelled'].includes(message.status),
     )
     return liveReview
       ? `review-message:${liveReview.id}:${liveReview.status}`
@@ -548,7 +560,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         const messages = res.messages || []
         historyOffsetRef.current = messages.length
         historyHasOlderRef.current = messages.length === TASK_HISTORY_PAGE_SIZE
-        setHistoryMessages(messages)
+        setHistoryMessages((current) => mergeRefreshedTaskHistory(current, messages))
       })
       .catch(() => setHistoryMessages([]))
       .finally(() => setHistoryLoading(false))
@@ -788,8 +800,74 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   // Get stages from project steps
   const stages = useMemo<StageData[]>(() => {
     const steps = detailProject?.steps
-    if (steps?.nodes?.length) return steps.nodes.map((n: any) => ({ key: n.type || n.key, label: n.title || n.label, color: n.color || 'var(--meta)', engine: n.engine || '', model: n.model || '', prompt: n.prompt || '', config: n.config || {}, inputs: (n.inputs || []).map((i: any) => ({ name: i.name, type: i.type, outputs: i.outputs || [] })), outputs: (n.outputs || []).map((o: any) => ({ name: o.name, type: o.type })) }))
-    if (steps?.steps?.length) return steps.steps.map((s: any) => ({ key: s.key || s.id, label: s.label || s.name, color: s.color || 'var(--meta)', engine: s.engine || '', model: s.model || '', prompt: s.prompt || '', config: s.config || {}, inputs: (s.inputs || []).map((i: any) => ({ name: i.name || i, type: i.type || 'any', outputs: i.outputs || [] })), outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'any' })) }))
+    if (steps?.nodes?.length) {
+      const nodes = steps.nodes as any[]
+      const keyByNodeId = new Map<string, string>()
+      nodes.forEach((node, index) => {
+        keyByNodeId.set(
+          String(node.id ?? index + 1),
+          String(node.type || node.key || node.id || `step-${index + 1}`),
+        )
+      })
+      const dependsByKey = new Map<string, string[]>()
+      const reworkDependsByKey = new Map<string, string[]>()
+      const rawConnections = Array.isArray(steps.connections)
+        ? steps.connections
+        : []
+      rawConnections.forEach((connection: any) => {
+        const fromKey = keyByNodeId.get(String(connection.from))
+        const toKey = keyByNodeId.get(String(connection.to))
+        if (!fromKey || !toKey || fromKey === toKey) return
+        const isDashed = connection.kind === 'dashed'
+          || /dashed|rework/.test(String(connection.style || ''))
+        const targetMap = isDashed ? reworkDependsByKey : dependsByKey
+        targetMap.set(toKey, [...new Set([...(targetMap.get(toKey) ?? []), fromKey])])
+      })
+      return nodes.map((node: any, index: number) => {
+        const key = String(node.type || node.key || node.id || `step-${index + 1}`)
+        return {
+          key,
+          nodeId: node.id ?? index + 1,
+          label: node.title || node.label || key,
+          color: node.color || 'var(--meta)',
+          dependsOn: dependsByKey.get(key) ?? [],
+          reworkDependsOn: reworkDependsByKey.get(key) ?? [],
+          engine: node.engine || '',
+          model: node.model || '',
+          prompt: node.prompt || '',
+          config: node.config || {},
+          inputs: (node.inputs || []).map((input: any) => ({
+            name: input.name,
+            type: input.type,
+            outputs: input.outputs || [],
+          })),
+          outputs: (node.outputs || []).map((output: any) => ({
+            name: output.name,
+            type: output.type,
+          })),
+        }
+      })
+    }
+    if (steps?.steps?.length) return steps.steps.map((s: any) => ({
+      key: s.key || s.id,
+      label: s.label || s.name,
+      color: s.color || 'var(--meta)',
+      dependsOn: s.dependsOn || [],
+      reworkDependsOn: s.reworkDependsOn || [],
+      engine: s.engine || '',
+      model: s.model || '',
+      prompt: s.prompt || '',
+      config: s.config || {},
+      inputs: (s.inputs || []).map((i: any) => ({
+        name: i.name || i,
+        type: i.type || 'any',
+        outputs: i.outputs || [],
+      })),
+      outputs: (s.outputs || []).map((o: any) => ({
+        name: o.name || o,
+        type: o.type || 'any',
+      })),
+    }))
     return [{ key: 'do', label: t('taskList.execute'), color: 'var(--accent)', engine: '', model: '', prompt: '', inputs: [], outputs: [] }]
   }, [detailProject?.steps, t])
 
@@ -797,9 +875,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const stepByKey = new Map(
       (task?.steps || []).map((step) => [step.step_key, step]),
     )
-    const rawStatuses: TaskStepState['status'][] = stages.map(
-      (stage: any) => stepByKey.get(stage.key)?.status || 'pending',
-    )
+    const rawStatuses: TaskStepState['status'][] = stages.map((stage: any) => {
+      const step = stepByKey.get(stage.key)
+      return resolveStageDisplayStatus(
+        step?.status || 'pending',
+        step?.previous_status,
+      ) as TaskStepState['status']
+    })
     let activeIndex = rawStatuses.findIndex((status) =>
       ['running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(status)
     )
@@ -847,9 +929,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const executionStageModel = activeStage?.model || task?.model || ''
 
   useEffect(() => {
-    if (!task?.id || selectedStageTaskRef.current === task.id) return
+    if (!task?.id) return
+    if (selectedStageTaskRef.current !== task.id) selectedStageTaskRef.current = task.id
     setSelectedStage(activeStageIndex)
-    selectedStageTaskRef.current = task.id
   }, [activeStageIndex, task?.id])
 
   useEffect(() => {
@@ -915,15 +997,17 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   useEffect(() => {
     setChatTarget((current) => {
       if (runningStages.length === 0) {
-        if (current !== 'coordinator' && resumableStages.some((stage) => stage.key === current)) {
-          return current
-        }
-        return resumableStages[0]?.key ?? 'coordinator'
+        return resolveTaskChatTarget(
+          current,
+          [],
+          resumableStages.map((stage) => stage.key),
+        )
       }
-      if (current !== 'coordinator' && runningStages.some((stage) => stage.key === current)) {
-        return current
-      }
-      return runningStages[0].key
+      return resolveTaskChatTarget(
+        current,
+        runningStages.map((stage) => stage.key),
+        [],
+      )
     })
   }, [runningStages, resumableStages])
 
@@ -1009,7 +1093,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     if (!submittedPrompt) return
     shouldFollowMessagesRef.current = true
     const optimisticId = `pending-${randomUuid()}`
-    const optimisticMessage = createOptimisticUserMessage(
+    const optimisticMessage = createOptimisticCoordinatorMessage(
       optimisticId,
       submittedPrompt,
       activeStage.key,
@@ -1185,60 +1269,45 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     void sendStageInserts(stageInserts)
   }
 
-  // ── 插入队列自动推进 ─────────────────────────────
-  // 阶段运行中插入的消息先排队；阶段执行结束（activeStageRunning: true → false）
-  // 且该阶段仍可恢复时，自动发送队首消息并重新执行该阶段，直至队列清空。
-  // 成功完成 / 手动停止（不可恢复或用户主动停止）不会自动重跑。
-  const prevStageRunRef = useRef<{ key: string | null; running: boolean }>({
-    key: null,
-    running: false,
-  })
-  const stageAutoDrainingRef = useRef(false)
-  const userStoppedRef = useRef(false)
-
-  useEffect(() => {
-    const prev = prevStageRunRef.current
-    const targetKey = targetStage?.key ?? null
-    prevStageRunRef.current = { key: targetKey, running: activeStageRunning }
-    if (stageAutoDrainingRef.current) return
-    const transition = prev.running
-      && !activeStageRunning
-      && prev.key !== null
-      && prev.key === targetKey
-    if (!transition) return
-    if (userStoppedRef.current) {
-      // 用户手动停止的这次结束不自动推进
-      userStoppedRef.current = false
-      return
-    }
-    if (!taskId || !projectId || !targetStage || editingInsertId !== null) return
-    if (stageInserts.length === 0) return
-    const first = stageInserts[0]
-    stageAutoDrainingRef.current = true
-    void resumeStageWithPrompt(first.content).then((ok) => {
-      if (ok) {
-        setStageInserts((current) => current.filter((item) => item.id !== first.id))
-        setEditingInsertId(null)
-        setEditingInsertContent('')
-      }
-      stageAutoDrainingRef.current = false
-    })
-  }, [activeStageRunning, targetStage, stageInserts, editingInsertId, taskId, projectId, resumeStageWithPrompt])
-
   // ── 插入队列持久化 ─────────────────────────────
   // 任务详情无会话概念，队列是任务级的，以 taskId 为作用域保存，刷新后恢复。
-  // stageQueueRef 记录当前生效 key，写回只跟随队列内容变化，
-  // 避免切换任务瞬间把旧队列错写到新任务的 key 上。
-  const stageQueueRef = useRef<{ projectId: string; taskId: string } | null>(null)
+  // stageQueueOwnerRef 记录当前队列表项归属的 task。切换任务时先把旧 owner
+  // 的内容落盘，再恢复新 task；保存 effect 不跟随“新 task + 旧 items”的中间态。
+  const stageQueueOwnerRef = useRef<{
+    projectId: string
+    taskId: string
+    items: Array<{ id: string; content: string }>
+  } | null>(null)
+  const stageQueueKey = taskId && projectId ? projectId + ':' + taskId : ''
+  const [stageQueueReadyKey, setStageQueueReadyKey] = useState('')
+  const stageQueueReady = Boolean(stageQueueKey && stageQueueReadyKey === stageQueueKey)
 
-  useEffect(() => {
-    stageQueueRef.current = projectId && taskId ? { projectId, taskId } : null
-  }, [taskId, projectId])
+  const removeStageQueueItems = useCallback((
+    owner: NonNullable<typeof stageQueueOwnerRef.current>,
+    ids: string[],
+  ) => {
+    owner.items = owner.items.filter((item) => !ids.includes(item.id))
+    saveTaskInsertQueue(owner.taskId, owner.items)
+    const current = stageQueueOwnerRef.current
+    if (
+      current?.projectId === owner.projectId
+      && current.taskId === owner.taskId
+    ) {
+      setStageInserts(owner.items)
+    }
+  }, [])
 
   useEffect(() => {
     if (!taskId || !projectId) return
-    setStageInserts(loadInsertQueue(projectId, taskId))
-  }, [taskId, projectId])
+    const owner = stageQueueOwnerRef.current
+    if (owner && owner.taskId !== taskId) {
+      saveTaskInsertQueue(owner.taskId, owner.items)
+    }
+    const items = loadTaskInsertQueue(taskId, projectId)
+    stageQueueOwnerRef.current = { projectId, taskId, items }
+    setStageInserts(owner?.taskId === taskId ? owner.items : items)
+    setStageQueueReadyKey(stageQueueKey)
+  }, [taskId, projectId, stageQueueKey])
 
   // 任务详情的输入框按 taskId 保留草稿，避免切换流程/回到任务时丢失。
   const taskDraftRef = useRef<{ taskId: string } | null>(null)
@@ -1262,10 +1331,66 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   }, [prompt])
 
   useEffect(() => {
-    const target = stageQueueRef.current
-    if (!target) return
-    saveInsertQueue(target.projectId, target.taskId, stageInserts)
-  }, [stageInserts])
+    const owner = stageQueueOwnerRef.current
+    if (!owner || !stageQueueReady) return
+    owner.items = stageInserts
+    saveTaskInsertQueue(owner.taskId, stageInserts)
+  }, [stageInserts, stageQueueReady])
+
+  // ─ 插入队列自动推进 ─────────────────────────────
+  // 阶段运行中插入的消息先排队；队列非空且该阶段已不再运行、可重新发送时，
+  // 自动发送队首消息并重新执行该阶段，直至队列清空。
+  // 成功完成或页面重挂后没有 running 跃迁，也要继续推进；手动停止仍尊重停止意图。
+  const prevStageRunRef = useRef<{ key: string | null; running: boolean }>({
+    key: null,
+    running: false,
+  })
+  const stageAutoDrainingRef = useRef(false)
+  const awaitingStageRunStartKeysRef = useRef<Set<string>>(new Set())
+  const userStoppedRef = useRef(false)
+  const stageRunKey = taskId && targetStage ? `${taskId}:${targetStage.key}` : ''
+
+  useEffect(() => {
+    if (activeStageRunning && stageRunKey) {
+      awaitingStageRunStartKeysRef.current.delete(stageRunKey)
+    }
+  }, [activeStageRunning, stageRunKey])
+
+  useEffect(() => {
+    const prev = prevStageRunRef.current
+    const shouldDrain = shouldAutoDrainStageInsert({
+      previousKey: prev.key,
+      stageRunKey,
+      queueReady: stageQueueReady,
+      activeStageRunning,
+      autoDraining: stageAutoDrainingRef.current,
+      awaitingRunStart: awaitingStageRunStartKeysRef.current.has(stageRunKey),
+      editingInsert: editingInsertId !== null,
+      queueLength: stageInserts.length,
+    })
+    prevStageRunRef.current = { key: stageRunKey || null, running: activeStageRunning }
+    if (!shouldDrain) return
+    if (userStoppedRef.current) {
+      // 用户手动停止的这次结束不自动推进
+      userStoppedRef.current = false
+      return
+    }
+    if (!taskId || !projectId || !targetStage) return
+    const owner = stageQueueOwnerRef.current
+    if (!owner || owner.taskId !== taskId || owner.projectId !== projectId) return
+    const first = stageInserts[0]
+    const submittedStageRunKey = stageRunKey
+    stageAutoDrainingRef.current = true
+    void resumeStageWithPrompt(first.content).then((ok) => {
+      if (ok) {
+        awaitingStageRunStartKeysRef.current.add(submittedStageRunKey)
+        removeStageQueueItems(owner, [first.id])
+        setEditingInsertId(null)
+        setEditingInsertContent('')
+      }
+      stageAutoDrainingRef.current = false
+    })
+  }, [activeStageRunning, targetStage, stageInserts, editingInsertId, taskId, projectId, stageRunKey, stageQueueReady, resumeStageWithPrompt, removeStageQueueItems])
 
   useEffect(() => {
     if (!taskId) return
@@ -1291,7 +1416,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       a2uiActionMessageParams(action),
     )
     const optimisticId = `pending-a2ui-${randomUuid()}`
-    const optimisticMessage = createOptimisticUserMessage(
+    const optimisticMessage = createOptimisticCoordinatorMessage(
       optimisticId,
       content,
       activeStage.key,

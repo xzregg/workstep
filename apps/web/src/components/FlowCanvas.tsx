@@ -844,6 +844,84 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             inputs={draft.inputs}
             onChange={(inputs) => updateDraft('inputs', inputs)}
           />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
+              <EngineSelect
+                engines={engines}
+                value={draft.engine}
+                onChange={(engineId) => {
+                  setDraft((current) => ({
+                    ...current,
+                    engine: engineId,
+                    model: '',
+                    config: engineId
+                      ? initialStageConfig(engineConfigById(engineId))
+                      : {},
+                  }))
+                }}
+                disabled={enginesLoading}
+                defaultOption={{
+                  value: '',
+                  label: t('flow.defaultExecutionEngineOption', {
+                    engine: engineLabel(defaultExecutionEngine, t),
+                  }),
+                }}
+                ariaLabel={t('flow.stageEngineAria')}
+                style={{ height: 32 }}
+              />
+              <div style={{
+                marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.4,
+                color: enginesError
+                  ? 'var(--danger)'
+                  : currentEngineSelectable
+                    ? 'var(--meta)'
+                    : 'var(--warn)',
+              }}>
+                {enginesLoading
+                  ? t('flow.scanningEngines')
+                  : enginesError
+                    ? t('flow.engineScanFailed', { error: enginesError })
+                    : currentEngineSelectable
+                      ? t('flow.enginesConfigured', { count: selectableEngines.length })
+                      : t('flow.engineUnavailable')}
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
+              <Select
+                value={draft.model}
+                disabled={!draft.engine || stageModelsLoading}
+                onChange={(e) => updateDraft('model', e.target.value)}
+                style={{ height: 32 }}
+              >
+                <option value="">
+                  {stageModelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
+                </option>
+                {draft.model && !stageModels.some((model) => model.id === draft.model) && (
+                  <option value={draft.model}>{draft.model}{t('flow.currentConfigSuffix')}</option>
+                )}
+                {stageModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label || model.id}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          {stageFields.length > 0 && (
+            <div>
+              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
+                {t('flow.stageConfig')}
+              </label>
+              <StageConfigFields
+                engineId={draft.engine}
+                fields={stageFields}
+                values={draft.config || {}}
+                onChange={(key, value) => updateStageConfig(key, value)}
+              />
+            </div>
+          )}
           <div>
             <div style={sectionTitle}>{t('flow.stageReview')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -970,84 +1048,6 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.engine')}</label>
-              <EngineSelect
-                engines={engines}
-                value={draft.engine}
-                onChange={(engineId) => {
-                  setDraft((current) => ({
-                    ...current,
-                    engine: engineId,
-                    model: '',
-                    config: engineId
-                      ? initialStageConfig(engineConfigById(engineId))
-                      : {},
-                  }))
-                }}
-                disabled={enginesLoading}
-                defaultOption={{
-                  value: '',
-                  label: t('flow.defaultExecutionEngineOption', {
-                    engine: engineLabel(defaultExecutionEngine, t),
-                  }),
-                }}
-                ariaLabel={t('flow.stageEngineAria')}
-                style={{ height: 32 }}
-              />
-              <div style={{
-                marginTop: 4, fontSize: 'calc(11px * var(--font-scale))', lineHeight: 1.4,
-                color: enginesError
-                  ? 'var(--danger)'
-                  : currentEngineSelectable
-                    ? 'var(--meta)'
-                    : 'var(--warn)',
-              }}>
-                {enginesLoading
-                  ? t('flow.scanningEngines')
-                  : enginesError
-                    ? t('flow.engineScanFailed', { error: enginesError })
-                    : currentEngineSelectable
-                      ? t('flow.enginesConfigured', { count: selectableEngines.length })
-                      : t('flow.engineUnavailable')}
-              </div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>{t('flow.modelOptional')}</label>
-              <Select
-                value={draft.model}
-                disabled={!draft.engine || stageModelsLoading}
-                onChange={(e) => updateDraft('model', e.target.value)}
-                style={{ height: 32 }}
-              >
-                <option value="">
-                  {stageModelsLoading ? t('flow.modelsLoading') : t('flow.engineDefaultModel')}
-                </option>
-                {draft.model && !stageModels.some((model) => model.id === draft.model) && (
-                  <option value={draft.model}>{draft.model}{t('flow.currentConfigSuffix')}</option>
-                )}
-                {stageModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label || model.id}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-          {stageFields.length > 0 && (
-            <div>
-              <label style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}>
-                {t('flow.stageConfig')}
-              </label>
-              <StageConfigFields
-                engineId={draft.engine}
-                fields={stageFields}
-                values={draft.config || {}}
-                onChange={(key, value) => updateStageConfig(key, value)}
-              />
-            </div>
-          )}
         </div>
       </div>
 

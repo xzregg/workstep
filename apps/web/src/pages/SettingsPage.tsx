@@ -979,9 +979,6 @@ export default function SettingsPage({
     const previous = defaultModels[engineId] || ''
     setDefaultModels((current) => ({ ...current, [engineId]: model }))
     setSavingModel(engineId)
-    setEngines((current) => current.map((engine) =>
-      engine.id === engineId ? { ...engine, verified: false } : engine
-    ))
     try {
       const result = await engineApi.setDefaultModel(engineId, model)
       setDefaultModels((current) => ({

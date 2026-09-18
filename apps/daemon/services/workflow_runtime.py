@@ -29,7 +29,7 @@ from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.context_handoff import append_handoff_log
 from services.pipeline import DAGScheduler, Step
-from services.artifact_rounds import iter_artifact_rounds
+from services.artifact_rounds import discard_artifact_round, iter_artifact_rounds
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
 
@@ -362,6 +362,7 @@ class WorkflowRuntime:
         user_input: str,
         stage_followups: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
+        execution_scope: set[str] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
@@ -373,6 +374,7 @@ class WorkflowRuntime:
             database_executor=prepared.database_executor,
             stage_followups=stage_followups,
             input_rounds_by_step=input_rounds_by_step,
+            execution_scope=execution_scope,
         )
         self._runners[task.id] = runner
         self._register_lease(workflow_run.id, prepared.project_id)
@@ -386,6 +388,7 @@ class WorkflowRuntime:
                 steps_config=prepared.steps_config,
                 artifacts_dir=prepared.artifacts_dir,
                 user_input=user_input,
+                execution_scope=execution_scope,
             ),
             name=f"workflow-run:{workflow_run.id}",
         )
@@ -1012,6 +1015,16 @@ class WorkflowRuntime:
                 (StepRun.run == workflow_run)
                 & (StepRun.status == "running")
             ):
+                if step_run.artifact_round is not None:
+                    discard_artifact_round(
+                        Path(project.workstep_dir) / "artifacts",
+                        task.workflow_id,
+                        task.id,
+                        step_run.step_key,
+                        step_run.artifact_round,
+                    )
+                    step_run.artifact_round = None
+                    step_run.input_rounds_json = None
                 step_run.status = "failed"
                 step_run.error = "进程重启中断，等待自动恢复"
                 step_run.ended_at = now
@@ -1501,6 +1514,7 @@ class WorkflowRuntime:
                 "",
                 {step_key: stage_followup} if stage_followup else None,
                 {step_key: input_rounds} if input_rounds else None,
+                execution_scope=affected | interrupted,
             )
 
     def _validate_input_rounds(
@@ -1858,6 +1872,7 @@ class WorkflowRuntime:
         steps_config: dict,
         artifacts_dir: Path,
         user_input: str,
+        execution_scope: set[str] | None = None,
     ) -> str:
         interrupted = False
         try:
@@ -1867,6 +1882,7 @@ class WorkflowRuntime:
                 artifacts_dir=artifacts_dir,
                 user_input=user_input,
                 workflow_run=workflow_run,
+                execution_scope=execution_scope,
             )
         except asyncio.CancelledError:
             interrupted = True

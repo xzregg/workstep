@@ -1,14 +1,21 @@
 """Owner and client APIs for WorkStep remote projects."""
 
 import asyncio
+import json
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from services.config import config_store
-from services.remote_project import RemoteAccessService, RemoteProjectRegistry
+from services.remote_project import (
+    ACCESS_COOKIE_NAME,
+    RemoteAccessService,
+    RemoteProjectRegistry,
+    _client_host,
+    _is_loopback,
+)
 
 router = APIRouter(prefix="/api/remote-project")
 
@@ -30,6 +37,11 @@ class RemoteAccessSettingsRequest(BaseModel):
     enabled: bool = False
     internal_base_url: str = Field(default="", max_length=500)
     external_base_url: str = Field(default="", max_length=500)
+    access_password: str | None = Field(default=None, max_length=200)
+
+
+class RemoteAccessUnlockRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
 
 
 class CreateShareRequest(BaseModel):
@@ -63,14 +75,51 @@ async def get_remote_access_settings(request: Request):
 async def update_remote_access_settings(req: RemoteAccessSettingsRequest, request: Request):
     await asyncio.to_thread(_observe_runtime_port, request)
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             remote_access_service.update_settings,
             enabled=req.enabled,
             internal_base_url=req.internal_base_url,
             external_base_url=req.external_base_url,
         )
+        if req.access_password is not None:
+            result = await asyncio.to_thread(
+                remote_access_service.set_access_password,
+                req.access_password,
+            )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/access/status")
+async def remote_access_status(request: Request):
+    required = await asyncio.to_thread(remote_access_service.access_password_required)
+    local = _is_loopback(_client_host(request.headers, request.client))
+    token = request.cookies.get(ACCESS_COOKIE_NAME)
+    authorized = local or not required or await asyncio.to_thread(
+        remote_access_service.verify_access_token, token
+    )
+    return {"required": required, "local": local, "authorized": bool(authorized)}
+
+
+@router.post("/access/unlock")
+async def unlock_remote_access(req: RemoteAccessUnlockRequest, request: Request):
+    ok = await asyncio.to_thread(remote_access_service.verify_access_password, req.password)
+    if not ok:
+        raise HTTPException(status_code=401, detail="访问密钥不正确")
+    token = await asyncio.to_thread(remote_access_service.issue_access_token)
+    response = Response(
+        content=json.dumps({"authorized": True}),
+        media_type="application/json",
+    )
+    response.set_cookie(
+        ACCESS_COOKIE_NAME,
+        token,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.post("/share")

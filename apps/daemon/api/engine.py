@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/engine")
 
 class EngineTestRequest(BaseModel):
     engine_id: str = Field(min_length=1)
-    timeout_seconds: float = Field(default=30, ge=3, le=120)
+    timeout_seconds: float = Field(default=300, ge=3, le=300)
     values: dict = Field(default_factory=dict)
     clear: dict[str, bool] = Field(default_factory=dict)
     model: str = Field(default="", max_length=200)
@@ -544,7 +544,6 @@ async def set_default_model(engine_id: str, req: DefaultModelRequest):
         }
     model = req.model.strip()
     await asyncio.to_thread(config_store.set_engine_default_model, engine_id, model)
-    await asyncio.to_thread(config_store.set_engine_verified, engine_id, False)
     return {
         "engine_id": engine_id,
         "default_model": model,
@@ -638,9 +637,15 @@ async def set_engine_config(engine_id: str, req: EngineConfigSaveRequest):
             "message": str(exc) or "保存失败",
         }
     def finish_save() -> tuple[dict, dict | None]:
-        if _engine_config_snapshot(engine) != previous_config:
-            config_store.set_engine_verified(engine_id, False)
+        current_config = _engine_config_snapshot(engine)
+        provider_changed = (
+            str(previous_config.get("provider_id") or "").strip()
+            != str(current_config.get("provider_id") or "").strip()
+        )
+        if current_config != previous_config:
             config_store.clear_engine_models(engine_id)
+        if provider_changed:
+            config_store.set_engine_verified(engine_id, False)
         refresh_registry()
         return _engine_config_response(engine_id, engine), _engine_info(engine_id)
 

@@ -23,6 +23,7 @@ from schemas.task import (
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
 from services.workflow_definition import WorkflowValidationError
 from services.task_creation import create_project_task
+from services.messages import current_actor_task_fields
 from services.artifacts import list_task_artifacts
 
 router = APIRouter(prefix="/api/task")
@@ -81,6 +82,7 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
         default_engine = await asyncio.to_thread(
             config_store.get_execution_default_engine
         )
+        creator_fields = current_actor_task_fields()
         result = await create_project_task(
             project_manager=project_manager,
             task_service=task_service,
@@ -99,6 +101,7 @@ async def create_task(req: CreateTaskRequest, pid: str = Query(..., alias="proje
             workflow_id=req.workflow_id,
             execution_mode=mode,
             scheduled_start_at=req.scheduled_start_at,
+            creator_fields=creator_fields,
         )
         return result.task
     except WorkflowValidationError as exc:
@@ -1037,7 +1040,12 @@ async def copy_task(req: CopyTaskRequest, pid: str = Query(..., alias="project_i
         raise HTTPException(status_code=503, detail="Service not initialized")
     copied = await _run_db(
         pid,
-        lambda: task_service.copy_task(req.task_id, req.newTitle, pid),
+        lambda: task_service.copy_task(
+            req.task_id,
+            req.newTitle,
+            pid,
+            creator_fields=current_actor_task_fields(),
+        ),
     )
     if not copied:
         raise HTTPException(status_code=404, detail="Task not found")

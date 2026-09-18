@@ -18,6 +18,7 @@ from models import (
 )
 from models.fields import utc_now
 from services.artifact_rounds import (
+    discard_artifact_round,
     next_artifact_round,
     step_round_dir,
     write_round_manifest,
@@ -125,6 +126,7 @@ class TaskRunner:
         database_executor=None,
         stage_followups: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
+        execution_scope: set[str] | None = None,
     ):
         self._event_bus = event_bus
         self._dispatch_service = dispatch_service
@@ -132,6 +134,8 @@ class TaskRunner:
         self._database_executor = database_executor
         self._stage_followups = stage_followups or {}
         self._input_rounds_by_step = input_rounds_by_step or {}
+        # 本次运行只执行这些阶段；范围外的阶段只满足 DAG 依赖，不改其持久状态。
+        self._execution_scope = execution_scope
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
         self._cancelled_steps: set[str] = set()
@@ -238,8 +242,6 @@ class TaskRunner:
         outcome,
     ) -> None:
         """Finalize the same review bubble with its report and event trace."""
-        for review_event in outcome.events:
-            await self._event_journal.arecord(journal_ref, review_event)
         await self._event_journal.afinish(journal_ref)
         snapshot = await self._ajournal_snapshot(journal_ref)
         summary = outcome.report.get("summary", "")
@@ -311,6 +313,7 @@ class TaskRunner:
         artifacts_dir: Path,
         user_input: str = "",
         workflow_run: WorkflowRun | None = None,
+        execution_scope: set[str] | None = None,
     ) -> None:
         """Run the full pipeline for a task.
 
@@ -373,6 +376,12 @@ class TaskRunner:
             return persisted_completed
 
         completed = await self._run_db(initialize_pipeline_state)
+        # 重启某阶段时只重跑该阶段及其下游（scope）。范围外的阶段即便未通过
+        # 也不再执行，但仍要让依赖它们的下游阶段被视为依赖已满足——否则失败的
+        # 上游会被 DAG 判为 ready 而抢先执行（@ 下游却跑了上游）。
+        scope = execution_scope if execution_scope is not None else self._execution_scope
+        if scope is not None:
+            completed |= {key for key in scheduler.steps if key not in scope}
         running = set()
         failed = set()
 
@@ -558,6 +567,7 @@ class TaskRunner:
                         (WorkflowRun.task == task)
                         & (StepRun.step_key == step_key)
                         & (StepRun.artifact_round.is_null(False))
+                        & (StepRun.status.in_(["succeeded", "reused"]))
                     )
                     .order_by(StepRun.artifact_round.desc())
                     .first()
@@ -670,15 +680,12 @@ class TaskRunner:
                     await self._persist_step_run_status(
                         step_run.id, "failed", error, utc_now()
                     )
-                await self._finalize_artifact_round(
+                await self._discard_artifact_round(
                     artifacts_dir,
                     task,
                     step,
-                    workflow_run,
                     step_run,
                     artifact_round,
-                    input_rounds,
-                    "failed",
                 )
             else:
                 await self._persist_step_status(
@@ -862,15 +869,12 @@ class TaskRunner:
                     step_run.save()
 
             await self._run_db(persist_unavailable_engine)
-            await self._finalize_artifact_round(
+            await self._discard_artifact_round(
                 artifacts_dir,
                 task,
                 step,
-                workflow_run,
                 step_run,
                 artifact_round,
-                input_rounds,
-                "failed",
             )
             running.discard(step_key)
             return
@@ -886,6 +890,9 @@ class TaskRunner:
         content_parts = []
         reported_error: str | None = None
         execution_succeeded = False
+        # 执行消息自身的完成时间。必须在执行引擎结束后立刻记录：放进 finally
+        # 会写成整个阶段（含自动审核）收尾的时间，导致审核消息排到执行上方。
+        execution_ended_at = None
         retry_feedback: str | None = None
         captured_session_id = ts.session_id
         interrupted = False
@@ -1195,6 +1202,8 @@ class TaskRunner:
 
                 ts = await self._run_db(save_session_id)
 
+            execution_ended_at = utc_now()
+
             if run_key in self._cancelled_steps:
                 # 手动停止：阶段状态与普通失败区分，前端显示「手动停止」。
                 ts = await self._persist_step_status(
@@ -1264,10 +1273,6 @@ class TaskRunner:
                                 "task_id": task.id,
                             },
                         })
-                        gate = ReviewGate(
-                            lambda event: self._publish(task.id, step_key, event),
-                            self._run_db,
-                        )
                         review_message_id = None
                         review_journal_ref = None
                         if review_mode == "auto":
@@ -1279,6 +1284,24 @@ class TaskRunner:
                                     review_config,
                                 )
                             )
+                        async def _record_review_event(event: dict) -> None:
+                            await self._event_journal.arecord(
+                                review_journal_ref,
+                                event,
+                            )
+                            # 历史接口使用独立的 journal 实例读取磁盘，
+                            # 因此运行中的审核事件必须及时 flush 才能恢复。
+                            await self._event_journal.async_flush(
+                                review_journal_ref,
+                            )
+
+                        gate = ReviewGate(
+                            lambda event: self._publish(task.id, step_key, event),
+                            self._run_db,
+                            (
+                                _record_review_event
+                            ) if review_journal_ref is not None else None,
+                        )
                         outcome = await gate.evaluate(
                             task=task,
                             step=step,
@@ -1523,7 +1546,7 @@ class TaskRunner:
                             msg.run_status = (
                                 "succeeded" if execution_succeeded else "failed"
                             )
-                        msg.ended_at = utc_now()
+                        msg.ended_at = execution_ended_at or utc_now()
                         msg.save()
                         return msg
 
@@ -1558,6 +1581,7 @@ class TaskRunner:
                     await self._run_db(
                         lambda mid=message_id: self._fail_live_message(mid)
                     )
+            cancelled_by_user = run_key in self._cancelled_steps
             self._cancelled_steps.discard(run_key)
             running.discard(step_key)
             if step_run is not None:
@@ -1572,16 +1596,25 @@ class TaskRunner:
                         utc_now(),
                     )
             if step_run is not None and artifact_round is not None:
-                await self._finalize_artifact_round(
-                    artifacts_dir,
-                    task,
-                    step,
-                    workflow_run,
-                    step_run,
-                    artifact_round,
-                    input_rounds,
-                    ts.status,
-                )
+                if step_run.status == "succeeded":
+                    await self._finalize_artifact_round(
+                        artifacts_dir,
+                        task,
+                        step,
+                        workflow_run,
+                        step_run,
+                        artifact_round,
+                        input_rounds,
+                        ts.status,
+                    )
+                elif cancelled_by_user or step_run.status == "failed":
+                    await self._discard_artifact_round(
+                        artifacts_dir,
+                        task,
+                        step,
+                        step_run,
+                        artifact_round,
+                    )
 
         if retry_feedback is not None:
             await self._run_step(
@@ -1671,10 +1704,44 @@ class TaskRunner:
             row.status = status
             row.error = error
             row.ended_at = ended_at
+            if status == "failed":
+                row.artifact_round = None
             row.save()
             return row
 
         return await self._run_db(persist)
+
+    async def _discard_artifact_round(
+        self,
+        artifacts_dir,
+        task,
+        step,
+        step_run,
+        artifact_round,
+    ):
+        if artifact_round is None:
+            return
+        if step_run is not None:
+            def clear_round():
+                row = StepRun.get_by_id(step_run.id)
+                row.artifact_round = None
+                row.input_rounds_json = None
+                row.save(
+                    only=[
+                        StepRun.artifact_round,
+                        StepRun.input_rounds_json,
+                    ]
+                )
+
+            await self._run_db(clear_round)
+        await asyncio.to_thread(
+            discard_artifact_round,
+            artifacts_dir,
+            task.workflow_id,
+            task.id,
+            step.key,
+            artifact_round,
+        )
 
     async def _finalize_artifact_round(
         self,

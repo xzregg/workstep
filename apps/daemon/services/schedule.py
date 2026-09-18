@@ -13,6 +13,7 @@ from croniter import croniter
 from models import Schedule, ScheduleRun, Task
 from models.fields import utc_now
 from services.config import DEFAULT_EXECUTION_ENGINE, config_store
+from services.messages import current_actor_task_fields
 
 
 class ScheduleValidationError(ValueError):
@@ -271,11 +272,13 @@ class ScheduleModule:
     @staticmethod
     def _to_dict(row: Schedule) -> dict:
         rule = json.loads(row.rule_json)
+        task_template = dict(json.loads(row.task_template_json))
+        task_template.pop("_creator", None)
         return {
             "id": row.id,
             "name": row.name,
             "workflow_id": row.workflow_id,
-            "task_template": json.loads(row.task_template_json),
+            "task_template": task_template,
             "rule": rule,
             "summary": describe_rule(rule),
             "cron_expression": row.cron_expression,
@@ -299,6 +302,18 @@ class ScheduleModule:
     @staticmethod
     def _template_mode(task_template: dict) -> str:
         return str(task_template.get("mode") or "static")
+
+    @staticmethod
+    def _template_creator_fields(task_template: dict) -> dict[str, str]:
+        raw = task_template.get("_creator")
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            "creator_id": str(raw.get("id") or "").strip(),
+            "creator_name": str(raw.get("name") or "").strip(),
+            "creator_device_id": str(raw.get("device_id") or "").strip(),
+            "creator_device_name": str(raw.get("device_name") or "").strip(),
+        }
 
     @classmethod
     def _normalize_template(cls, task_template: dict) -> dict:
@@ -364,6 +379,14 @@ class ScheduleModule:
         overlap_policy: str = "skip",
     ) -> dict:
         task_template = self._normalize_template(task_template)
+        creator = current_actor_task_fields()
+        if creator and "_creator" not in task_template:
+            task_template["_creator"] = {
+                "id": creator["creator_id"],
+                "name": creator["creator_name"],
+                "device_id": creator["creator_device_id"],
+                "device_name": creator["creator_device_name"],
+            }
         if execution_mode not in {"workflow", "immediate", "manual"}:
             raise ScheduleValidationError("Invalid execution_mode")
         if overlap_policy not in {"skip", "parallel", "queue"}:
@@ -422,7 +445,19 @@ class ScheduleModule:
             task_template = changes.get(
                 "task_template", json.loads(row.task_template_json)
             )
+            existing_template = json.loads(row.task_template_json)
             task_template = self._normalize_template(task_template)
+            if "_creator" not in task_template and isinstance(existing_template.get("_creator"), dict):
+                task_template["_creator"] = existing_template["_creator"]
+            if not task_template.get("_creator"):
+                creator = current_actor_task_fields()
+                if creator:
+                    task_template["_creator"] = {
+                        "id": creator["creator_id"],
+                        "name": creator["creator_name"],
+                        "device_id": creator["creator_device_id"],
+                        "device_name": creator["creator_device_name"],
+                    }
             if self._template_mode(task_template) == AGENT_MODE:
                 workflow_id = str(workflow_id or "").strip()
                 self._validate_template(project, task_template)
@@ -752,6 +787,7 @@ class ScheduleModule:
                     review_overrides=template.get("review_overrides"),
                     execution_mode=execution_mode,
                     source="schedule",
+                    creator_fields=self._template_creator_fields(template),
                 )
             await self._attach_task_result(project_id, run_id, result)
         except asyncio.CancelledError:
@@ -846,6 +882,7 @@ class ScheduleModule:
             review_overrides=None,
             execution_mode=execution_mode,
             source="schedule",
+            creator_fields=self._template_creator_fields(template),
         )
 
     async def _attach_task_result(self, project_id, run_id, result) -> None:

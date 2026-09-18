@@ -2,6 +2,7 @@ import { useCallback, useMemo, type RefObject } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
+import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
 
@@ -77,7 +78,8 @@ export default function MarkdownContent({
   rootRef,
 }: MarkdownContentProps) {
   const { t } = useI18n()
-  const markdown = streaming ? closeStreamingFence(content) : content
+  const normalizedContent = convertVisualizeMarkers(content)
+  const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
     if (!src) return null
@@ -135,7 +137,7 @@ export default function MarkdownContent({
       className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
       aria-live={streaming ? 'polite' : undefined}
     >
-      {plainText ? splitPlainText(content).map((segment, index) => {
+      {plainText ? splitPlainText(normalizedContent).map((segment, index) => {
         if (segment.type === 'image') return <span key={index}>{renderImage(segment.url, segment.alt)}</span>
         if (segment.type === 'link') return <span key={index}>{renderLink(segment.url, segment.label)}</span>
         return <span key={index}>{segment.text}</span>

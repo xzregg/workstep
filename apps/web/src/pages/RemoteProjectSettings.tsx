@@ -15,6 +15,7 @@ const EMPTY_SETTINGS: RemoteAccessSettings = {
   internal_base_url: '',
   external_base_url: '',
   host_id: '',
+  access_password_set: false,
 }
 
 export default function RemoteProjectSettings() {
@@ -25,6 +26,9 @@ export default function RemoteProjectSettings() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [passwordDraft, setPasswordDraft] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordSaved, setPasswordSaved] = useState(false)
 
   const refreshDevices = useCallback(async () => {
     try {
@@ -73,6 +77,27 @@ export default function RemoteProjectSettings() {
       setError(reason instanceof Error ? reason.message : t('settings.remoteSaveFailed'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const savePassword = async (password: string) => {
+    setPasswordSaving(true)
+    setPasswordSaved(false)
+    setError('')
+    try {
+      const result = await remoteProjectApi.updateSettings({
+        enabled: settings.enabled,
+        internal_base_url: settings.internal_base_url,
+        external_base_url: settings.external_base_url,
+        access_password: password,
+      })
+      setSettings(result)
+      setPasswordDraft('')
+      setPasswordSaved(true)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('settings.remoteSaveFailed'))
+    } finally {
+      setPasswordSaving(false)
     }
   }
 
@@ -125,10 +150,60 @@ export default function RemoteProjectSettings() {
           />
         </Field>
         <p style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', margin: '4px 0 12px' }}>{t('settings.externalAddressHint')}</p>
-        <Button variant="primary" loading={saving} disabled={loading} onClick={() => void handleSave()}>
-          {t('common.save')}
-        </Button>
-        {saved && <span role="status" style={{ marginLeft: 8, color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>{t('settings.remoteSaved')}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <Button variant="primary" loading={saving} disabled={loading} onClick={() => void handleSave()}>
+            {t('common.save')}
+          </Button>
+          {saved && <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>{t('settings.remoteSaved')}</span>}
+        </div>
+        <div style={{ margin: '4px 0 14px', paddingTop: 12, borderTop: '1px solid var(--border-soft)' }}>
+          <div style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>{t('settings.accessPassword')}</div>
+          <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', marginTop: 2, marginBottom: 10 }}>
+            {settings.access_password_set ? t('settings.accessPasswordSet') : t('settings.accessPasswordUnset')}
+          </div>
+          <Field label={t('settings.accessPassword')} help={t('settings.accessPasswordHint')}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Input
+                type="password"
+                value={passwordDraft}
+                disabled={loading}
+                onChange={(event) => {
+                  setPasswordDraft(event.target.value)
+                  setPasswordSaved(false)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && passwordDraft.trim() && !passwordSaving) {
+                    void savePassword(passwordDraft)
+                  }
+                }}
+                placeholder={t('settings.accessPasswordPlaceholder')}
+                maxLength={200}
+              />
+              <Button
+                variant="primary"
+                loading={passwordSaving}
+                disabled={loading || !passwordDraft.trim()}
+                onClick={() => void savePassword(passwordDraft)}
+              >
+                {t('settings.saveAccessPassword')}
+              </Button>
+              {settings.access_password_set && (
+                <Button
+                  variant="ghost"
+                  disabled={loading || passwordSaving}
+                  onClick={() => void savePassword('')}
+                >
+                  {t('settings.clearAccessPassword')}
+                </Button>
+              )}
+            </div>
+          </Field>
+          {passwordSaved && (
+            <div role="status" style={{ marginTop: 6, color: 'var(--success)', fontSize: 'calc(11px * var(--font-scale))' }}>
+              {t('settings.accessPasswordSaved')}
+            </div>
+          )}
+        </div>
         {error && <div role="status" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>{error}</div>}
       </section>
 

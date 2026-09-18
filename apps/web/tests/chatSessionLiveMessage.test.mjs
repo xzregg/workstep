@@ -22,6 +22,14 @@ const taskDetailSource = await readFile(
   new URL('../src/components/TaskDetailView.tsx', import.meta.url),
   'utf8',
 )
+const taskDetailPageSource = await readFile(
+  new URL('../src/pages/TaskDetail.tsx', import.meta.url),
+  'utf8',
+)
+const taskDetailChatSource = await readFile(
+  new URL('../src/pages/taskDetailChat.ts', import.meta.url),
+  'utf8',
+)
 
 test('session chat queues drafts for confirmation instead of injecting immediately', () => {
   assert.doesNotMatch(panelSource, /if \(!input\.trim\(\) \|\| running\) return/)
@@ -54,6 +62,18 @@ test('pending inserts fall back to the session configuration, not page overrides
   )
 })
 
+test('pending inserts auto-drain whenever the owning session is idle', () => {
+  assert.match(
+    pageSource,
+    /owner\.sessionId !== queueSessionId \|\| sessionId !== queueSessionId/,
+  )
+  assert.match(
+    pageSource,
+    /sessionDetailReadyId !== queueSessionId[\s\S]{0,120}running[\s\S]{0,120}autoDrainingRef\.current[\s\S]{0,120}awaitingRunStartSessionIdsRef\.current\.has\(queueSessionId\)/,
+  )
+  assert.doesNotMatch(pageSource, /if \(!prev\.running \|\| running \|\| autoDrainingRef\.current\) return/)
+})
+
 test('task and session chats reuse one pending-insert panel with edit and retry actions', () => {
   assert.match(pendingSource, /export default function PendingMessageInserts/)
   assert.match(pendingSource, /onSend/)
@@ -61,4 +81,36 @@ test('task and session chats reuse one pending-insert panel with edit and retry 
   assert.match(pendingSource, /onClear/)
   assert.match(taskDetailSource, /<PendingMessageInserts/)
   assert.match(pageSource, /<PendingMessageInserts/)
+})
+
+test('task stage inserts auto-drain after a stage becomes idle again', () => {
+  assert.match(taskDetailChatSource, /export function shouldAutoDrainStageInsert/)
+  assert.match(taskDetailChatSource, /previousKey === stageRunKey/)
+  assert.match(taskDetailChatSource, /queueReady/)
+  assert.match(
+    taskDetailPageSource,
+    /shouldAutoDrainStageInsert\(\{[\s\S]{0,260}previousKey: prev\.key[\s\S]{0,240}queueReady: stageQueueReady/,
+  )
+  assert.match(taskDetailPageSource, /awaitingStageRunStartKeysRef\.current\.has\(stageRunKey\)/)
+  assert.doesNotMatch(taskDetailPageSource, /const transition = prev\.running[\s\S]{0,120}!activeStageRunning/)
+})
+
+test('task coordinator messages carry their channel before the request resolves', () => {
+  assert.match(taskDetailChatSource, /export function createOptimisticCoordinatorMessage/)
+  assert.match(
+    taskDetailPageSource,
+    /createOptimisticCoordinatorMessage\(\s*optimisticId,\s*(submittedPrompt|content),/,
+  )
+  assert.doesNotMatch(
+    taskDetailPageSource,
+    /const optimisticMessage = createOptimisticUserMessage\(\s*optimisticId,\s*submittedPrompt,/,
+  )
+})
+
+test('pending insert queues are hydrated by session and task id only', () => {
+  assert.match(pageSource, /loadInsertQueue\(queueSessionId, routeProjectId\)/)
+  assert.match(pageSource, /saveInsertQueue\(owner\.sessionId, pendingInserts\)/)
+  assert.match(taskDetailPageSource, /loadTaskInsertQueue\(taskId, projectId\)/)
+  assert.match(taskDetailPageSource, /saveTaskInsertQueue\(owner\.taskId, stageInserts\)/)
+  assert.match(taskDetailPageSource, /stageQueueReady/)
 })

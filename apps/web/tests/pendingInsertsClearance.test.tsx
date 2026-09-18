@@ -60,7 +60,7 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
     IS_REACT_ACT_ENVIRONMENT: true,
   })
   localStorage.setItem(
-    'workstep-chat-insert-queue:project-1:session-1',
+    'workstep-chat-insert-queue:session-1',
     JSON.stringify([{ id: 'insert-1', content: '待插入内容' }]),
   )
   const restoreApis = installApiStubs()
@@ -109,7 +109,7 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect
     restoreApis()
-    localStorage.removeItem('workstep-chat-insert-queue:project-1:session-1')
+    localStorage.removeItem('workstep-chat-insert-queue:session-1')
     await window.happyDOM.close()
   }
 })

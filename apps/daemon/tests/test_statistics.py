@@ -64,6 +64,29 @@ def test_model_cost_prefers_the_matching_execution_engine_for_same_named_models(
     assert _usage_cost(usage, "shared", pricing, engine="claude") == 2
 
 
+def test_model_cost_does_not_double_count_cached_codex_input_tokens():
+    usage = {
+        "input_tokens": 1_000_000,
+        "output_tokens": 0,
+        "cache_read_tokens": 900_000,
+        "cache_write_tokens": 0,
+    }
+    pricing = {
+        "currency": "USD",
+        "usd_to_cny_rate": 7.2,
+        "prices": [{
+            "provider_id": None,
+            "engine_id": "codex",
+            "model": "gpt-5",
+            "input_price": 1,
+            "output_price": 0,
+            "cache_price": 0.1,
+        }],
+    }
+
+    assert _usage_cost(usage, "gpt-5", pricing, engine="codex") == pytest.approx(0.19)
+
+
 @pytest.fixture
 def statistics_fixture(tmp_path, monkeypatch):
     import services.project as project_service
@@ -315,6 +338,30 @@ def test_statistics_aggregates_projects_runs_usage_and_quality(statistics_fixtur
     assert engine["total_tokens"] == 215
 
 
+def test_statistics_cache_rate_uses_inclusive_input_semantics(statistics_fixture):
+    manager, project, _, base = statistics_fixture
+    with manager.activate_project_by_id(project.id):
+        message = Message.get_by_id("message-execution")
+        message.usage_json = json.dumps({
+            "input_tokens": 161_509,
+            "output_tokens": 299,
+            "cache_read_input_tokens": 161_152,
+            "cache_creation_input_tokens": 0,
+            "cache_input_included": True,
+            "total_tokens": 161_808,
+        })
+        message.save()
+
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id,
+        range_key="custom",
+        start=base,
+        end=base + timedelta(days=1),
+    ))
+
+    assert report["summary"]["cache_rate"] == 0.9973
+
+
 def test_statistics_calculates_model_cost_in_configured_currency(
     statistics_fixture,
     monkeypatch,
@@ -343,8 +390,8 @@ def test_statistics_calculates_model_cost_in_configured_currency(
     ))
 
     assert report["currency"] == "CNY"
-    assert report["summary"]["cost"] == 0.00263
-    assert report["engines"][0]["cost"] == 0.00263
+    assert report["summary"]["cost"] == 0.00253
+    assert report["engines"][0]["cost"] == 0.00253
 
 
 def test_statistics_prefers_provider_cost_and_converts_usd_to_cny(

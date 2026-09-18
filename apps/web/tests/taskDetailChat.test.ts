@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { findPreferredArtifact } from '../src/pages/taskDetailChat.ts'
+import {
+  findPreferredArtifact,
+  resolveStageDisplayStatus,
+} from '../src/pages/taskDetailChat.ts'
+
+test('keeps previous stage result visible while the current run is pending', () => {
+  assert.equal(resolveStageDisplayStatus('pending', 'passed'), 'passed')
+  assert.equal(resolveStageDisplayStatus('pending', 'failed'), 'failed')
+  assert.equal(resolveStageDisplayStatus('pending', null), 'pending')
+  assert.equal(resolveStageDisplayStatus('running', 'passed'), 'running')
+})
 
 test('prefers the selected latest artifact round over older eligible rounds', () => {
   const artifacts = [
@@ -51,6 +61,7 @@ test('keeps preferred stage filtering when artifacts share a logical name', () =
 
 import {
   createOptimisticUserMessage,
+  createOptimisticCoordinatorMessage,
   isAutoShrinkClamp,
   isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
@@ -71,11 +82,13 @@ import {
   mergeHistoryMessageWithLive,
   orderConversationMessages,
   resolveMessageReview,
+  resolveTaskChatTarget,
   reviewActorLabel,
   resolveMessageError,
   resolveMessagePrompt,
   shouldRenderLegacyExecution,
   stageAvatarText,
+  shouldAutoDrainStageInsert,
 } from '../src/pages/taskDetailChat.ts'
 
 test('formats the person who completed a manual review', () => {
@@ -96,6 +109,54 @@ test('the composer stop state follows only the selected stage tab', () => {
   assert.equal(isSelectedStageRunning('implement', ['implement']), true)
   assert.equal(isSelectedStageRunning('review', ['implement']), false)
   assert.equal(isSelectedStageRunning('coordinator', ['implement']), false)
+})
+
+test('the chat target stays on coordinator unless a selected stage is still available', () => {
+  assert.equal(
+    resolveTaskChatTarget('coordinator', ['requirement'], ['requirement']),
+    'coordinator',
+  )
+  assert.equal(
+    resolveTaskChatTarget('requirement', ['requirement'], []),
+    'requirement',
+  )
+  assert.equal(
+    resolveTaskChatTarget('design', [], ['design']),
+    'design',
+  )
+  assert.equal(
+    resolveTaskChatTarget('design', [], []),
+    'coordinator',
+  )
+})
+
+test('stage insert auto-drain requires the same task-stage queue owner', () => {
+  const ready = {
+    previousKey: 'task-a:implement',
+    stageRunKey: 'task-a:implement',
+    queueReady: true,
+    activeStageRunning: false,
+    autoDraining: false,
+    awaitingRunStart: false,
+    editingInsert: false,
+    queueLength: 1,
+  }
+
+  assert.equal(shouldAutoDrainStageInsert(ready), true)
+  assert.equal(
+    shouldAutoDrainStageInsert({
+      ...ready,
+      stageRunKey: 'task-b:implement',
+    }),
+    false,
+  )
+  assert.equal(
+    shouldAutoDrainStageInsert({
+      ...ready,
+      queueReady: false,
+    }),
+    false,
+  )
 })
 
 test('extracts a readable failure from persisted and live task events', () => {
@@ -144,6 +205,71 @@ test('history refresh preserves already loaded detail events', () => {
   assert.equal(merged[0].content, '新回答')
   assert.deepEqual(merged[0].events, current[0].events)
   assert.deepEqual(merged[0].event_detail, current[0].event_detail)
+})
+
+test('history refresh keeps newer review messages missing from an older page', () => {
+  const current = [
+    {
+      id: 'execution-1',
+      channel: 'execution',
+      sequence: 1,
+      content: '阶段结果',
+      run_status: 'succeeded',
+    },
+    {
+      id: 'review-1',
+      channel: 'review',
+      sequence: 2,
+      content: '审核中',
+      run_status: 'running',
+    },
+  ]
+  const staleRefresh = [{
+    id: 'execution-1',
+    channel: 'execution',
+    sequence: 1,
+    content: '阶段结果',
+    run_status: 'succeeded',
+  }]
+
+  const merged = mergeRefreshedTaskHistory(current, staleRefresh)
+
+  assert.deepEqual(
+    new Set(merged.map((message) => message.id)),
+    new Set(['execution-1', 'review-1']),
+  )
+})
+
+test('merges live review chunks into the running review history message', () => {
+  const historyMessage = {
+    id: 'review-running',
+    channel: 'review',
+    step_key: 'build',
+    role: 'assistant',
+    content: '审核中',
+    run_status: 'running',
+    events: [],
+  }
+  const liveMessage = {
+    id: 'review-running',
+    channel: 'review',
+    step_key: 'build',
+    role: 'assistant',
+    content: '审核中正在检查验收标准',
+    status: 'running',
+    engine: 'codex_sdk',
+    events: [{ type: 'TEXT_MESSAGE_CHUNK', messageId: 'review-running', delta: '正在检查验收标准' }],
+  }
+
+  const merged = mergeHistoryMessageWithLive(historyMessage, liveMessage)
+
+  assert.equal(merged.content, '审核中正在检查验收标准')
+  assert.equal(merged.run_status, 'running')
+  assert.equal(isVisibleLiveExecutionMessage(liveMessage), true)
+  assert.equal(
+    isUnpersistedLiveMessage(liveMessage, new Set(['review-running'])),
+    false,
+  )
 })
 
 test('loads task JSONL details without dropping newer live events', () => {
@@ -232,6 +358,21 @@ test('creates a user message that can render before the run request resolves', (
     created_at: '2024-08-03T00:00:00+00:00',
     events: [],
   })
+})
+
+test('creates a coordinator message with its channel before the request resolves', () => {
+  const message = createOptimisticCoordinatorMessage(
+    'pending-coordinator-1',
+    '结合需求阶段继续分析',
+    'requirement',
+    '2024-08-03T00:00:00+00:00',
+  )
+
+  assert.equal(message.channel, 'coordinator')
+  assert.equal(message.step_key, 'requirement')
+  assert.equal(message.context_step_key, 'requirement')
+  assert.equal(message.role, 'user')
+  assert.equal(message.content, '结合需求阶段继续分析')
 })
 
 test('detects tasks that have not started from their configured stage', () => {
@@ -325,6 +466,28 @@ test('allows @ on any stage that ran before, even while it is pending again', ()
   assert.equal(isStageResumableWithMessage('running', true), false)
   assert.equal(isStageResumableWithMessage('reviewing', true), false)
   assert.equal(isStageResumableWithMessage('rework', true), false)
+})
+
+test('keeps a running review placeholder visible in history', () => {
+  // 审核刚启动时 journal 还没有 chunk，历史只能提供「审核中」占位；
+  // 这条消息不能被当成空消息过滤掉，否则审核期间列表里什么都看不到。
+  assert.equal(isVisibleHistoryMessage({
+    id: 'review-running',
+    channel: 'review',
+    role: 'assistant',
+    content: '审核中',
+    run_status: 'running',
+    events: [],
+  }), true)
+  // 真正的空审核消息（例如占位被错误清空）才会被隐藏。
+  assert.equal(isVisibleHistoryMessage({
+    id: 'review-empty',
+    channel: 'review',
+    role: 'assistant',
+    content: '',
+    run_status: 'running',
+    events: [],
+  }), false)
 })
 
 test('keeps running execution and review messages visible and uses the stage as its avatar', () => {
@@ -481,6 +644,34 @@ test('sorts finished stage messages by their completion time', () => {
     { id: 'Prev', role: 'assistant', run_status: 'succeeded', created_at: '2026-08-07T09:58:00.000Z', ended_at: '2026-08-07T09:59:00.000Z', content: '早前输出' },
   ])
   assert.deepEqual(ordered.map((m) => m.id), ['Prev', 'U', 'A'])
+})
+
+test('keeps a stage review after its execution when the execution end time is later', () => {
+  // 阶段执行消息的 ended_at 可能在 finally 中记成审核结束之后；此时若按
+  // 结束时间排序，审核会被顶到阶段输出上方。同阶段执行/审核必须按 sequence 排。
+  const ordered = orderConversationMessages([
+    {
+      id: 'review',
+      step_key: 'req',
+      channel: 'review',
+      role: 'assistant',
+      sequence: 3,
+      run_status: 'completed',
+      ended_at: '2026-09-18T04:21:43.996793Z',
+      content: '审核结果',
+    },
+    {
+      id: 'execution',
+      step_key: 'req',
+      channel: 'execution',
+      role: 'assistant',
+      sequence: 2,
+      run_status: 'succeeded',
+      ended_at: '2026-09-18T04:21:44.007427Z',
+      content: '阶段输出',
+    },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['execution', 'review'])
 })
 
 test('keeps a stage review after its execution when their displayed times are equal', () => {

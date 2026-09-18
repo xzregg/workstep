@@ -10,7 +10,8 @@ from engines.codex import CodexEngine
 from engines.hermes import HermesEngine
 from engines.claude_agent_sdk import ClaudeAgentSDKEngine
 from engines.qoder_sdk import QoderSDKEngine
-from engines.codex_sdk import CodexSDKEngine
+from engines.codex_sdk import CodexSDKEngine, _public_transport_error
+from engines.codex_visualize import convert_visualize_markers
 from engines.claude_code import ClaudeCodeEngine
 from engines.pydantic_ai import PydanticAIEngine
 from engines.core.registry import (
@@ -146,6 +147,20 @@ def test_codex_map_thread_started():
     assert event.data["status"] == "initializing"
 
 
+def test_codex_unknown_event_passthrough_as_acp_raw():
+    """未知 Codex CLI 事件不再静默丢弃，统一透传为 acp_raw。"""
+    engine = CodexEngine()
+    payload = {
+        "type": "thread.settings.updated",
+        "settings": {"model": "gpt-5.5"},
+    }
+    event = engine._map_event(payload)
+
+    assert event is not None
+    assert event.type == "acp_raw"
+    assert event.data["raw"] == payload
+
+
 def test_codex_map_agent_message():
     engine = CodexEngine()
     event = engine._map_event({
@@ -167,6 +182,69 @@ def test_codex_map_agent_message_text_field():
     assert event is not None
     assert event.type == "agent_message_chunk"
     assert event.data["content"]["text"] == "你好！我是 Codex"
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        'visualize{"path":"<path>","mode":"wide"}',
+        'visualize{"path":"<path>","mode":"wide"}',
+    ],
+)
+def test_codex_cli_maps_visualize_marker_to_markdown_file_link(marker):
+    """Codex 私有的 visualize 标记转成 Markdown 文件路径链接。"""
+    engine = CodexEngine()
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "agent_message",
+            "text": "原型已生成。\n\n" + marker.replace("<path>", path),
+        },
+    })
+
+    assert event is not None
+    assert event.type == "agent_message_chunk"
+    assert event.data["content"]["text"] == (
+        "原型已生成。\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+
+
+def test_codex_cli_keeps_malformed_visualize_marker():
+    """无效 JSON 或缺少 path 时保留原文，避免误删内容。"""
+    engine = CodexEngine()
+    malformed = '\ue200visualize\ue202{not-json}\ue201'
+    missing_path = '\ue200visualize{"mode":"wide"}\ue201'
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": f"{malformed}{missing_path}"},
+    })
+
+    assert event is not None
+    assert event.data["content"]["text"] == f"{malformed}{missing_path}"
+
+
+def test_codex_cli_converts_visualize_marker_with_corrupted_terminator():
+    """旧数据里 U+E201 被损坏成替换符时，仍应基于合法 JSON 转成链接。"""
+    engine = CodexEngine()
+    path = "/Users/xzr/Desktop/workstep/.workstep/visualizations/a.html"
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {
+            "type": "agent_message",
+            "text": '\ue200visualize{"path":"<path>","mode":"wide"}\ufffd\ufffd'.replace(
+                "<path>", path
+            ),
+        },
+    })
+
+    assert event is not None
+    assert event.data["content"]["text"] == f"[a.html](file://{path})"
 
 
 def test_codex_maps_structured_reasoning_summary_to_thought_content():
@@ -206,6 +284,80 @@ def test_codex_map_command_execution():
     assert event is not None
     assert event.type == "tool_call_update"
     assert event.data["status"] == "completed"
+
+
+def test_codex_maps_cli_tool_item_families():
+    """Codex CLI 的 file/mcp/dynamic/web 工具项统一映射为 ACP 工具事件。"""
+    engine = CodexEngine()
+    cases = [
+        (
+            {
+                "type": "file_change",
+                "id": "f1",
+                "changes": [{"path": "a.py", "diff": "+x"}],
+            },
+            "FileChange",
+        ),
+        (
+            {
+                "type": "mcp_tool_call",
+                "id": "m1",
+                "server": "workstep",
+                "tool": "lookup",
+                "arguments": {"q": "x"},
+            },
+            "workstep/lookup",
+        ),
+        (
+            {
+                "type": "dynamic_tool_call",
+                "id": "d1",
+                "tool": "CustomTool",
+                "arguments": {"a": 1},
+            },
+            "CustomTool",
+        ),
+        (
+            {"type": "web_search", "id": "w1", "query": "WorkStep"},
+            "WebSearch",
+        ),
+    ]
+    for item, title in cases:
+        started = engine._map_event({"type": "item.started", "item": item})
+        completed = engine._map_event({
+            "type": "item.completed",
+            "item": {**item, "status": "completed", "output": "ok"},
+        })
+        assert started is not None and started.type == "tool_call"
+        assert started.data["title"] == title
+        assert completed is not None and completed.type == "tool_call_update"
+        assert completed.data["status"] == "completed"
+
+
+def test_codex_maps_cli_plan_item_to_plan_update():
+    """Codex CLI 的 plan item 映射为 ACP plan_update。"""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {"type": "plan", "id": "plan1", "text": "- 第一步\n"},
+    })
+
+    assert event is not None
+    assert event.type == "plan_update"
+    assert event.data["content"] == "- 第一步\n"
+
+
+def test_codex_maps_unknown_cli_item_to_acp_raw():
+    """未知 CLI item 不再静默丢弃，保留在统一 acp_raw 事件中。"""
+    engine = CodexEngine()
+    event = engine._map_event({
+        "type": "item.completed",
+        "item": {"type": "image_generation", "id": "img1", "status": "completed"},
+    })
+
+    assert event is not None
+    assert event.type == "acp_raw"
+    assert event.data["raw"]["item"]["type"] == "image_generation"
 
 
 def test_codex_map_sandbox_denial_to_interaction_request():
@@ -667,7 +819,7 @@ def test_claude_code_result_usage_is_not_a_context_snapshot():
     })
 
     usage = events[0].data
-    assert usage["used"] == 130
+    assert usage["used"] == 190
     assert "size" not in usage
 
 
@@ -2195,7 +2347,7 @@ def test_claude_agent_sdk_maps_result_usage_with_cache_and_cost():
     assert usage["output_tokens"] == 30
     assert usage["cache_creation_input_tokens"] == 40
     assert usage["cache_read_input_tokens"] == 20
-    assert usage["used"] == 130
+    assert usage["used"] == 190
     assert "size" not in usage
     assert usage["cost"] == {"amount": 0.12, "currency": "USD"}
     assert events[1].data["status"] == "done"
@@ -2789,6 +2941,17 @@ def test_codex_sdk_version_or_none():
     assert version is None or isinstance(version, str)
 
 
+def test_codex_sdk_transport_error_hides_stderr_tail():
+    error = RuntimeError(
+        "Codex process closed stdout. stderr_tail=apply_patch failed"
+    )
+
+    message = _public_transport_error(error)
+
+    assert message == "Codex 会话已结束，后台服务可能已重启。"
+    assert "stderr_tail" not in message
+
+
 def test_codex_sdk_not_installed_without_sdk(monkeypatch):
     monkeypatch.setattr(
         CodexSDKEngine, "_sdk_available", staticmethod(lambda: False)
@@ -2922,6 +3085,325 @@ def test_codex_sdk_maps_started_and_text_delta():
     assert [event.type for event in events] == ["agent_message_chunk"]
     assert events[0].data["content"]["text"] == "你好，Codex！"
     assert state["emitted_text"] is True
+
+
+def test_codex_sdk_maps_visualize_marker_across_deltas():
+    """visualize 标记可能被拆成多个 delta，跨分片也必须转换成链接。"""
+    engine = CodexSDKEngine()
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    marker = f'\ue200visualize{{"path":"{path}","mode":"wide"}}\ue201'
+    state = {"emitted_text": False, "tool_emitted": set()}
+
+    first = engine._map_notification(
+        _SdkFake(
+            method="item/agentMessage/delta",
+            payload=_SdkFake(item_id="msg-1", delta=f"原型已生成。\n\n{marker[:12]}"),
+        ),
+        state,
+    )
+    second = engine._map_notification(
+        _SdkFake(
+            method="item/agentMessage/delta",
+            payload=_SdkFake(item_id="msg-1", delta=marker[12:]),
+        ),
+        state,
+    )
+    completed = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                id="msg-1",
+                phase=_SdkFake(value="final_answer"),
+                text=f"原型已生成。\n\n{marker}",
+            ))),
+        ),
+        state,
+    )
+
+    assert [event.type for event in first + second + completed] == [
+        "agent_message_chunk",
+    ]
+    assert (first + second + completed)[0].data["content"]["text"] == (
+        "原型已生成。\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+
+
+def test_codex_sdk_keeps_malformed_visualize_marker():
+    """SDK 端同样在无效标记时保留原文。"""
+    engine = CodexSDKEngine()
+    malformed = '\ue200visualize{not-json}\ue201'
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="agentMessage",
+                id="msg-malformed",
+                phase=_SdkFake(value="final_answer"),
+                text=malformed,
+            ))),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["agent_message_chunk"]
+    assert events[0].data["content"]["text"] == malformed
+
+
+def test_codex_sdk_unknown_notification_passthrough_as_acp_raw():
+    """未知 Codex SDK 通知不再静默丢弃，统一透传为 acp_raw。"""
+    engine = CodexSDKEngine()
+    notification = _SdkFake(
+        method="model/rerouted",
+        payload=_SdkFake(from_model="gpt-5.5", to_model="gpt-5.5-mini"),
+    )
+    events = engine._map_notification(
+        notification,
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["acp_raw"]
+    assert events[0].data["method"] == "model/rerouted"
+    assert events[0].data["raw"]["from_model"] == "gpt-5.5"
+
+
+def test_codex_sdk_all_registered_notifications_are_not_dropped():
+    """SDK 注册表的每个通知都必须映射或归一化，不能静默消失。"""
+    from openai_codex.generated.notification_registry import NOTIFICATION_MODELS
+
+    engine = CodexSDKEngine()
+    for method in NOTIFICATION_MODELS:
+        payload = _SdkFake()
+        if method == "item/agentMessage/delta":
+            # 未带 phase/item 元数据的 delta 会按设计先缓冲，完成项再产出；
+            # 这里给已启动的 item 以验证正常路径不会丢。
+            state = {
+                "emitted_text": False,
+                "tool_emitted": set(),
+                "message_items": {
+                    "msg1": {
+                        "text": "",
+                        "pending": "",
+                        "started": True,
+                        "phase": "final_answer",
+                    },
+                },
+            }
+            payload = _SdkFake(delta="hi", item_id="msg1")
+            events = engine._map_notification(
+                _SdkFake(method=method, payload=payload),
+                state,
+            )
+            assert events, method
+            continue
+        elif method in (
+            "item/reasoning/textDelta",
+            "item/reasoning/summaryTextDelta",
+        ):
+            payload = _SdkFake(delta="think")
+        elif method in ("item/started", "item/completed"):
+            payload = _SdkFake(item=_SdkFake(root=_SdkFake(
+                type="imageGeneration",
+                id="item1",
+                status="completed",
+            )))
+        elif method == "thread/tokenUsage/updated":
+            payload = _SdkFake(token_usage=_SdkFake(
+                last=_SdkFake(
+                    input_tokens=1,
+                    output_tokens=1,
+                    cached_input_tokens=0,
+                    total_tokens=2,
+                ),
+                total=None,
+            ))
+        events = engine._map_notification(
+            _SdkFake(method=method, payload=payload),
+            {"emitted_text": False, "tool_emitted": set()},
+        )
+        assert events, method
+
+
+def test_codex_raw_event_normalizes_category_and_metadata():
+    """统一协议诊断事件保留原生方法、分类与常用关联字段。"""
+    from engines.codex_events import codex_raw_event
+
+    event = codex_raw_event(
+        "thread/status/changed",
+        {"thread_id": "th1", "status": {"type": "active"}},
+    )
+
+    assert event.type == "acp_raw"
+    assert event.data["method"] == "thread/status/changed"
+    assert event.data["category"] == "status"
+    assert event.data["thread_id"] == "th1"
+    assert event.data["status"] == {"type": "active"}
+    assert event.data["raw"] == {"thread_id": "th1", "status": {"type": "active"}}
+
+
+def test_codex_sdk_maps_plan_item_completion_to_plan_update():
+    """SDK 的完整 plan item 完成时也要产出 ACP plan_update。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="plan",
+                id="plan1",
+                text="- 第一步\n- 第二步\n",
+            ))),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["plan_update"]
+    assert events[0].data["id"] == "plan1"
+    assert events[0].data["content"] == "- 第一步\n- 第二步\n"
+
+
+def test_codex_sdk_unknown_item_lifecycle_is_normalized():
+    """未显式支持的 ThreadItem 也不能在 item 生命周期中丢失。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/completed",
+            payload=_SdkFake(item=_SdkFake(root=_SdkFake(
+                type="imageGeneration",
+                id="img1",
+                status="completed",
+                saved_path="/tmp/image.png",
+            ))),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["acp_raw"]
+    assert events[0].data["method"] == "item/completed"
+    assert events[0].data["raw"]["item"]["type"] == "imageGeneration"
+
+
+def test_codex_sdk_maps_tool_output_delta_to_tool_call_update():
+    """命令输出增量映射为 ACP tool_call_update，保留增量文本。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/commandExecution/outputDelta",
+            payload=_SdkFake(item_id="cmd1", delta="line1\n"),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["tool_call_update"]
+    assert events[0].data["tool_call_id"] == "cmd1"
+    assert events[0].data["status"] == "in_progress"
+    assert events[0].data["raw_output"] == "line1\n"
+
+
+def test_codex_sdk_maps_mcp_progress_to_tool_call_update():
+    """MCP 工具进度消息映射为 ACP tool_call_update。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/mcpToolCall/progress",
+            payload=_SdkFake(item_id="mcp1", message="正在读取资源"),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["tool_call_update"]
+    assert events[0].data["tool_call_id"] == "mcp1"
+    assert events[0].data["status"] == "in_progress"
+
+
+def test_codex_sdk_maps_plan_delta_to_plan_update():
+    """计划增量映射为 ACP plan_update（markdown 内容）。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="item/plan/delta",
+            payload=_SdkFake(item_id="plan1", delta="- 第一步\n"),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["plan_update"]
+    assert events[0].data["id"] == "plan1"
+    assert events[0].data["type"] == "markdown"
+    assert events[0].data["content"] == "- 第一步\n"
+
+
+def test_codex_sdk_maps_thread_name_update_to_session_info():
+    """线程名称更新映射为 ACP session_info_update。"""
+    engine = CodexSDKEngine()
+    events = engine._map_notification(
+        _SdkFake(
+            method="thread/name/updated",
+            payload=_SdkFake(thread_id="th1", thread_name="重构会话"),
+        ),
+        {"emitted_text": False, "tool_emitted": set()},
+    )
+
+    assert [event.type for event in events] == ["session_info_update"]
+    assert events[0].data["title"] == "重构会话"
+
+
+def test_codex_visualize_marker_without_control_delimiters_converts_trailing_marker():
+    """新消息只保留 ``visualize{JSON}`` 裸标记时，结尾也要转成文件链接。"""
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    text = f"已经进一步压缩。\n\n{bare}"
+
+    assert convert_visualize_markers(text) == (
+        "已经进一步压缩。\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+
+
+def test_codex_visualize_bare_marker_keeps_quoted_or_fenced_examples():
+    """裸标记只在正文结尾命中，引用或代码块里的示例保持原样。"""
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    quoted = f'怎么会渲染 成 "{bare}"? 消息组件没有能点击啊\n这个消息'
+    fenced = f"它的实际形态是：\n```text\n{bare}\n```\n"
+
+    assert convert_visualize_markers(quoted) == quoted
+    assert convert_visualize_markers(fenced) == fenced
+
+
+def test_codex_visualize_bare_marker_inside_sentence_is_untouched():
+    """裸标记夹杂在句中（非正文结尾）时不转换，避免误伤普通讨论。"""
+    path = "/tmp/stage.html"
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    text = f"我们讨论 {bare} 这个标记的转换。"
+
+    assert convert_visualize_markers(text) == text
+
+
+def test_codex_visualize_bare_marker_converts_across_stream_chunks():
+    """流式分片里的裸标记也要缓冲并在结尾转成链接。"""
+    from engines.codex_visualize import CodexVisualizeStream
+
+    path = "/tmp/stage.html"
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    stream = CodexVisualizeStream()
+    output = ""
+    for chunk in ("原型已生成。\n\n", bare[:6], bare[6:20], bare[20:]):
+        output += stream.feed(chunk)
+    output += stream.flush()
+
+    assert output == "原型已生成。\n\n[stage.html](file:///tmp/stage.html)"
 
 
 def test_codex_sdk_maps_reasoning_deltas():
@@ -4297,6 +4779,7 @@ def test_qoder_sdk_maps_result_usage_with_cost_and_credits():
         "output_tokens": 100,
         "cache_creation_input_tokens": 40,
         "cache_read_input_tokens": 120,
+        "cache_input_included": True,
         "total_tokens": 400,
         "used": 400,
         "cost": {"amount": 0.042, "currency": "USD"},

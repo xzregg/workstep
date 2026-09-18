@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from services.task_creation import create_project_task
+from services.messages import current_actor_task_fields
 
 router = APIRouter(prefix="/api/task-dispatch", tags=["流程阶段"])
 
@@ -89,6 +90,7 @@ async def receive_dispatch(req: ReceiveDispatchRequest, project_id: str = Query(
             source_step_key=req.source_step_key,
             input_manifest=prepared["manifest"],
             dispatch_lineage=req.dispatch_lineage,
+            creator_fields=current_actor_task_fields(),
         )
         return result.task
     except Exception as exc:

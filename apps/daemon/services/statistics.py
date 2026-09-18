@@ -52,6 +52,7 @@ class MetricBucket:
         self.restart_count = 0
         self.durations: list[int] = []
         self.input_tokens = 0
+        self.cache_input_tokens = 0
         self.output_tokens = 0
         self.cache_read_tokens = 0
         self.cache_write_tokens = 0
@@ -70,6 +71,11 @@ class MetricBucket:
 
     def add_usage(self, usage: dict[str, Any], cost: float = 0) -> None:
         self.input_tokens += usage["input_tokens"]
+        self.cache_input_tokens += (
+            usage["input_tokens"]
+            if usage.get("cache_input_included") is not False
+            else usage["input_tokens"] + usage["cache_read_tokens"] + usage["cache_write_tokens"]
+        )
         self.output_tokens += usage["output_tokens"]
         self.cache_read_tokens += usage["cache_read_tokens"]
         self.cache_write_tokens += usage["cache_write_tokens"]
@@ -98,8 +104,8 @@ class MetricBucket:
             "output_tokens": self.output_tokens,
             "cache_read_tokens": self.cache_read_tokens,
             "cache_write_tokens": self.cache_write_tokens,
-            "cache_rate": min(1, _ratio(self.cache_read_tokens, self.input_tokens))
-            if self.input_tokens else None,
+            "cache_rate": min(1, _ratio(self.cache_read_tokens, self.cache_input_tokens))
+            if self.cache_input_tokens else None,
             "total_tokens": self.total_tokens,
             "cost": round(self.cost, 6),
             "token_coverage": _ratio(self.usage_calls, self.eligible_calls),
@@ -262,7 +268,7 @@ class StatisticsModule:
                         workflow_buckets, project.id, task.workflow_id,
                     )
                     workflow_bucket.eligible_calls += 1
-                    usage = _parse_usage(message.usage_json)
+                    usage = _parse_usage(message.usage_json, message.engine)
                     if usage is None:
                         continue
                     cost = _usage_cost(
@@ -640,7 +646,7 @@ def _add_usage_to_dict(target: dict[str, Any], usage: dict[str, int]) -> None:
         target[key] += usage[key]
 
 
-def _parse_usage(raw: str | None) -> dict[str, Any] | None:
+def _parse_usage(raw: str | None, engine: str | None = None) -> dict[str, Any] | None:
     if not raw:
         return None
     try:
@@ -662,11 +668,17 @@ def _parse_usage(raw: str | None) -> dict[str, Any] | None:
     total_tokens = number("total_tokens", "tokens") or input_tokens + output_tokens
     if not any((input_tokens, output_tokens, total_tokens)):
         return None
+    cache_input_included = value.get("cache_input_included")
     result: dict[str, Any] = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "cache_read_tokens": number("cache_read_input_tokens", "cached_tokens"),
         "cache_write_tokens": number("cache_creation_input_tokens"),
+        "cache_input_included": (
+            cache_input_included
+            if isinstance(cache_input_included, bool)
+            else engine not in {"claude", "claude_agent_sdk"}
+        ),
         "total_tokens": total_tokens,
     }
     provider_id = value.get("provider_id")
@@ -740,7 +752,13 @@ def _usage_cost(
         return 0
 
     cache_tokens = usage["cache_read_tokens"] + usage["cache_write_tokens"]
-    uncached_input_tokens = max(0, usage["input_tokens"] - usage["cache_read_tokens"])
+    if usage.get("cache_input_included") is False:
+        uncached_input_tokens = usage["input_tokens"]
+    else:
+        uncached_input_tokens = max(
+            0,
+            usage["input_tokens"] - usage["cache_read_tokens"] - usage["cache_write_tokens"],
+        )
     return (
         uncached_input_tokens * float(price["input_price"])
         + usage["output_tokens"] * float(price["output_price"])

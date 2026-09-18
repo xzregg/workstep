@@ -36,6 +36,10 @@ class Task(BaseModel):
     next_message_sequence = pw.IntegerField(default=1)
     pipeline_version = pw.TextField(null=True)
     review_overrides_json = pw.TextField(null=True)
+    creator_id = pw.TextField(null=True)
+    creator_name = pw.TextField(null=True)
+    creator_device_id = pw.TextField(null=True)
+    creator_device_name = pw.TextField(null=True)
     scheduled_start_at = UTCDateTimeField(null=True)
     scheduled_start_state = pw.TextField(null=True)  # pending / missed / failed
     scheduled_start_error = pw.TextField(null=True)

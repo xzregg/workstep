@@ -30,6 +30,12 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
         assert "coordinator_thinking_effort" in tasks
         assert "archived" in tasks
         assert "next_message_sequence" in tasks
+        assert {
+            "creator_id",
+            "creator_name",
+            "creator_device_id",
+            "creator_device_name",
+        }.issubset(tasks)
 
         chat_sessions = {column.name for column in db.get_columns("chat_sessions")}
         assert "provider_id" in chat_sessions
@@ -244,6 +250,12 @@ def test_migrate_database_adds_dispatch_columns_before_unique_index(tmp_path):
 
     columns = {column.name for column in db.get_columns("tasks")}
     assert "source_dispatch_id" in columns
+    assert {
+        "creator_id",
+        "creator_name",
+        "creator_device_id",
+        "creator_device_name",
+    }.issubset(columns)
     indexes = {index.name for index in db.get_indexes("tasks")}
     assert "task_source_dispatch_id" in indexes
     assert db.execute_sql('SELECT COUNT(*) FROM "tasks"').fetchone()[0] == 2

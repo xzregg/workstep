@@ -399,7 +399,7 @@ class ResumeCoordinatorFakeEngine(CoordinatorFakeEngine):
         )
 
 
-async def _create_task(client, tmp_path):
+async def _create_task(client, tmp_path, headers=None):
     project_dir = tmp_path / "coordinator-project"
     project_dir.mkdir()
     initialized = await client.post(
@@ -421,6 +421,7 @@ async def _create_task(client, tmp_path):
             "cwd": str(project_dir),
             "auto_start": False,
         },
+        headers=headers,
     )
     return project_id, created.json()["id"]
 
@@ -721,6 +722,64 @@ async def test_coordinator_publishes_user_message_as_live_event(api_context, mon
     assert user_start["channel"] == "coordinator"
     assert user_start["task_id"] == task_id
     assert user_start["content"] == "请继续推进"
+
+
+@pytest.mark.anyio
+async def test_browser_actor_is_persisted_on_task_and_coordinator_user_message(
+    api_context, monkeypatch
+):
+    import main
+    from models import Message, Task
+
+    client, tmp_path = api_context
+    headers = {
+        "Idempotency-Key": "browser-actor-1",
+        "X-WorkStep-Actor-Id": "browser-1",
+        "X-WorkStep-Actor-Name": "%E6%B5%8F%E8%A7%88%E5%99%A8%E7%94%A8%E6%88%B7",
+        "X-WorkStep-Actor-Device-Id": "browser-device-1",
+        "X-WorkStep-Actor-Device-Name": "Chrome",
+    }
+    project_id, task_id = await _create_task(client, tmp_path, headers)
+    response = await client.post(
+        f"/api/task/{task_id}/chat?project_id={project_id}",
+        headers=headers,
+        json={"content": "请记录作者"},
+    )
+    assert response.status_code == 200, response.text
+
+    def load():
+        task = Task.get_by_id(task_id)
+        message = Message.get_by_id(response.json()["user_message_id"])
+        return {
+            "task_creator": (
+                task.creator_id,
+                task.creator_name,
+                task.creator_device_id,
+                task.creator_device_name,
+            ),
+            "message_author": (
+                message.author_id,
+                message.author_name,
+                message.author_device_id,
+                message.author_device_name,
+            ),
+        }
+
+    stored = await main.project_manager.run_db(project_id, lambda _project: load())
+    assert stored == {
+        "task_creator": (
+            "browser-1",
+            "浏览器用户",
+            "browser-device-1",
+            "Chrome",
+        ),
+        "message_author": (
+            "browser-1",
+            "浏览器用户",
+            "browser-device-1",
+            "Chrome",
+        ),
+    }
 
 
 @pytest.mark.anyio

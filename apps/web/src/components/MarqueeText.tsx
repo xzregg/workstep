@@ -5,6 +5,8 @@ interface MarqueeTextProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'childr
   text: string
   /** 走马灯滚动速度（像素/秒），默认 60 */
   speed?: number
+  /** 在父级弹层打开时强制启动，不依赖文本自身悬停。 */
+  forceActive?: boolean
 }
 
 /**
@@ -23,6 +25,7 @@ export default function MarqueeText({
   className = '',
   style,
   speed = 60,
+  forceActive = false,
   onMouseEnter,
   onMouseLeave,
   ...rest
@@ -51,7 +54,7 @@ export default function MarqueeText({
     setOverflow(Math.max(0, dist))
   }
 
-  const active = hover && overflow > 0 && !reducedMotion
+  const active = (hover || forceActive) && overflow > 0 && !reducedMotion
 
   useEffect(() => {
     measure()
@@ -74,18 +77,14 @@ export default function MarqueeText({
     <span
       {...rest}
       ref={outerRef}
-      className={`ws-marquee${active ? ' is-marquee' : ''}${className ? ` ${className}` : ''}`}
+      className={`ws-marquee${overflow > 0 ? ' is-overflowing' : ''}${active ? ' is-marquee' : ''}${className ? ` ${className}` : ''}`}
       style={{ flex: 1, minWidth: 0, ...custom, ...style } as CSSProperties}
       onMouseEnter={(e) => { onMouseEnter?.(e); setHover(true) }}
       onMouseLeave={(e) => { onMouseLeave?.(e); setHover(false) }}
     >
-      {active ? (
-        <span className="ws-marquee__track">
-          <span ref={contentRef} className="ws-marquee__inner">{text}</span>
-        </span>
-      ) : (
-        <span ref={contentRef} className="ws-marquee__ellipsis">{text}</span>
-      )}
+      <span className="ws-marquee__track">
+        <span ref={contentRef} className="ws-marquee__inner">{text}</span>
+      </span>
     </span>
   )
 }

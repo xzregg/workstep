@@ -1,6 +1,7 @@
 """Per-project database execution outside the FastAPI event loop."""
 
 import asyncio
+import contextvars
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, TypeVar
@@ -34,10 +35,14 @@ class ProjectDatabaseExecutor:
     async def run(self, operation: Callable[[], ResultT]) -> ResultT:
         """Run one complete database work unit in project order."""
         loop = asyncio.get_running_loop()
+        context = contextvars.copy_context()
         with self._state_lock:
             if self._closed:
                 raise RuntimeError("Project database executor is closed")
-            future = loop.run_in_executor(self._executor, self._execute, operation)
+            future = loop.run_in_executor(
+                self._executor,
+                lambda: context.run(self._execute, operation),
+            )
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError:

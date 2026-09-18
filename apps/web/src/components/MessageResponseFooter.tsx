@@ -45,6 +45,7 @@ export function formatTokenUsage(
   usage?: MessageUsage,
   t: TFunction = zhCNT,
   locale = 'zh-CN',
+  engine?: string | null,
 ): string {
   if (!usage || Object.keys(usage).length === 0) {
     return t('footer.noTokenData')
@@ -80,9 +81,12 @@ export function formatTokenUsage(
     : []
   if (cacheRead > 0) parts.push(t('footer.cacheRead', { count: number.format(cacheRead) }))
   if (cacheWrite > 0) parts.push(t('footer.cacheWrite', { count: number.format(cacheWrite) }))
-  const cacheInput = 'prompt_tokens' in usage
-    ? input
-    : input + cacheRead + cacheWrite
+  const cacheInputIncluded = typeof usage.cache_input_included === 'boolean'
+    ? usage.cache_input_included
+    : engine !== 'claude' && engine !== 'claude_agent_sdk'
+  const cacheInput = cacheInputIncluded === false
+    ? input + cacheRead + cacheWrite
+    : input
   if (cacheInput > 0) {
     const cacheHitRate = Math.min(100, (cacheRead / cacheInput) * 100)
     parts.push(t('footer.cacheHit', { pct: cacheHitRate.toFixed(1) }))
@@ -285,10 +289,10 @@ export default function MessageResponseFooter({
     ?? (stopped && !usage ? estimateUsageFromEventSummary(eventSummary) : null)
   const effectiveUsage = usage ?? estimated
   const usageSummary = effectiveUsage
-    ? formatTokenUsage(effectiveUsage, t, locale)
+    ? formatTokenUsage(effectiveUsage, t, locale, engine)
     : running
       ? ''
-      : formatTokenUsage(usage, t, locale)
+      : formatTokenUsage(usage, t, locale, engine)
 
   // 进行中每秒刷新一次时钟，让 t/s 与耗时保持流动；结束后停止计时器。
   const [now, setNow] = useState(() => Date.now())

@@ -39,6 +39,8 @@ from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from engines.core.stream_lines import ChunkedLineReader
+from engines.codex_events import codex_cli_raw_event
+from engines.codex_visualize import convert_visualize_markers
 from services.config import (
     CODEX_APPROVAL_POLICIES,
     CODEX_REASONING_EFFORTS,
@@ -61,6 +63,73 @@ def _is_codex_terminal_event(event: InternalEvent) -> bool:
     return (
         event.type == "status"
         and event.data.get("status") in {"done", "cancelled"}
+    )
+
+
+_CODEX_CLI_TOOL_ITEM_TYPES = frozenset({
+    "file_change",
+    "mcp_tool_call",
+    "dynamic_tool_call",
+    "web_search",
+})
+
+
+def _cli_tool_call_event(item: dict) -> InternalEvent:
+    """Map a Codex CLI tool item (snake_case transport) to ACP tool_call."""
+    item_type = str(item.get("type") or "")
+    if item_type == "file_change":
+        title = "FileChange"
+        raw_input = {"changes": item.get("changes") or []}
+    elif item_type == "mcp_tool_call":
+        server = str(item.get("server") or "")
+        tool = str(item.get("tool") or "")
+        title = f"{server}/{tool}" if server else tool
+        raw_input = item.get("arguments") or {}
+    elif item_type == "dynamic_tool_call":
+        title = str(item.get("tool") or "DynamicToolCall")
+        raw_input = item.get("arguments") or {}
+    elif item_type == "web_search":
+        title = "WebSearch"
+        raw_input = {"query": item.get("query") or ""}
+    else:
+        title = str(item.get("tool") or item_type or "tool")
+        raw_input = item.get("arguments") or item
+    return tool_call_event(
+        tool_call_id=str(item.get("id") or ""),
+        title=title,
+        kind="other",
+        raw_input=raw_input,
+    )
+
+
+def _cli_tool_result_event(item: dict) -> InternalEvent:
+    """Map a completed Codex CLI tool item to ACP tool_call_update."""
+    item_type = str(item.get("type") or "")
+    if item_type == "file_change":
+        output = item.get("changes") or item.get("output") or ""
+    elif item_type == "mcp_tool_call":
+        output = item.get("result") or item.get("error") or item.get("output") or ""
+    elif item_type == "dynamic_tool_call":
+        output = item.get("content_items") or item.get("output") or ""
+    elif item_type == "web_search":
+        output = item.get("results") or item.get("query") or ""
+    else:
+        output = item.get("output") or item.get("result") or ""
+    status = str(item.get("status") or "")
+    exit_code = item.get("exit_code")
+    failed = (
+        status.lower() in {"failed", "error", "declined"}
+        or bool(item.get("error"))
+        or item.get("success") is False
+        or (
+            isinstance(exit_code, int)
+            and exit_code != 0
+        )
+    )
+    return tool_call_update_event(
+        tool_call_id=str(item.get("id") or ""),
+        status="failed" if failed else "completed",
+        raw_output=output,
     )
 
 
@@ -739,8 +808,17 @@ class CodexEngine(AcpEngineBase):
                 text = item.get("text") or item.get("message") or ""
                 if text:
                     return agent_message_chunk(
-                        text, phase=item.get("phase"), source_item_id=item.get("id"),
+                        convert_visualize_markers(str(text)),
+                        phase=item.get("phase"), source_item_id=item.get("id"),
                     )
+
+            elif item_type == "plan":
+                text = item.get("text") or item.get("content") or ""
+                return InternalEvent(type="plan_update", data={
+                    "id": str(item.get("id") or ""),
+                    "type": "markdown",
+                    "content": str(text),
+                })
 
             elif item_type in {"reasoning", "analysis"}:
                 thinking = extract_reasoning_text(
@@ -782,6 +860,9 @@ class CodexEngine(AcpEngineBase):
                     raw_output=output,
                 )
 
+            elif item_type in _CODEX_CLI_TOOL_ITEM_TYPES:
+                return _cli_tool_result_event(item)
+
         if event_type == "item.started":
             item = obj.get("item", {})
             if item.get("type") == "collab_agent_tool_call":
@@ -802,6 +883,8 @@ class CodexEngine(AcpEngineBase):
                     kind="execute",
                     raw_input={"command": item.get("command", "")},
                 )
+            if item.get("type") in _CODEX_CLI_TOOL_ITEM_TYPES:
+                return _cli_tool_call_event(item)
 
         if event_type == "turn.completed":
             usage = obj.get("usage", {})
@@ -834,7 +917,9 @@ class CodexEngine(AcpEngineBase):
                 "message": obj.get("message", obj.get("error", "Unknown error")),
             })
 
-        return None
+        # 未知 Codex CLI 事件统一归一为 acp_raw（不静默丢弃），由 AG-UI
+        # 翻译层下发为 workstep.acp_raw，历史回放同样保真。
+        return codex_cli_raw_event(obj)
 
     async def stop(self) -> None:
         if self._process and self._running:
@@ -883,6 +968,7 @@ class CodexEngine(AcpEngineBase):
         "session_started",
         "compacted",
         "error",
+        "acp_raw",
     })
 
     @property

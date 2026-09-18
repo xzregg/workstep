@@ -30,6 +30,8 @@ export type ToolActivity = {
   result?: unknown
   hasResult: boolean
   isError: boolean
+  startedAt?: number
+  endedAt?: number
 }
 
 export type SubagentActivity = {
@@ -229,6 +231,7 @@ export function buildMessageTimeline(
         name: toolName(event),
         hasResult: false,
         isError: false,
+        ...(timestamp !== null ? { startedAt: timestamp } : {}),
       }
       toolsById.set(id, activity)
       appendTool(activity)
@@ -249,6 +252,7 @@ export function buildMessageTimeline(
         input: data.input,
         hasResult: false,
         isError: false,
+        ...(timestamp !== null ? { startedAt: timestamp } : {}),
       }
       toolsById.set(id, activity)
       appendTool(activity)
@@ -303,6 +307,7 @@ export function buildMessageTimeline(
         activity.result = toolOutput(event)
         activity.hasResult = true
         activity.isError = Boolean(event.isError)
+        if (timestamp !== null) activity.endedAt = timestamp
         return
       }
       const id = String(data.tool_use_id || data.id || `result-${index}`)
@@ -320,6 +325,8 @@ export function buildMessageTimeline(
       activity.result = data.content ?? data.result
       activity.hasResult = true
       activity.isError = Boolean(data.is_error)
+      if (timestamp !== null) activity.endedAt = timestamp
+      return
     }
 
     if (isCustom(event, CUSTOM.subagent)) {

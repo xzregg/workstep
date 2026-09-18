@@ -45,6 +45,9 @@ import MarkdownMessage from './MarkdownMessage'
 import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
+import MarqueeText from './MarqueeText'
+import TaskStageProgressGraph from './TaskStageProgressGraph'
+import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
   isVisibleLiveExecutionMessage,
@@ -73,7 +76,6 @@ import {
 } from '../pages/taskDetailChat'
 import {
   formatConversationDateTime,
-  formatDurationBetween,
   toMilliseconds,
 } from '../utils/datetime'
 import { useI18n, type TKey } from '../i18n'
@@ -98,6 +100,9 @@ export interface StageData {
   key: string
   label: string
   color: string
+  nodeId?: string | number
+  dependsOn?: string[]
+  reworkDependsOn?: string[]
   engine?: string
   model?: string
   config?: Record<string, string>
@@ -130,20 +135,6 @@ const STATUS_LABEL_KEYS: Record<string, TKey> = {
   paused: 'status.paused',
   stopped: 'status.stopped',
   done: 'status.done',
-}
-
-const STAGE_STATE_LABEL_KEYS: Record<StageVisualState, TKey> = {
-  completed: 'status.done',
-  current: 'status.current',
-  reviewing: 'status.reviewing',
-  awaiting_review: 'status.awaiting_review',
-  retrying: 'status.retrying',
-  rework: 'status.rework',
-  rework_waiting: 'status.rework_waiting',
-  failed: 'status.failed',
-  cancelled: 'status.cancelled',
-  skipped: 'status.skipped',
-  pending: 'status.pending',
 }
 
 function hasProcessEvents(events: any[]) {
@@ -182,6 +173,10 @@ export interface TaskDetailViewProps {
     description?: string | null
     status: string
     steps: TaskStepState[]
+    creator_id?: string | null
+    creator_name?: string | null
+    creator_device_id?: string | null
+    creator_device_name?: string | null
     created_at: string
     updated_at?: string
     run_round?: number
@@ -483,7 +478,7 @@ export default function TaskDetailView({
   onChatError,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
-  const localDeviceId = useUserSettingsStore((state) => state.deviceId)
+  const localUserName = useUserSettingsStore((state) => state.userName)
   // 协调引擎下拉的可用性走共享状态，设置页改动后即时跟随（由 TaskDetail 拉取时播种）。
   const sharedCoordinatorEngines = useCoordinatorEngines()
   const {
@@ -753,14 +748,6 @@ export default function TaskDetailView({
     [historyMessages, liveMessages],
   )
 
-  const visibleStages = useMemo(() => {
-    const hideSkipped = (task?.run_round ?? 1) > 1
-    const entries = stages.map((stage, index) => ({ stage, index }))
-    if (!hideSkipped) return entries
-    return entries.filter(
-      ({ index }) => stageProgress[index]?.visualState !== 'skipped',
-    )
-  }, [stages, stageProgress, task?.run_round])
 
   const selectedReview = reviews.find(
     (review) => review.step_key === currentStage.key,
@@ -953,6 +940,21 @@ export default function TaskDetailView({
                 ] ?? (task.status as TKey),
               )}
             </span>
+            {task.creator_name && (
+              <span
+                title={task.creator_device_name ? `${task.creator_name} · ${task.creator_device_name}` : task.creator_name}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  minHeight: 22,
+                  fontSize: 'calc(12px * var(--font-scale))',
+                  lineHeight: 1,
+                  color: 'var(--meta)',
+                }}
+              >
+                {t('taskDetail.creator')}：{task.creator_name}
+              </span>
+            )}
             <span
               style={{
                 display: 'inline-flex',
@@ -1166,368 +1168,18 @@ export default function TaskDetailView({
           )}
         </div>
 
-        {/* Progress timeline */}
-        <div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 14,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 'calc(11px * var(--font-scale))',
-                fontWeight: 700,
-                color: 'var(--muted)',
-                fontFamily: 'var(--font-mono)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              {t('taskDetail.progress')}
-            </div>
-            {(task?.run_round ?? 1) > 1 && (
-              <span
-                style={{
-                  fontSize: 'calc(11px * var(--font-scale))',
-                  fontWeight: 600,
-                  padding: '3px 8px',
-                  borderRadius: 999,
-                  color: 'var(--fg-2)',
-                  background:
-                    'color-mix(in oklab, var(--accent), transparent 90%)',
-                }}
-              >
-                {t('taskDetail.runRound', { round: task?.run_round ?? 1 })}
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
-            {visibleStages.map(({ stage, index: i }, pos) => {
-              const progress = stageProgress[i]
-              const visualState = progress?.visualState || 'pending'
-              const isCompleted = visualState === 'completed'
-              const isCurrentActive = [
-                'current',
-                'reviewing',
-                'awaiting_review',
-                'retrying',
-                'rework',
-                'rework_waiting',
-              ].includes(visualState)
-              const isFailed = visualState === 'failed'
-              const isCancelled = visualState === 'cancelled'
-              const isSkipped = visualState === 'skipped'
-              const isSelected = i === selectedStage
-              const stageColor = stage.color || 'var(--accent)'
-              const currentRound = task?.run_round ?? 1
-              const restartIndex = stages.findIndex(
-                (item: any) => item.key === task?.restart_from_step_key,
-              )
-              const runRoundForStage =
-                restartIndex >= 0 && i < restartIndex
-                  ? Math.max(1, currentRound - 1)
-                  : currentRound
-              // 进度条轮数以该阶段产物轮数为准：优先取后端 StepRun.artifact_round
-              // （权威来源）；对没有 StepRun 记录的旧产物，回退到产物列表里的轮数；
-              // 两者都没有（待执行 / 尚未产出）时回退到工作流重跑轮数。
-              const stepArtifactRound = progress?.artifact_round ?? 0
-              const listedArtifactRound = artifacts
-                .filter((artifact) => artifact.step_key === stage.key)
-                .reduce(
-                  (maxRound, artifact) => Math.max(maxRound, artifact.round || 0),
-                  0,
-                )
-              const stageArtifactRound = Math.max(
-                stepArtifactRound,
-                listedArtifactRound,
-              )
-              const stageRound =
-                stageArtifactRound > 0 ? stageArtifactRound : runRoundForStage
-              const stageRoundColor = 'var(--accent)'
-              const finishedDuration = progress?.ended_at
-                ? formatDurationBetween(
-                    progress?.started_at,
-                    progress.ended_at,
-                    t,
-                  )
-                : null
-              const startedAtMs =
-                toMilliseconds(progress?.started_at) ??
-                toMilliseconds(task.created_at) ??
-                Date.now()
-              const updatedAtMs =
-                toMilliseconds(task.updated_at) ?? Date.now()
-              const isDurationLive =
-                task.status === 'running' ||
-                [
-                  'reviewing',
-                  'awaiting_review',
-                  'retrying',
-                  'rework',
-                  'rework_waiting',
-                ].includes(visualState)
-              const activeDuration =
-                isCurrentActive && progress?.started_at
-                  ? formatDurationBetween(
-                      progress.started_at,
-                      isDurationLive ? durationNowMs : updatedAtMs,
-                      t,
-                    )
-                  : null
-              const activeStateColor =
-                task.status === 'paused'
-                  ? 'var(--status-paused)'
-                  : task.status === 'stopped'
-                    ? 'var(--status-stopped)'
-                    : visualState === 'reviewing'
-                      ? 'var(--accent)'
-                      : ['retrying', 'rework', 'rework_waiting'].includes(
-                            visualState,
-                          )
-                        ? 'var(--warn)'
-                        : 'var(--status-running)'
-              const stateColor = isCompleted
-                ? 'var(--status-done)'
-                : isFailed
-                  ? 'var(--status-failed)'
-                  : isCancelled
-                    ? '#d97706'
-                    : isCurrentActive
-                      ? activeStateColor
-                      : isSkipped
-                        ? 'var(--meta)'
-                        : 'var(--border)'
-              const stageLabelColor = visualState === 'pending'
-                ? 'color-mix(in oklab, var(--meta), var(--bg) 25%)'
-                : isSkipped
-                  ? 'var(--meta)'
-                  : 'var(--fg-2)'
-              return (
-                <div
-                  key={stage.key}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={t('taskDetail.viewStageMessagesAria', {
-                    stage: stage.label,
-                  })}
-                  onClick={() => handleStageClick(i)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      handleStageClick(i)
-                    }
-                  }}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    position: 'relative',
-                    paddingTop: 24,
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  {/* Connector line */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      // Align the connector with the vertical center of the
-                      // stage dot (paddingTop 24 + dotSize 20 / 2 - 1).
-                      top: 33,
-                      left: pos === 0 ? '50%' : 0,
-                      right:
-                        pos === visibleStages.length - 1 ? '50%' : 0,
-                      height: 2,
-                      background: stateColor,
-                    }}
-                  />
-                  {/* Dot */}
-                  <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      background:
-                        isCompleted ||
-                        isCurrentActive ||
-                        isFailed ||
-                        isCancelled ||
-                        isSkipped
-                          ? stageColor
-                          : 'var(--bg)',
-                      border: `2px solid ${stageColor}`,
-                      position: 'relative',
-                      zIndex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'var(--accent-fg)',
-                      fontSize: 'calc(13px * var(--font-scale))',
-                      fontWeight: 700,
-                      boxShadow: isSelected
-                        ? `0 0 0 4px color-mix(in oklab, ${stageColor}, transparent 72%)`
-                        : 'none',
-                    }}
-                  >
-                    {isCompleted
-                      ? '✓'
-                      : isCurrentActive
-                        ? task.status === 'paused'
-                          ? '–'
-                          : <span className="task-status-spinner" />
-                        : isFailed
-                          ? '×'
-                          : isCancelled
-                            ? '▮'
-                            : isSkipped
-                              ? '–'
-                              : ''}
-                  </div>
-                  {visualState !== 'pending' && (
-                    <span
-                      style={{
-                        position: 'absolute',
-                        top: 5,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        fontSize: 'calc(11px * var(--font-scale))',
-                        padding: '2px 6px',
-                        borderRadius: 999,
-                        color: stateColor,
-                        background: `color-mix(in oklab, ${stateColor}, transparent 88%)`,
-                        fontWeight: 600,
-                        whiteSpace: 'nowrap',
-                        zIndex: 1,
-                      }}
-                    >
-                      {t(STAGE_STATE_LABEL_KEYS[visualState])}
-                    </span>
-                  )}
-                  <div
-                    style={{
-                      height: 28,
-                      marginTop: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 'calc(13px * var(--font-scale))',
-                        textAlign: 'center',
-                        whiteSpace: 'nowrap',
-                        color: stageLabelColor,
-                        fontWeight: isSelected
-                          ? 750
-                          : isCurrentActive
-                            ? 650
-                            : 500,
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        border: isSelected
-                          ? `1px solid ${stageColor}`
-                          : '1px solid transparent',
-                        background: 'transparent',
-                      }}
-                    >
-                      {stage.label}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      height: 20,
-                      marginTop: 2,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    {currentRound > 1 && (
-                      <span
-                        style={{
-                          fontSize: 'calc(11px * var(--font-scale))',
-                          padding: '2px 6px',
-                          borderRadius: 999,
-                          background: `color-mix(in oklab, ${stageRoundColor}, transparent 88%)`,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {t('taskDetail.runRoundShort', {
-                          round: stageRound,
-                        })}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      minHeight: 32,
-                      marginTop: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: 2,
-                    }}
-                  >
-                    {finishedDuration && (
-                      <div
-                        style={{
-                          fontSize: 'calc(11px * var(--font-scale))',
-                          color: 'var(--meta)',
-                          textAlign: 'center',
-                          lineHeight: 1.5,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {t('taskDetail.duration', {
-                          duration: finishedDuration,
-                        })}
-                      </div>
-                    )}
-                    {isCurrentActive && (
-                      <div
-                        style={{
-                          fontSize: 'calc(11px * var(--font-scale))',
-                          color: 'var(--meta)',
-                          textAlign: 'center',
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        <div>
-                          {t('taskDetail.startedAt', {
-                            time: new Date(startedAtMs).toLocaleTimeString(
-                              locale,
-                              {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              },
-                            ),
-                          })}
-                        </div>
-                        {activeDuration && (
-                          <span
-                            style={{
-                              color: 'var(--fg-2)',
-                              fontWeight: 500,
-                            }}
-                          >
-                            {t('taskDetail.duration', {
-                              duration: activeDuration,
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+
+        <TaskStageProgressGraph
+          taskStatus={task?.status ?? 'ready'}
+          runRound={task?.run_round ?? 1}
+          restartFromStepKey={task?.restart_from_step_key ?? undefined}
+          stages={stages}
+          stageProgress={stageProgress}
+          artifacts={artifacts}
+          selectedStage={selectedStage}
+          durationNowMs={durationNowMs}
+          onStageClick={handleStageClick}
+        />
 
         {/* Stage prompt */}
         {!readOnly && (
@@ -2553,9 +2205,12 @@ export default function TaskDetailView({
                             msg,
                             reviews,
                           )
-                        const isOwnUser = isUser && (!msg.author_device_id || msg.author_device_id === localDeviceId)
                         const sender = isUser
-                          ? (isOwnUser ? t('aiFlow.me') : (msg.author_name || t('aiFlow.me')))
+                          ? displayUserSender(
+                              msg.author_name,
+                              localUserName,
+                              t('aiFlow.me'),
+                            )
                           : isSystem
                             ? t(
                                 'taskDetail.system',
@@ -2636,7 +2291,15 @@ export default function TaskDetailView({
                                     : 'assistant'
                             }
                             sender={sender}
-                            senderTitle={isUser && msg.author_device_name ? `${sender} · ${msg.author_device_name}` : undefined}
+                            senderTitle={
+                              isUser
+                                ? displayUserDetail(
+                                    msg.author_name,
+                                    msg.author_device_name,
+                                    t('aiFlow.me'),
+                                  )
+                                : undefined
+                            }
                             initials={initials}
                             color={senderColor}
                             content={messageContent}
@@ -2783,6 +2446,9 @@ export default function TaskDetailView({
                                         )
                                       : `@${stageLabel}`}
                                   </span>
+                                  {sender !== t('aiFlow.me') && (
+                                    <MarqueeText text={sender} className="user-sender-marquee" />
+                                  )}
                                   {formatConversationDateTime(
                                     msg.started_at ||
                                       msg.created_at,
@@ -3135,149 +2801,203 @@ export default function TaskDetailView({
             )}
 
             {liveCoordinatorMessages.map(
-              (message) => (
-                <ChatMessageBubble
-                  key={message.id}
-                  role="assistant"
-                  sender={t('aiFlow.agent')}
-                  initials={t(
-                    'aiFlow.agentInitials',
-                  )}
-                  color="var(--ai-assistant)"
-                  content={
-                    message.content || ''
-                  }
-                  projectId={projectId}
-                  streaming={
-                    message.status === 'running'
-                  }
-                  variant="bg"
-                  onA2uiAction={
-                    !readOnly
-                      ? onA2uiAction
-                      : undefined
-                  }
-                  events={message.events}
-                  interactionsEnabled={message.status === 'running'}
-                  onInteractionRespond={
-                    !readOnly
-                      ? onInteractionRespond
-                      : undefined
-                  }
-                  header={
-                    <MessageMetaBar
-                      createdAt={
-                        message.created_at
-                      }
-                      running={
+              (message) => {
+                const isUser =
+                  message.role === 'user'
+                const sender = isUser
+                  ? displayUserSender(
+                      message.author_name,
+                      localUserName,
+                      t('aiFlow.me'),
+                    )
+                  : t('aiFlow.agent')
+                return (
+                  <ChatMessageBubble
+                    key={message.id}
+                    role={
+                      isUser ? 'user' : 'assistant'
+                    }
+                    sender={sender}
+                    senderTitle={
+                      isUser
+                        ? displayUserDetail(
+                            message.author_name,
+                            message.author_device_name,
+                            t('aiFlow.me'),
+                          )
+                        : undefined
+                    }
+                    initials={
+                      isUser
+                        ? sender.slice(0, 2)
+                        : t('aiFlow.agentInitials')
+                    }
+                    color={
+                      isUser
+                        ? 'var(--accent)'
+                        : 'var(--ai-assistant)'
+                    }
+                    content={
+                      message.content || ''
+                    }
+                    projectId={projectId}
+                    streaming={
+                      !isUser &&
+                      message.status === 'running'
+                    }
+                    variant="bg"
+                    onA2uiAction={
+                      !readOnly
+                        ? onA2uiAction
+                        : undefined
+                    }
+                    events={message.events}
+                    interactionsEnabled={
+                      !isUser &&
+                      message.status === 'running'
+                    }
+                    onInteractionRespond={
+                      !readOnly
+                        ? onInteractionRespond
+                        : undefined
+                    }
+                    header={
+                      isUser ? (
+                        <>
+                          <span>
+                            {t(
+                              'taskDetail.coordinatorTag',
+                            )}
+                          </span>
+                          {sender !== t('aiFlow.me') && (
+                            <MarqueeText text={sender} className="user-sender-marquee" />
+                          )}
+                          {formatConversationDateTime(
+                            message.created_at,
+                            Date.now(),
+                            locale,
+                          )}
+                        </>
+                      ) : (
+                        <MessageMetaBar
+                          createdAt={
+                            message.created_at
+                          }
+                          running={
+                            message.status ===
+                            'running'
+                          }
+                          events={message.events}
+                          prompt={
+                            message.prompt ||
+                            livePromptOverrides?.[
+                              String(message.id)
+                            ]
+                          }
+                          sessionId={
+                            task?.coordinator_session_id ||
+                            sessionIdForStep(
+                              message.step_key,
+                            )
+                          }
+                          messageId={message.id}
+                          onViewPrompt={
+                            onViewingPromptChange
+                          }
+                          status={terminalMessageStatus(
+                            message.status,
+                          )}
+                          projectId={projectId}
+                        />
+                      )
+                    }
+                    showLoading={
+                      !isUser &&
+                      !message.content &&
+                      message.status === 'running'
+                    }
+                    loading={
+                      <StreamingStatusText label={t('bubble.thinking')} />
+                    }
+                    footer={
+                      !isUser &&
+                      (message.content ||
                         message.status ===
-                        'running'
-                      }
-                      events={message.events}
-                      prompt={
-                        message.prompt ||
-                        livePromptOverrides?.[
-                          String(message.id)
-                        ]
-                      }
-                      sessionId={
-                        task?.coordinator_session_id ||
-                        sessionIdForStep(
-                          message.step_key,
-                        )
-                      }
-                      messageId={message.id}
-                      onViewPrompt={
-                        onViewingPromptChange
-                      }
-                      status={terminalMessageStatus(
-                        message.status,
-                      )}
-                      projectId={projectId}
-                    />
-                  }
-                  showLoading={
-                    !message.content &&
-                    message.status === 'running'
-                  }
-                  loading={
-                    <StreamingStatusText label={t('bubble.thinking')} />
-                  }
-                  footer={
-                    message.content ||
-                    message.status === 'running' ? (
-                      <MessageResponseFooter
-                        content={stripA2uiBlocks(
-                          message.content,
-                        )}
-                        usage={usageFromEvents(
-                          message.events,
-                        )}
-                        events={message.events}
-                        engine={
-                          message.engine
-                        }
-                        model={
-                          message.model
-                        }
-                        startedAt={
-                          message.created_at
-                        }
-                        endedAt={
-                          message.status ===
-                          'running'
-                            ? undefined
-                            : lastEventTimestamp(
-                                message.events,
-                              )
-                        }
-                        running={
-                          message.status ===
-                          'running'
-                        }
-                      />
-                    ) : undefined
-                  }
-                >
-                  {!readOnly &&
-                    message.proposals.map(
-                      (rawProposal) => {
-                        const proposal =
-                          rawProposal as unknown as ActionProposal
-                        const currentProposal =
-                          (proposalOverrides ??
-                            {})[
-                            proposal.id
-                          ] || proposal
-                        return (
-                          <CoordinatorProposalCard
-                            key={
+                          'running') ? (
+                        <MessageResponseFooter
+                          content={stripA2uiBlocks(
+                            message.content,
+                          )}
+                          usage={usageFromEvents(
+                            message.events,
+                          )}
+                          events={message.events}
+                          engine={
+                            message.engine
+                          }
+                          model={
+                            message.model
+                          }
+                          startedAt={
+                            message.created_at
+                          }
+                          endedAt={
+                            message.status ===
+                            'running'
+                              ? undefined
+                              : lastEventTimestamp(
+                                  message.events,
+                                )
+                          }
+                          running={
+                            message.status ===
+                            'running'
+                          }
+                        />
+                      ) : undefined
+                    }
+                  >
+                    {!isUser &&
+                      !readOnly &&
+                      message.proposals.map(
+                        (rawProposal) => {
+                          const proposal =
+                            rawProposal as unknown as ActionProposal
+                          const currentProposal =
+                            (proposalOverrides ??
+                              {})[
                               proposal.id
-                            }
-                            proposal={
-                              currentProposal
-                            }
-                            taskId={
-                              task?.id ||
-                              ''
-                            }
-                            projectId={
-                              projectId ||
-                              ''
-                            }
-                            onChanged={(
-                              updated,
-                            ) =>
-                              onProposalOverride?.(
+                            ] || proposal
+                          return (
+                            <CoordinatorProposalCard
+                              key={
+                                proposal.id
+                              }
+                              proposal={
+                                currentProposal
+                              }
+                              taskId={
+                                task?.id ||
+                                ''
+                              }
+                              projectId={
+                                projectId ||
+                                ''
+                              }
+                              onChanged={(
                                 updated,
-                              )
-                            }
-                          />
-                        )
-                      },
-                    )}
-                </ChatMessageBubble>
-              ),
+                              ) =>
+                                onProposalOverride?.(
+                                  updated,
+                                )
+                              }
+                            />
+                          )
+                        },
+                      )}
+                  </ChatMessageBubble>
+                )
+              },
             )}
 
             {/* Legacy execution */}

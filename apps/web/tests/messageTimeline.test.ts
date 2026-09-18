@@ -67,6 +67,25 @@ test('groups consecutive tool calls but starts a new group after assistant text'
   )
 })
 
+test('tracks each tool call duration from start and result timestamps', () => {
+  const timeline = buildMessageTimeline([
+    {
+      type: 'tool_use',
+      timestamp: '2026-08-29T10:00:00Z',
+      data: { id: 'cmd-1', name: 'Bash', input: { command: 'echo 1' } },
+    },
+    {
+      type: 'tool_result',
+      timestamp: '2026-08-29T10:00:08Z',
+      data: { tool_use_id: 'cmd-1', content: '1' },
+    },
+  ])
+
+  const tool = timeline[0]
+  assert.equal(tool?.type === 'tool' && tool.activity.startedAt, 1_787_997_600_000)
+  assert.equal(tool?.type === 'tool' && tool.activity.endedAt, 1_787_997_608_000)
+})
+
 test('keeps thinking and tool calls in event order and lets thinking break tool groups', () => {
   const timeline = buildMessageTimeline([
     { type: 'thinking_delta', data: { delta: '先分析。' } },

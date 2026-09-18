@@ -11,8 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
 from services.remote_project import (
+    ACCESS_COOKIE_NAME,
     ActorSnapshot,
+    BrowserActorMiddleware,
     RemoteAccessService,
+    RemoteAccessGuardMiddleware,
     RemoteHttpRequest,
     RemotePrincipal,
     RemoteRouteDispatcher,
@@ -24,6 +27,7 @@ from services.remote_project import (
     get_current_actor,
     current_actor_event_fields,
     _select_network_ipv4,
+    _is_loopback,
 )
 from services.messages import current_actor_message_fields
 from streaming.bus import EventBus
@@ -109,6 +113,151 @@ class MemoryConfig:
         self.values[key] = value
 
 
+def test_access_password_hashing_and_token_roundtrip():
+    config = MemoryConfig()
+    service = RemoteAccessService(config)
+
+    assert service.access_password_required() is False
+    assert service.verify_access_password("secret") is False
+    service.set_access_password("s3cret")
+
+    raw = config.get("remote_access", {})
+    assert "s3cret" not in json.dumps(raw)
+    assert raw.get("access_password_hash")
+    assert service.access_password_required() is True
+    assert service.verify_access_password("s3cret") is True
+    assert service.verify_access_password("wrong") is False
+
+    token = service.issue_access_token()
+    assert service.verify_access_token(token) is True
+    assert service.verify_access_token("garbage") is False
+    assert service.verify_access_token("0.deadbeef") is False
+
+    # Rotating the password invalidates previously issued tokens.
+    old = service.issue_access_token()
+    service.set_access_password("changed")
+    assert service.verify_access_token(old) is False
+
+    service.set_access_password("")
+    assert service.access_password_required() is False
+
+
+def test_loopback_detection_handles_ipv4_ipv6_and_hostnames():
+    assert _is_loopback("127.0.0.1") is True
+    assert _is_loopback("::1") is True
+    assert _is_loopback("::ffff:127.0.0.1") is True
+    assert _is_loopback("localhost") is True
+    assert _is_loopback("192.168.1.20") is False
+    assert _is_loopback("") is False
+
+
+async def test_remote_access_guard_blocks_non_local_api_until_unlocked(monkeypatch):
+    config = MemoryConfig()
+    access = RemoteAccessService(config)
+    access.set_access_password("letmein")
+    monkeypatch.setattr(remote_project_api, "remote_access_service", access)
+
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+    router = APIRouter(prefix="/api")
+    app.include_router(remote_project_api.router)
+
+    @router.get("/secret")
+    async def secret():
+        return {"ok": True}
+
+    app.include_router(router)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("203.0.113.9", 5000)),
+        base_url="http://test",
+    ) as client:
+        blocked = await client.get("/api/secret")
+        assert blocked.status_code == 401
+        assert blocked.json()["code"] == "remote_access_locked"
+
+        wrong = await client.post(
+            "/api/remote-project/access/unlock", json={"password": "nope"}
+        )
+        assert wrong.status_code == 401
+
+        unlocked = await client.post(
+            "/api/remote-project/access/unlock", json={"password": "letmein"}
+        )
+        assert unlocked.status_code == 200
+        assert ACCESS_COOKIE_NAME in unlocked.cookies
+
+        allowed = await client.get("/api/secret")
+        assert allowed.status_code == 200
+        assert allowed.json() == {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("127.0.0.1", 5000)),
+        base_url="http://test",
+    ) as local_client:
+        local = await local_client.get("/api/secret")
+        assert local.status_code == 200
+
+
+async def test_remote_access_guard_is_open_when_no_password_is_set():
+    access = RemoteAccessService(MemoryConfig())
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("203.0.113.9", 5000)),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/api/secret")
+        assert response.status_code == 200
+
+
+async def test_remote_access_guard_ignores_spoofed_forwarded_header_from_remote_peer():
+    access = RemoteAccessService(MemoryConfig())
+    access.set_access_password("letmein")
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("203.0.113.9", 5000)),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/secret",
+            headers={"X-Forwarded-For": "127.0.0.1"},
+        )
+        assert response.status_code == 401
+
+
+async def test_remote_access_guard_trusts_forwarded_header_from_local_proxy():
+    access = RemoteAccessService(MemoryConfig())
+    access.set_access_password("letmein")
+    app = FastAPI()
+    app.add_middleware(RemoteAccessGuardMiddleware, access_service=access)
+
+    @app.get("/api/secret")
+    async def secret():
+        return {"ok": True}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app, client=("127.0.0.1", 5000)),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/secret",
+            headers={"X-Forwarded-For": "203.0.113.9"},
+        )
+        assert response.status_code == 401
+
+
 def test_local_user_identity_is_attached_to_messages_and_live_events(monkeypatch):
     class LocalIdentityConfig:
         @staticmethod
@@ -140,6 +289,86 @@ def test_local_user_identity_is_attached_to_messages_and_live_events(monkeypatch
             "device_name": "电脑 A",
         }
     }
+
+
+async def test_browser_actor_headers_are_attached_to_request_context():
+    app = FastAPI()
+    app.add_middleware(BrowserActorMiddleware)
+    router = APIRouter(prefix="/api")
+
+    @router.get("/whoami")
+    async def whoami():
+        actor = get_current_actor()
+        return {
+            "id": actor.actor_id if actor else None,
+            "name": actor.user_name if actor else None,
+            "source": actor.source if actor else None,
+        }
+
+    app.include_router(router)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/api/whoami",
+            headers={
+                "X-WorkStep-Actor-Id": "browser-1",
+                "X-WorkStep-Actor-Name": "%E6%B5%8F%E8%A7%88%E5%99%A8%E7%94%A8%E6%88%B7",
+                "X-WorkStep-Actor-Device-Id": "browser-device-1",
+                "X-WorkStep-Actor-Device-Name": "Chrome",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": "browser-1",
+        "name": "浏览器用户",
+        "source": "browser",
+    }
+
+
+async def test_browser_actor_headers_do_not_override_remote_principal():
+    app = FastAPI()
+    router = APIRouter(prefix="/api")
+
+    @router.get("/actor")
+    async def actor(project_id: str | None = None):
+        current = get_current_actor()
+        return {
+            "id": current.actor_id if current else None,
+            "source": current.source if current else None,
+        }
+
+    app.include_router(router)
+    dispatcher = RemoteRouteDispatcher(app)
+    response = await dispatcher.dispatch(
+        RemoteHttpRequest(
+            request_id="req-browser-header",
+            method="GET",
+            path="/api/actor",
+            headers={
+                "x-workstep-actor-id": "browser-1",
+                "x-workstep-actor-name": "浏览器用户",
+                "x-workstep-actor-device-id": "browser-device-1",
+                "x-workstep-actor-device-name": "Chrome",
+            },
+        ),
+        RemotePrincipal(
+            project_id="owner-project",
+            actor=ActorSnapshot(
+                actor_id="remote-1",
+                user_name="远端用户",
+                device_id="remote-device-1",
+                device_name="远端设备",
+                source="remote",
+            ),
+        ),
+    )
+    await dispatcher.aclose()
+
+    assert response.status == 200
+    assert response.json() == {"id": "remote-1", "source": "remote"}
 
 
 def test_external_share_invite_is_one_time_and_issues_device_credential():

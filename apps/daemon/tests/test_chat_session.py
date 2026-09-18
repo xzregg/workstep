@@ -1078,6 +1078,118 @@ async def test_chat_messages_go_to_new_tables_not_task_tables(chat_module, monke
 
 
 @pytest.mark.anyio
+async def test_chat_history_converts_legacy_visualize_markers(chat_module, monkeypatch):
+    """已落库的旧消息在历史读取时也要转成 Markdown 文件链接。"""
+    module, bus, manager, project, _ = chat_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return "旧回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    session = module.create_session(project.id, "wf-legacy")
+    accepted = module.submit_message(project.id, session["id"], "看看", "idem-legacy")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    marker = '\ue200visualize{"path":"<path>","mode":"wide"}\ue201'.replace("<path>", path)
+    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
+    ChatMessage.update(content=f"旧回复\n\n{marker}").where(
+        ChatMessage.id == row.id
+    ).execute()
+
+    history = module.history(project.id, session["id"])
+    assert history is not None
+    content = history["messages"][-1]["content"]
+    assert content == (
+        "旧回复\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+    assert "\ue200" not in content
+
+
+@pytest.mark.anyio
+async def test_chat_history_converts_bare_visualize_marker(chat_module, monkeypatch):
+    """新版 Codex 裸标记 ``visualize{JSON}`` 没有私有分隔符，历史读取仍需转换。"""
+    module, bus, manager, project, _ = chat_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return "旧回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    session = module.create_session(project.id, "wf-bare")
+    accepted = module.submit_message(project.id, session["id"], "看看", "idem-bare")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
+    ChatMessage.update(content=f"旧回复\n\n{bare}").where(
+        ChatMessage.id == row.id
+    ).execute()
+
+    history = module.history(project.id, session["id"])
+    assert history is not None
+    content = history["messages"][-1]["content"]
+    assert content == (
+        "旧回复\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+    assert bare not in content
+
+
+@pytest.mark.anyio
+async def test_chat_history_converts_visualize_marker_in_events(chat_module, monkeypatch):
+    """历史 events 里的正文 chunk 也要转换，避免前端交织渲染再次露出裸标记。"""
+    module, bus, manager, project, _ = chat_module
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        return "旧回复", [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+
+    session = module.create_session(project.id, "wf-bare-events")
+    accepted = module.submit_message(project.id, session["id"], "看看", "idem-bare-events")
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    row = ChatMessage.select().where(ChatMessage.role == "assistant").get()
+    with module._project_ctx(project.id):
+        ChatMessage.update(
+            engine="codex_sdk",
+            content=f"旧回复\n\n{bare}",
+            events_json=json.dumps([{
+                "type": "agent_message_chunk",
+                "data": {"content": {"text": f"旧回复\n\n{bare}"}},
+            }], ensure_ascii=False),
+        ).where(ChatMessage.id == row.id).execute()
+
+    history = module.history(project.id, session["id"])
+    assert history is not None
+    events = history["messages"][-1]["events"]
+    text = events[0]["data"]["content"]["text"]
+    assert text == (
+        "旧回复\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+    assert bare not in text
+
+
+@pytest.mark.anyio
 async def test_submitted_user_message_survives_reload_while_turn_is_running(
     chat_module,
     monkeypatch,
@@ -1610,6 +1722,121 @@ async def test_delete_rejects_running_session(chat_module, monkeypatch):
     await module.stop_current(accepted.session_id)
     assert await _wait_turn(module, accepted.turn_id) == "stopped"
     assert module.delete_session(project.id, session["id"]) is True
+
+
+@pytest.mark.anyio
+async def test_shutdown_stops_engine_before_cancelling_turn(chat_module, monkeypatch):
+    """Daemon shutdown must terminate the engine before cancelling the task.
+
+    A Codex SDK subprocess reports EOF as a transport error. If the task is
+    cancelled first, that error can win the race and be persisted as a normal
+    generation failure. Stopping the engine first keeps shutdown as a
+    deliberate stop.
+    """
+    module, _bus, _manager, project, _ = chat_module
+    started = asyncio.Event()
+    order: list[str] = []
+
+    class ShutdownEngine(FakeEngine):
+        async def spawn(self, **kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                order.append("cancelled")
+                raise
+            if False:
+                yield None
+
+        async def stop(self):
+            order.append("stopped")
+
+    engine = ShutdownEngine()
+    monkeypatch.setattr(
+        "agent_assistants.chat_session.create_engine",
+        lambda _engine_id: engine,
+    )
+    monkeypatch.setattr(
+        "agent_assistants.base.create_engine",
+        lambda _engine_id: engine,
+    )
+
+    session = module.create_session(project.id, "wf-shutdown")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "长任务",
+        "idem-shutdown",
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    await module.shutdown()
+
+    assert order[:2] == ["stopped", "cancelled"]
+    detail = module.get_session(project.id, session["id"])
+    message = next(
+        item for item in reversed(detail["messages"]) if item["role"] == "assistant"
+    )
+    assert message["status"] == "stopped"
+    assert "生成失败" not in message["content"]
+
+
+@pytest.mark.anyio
+async def test_shutdown_replaces_stopping_error_with_restart_notice(
+    chat_module,
+    monkeypatch,
+):
+    """A transport error racing shutdown must not become a generation failure."""
+    module, _bus, _manager, project, _ = chat_module
+    started = asyncio.Event()
+
+    class TransportClosedEngine(FakeEngine):
+        async def spawn(self, **kwargs):
+            started.set()
+            yield InternalEvent(
+                type="session_started",
+                data={"session_id": "thread-shutdown"},
+            )
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                raise RuntimeError(
+                    "Codex process closed stdout. stderr_tail=apply_patch failed"
+                )
+            if False:
+                yield None
+
+        async def stop(self):
+            return None
+
+    engine = TransportClosedEngine()
+    monkeypatch.setattr(
+        "agent_assistants.chat_session.create_engine",
+        lambda _engine_id: engine,
+    )
+    monkeypatch.setattr(
+        "agent_assistants.base.create_engine",
+        lambda _engine_id: engine,
+    )
+
+    session = module.create_session(project.id, "wf-shutdown-race")
+    accepted = module.submit_message(
+        project.id,
+        session["id"],
+        "长任务",
+        "idem-shutdown-race",
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    await module.shutdown()
+
+    detail = module.get_session(project.id, session["id"])
+    message = next(
+        item for item in reversed(detail["messages"]) if item["role"] == "assistant"
+    )
+    assert message["status"] == "stopped"
+    assert message["content"] == "后台服务已重启，本次生成已中断。"
+    assert "stderr_tail" not in message["content"]
 
 
 @pytest.mark.anyio

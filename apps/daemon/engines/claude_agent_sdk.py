@@ -21,11 +21,10 @@ from engines.core.base import (
     sdk_turn_watchdog,
 )
 
-from engines.core.claude_usage import claude_context_snapshot
+from engines.core.claude_usage import claude_context_snapshot, normalize_claude_usage
 from engines.core.events import (
     InternalEvent,
     compacted_event,
-    normalize_token_usage,
     tool_call_event,
     tool_call_update_event,
     usage_update_event,
@@ -548,7 +547,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 raw_usage = self._as_dict(usage)
                 context_used, context_size = claude_context_snapshot(raw_usage)
                 events.append(usage_update_event(
-                    raw_usage,
+                    normalize_claude_usage(raw_usage),
                     used=context_used,
                     size=context_size,
                 ))
@@ -587,7 +586,7 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 usage = getattr(result, "usage", None)
             if usage is not None:
                 raw_usage = self._as_dict(usage)
-                usage_data = normalize_token_usage(raw_usage)
+                usage_data = normalize_claude_usage(raw_usage)
                 cost_usd = getattr(msg, "total_cost_usd", None)
                 if cost_usd is None and result is not msg:
                     cost_usd = getattr(result, "total_cost_usd", None)

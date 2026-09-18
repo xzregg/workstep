@@ -13,6 +13,7 @@ import FilePreviewPage from './pages/FilePreviewPage'
 import type { Project } from './api/client'
 import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
+import RemoteAccessGate from './components/RemoteAccessGate'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 
 function AppRoutes() {
@@ -86,9 +87,33 @@ function WelcomeView() {
 function App() {
   return (
     <BrowserRouter>
+      <GatedApp />
+    </BrowserRouter>
+  )
+}
+
+function GatedApp() {
+  const location = useLocation()
+  // Public share pages authenticate with their own session token and must
+  // stay reachable even when the remote access password is enabled.
+  const bypassGate =
+    location.pathname.startsWith('/share/') ||
+    location.pathname === '/file-preview'
+
+  if (bypassGate) {
+    return (
+      <>
+        <AppRoutes />
+        <FirstUseDialog />
+      </>
+    )
+  }
+
+  return (
+    <RemoteAccessGate>
       <AppRoutes />
       <FirstUseDialog />
-    </BrowserRouter>
+    </RemoteAccessGate>
   )
 }
 

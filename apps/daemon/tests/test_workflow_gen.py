@@ -172,6 +172,56 @@ async def test_stop_current_stops_running_generation(gen_module, monkeypatch):
     assert await module.stop_current("missing-session") is False
 
 
+@pytest.mark.anyio
+async def test_shutdown_marks_running_generation_stopped(gen_module, monkeypatch):
+    """Daemon shutdown should surface as stopped, not as a generation error."""
+    import agent_assistants.base as assistant_base
+    import agent_assistants.workflow_gen as wfgen_service
+
+    module, bus, _manager, project, _ = gen_module
+    started = asyncio.Event()
+    queue = bus.subscribe()
+
+    class ShutdownEngine:
+        capabilities = SimpleNamespace(supports_coordinator=True)
+        supports_resume = False
+        supports_message_history = False
+
+        async def spawn(self, **kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                raise RuntimeError(
+                    "Codex process closed stdout. stderr_tail=apply_patch failed"
+                )
+            if False:
+                yield None
+
+        async def stop(self):
+            return None
+
+    engine = ShutdownEngine()
+    monkeypatch.setattr(assistant_base, "create_engine", lambda engine_id: engine)
+    monkeypatch.setattr(wfgen_service, "create_engine", lambda engine_id: engine)
+
+    accepted = module.submit_message(
+        project.id, None, "帮我创建流程", "idem-shutdown"
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    await module.shutdown()
+
+    completed = None
+    while completed is None:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event["type"] == "TEXT_MESSAGE_END":
+            completed = event
+    assert completed["session_id"] == accepted.session_id
+    assert completed["status"] == "stopped"
+    assert "stderr_tail" not in str(completed)
+
+
 @pytest.fixture
 async def gen_module(tmp_path, monkeypatch):
     import agent_assistants.base as assistant_base

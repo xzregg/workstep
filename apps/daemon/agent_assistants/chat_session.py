@@ -23,6 +23,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from engines.codex_visualize import (
+    CODEX_ENGINE_IDS,
+    convert_event_visualize_markers,
+    convert_visualize_markers,
+)
 from engines.core.registry import COORDINATOR_FALLBACK_ORDER, create_engine
 from models.chat_session import ChatMessage, ChatSession, ProjectSetting
 from models.fields import utc_now
@@ -124,9 +129,12 @@ def _detail_agui_events(
     project_id: str,
     session_id: str,
     message_id: str,
+    engine: str | None = None,
 ) -> list[dict]:
     translated: list[dict] = []
     for index, event in enumerate(events, start=1):
+        if engine in CODEX_ENGINE_IDS:
+            event = convert_event_visualize_markers(event)
         # 出口截断：JSONL 里单条工具输出可达数十 MB，全量下发会冻结浏览器
         # （前端展示上限本就远小于此）。日志保留全量，此处只影响响应。
         event = truncate_large_tool_payloads(event)
@@ -202,7 +210,7 @@ class ChatRowPersistence(PersistenceAdapter):
         for item in rows:
             message: dict = {
                 "role": item.role,
-                "content": item.content,
+                "content": convert_visualize_markers(item.content or ""),
                 "id": item.id,
                 "created_at": _iso(item.created_at),
             }
@@ -229,6 +237,10 @@ class ChatRowPersistence(PersistenceAdapter):
                 # 单条消息可达数十 MB（raw_output）。整包随 history 下发会让
                 # 前端 JSON.parse + store 常驻数百 MB（多会话缓存叠加后直接
                 # 压垮渲染进程）。完整内容仍可在展开时经 messageEvents 懒加载。
+                if item.engine in CODEX_ENGINE_IDS:
+                    events = [
+                        convert_event_visualize_markers(event) for event in events
+                    ]
                 message["events"] = [
                     truncate_large_tool_payloads(event) for event in events
                 ]
@@ -456,7 +468,9 @@ class ChatSessionModule(AssistantRuntime):
                             )
                             snapshot = self._event_journal.snapshot(ref)
                             self._event_journal.finish(ref)
-                            content = snapshot["content"] or content
+                            content = convert_visualize_markers(
+                                snapshot["content"] or content
+                            )
                             summary = snapshot["summary"]
                             events = snapshot["events"]
                         row.content = content
@@ -578,10 +592,18 @@ class ChatSessionModule(AssistantRuntime):
                         str(message["event_log_path"]),
                     )
                     snapshot = self._event_journal.snapshot(ref)
-                message["content"] = snapshot["content"]
+                message["content"] = convert_visualize_markers(
+                    snapshot["content"] or ""
+                )
+                snapshot_events = snapshot["events"]
+                if message.get("engine") in CODEX_ENGINE_IDS:
+                    snapshot_events = [
+                        convert_event_visualize_markers(event)
+                        for event in snapshot_events
+                    ]
                 message["events"] = [
                     truncate_large_tool_payloads(event)
-                    for event in snapshot["events"]
+                    for event in snapshot_events
                 ]
                 message["event_summary"] = snapshot["summary"]
                 message["event_detail"] = {
@@ -630,6 +652,7 @@ class ChatSessionModule(AssistantRuntime):
                     project_id=project_id,
                     session_id=session_id,
                     message_id=message_id,
+                    engine=row.engine,
                 )
                 return {"message_id": message_id, **page}
             legacy = _load_json(row.events_json, [])
@@ -641,6 +664,7 @@ class ChatSessionModule(AssistantRuntime):
             project_id=project_id,
             session_id=session_id,
             message_id=message_id,
+            engine=row.engine,
         )
         next_cursor = start + len(raw_events)
         return {

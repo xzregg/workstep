@@ -1525,7 +1525,31 @@ async def test_engine_must_pass_connection_test_before_selection(
             }
         },
     )
+    assert store.is_engine_verified("pydantic_ai") is True
+
+    second_provider = _add_provider(store, name="备用账号")
+    await client.put(
+        "/api/engine/pydantic-ai/config",
+        json={"values": {"provider_id": second_provider["id"]}},
+    )
     assert store.is_engine_verified("pydantic_ai") is False
+
+
+@pytest.mark.anyio
+async def test_engine_default_model_save_keeps_verified(engine_client):
+    client, store = engine_client
+    _add_provider(store, name="主账号")
+    store.set_pydantic_ai_engine_config(provider_id="prov_1", model="deepseek-chat")
+    store.set_engine_verified("pydantic_ai", True)
+
+    saved = await client.put(
+        "/api/engine/pydantic_ai/default-model",
+        json={"model": "deepseek-reasoner"},
+    )
+
+    assert saved.json()["saved"] is True
+    assert store.get_engine_default_model("pydantic_ai") == "deepseek-reasoner"
+    assert store.is_engine_verified("pydantic_ai") is True
 
 
 # --- Pydantic AI engine behaviour ---

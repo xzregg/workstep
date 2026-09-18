@@ -233,6 +233,7 @@ def _probe_codex(engine) -> set[str]:
         },
         {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}},
         {"type": "error", "message": "boom"},
+        {"type": "thread.settings.updated", "settings": {}},
     ]
     for obj in cases:
         event = engine._map_event(obj)
@@ -294,6 +295,7 @@ def _probe_codex_sdk(engine) -> set[str]:
         }),
         _FakeNotification("thread/compacted", {}),
         _FakeNotification("turn/completed", {"turn": _FakeTurn("success")}),
+        _FakeNotification("model/rerouted", {"from_model": "a", "to_model": "b"}),
     ]
     for notification in notifications:
         for event in engine._map_notification(notification, state):

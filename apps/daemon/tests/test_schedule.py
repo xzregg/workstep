@@ -199,21 +199,30 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
     from services.schedule import ScheduleModule
     from services.task import TaskService
     from streaming.bus import EventBus
+    from services.remote_project import ActorSnapshot, _current_actor
 
     manager = ProjectManager()
     project = manager.init_project(tmp_path / "project")
     from services.project import DEFAULT_STEPS
     await manager.run_db(project.id, lambda project: manager.create_workflow(project, "测试流程", DEFAULT_STEPS))
     workflow_id = project.default_workflow()["id"]
-    module = ScheduleModule(manager, TaskService(EventBus()), workflow_runtime=None)
-    created = module.create(
-        project.id,
-        name="One shot",
-        workflow_id=workflow_id,
-        task_template={"title": "Scheduled work", "description": "Do it"},
-        rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
-        execution_mode="manual",
+    actor_token = _current_actor.set(
+        ActorSnapshot(
+            "browser-1", "浏览器用户", "browser-device-1", "Chrome", "browser"
+        )
     )
+    try:
+        module = ScheduleModule(manager, TaskService(EventBus()), workflow_runtime=None)
+        created = module.create(
+            project.id,
+            name="One shot",
+            workflow_id=workflow_id,
+            task_template={"title": "Scheduled work", "description": "Do it"},
+            rule={"kind": "once", "run_at": "2099-01-02T03:04:00", "timezone": "UTC"},
+            execution_mode="manual",
+        )
+    finally:
+        _current_actor.reset(actor_token)
 
     await module.tick(datetime(2099, 1, 2, 3, 4, 1, tzinfo=timezone.utc))
     await module.wait_idle()
@@ -227,6 +236,15 @@ async def test_due_manual_schedule_creates_a_task_and_execution_log(tmp_path):
         task = Task.get_by_id(runs[0]["task_id"])
         assert task.title == "Scheduled work"
         assert task.status == "ready"
+        assert (
+            task.creator_id,
+            task.creator_name,
+            task.creator_device_id,
+            task.creator_device_name,
+        ) == ("browser-1", "浏览器用户", "browser-device-1", "Chrome")
+
+    public = module.get(project.id, created["id"])
+    assert "_creator" not in public["task_template"]
 
 
 @pytest.mark.anyio

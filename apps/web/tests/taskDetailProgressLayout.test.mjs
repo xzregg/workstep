@@ -41,25 +41,10 @@ test('shows the scheduled execution time beside the description heading', () => 
   assert.match(pageSource, /scheduledStartText=\{formatScheduledStart\(task\.scheduled_start_at\)\}/)
 })
 
-test('shows the status badge above the stage name', () => {
-  const iconPos = source.indexOf('{/* Dot */}')
-  const statusPos = source.indexOf("visualState !== 'pending'")
-  const namePos = source.indexOf('height: 28', statusPos)
-  assert.ok(iconPos >= 0, 'icon row missing')
-  assert.ok(statusPos > iconPos, 'status badge above the name missing')
-  assert.ok(namePos > statusPos, 'name slot after status missing')
-  const statusBlock = source.slice(statusPos, namePos)
-  assert.match(statusBlock, /STAGE_STATE_LABEL_KEYS\[visualState\]/)
-  const roundPos = source.indexOf('height: 20', namePos)
-  const nameRow = source.slice(namePos, roundPos)
-  assert.match(nameRow, /stage\.label/)
-  assert.doesNotMatch(nameRow, /STAGE_STATE_LABEL_KEYS/)
-})
-
-test('keeps name, round and time rows in fixed slots', () => {
-  assert.match(source, /height: 28,\s+marginTop: 8,\s+display: 'flex',\s+alignItems: 'center',\s+justifyContent: 'center'/)
-  assert.match(source, /height: 20,\s+marginTop: 2,\s+display: 'flex',\s+alignItems: 'center',\s+justifyContent: 'center'/)
-  assert.match(source, /minHeight: 32,\s+marginTop: 2,\s+display: 'flex',\s+flexDirection: 'column',\s+alignItems: 'center',\s+gap: 2/)
+test('uses the dedicated stage progress graph component', () => {
+  assert.match(source, /import TaskStageProgressGraph from '\.\/TaskStageProgressGraph'/)
+  assert.match(source, /<TaskStageProgressGraph[\s\S]*stages=\{stages\}[\s\S]*stageProgress=\{stageProgress\}/)
+  assert.doesNotMatch(source, /\/\* Progress timeline \*\//)
 })
 
 test('shows pending outputs before the file type and only opens generated files', () => {

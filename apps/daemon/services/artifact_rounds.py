@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -164,6 +165,29 @@ def next_artifact_round(
         max_existing_round(artifacts_root, workflow_id, task_id, step_key),
         int(database_round or 0),
     ) + 1
+
+
+def discard_artifact_round(
+    artifacts_root: Path,
+    workflow_id: str | None,
+    task_id: str,
+    step_key: str,
+    artifact_round: int,
+) -> None:
+    """Remove an uncommitted round directory after an execution attempt fails."""
+    round_dir = step_round_dir(
+        artifacts_root,
+        workflow_id,
+        task_id,
+        step_key,
+        artifact_round,
+    )
+    if not round_dir.is_dir():
+        return
+    manifest = _read_manifest(manifest_path(round_dir))
+    if isinstance(manifest, dict) and manifest.get("eligible_for_downstream"):
+        return
+    shutil.rmtree(round_dir)
 
 
 def select_upstream_round(

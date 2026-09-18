@@ -224,7 +224,7 @@ export default function TaskList() {
   const [memoryNotice, setMemoryNotice] = useState('')
   const [confirmCloseMemory, setConfirmCloseMemory] = useState(false)
   const [confirmCloseNewTask, setConfirmCloseNewTask] = useState(false)
-  const [taskAiOpen, setTaskAiOpen] = useState(false)
+  const [taskAiOpen, setTaskAiOpen] = useState(true)
   const [taskAiBusy, setTaskAiBusy] = useState(false)
   const [taskAiMessage, setTaskAiMessage] = useState('')
   const [taskAiChatWidth, setTaskAiChatWidth] = useState<number | null>(null)
@@ -277,7 +277,7 @@ export default function TaskList() {
   useEffect(() => {
     setCardLanes({})
     setShowNewPanel(false)
-    setTaskAiOpen(false)
+    setTaskAiOpen(true)
     setTaskAiBusy(false)
     setShowScheduleDialog(false)
     setShowShareDialog(false)
@@ -298,11 +298,11 @@ export default function TaskList() {
     setNewTitle('')
     setNewDesc('')
     setCreateError('')
-    setTaskAiOpen(false)
+    setTaskAiOpen(true)
     setTaskAiBusy(false)
     setTaskAiMessage('')
     setPendingTaskDraft(null)
-    setActiveTab('content')
+    setActiveTab(compact ? 'assistant' : 'content')
     // Initialize review overrides from canvas stage config
     const nodeConfigs: Record<string, { mode: 'skip' | 'auto' | 'manual'; auto: boolean; prompt: string; maxRetries: number }> = {}
     const canvasSteps = activeProject?.steps
@@ -965,7 +965,7 @@ export default function TaskList() {
         {!loading && visibleTasks.filter(task => !mobileStage || getCardLane(task.id) === mobileStage).length === 0 && <p className="mobile-empty">{t('mobile.emptyTasks')}</p>}
         {visibleTasks.filter(task => !mobileStage || getCardLane(task.id) === mobileStage).map(task => <button className="mobile-task-row" key={task.id} onClick={() => handleSelectTask(task.id)}>
           <span className="mobile-task-row-title">{task.title}</span>
-          <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} /><span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
+          <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </button>)}
       </div>}
       <div className="desktop-task-board" style={kanbanStyle}>
@@ -1169,6 +1169,17 @@ export default function TaskList() {
             </Button>
           )}
           <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+            {task.creator_name && (
+              <span
+                title={task.creator_device_name ? `${task.creator_name} · ${task.creator_device_name}` : task.creator_name}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', whiteSpace: 'nowrap',
+                }}
+              >
+                {t('taskList.creator')}：{task.creator_name}
+              </span>
+            )}
             {(task.total_tokens ?? 0) > 0 && (
               <span
                 title={t('taskList.tokensTitle')}
@@ -1375,9 +1386,28 @@ export default function TaskList() {
         {taskCreationErrors.panelError && (
           <div style={{ padding: '8px 16px 0', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)' }}>{taskCreationErrors.panelError}</div>
         )}
-        <div className="panel-footer">
-          <Button variant="ghost" onClick={closeNewPanel}>{t('common.cancel')}</Button>
-          <Button variant="primary" disabled={!newTitle.trim() || taskAiBusy || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))} onClick={handleCreate}>{t('common.create')}</Button>
+        <div className="task-create-footer">
+          <Button
+            variant="primary"
+            className="task-create-primary"
+            disabled={!newTitle.trim() || taskAiBusy || (newStartMode === 'scheduled' && !localDateTimeToIso(newScheduledStart))}
+            onClick={handleCreate}
+          >
+            <Icon name="plus" size={16} />
+            {t('taskList.createTask')}
+          </Button>
+          <div className="task-create-secondary-row">
+            <button
+              type="button"
+              className="task-create-assistant-status"
+              aria-pressed={taskAiOpen}
+              onClick={handleStartTaskAi}
+            >
+              <Icon name="sparkles" size={14} />
+              {taskAiOpen ? t('taskList.assistantExpanded') : t('taskList.assistantCollapsed')}
+            </button>
+            <Button variant="ghost" className="task-create-cancel" onClick={closeNewPanel}>{t('common.cancel')}</Button>
+          </div>
         </div>
         </div>
         {taskAiOpen && activeProject && (

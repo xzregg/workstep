@@ -1489,3 +1489,177 @@ async def test_new_workflow_run_executes_steps_again(tmp_path):
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()
+
+
+@pytest.mark.anyio
+async def test_failed_execution_does_not_consume_artifact_round(tmp_path):
+    """A failed engine execution keeps attempt history but reuses round 1 on retry."""
+    from models import StepRun, Task, WorkflowRun, init_db
+    from engines.core.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    now = int(time.time())
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Retry failed execution",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    calls = 0
+
+    class FailThenSucceedEngine(PipelineFakeEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                yield InternalEvent(
+                    type="error",
+                    data={"message": "engine crashed"},
+                )
+                return
+            yield InternalEvent(
+                type="text_delta",
+                data={"delta": "retry succeeded"},
+            )
+            yield InternalEvent(type="status", data={"status": "done"})
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = FailThenSucceedEngine
+    try:
+        runner = TaskRunner(EventBus())
+        steps_config = {
+            "steps": [
+                {"key": "build", "label": "Build", "engine": "claude"},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        first_run = WorkflowRun.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            started_at=now,
+        )
+        second_run = WorkflowRun.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            started_at=now + 1,
+        )
+
+        await runner.run_pipeline(
+            task,
+            steps_config,
+            artifacts_dir,
+            workflow_run=first_run,
+        )
+        round_dir = artifacts_dir / "default" / task.id / "build" / "1"
+        assert round_dir.exists() is False
+
+        await runner.run_pipeline(
+            task,
+            steps_config,
+            artifacts_dir,
+            workflow_run=second_run,
+        )
+
+        step_runs = list(
+            StepRun.select()
+            .where(StepRun.step_key == "build")
+            .order_by(StepRun.started_at)
+        )
+        assert [(run.status, run.artifact_round) for run in step_runs] == [
+            ("failed", None),
+            ("succeeded", 1),
+        ]
+        assert round_dir.is_dir()
+        manifest = json.loads(
+            (round_dir / "manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest["round"] == 1
+        assert manifest["status"] == "passed"
+        assert manifest["eligible_for_downstream"] is True
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_cancelled_execution_does_not_consume_artifact_round(tmp_path):
+    """A user-cancelled execution also reuses the round on the next success."""
+    from models import StepRun, Task, WorkflowRun, init_db
+    from engines.core.registry import ENGINE_REGISTRY
+    import time
+    import uuid
+
+    class BlockingEngine(PipelineFakeEngine):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+            self.release = asyncio.Event()
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            self.started.set()
+            await self.release.wait()
+            if False:
+                yield InternalEvent(type="status", data={"status": "done"})
+
+        async def stop(self):
+            self.release.set()
+
+    engine = BlockingEngine()
+    db = init_db(str(tmp_path / "test.db"))
+    now = int(time.time())
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="Cancel execution round",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: engine
+    try:
+        bus = EventBus()
+        runner = TaskRunner(bus)
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        workflow_run = WorkflowRun.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            workflow_schema_version=1,
+            workflow_snapshot_json="{}",
+            started_at=now,
+        )
+        pipeline = asyncio.create_task(
+            runner.run_pipeline(
+                task,
+                {"steps": [{"key": "build", "engine": "claude"}]},
+                artifacts_dir,
+                workflow_run=workflow_run,
+            )
+        )
+        await engine.started.wait()
+        assert await runner.cancel_step(task.id, "build") is True
+        await pipeline
+
+        step_run = StepRun.get(
+            (StepRun.run == workflow_run) & (StepRun.step_key == "build")
+        )
+        assert step_run.status == "failed"
+        assert step_run.artifact_round is None
+        assert (
+            artifacts_dir / "default" / task.id / "build" / "1"
+        ).exists() is False
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()

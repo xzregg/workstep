@@ -1,5 +1,7 @@
 /** REST API client for the WorkStep daemon. */
 
+import { browserActorHeaders } from '../utils/browserActor'
+
 const BASE = '/api'
 /** Default page size for loading full event logs / message histories. */
 export const FULL_PAGE_LIMIT = 30000
@@ -31,6 +33,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...browserActorHeaders(),
         ...(options?.headers || {}),
       },
     })
@@ -269,6 +272,13 @@ export interface RemoteAccessSettings {
   internal_base_url: string
   external_base_url: string
   host_id: string
+  access_password_set?: boolean
+}
+
+export interface RemoteAccessStatus {
+  required: boolean
+  local: boolean
+  authorized: boolean
 }
 
 export interface RemoteDevice {
@@ -286,10 +296,20 @@ export interface RemoteDevice {
 
 export const remoteProjectApi = {
   settings: () => request<RemoteAccessSettings>('/remote-project/settings'),
-  updateSettings: (settings: Omit<RemoteAccessSettings, 'host_id'>) =>
+  updateSettings: (
+    settings: Omit<RemoteAccessSettings, 'host_id' | 'access_password_set'> & {
+      access_password?: string
+    },
+  ) =>
     request<RemoteAccessSettings>('/remote-project/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
+    }),
+  accessStatus: () => request<RemoteAccessStatus>('/remote-project/access/status'),
+  unlock: (password: string) =>
+    request<{ authorized: boolean }>('/remote-project/access/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
     }),
   createShare: (projectId: string, access: 'internal' | 'external', accessExpiresAt: number | null = null) =>
     request<{ share_string: string; endpoint: string; expires_at: number; access_expires_at: number | null }>('/remote-project/share', {
@@ -1016,6 +1036,10 @@ export interface Task {
   scheduled_start_at?: string | null
   scheduled_start_state?: 'pending' | 'missed' | 'failed' | null
   scheduled_start_error?: string | null
+  creator_id?: string | null
+  creator_name?: string | null
+  creator_device_id?: string | null
+  creator_device_name?: string | null
   created_at: string
   updated_at: string
   first_message_at?: string | null
@@ -1035,6 +1059,8 @@ export interface TaskStepState {
   error: string | null
   /** 该阶段最新产物轮数（权威来源：后端 StepRun.artifact_round 的最大值）。 */
   artifact_round?: number | null
+  /** 当前状态被重置为 pending 时，最近一次历史结果。 */
+  previous_status?: TaskStepState['status'] | null
   /** 该阶段是否执行过（含失败 / 停止）；用于决定「发给谁」里能否 @ 该阶段。 */
   has_history?: boolean
 }
@@ -1510,6 +1536,7 @@ async function shareRequest<T>(
       headers: {
         'Content-Type': 'application/json',
         'X-Share-Session': sessionToken,
+        ...browserActorHeaders(),
         ...(options?.headers || {}),
       },
     })
@@ -2438,7 +2465,7 @@ export const fsApi = {
       `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
         body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
       }
     )
@@ -2457,7 +2484,7 @@ export const fsApi = {
       `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...browserActorHeaders() },
         body: JSON.stringify({ filename: file.name, data_url: dataUrl, prefix }),
       }
     )

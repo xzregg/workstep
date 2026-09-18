@@ -3,6 +3,7 @@ import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import A2uiMessage from './A2uiMessage'
 import ImagePreview from './ImagePreview'
+import MarqueeText from './MarqueeText'
 import MarkdownMessage from './MarkdownMessage'
 import MessageTimeline from './MessageTimeline'
 import { MessageCopyButton } from './MessageResponseFooter'
@@ -22,6 +23,7 @@ import {
 } from '../utils/interaction'
 import { useI18n } from '../i18n'
 import { latestPlanFromEvents } from '../utils/plan'
+import { visibleAssistantContent } from '../utils/chatMessageDisplay'
 
 /* ══════════════════════════════════════════
    ChatMessageBubble — shared conversation message
@@ -87,6 +89,63 @@ export interface ChatMessageBubbleProps {
   rootProps?: ChatMessageRootProps
 }
 
+function MessageAvatar({
+  sender,
+  senderTitle,
+  initials,
+  color,
+  badge,
+  showTooltip,
+}: {
+  sender: string
+  senderTitle?: string
+  initials: string
+  color: string
+  badge?: ReactNode
+  showTooltip: boolean
+}) {
+  const [hovered, setHovered] = useState(false)
+  const label = senderTitle || sender
+  return (
+    <span
+      className="chat-message-avatar-anchor"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {showTooltip && hovered && (
+        <span className="chat-message-avatar-tooltip-wrap">
+          <span role="tooltip" className="chat-message-avatar-tooltip">
+            <MarqueeText text={label} forceActive speed={48} />
+          </span>
+        </span>
+      )}
+      <div
+        aria-label={label}
+        style={{
+          width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+          background: color, color: 'var(--accent-fg)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, position: 'relative',
+        }}
+      >
+        {initials}
+        {badge && (
+          <span style={{
+            position: 'absolute', right: -4, bottom: -4,
+            width: 16, height: 16, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--ai-assistant)', color: 'var(--accent-fg)',
+            border: '2px solid var(--bg)',
+            fontSize: 'calc(11px * var(--font-scale))', fontWeight: 800, lineHeight: 1,
+          }}>
+            {badge}
+          </span>
+        )}
+      </div>
+    </span>
+  )
+}
+
 export default function ChatMessageBubble({
   role,
   sender,
@@ -128,6 +187,7 @@ export default function ChatMessageBubble({
     || isToolEvent(event)
   ))
   if (isUser && isHiddenA2uiActionMessage(content)) return null
+  const visibleContent = isUser ? content : visibleAssistantContent(content, error)
   const rootStyle: CSSProperties = {
     width: isUser ? 'fit-content' : '100%',
     maxWidth: '100%', minWidth: 0,
@@ -155,30 +215,14 @@ export default function ChatMessageBubble({
         flexDirection: isUser ? 'row-reverse' : 'row',
         alignSelf: isUser ? 'flex-end' : undefined,
       }}>
-        <div
-          title={senderTitle || sender}
-          aria-label={sender}
-          style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-            background: color, color: 'var(--accent-fg)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, position: 'relative',
-          }}
-        >
-          {initials}
-          {badge && (
-            <span style={{
-              position: 'absolute', right: -4, bottom: -4,
-              width: 16, height: 16, borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'var(--ai-assistant)', color: 'var(--accent-fg)',
-              border: '2px solid var(--bg)',
-              fontSize: 'calc(11px * var(--font-scale))', fontWeight: 800, lineHeight: 1,
-            }}>
-              {badge}
-            </span>
-          )}
-        </div>
+        <MessageAvatar
+          sender={sender}
+          senderTitle={senderTitle}
+          initials={initials}
+          color={color}
+          badge={badge}
+          showTooltip={isUser}
+        />
         <div style={{
           flex: isUser ? '0 1 auto' : 1,
           minWidth: 0, display: 'flex', maxWidth: isUser ? '700px': '100%',
@@ -191,7 +235,7 @@ export default function ChatMessageBubble({
               {header}
             </div>
           )}
-          {(content || hasToolActivity) ? (
+          {(visibleContent || hasToolActivity) ? (
             <div style={{
               fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
@@ -212,7 +256,7 @@ export default function ChatMessageBubble({
               ) : (
                 <>
                   <MessageTimeline
-                    content={stripAssistantPayloadsForDisplay(content)}
+                    content={stripAssistantPayloadsForDisplay(visibleContent)}
                     events={events}
                     streaming={streaming}
                     projectId={projectId}

@@ -19,6 +19,11 @@ export interface OptimisticUserMessage {
   events: never[]
 }
 
+export interface OptimisticCoordinatorMessage extends OptimisticUserMessage {
+  channel: 'coordinator'
+  context_step_key: string
+}
+
 export interface TaskStepStartState {
   status: string
   started_at: string | null
@@ -99,11 +104,21 @@ export function mergeRefreshedTaskHistory(current: any[], refreshed: any[]): any
     }
   })
   const refreshedIds = new Set(refreshed.map((message) => message.id))
+  const refreshedSequences = refreshed
+    .map((message) => message.sequence)
+    .filter((sequence): sequence is number => typeof sequence === 'number')
+  const oldestRefreshedSequence = refreshedSequences.length > 0
+    ? Math.min(...refreshedSequences)
+    : null
   return [
+    ...current.filter((message) => {
+      if (refreshedIds.has(message.id)) return false
+      if (String(message.id).startsWith('pending-')) return true
+      return oldestRefreshedSequence !== null
+        && typeof message.sequence === 'number'
+        && message.sequence >= oldestRefreshedSequence
+    }),
     ...merged,
-    ...current.filter((message) => (
-      String(message.id).startsWith('pending-') && !refreshedIds.has(message.id)
-    )),
   ]
 }
 
@@ -227,6 +242,56 @@ export function isSelectedStageRunning(
   runningStageKeys: readonly string[],
 ): boolean {
   return target !== 'coordinator' && runningStageKeys.includes(target)
+}
+
+export function resolveTaskChatTarget(
+  current: string | 'coordinator',
+  runningStageKeys: readonly string[],
+  resumableStageKeys: readonly string[],
+): string | 'coordinator' {
+  if (current !== 'coordinator') {
+    if (
+      runningStageKeys.includes(current)
+      || resumableStageKeys.includes(current)
+    ) {
+      return current
+    }
+  }
+  if (current === 'coordinator') return 'coordinator'
+  return runningStageKeys[0] ?? resumableStageKeys[0] ?? 'coordinator'
+}
+
+interface StageInsertAutoDrainState {
+  previousKey: string | null
+  stageRunKey: string
+  queueReady: boolean
+  activeStageRunning: boolean
+  autoDraining: boolean
+  awaitingRunStart: boolean
+  editingInsert: boolean
+  queueLength: number
+}
+
+/** 只有同一任务阶段恢复为同一队列的空闲态时，才允许自动推进插入消息。 */
+export function shouldAutoDrainStageInsert({
+  previousKey,
+  stageRunKey,
+  queueReady,
+  activeStageRunning,
+  autoDraining,
+  awaitingRunStart,
+  editingInsert,
+  queueLength,
+}: StageInsertAutoDrainState): boolean {
+  return Boolean(stageRunKey)
+    && queueReady
+    && previousKey !== null
+    && previousKey === stageRunKey
+    && !activeStageRunning
+    && !autoDraining
+    && !awaitingRunStart
+    && !editingInsert
+    && queueLength > 0
 }
 
 export interface ArtifactRoundChoice {
@@ -421,8 +486,10 @@ export function orderConversationMessages(
       && right.role !== 'user'
       && ((left.channel === 'execution' && right.channel === 'review')
         || (left.channel === 'review' && right.channel === 'execution'))
-    const sameDisplayedSecond = Math.floor(leftTime / 1000) === Math.floor(rightTime / 1000)
-    if (isExecutionReviewPair && sameDisplayedSecond) {
+    // 同一阶段的执行与审核消息始终按服务端 sequence 排列：执行消息的
+    // ended_at 可能在整个阶段（含审核）收尾时才写入，晚于审核的 ended_at，
+    // 只按时间排会把审核顶到阶段输出上方。
+    if (isExecutionReviewPair) {
       const leftSeq = left.sequence
       const rightSeq = right.sequence
       if (typeof leftSeq === 'number' && typeof rightSeq === 'number') {
@@ -633,6 +700,15 @@ export function isTaskNotStarted(steps: TaskStepStartState[]): boolean {
   )
 }
 
+export function resolveStageDisplayStatus(
+  status: string,
+  previousStatus?: string | null,
+): string {
+  return status === 'pending' && previousStatus
+    ? previousStatus
+    : status
+}
+
 export function isTaskCompleted(steps: TaskStepStartState[]): boolean {
   return steps.length > 0
     && !isTaskNotStarted(steps)
@@ -717,6 +793,19 @@ export function createOptimisticUserMessage(
     run_status: 'pending',
     created_at: createdAt,
     events: [],
+  }
+}
+
+export function createOptimisticCoordinatorMessage(
+  id: string,
+  content: string,
+  contextStepKey: string,
+  createdAt: string,
+): OptimisticCoordinatorMessage {
+  return {
+    ...createOptimisticUserMessage(id, content, contextStepKey, createdAt),
+    channel: 'coordinator',
+    context_step_key: contextStepKey,
   }
 }
 

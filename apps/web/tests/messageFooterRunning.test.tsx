@@ -370,8 +370,8 @@ test('conversation containers render the footer while thinking, not only after c
     assert.doesNotMatch(source, /footer=\{\s*(message\.)?content \?/)
   }
   assert.match(assistantPanelSource, /message\.content \|\| message\.status === 'running'/)
-  assert.match(taskDetailSource, /message\.content \|\|/)
-  assert.match(taskDetailSource, /message\.status === 'running' \? \(/)
+  assert.match(taskDetailSource, /!isUser &&\s*\(message\.content \|\|/)
+  assert.match(taskDetailSource, /message\.status ===\s*'running'/)
   assert.match(taskDetailSource, /content \|\| running \? \(/)
   assert.match(taskDetailSource, /msg\.content \|\|/)
 })
@@ -397,4 +397,22 @@ test('finished footer keeps the reported usage and drops the live rate', async (
   assert.doesNotMatch(summary, /t\/s/)
   assert.match(summary, /总计 150/)
   assert.match(summary, /Pydantic AI \* model-x/)
+})
+
+test('cache hit rate treats input_tokens as inclusive when the provider reports it that way', async () => {
+  const summary = await renderSummary((
+    <MessageResponseFooter
+      content="hello"
+      usage={{
+        input_tokens: 161_509,
+        output_tokens: 299,
+        cache_read_input_tokens: 161_152,
+        total_tokens: 161_808,
+      }}
+      engine="codex"
+      model="gpt-5.5"
+    />
+  ))
+  assert.match(summary, /缓中 99\.8%/)
+  assert.doesNotMatch(summary, /缓中 49\.9%/)
 })

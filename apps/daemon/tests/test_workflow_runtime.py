@@ -328,6 +328,109 @@ async def test_restart_without_parent_rejects_unusable_input_round(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_restart_downstream_stage_skips_failed_upstream(tmp_path):
+    """@ 下游阶段时，失败的上游不会被 DAG 判定为 ready 而抢先执行。"""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-restart-downstream",
+        title="Restart downstream",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=now,
+        updated_at=now,
+    )
+    # req -> backend -> frontend -> test
+    project = SimpleNamespace(
+        id="project-restart-downstream",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "req", "title": "需求", "engine": "claude"},
+                {"id": 2, "type": "backend", "title": "后端", "engine": "claude"},
+                {"id": 3, "type": "frontend", "title": "前端", "engine": "claude"},
+                {"id": 4, "type": "test", "title": "测试", "engine": "claude"},
+            ],
+            "connections": [
+                {"from": 1, "to": 2},
+                {"from": 2, "to": 3},
+                {"from": 3, "to": 4},
+            ],
+        },
+    )
+    parent = WorkflowRun.create(
+        id="run-restart-downstream-parent",
+        task=task,
+        status="superseded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(project.steps),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    for step_key, status in (
+        ("req", "passed"),
+        ("backend", "failed"),
+        ("frontend", "pending"),
+        ("test", "pending"),
+    ):
+        TaskStep.create(
+            task=task,
+            step_key=step_key,
+            status=status,
+            engine="claude",
+            started_at=now if status == "passed" else None,
+            ended_at=now if status == "passed" else None,
+        )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        handle = await runtime.restart_from_stage(
+            project.id,
+            task.id,
+            "frontend",
+        )
+        await runtime.wait(handle)
+
+        child = WorkflowRun.get_by_id(handle.id)
+        step_runs = {
+            run.step_key: run.status
+            for run in StepRun.select().where(StepRun.run == child)
+        }
+        # 只应重跑 frontend 及其下游 test；失败的上游 backend 不再执行，
+        # 但仍保留其真实状态（不能改成 skipped，否则前端会把该阶段隐藏）。
+        assert step_runs["frontend"] == "succeeded"
+        assert step_runs["test"] == "succeeded"
+        assert step_runs.get("backend") != "succeeded"
+        backend_step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "backend")
+        )
+        assert backend_step.status == "failed"
+        frontend_step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "frontend")
+        )
+        assert frontend_step.status == "passed"
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_restart_from_stage_picks_up_edited_engine(tmp_path):
     """编辑流程更换阶段引擎后，重跑该阶段应使用新引擎而非父 run 快照。"""
     import json

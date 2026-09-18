@@ -16,17 +16,23 @@ from models import (
     Task,
     TaskStep,
     Message,
+    ReviewRun,
     StepRun,
     WorkflowRun,
 )
 from models.base import db_proxy
 from models.fields import utc_now
+from engines.codex_visualize import convert_visualize_markers
 from engines.core.registry import create_engine
 from engines.core.events import InternalEvent, is_commentary
 from services.workflow_definition import WorkflowDefinition, WorkflowValidationError
 from services.task_runner import extract_usage_json
 from services.config import DEFAULT_EXECUTION_ENGINE
-from services.messages import create_task_message, new_message_id
+from services.messages import (
+    create_task_message,
+    current_actor_task_fields,
+    new_message_id,
+)
 from services.history import (
     event_detail,
     restore_running_projection,
@@ -35,6 +41,48 @@ from services.history import (
 from streaming.bus import EventBus
 
 logger = logging.getLogger(__name__)
+
+
+def latest_previous_stage_statuses(task: Task) -> dict[str, str]:
+    """Return each stage's latest terminal result, independent of reset state."""
+    latest_step_run_by_key: dict[str, StepRun] = {}
+    for step_run in (
+        StepRun.select()
+        .join(WorkflowRun)
+        .where(
+            (WorkflowRun.task == task)
+            & (StepRun.status.in_(["succeeded", "reused", "failed", "cancelled", "skipped"]))
+        )
+        .order_by(StepRun.started_at.desc(), StepRun.attempt.desc())
+    ):
+        latest_step_run_by_key.setdefault(step_run.step_key, step_run)
+
+    latest_review_by_key: dict[str, ReviewRun] = {}
+    for review in (
+        ReviewRun.select()
+        .where(ReviewRun.task == task)
+        .order_by(ReviewRun.started_at.desc(), ReviewRun.attempt.desc(), ReviewRun.id.desc())
+    ):
+        latest_review_by_key.setdefault(review.step_key, review)
+
+    previous: dict[str, str] = {}
+    for step_key, step_run in latest_step_run_by_key.items():
+        status = step_run.status
+        if status in ("succeeded", "reused"):
+            review = latest_review_by_key.get(step_key)
+            if review is not None and review.step_run_id == step_run.id:
+                status = {
+                    "pending": "awaiting_review",
+                    "running": "reviewing",
+                    "passed": "passed",
+                    "rejected": "rejected",
+                    "failed": "failed",
+                    "skipped": "passed",
+                }.get(review.status, "passed")
+            else:
+                status = "passed"
+        previous[step_key] = status
+    return previous
 
 
 class TaskService:
@@ -63,6 +111,7 @@ class TaskService:
         source_step_key: str | None = None,
         input_manifest: list[dict] | None = None,
         dispatch_lineage: list[str] | None = None,
+        creator_fields: dict[str, str] | None = None,
     ) -> dict:
         """Create a task, optionally skipping stages before its start stage."""
         steps = (
@@ -116,6 +165,11 @@ class TaskService:
             dispatch_lineage_json=(
                 json.dumps(dispatch_lineage, ensure_ascii=False)
                 if dispatch_lineage is not None else None
+            ),
+            **(
+                creator_fields
+                if creator_fields is not None
+                else current_actor_task_fields()
             ),
         )
         if review_overrides:
@@ -249,7 +303,7 @@ class TaskService:
             entry = {
                 "id": msg.id,
                 "role": msg.role,
-                "content": msg.content,
+                "content": convert_visualize_markers(msg.content or ""),
                 "author_id": msg.author_id,
                 "author_name": msg.author_name,
                 "author_device_id": msg.author_device_id,
@@ -567,7 +621,13 @@ class TaskService:
         except Task.DoesNotExist:
             return False
 
-    def copy_task(self, task_id: str, new_title: str, project_id: str) -> dict | None:
+    def copy_task(
+        self,
+        task_id: str,
+        new_title: str,
+        project_id: str,
+        creator_fields: dict[str, str] | None = None,
+    ) -> dict | None:
         """Copy a task with a new title."""
         try:
             original = Task.get_by_id(task_id)
@@ -583,6 +643,7 @@ class TaskService:
                 engine=original.engine or DEFAULT_EXECUTION_ENGINE,
                 created_at=now,
                 updated_at=now,
+                **(creator_fields if creator_fields is not None else current_actor_task_fields()),
             )
 
             # Copy task steps
@@ -615,6 +676,7 @@ class TaskService:
 
     def _task_to_dict(self, task: Task) -> dict:
         steps = list(TaskStep.select().where(TaskStep.task == task))
+        previous_status_by_step = latest_previous_stage_statuses(task)
         # 「执行过」判定：阶段是否有 execution 频道的用户/助手消息。
         # 一次分组查询取回所有已执行阶段，避免逐阶段查询。
         executed_step_keys = {
@@ -648,6 +710,7 @@ class TaskService:
                 .where(
                     (WorkflowRun.task == task)
                     & (StepRun.artifact_round.is_null(False))
+                    & (StepRun.status.in_(["succeeded", "reused"]))
                 )
                 .group_by(StepRun.step_key)
             )
@@ -746,6 +809,10 @@ class TaskService:
             "created_at": task.created_at,
             "updated_at": task.updated_at,
             "review_overrides": json.loads(task.review_overrides_json) if task.review_overrides_json else None,
+            "creator_id": task.creator_id,
+            "creator_name": task.creator_name,
+            "creator_device_id": task.creator_device_id,
+            "creator_device_name": task.creator_device_name,
             "scheduled_start_at": task.scheduled_start_at,
             "scheduled_start_state": task.scheduled_start_state,
             "scheduled_start_error": task.scheduled_start_error,
@@ -766,6 +833,7 @@ class TaskService:
                     "artifact_round": latest_artifact_round_by_step.get(
                         step.step_key
                     ),
+                    "previous_status": previous_status_by_step.get(step.step_key),
                     "has_history": (
                         step.step_key in executed_step_keys
                         or step.started_at is not None

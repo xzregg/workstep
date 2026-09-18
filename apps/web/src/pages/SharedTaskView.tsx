@@ -22,6 +22,7 @@ import {
   isStageResumableWithMessage,
   isTaskCompleted,
   isTaskNotStarted,
+  resolveStageDisplayStatus,
   resolveTaskDetailAdvanceState,
   findPreferredArtifact,
 } from './taskDetailChat'
@@ -410,10 +411,34 @@ export default function SharedTaskView() {
   const stages = useMemo<StageData[]>(() => {
     const steps = task?.steps || []
     if (workflowNodes.length > 0) {
+      const keyByNodeId = new Map<string, string>()
+      workflowNodes.forEach((node, index) => {
+        keyByNodeId.set(
+          String(node.id ?? index + 1),
+          String(nodeStepKey(node)),
+        )
+      })
+      const dependsByKey = new Map<string, string[]>()
+      const reworkDependsByKey = new Map<string, string[]>()
+      const rawConnections = Array.isArray(task?.workflow?.steps?.connections)
+        ? task!.workflow!.steps!.connections
+        : []
+      rawConnections.forEach((connection: any) => {
+        const fromKey = keyByNodeId.get(String(connection.from))
+        const toKey = keyByNodeId.get(String(connection.to))
+        if (!fromKey || !toKey || fromKey === toKey) return
+        const isDashed = connection.kind === 'dashed'
+          || /dashed|rework/.test(String(connection.style || ''))
+        const targetMap = isDashed ? reworkDependsByKey : dependsByKey
+        targetMap.set(toKey, [...new Set([...(targetMap.get(toKey) ?? []), fromKey])])
+      })
       return workflowNodes.map((node) => ({
-        key: nodeStepKey(node),
+        key: String(nodeStepKey(node)),
+        nodeId: node.id,
         label: node.title || node.label || nodeStepKey(node),
         color: node.color || 'var(--accent)',
+        dependsOn: dependsByKey.get(String(nodeStepKey(node))) ?? [],
+        reworkDependsOn: reworkDependsByKey.get(String(nodeStepKey(node))) ?? [],
         engine: node.engine || '',
         model: node.model || '',
         prompt: node.prompt || '',
@@ -433,6 +458,8 @@ export default function SharedTaskView() {
       key: step.step_key,
       label: step.step_key,
       color: 'var(--accent)',
+      dependsOn: [],
+      reworkDependsOn: [],
       prompt: '',
       inputs: [],
       outputs: [],
@@ -448,9 +475,13 @@ export default function SharedTaskView() {
       workflowNodes.length > 0
         ? workflowNodes.map((node) => nodeStepKey(node))
         : steps.map((step) => step.step_key)
-    const rawStatuses = keys.map(
-      (key) => stepByKey.get(key)?.status || 'pending',
-    )
+    const rawStatuses = keys.map((key) => {
+      const step = stepByKey.get(key)
+      return resolveStageDisplayStatus(
+        step?.status || 'pending',
+        step?.previous_status,
+      )
+    })
     let activeIndex = rawStatuses.findIndex((status) =>
       ['running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(
         status,

@@ -83,6 +83,13 @@ export default function ChatPage() {
       : activeProject?.id
   ) || ''
   const [sessionId, setSessionId] = useState<string | null>(sessionParam)
+  // URL 是会话切换的同步来源；sessionId 还承接发送时后端重建的 id。
+  const queueSessionId = sessionParam || sessionId
+  const queueReadyKey = queueSessionId && routeProjectId
+    ? `${routeProjectId}:${queueSessionId}`
+    : ''
+  // 会话详情未加载前 running 默认为 false，不能让队列误判为空闲并提前发送。
+  const [sessionDetailReadyId, setSessionDetailReadyId] = useState<string | null>(null)
   // 草稿必须写回它实际所属的项目；项目切换时 activeProject 可能已经变成目标项目。
   const draftOwnerRef = useRef<{ projectId: string; sessionId: string } | null>(null)
   const [sessionTitle, setSessionTitle] = useState('')
@@ -282,6 +289,7 @@ export default function ChatPage() {
   // Load one session's history when the URL session id changes.
   useEffect(() => {
     setSessionId(sessionParam)
+    setSessionDetailReadyId(null)
     if (!sessionParam) {
       setSessionTitle('')
       setInput('')
@@ -354,6 +362,7 @@ export default function ChatPage() {
           })),
           detail.running,
         )
+        setSessionDetailReadyId(detail.id)
       })
       .catch(() => {
         if (!active) return
@@ -392,7 +401,6 @@ export default function ChatPage() {
     }
     setSendError('')
     setStopping(false)
-    setPendingInserts([])
     setEditingInsertId(null)
     setEditingInsertContent('')
     setSendingInsertIds([])
@@ -417,29 +425,52 @@ export default function ChatPage() {
   }, [sessionId, routeProjectId])
 
   // ── 插入队列持久化 ─────────────────────────────
-  // localStorage 按（项目, 会话）保存队列，刷新页面后恢复。
-  // queueStorageRef 记录当前生效 key，写回只跟随队列内容变化，
-  // 避免会话切换瞬间把旧队列错写到新会话的 key 上。
-  const queueStorageRef = useRef<{ projectId: string; sessionId: string } | null>(null)
+  // localStorage 按 sessionId 保存队列，和输入框草稿一致，刷新页面后恢复。
+  // queueOwnerRef 记录当前队列表项归属的 session。切换会话时先把旧 owner
+  // 的内容落盘，再恢复新 session；保存 effect 不跟随“新 session + 旧 items”
+  // 的中间态，避免覆盖目标 session 的已有队列。
+  const queueOwnerRef = useRef<{
+    projectId: string
+    sessionId: string
+    items: PendingMessageInsert[]
+  } | null>(null)
+  const [queueReadyKeyState, setQueueReadyKeyState] = useState('')
 
-  useEffect(() => {
-    queueStorageRef.current = sessionId && routeProjectId
-      ? { projectId: routeProjectId, sessionId }
-      : null
-  }, [sessionId, routeProjectId])
+  const removeQueueItems = useCallback((
+    owner: NonNullable<typeof queueOwnerRef.current>,
+    ids: string[],
+  ) => {
+    owner.items = owner.items.filter((item) => !ids.includes(item.id))
+    saveInsertQueue(owner.sessionId, owner.items)
+    const current = queueOwnerRef.current
+    if (
+      current?.projectId === owner.projectId
+      && current.sessionId === owner.sessionId
+    ) {
+      setPendingInserts(owner.items)
+    }
+  }, [])
 
   // 恢复队列：刷新页面时 activeProject 异步加载完成后再恢复；
   // 切换会话时在 reset effect 清空后恢复目标会话的队列。
   useEffect(() => {
-    if (!sessionId || !routeProjectId) return
-    setPendingInserts(loadInsertQueue(routeProjectId, sessionId))
-  }, [sessionId, routeProjectId])
+    if (!queueSessionId || !routeProjectId) return
+    const owner = queueOwnerRef.current
+    if (owner && owner.sessionId !== queueSessionId) {
+      saveInsertQueue(owner.sessionId, owner.items)
+    }
+    const items = loadInsertQueue(queueSessionId, routeProjectId)
+    queueOwnerRef.current = { projectId: routeProjectId, sessionId: queueSessionId, items }
+    setPendingInserts(owner?.sessionId === queueSessionId ? owner.items : items)
+    setQueueReadyKeyState(`${routeProjectId}:${queueSessionId}`)
+  }, [queueSessionId, routeProjectId])
 
   useEffect(() => {
-    const target = queueStorageRef.current
-    if (!target) return
-    saveInsertQueue(target.projectId, target.sessionId, pendingInserts)
-  }, [pendingInserts])
+    const owner = queueOwnerRef.current
+    if (!owner || queueReadyKeyState !== queueReadyKey) return
+    owner.items = pendingInserts
+    saveInsertQueue(owner.sessionId, pendingInserts)
+  }, [pendingInserts, queueReadyKey, queueReadyKeyState])
 
   const sendMessageNow = useCallback(async (
     content: string,
@@ -533,11 +564,15 @@ export default function ChatPage() {
   }, [input, running, sessionId, activeProject?.id, sendMessageNow, t, resetEnhance])
 
   const sendPendingInserts = useCallback(async (items: PendingMessageInsert[]) => {
+    const owner = queueOwnerRef.current
     if (
       items.length === 0
       || sendingInsertIds.length > 0
       || !sessionId
       || !activeProject?.id
+      || !owner
+      || owner.sessionId !== sessionId
+      || owner.projectId !== routeProjectId
     ) return
     const ids = items.map((item) => item.id)
     setSendingInsertIds(ids)
@@ -547,7 +582,7 @@ export default function ChatPage() {
     if (!running) {
       const ok = await sendMessageNow(content, { useSessionDefaults: true })
       if (ok) {
-        setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+        removeQueueItems(owner, ids)
         setEditingInsertId(null)
         setEditingInsertContent('')
       }
@@ -560,7 +595,7 @@ export default function ChatPage() {
         activeProject.id,
         content,
       )
-      setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+      removeQueueItems(owner, ids)
       setEditingInsertId(null)
       setEditingInsertContent('')
     } catch (reason) {
@@ -569,7 +604,7 @@ export default function ChatPage() {
         // 后端也认为已结束 → 降级为新 turn
         const ok = await sendMessageNow(content, { useSessionDefaults: true })
         if (ok) {
-          setPendingInserts((current) => current.filter((item) => !ids.includes(item.id)))
+          removeQueueItems(owner, ids)
           setEditingInsertId(null)
           setEditingInsertContent('')
         }
@@ -579,7 +614,7 @@ export default function ChatPage() {
     } finally {
       setSendingInsertIds([])
     }
-  }, [activeProject?.id, running, sendingInsertIds.length, sessionId, sendMessageNow, t])
+  }, [activeProject?.id, routeProjectId, running, sendingInsertIds.length, sessionId, sendMessageNow, removeQueueItems, t])
 
   const savePendingInsertEdit = useCallback((insertId: string) => {
     const content = editingInsertContent.trim()
@@ -592,24 +627,28 @@ export default function ChatPage() {
   }, [editingInsertContent])
 
   // ── 插入队列自动推进 ─────────────────────────────
-  // 引擎执行中插入的消息先排队；当前执行结束（running: true → false）时，
-  // 自动发送队首消息触发下一轮执行，直至队列清空。
+  // 引擎执行中插入的消息先排队；会话空闲时自动发送队首消息触发下一轮，
+  // 直至队列清空。不能只监听 running true → false：页面重挂/历史恢复后
+  // 队列和空闲状态一起出现，没有状态跃迁，但队列同样需要推进。
   // autoDrainingRef 防止同一空闲窗口内重复发送；编辑中不自动发送，避免覆盖用户编辑。
-  // prevRunRef 同时记录会话 ID：切换会话（如从运行中的 a 切到空闲的 b）也会
-  // 产生 running true → false 的假转变，且此时闭包里的 pendingInserts 还是旧
-  // 会话的队列，若不校验会话一致性会把 a 的待插入消息发进 b。
-  const prevRunRef = useRef<{ sessionId: string | null; running: boolean }>({
-    sessionId,
-    running,
-  })
   const autoDrainingRef = useRef(false)
+  const awaitingRunStartSessionIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const prev = prevRunRef.current
-    prevRunRef.current = { sessionId, running }
-    // 会话切换产生的 running 转变不是"执行结束"，不自动推进
-    if (prev.sessionId !== sessionId) return
-    if (!prev.running || running || autoDrainingRef.current) return
+    if (running && sessionId) {
+      awaitingRunStartSessionIdsRef.current.delete(sessionId)
+    }
+  }, [running, sessionId])
+
+  useEffect(() => {
+    const owner = queueOwnerRef.current
+    if (!owner || owner.sessionId !== queueSessionId || sessionId !== queueSessionId) return
+    if (
+      sessionDetailReadyId !== queueSessionId
+      || running
+      || autoDrainingRef.current
+      || awaitingRunStartSessionIdsRef.current.has(queueSessionId)
+    ) return
     if (!sessionId || !activeProject?.id || editingInsertId !== null) return
     if (pendingInserts.length === 0 || sendingInsertIds.length > 0) return
     const first = pendingInserts[0]
@@ -618,14 +657,15 @@ export default function ChatPage() {
     setSendError('')
     void sendMessageNow(first.content, { useSessionDefaults: true }).then((ok) => {
       if (ok) {
-        setPendingInserts((current) => current.filter((item) => item.id !== first.id))
+        awaitingRunStartSessionIdsRef.current.add(owner.sessionId)
+        removeQueueItems(owner, [first.id])
         setEditingInsertId(null)
         setEditingInsertContent('')
       }
       setSendingInsertIds([])
       autoDrainingRef.current = false
     })
-  }, [running, pendingInserts, editingInsertId, sendingInsertIds.length, sessionId, activeProject?.id, sendMessageNow])
+  }, [running, pendingInserts, editingInsertId, sendingInsertIds.length, sessionId, queueSessionId, sessionDetailReadyId, activeProject?.id, sendMessageNow, removeQueueItems])
 
   const handleInputChange = useCallback((value: string) => {
     enhanceInputChanged(value)
@@ -813,7 +853,7 @@ export default function ChatPage() {
       await chatSessionApi.remove(sessionId, activeProject.id)
       useChatSessionStore.getState().resetSession(sessionId)
       useChatListStore.getState().removeSession(sessionId)
-      clearInsertQueue(activeProject.id, sessionId)
+      clearInsertQueue(sessionId, activeProject.id)
       clearChatEngineConfig(activeProject.id, sessionId)
       setDeleteOpen(false)
       navigate(`/chat?project=${encodeURIComponent(projectParam || activeProject?.name || '')}`, { replace: true })

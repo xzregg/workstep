@@ -1,13 +1,7 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import ts from 'typescript'
 
-const source = await readFile(new URL('../src/api/client.ts', import.meta.url), 'utf8')
-const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-})
-const api = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputText).toString('base64')}`)
+const api = await import('../src/api/client.ts')
 
 test('remote conversation model configuration is read through the remote project', async () => {
   const originalFetch = globalThis.fetch

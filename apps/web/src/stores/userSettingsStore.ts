@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { systemSettingsApi } from '../api/client'
+import { loadBrowserActor, saveBrowserActor } from '../utils/browserActor'
 
 interface UserSettingsState {
   userName: string
@@ -32,12 +33,22 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   load: async () => {
     if (get().loaded || get().loading) return
     set({ loading: true, error: '' })
+    const actor = loadBrowserActor()
     try {
       const settings = await systemSettingsApi.get()
-      set({ defaultProjectDirectory: settings.default_project_directory || '' })
-      set({ userName: settings.user_name, openMode: settings.open_mode, deviceId: settings.device_id || '', deviceName: settings.device_name || '', loaded: true })
+      set({
+        defaultProjectDirectory: settings.default_project_directory || '',
+        userName: actor?.name || '',
+        openMode: settings.open_mode,
+        deviceId: actor?.deviceId || '',
+        deviceName: actor?.deviceName || '',
+        loaded: true,
+      })
     } catch (reason) {
       set({
+        userName: actor?.name || '',
+        deviceId: actor?.deviceId || '',
+        deviceName: actor?.deviceName || '',
         loaded: true,
         error: reason instanceof Error ? reason.message : String(reason),
       })
@@ -50,8 +61,9 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
     if (!userName) return false
     set({ loading: true, error: '' })
     try {
-      const settings = await systemSettingsApi.updateUserName(userName)
-      set({ userName: settings.user_name, openMode: settings.open_mode, deviceId: settings.device_id || '', deviceName: settings.device_name || '', loaded: true })
+      const next = saveBrowserActor(userName, { deviceId: get().deviceId, deviceName: get().deviceName })
+      if (!next) throw new Error('无法保存浏览器身份')
+      set({ userName: next.name, deviceId: next.deviceId, deviceName: next.deviceName, loaded: true })
       return true
     } catch (reason) {
       set({ error: reason instanceof Error ? reason.message : String(reason) })

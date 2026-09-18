@@ -79,13 +79,23 @@
   .task-create-panel[inert] { visibility: hidden; }
   .task-create-panel .panel-header { padding: 8px 16px; }
   .task-create-panel .panel-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .task-create-footer { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .task-create-primary { height: 50px; }
   .task-create-body { position: relative; overflow: hidden; }
   .task-create-divider { display: none; }
   .task-create-form > div:first-child { padding-inline: 8px !important; }
   .mobile-assistant-tab { height: 44px; padding: 8px 16px; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); }
   .mobile-assistant-tab[aria-pressed="true"] { color: var(--accent); }
   .task-create-assistant { display: none !important; }
-  .task-create-panel[data-tab="assistant"] .task-create-assistant { display: flex !important; position: absolute; inset: 45px 0 65px; width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .task-create-panel[data-tab="assistant"] .task-create-assistant {
+    display: flex !important;
+    position: absolute;
+    inset: 45px 0 auto;
+    bottom: calc(128px + max(0px, env(safe-area-inset-bottom) - 16px));
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
   .task-create-panel .panel-footer { margin-top: auto; }
   .modal-overlay { padding: 12px !important; }
   .modal-overlay .modal { width: 100% !important; min-width: 0 !important; max-width: min(900px, calc(100vw - 24px)) !important; max-height: calc(var(--app-viewport-height, 100dvh) - 24px) !important; }

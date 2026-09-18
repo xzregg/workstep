@@ -33,8 +33,10 @@ import ConversationNewMessagesButton from './ConversationNewMessagesButton'
 import MessageMetaBar from './MessageMetaBar'
 import PromptViewerDialog from './PromptViewerDialog'
 import MessageResponseFooter, { usageFromEvents } from './MessageResponseFooter'
+import MarqueeText from './MarqueeText'
 import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
+import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
 
 const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
@@ -123,6 +125,7 @@ interface MessageItemProps {
   message: AssistantChatMessage
   copy: AssistantChatCopy
   deviceId: string
+  userName: string
   locale: string
   showUserTag: boolean
   projectId: string
@@ -149,18 +152,22 @@ interface MessageItemProps {
  * 否则 memo 失效（功能不受影响，只是回到全量重渲染）。
  */
 const MessageItem = memo(function MessageItem({
-  message, copy, deviceId, locale, showUserTag, projectId, sessionId,
+  message, copy, deviceId, userName, locale, showUserTag, projectId, sessionId,
   a2uiEntry, respondInteraction, onViewPrompt, onLoadMessageEvents,
   onForkMessage, onSendToInput, onA2uiAction,
 }: MessageItemProps) {
   const { t } = useI18n()
   const ownUserMessage = !message.author_device_id || message.author_device_id === deviceId
-  const userSender = ownUserMessage ? copy.me : (message.author_name || copy.me)
+  const userSender = displayUserSender(message.author_name, userName, copy.me)
   return (
     <ChatMessageBubble
       role={message.role}
       sender={message.role === 'user' ? userSender : copy.agent}
-      senderTitle={message.role === 'user' && message.author_device_name ? `${userSender} · ${message.author_device_name}` : undefined}
+      senderTitle={
+        message.role === 'user'
+          ? displayUserDetail(message.author_name, message.author_device_name, copy.me)
+          : undefined
+      }
       initials={message.role === 'user' ? (ownUserMessage ? copy.meInitials : userSender.slice(0, 2)) : copy.agentInitials}
       color={message.role === 'user' ? 'var(--accent)' : 'var(--ai-assistant)'}
       content={message.content}
@@ -186,6 +193,9 @@ const MessageItem = memo(function MessageItem({
                 background: 'rgba(124,58,237,0.08)', color: 'var(--ai-assistant)',
               }}
             >{copy.tag}</span>
+          )}
+          {userSender !== copy.me && (
+            <MarqueeText text={userSender} className="user-sender-marquee" />
           )}
           {formatConversationDateTime(message.created_at, Date.now(), locale)}
         </>
@@ -243,6 +253,7 @@ export default function AssistantChatPanel({
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
 }: AssistantChatPanelProps) {
   const deviceId = useUserSettingsStore((state) => state.deviceId)
+  const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
   const compactLayout = useCompactLayout()
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
@@ -509,6 +520,7 @@ export default function AssistantChatPanel({
               message={message}
               copy={copy}
               deviceId={deviceId}
+              userName={userName}
               locale={locale}
               showUserTag={showUserTag}
               projectId={projectId}

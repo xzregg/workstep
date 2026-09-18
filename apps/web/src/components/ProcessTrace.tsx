@@ -423,7 +423,13 @@ export default function ProcessTrace({
               projectId={projectId}
             />
           ) : (
-            <ToolTimelineItem key={item.id} item={item} streaming={running} projectId={projectId} />
+            <ToolTimelineItem
+              key={item.id}
+              item={item}
+              streaming={running}
+              now={now}
+              projectId={projectId}
+            />
           ))}
         </div>
         )}

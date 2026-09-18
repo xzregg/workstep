@@ -36,6 +36,7 @@ async def create_project_task(
     input_manifest: list[dict] | None = None,
     dispatch_lineage: list[str] | None = None,
     source: str = "manual",
+    creator_fields: dict | None = None,
 ) -> TaskCreationResult:
     """Create one task and optionally start it using a single policy interface."""
     if execution_mode not in {"workflow", "immediate", "manual"}:
@@ -69,6 +70,7 @@ async def create_project_task(
             source_step_key=source_step_key,
             input_manifest=input_manifest,
             dispatch_lineage=dispatch_lineage,
+            creator_fields=creator_fields,
         )
         should_start = (
             execution_mode == "immediate"

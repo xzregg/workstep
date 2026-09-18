@@ -839,6 +839,7 @@ async def test_delete_project_only_unregisters_it(api_context):
 
     assert deleted.status_code == 200
     assert deleted.json() == {"deleted": True}
+
     assert (project_dir / ".workstep" / "workstep.db").exists()
     assert not (project_dir / ".workstep" / "steps.json").exists()
     listed = await client.get("/api/project/list")
@@ -1172,6 +1173,98 @@ async def test_task_http_crud_lifecycle(api_context):
         f"/api/task/{copied_id}?project_id={project_id}"
     )
     assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_task_api_keeps_previous_stage_status_after_restart_reset(api_context):
+    """A reset downstream step keeps its latest historical result for display."""
+    import main
+    from models import StepRun, Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "previous-stage-status"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Restarted task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow["id"],
+            "engine": "claude",
+        },
+    )
+    task_id = created.json()["id"]
+
+    now = utc_now()
+    with main.project_manager.activate_project_by_id(project_id):
+        task = Task.get_by_id(task_id)
+        parent = WorkflowRun.create(
+            id="previous-status-parent",
+            task=task,
+            status="superseded",
+            workflow_schema_version=1,
+            workflow_snapshot_json=json.dumps(workflow["steps"]),
+            started_at=now,
+            ended_at=now,
+        )
+        child = WorkflowRun.create(
+            id="previous-status-child",
+            task=task,
+            status="failed",
+            workflow_schema_version=1,
+            workflow_snapshot_json=json.dumps(workflow["steps"]),
+            parent_run_id=parent.id,
+            restart_from_step_key="req",
+            started_at=now,
+            ended_at=now,
+        )
+        task.active_workflow_run_id = child.id
+        task.save(only=[Task.active_workflow_run_id])
+        TaskStep.update(
+            status="pending",
+            started_at=None,
+            ended_at=None,
+            error=None,
+        ).where(TaskStep.task == task).execute()
+        StepRun.create(
+            id="previous-status-req",
+            run=parent,
+            step_key="req",
+            attempt=1,
+            status="succeeded",
+            artifact_round=1,
+            started_at=now,
+            ended_at=now,
+        )
+        StepRun.create(
+            id="previous-status-ui",
+            run=parent,
+            step_key="ui",
+            attempt=1,
+            status="succeeded",
+            artifact_round=1,
+            started_at=now,
+            ended_at=now,
+        )
+
+    fetched = await client.get(
+        f"/api/task/{task_id}?project_id={project_id}"
+    )
+    assert fetched.status_code == 200
+    steps = {step["step_key"]: step for step in fetched.json()["steps"]}
+    assert steps["req"]["status"] == "pending"
+    assert steps["req"]["previous_status"] == "passed"
+    assert steps["ui"]["status"] == "pending"
+    assert steps["ui"]["previous_status"] == "passed"
+    assert steps["frontend"]["previous_status"] is None
+
 
 
 @pytest.mark.anyio

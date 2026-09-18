@@ -20,7 +20,7 @@ from engines.core.base import (
     install_with_command,
 )
 
-from engines.core.claude_usage import claude_context_snapshot
+from engines.core.claude_usage import claude_context_snapshot, normalize_claude_usage
 from engines.core.events import (
     InternalEvent,
     normalize_cost,
@@ -777,7 +777,7 @@ class ClaudeCodeEngine(AcpEngineBase):
             if isinstance(usage, dict):
                 context_used, context_size = claude_context_snapshot(usage)
                 events.append(usage_update_event(
-                    usage,
+                    normalize_claude_usage(usage),
                     used=context_used,
                     size=context_size,
                 ))
@@ -796,13 +796,8 @@ class ClaudeCodeEngine(AcpEngineBase):
                     data={"message": str(message or "Claude Code 执行失败")},
                 ))
             usage = obj.get("usage") or obj
-            data = {
-                "input_tokens": usage.get("input_tokens", 0),
-                "output_tokens": usage.get("output_tokens", 0),
-                "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
-                "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
-                "session_id": obj.get("session_id"),
-            }
+            data = normalize_claude_usage(usage)
+            data["session_id"] = obj.get("session_id")
             cost = normalize_cost(usage)
             if cost is None:
                 # claude CLI 把 total_cost_usd / cost_usd 放在 result 顶层

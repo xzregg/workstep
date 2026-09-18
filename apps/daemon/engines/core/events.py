@@ -97,20 +97,28 @@ def normalize_token_usage(usage: Mapping[str, Any]) -> dict[str, Any]:
     input_tokens = value("input_tokens", "prompt_tokens")
     output_tokens = value("output_tokens", "completion_tokens")
     total_tokens = value("total_tokens", "tokens") or input_tokens + output_tokens
+    cache_read_tokens = value(
+        "cache_read_input_tokens",
+        "cache_read_tokens",
+        "cached_read_tokens",
+        "cached_tokens",
+    )
+    cache_write_tokens = value(
+        "cache_creation_input_tokens",
+        "cache_write_tokens",
+        "cached_write_tokens",
+    )
+    cache_input_included = usage.get("cache_input_included")
+    if not isinstance(cache_input_included, bool):
+        cache_input_included = True
+
+    total_tokens = value("total_tokens", "tokens") or input_tokens + output_tokens
     result: dict[str, Any] = {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cache_creation_input_tokens": value(
-            "cache_creation_input_tokens",
-            "cache_write_tokens",
-            "cached_write_tokens",
-        ),
-        "cache_read_input_tokens": value(
-            "cache_read_input_tokens",
-            "cache_read_tokens",
-            "cached_read_tokens",
-            "cached_tokens",
-        ),
+        "cache_creation_input_tokens": cache_write_tokens,
+        "cache_read_input_tokens": cache_read_tokens,
+        "cache_input_included": cache_input_included,
         "total_tokens": total_tokens,
     }
     cost = normalize_cost(usage)
@@ -390,6 +398,43 @@ def acp_raw_event(update: Any) -> InternalEvent:
     else:
         payload = {"update": str(update)}
     return InternalEvent(type="acp_raw", data=payload)
+
+
+def _to_plain_json(value: Any) -> Any:
+    """Recursively project SDK objects onto JSON-friendly values."""
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        return dump(by_alias=False, exclude_none=True)
+    if isinstance(value, Mapping):
+        return {str(key): _to_plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_plain_json(item) for item in value]
+    enum_value = getattr(value, "value", None)
+    if enum_value is not None and not isinstance(value, (str, int, float, bool)):
+        return enum_value
+    if hasattr(value, "__dict__"):
+        return {
+            str(key): _to_plain_json(item)
+            for key, item in vars(value).items()
+            if not str(key).startswith("_")
+        }
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def native_unmapped_event(method: str, payload: Any = None) -> InternalEvent:
+    """``acp_raw`` — passthrough of a non-ACP engine's native event.
+
+    Non-ACP adapters (Codex CLI / SDK) use this so an unrecognized transport
+    event is surfaced through the same unified vocabulary instead of being
+    silently dropped. ``method`` keeps the native event name while ``raw``
+    preserves the original payload for replay and debugging.
+    """
+    data: dict[str, Any] = {"method": str(method or "unknown")}
+    if payload is not None:
+        data["raw"] = _to_plain_json(payload)
+    return InternalEvent(type="acp_raw", data=data)
 
 
 # ── 旧词汇兼容映射（历史回放专用） ─────────────────────────────────────────

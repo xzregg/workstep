@@ -24,6 +24,21 @@ def current_actor_message_fields() -> dict[str, str]:
     }
 
 
+def current_actor_task_fields() -> dict[str, str]:
+    """Snapshot the effective local, browser, or remote actor for task ownership."""
+    from services.remote_project import get_effective_actor
+
+    actor = get_effective_actor()
+    if actor is None:
+        return {}
+    return {
+        "creator_id": actor.actor_id,
+        "creator_name": actor.user_name,
+        "creator_device_id": actor.device_id,
+        "creator_device_name": actor.device_name,
+    }
+
+
 _UUID7_RANDOM_BITS = 74
 _UUID7_RANDOM_MASK = (1 << _UUID7_RANDOM_BITS) - 1
 _uuid7_lock = threading.Lock()

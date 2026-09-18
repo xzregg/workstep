@@ -13,6 +13,7 @@ import uuid
 
 from peewee import fn
 
+from engines.codex_visualize import convert_visualize_markers
 from models import Task, TaskShare, TaskStep, StepRun, Workflow, WorkflowRun
 from models.fields import utc_now
 
@@ -242,7 +243,10 @@ def load_shared_task(task_id: str) -> dict | None:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist:
         return None
-    from services.task import TaskService  # local import to avoid cycles
+    from services.task import (
+        TaskService,
+        latest_previous_stage_statuses,
+    )  # local import to avoid cycles
     # Re-use TaskService._task_to_dict logic via a fresh instance would need
     # event_bus; instead build the payload manually here.
     import json as _json
@@ -270,10 +274,12 @@ def load_shared_task(task_id: str) -> dict | None:
             .where(
                 (WorkflowRun.task == task_id)
                 & (StepRun.artifact_round.is_null(False))
+                & (StepRun.status.in_(["succeeded", "reused"]))
             )
             .group_by(StepRun.step_key)
         )
     }
+    previous_status_by_step = latest_previous_stage_statuses(task)
     steps = []
     for step in (
         TaskStep.select()
@@ -288,6 +294,7 @@ def load_shared_task(task_id: str) -> dict | None:
             "ended_at": step.ended_at,
             "error": step.error,
             "artifact_round": latest_artifact_round_by_step.get(step.step_key),
+            "previous_status": previous_status_by_step.get(step.step_key),
             "has_history": (
                 step.step_key in executed_step_keys
                 or step.started_at is not None
@@ -366,7 +373,7 @@ def load_shared_history(
         result.append({
             "id": msg.id,
             "role": msg.role,
-            "content": msg.content,
+            "content": convert_visualize_markers(msg.content or ""),
             "step_key": msg.step_key,
             "context_step_key": msg.context_step_key,
             "channel": msg.channel,

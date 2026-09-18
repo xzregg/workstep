@@ -85,6 +85,10 @@ _ADDITIVE_COLUMNS = {
         "vision_model": "TEXT",
     },
     "tasks": {
+        "creator_id": "TEXT",
+        "creator_name": "TEXT",
+        "creator_device_id": "TEXT",
+        "creator_device_name": "TEXT",
         "scheduled_start_at": "DATETIME",
         "scheduled_start_state": "TEXT",
         "scheduled_start_error": "TEXT",

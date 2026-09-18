@@ -3,6 +3,7 @@ import Icon, { type IconName } from './Icon'
 import { MessageCopyButton } from './MessageResponseFooter'
 import FilePreviewDialog from './FilePreviewDialog'
 import { useI18n, type TFunction } from '../i18n'
+import { durationMilliseconds, formatDuration } from '../utils/datetime'
 import type { ToolActivity } from '../utils/messageTimeline'
 import { extractToolTarget, type ToolTargetInfo } from '../utils/toolInput'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
@@ -127,6 +128,7 @@ function completedSummary(
 interface ToolCallRowProps {
   activity: ToolActivity
   messageRunning?: boolean
+  now?: number
   /** 项目 id：把 read/edit 工具目标解析为可预览的项目文件链接。 */
   projectId?: string
 }
@@ -134,6 +136,7 @@ interface ToolCallRowProps {
 export default function ToolCallRow({
   activity,
   messageRunning = false,
+  now = Date.now(),
   projectId,
 }: ToolCallRowProps) {
   const { t } = useI18n()
@@ -160,6 +163,11 @@ export default function ToolCallRow({
   const summary = isRunning
     ? t('chat.toolRunning', { name: activity.name || t('chat.tool') })
     : completedSummary(activity, t, fileLink, targetInfo)
+  const endedAt = activity.endedAt ?? (isRunning ? now : undefined)
+  const duration = formatDuration(
+    durationMilliseconds(activity.startedAt, endedAt) ?? Number.NaN,
+    t,
+  )
   const previewTitle = fileLink ? t('md.previewFile', { name: fileLink.name }) : ''
 
   return (
@@ -182,7 +190,10 @@ export default function ToolCallRow({
         <span className="llm-tool-call-icon" aria-hidden="true">
           <Icon name={toolIcon(kind)} size={13} strokeWidth={1.7} />
         </span>
-        <span className={`llm-tool-call-summary${isRunning ? ' is-shimmer' : ''}`}>{summary}</span>
+        <span className={`llm-tool-call-summary${isRunning ? ' is-shimmer' : ''}`}>
+          {summary}
+          {duration && t('trace.commandDuration', { duration })}
+        </span>
         {fileLink && (
           <span
             className="markdown-file-link"

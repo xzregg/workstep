@@ -57,7 +57,9 @@ from streaming.ws import (
 )
 from services.remote_project import (
     ActorSnapshot,
+    BrowserActorMiddleware,
     RemoteAccessService,
+    RemoteAccessGuardMiddleware,
     RemoteProjectClientManager,
     RemoteProjectProxyMiddleware,
     RemoteProjectRegistry,
@@ -200,6 +202,11 @@ app.add_middleware(
     registry=remote_project_registry,
     client_manager=remote_project_client,
 )
+app.add_middleware(
+    RemoteAccessGuardMiddleware,
+    access_service=remote_access_service,
+)
+app.add_middleware(BrowserActorMiddleware)
 
 # Register routers
 app.include_router(project_router)

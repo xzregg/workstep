@@ -120,6 +120,28 @@ def test_normalize_token_usage_appends_cost():
     assert result["cost"] == {"amount": 0.01, "currency": "USD"}
 
 
+def test_normalize_token_usage_marks_cached_input_when_provider_includes_it():
+    result = normalize_token_usage({
+        "input_tokens": 161_509,
+        "output_tokens": 299,
+        "cache_read_input_tokens": 161_152,
+    })
+
+    assert result["cache_input_included"] is True
+
+
+def test_normalize_token_usage_marks_separate_cached_input_explicitly():
+    result = normalize_token_usage({
+        "input_tokens": 300,
+        "output_tokens": 50,
+        "cache_creation_input_tokens": 150,
+        "cache_read_input_tokens": 120,
+        "cache_input_included": False,
+    })
+
+    assert result["cache_input_included"] is False
+
+
 def test_usage_update_exposes_canonical_context_snapshot():
     event = usage_update_event({
         "input_tokens": 100,
@@ -150,6 +172,42 @@ async def test_base_engine_connection_test_uses_the_execution_interface(tmp_path
     assert result.success is True
     assert result.message == "连接和对话测试通过"
     assert "Do not use tools" in engine.last_prompt
+
+
+@pytest.mark.anyio
+async def test_base_engine_connection_test_accepts_successful_completion_without_text(
+    tmp_path,
+):
+    """Provider connectivity is proven by a successful run, not text output."""
+    engine = StubEngine([
+        InternalEvent("status", {"status": "done"}),
+    ])
+
+    result = await engine.test_connection(str(tmp_path))
+
+    assert result.success is True
+    assert result.message == "连接和对话测试通过"
+
+
+@pytest.mark.anyio
+async def test_base_engine_connection_test_reports_timeout_when_engine_swallows_cancel(
+    tmp_path,
+):
+    """A cancelled engine must not turn the test timeout into 'no text'."""
+
+    class SwallowingEngine(StubEngine):
+        async def spawn(self, prompt, cwd, **kwargs):
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                yield InternalEvent("status", {"status": "cancelled"})
+
+    engine = SwallowingEngine([])
+
+    result = await engine.test_connection(str(tmp_path), timeout_seconds=0.05)
+
+    assert result.success is False
+    assert result.message == "测试超时（0.05 秒）"
 
 
 @pytest.mark.anyio
@@ -551,7 +609,7 @@ def test_claude_map_event_usage():
 
 
 def test_claude_map_event_usage_with_cache():
-    """Claude result usage includes cache hit tokens (creation + read)."""
+    """Claude result usage normalizes cached input into the input total."""
     engine = ClaudeCodeEngine()
     obj = {
         "type": "result",
@@ -592,8 +650,9 @@ def test_claude_map_event_usage_from_nested_result_payload():
         "output_tokens": 50,
         "cache_creation_input_tokens": 150,
         "cache_read_input_tokens": 120,
-        "total_tokens": 350,
-        "used": 350,
+        "cache_input_included": False,
+        "total_tokens": 620,
+        "used": 620,
         "session_id": "a37b97f3-58ac-4dbe-9b20-b2057b026acc",
     }
 

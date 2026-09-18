@@ -35,7 +35,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
   const [dialogSize, setDialogSize] = useState<{ width: number; height: number } | null>(null)
   const [chatWidth, setChatWidth] = useState<number | null>(null)
-  const [aiOpen, setAiOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(true)
   const [aiMessage, setAiMessage] = useState('')
   const [name, setName] = useState('')
   const canvasRef = useRef<FlowCanvasHandle>(null)
@@ -55,7 +55,7 @@ export default function WorkflowCreateDialog({ projectId, onClose }: WorkflowCre
     setPendingAiSteps(null)
     setDialogSize(null)
     setChatWidth(null)
-    setAiOpen(false)
+    setAiOpen(true)
     setAiMessage('')
     setName('')
   }

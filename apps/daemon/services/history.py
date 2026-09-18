@@ -6,6 +6,11 @@ from pathlib import Path
 
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.event_truncation import truncate_large_tool_payloads
+from engines.codex_visualize import (
+    CODEX_ENGINE_IDS,
+    convert_event_visualize_markers,
+    convert_visualize_markers,
+)
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import map_legacy_event
 from models.message import Message
@@ -69,6 +74,8 @@ def translate_events(
     for event in events:
         if not isinstance(event, dict):
             continue
+        if engine in CODEX_ENGINE_IDS:
+            event = convert_event_visualize_markers(event)
         # 出口统一截断超大工具载荷（与 chat 历史 / WS 广播出口一致）：任务历史
         # 回放整包随 HTTP 下发，数十 MB 的 raw_output 会直接进前端 store，
         # 多消息叠加后压垮渲染进程；完整内容展开时经 messageEvents 按需分页拉取。
@@ -97,7 +104,12 @@ def restore_running_projection(
     except Exception:
         logger.exception("Failed to restore running task message %s", msg.id)
         return
-    entry["content"] = snapshot["content"]
+    # 审核消息先以「审核中」占位落库，journal 起初可能还没有任何 chunk。
+    # 此时不能用空 journal 覆盖占位内容，否则前端会把运行中的审核消息
+    # 当作空消息过滤掉，表现为「审核中」迟迟不显示。
+    snapshot_content = convert_visualize_markers(snapshot["content"] or "")
+    if snapshot_content:
+        entry["content"] = snapshot_content
     entry["session_id"] = session_id_from_events(snapshot["events"])
     entry["events"] = translate_events(
         snapshot["events"],
@@ -135,7 +147,7 @@ def get_task_history(
             "id": msg.id,
             "step_key": msg.step_key,
             "role": msg.role,
-            "content": msg.content,
+            "content": convert_visualize_markers(msg.content or ""),
             "engine": msg.engine,
             "model": msg.model,
             "run_id": msg.run_id,
@@ -209,7 +221,7 @@ def get_step_history(
         entry = {
             "id": msg.id,
             "role": msg.role,
-            "content": msg.content,
+            "content": convert_visualize_markers(msg.content or ""),
             "run_status": msg.run_status,
             "events": [],
             "prompt": None,

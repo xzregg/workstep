@@ -22,7 +22,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
 
 from engines.core.agui import is_status_event
-from services.remote_project import RemoteRouteDispatcher, serve_remote_project_socket
+from services.remote_project import (
+    RemoteRouteDispatcher,
+    serve_remote_project_socket,
+    websocket_access_allowed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +220,9 @@ def register_websocket_routes(app: FastAPI) -> None:
         receives everything (backward compatible).
         """
         main = _main()
+        if not websocket_access_allowed(ws, main.remote_access_service):
+            await ws.close(code=4401, reason="remote access locked")
+            return
         await ws.accept()
         queue = main.event_bus.subscribe()
         subscription = WsSubscription()

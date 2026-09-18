@@ -53,6 +53,7 @@ SCOPE_CHAT = "chat"             # Codex-style chat session (row in chat_sessions
 MAX_HISTORY_TURNS = 8
 MAX_SESSIONS = 200
 SESSION_TTL_SECONDS = 60 * 60
+SHUTDOWN_DRAIN_TIMEOUT_SECONDS = 1.0
 
 _IMAGE_MARKDOWN_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 _UPLOADS_PATH_RE = re.compile(r"([^\s`\"'()]+\.workstep/uploads/[^\s`\"'()]+)")
@@ -768,6 +769,7 @@ class AssistantRuntime:
         self._turn_tasks: dict[str, asyncio.Task] = {}
         self._running_engines: dict[str, object] = {}
         self._stop_tasks: set[asyncio.Task] = set()
+        self._shutting_down = False
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -1022,7 +1024,6 @@ class AssistantRuntime:
                 return False
             state["status"] = "stopping"
             engine = self._running_engines.get(turn_id)
-            task.cancel()
             if engine is not None:
                 cleanup = asyncio.create_task(
                     self._stop_engine(turn_id, task, engine),
@@ -1030,6 +1031,8 @@ class AssistantRuntime:
                 )
                 self._stop_tasks.add(cleanup)
                 cleanup.add_done_callback(self._consume_stop_task)
+            else:
+                task.cancel()
             return True
         return False
 
@@ -1140,7 +1143,12 @@ class AssistantRuntime:
                 turn_id,
             )
         if not task.done():
-            task.cancel()
+            done, _ = await asyncio.wait(
+                {task},
+                timeout=SHUTDOWN_DRAIN_TIMEOUT_SECONDS,
+            )
+            if task not in done:
+                task.cancel()
 
     def history(self, project_id: str, scope_key: str) -> dict | None:
         """Return the persisted conversation for a scoped session (or None)."""
@@ -1220,9 +1228,31 @@ class AssistantRuntime:
         return removed
 
     async def shutdown(self) -> None:
-        tasks = tuple(self._active_tasks | self._stop_tasks)
-        for task in tasks:
+        self._shutting_down = True
+        for state in self._turn_states.values():
+            if state.get("status") in {"queued", "running"}:
+                state["status"] = "stopping"
+        engines = [
+            engine for engine in self._running_engines.values()
+            if callable(getattr(engine, "stop", None))
+        ]
+        if engines:
+            await asyncio.gather(
+                *(engine.stop() for engine in engines),
+                return_exceptions=True,
+            )
+        active_tasks = tuple(self._active_tasks)
+        if active_tasks:
+            done, _ = await asyncio.wait(
+                active_tasks,
+                timeout=SHUTDOWN_DRAIN_TIMEOUT_SECONDS,
+            )
+            for task in active_tasks:
+                if task not in done:
+                    task.cancel()
+        for task in tuple(self._stop_tasks):
             task.cancel()
+        tasks = active_tasks + tuple(self._stop_tasks)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         if self._config.event_journal is not None:
@@ -1932,10 +1962,13 @@ class AssistantRuntime:
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
                 ended_at = utc_now().isoformat()
+                stopped_content = streamed_reply
+                if self._shutting_down and not stopped_content:
+                    stopped_content = "后台服务已重启，本次生成已中断。"
                 active_message[0].update(
                     {
                         "role": "assistant",
-                        "content": streamed_reply,
+                        "content": stopped_content,
                         "id": active_message_id[0],
                         "engine": session.engine,
                         "model": session.model,
@@ -1958,7 +1991,7 @@ class AssistantRuntime:
                         "message_completed",
                         {
                             "status": "stopped",
-                            "content": streamed_reply,
+                            "content": stopped_content,
                             "ended_at": ended_at,
                         },
                         seq_holder[0] if "seq_holder" in locals() else seq,
@@ -1967,6 +2000,46 @@ class AssistantRuntime:
                     pass
                 self._turn_states[turn_id]["status"] = "stopped"
             except Exception as exc:
+                if self._turn_states.get(turn_id, {}).get("status") == "stopping":
+                    ended_at = utc_now().isoformat()
+                    stopped_content = streamed_reply
+                    if self._shutting_down and not stopped_content:
+                        stopped_content = "后台服务已重启，本次生成已中断。"
+                    active_message[0].update(
+                        {
+                            "role": "assistant",
+                            "content": stopped_content,
+                            "id": active_message_id[0],
+                            "engine": session.engine,
+                            "model": session.model,
+                            "status": "stopped",
+                            "created_at": active_started_at[0],
+                            "ended_at": ended_at,
+                            "prompt": active_prompt[0],
+                            "events": _prune_events(active_segment_events),
+                        }
+                    )
+                    await self._finish_journal(
+                        active_journal_ref[0],
+                        active_message[0],
+                        {"type": "status", "data": {"status": "stopped"}},
+                    )
+                    try:
+                        await self._publish(
+                            session,
+                            active_message_id[0],
+                            "message_completed",
+                            {
+                                "status": "stopped",
+                                "content": stopped_content,
+                                "ended_at": ended_at,
+                            },
+                            seq_holder[0] if "seq_holder" in locals() else seq,
+                        )
+                    except Exception:
+                        pass
+                    self._turn_states[turn_id]["status"] = "stopped"
+                    return
                 logger.exception(
                     "Assistant turn %s (%s) failed",
                     turn_id,
@@ -2243,6 +2316,22 @@ class AssistantRuntime:
                 "device_id": actor.device_id,
                 "device_name": actor.device_name,
             }
+        elif data.get("role") == "user":
+            message_id = str(payload.get("message_id") or "")
+            stored = next(
+                (item for item in session.messages if item.get("id") == message_id),
+                None,
+            )
+            if stored and str(stored.get("role") or "") == "user":
+                author_id = str(stored.get("author_id") or "").strip()
+                author_name = str(stored.get("author_name") or "").strip()
+                if author_id and author_name:
+                    payload["actor"] = {
+                        "id": author_id,
+                        "name": author_name,
+                        "device_id": str(stored.get("author_device_id") or author_id),
+                        "device_name": str(stored.get("author_device_name") or ""),
+                    }
         ctx = AGUIContext.from_event(payload)
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)

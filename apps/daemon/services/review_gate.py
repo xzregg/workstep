@@ -19,6 +19,7 @@ from services.pipeline import Step
 
 
 Publish = Callable[[dict], Awaitable[None]]
+RecordEvent = Callable[[dict], Awaitable[object]]
 
 
 @dataclass(frozen=True)
@@ -46,9 +47,15 @@ class ReviewOutcome:
 class ReviewGate:
     """Hide review execution, parsing and persistence behind one interface."""
 
-    def __init__(self, publish: Publish, run_db):
+    def __init__(
+        self,
+        publish: Publish,
+        run_db,
+        record_event=None,
+    ):
         self._publish = publish
         self._run_db = run_db
+        self._record_event = record_event
 
     async def evaluate(
         self,
@@ -168,7 +175,10 @@ class ReviewGate:
                         event = normalize_event(event)
                     if event is None:
                         continue
-                    events_collected.append(event.to_dict())
+                    event_dict = event.to_dict()
+                    events_collected.append(event_dict)
+                    if self._record_event is not None:
+                        await self._record_event(event_dict)
                     if event.type == "agent_message_chunk" and event.data.get("phase") != "commentary":
                         content = event.data.get("content") or {}
                         response_parts.append(str(content.get("text", "")))

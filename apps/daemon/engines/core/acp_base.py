@@ -1341,8 +1341,10 @@ class AcpEngineBase(BaseLLMEngine):
         started = time.monotonic()
         text_parts: list[str] = []
         errors: list[str] = []
+        completed = False
 
         async def collect_events():
+            nonlocal completed
             async for event in self.spawn(
                 prompt=(
                     "Reply with WORKSTEP_ENGINE_OK only. "
@@ -1355,6 +1357,8 @@ class AcpEngineBase(BaseLLMEngine):
                 if event.type == "agent_message_chunk":
                     content = event.data.get("content") or {}
                     text_parts.append(str(content.get("text", "")))
+                elif event.type == "status" and event.data.get("status") == "done":
+                    completed = True
                 elif event.type == "error":
                     errors.append(
                         str(
@@ -1364,9 +1368,12 @@ class AcpEngineBase(BaseLLMEngine):
                         )
                     )
 
-        try:
-            await asyncio.wait_for(collect_events(), timeout=timeout_seconds)
-        except asyncio.TimeoutError:
+        collect_task = asyncio.create_task(collect_events())
+        done, _ = await asyncio.wait({collect_task}, timeout=timeout_seconds)
+        if not done:
+            collect_task.cancel()
+            with suppress(BaseException):
+                await collect_task
             with suppress(Exception):
                 await self.stop()
             return EngineTestResult(
@@ -1374,6 +1381,8 @@ class AcpEngineBase(BaseLLMEngine):
                 message=f"测试超时（{timeout_seconds:g} 秒）",
                 duration_ms=round((time.monotonic() - started) * 1000),
             )
+        try:
+            await collect_task
         except Exception as exc:
             with suppress(Exception):
                 await self.stop()
@@ -1386,7 +1395,7 @@ class AcpEngineBase(BaseLLMEngine):
         duration_ms = round((time.monotonic() - started) * 1000)
         if errors:
             return EngineTestResult(False, errors[0], duration_ms)
-        if not "".join(text_parts).strip():
+        if not completed and not "".join(text_parts).strip():
             return EngineTestResult(False, "引擎未返回文本", duration_ms)
         return EngineTestResult(True, "连接和对话测试通过", duration_ms)
 

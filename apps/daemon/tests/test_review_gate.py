@@ -18,6 +18,7 @@ from models import (
     init_db,
 )
 from services.task_runner import TaskRunner
+from services.history import get_message_events, get_task_history
 from streaming.bus import EventBus
 
 
@@ -103,6 +104,39 @@ class PausedReviewEngine:
 
     async def stop(self):
         self.release_review.set()
+
+
+class StreamingPausedReviewEngine(PausedReviewEngine):
+    """Pause after emitting a visible review chunk."""
+
+    async def spawn(self, prompt, cwd, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "阶段执行完成"}},
+            )
+            return
+
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={"content": {"text": "正在检查验收标准"}},
+        )
+        self.review_started.set()
+        await self.release_review.wait()
+        yield InternalEvent(
+            type="agent_message_chunk",
+            data={
+                "content": {
+                    "text": json.dumps({
+                        "passed": True,
+                        "score": 100,
+                        "summary": "审核通过",
+                        "issues": [],
+                    }, ensure_ascii=False),
+                },
+            },
+        )
 
 
 @pytest.mark.anyio
@@ -208,6 +242,198 @@ async def test_automatic_review_message_is_visible_while_review_is_running(tmp_p
         release_review.set()
         await pipeline_task
         bus.unsubscribe(event_queue)
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_running_review_placeholder_survives_empty_journal(tmp_path):
+    """审核刚启动、journal 还没有任何 chunk 时，历史必须仍返回「审核中」。"""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="running-placeholder-task",
+        title="Running placeholder",
+        cwd=str(tmp_path),
+        engine="review-test",
+        created_at=1,
+        updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-running-placeholder",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    review_started = asyncio.Event()
+    release_review = asyncio.Event()
+    engine = PausedReviewEngine(review_started, release_review)
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: engine
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {
+            "steps": [{
+                "key": "build",
+                "label": "构建",
+                "engine": "review-test",
+                "dependsOn": [],
+                "review": {
+                    "auto": True,
+                    "maxRetries": 0,
+                    "engine": "review-test",
+                },
+            }],
+        },
+        tmp_path / "artifacts",
+        workflow_run=workflow_run,
+    ))
+    try:
+        await asyncio.wait_for(review_started.wait(), timeout=2)
+        history = await asyncio.to_thread(get_task_history, task.id, tmp_path)
+        running_review = next(
+            message for message in history
+            if message.get("step_key") == "build"
+            and message.get("role") == "assistant"
+            and message.get("run_status") == "running"
+        )
+        assert running_review["content"] == "审核中"
+    finally:
+        release_review.set()
+        await pipeline_task
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_automatic_review_history_restores_running_output(tmp_path):
+    """审核运行中的 LLM 输出也要写入事件日志，历史刷新不能只剩「审核中」。"""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="streaming-review-task",
+        title="Streaming review",
+        cwd=str(tmp_path),
+        engine="review-test",
+        created_at=1,
+        updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-streaming-review",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    review_started = asyncio.Event()
+    release_review = asyncio.Event()
+    engine = StreamingPausedReviewEngine(review_started, release_review)
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: engine
+    pipeline_task = asyncio.create_task(TaskRunner(EventBus()).run_pipeline(
+        task,
+        {
+            "steps": [{
+                "key": "build",
+                "label": "构建",
+                "engine": "review-test",
+                "dependsOn": [],
+                "review": {
+                    "auto": True,
+                    "maxRetries": 0,
+                    "engine": "review-test",
+                },
+            }],
+        },
+        tmp_path / "artifacts",
+        workflow_run=workflow_run,
+    ))
+    try:
+        await asyncio.wait_for(review_started.wait(), timeout=2)
+
+        history = await asyncio.to_thread(get_task_history, task.id, tmp_path)
+        running_review = next(
+            message for message in history
+            if message.get("step_key") == "build"
+            and message.get("role") == "assistant"
+            and message.get("run_status") == "running"
+        )
+        assert "正在检查验收标准" in running_review["content"]
+        assert running_review["event_detail"]["event_count"] >= 1
+        events_page = await asyncio.to_thread(
+            get_message_events,
+            task.id,
+            running_review["id"],
+            tmp_path,
+        )
+        assert any(
+            event.get("type") == "TEXT_MESSAGE_CHUNK"
+            and event.get("messageId") == running_review["id"]
+            for event in events_page["events"]
+        )
+    finally:
+        release_review.set()
+        await pipeline_task
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_execution_message_ends_before_its_automatic_review(tmp_path):
+    """执行消息的 ended_at 不能晚于其审核消息，否则前端会把审核排到执行上方。"""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="ordering-review-task",
+        title="Ordering review",
+        cwd=str(tmp_path),
+        engine="review-test",
+        created_at=1,
+        updated_at=1,
+    )
+    workflow_run = WorkflowRun.create(
+        id="workflow-ordering-review",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    calls: list[str] = []
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["review-test"] = lambda: SequencedReviewEngine(calls)
+    try:
+        await TaskRunner(EventBus()).run_pipeline(
+            task,
+            {
+                "steps": [{
+                    "key": "req",
+                    "label": "需求",
+                    "engine": "review-test",
+                    "dependsOn": [],
+                    "review": {
+                        "auto": True,
+                        "maxRetries": 0,
+                        "engine": "review-test",
+                    },
+                }]
+            },
+            tmp_path / "artifacts",
+            workflow_run=workflow_run,
+        )
+        messages = list(
+            Message.select()
+            .where((Message.task == task) & (Message.step_key == "req"))
+            .order_by(Message.sequence)
+        )
+        execution = next(m for m in messages if m.channel == "execution")
+        review = next(m for m in messages if m.channel == "review")
+        assert execution.sequence < review.sequence
+        assert execution.ended_at is not None
+        assert review.ended_at is not None
+        assert execution.ended_at <= review.ended_at
+    finally:
         ENGINE_REGISTRY.clear()
         ENGINE_REGISTRY.update(original)
         db.close()

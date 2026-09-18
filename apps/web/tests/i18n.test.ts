@@ -90,6 +90,10 @@ test('translates the channel chat assistant name', () => {
 test('uses duration wording for completed and stopped LLM messages', () => {
   assert.equal(zhCNT('trace.processed'), '耗时')
   assert.equal(zhCNT('trace.stoppedAfter', { duration: '3秒' }), '已停止，耗时 3秒')
+  assert.equal(
+    zhCNT('trace.thoughtCharactersDuration', { count: 12, duration: '3秒' }),
+    '思考了 12 Token · 3秒',
+  )
 })
 
 test('builds the AI workflow draft from the flow name', () => {

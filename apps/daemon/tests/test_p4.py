@@ -220,6 +220,59 @@ def test_get_task_history(db_with_history):
     assert history[1]["content"] == "UI spec"
 
 
+def test_get_task_history_converts_legacy_visualize_markers(db_with_history):
+    """任务消息历史读取时把旧 visualize 标记转成 Markdown 文件链接。"""
+    _, task_id = db_with_history
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    marker = '\ue200visualize{"path":"<path>","mode":"wide"}\ue201'.replace(
+        "<path>", path
+    )
+    msg = Message.select().where(Message.step_key == "ui").get()
+    Message.update(content=f"UI spec\n\n{marker}").where(
+        Message.id == msg.id
+    ).execute()
+
+    history = get_task_history(task_id)
+    content = [item for item in history if item["step_key"] == "ui"][0]["content"]
+    assert content == (
+        "UI spec\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+    assert "\ue200" not in content
+
+
+def test_get_task_history_converts_bare_visualize_marker_in_events(db_with_history):
+    """任务历史 events 里的正文 chunk 也要转换，保证前端交织渲染一致。"""
+    _, task_id = db_with_history
+    path = (
+        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "stage-progress-card-prototypes.html"
+    )
+    bare = f'visualize{{"path":"{path}","mode":"wide"}}'
+    msg = Message.select().where(Message.step_key == "ui").get()
+    Message.update(
+        engine="codex_sdk",
+        events_json=json.dumps([{
+            "type": "agent_message_chunk",
+            "data": {"content": {"text": f"UI spec\n\n{bare}"}},
+        }], ensure_ascii=False),
+    ).where(Message.id == msg.id).execute()
+
+    history = get_task_history(task_id)
+    entry = [item for item in history if item["step_key"] == "ui"][0]
+    delta = entry["events"][0]["delta"]
+    assert delta == (
+        "UI spec\n\n"
+        "[stage-progress-card-prototypes.html]"
+        f"(file://{path})"
+    )
+    assert bare not in delta
+
+
 def test_session_id_is_projected_from_each_message_events():
     from services.history import session_id_from_events
 

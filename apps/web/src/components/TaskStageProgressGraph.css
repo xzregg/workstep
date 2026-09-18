@@ -1,0 +1,495 @@
+.task-stage-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.task-stage-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.task-stage-progress-header-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-stage-progress-title {
+  flex: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.task-stage-progress-round {
+  color: var(--fg-2);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-stage-progress-header-focus {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.task-stage-progress-focus {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(100%, 240px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 89%);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.task-stage-progress-focus-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-stage-progress-zoom {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  font-variant-numeric: tabular-nums;
+}
+
+.task-stage-progress-zoom button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1;
+  cursor: pointer;
+}
+
+.task-stage-progress-zoom .task-stage-progress-zoom-level {
+  width: auto;
+  min-width: 38px;
+  padding-inline: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.task-stage-progress-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.task-stage-progress-surface {
+  position: relative;
+  width: 100%;
+  min-height: 188px;
+  overflow: auto hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: grab;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  touch-action: pan-x pan-y;
+}
+
+.task-stage-progress-surface.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.task-stage-progress-zoom-layer {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.task-stage-progress-grid {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: top left;
+  will-change: transform;
+}
+
+.task-stage-progress-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: block;
+  overflow: visible;
+  pointer-events: none;
+  shape-rendering: geometricPrecision;
+}
+
+.task-stage-progress-edge {
+  fill: none;
+  stroke: var(--meta);
+  stroke-width: 2.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.task-stage-progress-edge.is-active {
+  stroke: var(--accent);
+  stroke-width: 2.55;
+  opacity: 1;
+}
+
+.task-stage-progress-edge.is-dashed {
+  stroke: var(--warn);
+  stroke-width: 2.35;
+  stroke-dasharray: 6 5;
+  opacity: 0.96;
+}
+
+.task-stage-progress-edge.is-dashed.is-active {
+  stroke: var(--warn);
+  stroke-width: 2.6;
+  opacity: 1;
+}
+
+.task-stage-progress-edge.is-flowing:not(.is-dashed) {
+  stroke-dasharray: 7 5;
+  animation: task-stage-progress-flow 900ms linear infinite;
+}
+
+.task-stage-progress-edge.is-flowing.is-dashed {
+  stroke-dasharray: 6 5;
+  animation: task-stage-progress-flow 900ms linear infinite;
+}
+
+.task-stage-progress-port {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.task-stage-progress-port.is-active {
+  stroke: var(--accent);
+}
+
+.task-stage-progress-port.is-dashed,
+.task-stage-progress-port.is-dashed.is-active {
+  stroke: var(--warn);
+}
+
+.task-stage-progress-node {
+  position: absolute;
+  z-index: 2;
+}
+
+.task-stage-progress-card {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 80px;
+  min-height: 68px;
+  padding: 7px 7px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: grab;
+  font: inherit;
+  text-align: left;
+  transform-origin: 50% 50%;
+  will-change: transform;
+  transition:
+    transform var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    background var(--motion-fast) var(--ease),
+    opacity var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.task-stage-progress-card:hover {
+  z-index: 4;
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 10px 24px color-mix(in oklab, var(--fg), transparent 80%);
+}
+
+.task-stage-progress-surface.is-panning .task-stage-progress-card:hover {
+  z-index: 2;
+  transform: none;
+  box-shadow: none;
+}
+
+.task-stage-progress-card::before {
+  position: absolute;
+  inset: 4px auto 4px 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--stage-status-color, var(--border));
+  content: '';
+}
+
+.task-stage-progress-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.task-stage-progress-card.is-selected {
+  border-color: var(--stage-status-color, var(--border));
+  background: var(--surface);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--stage-status-color, var(--accent)), transparent 72%);
+}
+
+.task-stage-progress-card.is-selected:hover {
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--stage-status-color, var(--accent)), transparent 72%),
+    0 10px 24px color-mix(in oklab, var(--fg), transparent 80%);
+}
+
+.task-stage-progress-card.is-dimmed {
+  opacity: 0.72;
+}
+
+.task-stage-progress-card.is-dimmed:hover {
+  opacity: 0.94;
+}
+
+.task-stage-progress-card.is-completed {
+  --stage-status-color: var(--status-done);
+}
+
+.task-stage-progress-card.is-current,
+.task-stage-progress-card.is-reviewing {
+  --stage-status-color: var(--status-running);
+}
+
+.task-stage-progress-card.is-awaiting_review,
+.task-stage-progress-card.is-retrying,
+.task-stage-progress-card.is-rework,
+.task-stage-progress-card.is-rework_waiting {
+  --stage-status-color: var(--warn);
+}
+
+.task-stage-progress-card.is-failed {
+  --stage-status-color: var(--status-failed);
+}
+
+.task-stage-progress-card.is-cancelled {
+  --stage-status-color: var(--status-cancelled);
+}
+
+.task-stage-progress-card.is-skipped,
+.task-stage-progress-card.is-pending {
+  --stage-status-color: var(--meta);
+}
+
+.task-stage-progress-card-head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.task-stage-progress-name {
+  text-align: left;
+  color: var(--fg-2);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.task-stage-progress-round-tag {
+  flex: none;
+  color: var(--meta);
+  font-size: calc(9px * var(--font-scale));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.task-stage-progress-card-tags {
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.25;
+}
+
+.task-stage-progress-current-tag {
+  max-width: 100%;
+  padding: 0 4px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent), transparent 88%);
+  font-size: calc(8px * var(--font-scale));
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.task-stage-progress-card-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+}
+
+.task-stage-progress-status {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 1px 4px;
+  border-radius: 999px;
+  color: var(--stage-status-color, var(--fg-2));
+  background: color-mix(in oklab, var(--stage-status-color, var(--meta)), transparent 88%);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.task-stage-progress-status-icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--meta);
+  display: inline-flex;
+  background: color-mix(in oklab, var(--stage-status-color, var(--meta)), transparent 88%);
+}
+
+.task-stage-progress-status-icon.is-active {
+  color: var(--status-running);
+}
+
+.task-stage-progress-status-icon-glyph.is-spinning {
+  animation: task-stage-progress-spin 1s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+.task-stage-progress-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-stage-progress-card.is-completed .task-stage-progress-status-icon {
+  color: var(--status-done);
+}
+
+.task-stage-progress-card.is-failed .task-stage-progress-status-icon {
+  color: var(--status-failed);
+}
+
+.task-stage-progress-card.is-cancelled .task-stage-progress-status-icon {
+  color: var(--status-cancelled);
+}
+
+.task-stage-progress-card.is-skipped .task-stage-progress-status-icon,
+.task-stage-progress-card.is-pending .task-stage-progress-status-icon {
+  color: var(--meta);
+}
+
+.task-stage-progress-card.is-awaiting_review .task-stage-progress-status-icon,
+.task-stage-progress-card.is-retrying .task-stage-progress-status-icon,
+.task-stage-progress-card.is-rework .task-stage-progress-status-icon,
+.task-stage-progress-card.is-rework_waiting .task-stage-progress-status-icon {
+  color: var(--warn);
+}
+
+.task-stage-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  color: var(--meta);
+  font-size: calc(9px * var(--font-scale));
+  line-height: 1.25;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.task-stage-progress-meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes task-stage-progress-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+@keyframes task-stage-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .task-stage-progress-surface {
+    min-height: 176px;
+  }
+
+  .task-stage-progress-card {
+    padding-inline: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-stage-progress-edge.is-flowing:not(.is-dashed) {
+    animation: none;
+  }
+
+  .task-stage-progress-status-icon-glyph.is-spinning {
+    animation: none;
+  }
+
+  .task-stage-progress-card {
+    transition: none;
+  }
+}

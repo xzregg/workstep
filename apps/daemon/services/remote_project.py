@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import inspect
 import ipaddress
 import json
@@ -23,7 +24,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any, Callable, Literal
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -47,7 +48,7 @@ class ActorSnapshot:
     user_name: str
     device_id: str
     device_name: str
-    source: Literal["local", "remote"]
+    source: Literal["local", "browser", "remote"]
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,78 @@ def get_effective_actor() -> ActorSnapshot | None:
     )
 
 
+def actor_from_browser_headers(headers) -> ActorSnapshot | None:
+    """Build a browser visitor identity from WorkStep request headers."""
+    def decoded(name: str) -> str:
+        return unquote(str(headers.get(name) or "")).strip()
+
+    actor_id = decoded("x-workstep-actor-id")
+    user_name = decoded("x-workstep-actor-name")
+    device_id = decoded("x-workstep-actor-device-id") or actor_id
+    device_name = decoded("x-workstep-actor-device-name")
+    if not actor_id or not user_name or not device_id or not device_name:
+        return None
+    return ActorSnapshot(
+        actor_id=actor_id,
+        user_name=user_name,
+        device_id=device_id,
+        device_name=device_name,
+        source="browser",
+    )
+
+
+class BrowserActorMiddleware(BaseHTTPMiddleware):
+    """Attach the browser visitor identity for the lifetime of one request."""
+
+    async def dispatch(self, request: Request, call_next):
+        if get_current_actor() is not None:
+            return await call_next(request)
+        actor = actor_from_browser_headers(request.headers)
+        if actor is None:
+            return await call_next(request)
+        token = _current_actor.set(actor)
+        try:
+            return await call_next(request)
+        finally:
+            _current_actor.reset(token)
+
+
+class RemoteAccessGuardMiddleware(BaseHTTPMiddleware):
+    """Require the access password for every non-local browser request.
+
+    Only the ``/api`` surface is withheld, so the SPA shell can still load and
+    render the unlock dialog. The main WebSocket feed applies the same check
+    (see :func:`websocket_access_allowed`). Loopback callers, health checks
+    and public share links stay reachable without the password.
+    """
+
+    def __init__(self, app, *, access_service: RemoteAccessService):
+        super().__init__(app)
+        self._service = access_service
+
+    def _authorized(self, request: Request) -> bool:
+        if _is_loopback(_client_host(request.headers, request.client)):
+            return True
+        if not self._service.access_password_required():
+            return True
+        token = request.cookies.get(ACCESS_COOKIE_NAME)
+        if not token:
+            header = request.headers.get("x-workstep-access")
+            token = header.strip() if header else None
+        return self._service.verify_access_token(token)
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if _guard_exempt(path, request.method):
+            return await call_next(request)
+        if self._authorized(request):
+            return await call_next(request)
+        return JSONResponse(
+            {"detail": "需要远程访问密钥", "code": "remote_access_locked"},
+            status_code=401,
+        )
+
+
 def current_actor_event_fields() -> dict[str, Any]:
     actor = get_effective_actor()
     if actor is None:
@@ -130,6 +203,74 @@ def current_actor_event_fields() -> dict[str, Any]:
 
 def _secret_hash(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _password_hash(value: str, salt: str) -> str:
+    """Salted SHA-256 for the browser access password (never stored raw)."""
+    return hashlib.sha256(f"{salt}:{value}".encode()).hexdigest()
+
+
+ACCESS_COOKIE_NAME = "workstep_access"
+
+
+def _client_host(headers, client) -> str:
+    """Best-effort real client address behind a trusted local reverse proxy.
+
+    ``X-Forwarded-For`` / ``X-Real-IP`` are only honoured when the direct peer
+    is loopback (a local nginx/ingress). Otherwise a remote client could spoof
+    ``127.0.0.1`` and skip the access-password guard.
+    """
+    peer = str(getattr(client, "host", "") or "").strip()
+    if _is_loopback(peer):
+        forwarded = str(headers.get("x-forwarded-for") or "").strip()
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        real_ip = str(headers.get("x-real-ip") or "").strip()
+        if real_ip:
+            return real_ip
+    return peer
+
+
+def _is_loopback(host: str) -> bool:
+    value = host.strip().strip("[]")
+    if value.startswith("::ffff:"):
+        value = value[len("::ffff:"):]
+    if not value:
+        return False
+    if value in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(value).is_loopback
+    except ValueError:
+        return False
+
+
+def _guard_exempt(path: str, method: str) -> bool:
+    # Static assets and the SPA shell must load so the remote visitor can see
+    # the unlock dialog; only the data/API surface is withheld.
+    if not path.startswith("/api/"):
+        return True
+    if path == "/api/health":
+        return True
+    if path.startswith("/api/task-share/public/"):
+        return True
+    if path == "/api/remote-project/access/status":
+        return True
+    if path == "/api/remote-project/access/unlock" and method.upper() == "POST":
+        return True
+    return False
+
+
+def websocket_access_allowed(ws: WebSocket, access_service: "RemoteAccessService") -> bool:
+    """Mirror ``RemoteAccessGuardMiddleware`` for the main WebSocket feed."""
+    if _is_loopback(_client_host(ws.headers, ws.client)):
+        return True
+    if not access_service.access_password_required():
+        return True
+    token = ws.cookies.get(ACCESS_COOKIE_NAME)
+    if not token:
+        token = str(ws.query_params.get("access") or "").strip() or None
+    return access_service.verify_access_token(token)
 
 
 def _websocket_endpoint(base_url: str, *, external: bool) -> str:
@@ -250,7 +391,71 @@ class RemoteAccessService:
             ),
             "external_base_url": str(raw.get("external_base_url") or ""),
             "host_id": str(raw.get("host_id") or ""),
+            "access_password_set": bool(raw.get("access_password_hash")),
         }
+
+    def set_access_password(self, password: str) -> dict[str, Any]:
+        """Set (or clear, with an empty string) the browser access password."""
+        value = password.strip()
+        raw = self._load()
+        raw["host_id"] = str(raw.get("host_id") or uuid.uuid4())
+        if value:
+            salt = secrets.token_hex(16)
+            raw["access_password_salt"] = salt
+            raw["access_password_hash"] = _password_hash(value, salt)
+            raw["access_password_set_at"] = int(time.time())
+        else:
+            raw.pop("access_password_salt", None)
+            raw.pop("access_password_hash", None)
+            raw.pop("access_password_set_at", None)
+        self._save(raw)
+        return self.settings()
+
+    def access_password_required(self) -> bool:
+        """A password gates non-local access only when one is configured."""
+        return bool(self._load().get("access_password_hash"))
+
+    def _access_secret(self, raw: dict[str, Any] | None = None) -> str:
+        data = raw if raw is not None else self._load()
+        return hashlib.sha256(
+            f"{data.get('access_password_hash') or ''}:{data.get('host_id') or ''}".encode()
+        ).hexdigest()
+
+    def verify_access_password(self, password: str) -> bool:
+        raw = self._load()
+        stored = str(raw.get("access_password_hash") or "")
+        salt = str(raw.get("access_password_salt") or "")
+        if not stored or not salt:
+            return False
+        candidate = _password_hash(password, salt)
+        return secrets.compare_digest(candidate, stored)
+
+    def issue_access_token(self, *, ttl_seconds: int = 7 * 24 * 60 * 60) -> str:
+        expires_at = int(time.time()) + int(ttl_seconds)
+        payload = str(expires_at)
+        signature = hmac.new(
+            self._access_secret().encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{payload}.{signature}"
+
+    def verify_access_token(self, token: str | None) -> bool:
+        if not token or "." not in token:
+            return False
+        payload, signature = token.split(".", 1)
+        try:
+            expires_at = int(payload)
+        except ValueError:
+            return False
+        if expires_at < int(time.time()):
+            return False
+        expected = hmac.new(
+            self._access_secret().encode(),
+            payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return secrets.compare_digest(signature, expected)
 
     def update_settings(
         self,
