@@ -4,6 +4,7 @@ import {
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
 import type { AssistantChatMessage } from '../stores/assistantStore'
@@ -256,9 +257,11 @@ export default function AssistantChatPanel({
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
   const compactLayout = useCompactLayout()
+  const [quickPromptsOpen, setQuickPromptsOpen] = useState(false)
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
   const [awaitingReply, setAwaitingReply] = useState(false)
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
+  const [scrolledToBottom, setScrolledToBottom] = useState(true)
   const listRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -431,7 +434,7 @@ export default function AssistantChatPanel({
 
       {/* 输入区上方的悬浮面板（如「待插入消息」）会遮住会话底部：
           由包裹层留出「面板高度 + 10px」，滚动容器随之整体变矮。 */}
-      <div style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(10) }}>
+      <div className={`chat-history-wrapper${scrolledToBottom ? ' is-at-bottom' : ''}`} style={{ flex: 1, minHeight: 0, position: 'relative', paddingBottom: overlayPaddingBottom(5) }}>
         <div
           className="chat-history-scroll"
           ref={listRef}
@@ -495,6 +498,7 @@ export default function AssistantChatPanel({
                 setHasUnreadMessages(false)
               }
             }
+            setScrolledToBottom(nearBottom)
             lastScrollTopRef.current = list.scrollTop
             lastScrollHeightRef.current = list.scrollHeight
           }}
@@ -600,34 +604,34 @@ export default function AssistantChatPanel({
             height: compactLayout ? 'auto' : composerHeight ?? 'auto',
             overflowY: 'visible',
             display: 'flex', flexDirection: 'column',
-            padding: '12px 12px',
+            padding: compactLayout ? '0' : '12px 12px',
           }}
         >
-          {(composerActions || (quickPrompts && quickPrompts.length > 0)) && (
-            <div
-              className="chat-quick-prompts"
-              role="group"
-              aria-label={quickPromptsLabel}
-              style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
-            >
-              {composerActions}
-              {quickPrompts?.map((item) => (
-                <Button
-                  key={item.label}
-                  type="button"
-                  size="sm"
-                  disabled={running}
-                  onClick={() => {
-                    onQuickPromptSelect?.(item.prompt)
-                    requestAnimationFrame(() => inputRef.current?.focus())
-                  }}
-                  style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
-                >
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          )}
+          {(composerActions || (quickPrompts && quickPrompts.length > 0)) && !compactLayout && (
+              <div
+                className="chat-quick-prompts"
+                role="group"
+                aria-label={quickPromptsLabel}
+                style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '0 1px 8px' }}
+              >
+                {composerActions}
+                {quickPrompts?.map((item) => (
+                  <Button
+                    key={item.label}
+                    type="button"
+                    size="sm"
+                    disabled={running}
+                    onClick={() => {
+                      onQuickPromptSelect?.(item.prompt)
+                      requestAnimationFrame(() => inputRef.current?.focus())
+                    }}
+                    style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
+                  >
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            )}
           <ChatInput
             projectId={projectId}
             sessionId={sessionId}
@@ -655,6 +659,36 @@ export default function AssistantChatPanel({
             context={context}
             quota={quota}
             plan={plan}
+            left={compactLayout && quickPrompts && quickPrompts.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  className="chat-quick-bolt"
+                  disabled={running}
+                  onClick={() => setQuickPromptsOpen(true)}
+                  aria-label={quickPromptsLabel}
+                  style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--meta)', cursor: running ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 'calc(14px * var(--font-scale))', padding: 0 }}
+                >
+                  ⚡
+                </button>
+                <MobileSheet open={quickPromptsOpen} title={quickPromptsLabel || t('chatSession.quickPromptsLabel')} onClose={() => setQuickPromptsOpen(false)}>
+                  {quickPrompts.map((item) => (
+                    <Button
+                      key={item.label}
+                      variant="ghost"
+                      onClick={() => {
+                        setQuickPromptsOpen(false)
+                        onQuickPromptSelect?.(item.prompt)
+                        requestAnimationFrame(() => inputRef.current?.focus())
+                      }}
+                      style={{ justifyContent: 'flex-start' }}
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </MobileSheet>
+              </>
+            ) : undefined}
           />
         </div>
       </div>

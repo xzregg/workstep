@@ -5,8 +5,8 @@ import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
 import Icon from './Icon'
 
-export default function ResponsiveNavigation({ children, title, onNew, style, dismissSignal, newDisabled = false }: {
-  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; dismissSignal?: string; newDisabled?: boolean
+export default function ResponsiveNavigation({ children, title, onNew, style, dismissSignal, newDisabled = false, headerRight }: {
+  children: ReactNode; title: string; onNew: () => void; style?: CSSProperties; dismissSignal?: string; newDisabled?: boolean; headerRight?: ReactNode
 }) {
   const { t } = useI18n()
   const compact = useCompactLayout()
@@ -19,7 +19,10 @@ export default function ResponsiveNavigation({ children, title, onNew, style, di
     <header className="mobile-header">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>
       <span title={title}>{title}</span>
-      <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>
+      <div className="mobile-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        {headerRight}
+        <button aria-label={t('mobile.newChat')} disabled={newDisabled} onClick={onNew}><Icon name="plus" size={21} /></button>
+      </div>
     </header>
     {compact && open && <div className="mobile-overlay-backdrop navigation-backdrop" onClick={() => setOpen(false)} />}
     <aside id="workstep-navigation" ref={ref} style={style} className={`responsive-navigation${open ? ' is-open' : ''}`}

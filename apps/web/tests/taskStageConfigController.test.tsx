@@ -125,6 +125,7 @@ test('stage config exposes its resolved thinking effort as the inheritance defau
             {({ inputConfig }) => (
               <span
                 data-effort={inputConfig?.stageValues?.model_reasoning_effort}
+                data-thinking={inputConfig?.thinkingEffort}
                 data-field={String(inputConfig?.stageFields?.some(
                   (field) => field.key === 'model_reasoning_effort',
                 ))}
@@ -137,6 +138,7 @@ test('stage config exposes its resolved thinking effort as the inheritance defau
     await act(async () => { await Promise.resolve() })
     const state = container.querySelector('span')
     assert.equal(state?.getAttribute('data-effort'), 'minimal')
+    assert.equal(state?.getAttribute('data-thinking'), 'minimal')
     assert.equal(state?.getAttribute('data-field'), 'true')
   } finally {
     taskApi.stageExecutionConfig = original

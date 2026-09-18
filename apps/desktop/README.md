@@ -42,6 +42,14 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 ## 发布
 
+根目录的 `build.sh` 可先构建 Web dist，再生成桌面后端包：
+
+```bash
+./build.sh              # 交互确认是否构建 web dist（默认构建）
+./build.sh --with-web   # 构建 web dist 后打包桌面后端
+./build.sh --no-web     # 复用已有 apps/web/dist
+```
+
 推送 `v*` tag 后，CI 在 Windows、macOS 和 Linux 分别完成以下流程：
 
 1. 构建 React 前端。

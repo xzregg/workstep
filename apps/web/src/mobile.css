@@ -162,3 +162,192 @@
 .sidebar-add-button:hover::before { background: var(--surface); }
 .sidebar-add-button > svg { position: relative; }
 .sidebar-add-button.btn-loading > svg:last-child { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   移动端聊天页「极简布局」第一版（纯 CSS，原型见
+   ui/mobile-chat-prototype/b-pure-css.css）：
+   隐藏会话头部（新建入口保留顶栏「+」，去重）、隐藏消息操作按钮、
+   token 摘要限 2 行、输入区折叠感（44px 起 + 单行横滚工具条）。
+
+   注意作用域：.assistant-chat-panel / .chat-message-* / .chat-input-*
+   同时影响 ChatPage、任务详情对话、AI 流程助手与分享页 ——
+   此处有意让所有移动端聊天场景统一成这套简洁形态。
+   待补代码（不在本步）：⋮ 会话菜单（重命名/删除/设置入口）、
+   快捷提示 ⚡ 弹层、占位文案去 Shift+Enter。
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1023px) {
+  /* 隐藏 40px 会话头部（标题/状态/新建/重命名/删除/打开位置/设置）。
+     覆盖上面的 padding/flex-wrap 规则：整行不再渲染。
+     运行状态由消息区 thinking 气泡承接；「新建对话」只剩顶栏「+」。 */
+  .assistant-chat-panel > div:first-child {
+    display: none !important;
+  }
+
+  /* 移动端隐藏消息操作按钮（复制/fork/重试/编辑/send-to-input），
+     长按选区仍可复制。置于 pointer:coarse 规则之后以覆盖 opacity:1。 */
+  .chat-message-action {
+    display: none !important;
+  }
+
+  /* token 摘要 4-5 行 → 2 行，超出省略。 */
+  .footer-usage-summary {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* 快捷提示行：保留功能，压薄。 */
+  .chat-quick-prompts {
+    padding: 0 16px 4px !important;
+    gap: 6px !important;
+  }
+  .chat-quick-prompts .btn {
+    min-height: 30px !important;
+    padding-block: 0 !important;
+  }
+
+  /* Composer 折叠感：悬浮横条卡片 + 单行输入。 */
+  .chat-input-root {
+    padding: 3px;
+  }
+  .chat-input-root > div {
+    border-radius: 16px !important;
+  }
+  .chat-input-editor {
+    min-height: 44px !important;
+    max-height: 140px !important;
+  }
+  .chat-input-toolbar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    min-height: 36px !important;
+  }
+  .chat-input-toolbar::-webkit-scrollbar { display: none; }
+  .chat-input-toolbar > * {
+    flex-shrink: 0 !important;
+    min-height: 32px !important;
+  }
+  /* 发送按钮固定在 toolbar 右侧，不随横滚移动；无输入时隐藏 */
+  .chat-input-send {
+    position: sticky !important;
+    right: 0 !important;
+    z-index: 1;
+    box-shadow: -8px 0 8px -4px var(--bg) !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+  }
+  .chat-input-send:disabled {
+    display: none !important;
+  }
+  /* 额度与上下文环移出首屏工具条（详情仍可从菜单/展开查看）。 */
+  .chat-input-quota,
+  .chat-input-context-breakdown-wrap {
+    display: none !important;
+  }
+  .chat-input-pill {
+    max-width: min(200px, 50vw);
+  }
+
+  /* 消息区留白略收紧，多换几行可视消息。 */
+  .chat-history-scroll {
+    padding-block: 6px !important;
+  }
+
+  /* ── C 方案补充（纯 CSS） ── */
+
+  /* 隐藏头像：移动端屏幕窄，省出 ~40px 给正文。 */
+  .chat-message-avatar-anchor {
+    display: none !important;
+  }
+
+  /* Meta 栏去底线 + 弱化：C 风格是灰色单行，不要分隔线。 */
+  .message-meta-details,
+  .chat-message-row > div[style*="border-bottom"] {
+    border-bottom: 0 !important;
+  }
+  /* MessageMetaBar 根容器是内联 style borderBottom，用属性选择器兜底；
+     reviewMode 分支同样处理。 */
+  [style*="borderBottom: 1px solid var(--border-soft)"] {
+    border-bottom: 0 !important;
+  }
+
+  /* 输入卡片悬浮感：横条圆角，去掉投影避免分割感 */
+  .chat-input-root > div {
+    border-radius: 16px !important;
+  }
+  .chat-input-root {
+    background: transparent !important;
+  }
+
+  /* ↓ 回底按钮居中（默认右下角）。 */
+  .conversation-new-messages-button {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+  }
+
+  /* footer token 摘要整行隐藏（C 方案极简取向）。
+     :has 在现代移动浏览器已支持；不支持的降级保留上面 clamp 2 行。 */
+  .chat-message-row > div:has(> .footer-usage-summary):has(> .chat-message-action) {
+    /* 仅当 footer 只剩 token+操作按钮时整行收掉；若还有别的内容则保留 */
+  }
+
+  /* ── 第②步：⋮ 菜单按钮 + ⚡ 快捷提示 + 气泡锚点样式 ── */
+
+  /* kebab 按钮：圆形 36px，与顶栏 + 按钮视觉对齐 */
+  .mobile-session-kebab {
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mobile-session-kebab:active { background: var(--surface); }
+
+  /* 用户气泡 accent 浅底（现在有稳定 class，不再依赖结构选择器） */
+  .chat-bubble--user {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface)) !important;
+    padding: 10px 14px !important;
+    border-radius: 18px 18px 4px 18px !important;
+  }
+
+  /* 助手气泡微调：去掉多余内边距 */
+  .chat-bubble--assistant {
+    padding: 0 !important;
+  }
+
+  /* ⚡ 快捷提示已嵌入 toolbar 行内（通过 ChatInput left prop），不再单独一行 */
+}
+
+/* 消息区包裹层：白色背景 + 底部渐变（未滚到底时显示） */
+.chat-history-wrapper {
+  background: var(--bg);
+}
+.chat-history-wrapper::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg) 100%);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+.chat-history-wrapper.is-at-bottom::after {
+  opacity: 0;
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { randomUuid } from '../utils/uuid'
 import AssistantChatPanel from '../components/AssistantChatPanel'
@@ -9,6 +10,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
 import Icon from '../components/Icon'
 import Input from '../components/Input'
+import MobileSheet from '../components/MobileSheet'
 import PendingMessageInserts, {
   type PendingMessageInsert,
 } from '../components/PendingMessageInserts'
@@ -33,6 +35,7 @@ import {
 import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
+import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useI18n } from '../i18n'
 import { clearDraft } from '../utils/chatDraft'
 import { clearInsertQueue, loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
@@ -115,6 +118,8 @@ export default function ChatPage() {
   const [handoffError, setHandoffError] = useState('')
   const [handoffTarget, setHandoffTarget] = useState<HandoffEndpoint | null>(null)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const compact = useCompactLayout()
 
   // Engine/model picker (session-scoped, mirrors the flow assistant wiring).
   const [assistantConfig, setAssistantConfig] = useState<AssistantConfigInfo | null>(null)
@@ -206,10 +211,10 @@ export default function ChatPage() {
     meInitials: t('chatSession.meInitials'),
     agent: t('chatSession.agent'),
     agentInitials: t('chatSession.agentInitials'),
-    placeholder: t('chatSession.placeholder'),
+    placeholder: t(compact ? 'chatSession.placeholderCompact' : 'chatSession.placeholder'),
     fullPrompt: t('aiFlow.fullPrompt'),
     closePrompt: t('aiFlow.closePrompt'),
-  }), [t])
+  }), [t, compact])
   const quickPromptItems = useMemo(
     () => quickButtons.map((button) => ({ label: button.label, prompt: button.prompt })),
     [quickButtons],
@@ -1142,6 +1147,56 @@ export default function ChatPage() {
         project={showSettingsPanel ? activeProject : null}
         onClose={() => setShowSettingsPanel(false)}
       />
+      {compact && createPortal(
+        <button
+          className="mobile-session-kebab"
+          aria-label={t('chatSession.sessionMenu')}
+          aria-expanded={mobileMenuOpen}
+          onClick={() => setMobileMenuOpen(true)}
+        >
+          <Icon name="ellipsis" size={20} />
+        </button>,
+        document.querySelector('.mobile-header-actions') || document.body,
+      )}
+      <MobileSheet
+        open={mobileMenuOpen}
+        title={t('chatSession.sessionMenu')}
+        onClose={() => setMobileMenuOpen(false)}
+      >
+        <Button
+          variant="ghost"
+          loading={creating}
+          onClick={() => { setMobileMenuOpen(false); void createSession() }}
+          style={{ justifyContent: 'flex-start', gap: 8 }}
+        >
+          <Icon name="plus" size={16} /> {t('chatSession.newSession')}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => { setMobileMenuOpen(false); setRenameValue(sessionTitle); setRenameError(''); setRenameOpen(true) }}
+          style={{ justifyContent: 'flex-start', gap: 8 }}
+        >
+          <Icon name="pencil" size={16} /> {t('common.rename')}
+        </Button>
+        <Button
+          variant="ghost"
+          disabled={running}
+          onClick={() => { setMobileMenuOpen(false); setDeleteOpen(true) }}
+          style={{ justifyContent: 'flex-start', gap: 8, color: 'var(--danger)' }}
+        >
+          <Icon name="trash" size={16} /> {t('common.delete')}
+        </Button>
+        <div onClick={() => setMobileMenuOpen(false)}>
+          <OpenLocationButton activeProject={activeProject} t={t} />
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => { setMobileMenuOpen(false); setShowSettingsPanel(true) }}
+          style={{ justifyContent: 'flex-start', gap: 8 }}
+        >
+          <Icon name="settings" size={16} /> {t('taskList.settings')}
+        </Button>
+      </MobileSheet>
     </>
   )
 }

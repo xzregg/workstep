@@ -102,6 +102,11 @@ export default function TaskStageConfigController({
       defaultEngine: selection.engine,
       model: selection.model,
       fastModel: '',
+      thinkingEffort: (
+        selection.config.model_reasoning_effort
+        || selection.config.thinking_effort
+        || ''
+      ),
       providerId: selection.config.provider_id || '',
       allowDefault: false,
       requireCoordinator: false,

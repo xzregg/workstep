@@ -69,6 +69,13 @@ test('internal assistants load their own vision configuration', () => {
   assert.match(apiClientSource, /vision_model: options\.vision_model \|\| undefined/)
 })
 
+test('reset workflow assistant sessions restore the workflow assistant settings', () => {
+  assert.match(
+    flowAssistantSource,
+    /const configured = assistantConfig\?\.configured[\s\S]*setSelectedEngine\(configured\?\.engine \|\| ''\)[\s\S]*setSelectedThinkingEffort\(configured\?\.thinking_effort \|\| ''\)/,
+  )
+})
+
 test('workflow stages reload provider models and clear stale selections', () => {
   assert.match(flowCanvasSource, /fetchEngineModels\(draft\.engine, false, providerId\)/)
   assert.match(flowCanvasSource, /fetchEngineModels\(reviewEngine, false, providerId\)/)

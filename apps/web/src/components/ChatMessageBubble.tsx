@@ -236,7 +236,7 @@ export default function ChatMessageBubble({
             </div>
           )}
           {(visibleContent || hasToolActivity) ? (
-            <div style={{
+            <div className={isUser ? 'chat-bubble chat-bubble--user' : 'chat-bubble chat-bubble--assistant'} style={{
               fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6,
               color: isUser ? 'var(--fg)' : 'var(--fg-2)',
               background: isUser ? 'var(--surface)' : 'var(--bg)',

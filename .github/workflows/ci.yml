@@ -53,7 +53,9 @@ jobs:
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_real_task_tools_produce_plan_events
       - name: Desktop protocol tests
         run: |
-          uv run --project apps/daemon --frozen --group dev pytest apps/desktop/tests/test_backend_entry.py
+          uv run --project apps/daemon --frozen --group dev pytest \
+            apps/desktop/tests/test_backend_entry.py \
+            apps/desktop/tests/test_build_script.py
           node --test apps/desktop/tests/sidecar.test.cjs
       - name: Web tests and build
         working-directory: apps/web
