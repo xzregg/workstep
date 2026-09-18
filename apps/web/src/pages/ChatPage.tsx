@@ -34,7 +34,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { useThrottledMemo } from '../hooks/useThrottledMemo'
 import { useI18n } from '../i18n'
-import { clearDraft, loadDraft, saveDraft } from '../utils/chatDraft'
+import { clearDraft } from '../utils/chatDraft'
 import { clearInsertQueue, loadInsertQueue, saveInsertQueue } from '../utils/chatInsertQueue'
 import {
   clearIncompatibleProvider,
@@ -90,12 +90,8 @@ export default function ChatPage() {
     : ''
   // 会话详情未加载前 running 默认为 false，不能让队列误判为空闲并提前发送。
   const [sessionDetailReadyId, setSessionDetailReadyId] = useState<string | null>(null)
-  // 草稿必须写回它实际所属的项目；项目切换时 activeProject 可能已经变成目标项目。
-  const draftOwnerRef = useRef<{ projectId: string; sessionId: string } | null>(null)
   const [sessionTitle, setSessionTitle] = useState('')
   const [input, setInput] = useState('')
-  const inputRef = useRef(input)
-  inputRef.current = input
   const [sendError, setSendError] = useState('')
   const [pendingInserts, setPendingInserts] = useState<PendingMessageInsert[]>([])
   const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
@@ -378,27 +374,10 @@ export default function ChatPage() {
     void useChatListStore.getState().fetchSessions(activeProject.id)
   }, [activeProject?.id, running])
 
-  // Reset transient state when switching sessions.
-  // Save the previous session's input to localStorage before clearing,
-  // then restore the target session's draft (if any).
+  // Reset transient state when switching sessions. The composer owns draft
+  // persistence; this effect only clears page-local UI state.
   useEffect(() => {
-    const owner = draftOwnerRef.current
-    const currentInput = inputRef.current
-    if (owner && currentInput.trim()) {
-      saveDraft(owner.sessionId, currentInput)
-    }
-    // 切换前配置仍是旧会话的值 → 存回旧会话的 key（与草稿同一懒保存模式）。
-    if (owner) {
-      saveChatEngineConfig(owner.projectId, owner.sessionId, engineConfigRef.current)
-    }
-    if (sessionId && routeProjectId) {
-      const draft = loadDraft(sessionId, routeProjectId)
-      setInput(draft)
-      draftOwnerRef.current = { projectId: routeProjectId, sessionId }
-    } else {
-      setInput('')
-      draftOwnerRef.current = null
-    }
+    if (!sessionId) setInput('')
     setSendError('')
     setStopping(false)
     setEditingInsertId(null)
@@ -406,21 +385,11 @@ export default function ChatPage() {
     setSendingInsertIds([])
   }, [sessionId, routeProjectId])
 
-  // 路由切换会卸载整个 ChatPage；保存最新 ref，避免草稿只在切换会话时落盘。
-  useEffect(() => {
-    if (!sessionId || !routeProjectId) return
-    return () => {
-      const owner = draftOwnerRef.current
-      if (owner) saveDraft(owner.sessionId, inputRef.current)
-    }
-  }, [sessionId, routeProjectId])
-
   // 引擎配置同样懒保存：切换会话 / 路由卸载时把当前会话的选择落盘。
   useEffect(() => {
     if (!sessionId || !routeProjectId) return
     return () => {
-      const owner = draftOwnerRef.current
-      if (owner) saveChatEngineConfig(owner.projectId, owner.sessionId, engineConfigRef.current)
+      saveChatEngineConfig(routeProjectId, sessionId, engineConfigRef.current)
     }
   }, [sessionId, routeProjectId])
 
@@ -741,13 +710,14 @@ export default function ChatPage() {
     setCreating(true)
     setSendError('')
     try {
+      const configured = assistantConfig?.configured
       const detail = await chatSessionApi.create({
         project_id: activeProject.id,
-        engine: selectedEngine || undefined,
-        provider_id: selectedProvider || undefined,
-        model: selectedModel || undefined,
-        fast_model: selectedFastModel || undefined,
-        vision_model: selectedVisionModel || undefined,
+        engine: configured?.engine || undefined,
+        provider_id: configured?.provider_id || undefined,
+        model: configured?.model || undefined,
+        fast_model: configured?.fast_model || undefined,
+        vision_model: configured?.vision_model || undefined,
       })
       const summary = {
         id: detail.id,
@@ -769,7 +739,7 @@ export default function ChatPage() {
     } finally {
       setCreating(false)
     }
-  }, [activeProject, creating, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, projectParam, navigate, t])
+  }, [activeProject, assistantConfig, creating, projectParam, navigate, t])
 
   const openFork = useCallback((targetEngine = selectedEngine, messageId: string | null = null) => {
     if (!sessionId || running) return
@@ -957,7 +927,8 @@ export default function ChatPage() {
         quickPromptsLabel={t('chatSession.quickPromptsLabel')}
         quickPrompts={quickPromptItems}
         onQuickPromptSelect={(prompt) => {
-          setInput((current) => applyAssistantQuickPrompt(current, prompt))
+          const next = applyAssistantQuickPrompt(input, prompt)
+          setInput(next)
           setSendError('')
         }}
         copy={panelCopy}
@@ -1013,6 +984,9 @@ export default function ChatPage() {
           visionModel: selectedVisionModel,
           showVision: true,
           thinkingEffort: selectedThinkingEffort,
+          defaultThinkingEffort: assistantConfig?.configured.thinking_effort
+            || assistantConfig?.resolved?.thinking_effort
+            || '',
           disabled: !assistantConfig || coordinatorConfigError !== '' || running,
           error: coordinatorConfigError,
           hint: assistantConfig ? t('chatSession.sessionHint') : '',

@@ -87,6 +87,64 @@ test('stage config loads the workflow selection and is read-only while running',
   }
 })
 
+test('stage config exposes its resolved thinking effort as the inheritance default', async () => {
+  const window = installDom()
+  const original = taskApi.stageExecutionConfig
+  const thinkingDetail: StageExecutionConfig = {
+    ...detail,
+    resolved: {
+      engine: 'engine-a',
+      model: 'flow-model',
+      config: { model_reasoning_effort: 'minimal' },
+    },
+    available_engines: [{
+      ...engine('engine-a'),
+      config: {
+        fields: [],
+        stage_fields: [{
+          key: 'model_reasoning_effort',
+          label: '思考强度',
+          type: 'select',
+          options: [{ value: 'minimal', label: '极简' }],
+          required: false,
+          sensitive: false,
+        }],
+        values: {},
+        secrets: {},
+      },
+    }],
+  }
+  taskApi.stageExecutionConfig = async () => thinkingDetail
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  try {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <TaskStageConfigController projectId="p" taskId="t" stepKey="do" running={false}>
+            {({ inputConfig }) => (
+              <span
+                data-effort={inputConfig?.stageValues?.model_reasoning_effort}
+                data-field={String(inputConfig?.stageFields?.some(
+                  (field) => field.key === 'model_reasoning_effort',
+                ))}
+              />
+            )}
+          </TaskStageConfigController>
+        </I18nProvider>,
+      )
+    })
+    await act(async () => { await Promise.resolve() })
+    const state = container.querySelector('span')
+    assert.equal(state?.getAttribute('data-effort'), 'minimal')
+    assert.equal(state?.getAttribute('data-field'), 'true')
+  } finally {
+    taskApi.stageExecutionConfig = original
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
 test('stage config exposes loading state until the selected stage configuration resolves', async () => {
   const window = installDom()
   const original = taskApi.stageExecutionConfig

@@ -56,6 +56,14 @@ class MemoryConfigStore:
                     merged[key] = value.strip()
         return merged
 
+    def get_assistant_config(self, name):
+        overlay = self.values.get("assistant_defaults", {}).get(name, {})
+        return {
+            key: value
+            for key, value in overlay.items()
+            if isinstance(value, str) and value.strip()
+        }
+
 
 class FakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)

@@ -1,5 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import MarkdownMessage from './MarkdownMessage'
+import useStreamReveal from '../hooks/useStreamReveal'
+
+/** 子代理思考正文：独立组件（map 内不能直接调 hook），套揭示层柔滑浮现 */
+const SubagentThinkingText = memo(function SubagentThinkingText({
+  content,
+  streaming,
+}: {
+  content: string
+  streaming: boolean
+}) {
+  const shown = useStreamReveal(content, streaming, false, true)
+  return <div className="process-trace-thinking">{shown.trimStart()}</div>
+})
 import ToolTimelineItem from './ToolTimelineItem'
 import { buildMessageTimeline } from '../utils/messageTimeline'
 import Icon from './Icon'
@@ -111,7 +124,7 @@ export default function SubagentTimelineItem({
             )
           }
           if (entry.type === 'thinking') {
-            return <div key={entry.id} className="process-trace-thinking">{entry.content.trimStart()}</div>
+            return <SubagentThinkingText key={entry.id} content={entry.content} streaming={streaming} />
           }
           return <div key={entry.id} className="process-trace-commentary">
             <MarkdownMessage
@@ -120,6 +133,8 @@ export default function SubagentTimelineItem({
               content={entry.content}
               streaming={streaming}
               projectId={projectId}
+              /* 嵌套时间线文本密、更新快，先保持原样渲染，不套揭示层 */
+              reveal="off"
             />
           </div>
         })}

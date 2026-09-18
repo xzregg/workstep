@@ -295,6 +295,9 @@ export default function AiTaskCreateChat({
         visionModel: selectedVisionModel,
         showVision: true,
         thinkingEffort: selectedThinkingEffort,
+        defaultThinkingEffort: assistantConfig?.configured.thinking_effort
+          || assistantConfig?.resolved?.thinking_effort
+          || '',
         disabled: !assistantConfig || coordinatorConfigError !== '' || running,
         error: coordinatorConfigError,
         hint: assistantConfig ? t('aiFlow.sessionHint') : '',

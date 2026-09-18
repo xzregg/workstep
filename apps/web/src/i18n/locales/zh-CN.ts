@@ -312,7 +312,7 @@ export const zhCN = {
     restartTitle: '从该阶段重启执行任务',
   },
   bubble: {
-    thinking: '……',
+    thinking: '',
     editMessage: '编辑消息',
     sendToInput: '发送到输入框',
   },
@@ -935,6 +935,7 @@ export const zhCN = {
     assistantSelectAria: '选择助手',
     defaultAssistantAria: '默认助手引擎',
     saveAssistant: '保存助手设置',
+    followEngineDefaultWithValue: '默认（{value}）',
     assistantNames: {
       taskCoordinator: '任务协调',
       taskCreate: '任务创建',
@@ -1265,6 +1266,14 @@ export const zhCN = {
   },
   taskList: {
     creator: '创建者',
+    viewLanes: '泳道',
+    viewTable: '表格',
+    tableTask: '任务',
+    tableStatus: '状态',
+    tableUpdatedAt: '更新时间',
+    collapse: '折叠',
+    expand: '展开',
+    emptyGroup: '暂无任务',
     remoteNoLocalDirectory: '远程项目目录位于宿主设备，不能在本机文件管理器中打开',
     execute: '执行',
     duration: '耗时',

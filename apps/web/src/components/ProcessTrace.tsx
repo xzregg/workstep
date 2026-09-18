@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import useStreamReveal from '../hooks/useStreamReveal'
 import { MessageCopyButton } from './MessageResponseFooter'
 import SubagentTimelineItem from './SubagentTimelineItem'
 import StreamingStatusText from './StreamingStatusText'
@@ -61,6 +62,11 @@ interface ProcessTraceProps {
   projectId?: string
 }
 
+/**
+ * memo 化：ProcessTrace 有秒级 tick（running 时每秒 setNow）+ 父级每 token 重渲染。
+ * 非 running 的思考项 duration/rate 值恒定，memo 按值比较直接跳过整块重渲染，
+ * 消除思考正文"每秒闪动"。
+ */
 function ThinkingTimelineItem({
   content,
   active,
@@ -76,6 +82,9 @@ function ThinkingTimelineItem({
   rate: number | null
 }) {
   const { t } = useI18n()
+  // 揭示层：思考正文按 ≤11fps 的节奏浮现（跟随 token，无额外重渲染开销），
+  // 结束（active=false）立即全量。
+  const shown = useStreamReveal(content, active, false, true)
   const displayDuration = duration || formatDuration(0, t)
   const [open, setOpen] = useState(active)
   const thinkingRef = useRef<HTMLDivElement>(null)
@@ -103,7 +112,7 @@ function ThinkingTimelineItem({
     lastProgrammaticScrollTopRef.current = target
     container.scrollTop = target
     lastScrollTopRef.current = target
-  }, [active, content, open])
+  }, [active, shown, open])
 
   return (
     <div className="process-trace-thinking-row">
@@ -193,7 +202,10 @@ function ThinkingTimelineItem({
           lastScrollTopRef.current = container.scrollTop
         }}
       >
-        {content.trimStart()}
+        {shown.trimStart()}
+        {active && shown.trim() !== '' && (
+          <span className="markdown-stream-cursor" aria-hidden="true" />
+        )}
       </div>
     </details>
     {/* 复制按钮移出 <summary>：交互元素放在 summary 内会触发浏览器可访问性
@@ -204,6 +216,7 @@ function ThinkingTimelineItem({
     </div>
   )
 }
+const ThinkingTimeline = memo(ThinkingTimelineItem)
 
 export default function ProcessTrace({
   events,
@@ -393,7 +406,7 @@ export default function ProcessTrace({
             </div>
           )}
           {visibleProcessItems.map((item) => item.type === 'thinking' ? (
-            <ThinkingTimelineItem
+            <ThinkingTimeline
               key={item.id}
               content={item.content}
               active={running && item === lastProcessItem}

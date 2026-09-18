@@ -15,6 +15,7 @@ import {
   invalidateEngineModels,
   providerApi,
   type AssistantConfigInfo,
+  type AssistantConfiguredDefaults,
   type EngineInfo,
   type EngineInspectResult,
   type EngineModel,
@@ -170,6 +171,7 @@ function AgentAssistantSettings() {
   const [assistants, setAssistants] = useState<AssistantConfigInfo[]>([])
   const [selectedName, setSelectedName] = useState('')
   const [fields, setFields] = useState<string[]>(['engine'])
+  const [resolvedDefaults, setResolvedDefaults] = useState<AssistantConfiguredDefaults | null>(null)
   const [engines, setEngines] = useState<EngineInfo[]>([])
   const [engine, setEngine] = useState('')
   const [model, setModel] = useState('')
@@ -192,6 +194,7 @@ function AgentAssistantSettings() {
   const applyAssistant = (info: AssistantConfigInfo) => {
     setSelectedName(info.name)
     setFields(info.fields)
+    setResolvedDefaults(info.resolved || null)
     setEngines(info.available_engines as EngineInfo[])
     setEngine(info.configured.engine || '')
     setModel(info.configured.model || '')
@@ -309,9 +312,34 @@ function AgentAssistantSettings() {
       })
       setAssistants((prev) => prev.map((item) =>
         item.name === selectedName
-          ? { ...item, configured: { ...item.configured, ...result.configured } }
+          ? {
+            ...item,
+            configured: { ...item.configured, ...result.configured },
+            resolved: {
+              engine: '',
+              model: '',
+              fast_model: '',
+              vision_model: '',
+              thinking_effort: '',
+              provider_id: '',
+              ...(item.resolved || {}),
+              ...result.resolved,
+            },
+          }
           : item,
       ))
+      setResolvedDefaults((current) => current
+        ? { ...current, ...result.resolved }
+        : {
+          engine: '',
+          model: '',
+          fast_model: '',
+          vision_model: '',
+          thinking_effort: '',
+          provider_id: '',
+          ...result.resolved,
+        }
+      )
       setNotice(t('settings.saveAssistantSuccess'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.saveFailed'))
@@ -480,7 +508,13 @@ function AgentAssistantSettings() {
               title={t('coord.thinkingEffortTitle')}
               style={{ flex: 1, minWidth: 0, height: 30 }}
             >
-              <option value="">{t('coord.thinkingEffortDefault')}</option>
+              <option value="">
+                {resolvedDefaults?.thinking_effort
+                  ? t('settings.followEngineDefaultWithValue', {
+                    value: t(`coord.thinkingLevels.${resolvedDefaults.thinking_effort as 'auto'}`),
+                  })
+                  : t('settings.followEngineDefault')}
+              </option>
               {THINKING_EFFORT_LEVELS.map((level) => (
                 <option key={level} value={level}>
                   {t(`coord.thinkingLevels.${level}`)}

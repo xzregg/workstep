@@ -25,6 +25,7 @@ import {
 } from '../utils/markdownImages'
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
+import { loadDraft, loadTaskDraft, saveDraft, saveTaskDraft } from '../utils/chatDraft'
 
 const inputItemIcon = (item: EngineInputItem) => {
   if (item.kind === 'skill') return 'sparkles' as const
@@ -32,6 +33,15 @@ const inputItemIcon = (item: EngineInputItem) => {
   if (item.action === 'open_reasoning') return 'sparkles' as const
   if (item.action === 'show_status') return 'bar-chart' as const
   return 'terminal' as const
+}
+
+function readDraft(owner: { type: 'session' | 'task'; id: string }): string {
+  return owner.type === 'task' ? loadTaskDraft(owner.id) : loadDraft(owner.id)
+}
+
+function writeDraft(owner: { type: 'session' | 'task'; id: string }, value: string): void {
+  if (owner.type === 'task') saveTaskDraft(owner.id, value)
+  else saveDraft(owner.id, value)
 }
 
 /* ══════════════════════════════════════════
@@ -56,6 +66,8 @@ export interface ChatInputEngineConfig {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  /** Effective thinking effort shown when thinkingEffort is empty. */
+  defaultThinkingEffort?: string
   /** Enabled providers for the built-in Pydantic AI engine's dynamic config. */
   providers?: ProviderInfo[]
   /** '' = follow the default provider. */
@@ -142,6 +154,10 @@ export interface ChatInputProps {
   value: string
   onChange: (value: string) => void
   onSend: () => void
+  /** Session owner for the composer draft. */
+  sessionId?: string | null
+  /** Task owner for the composer draft. Takes precedence over sessionId. */
+  taskId?: string | null
   /** Active project used to discover skills for the selected engine. */
   projectId?: string
   /** Engine that will receive this message; overrides the coordinator picker. */
@@ -192,6 +208,8 @@ export default function ChatInput({
   value,
   onChange,
   onSend,
+  sessionId,
+  taskId,
   projectId,
   skillEngine,
   availableCommands,
@@ -239,6 +257,12 @@ export default function ChatInput({
   const [skillIndex, setSkillIndex] = useState(0)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
+  const draftOwnerRef = useRef<{ type: 'session' | 'task'; id: string } | null>(null)
+  const valueRef = useRef(value)
+  valueRef.current = value
+  // The parent echo caused by restoring a draft must not be treated as user
+  // input; a real edit produces a different value and saves normally.
+  const restoredValueRef = useRef<string | null>(null)
   const canSend = !disabled
     && (!running || allowSendWhileRunning)
     && !stopping
@@ -251,11 +275,23 @@ export default function ChatInput({
   const hasImage = inputSegments.some((segment) => segment.type === 'image')
   const textSegmentCount = inputSegments.filter((segment) => segment.type === 'text').length
   const thinkingEffortLabel: Record<string, string> = {
+    auto: t('coord.thinkingLevels.auto'),
     minimal: t('coord.thinkingLevels.minimal'),
     low: t('coord.thinkingLevels.low'),
     medium: t('coord.thinkingLevels.medium'),
     high: t('coord.thinkingLevels.high'),
+    xhigh: t('coord.thinkingLevels.xhigh'),
   }
+  const effectiveDefaultThinkingEffort = config?.defaultThinkingEffort === 'auto'
+    ? ''
+    : config?.defaultThinkingEffort
+  const thinkingEffortDisplay = config?.thinkingEffort
+    ? thinkingEffortLabel[config.thinkingEffort] ?? config.thinkingEffort
+    : effectiveDefaultThinkingEffort
+      ? `${t('coord.thinkingEffortDefault')}（${
+        thinkingEffortLabel[effectiveDefaultThinkingEffort] ?? effectiveDefaultThinkingEffort
+      }）`
+      : t('coord.thinkingEffortDefault')
 
   const permissionOptions = [
     { value: '', label: t('chatSession.permissionDefault') },
@@ -287,6 +323,38 @@ export default function ChatInput({
   const skillMenuVisible = slashActive
     && slashDismissedValue !== value
     && Boolean(projectId && effectiveEngine)
+
+  useEffect(() => {
+    const previous = draftOwnerRef.current
+    const next = taskId
+      ? { type: 'task' as const, id: taskId }
+      : sessionId
+        ? { type: 'session' as const, id: sessionId }
+        : null
+    const ownerChanged = previous?.id !== next?.id || previous?.type !== next?.type
+    if (ownerChanged) {
+      if (previous) writeDraft(previous, valueRef.current)
+      draftOwnerRef.current = next
+      if (!next) return
+      const restored = readDraft(next)
+      if (restored !== valueRef.current) {
+        restoredValueRef.current = restored
+        onChange(restored)
+      }
+      return
+    }
+    if (restoredValueRef.current === value) {
+      restoredValueRef.current = null
+      return
+    }
+    restoredValueRef.current = null
+    if (next) writeDraft(next, value)
+  }, [sessionId, taskId, value, onChange])
+
+  useEffect(() => () => {
+    const owner = draftOwnerRef.current
+    if (owner) writeDraft(owner, valueRef.current)
+  }, [])
 
   useEffect(() => {
     if (!inputFocusedRef.current) setSlashCursor(value.length)
@@ -509,7 +577,7 @@ export default function ChatInput({
           </div>
           <div>{t('chatInput.statusEngine')}: {engineLabel(engineId)}</div>
           <div>{t('chatInput.statusModel')}: {config?.model || t('chatInput.defaultModel')}</div>
-          <div>{t('chatInput.statusReasoning')}: {config?.thinkingEffort || t('coord.thinkingEffortDefault')}</div>
+          <div>{t('chatInput.statusReasoning')}: {thinkingEffortDisplay}</div>
           <div>{t('chatInput.statusPermission')}: {permissionLabel}</div>
           <div>{t('chatInput.statusPlan')}: {planActive ? t('chatInput.statusEnabled') : t('chatInput.statusDisabled')}</div>
           {context && <div>{t('chatInput.statusContext')}: {Math.round(context.percent)}%</div>}
@@ -974,11 +1042,11 @@ export default function ChatInput({
                 <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{engineLabel(engineId)}</span>
                 <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
                 <span style={{ color: 'var(--fg)', opacity: 0.9 }}>{config.model || t('chatInput.defaultModel')}</span>
-                {config.thinkingEffort && (
+                {(config.thinkingEffort || effectiveDefaultThinkingEffort) && (
                   <>
                     <span style={{ color: 'var(--meta)', opacity: 0.7 }}>·</span>
                     <span style={{ color: 'var(--fg)', opacity: 0.75 }}>
-                      {thinkingEffortLabel[config.thinkingEffort] ?? config.thinkingEffort}
+                      {thinkingEffortDisplay}
                     </span>
                   </>
                 )}
@@ -1008,6 +1076,7 @@ export default function ChatInput({
                       fastModel={config.fastModel}
                       visionModel={config.visionModel}
                       thinkingEffort={config.thinkingEffort}
+                      defaultThinkingEffort={config.defaultThinkingEffort}
                       providers={config.providers}
                       providerId={config.providerId}
                       showVision={config.showVision}

@@ -60,7 +60,7 @@ const SPINNING_STATES: StageVisualState[] = [
 
 const STATE_LABEL_KEYS: Record<StageVisualState, TKey> = {
   completed: 'status.done',
-  current: 'status.current',
+  current: 'status.running',
   reviewing: 'status.reviewing',
   awaiting_review: 'status.awaiting_review',
   retrying: 'status.retrying',

@@ -238,6 +238,11 @@ test('chat draft survives switching to another workflow and back', async () => {
     assert.ok(quickPrompt)
     await act(async () => quickPrompt.click())
     assert.equal((document.querySelector('textarea') as HTMLTextAreaElement).value, '切页后还在')
+    assert.equal(
+      localStorage.getItem('workstep-chat-draft:session-1'),
+      '切页后还在',
+      'draft must be persisted before the route unmounts',
+    )
 
     await act(async () => {
       (document.querySelector('#go-tasks') as HTMLButtonElement).click()

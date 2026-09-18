@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 
@@ -7,6 +8,8 @@ import CodeFilePreview from '../src/components/CodeFilePreview.tsx'
 import { fsApi } from '../src/api/client.ts'
 import { I18nProvider } from '../src/i18n/index.tsx'
 import { classifyProjectFileLink } from '../src/utils/markdownFilePreview.ts'
+
+const styles = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 
 test('classifies project files without intercepting external links', () => {
   assert.deepEqual(classifyProjectFileLink('docs/example.tsx', 'project-1'), {
@@ -149,6 +152,11 @@ test('code preview renders line numbers, language metadata and highlighted token
   assert.match(html, /class="code-preview-line-number"[^>]*>2</)
   assert.match(html, /hljs-keyword/)
   assert.match(html, /const/)
+})
+
+test('code preview line numbers cannot be included in text selection', () => {
+  assert.match(styles, /\.code-preview-line-number\s*\{[^}]*user-select:\s*none;/s)
+  assert.match(styles, /\.code-preview-line-number\s*\{[^}]*-webkit-user-select:\s*none;/s)
 })
 
 test('code preview marks the requested source line', () => {

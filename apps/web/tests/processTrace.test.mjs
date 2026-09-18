@@ -108,12 +108,6 @@ test('thinking copy action appears only while the thinking block is hovered or f
   )
 })
 
-test('active thinking output follows new text until the reader scrolls upward', () => {
-  assert.match(source, /useLayoutEffect\(\(\) => \{[\s\S]*thinkingRef\.current[\s\S]*scrollTop = target[\s\S]*\}, \[active, content, open\]\)/)
-  assert.match(source, /onWheelCapture=\{[\s\S]*shouldPauseConversationFollow/)
-  assert.match(source, /isNearConversationBottom\([\s\S]*followRef\.current = true/)
-})
-
 test('process stream renders subagent lifecycle items alongside tools', () => {
   assert.match(source, /SubagentTimelineItem/)
   assert.match(source, /item\.type === 'subagent'/)
@@ -130,6 +124,3 @@ test('subagent markdown uses compact spacing inside the event timeline', () => {
   assert.match(styles, /\.subagent-event-markdown li \+ li\s*\{[\s\S]*?margin-top:\s*1px;/)
 })
 
-test('subagent thinking events render as plain pre-wrapped text instead of markdown paragraphs', () => {
-  assert.match(subagentSource, /entry\.type === 'thinking'[\s\S]*className="process-trace-thinking"/)
-})

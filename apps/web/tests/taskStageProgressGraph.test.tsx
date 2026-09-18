@@ -94,6 +94,7 @@ test('stage progress graph lays out parallel branches and preserves connectable 
     assert.ok(Number.parseFloat(nodes[3].style.left) > Number.parseFloat(nodes[1].style.left))
     const currentCard = container.querySelector('.task-stage-progress-card.is-current')
     assert.match(currentCard?.textContent || '', /当前/)
+    assert.match(currentCard?.textContent || '', /进行中/)
     assert.match(currentCard?.textContent || '', /4 轮/)
     assert.equal(
       container.querySelectorAll('[data-testid="task-stage-progress-current-tag"]').length,

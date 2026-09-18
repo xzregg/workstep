@@ -66,6 +66,11 @@ const laneBodyStyle: React.CSSProperties = {
   minHeight: 120,
 }
 
+const boardTableViewStyle: React.CSSProperties = {
+  flex: 1, overflowY: 'auto', overflowX: 'hidden',
+  padding: '16px 20px 24px',
+}
+
 /* ── Status machine ── */
 const STATUS_LABEL_KEYS: Record<string, TKey> = {
   ready: 'status.ready', running: 'status.running', paused: 'status.paused', stopped: 'status.stopped',
@@ -152,6 +157,43 @@ function deriveTaskLane(
     || lanes[0]?.key
     || 'do'
 }
+
+/* Shared display info for a card row — mirrors the card computation so the
+   grouped table view stays consistent with the lane cards. */
+function getCardDisplayInfo(task: any, durationNowMs: number) {
+  const status = task.status || 'ready'
+  const taskCompleted = isTaskCompleted(task.steps || [])
+  const stageStatus = ['reviewing', 'awaiting_review', 'retrying', 'rejected']
+    .find((candidate) => (task.steps || []).some((step: any) => step.status === candidate))
+  const displayStatus = taskCompleted ? 'done' : stageStatus || status
+  const statusColor = STATUS_COLORS[displayStatus] || 'var(--status-ready)'
+
+  const isRunning = status === 'running'
+  const startedMs = toMilliseconds(task.first_message_at)
+  const createdMs = toMilliseconds(task.created_at)
+  let cardDurationMs: number | null = null
+  if (isRunning) {
+    const startMs = startedMs ?? createdMs
+    if (startMs !== null) cardDurationMs = Math.max(0, durationNowMs - startMs)
+  } else if (task.duration_ms != null) {
+    cardDurationMs = task.duration_ms
+  } else if (startedMs !== null) {
+    const endMs = toMilliseconds(task.updated_at) ?? durationNowMs
+    cardDurationMs = Math.max(0, endMs - startedMs)
+  }
+  return { status, displayStatus, statusColor, stageStatus, cardDurationMs }
+}
+
+/* Fixed column widths for the grouped table view keep columns aligned across groups. */
+const TABLE_COLUMN_WIDTHS = ['38%', '15%', '14%', '15%', '18%']
+
+const viewToggleButtonStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
+  border: 'none', cursor: disabled ? 'default' : 'pointer', display: 'grid', placeItems: 'center',
+  width: 30, height: 26, borderRadius: 'var(--radius-pill)', padding: 0,
+  background: active ? 'var(--accent)' : 'transparent',
+  color: active ? 'var(--accent-fg)' : 'var(--meta)',
+  opacity: disabled ? 0.4 : 1,
+})
 
 export default function TaskList() {
   const { t, locale } = useI18n()
@@ -243,6 +285,24 @@ export default function TaskList() {
   const [directoryNotice, setDirectoryNotice] = useState('')
   // Local lane override for unstarted cards moved manually in the board.
   const [cardLanes, setCardLanes] = useState<Record<string, string>>({})
+  // Board display mode: swimlanes (lane columns) or grouped table.
+  const [boardView, setBoardView] = useState<'lanes' | 'table'>(() => {
+    try {
+      return localStorage.getItem('workstep.boardView') === 'table' ? 'table' : 'lanes'
+    } catch {
+      return 'lanes'
+    }
+  })
+  // Per-lane group collapse in table view (session only, not persisted).
+  const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('workstep.boardView', boardView)
+    } catch {
+      // Storage unavailable (e.g. privacy mode) — view simply won't persist.
+    }
+  }, [boardView])
 
   useEffect(() => {
     if (activeProject?.id) fetchTasks(activeProject.id, activeWorkflowId, showArchived)
@@ -283,6 +343,7 @@ export default function TaskList() {
     setShowShareDialog(false)
     setCreateStartStepKey(null)
     setShowArchived(false)
+    setCollapsedLanes({})
   }, [activeProject?.path])
 
 
@@ -925,6 +986,42 @@ export default function TaskList() {
           <Icon name="archive" size={13} strokeWidth={2} />
           {showArchived ? t('taskList.backBoard') : t('taskList.viewArchived')}
         </Button>
+        <div
+          role="group"
+          aria-label={boardView === 'lanes' ? t('taskList.viewLanes') : t('taskList.viewTable')}
+          style={{ display: 'inline-flex', gap: 2, padding: 2, border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', background: 'var(--bg)' }}
+        >
+          <button
+            type="button"
+            title={t('taskList.viewLanes')}
+            aria-label={t('taskList.viewLanes')}
+            aria-pressed={boardView === 'lanes'}
+            disabled={!activeProject}
+            onClick={() => setBoardView('lanes')}
+            style={viewToggleButtonStyle(boardView === 'lanes', !activeProject)}
+          >
+            <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
+              <rect x="1.5" y="2" width="4" height="12" rx="1" />
+              <rect x="6.5" y="2" width="4" height="8" rx="1" />
+              <rect x="11.5" y="2" width="4" height="10" rx="1" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title={t('taskList.viewTable')}
+            aria-label={t('taskList.viewTable')}
+            aria-pressed={boardView === 'table'}
+            disabled={!activeProject}
+            onClick={() => setBoardView('table')}
+            style={viewToggleButtonStyle(boardView === 'table', !activeProject)}
+          >
+            <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+              <line x1="1.5" y1="6.2" x2="14.5" y2="6.2" />
+              <line x1="1.5" y1="9.8" x2="14.5" y2="9.8" />
+            </svg>
+          </button>
+        </div>
         <OpenLocationButton
           activeProject={activeProject}
           t={t}
@@ -968,7 +1065,7 @@ export default function TaskList() {
           <span className="mobile-task-row-meta"><StatusBadge status={task.status} loading={['running', 'reviewing', 'retrying'].includes(task.status)} label={t(`status.${task.status === 'completed' ? 'passed' : task.status || 'ready'}` as 'status.ready')} />{task.creator_name && <span>{t('taskList.creator')}：{task.creator_name}</span>}<span>{lanes.find(lane => lane.key === getCardLane(task.id))?.label}</span><time>{new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
         </button>)}
       </div>}
-      <div className="desktop-task-board" style={kanbanStyle}>
+      <div className="desktop-task-board" style={boardView === 'lanes' ? kanbanStyle : boardTableViewStyle}>
         {loading && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--meta)' }}>
             {t('common.loading')}
@@ -983,7 +1080,7 @@ export default function TaskList() {
           />
         )}
 
-        {!loading && activeProject && lanes.map((lane) => {
+        {!loading && activeProject && boardView === 'lanes' && lanes.map((lane) => {
           const laneTasks = tasksByLane[lane.key] || []
           return (
             <div key={lane.key} style={laneStyle}>
@@ -1221,6 +1318,126 @@ export default function TaskList() {
             </div>
           )
         })}
+
+        {/* Grouped table view — groups follow lane order; fixed column widths keep columns aligned across groups */}
+        {!loading && activeProject && boardView === 'table' && (
+          <div>
+            {lanes.map((lane) => {
+              const laneTasks = tasksByLane[lane.key] || []
+              const isCollapsed = !!collapsedLanes[lane.key]
+              const cellStyle: React.CSSProperties = {
+                padding: '9px 14px', borderTop: '1px solid var(--border-soft)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                color: 'var(--fg-2)',
+              }
+              return (
+                <div key={lane.key} style={{ border: '1px solid var(--border-soft)', borderRadius: 'var(--radius-md)', marginBottom: 14, overflow: 'hidden' }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    title={isCollapsed ? t('taskList.expand') : t('taskList.collapse')}
+                    aria-expanded={!isCollapsed}
+                    onClick={() => setCollapsedLanes((prev) => ({ ...prev, [lane.key]: !prev[lane.key] }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        setCollapsedLanes((prev) => ({ ...prev, [lane.key]: !prev[lane.key] }))
+                      }
+                    }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '10px 14px', background: 'var(--surface)',
+                      borderLeft: `3px solid ${lane.color}`,
+                      fontFamily: 'inherit', fontSize: 'calc(13px * var(--font-scale))',
+                      fontWeight: 600, color: 'var(--fg)', cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: lane.color, flexShrink: 0 }} />
+                    {lane.label}
+                    <span style={{ color: 'var(--meta)', fontWeight: 400, fontSize: 'calc(12px * var(--font-scale))' }}>
+                      {t('taskList.taskCount', { count: laneTasks.length })}
+                    </span>
+                    <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      {!showArchived && (
+                        <Button
+                          variant="ghost"
+                          aria-label={t('taskList.addTaskToLane', { lane: lane.label })}
+                          title={t('taskList.addTaskToLane', { lane: lane.label })}
+                          onClick={(e) => { e.stopPropagation(); openNewPanel(lane.key) }}
+                          style={{ height: 24, padding: '0 7px', fontSize: 'calc(11px * var(--font-scale))', flexShrink: 0 }}
+                        >
+                          {t('taskList.add')}
+                        </Button>
+                      )}
+                      <span style={{ color: 'var(--meta)', fontWeight: 400, fontSize: 'calc(12px * var(--font-scale))' }}>
+                        {isCollapsed ? `${t('taskList.expand')} ▾` : `${t('taskList.collapse')} ▴`}
+                      </span>
+                    </span>
+                  </div>
+                  {!isCollapsed && (
+                    laneTasks.length > 0 ? (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'calc(13px * var(--font-scale))', tableLayout: 'fixed' }}>
+                        <colgroup>
+                          {TABLE_COLUMN_WIDTHS.map((width, index) => <col key={index} style={{ width }} />)}
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            {[t('taskList.tableTask'), t('taskList.tableStatus'), t('taskList.creator'), t('taskList.duration'), t('taskList.tableUpdatedAt')].map((label) => (
+                              <th key={label} style={{ position: 'sticky', top: 0, background: 'var(--bg)', textAlign: 'left', fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, color: 'var(--meta)', padding: '6px 14px' }}>
+                                {label}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {laneTasks.map((task: any) => {
+                            const info = getCardDisplayInfo(task, durationNowMs)
+                            const updatedLabel = new Date(task.updated_at || task.created_at).toLocaleString(locale, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                            return (
+                              <tr
+                                key={task.id}
+                                onClick={() => handleSelectTask(task.id)}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent-light)' }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '' }}
+                                style={{ cursor: 'pointer' }}
+                              >
+                                <td style={{ ...cellStyle, fontWeight: 600, color: 'var(--fg)' }} title={task.title}>{task.title}</td>
+                                <td style={{ ...cellStyle, overflow: 'visible' }}>
+                                  <span
+                                    className="status-badge"
+                                    data-s={info.displayStatus}
+                                    style={info.stageStatus ? {
+                                      color: info.statusColor,
+                                      background: `color-mix(in oklab, ${info.statusColor}, transparent 86%)`,
+                                    } : undefined}
+                                  >
+                                    {(info.displayStatus === 'running' || info.displayStatus === 'reviewing') && (
+                                      <span className="task-status-spinner" aria-hidden="true" />
+                                    )}
+                                    {t(STATUS_LABEL_KEYS[info.displayStatus] ?? (info.displayStatus as TKey))}
+                                  </span>
+                                </td>
+                                <td style={cellStyle}>{task.creator_name || '—'}</td>
+                                <td style={{ ...cellStyle, color: 'var(--meta)', fontVariantNumeric: 'tabular-nums' }}>
+                                  {info.cardDurationMs !== null && info.cardDurationMs > 0 ? formatDuration(info.cardDurationMs, t) : '—'}
+                                </td>
+                                <td style={{ ...cellStyle, color: 'var(--meta)', fontVariantNumeric: 'tabular-nums' }}>{updatedLabel}</td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div style={{ padding: '18px 14px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>
+                        {t('taskList.emptyGroup')}
+                      </div>
+                    )
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Backdrop: click outside closes the new-task panel when unchanged */}

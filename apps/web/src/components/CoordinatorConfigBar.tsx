@@ -38,6 +38,8 @@ export interface CoordinatorConfigBarProps {
   visionModel?: string
   /** '' = follow the engine default. */
   thinkingEffort?: string
+  /** Effective default shown when thinkingEffort is empty. */
+  defaultThinkingEffort?: string
   /** Enabled providers compatible with the selected engine. */
   providers?: ProviderInfo[]
   /** '' = follow the default provider. */
@@ -184,6 +186,7 @@ export default function CoordinatorConfigBar({
   fastModel,
   visionModel,
   thinkingEffort = '',
+  defaultThinkingEffort = '',
   providers = [],
   providerId = '',
   onEngineChange,
@@ -249,6 +252,21 @@ export default function CoordinatorConfigBar({
     fontSize: 'calc(11px * var(--font-scale))',
     ...(isMenu ? { marginTop: 2 } : {}),
   }
+  const effectiveThinkingEffort = defaultThinkingEffort === 'auto' ? '' : defaultThinkingEffort
+  const thinkingEffortDefaultLabel = effectiveThinkingEffort
+    ? `${t('coord.thinkingEffortDefault')}（${
+      THINKING_EFFORT_LEVELS.includes(effectiveThinkingEffort as typeof THINKING_EFFORT_LEVELS[number])
+        ? {
+          auto: t('coord.thinkingLevels.auto'),
+          minimal: t('coord.thinkingLevels.minimal'),
+          low: t('coord.thinkingLevels.low'),
+          medium: t('coord.thinkingLevels.medium'),
+          high: t('coord.thinkingLevels.high'),
+          xhigh: t('coord.thinkingLevels.xhigh'),
+        }[effectiveThinkingEffort]
+        : effectiveThinkingEffort
+    }）`
+    : t('coord.thinkingEffortDefault')
   return (
     <div style={isMenu
       ? { display: 'flex', flexDirection: 'column', gap: 2 }
@@ -348,12 +366,12 @@ export default function CoordinatorConfigBar({
               label={t('coord.thinkingEffort')}
               title={t('coord.thinkingEffortTitle')}
               value={thinkingEffort}
-              placeholder={t('coord.thinkingEffortDefault')}
+              placeholder={thinkingEffortDefaultLabel}
               disabled={disabled}
               icon="sliders-horizontal"
               onChange={onThinkingEffortChange}
               options={[
-                { value: '', label: t('coord.thinkingEffortDefault') },
+                { value: '', label: thinkingEffortDefaultLabel },
                 ...THINKING_EFFORT_LEVELS.map((level) => ({
                   value: level,
                   label: t(`coord.thinkingLevels.${level}`),
@@ -446,7 +464,7 @@ export default function CoordinatorConfigBar({
               title={t('coord.thinkingEffortTitle')}
               style={fieldStyle}
             >
-              <option value="">{t('coord.thinkingEffortDefault')}</option>
+              <option value="">{thinkingEffortDefaultLabel}</option>
               {THINKING_EFFORT_LEVELS.map((level) => (
                 <option key={level} value={level}>
                   {t(`coord.thinkingLevels.${level}`)}

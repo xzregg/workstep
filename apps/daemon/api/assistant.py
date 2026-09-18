@@ -56,6 +56,27 @@ def _available_engines() -> list[dict]:
     ]
 
 
+def _resolved_with_engine_effort(
+    name: str,
+    configured: dict,
+    resolved: dict,
+) -> dict:
+    """Resolve the thinking effort shown for an assistant default.
+
+    Non-coordinator assistants inherit the selected engine's own config when
+    the assistant has no explicit effort. The coordinator keeps its dedicated
+    global coordinator-default layer.
+    """
+    resolved = dict(resolved)
+    if name != "task_coordinator":
+        resolved["thinking_effort"] = (
+            configured.get("thinking_effort")
+            or config_store.get_engine_thinking_effort(resolved.get("engine", ""))
+            or ""
+        )
+    return resolved
+
+
 @router.get("/list")
 async def list_assistants():
     def load() -> dict:
@@ -63,7 +84,12 @@ async def list_assistants():
         assistants = []
         for config in assistant_registry.all():
             fields = list(ASSISTANT_FIELDS)
-            configured = config_store.get_assistant_defaults(config.name)
+            configured = config_store.get_assistant_config(config.name)
+            resolved = _resolved_with_engine_effort(
+                config.name,
+                configured,
+                config_store.get_assistant_defaults(config.name),
+            )
             assistants.append(
                 {
                     "name": config.name,
@@ -72,6 +98,7 @@ async def list_assistants():
                     "engine_label": config.engine_label,
                     "fields": list(fields),
                     "configured": {key: configured.get(key, "") for key in fields},
+                    "resolved": {key: resolved.get(key, "") for key in fields},
                     "available_engines": available,
                 }
             )
@@ -190,10 +217,23 @@ async def set_assistant_config(name: str, req: AssistantConfigRequest):
             thinking_effort,
             provider_id,
         )
-        return config_store.get_assistant_defaults(name)
+        return {
+            "configured": config_store.get_assistant_config(name),
+            "resolved": config_store.get_assistant_defaults(name),
+        }
 
     saved = await asyncio.to_thread(save)
+    resolved = _resolved_with_engine_effort(
+        name,
+        saved["configured"],
+        saved["resolved"],
+    )
     return {
         "saved": True,
-        "configured": {key: saved.get(key, "") for key in ASSISTANT_FIELDS},
+        "configured": {
+            key: saved["configured"].get(key, "") for key in ASSISTANT_FIELDS
+        },
+        "resolved": {
+            key: resolved.get(key, "") for key in ASSISTANT_FIELDS
+        },
     }

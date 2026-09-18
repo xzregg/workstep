@@ -55,6 +55,13 @@ class MemoryConfigStore:
         defaults.update(self.values.get("assistant_defaults", {}).get(name, {}))
         return defaults
 
+    def get_assistant_config(self, name):
+        return {
+            key: value
+            for key, value in self.values.get("assistant_defaults", {}).get(name, {}).items()
+            if isinstance(value, str) and value.strip()
+        }
+
     def get_engine_default_model(self, engine_id):
         return self.values.get("engine_default_models", {}).get(engine_id, "")
 
@@ -717,6 +724,73 @@ async def test_existing_session_engine_switch_uses_target_engine_defaults(
     assert detail["model"] is None
     assert captured["model"] == "gpt-6-codex"
     assert captured["config_overrides"] is None
+
+
+@pytest.mark.anyio
+async def test_chat_assistant_default_effort_follows_engine_config(
+    chat_module,
+    monkeypatch,
+):
+    """空思考强度不注入协调器默认值，由所选引擎自己的配置决定。"""
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "coordinator_default_engine": "claude",
+        "coordinator_default_thinking_effort": "low",
+        "assistant_defaults": {
+            "chat_session": {
+                "engine": "codex_sdk",
+                "thinking_effort": "",
+            },
+        },
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured.update(kwargs)
+        return "已回复", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+    accepted = module.submit_message(
+        project.id,
+        created["id"],
+        "跟随引擎配置",
+        "follow-engine-effort",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured.get("thinking_effort") is None
+
+
+@pytest.mark.anyio
+async def test_chat_assistant_explicit_effort_still_overrides_engine(
+    chat_module,
+    monkeypatch,
+):
+    module, _bus, _manager, project, config_store = chat_module
+    config_store.values.update({
+        "coordinator_default_thinking_effort": "low",
+        "assistant_defaults": {
+            "chat_session": {"engine": "codex_sdk", "thinking_effort": "high"},
+        },
+    })
+    captured: dict = {}
+
+    async def fake_invoke_engine(*args, **kwargs):
+        captured.update(kwargs)
+        return "已回复", [], None
+
+    monkeypatch.setattr("agent_assistants.base.invoke_engine", fake_invoke_engine)
+    created = module.create_session(project.id)
+    accepted = module.submit_message(
+        project.id,
+        created["id"],
+        "使用显式强度",
+        "explicit-effort",
+    )
+
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+    assert captured.get("thinking_effort") == "high"
 
 
 @pytest.mark.anyio

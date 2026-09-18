@@ -741,6 +741,9 @@ details[open] > summary > .process-trace-chevron {
 .process-trace-thinking {
   max-height: 250px;
   overflow: auto;
+  /* 预留滚动条槽位：内容跨过 250px 时滚动条出现不再挤占宽度，
+     避免整块文本换行重排造成的"闪动" */
+  scrollbar-gutter: stable;
   color: var(--muted);
   font-size: calc(11px * var(--font-scale));
   line-height: 1.4;
@@ -1780,6 +1783,8 @@ details[open] > summary > .process-trace-chevron {
   border-right: 1px solid var(--border-soft);
   color: var(--meta);
   text-align: right;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .code-preview-line-content {
@@ -2003,12 +2008,12 @@ details[open] > summary > .process-trace-chevron {
   background: var(--border);
 }
 
+/* 流式光标：原来的脉冲闪烁样式 */
 .markdown-stream-cursor {
   display: inline-block;
-  width: 4px;
+  width: 3px;
   height: 1.18em;
-  margin-left: 3px;
-  background: var(--accent);
+  background: var(--fg);
   vertical-align: text-bottom;
   border-radius: 2px;
   animation: markdown-cursor-pulse 620ms ease-in-out infinite;
@@ -2053,13 +2058,15 @@ details[open] > summary > .process-trace-chevron {
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: streaming-status-shimmer 1.55s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+  /* 无停顿的连续流光：匀速扫过，柔滑不生硬 */
+  animation: streaming-status-shimmer 2.4s linear infinite;
 }
 
 @keyframes streaming-status-shimmer {
-  0%, 14% { background-position: 100% 0; }
-  86%, 100% { background-position: 0% 0; }
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
+
 
 @media (prefers-reduced-motion: reduce) {
   .engine-loading-message.is-shimmer,
@@ -2074,6 +2081,7 @@ details[open] > summary > .process-trace-chevron {
     animation: none;
     opacity: 1;
   }
+
 }
 
 /* ── Inputs ── */

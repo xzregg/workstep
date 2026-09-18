@@ -314,7 +314,7 @@ export const enUS: Messages = {
     restartTitle: 'Restart the task from this stage',
   },
   bubble: {
-    thinking: 'Processing…',
+    thinking: '',
     editMessage: 'Edit message',
     sendToInput: 'Send to input',
   },
@@ -937,6 +937,7 @@ export const enUS: Messages = {
     assistantSelectAria: 'Select assistant',
     defaultAssistantAria: 'Default assistant engine',
     saveAssistant: 'Save assistant settings',
+    followEngineDefaultWithValue: '默认（{value}）',
     assistantNames: {
       taskCoordinator: 'Task Coordinator',
       taskCreate: 'Task Creation',
@@ -1267,6 +1268,14 @@ export const enUS: Messages = {
   },
   taskList: {
     creator: 'Creator',
+    viewLanes: 'Lanes',
+    viewTable: 'Table',
+    tableTask: 'Task',
+    tableStatus: 'Status',
+    tableUpdatedAt: 'Updated',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    emptyGroup: 'No tasks',
     remoteNoLocalDirectory: 'The remote project directory is on the host device and cannot be opened in this device\'s file manager',
     execute: 'Run',
     duration: 'Duration',

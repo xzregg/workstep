@@ -809,13 +809,16 @@ class AssistantRuntime:
             raise ValueError("Idempotency-Key is required")
         normalized_effort = (thinking_effort or "").strip()
         if not normalized_effort:
-            # 未显式指定时回退到该助手的默认思考强度。
-            normalized_effort = (
-                config_store.get_assistant_defaults(self._config.name).get(
-                    "thinking_effort", ""
-                )
-                or ""
+            # “默认”表示不覆盖，由引擎自己的配置决定；只有协调助手
+            # 有全局协调默认这一层显式回退。
+            reader = (
+                config_store.get_assistant_defaults
+                if self._config.name == "task_coordinator"
+                else config_store.get_assistant_config
             )
+            normalized_effort = reader(self._config.name).get(
+                "thinking_effort", ""
+            ) or ""
         if normalized_effort and normalized_effort not in CODEX_REASONING_EFFORTS:
             raise ValueError(f"Invalid thinking effort: {normalized_effort}")
         normalized_permission = (permission_mode or "").strip()

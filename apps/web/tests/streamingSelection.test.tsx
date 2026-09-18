@@ -19,9 +19,22 @@ test('streaming markdown keeps the selected DOM text stable until selection ends
       )
     })
   }
+  // reveal 层按 ≤11fps 的节奏揭示文字；等文本收敛（连续两次采样不变）再继续
+  const waitForSettle = async () => {
+    let prev = ''
+    for (let i = 0; i < 40; i++) {
+      const current = host.querySelector('.markdown-message')?.textContent ?? ''
+      if (current && current === prev) return
+      prev = current
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40))
+      })
+    }
+  }
 
   try {
     await render('**hello')
+    await waitForSettle()
     const text = host.querySelector('p')?.firstChild
     assert.ok(text)
     const range = document.createRange()

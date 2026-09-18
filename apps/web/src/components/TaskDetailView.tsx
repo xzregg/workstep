@@ -3320,6 +3320,7 @@ export default function TaskDetailView({
 
             <ChatInput
               projectId={projectId}
+              taskId={task?.id}
               availableCommands={availableCommands?.[
                 chatTarget === 'coordinator'
                   ? 'coordinator:'
@@ -3397,6 +3398,10 @@ export default function TaskDetailView({
                   thinkingEffort:
                     coordinatorConfig
                       ?.configured
+                      .thinking_effort || '',
+                  defaultThinkingEffort:
+                    coordinatorConfig
+                      ?.resolved
                       .thinking_effort || '',
                   showVision: true,
                   disabled:

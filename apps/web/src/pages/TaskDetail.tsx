@@ -58,7 +58,6 @@ import {
   loadTaskInsertQueue,
   saveTaskInsertQueue,
 } from '../utils/chatInsertQueue'
-import { clearTaskDraft, loadTaskDraft, saveTaskDraft } from '../utils/chatDraft'
 import { useI18n, type TKey } from '../i18n'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
@@ -1077,13 +1076,11 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           { id: `insert-${randomUuid()}`, content: submittedPrompt },
         ])
         setPrompt('')
-        clearTaskDraft(taskId)
         setChatError('')
         return
       }
       if (!targetStage) return
       setPrompt('')
-      clearTaskDraft(taskId)
       await resumeStageWithPrompt(submittedPrompt, {
         onErrorRestore: () => setPrompt(submittedPrompt),
       })
@@ -1104,7 +1101,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setChatError('')
     setHistoryMessages((current) => [...current, optimisticMessage])
     setPrompt('')
-    clearTaskDraft(taskId)
     setCoordinatorRunning(true)
     try {
       const accepted = await taskApi.chat(
@@ -1309,27 +1305,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setStageQueueReadyKey(stageQueueKey)
   }, [taskId, projectId, stageQueueKey])
 
-  // 任务详情的输入框按 taskId 保留草稿，避免切换流程/回到任务时丢失。
-  const taskDraftRef = useRef<{ taskId: string } | null>(null)
-  const promptRef = useRef(prompt)
-  const restoredTaskDraftRef = useRef<string | null>(null)
-  const skipNextTaskDraftSaveRef = useRef(false)
-  useEffect(() => {
-    const previous = taskDraftRef.current
-    taskDraftRef.current = taskId ? { taskId } : null
-    if (previous && previous.taskId !== taskId) {
-      saveTaskDraft(previous.taskId, promptRef.current)
-    }
-    const restored = taskId ? loadTaskDraft(taskId) : ''
-    restoredTaskDraftRef.current = taskId ? restored : null
-    skipNextTaskDraftSaveRef.current = true
-    setPrompt(restored)
-  }, [taskId])
-
-  useEffect(() => {
-    promptRef.current = prompt
-  }, [prompt])
-
   useEffect(() => {
     const owner = stageQueueOwnerRef.current
     if (!owner || !stageQueueReady) return
@@ -1391,20 +1366,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       stageAutoDrainingRef.current = false
     })
   }, [activeStageRunning, targetStage, stageInserts, editingInsertId, taskId, projectId, stageRunKey, stageQueueReady, resumeStageWithPrompt, removeStageQueueItems])
-
-  useEffect(() => {
-    if (!taskId) return
-    if (skipNextTaskDraftSaveRef.current) {
-      // taskId 变化后的首帧仍带着旧 prompt，不能把它写到新任务下。
-      skipNextTaskDraftSaveRef.current = false
-      return
-    }
-    if (restoredTaskDraftRef.current === prompt) {
-      restoredTaskDraftRef.current = null
-      return
-    }
-    saveTaskDraft(taskId, prompt)
-  }, [taskId, prompt])
 
   // A2UI protocol: clicks inside rendered UI bubbles (buttons, pickers, ...)
   // arrive as client actions. Relay them to the coordinator as a user message

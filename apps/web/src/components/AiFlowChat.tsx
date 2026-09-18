@@ -324,6 +324,13 @@ export default function AiFlowChat({
       if (canonicalId !== sessionId) store.resetSession(canonicalId)
       store.newSession(canonicalId)
       setSessionId(canonicalId)
+      const configured = assistantConfig?.configured
+      setSelectedEngine(configured?.engine || '')
+      setSelectedProvider(configured?.provider_id || '')
+      setSelectedModel(configured?.model || '')
+      setSelectedFastModel(configured?.fast_model || '')
+      setSelectedVisionModel(configured?.vision_model || '')
+      setSelectedThinkingEffort(configured?.thinking_effort || '')
       lastCanvasSnapshotRef.current = null
       setInput('')
       resetEnhance()
@@ -333,7 +340,7 @@ export default function AiFlowChat({
     } finally {
       setResetting(false)
     }
-  }, [projectId, resetting, running, sessionId, t, workflowId, resetEnhance])
+  }, [assistantConfig, projectId, resetting, running, sessionId, t, workflowId, resetEnhance])
 
   // The add-workflow entry point only prepares a draft; the user sends it.
   useEffect(() => {
@@ -460,6 +467,9 @@ export default function AiFlowChat({
           visionModel: selectedVisionModel,
           showVision: true,
           thinkingEffort: selectedThinkingEffort,
+          defaultThinkingEffort: assistantConfig?.configured.thinking_effort
+            || assistantConfig?.resolved?.thinking_effort
+            || '',
           disabled: !assistantConfig || coordinatorConfigError !== '' || running,
           error: coordinatorConfigError,
           hint: assistantConfig ? t('aiFlow.sessionHint') : '',

@@ -630,6 +630,7 @@ export default function AssistantChatPanel({
           )}
           <ChatInput
             projectId={projectId}
+            sessionId={sessionId}
             availableCommands={availableCommands}
             inputRef={inputRef}
             value={input}

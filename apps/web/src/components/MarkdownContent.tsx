@@ -146,7 +146,9 @@ export default function MarkdownContent({
           {markdown}
         </ReactMarkdown>
       )}
-      {streaming && <span className="markdown-stream-cursor" aria-hidden="true" />}
+      {streaming && content.trim() !== '' && (
+        <span className="markdown-stream-cursor" aria-hidden="true" />
+      )}
     </div>
   )
 }

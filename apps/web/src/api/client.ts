@@ -1875,12 +1875,14 @@ export interface AssistantConfigInfo {
   engine_label: string
   fields: string[]
   configured: AssistantConfiguredDefaults
+  resolved?: AssistantConfiguredDefaults
   available_engines: CoordinatorEngineSummary[]
 }
 
 export interface AssistantSaveResult {
   saved: boolean
   configured: Partial<AssistantConfiguredDefaults>
+  resolved: Partial<AssistantConfiguredDefaults>
 }
 
 export interface EngineModel {

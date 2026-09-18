@@ -39,6 +39,33 @@ def test_assistant_defaults_fallback_and_overlay(tmp_path, monkeypatch):
     assert store.get_coordinator_default_engine() == "hermes"
 
 
+def test_assistant_configured_values_keep_unset_fields_empty(tmp_path, monkeypatch):
+    store = _config_store(tmp_path, monkeypatch)
+    store.set_coordinator_defaults("claude", "m1", "m2", "m3", "medium")
+
+    configured = store.get_assistant_config("task_create")
+    assert configured == {
+        "engine": "",
+        "model": "",
+        "fast_model": "",
+        "vision_model": "",
+        "thinking_effort": "",
+        "provider_id": "",
+    }
+
+    store.set_assistant_defaults("task_create", engine="codex", thinking_effort="high")
+    configured = store.get_assistant_config("task_create")
+    assert configured["engine"] == "codex"
+    assert configured["thinking_effort"] == "high"
+    assert configured["model"] == ""
+
+    store.set_assistant_defaults("task_create", engine="codex", thinking_effort="")
+    configured = store.get_assistant_config("task_create")
+    assert configured["thinking_effort"] == ""
+    # 通用默认解析仍保留旧行为，运行时可显式选择是否采用。
+    assert store.get_assistant_defaults("task_create")["thinking_effort"] == "medium"
+
+
 @pytest.fixture
 async def assistant_client(tmp_path, monkeypatch):
     # 其余助手在模块 __init__ 里注册；ASGITransport 不跑 lifespan，
@@ -139,6 +166,51 @@ async def test_assistant_list_lists_all_assistants(assistant_client):
     for item in assistants:
         assert item["fields"] == expected_fields
     assert by_name["task_coordinator"]["available_engines"]
+
+
+async def test_assistant_list_separates_configured_override_from_resolved_default(
+    assistant_client,
+):
+    client, store = assistant_client
+    store.set_coordinator_defaults("claude", "m1", "", "", "medium")
+    store.set_codex_sdk_config(model_reasoning_effort="low")
+    store.set_assistant_defaults("chat_session", engine="codex_sdk")
+    response = await client.get("/api/assistant/list")
+    assert response.status_code == 200
+    item = next(
+        item
+        for item in response.json()["assistants"]
+        if item["name"] == "chat_session"
+    )
+    assert item["configured"]["engine"] == "codex_sdk"
+    assert item["configured"]["thinking_effort"] == ""
+    assert item["resolved"]["engine"] == "codex_sdk"
+    assert item["resolved"]["thinking_effort"] == "low"
+
+    saved = await client.put(
+        "/api/assistant/chat_session/config",
+        json={
+            "engine": "codex_sdk",
+            "model": "",
+            "fast_model": "",
+            "vision_model": "",
+            "thinking_effort": "",
+            "provider_id": "",
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["configured"]["engine"] == "codex_sdk"
+    assert saved.json()["configured"]["thinking_effort"] == ""
+    assert saved.json()["resolved"]["thinking_effort"] == "low"
+
+    response = await client.get("/api/assistant/list")
+    item = next(
+        item
+        for item in response.json()["assistants"]
+        if item["name"] == "chat_session"
+    )
+    assert item["configured"]["engine"] == "codex_sdk"
+    assert item["configured"]["thinking_effort"] == ""
 
 
 async def test_assistant_set_and_read_config(assistant_client):

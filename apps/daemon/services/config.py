@@ -596,6 +596,58 @@ class ConfigStore:
                 merged[key] = value.strip()
         return merged
 
+    def get_assistant_config(self, name: str) -> dict:
+        """Return only the explicit per-assistant overrides.
+
+        Empty values mean "follow the engine/default", so callers that need
+        to render saved settings must not substitute the resolved defaults.
+        """
+        values = {
+            "engine": "",
+            "model": "",
+            "fast_model": "",
+            "vision_model": "",
+            "thinking_effort": "",
+            "provider_id": "",
+        }
+        if name == "task_coordinator":
+            values.update({
+                "engine": self.get_coordinator_default_engine(),
+                "model": self.get_coordinator_default_model(),
+                "fast_model": self.get_coordinator_default_fast_model(),
+                "vision_model": self.get_coordinator_default_vision_model(),
+                "thinking_effort": self.get_coordinator_default_thinking_effort(),
+            })
+        overrides = self.get("assistant_defaults", {})
+        if not isinstance(overrides, dict):
+            return values
+        overlay = overrides.get(name)
+        if not isinstance(overlay, dict):
+            return values
+        for key in values:
+            value = overlay.get(key)
+            if isinstance(value, str) and value.strip():
+                values[key] = value.strip()
+        return values
+
+    def get_engine_thinking_effort(self, engine_id: str) -> str:
+        """Return an engine's own configured thinking effort, if declared."""
+        engine_id = (engine_id or "").strip()
+        if not engine_id:
+            return ""
+        raw = self.get(f"{engine_id}_engine", {})
+        if not isinstance(raw, dict):
+            return ""
+        for key in (
+            "model_reasoning_effort",
+            "thinking_effort",
+            "reasoning_effort",
+        ):
+            value = str(raw.get(key) or "").strip()
+            if value in CODEX_REASONING_EFFORTS:
+                return value
+        return ""
+
     def set_assistant_defaults(
         self,
         name: str,
