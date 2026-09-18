@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>原型 A · 工具栏分段切换 + 扁平表格</title>
+<style>
+  :root {
+    --bg:#ffffff; --surface:#f5f5f7; --fg:#1d1d1f; --fg-2:#424245;
+    --muted:#6e6e73; --meta:#86868b; --border:#d2d2d7; --border-soft:#eeeef0;
+    --accent:#0071e3; --accent-light:#e6f0ff;
+    --status-ready:#86868b; --status-running:#0071e3; --status-paused:#eab308;
+    --status-done:#16a34a; --status-failed:#dc2626; --status-retrying:#d97706;
+    --radius-sm:10px; --radius-md:12px; --radius-pill:999px;
+    --font: system-ui, -apple-system, "Segoe UI", "PingFang SC", Roboto, sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--font); background:var(--bg); color:var(--fg); height:100vh; display:flex; flex-direction:column; }
+
+  /* ── 顶栏 ── */
+  .topbar { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--border-soft); flex-shrink:0; }
+  .topbar h1 { font-size:15px; margin:0; font-weight:600; }
+  .topbar .project { color:var(--meta); font-size:13px; }
+  .search { margin-left:auto; position:relative; }
+  .search input { width:220px; height:32px; border:1px solid var(--border); border-radius:var(--radius-pill); background:var(--surface); padding:0 14px 0 32px; font-size:13px; outline:none; }
+  .search input:focus { border-color:var(--accent); background:#fff; }
+  .search::before { content:"🔍"; position:absolute; left:11px; top:8px; font-size:12px; opacity:.5; }
+
+  /* ── 方案 A 核心:分段控件 ── */
+  .segmented { display:inline-flex; background:var(--surface); border-radius:var(--radius-pill); padding:3px; gap:2px; }
+  .segmented button { border:0; background:transparent; padding:5px 16px; border-radius:var(--radius-pill); font-size:13px; color:var(--muted); cursor:pointer; font-family:inherit; transition:all .15s; }
+  .segmented button.active { background:#fff; color:var(--fg); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+
+  /* ── 主区 ── */
+  main { flex:1; overflow:hidden; display:flex; flex-direction:column; }
+
+  /* 泳道视图 */
+  .lanes { flex:1; display:flex; gap:0; overflow-x:auto; overflow-y:hidden; padding:16px 16px 16px 0; }
+  .lane { min-width:260px; max-width:320px; flex-shrink:0; background:var(--surface); border-radius:var(--radius-md); display:flex; flex-direction:column; margin-right:12px; overflow:hidden; }
+  .lane-head { padding:12px 14px 8px; display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+  .lane-head .dot { width:8px; height:8px; border-radius:50%; }
+  .lane-head .count { color:var(--meta); font-weight:400; }
+  .lane-head .add { margin-left:auto; border:0; background:transparent; color:var(--accent); font-size:12px; cursor:pointer; }
+  .lane-body { flex:1; overflow-y:auto; padding:4px 10px 10px; display:flex; flex-direction:column; gap:8px; min-height:120px; }
+  .card { background:#fff; border-radius:var(--radius-sm); padding:10px 12px; border-left:3px solid var(--status-ready); cursor:grab; }
+  .card .title { font-size:13px; font-weight:600; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card .meta { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--meta); }
+
+  /* 状态徽标 */
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:var(--radius-pill); font-size:11px; }
+  .badge::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+  /* 表格视图 */
+  .table-wrap { flex:1; overflow:auto; padding:16px 20px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  thead th { position:sticky; top:0; background:var(--bg); text-align:left; font-size:12px; font-weight:600; color:var(--meta); padding:8px 12px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; white-space:nowrap; }
+  thead th:hover { color:var(--fg); }
+  thead th .arrow { font-size:10px; margin-left:3px; }
+  tbody td { padding:10px 12px; border-bottom:1px solid var(--border-soft); white-space:nowrap; }
+  tbody tr { cursor:pointer; }
+  tbody tr:hover { background:var(--accent-light); }
+  .cell-task { font-weight:600; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
+  .cell-step { display:inline-flex; align-items:center; gap:7px; color:var(--fg-2); }
+  .cell-step .dot { width:8px; height:8px; border-radius:50%; }
+  .num { color:var(--meta); font-variant-numeric:tabular-nums; }
+
+  /* 底部说明 */
+  .notes { flex-shrink:0; border-top:1px solid var(--border-soft); background:var(--surface); padding:12px 20px; font-size:12px; color:var(--muted); }
+  .notes b { color:var(--fg-2); }
+  .notes .pros { color:var(--status-done); } .notes .cons { color:var(--status-failed); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>任务看板</h1>
+  <span class="project">电商后台重构</span>
+  <div class="search"><input placeholder="搜索任务…" /></div>
+  <div class="segmented" role="tablist">
+    <button id="seg-lane" class="active" role="tab">泳道</button>
+    <button id="seg-table" role="tab">表格</button>
+  </div>
+</div>
+
+<main>
+  <div class="lanes" id="view-lane"></div>
+  <div class="table-wrap" id="view-table" style="display:none"></div>
+</main>
+
+<div class="notes">
+  <b>方案 A · 工具栏分段切换 + 扁平表格</b> — 顶栏 SegmentedControl「泳道 / 表格」,表格为不分组的扁平表,步骤以彩色圆点列呈现,列头点击排序(默认按更新时间倒序),选择持久化到 localStorage。<br />
+  <span class="pros">✓ 实现简单(复用现有卡片数据,只加一个视图分支);信息密度高,适合批量扫读和排序</span>
+  <span class="cons" style="margin-left:12px">✗ 扁平化弱化了"步骤归属"的视觉分组,看板感消失</span>
+</div>
+
+<script>
+const STEPS = [
+  { key:'req',      label:'需求',   color:'#0071e3' },
+  { key:'ui',       label:'UI 设计', color:'#7c3aed' },
+  { key:'frontend', label:'前端',   color:'#059669' },
+  { key:'backend',  label:'后端',   color:'#d97706' },
+  { key:'test',     label:'测试',   color:'#dc2626' },
+  { key:'deploy',   label:'部署',   color:'#16a34a' },
+];
+const STATUS = {
+  ready:{ label:'未开始', color:'var(--status-ready)' },
+  running:{ label:'进行中', color:'var(--status-running)' },
+  paused:{ label:'已暂停', color:'var(--status-paused)' },
+  done:{ label:'已完成', color:'var(--status-done)' },
+  failed:{ label:'失败', color:'var(--status-failed)' },
+  retrying:{ label:'重试中', color:'var(--status-retrying)' },
+};
+const TASKS = [
+  { title:'订单列表筛选条件持久化', step:'frontend', status:'running',  creator:'林一', dur:'1h 24m', upd:'10:42' },
+  { title:'订单导出接口分页修复',   step:'backend',  status:'running',  creator:'陈默', dur:'48m',    upd:'10:38' },
+  { title:'退款流程状态机设计',     step:'req',      status:'done',     creator:'王珊', dur:'2h 05m', upd:'09:56' },
+  { title:'优惠券叠加规则文档',     step:'req',      status:'running',  creator:'王珊', dur:'36m',    upd:'10:45' },
+  { title:'订单详情页改版高保真',   step:'ui',       status:'paused',   creator:'赵可', dur:'1h 10m', upd:'08:30' },
+  { title:'商品卡片暗色模式适配',   step:'ui',       status:'done',     creator:'赵可', dur:'55m',    upd:'07:58' },
+  { title:'购物车响应式重构',       step:'frontend', status:'failed',   creator:'林一', dur:'2h 41m', upd:'09:12' },
+  { title:'支付回调幂等处理',       step:'backend',  status:'done',     creator:'陈默', dur:'1h 02m', upd:'06:47' },
+  { title:'库存扣减并发压测',       step:'test',     status:'running',  creator:'周航', dur:'1h 55m', upd:'10:51' },
+  { title:'订单模块回归用例',       step:'test',     status:'ready',    creator:'周航', dur:'—',      upd:'昨天' },
+  { title:'灰度发布策略配置',       step:'deploy',   status:'running',  creator:'郑好', dur:'23m',    upd:'10:55' },
+  { title:'容器镜像瘦身',           step:'deploy',   status:'done',     creator:'郑好', dur:'1h 30m', upd:'昨天' },
+  { title:'订单搜索联想',           step:'frontend', status:'ready',    creator:'林一', dur:'—',      upd:'昨天' },
+  { title:'订单导出大文件流式返回', step:'backend',  status:'retrying', creator:'陈默', dur:'41m',    upd:'10:20' },
+];
+const stepOf = k => STEPS.find(s => s.key === k);
+const badge = s => { const st = STATUS[s]; return `<span class="badge" style="color:${st.color};background:color-mix(in oklab, ${st.color}, transparent 88%)">${st.label}</span>`; };
+
+/* ── 泳道视图 ── */
+function renderLanes() {
+  document.getElementById('view-lane').innerHTML = STEPS.map(st => {
+    const ts = TASKS.filter(t => t.step === st.key);
+    return `<div class="lane">
+      <div class="lane-head"><span class="dot" style="background:${st.color}"></span>${st.label}<span class="count">(${ts.length})</span><button class="add">+ 添加</button></div>
+      <div class="lane-body">${ts.map(t => `
+        <div class="card" style="border-left-color:${STATUS[t.status].color}">
+          <div class="title">${t.title}</div>
+          <div class="meta">${badge(t.status)}<span>${t.creator}</span><span>${t.dur}</span></div>
+        </div>`).join('') || '<div style="font-size:11px;color:var(--meta);text-align:center;padding:16px 0">暂无任务</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── 表格视图(扁平,可排序)── */
+let sortKey = 'upd', sortDir = -1;
+const COLS = [
+  { k:'title',  label:'任务' },
+  { k:'step',   label:'步骤' },
+  { k:'status', label:'状态' },
+  { k:'creator',label:'创建人' },
+  { k:'dur',    label:'耗时' },
+  { k:'upd',    label:'更新时间' },
+];
+function renderTable() {
+  const rows = [...TASKS].sort((a,b) => {
+    let va = a[a.k || a.title], vb = b[b.title];
+    if (sortKey === 'title') [va, vb] = [a.title, b.title];
+    if (sortKey === 'step')   [va, vb] = [stepOf(a.step).label, stepOf(b.step).label];
+    if (sortKey === 'status') [va, vb] = [a.status, b.status];
+    if (sortKey === 'dur')    [va, vb] = [a.dur, b.dur];
+    if (sortKey === 'upd')    [va, vb] = [a.upd, b.upd];
+    return String(va).localeCompare(String(vb), 'zh') * sortDir;
+  });
+  document.getElementById('view-table').innerHTML = `<table>
+    <thead><tr>${COLS.map(c => `<th data-k="${c.k}">${c.label}${sortKey===c.k?`<span class="arrow">${sortDir===1?'▲':'▼'}</span>`:''}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(t => { const st = stepOf(t.step); return `<tr>
+      <td class="cell-task">${t.title}</td>
+      <td><span class="cell-step"><span class="dot" style="background:${st.color}"></span>${st.label}</span></td>
+      <td>${badge(t.status)}</td>
+      <td>${t.creator}</td>
+      <td class="num">${t.dur}</td>
+      <td class="num">${t.upd}</td>
+    </tr>`; }).join('')}</tbody>
+  </table>`;
+  document.querySelectorAll('#view-table th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (k === sortKey) sortDir *= -1; else { sortKey = k; sortDir = k === 'title' ? 1 : -1; }
+    renderTable();
+  });
+}
+
+/* ── 切换 + 持久化 ── */
+const segs = { 'seg-lane':'lane', 'seg-table':'table' };
+function setMode(mode, persist = true) {
+  document.getElementById('view-lane').style.display  = mode === 'lane'  ? '' : 'none';
+  document.getElementById('view-table').style.display = mode === 'table' ? '' : 'none';
+  for (const [id, m] of Object.entries(segs))
+    document.getElementById(id).classList.toggle('active', m === mode);
+  if (persist) localStorage.setItem('board-view-a', mode);
+}
+segs && Object.entries(segs).forEach(([id]) =>
+  document.getElementById(id).onclick = () => setMode(segs[id]));
+setMode(localStorage.getItem('board-view-a') || 'lane', false);
+renderLanes(); renderTable();
+</script>
+</body>
+</html>
