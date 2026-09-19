@@ -163,7 +163,6 @@ export default function ChatMessageBubble({
   children,
   showLoading = false,
   loading,
-  onEdit,
   onSendToInput,
   onA2uiAction,
   interactionsEnabled = true,
@@ -199,7 +198,7 @@ export default function ChatMessageBubble({
     ...(isUser ? { marginLeft: 'auto' } : {}),
   }
   return (
-    <div {...rootProps} style={rootStyle} className="chat-message-row">
+    <div {...rootProps} style={rootStyle} className="chat-message-row" data-thinking={!isUser && showLoading && streaming && interactions.length === 0 && !plan && !(visibleContent || hasToolActivity) ? '' : undefined}>
       {isUser && header && (
         <div style={{
           fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', textAlign: 'right',
@@ -285,23 +284,6 @@ export default function ChatMessageBubble({
               display: 'flex', justifyContent: 'flex-end',
               alignItems: 'center', gap: 2, minHeight: 24,
             }}>
-              {onEdit && (
-                <button
-                  type="button"
-                  className="chat-message-action"
-                  title={t('bubble.editMessage')}
-                  aria-label={t('bubble.editMessage')}
-                  onClick={() => onEdit(content)}
-                  style={{
-                    width: 24, height: 24, minWidth: 24, padding: 0,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: 'transparent', border: 'none', borderRadius: 6,
-                    color: 'var(--muted)', cursor: 'pointer',
-                  }}
-                >
-                  <Icon name="pencil" size={12} strokeWidth={2} />
-                </button>
-              )}
               {onSendToInput && (
                 <button
                   type="button"

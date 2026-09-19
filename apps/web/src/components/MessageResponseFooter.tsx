@@ -350,7 +350,7 @@ export default function MessageResponseFooter({
   ].filter((part): part is string => Boolean(part))
 
   return (
-    <div style={{
+    <div className={running ? 'message-footer--running' : undefined} style={{
       minHeight: 24, display: 'flex', alignItems: 'center', gap: 8,
       color: 'var(--meta)', fontSize: 'calc(11px * var(--font-scale))',
     }}>

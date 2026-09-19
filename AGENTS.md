@@ -101,6 +101,11 @@ npm run build
 - **布局与样式**：复杂弹框顶部放表单，主区域占满余高、支持分隔拖动和弹框缩放；避免写死过矮高度。公共组件放入 modal 后须检查全局表单样式污染，必要时提高选择器特异性并人工核对。
 - **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
+- **移动端适配**（`apps/web/src/mobile.css`，断点 `≤1023px`）：
+  - 所有交互元素最小触控高度 44px（`mobile.css` 全局规则），但消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）必须排除该规则，保持原始紧凑尺寸。新增浮层/弹出式小按钮时须同步在 `min-height: 44px` 的 `:not()` 排除列表中补充。
+  - `.btn-ghost` 在消息区域（`.chat-message-row`、`.process-trace-thinking-copy`、`.llm-tool-call`）内必须去掉 border、强制 `min-height/min-width: 24px`，避免 ghost 边框在小按钮上显得过大。
+  - 思考中 / 运行中的消息（`[data-thinking]`、`.message-footer--running`）隐藏操作按钮；已完成消息的操作按钮始终可见（移动端无 hover，不依赖 `opacity: 0 → hover: opacity: 1`）。
+  - 新增消息区域内的可交互按钮时，必须加 `chat-message-action` class 以复用移动端样式规则；新增类似的小尺寸图标按钮容器须在 `mobile.css` 的 ghost 按钮选择器中补充覆盖。
 - **i18n**：新增文案先写 `zh-CN.ts`；其他词典可暂用中文占位，但键集合必须一致且非空（由 `apps/web/tests/i18n.test.ts` 校验）。
 - **禁止重复 API 请求**：同一组件内多个 `useEffect` 不得对同一 API 发起可重叠的请求。具体规则：
   - 新增 `useEffect` 触发 API 调用前，检查同一组件（及父级 Layout 等）是否已有 effect 在相同或更大依赖集上调用同一接口。若有重叠，合并为单一 effect 或移除冗余。

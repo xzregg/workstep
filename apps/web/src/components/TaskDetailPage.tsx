@@ -53,6 +53,7 @@ export default function TaskDetailPage({
 
       {(onClose || primaryAction) && (
         <div
+          className="task-detail-footer-actions"
           style={{
             padding: '14px 24px',
             borderTop: '1px solid var(--border-soft)',
@@ -150,7 +151,7 @@ export default function TaskDetailPage({
               )}
               <Button variant="icon" onClick={onCloseArtifactPreview}>✕</Button>
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
+            <div className="artifact-preview-container" style={{ flex: 1, minHeight: 0 }}>
               <ArtifactPreview
                 path={previewArtifact.path}
                 isDir={!!previewArtifact.is_dir}

@@ -296,7 +296,7 @@ export default function AssistantChatPanel({
   // MessageItem 是 memo 化的：这里的回调必须引用稳定，否则每个 token 都会击穿 memo。
   const handleSendToInput = useCallback((content: string) => {
     onInputChange(content)
-    requestAnimationFrame(() => inputRef.current?.focus())
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
   }, [onInputChange])
 
   useEffect(() => {
@@ -311,8 +311,29 @@ export default function AssistantChatPanel({
     lastProgrammaticScrollTopRef.current = target
     lastScrollHeightRef.current = list.scrollHeight
     list.scrollTop = target
+    setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
     setHasUnreadMessages(false)
   }, [messages.length, lastContent, lastEventsCount, scrollKey, a2uiMessages])
+
+  // 移动端浏览器可能在首次渲染后调整 viewport（地址栏收缩等），
+  // 多次延迟钉底确保消息列表在最新位置。
+  useEffect(() => {
+    if (!followRef.current) return
+    const scrollToEnd = () => {
+      const list = listRef.current
+      if (!list || !followRef.current) return
+      const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
+      lastProgrammaticScrollTopRef.current = target
+      lastScrollHeightRef.current = list.scrollHeight
+      list.scrollTop = target
+      setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
+    }
+    const t1 = setTimeout(scrollToEnd, 50)
+    const t2 = setTimeout(scrollToEnd, 200)
+    const t3 = setTimeout(scrollToEnd, 500)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
+  }, [messages.length, scrollKey])
+
   useEffect(() => {
     followRef.current = true
     setHasUnreadMessages(false)
@@ -353,6 +374,7 @@ export default function AssistantChatPanel({
         const target = conversationBottomScrollTop(list.scrollHeight, list.clientHeight)
         lastProgrammaticScrollTopRef.current = target
         list.scrollTop = target
+        setScrolledToBottom(isNearConversationBottom(list.scrollHeight, target, list.clientHeight))
       },
     })
   }, [])
@@ -556,7 +578,8 @@ export default function AssistantChatPanel({
           </div>
         </div>
         <ConversationNewMessagesButton
-          visible={hasUnreadMessages}
+          visible={!scrolledToBottom}
+          hasNewMessages={hasUnreadMessages}
           label={t('taskDetail.newMessages')}
           ariaLabel={t('taskDetail.viewNewMessagesAria')}
           onClick={() => {
@@ -623,7 +646,7 @@ export default function AssistantChatPanel({
                     disabled={running}
                     onClick={() => {
                       onQuickPromptSelect?.(item.prompt)
-                      requestAnimationFrame(() => inputRef.current?.focus())
+                      requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                     }}
                     style={{ flexShrink: 0, borderRadius: 999, whiteSpace: 'nowrap' }}
                   >
@@ -679,7 +702,7 @@ export default function AssistantChatPanel({
                       onClick={() => {
                         setQuickPromptsOpen(false)
                         onQuickPromptSelect?.(item.prompt)
-                        requestAnimationFrame(() => inputRef.current?.focus())
+                        requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }))
                       }}
                       style={{ justifyContent: 'flex-start' }}
                     >

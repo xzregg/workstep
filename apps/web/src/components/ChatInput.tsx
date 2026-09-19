@@ -404,7 +404,7 @@ export default function ChatInput({
     if (!target || !element) return
     const localCursor = Math.max(0, Math.min(cursor - target.start, target.markdown.length))
     textareaRef.current = element
-    element.focus()
+    element.focus({ preventScroll: true })
     element.setSelectionRange(localCursor, localCursor)
   }
 
@@ -669,7 +669,7 @@ export default function ChatInput({
           onClick={(event) => {
             if (event.target !== event.currentTarget) return
             const lastInput = segmentRefs.current.get(textSegmentCount - 1)
-            lastInput?.focus()
+            lastInput?.focus({ preventScroll: true })
           }}
         >
           {(() => {

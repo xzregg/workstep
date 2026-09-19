@@ -404,10 +404,19 @@ button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .chat-message-row:hover .chat-message-action,
 .chat-message-row:focus-within .chat-message-action { opacity: 1; }
 
+/* 移动端思考中：隐藏右侧操作按钮（复制/分叉等），避免挤占有限宽度 */
+@media (max-width: 640px) {
+  .chat-message-row[data-thinking] .chat-message-action { display: none; }
+}
+
 /* 底部统计信息（Token/引擎/模型）：鼠标悬停到消息上才显示，高度已预留不撑开布局 */
 .chat-message-row .footer-usage-summary { opacity: 0; }
 .chat-message-row:hover .footer-usage-summary,
 .chat-message-row:focus-within .footer-usage-summary { opacity: 1; }
+
+@media (max-width: 640px) {
+  .chat-message-row .footer-usage-summary { opacity: 1; }
+}
 
 /* 「会话 ID」下拉面板：显隐由组件内状态控制（悬停/聚焦打开，滑入面板不关闭）。 */
 .msg-id-trigger { cursor: default; }

@@ -1031,6 +1031,7 @@ export default function TaskDetailView({
         {/* Description */}
         <div>
           <div
+            className="task-description-header"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -3085,6 +3086,7 @@ export default function TaskDetailView({
 
           <ConversationNewMessagesButton
             visible={unreadMessages}
+            hasNewMessages={unreadMessages}
             label={t('taskDetail.newMessages')}
             ariaLabel={t('taskDetail.viewNewMessagesAria')}
             onClick={() => {
@@ -3153,6 +3155,7 @@ export default function TaskDetailView({
               }}
             >
               <div
+                className="stage-target-tabs"
                 style={{
                   display: 'flex',
                   gap: 2,
