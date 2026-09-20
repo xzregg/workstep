@@ -1,10 +1,11 @@
-import { useCallback, useMemo, type RefObject } from 'react'
+import { isValidElement, useCallback, useMemo, type ReactNode, type RefObject } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
+import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
 
 interface MarkdownContentProps {
   content: string
@@ -129,26 +130,36 @@ export default function MarkdownContent({
     img: (props: { src?: string; alt?: string }) => renderImage(props.src, props.alt ?? ''),
     a: (props: { href?: string; children?: React.ReactNode; title?: string }) =>
       renderLink(props.href, props.children, props.title),
+    pre: ({ children }: { children?: ReactNode }) => {
+      if (isValidElement<{ className?: string; children?: ReactNode }>(children)
+        && /(?:^|\s)language-mermaid(?:\s|$)/i.test(children.props.className ?? '')) {
+        const code = String(children.props.children ?? '').replace(/\n$/, '')
+        return <MermaidBlock code={code} />
+      }
+      return <pre>{children}</pre>
+    },
   }), [compactParagraphs, renderImage, renderLink])
 
   return (
-    <div
-      ref={rootRef}
-      className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
-      aria-live={streaming ? 'polite' : undefined}
-    >
-      {plainText ? splitPlainText(normalizedContent).map((segment, index) => {
-        if (segment.type === 'image') return <span key={index}>{renderImage(segment.url, segment.alt)}</span>
-        if (segment.type === 'link') return <span key={index}>{renderLink(segment.url, segment.label)}</span>
-        return <span key={index}>{segment.text}</span>
-      }) : (
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
-          {markdown}
-        </ReactMarkdown>
-      )}
-      {streaming && content.trim() !== '' && (
-        <span className="markdown-stream-cursor" aria-hidden="true" />
-      )}
-    </div>
+    <MarkdownStreamingContext.Provider value={streaming}>
+      <div
+        ref={rootRef}
+        className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
+        aria-live={streaming ? 'polite' : undefined}
+      >
+        {plainText ? splitPlainText(normalizedContent).map((segment, index) => {
+          if (segment.type === 'image') return <span key={index}>{renderImage(segment.url, segment.alt)}</span>
+          if (segment.type === 'link') return <span key={index}>{renderLink(segment.url, segment.label)}</span>
+          return <span key={index}>{segment.text}</span>
+        }) : (
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>
+            {markdown}
+          </ReactMarkdown>
+        )}
+        {streaming && content.trim() !== '' && (
+          <span className="markdown-stream-cursor" aria-hidden="true" />
+        )}
+      </div>
+    </MarkdownStreamingContext.Provider>
   )
 }

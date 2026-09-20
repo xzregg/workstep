@@ -74,6 +74,29 @@ def test_legacy_providers_gain_protocol_when_loaded(tmp_path, monkeypatch):
     ]
 
 
+def test_provider_model_cache_isolated_by_protocol(provider_store):
+    provider_store.set_provider_models(
+        "multi", [{"id": "chat-model"}], "2026-09-19T00:00:00Z",
+        "openai_chat_completions",
+    )
+    provider_store.set_provider_models(
+        "multi", [{"id": "responses-model"}], "2026-09-19T00:01:00Z",
+        "openai_responses",
+    )
+
+    assert provider_store.get_provider_models(
+        "multi", "openai_chat_completions"
+    )["models"] == [{"id": "chat-model"}]
+    assert provider_store.get_provider_models(
+        "multi", "openai_responses"
+    )["models"] == [{"id": "responses-model"}]
+
+    provider_store.clear_provider_models("multi")
+    assert provider_store.get_provider_models(
+        "multi", "openai_chat_completions"
+    ) == {}
+
+
 def test_engine_protocol_declarations_are_adapter_owned():
     assert ClaudeCodeEngine.supported_provider_protocols() == {
         "anthropic_messages"
@@ -331,6 +354,36 @@ def test_codex_provider_runtime_uses_ephemeral_model_provider(provider_store):
     )
     assert sdk_runtime.env == runtime.env
     assert sdk_runtime.engine_config == runtime.engine_config
+
+
+def test_multi_protocol_provider_uses_each_engines_own_base_url(provider_store):
+    provider_store.save_provider({
+        **_provider("multi", "openai_chat_completions"),
+        "protocols": [
+            "openai_chat_completions",
+            "openai_responses",
+            "anthropic_messages",
+        ],
+        "protocol_base_urls": {
+            "openai_chat_completions": "https://chat.example.com/root",
+            "openai_responses": "https://responses.example.com/api/v2",
+            "anthropic_messages": "https://anthropic.example.com/proxy/v1",
+        },
+    })
+
+    codex = CodexEngine().resolve_provider_runtime(
+        provider_id="multi", model="gpt-test"
+    )
+    hermes = HermesEngine().resolve_provider_runtime(
+        provider_id="multi", model="chat-test"
+    )
+    claude = ClaudeCodeEngine().resolve_provider_runtime(
+        provider_id="multi", model="claude-test"
+    )
+
+    assert 'model_providers.workstep.base_url="https://responses.example.com/api/v2"' in codex.engine_config
+    assert hermes.env["OPENAI_BASE_URL"] == "https://chat.example.com/root"
+    assert claude.env["ANTHROPIC_BASE_URL"] == "https://anthropic.example.com/proxy/v1"
 
 
 def test_hermes_provider_runtime_uses_openai_compatible_environment(provider_store):

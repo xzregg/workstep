@@ -1976,8 +1976,10 @@ export interface ProviderInfo {
   id: string
   name: string
   type: string
+  protocols: string[]
   protocol: string
   base_url: string
+  protocol_base_urls?: Record<string, string>
   api_key: string
   has_key: boolean
   enabled: boolean
@@ -1993,6 +1995,7 @@ export interface ProviderTypeMeta {
   default_base_url: string
   auth: string
   default_protocol: string
+  default_protocols: string[]
   help: string
 }
 
@@ -2001,12 +2004,33 @@ export interface ProviderListResult {
   types: ProviderTypeMeta[]
 }
 
+/**
+ * 供应商（可多协议）与引擎支持协议是否有交集。
+ * 兼容旧数据：无 `protocols` 时退回单值 `protocol`。
+ */
+export function providerProtocolsMatch(
+  provider: { protocols?: string[]; protocol?: string },
+  engineProtocols: string[] | undefined | null,
+): boolean {
+  const providerProtocols =
+    provider.protocols && provider.protocols.length
+      ? provider.protocols
+      : provider.protocol
+        ? [provider.protocol]
+        : []
+  return (engineProtocols || []).some((item) =>
+    providerProtocols.includes(item),
+  )
+}
+
 export interface ProviderSaveInput {
   id?: string
   name: string
   type: string
-  protocol: string
+  protocols: string[]
+  protocol?: string
   base_url: string
+  protocol_base_urls?: Record<string, string>
   api_key?: string
   enabled?: boolean
   clear?: Record<string, boolean>
@@ -2039,6 +2063,7 @@ export interface ProviderImportCandidate {
   name: string
   type: string
   protocol: string
+  protocols: string[]
   base_url: string
   has_key: boolean
   wire_api: string
@@ -2076,15 +2101,20 @@ export const providerApi = {
     request<{ deleted: boolean }>(`/provider/${encodeURIComponent(providerId)}`, {
       method: 'DELETE',
     }),
-  test: (providerId: string) =>
+  test: (providerId: string, protocol = '') =>
     request<ProviderTestResult>(`/provider/${encodeURIComponent(providerId)}/test`, {
       method: 'POST',
-      body: JSON.stringify({ timeout_seconds: 15 }),
+      body: JSON.stringify({ timeout_seconds: 15, protocol }),
     }),
-  models: (providerId: string, refresh = false) =>
+  models: (providerId: string, refresh = false, protocol = '') =>
     request<ProviderModelsResult>(
       `/provider/${encodeURIComponent(providerId)}/models${
-        refresh ? '?refresh=1' : ''
+        refresh || protocol
+          ? `?${new URLSearchParams({
+              ...(refresh ? { refresh: '1' } : {}),
+              ...(protocol ? { protocol } : {}),
+            }).toString()}`
+          : ''
       }`,
     ),
   reveal: (providerId: string) =>

@@ -35,12 +35,6 @@ const apiClientSource = await readFile(
   'utf8',
 )
 
-test('engine-owned provider selectors filter by declared wire protocol', () => {
-  assert.match(coordinatorSource, /provider_protocols \|\| \[\]/)
-  assert.match(coordinatorSource, /\.includes\(item\.protocol\)/)
-  assert.match(settingsSource, /\.includes\(item\.protocol\)/)
-})
-
 test('assistant provider switching clears every selected model', () => {
   assert.match(
     settingsSource,
@@ -91,6 +85,21 @@ test('provider settings exposes all supported protocols', () => {
   ]) {
     assert.match(providerSource, new RegExp(protocol))
   }
+  assert.match(providerSource, /protocol_base_urls/)
+  assert.match(providerSource, /form\.protocols\.map/)
+  assert.match(providerSource, /protocol: form\.protocols\[0\]/)
+  assert.match(providerSource, /base_url: protocolBaseUrls\[form\.protocols\[0\]\]/)
+})
+
+test('provider protocols use switches and reveal their own address field', () => {
+  assert.match(providerSource, /className="provider-protocol-toggle"/)
+  assert.match(providerSource, /role="switch"/)
+  assert.match(providerSource, /className="provider-protocol-switch"/)
+  assert.match(
+    providerSource,
+    /form\.protocols\.includes\(option\.value\) && \([\s\S]*?provider-base-url-\$\{option\.value\}/,
+  )
+  assert.doesNotMatch(providerSource, /provider-protocol-checkmark/)
 })
 
 test('provider settings can copy an existing provider into a new configuration', () => {

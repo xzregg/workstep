@@ -36,7 +36,7 @@ Then open `http://127.0.0.1:8765`. Development commands and repository conventio
 
 ## Desktop downloads
 
-Tagged releases publish unsigned early-access builds for macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64. Download them from [GitHub Releases](https://github.com/xzregg/workstep/releases). Your operating system may require an explicit confirmation before opening an unsigned build.
+Tagged releases publish early-access builds for macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64. Windows artifacts are Authenticode-signed; macOS signing and notarization are not yet guaranteed. Download artifacts, checksums, SBOMs, and provenance from [GitHub Releases](https://github.com/xzregg/workstep/releases). macOS may require explicit confirmation before opening an unsigned build.
 
 ## Documentation
 

@@ -40,6 +40,7 @@ from services.task import TaskService
 from services.intervention import intervention_manager
 from services.workflow_runtime import WorkflowRuntime
 from services.config import config_store
+from services.desktop_security import DesktopSecurityMiddleware
 from agent_assistants.coordinator import CoordinatorModule
 from agent_assistants.workflow_gen import WorkflowGenModule
 from agent_assistants.task_draft import TaskDraftModule
@@ -197,6 +198,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="WorkStep Daemon", lifespan=lifespan, favicon_url="/static/favicon.svg")
 instrument_fastapi(app)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.add_middleware(DesktopSecurityMiddleware)
 app.add_middleware(
     RemoteProjectProxyMiddleware,
     registry=remote_project_registry,

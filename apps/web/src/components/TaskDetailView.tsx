@@ -58,6 +58,7 @@ import {
   isStageResumableWithMessage,
   isSelectedStageRunning,
   findPreferredArtifact,
+  findActionablePendingReview,
   isNearConversationBottom,
   hasActiveSelectionWithin,
   shouldPauseConversationFollow,
@@ -751,6 +752,10 @@ export default function TaskDetailView({
 
   const selectedReview = reviews.find(
     (review) => review.step_key === currentStage.key,
+  )
+  const actionablePendingReview = useMemo(
+    () => findActionablePendingReview(reviews, stageProgress),
+    [reviews, stageProgress],
   )
   const selectedReviewActor = selectedReview
     ? reviewActorLabel(selectedReview)
@@ -1968,6 +1973,7 @@ export default function TaskDetailView({
 
         {/* Chat messages */}
         <div
+          className="task-chat-history-wrapper"
           style={{
             flex: 1,
             minWidth: 0,
@@ -3108,6 +3114,7 @@ export default function TaskDetailView({
         {/* Chat input (edit mode only) */}
         {!readOnly && (
           <div
+            className="task-detail-composer"
             style={{
               position: 'relative',
               padding: '14px 20px',
@@ -3550,9 +3557,8 @@ export default function TaskDetailView({
       {compact && <div className="mobile-detail-tabs" role="tablist">
         {(['conversation', 'stages', 'artifacts'] as const).map(tab => <button key={tab} role="tab" aria-selected={mobileTab === tab} onClick={() => setMobileTab(tab)}>{t(`mobile.${tab}`)}</button>)}
       </div>}
-      {compact && reviews.some(review => review.status === 'pending') && <button className="mobile-review-entry" onClick={() => {
-        const review = reviews.find(item => item.status === 'pending')!
-        const index = stages.findIndex(stage => stage.key === review.step_key)
+      {compact && actionablePendingReview && <button className="mobile-review-entry" onClick={() => {
+        const index = stages.findIndex(stage => stage.key === actionablePendingReview.step_key)
         if (index >= 0) onStageClick(index)
         setMobileTab('stages')
         requestAnimationFrame(() => mobileReviewRef.current?.scrollIntoView({ block: 'center' }))

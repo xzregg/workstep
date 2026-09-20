@@ -32,6 +32,7 @@ interface EngineProviderCompatibility {
 interface ProviderCompatibility {
   id: string
   protocol?: string
+  protocols?: string[]
   enabled?: boolean
 }
 

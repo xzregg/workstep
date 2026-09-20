@@ -19,6 +19,7 @@ export type MessageTimelineEvent = {
   phase?: string
   source_item_id?: string
   isError?: boolean
+  kind?: string
   timestamp?: unknown
   created_at?: string
 }
@@ -26,6 +27,7 @@ export type MessageTimelineEvent = {
 export type ToolActivity = {
   id: string
   name: string
+  kind?: string
   input?: unknown
   result?: unknown
   hasResult: boolean
@@ -224,11 +226,13 @@ export function buildMessageTimeline(
       const existing = toolsById.get(id)
       if (existing) {
         existing.name = toolName(event) || existing.name
+        existing.kind = typeof event.kind === 'string' ? event.kind : existing.kind
         return
       }
       const activity: ToolActivity = {
         id,
         name: toolName(event),
+        ...(typeof event.kind === 'string' ? { kind: event.kind } : {}),
         hasResult: false,
         isError: false,
         ...(timestamp !== null ? { startedAt: timestamp } : {}),

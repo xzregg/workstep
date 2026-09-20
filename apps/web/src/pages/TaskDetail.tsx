@@ -1992,6 +1992,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         headerActions={
           <>
             <Button
+              className="task-detail-share-button"
               variant="ghost"
               title={t('taskDetail.shareButtonTitle')}
               aria-label={t('taskDetail.shareButtonTitle')}
@@ -2010,6 +2011,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               {t('share.dialogTitle')}
             </Button>
             <Button
+              className="task-detail-id-button"
               variant="ghost"
               title={t('taskDetail.copyTaskIdTitle')}
               aria-label={t('taskDetail.copyTaskIdAria')}

@@ -14,7 +14,16 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   function NavigationContent() {
     useState(() => { mounts++; return 0 })
     const navigate = useNavigate()
-    return <button onClick={() => navigate('/chat?session=one')}>会话一</button>
+    return <>
+      <button onClick={() => navigate('/chat?session=one')}>会话一</button>
+      <button onClick={() => navigate('/tasks?project=two', {
+        state: { preserveNavigationDrawer: true },
+      })}>项目二</button>
+      <button onClick={() => navigate('/chat?session=next', {
+        replace: true,
+        state: { preserveNavigationDrawer: true },
+      })}>删除后跳转</button>
+    </>
   }
   function Surface() {
     const location = useLocation()
@@ -32,6 +41,13 @@ test('drawer opens, keeps a single navigation tree, closes after selection, and 
   await act(async () => session.click())
   assert.equal(container.querySelector('output')!.textContent, '/chat')
   assert.equal(menu.getAttribute('aria-expanded'), 'false')
+  await act(async () => menu.click())
+  const deleteNavigation = [...container.querySelectorAll('button')].find(x => x.textContent === '删除后跳转')!
+  await act(async () => deleteNavigation.click())
+  assert.equal(menu.getAttribute('aria-expanded'), 'true', 'delete replacement navigation must preserve the drawer')
+  const project = [...container.querySelectorAll('button')].find(x => x.textContent === '项目二')!
+  await act(async () => project.click())
+  assert.equal(menu.getAttribute('aria-expanded'), 'true', 'project selection must preserve the drawer')
   await act(async () => { window.happyDOM.setWindowSize({ width: 1280, height: 900 }) })
   assert.equal(mounts, 1)
   assert.equal(container.querySelectorAll('aside').length, 1)

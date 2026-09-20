@@ -17,3 +17,7 @@ test('workflow rows only show selected state outside chat context', () => {
   assert.match(layoutSource, /workflowSelected \? 'var\(--accent\)' : 'var\(--meta\)'/)
   assert.match(layoutSource, /workflowSelected \? 'var\(--accent-light\)' : 'transparent'/)
 })
+
+test('deleting the active session marks replacement navigation to preserve the mobile drawer', () => {
+  assert.match(layoutSource, /state:\s*\{ preserveNavigationDrawer: true \}/)
+})

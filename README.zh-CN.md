@@ -459,7 +459,7 @@ flowchart TD
 
 ## 桌面端下载
 
-创建 `v*` 标签后，GitHub Release 会自动生成 macOS Apple Silicon、macOS Intel、Windows x64 和 Linux x64 四种桌面包。早期版本暂未签名，系统首次打开时可能要求手动确认。请前往 [GitHub Releases](https://github.com/xzregg/workstep/releases) 下载。
+创建语义化版本 `v*.*.*` 标签后，GitHub Release 会自动生成 macOS Apple Silicon、macOS Intel、Windows x64 和 Linux x64 四种桌面包，同时生成校验和、SBOM 和 provenance。Windows 包强制 Authenticode 签名；macOS 早期版本暂不保证签名与公证，首次打开时可能要求手动确认。请前往 [GitHub Releases](https://github.com/xzregg/workstep/releases) 下载。
 
 ## 文档入口
 

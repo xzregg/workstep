@@ -195,7 +195,7 @@ def test_codex_cli_maps_visualize_marker_to_markdown_file_link(marker):
     """Codex 私有的 visualize 标记转成 Markdown 文件路径链接。"""
     engine = CodexEngine()
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     event = engine._map_event({
@@ -232,7 +232,7 @@ def test_codex_cli_keeps_malformed_visualize_marker():
 def test_codex_cli_converts_visualize_marker_with_corrupted_terminator():
     """旧数据里 U+E201 被损坏成替换符时，仍应基于合法 JSON 转成链接。"""
     engine = CodexEngine()
-    path = "/Users/xzr/Desktop/workstep/.workstep/visualizations/a.html"
+    path = "/Users/example/workstep/.workstep/visualizations/a.html"
     event = engine._map_event({
         "type": "item.completed",
         "item": {
@@ -296,7 +296,7 @@ def test_codex_maps_cli_tool_item_families():
                 "id": "f1",
                 "changes": [{"path": "a.py", "diff": "+x"}],
             },
-            "FileChange",
+            "EditFile",
         ),
         (
             {
@@ -330,6 +330,12 @@ def test_codex_maps_cli_tool_item_families():
         })
         assert started is not None and started.type == "tool_call"
         assert started.data["title"] == title
+        if item["type"] == "file_change":
+            assert started.data["kind"] == "edit"
+            assert started.data["raw_input"] == {
+                "path": "a.py",
+                "changes": [{"path": "a.py", "diff": "+x"}],
+            }
         assert completed is not None and completed.type == "tool_call_update"
         assert completed.data["status"] == "completed"
 
@@ -3091,7 +3097,7 @@ def test_codex_sdk_maps_visualize_marker_across_deltas():
     """visualize 标记可能被拆成多个 delta，跨分片也必须转换成链接。"""
     engine = CodexSDKEngine()
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     marker = f'\ue200visualize{{"path":"{path}","mode":"wide"}}\ue201'
@@ -3355,7 +3361,7 @@ def test_codex_sdk_maps_thread_name_update_to_session_info():
 def test_codex_visualize_marker_without_control_delimiters_converts_trailing_marker():
     """新消息只保留 ``visualize{JSON}`` 裸标记时，结尾也要转成文件链接。"""
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'
@@ -3371,7 +3377,7 @@ def test_codex_visualize_marker_without_control_delimiters_converts_trailing_mar
 def test_codex_visualize_bare_marker_keeps_quoted_or_fenced_examples():
     """裸标记只在正文结尾命中，引用或代码块里的示例保持原样。"""
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'
@@ -3481,8 +3487,8 @@ def test_codex_sdk_maps_completed_reasoning_summary_to_thought_content():
         ),
         (
             _SdkFake(type="fileChange", id="patch-1", changes=["a.py"], status="inProgress"),
-            "FileChange",
-            {"changes": ["a.py"]},
+            "EditFile",
+            {"path": "a.py", "changes": ["a.py"]},
             _SdkFake(type="fileChange", id="patch-1", changes=["a.py"], status="completed"),
         ),
         (
@@ -3517,6 +3523,8 @@ def test_codex_sdk_maps_supported_tool_item_families(
     assert [event.type for event in started] == ["tool_call"]
     assert started[0].data["title"] == expected_name
     assert started[0].data["raw_input"] == expected_input
+    if getattr(root, "type", "") == "fileChange":
+        assert started[0].data["kind"] == "edit"
     assert [event.type for event in completed] == ["tool_call_update"]
 
 
@@ -4862,7 +4870,7 @@ async def test_pydantic_ai_spawn_emits_session_started(monkeypatch):
 
     monkeypatch.setattr(pydantic_ai_module, "config_store", FakeStore())
     monkeypatch.setattr(
-        PydanticAIEngine, "build_model", staticmethod(lambda *, provider, model_name: object())
+        PydanticAIEngine, "build_model", staticmethod(lambda *, provider, model_name, protocol=None: object())
     )
     monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
 
@@ -4939,7 +4947,7 @@ async def test_pydantic_ai_spawn_separates_context_snapshot_from_cumulative_usag
     monkeypatch.setattr(
         PydanticAIEngine,
         "build_model",
-        staticmethod(lambda *, provider, model_name: FakeModel()),
+        staticmethod(lambda *, provider, model_name, protocol=None: FakeModel()),
     )
     monkeypatch.setattr(PydanticAIEngine, "_run_agent", fake_run_agent)
 

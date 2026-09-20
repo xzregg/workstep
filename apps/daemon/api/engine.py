@@ -463,21 +463,29 @@ async def list_engine_models(
             provider, entry = await asyncio.to_thread(
                 lambda: (
                     config_store.get_provider(effective_provider),
-                    config_store.get_provider_models(effective_provider),
+                    config_store.get_provider_models(
+                        effective_provider, provider_runtime.protocol
+                    ),
                 )
             )
             if refresh:
                 models = await asyncio.wait_for(
-                    provider_service.fetch_and_save_models(provider),
+                    provider_service.fetch_and_save_models(
+                        provider, protocol=provider_runtime.protocol
+                    ),
                     timeout=15,
                 )
             else:
                 models = await asyncio.to_thread(
-                    provider_service.saved_models, effective_provider
+                    provider_service.saved_models,
+                    effective_provider,
+                    provider_runtime.protocol,
                 )
             fetched_at = (
                 await asyncio.to_thread(
-                    config_store.get_provider_models, effective_provider
+                    config_store.get_provider_models,
+                    effective_provider,
+                    provider_runtime.protocol,
                 )
             ).get("fetched_at")
         else:

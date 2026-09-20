@@ -20,6 +20,7 @@ from engines.core.base import (
     EngineInstallResult,
     EngineModel,
     ProviderRuntimeConfig,
+    WIRE_API_BY_PROTOCOL,
     install_with_command,
     resolve_thinking_effort,
 )
@@ -39,8 +40,10 @@ from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
 from engines.core.stream_lines import ChunkedLineReader
+from engines.core.tool_inputs import file_change_input
 from engines.codex_events import codex_cli_raw_event
 from engines.codex_visualize import convert_visualize_markers
+from services import providers as provider_service
 from services.config import (
     CODEX_APPROVAL_POLICIES,
     CODEX_REASONING_EFFORTS,
@@ -78,8 +81,9 @@ def _cli_tool_call_event(item: dict) -> InternalEvent:
     """Map a Codex CLI tool item (snake_case transport) to ACP tool_call."""
     item_type = str(item.get("type") or "")
     if item_type == "file_change":
-        title = "FileChange"
-        raw_input = {"changes": item.get("changes") or []}
+        title = "EditFile"
+        kind = "edit"
+        raw_input = file_change_input(item.get("changes") or [])
     elif item_type == "mcp_tool_call":
         server = str(item.get("server") or "")
         tool = str(item.get("tool") or "")
@@ -94,10 +98,12 @@ def _cli_tool_call_event(item: dict) -> InternalEvent:
     else:
         title = str(item.get("tool") or item_type or "tool")
         raw_input = item.get("arguments") or item
+    if item_type != "file_change":
+        kind = "other"
     return tool_call_event(
         tool_call_id=str(item.get("id") or ""),
         title=title,
-        kind="other",
+        kind=kind,
         raw_input=raw_input,
     )
 
@@ -161,18 +167,25 @@ class CodexEngine(AcpEngineBase):
     def supported_provider_protocols(cls) -> set[str]:
         return {"openai_responses"}
 
-    def build_provider_runtime(self, provider, model):
-        base_url = str(provider.get("base_url") or "")
+    def build_provider_runtime(self, provider, model, protocol=None):
+        selected_protocol = str(protocol or "openai_responses")
+        base_url = provider_service.provider_runtime_base_url(
+            provider, selected_protocol
+        )
+        wire_api = WIRE_API_BY_PROTOCOL.get(
+            selected_protocol, "responses"
+        )
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
             model=model,
+            protocol=selected_protocol,
             env={"WORKSTEP_LLM_API_KEY": str(provider.get("api_key") or "")},
             engine_config=(
                 'model_provider="workstep"',
                 'model_providers.workstep.name="WorkStep"',
                 f"model_providers.workstep.base_url={json.dumps(base_url)}",
                 'model_providers.workstep.env_key="WORKSTEP_LLM_API_KEY"',
-                'model_providers.workstep.wire_api="responses"',
+                f'model_providers.workstep.wire_api="{wire_api}"',
             ),
         )
 

@@ -32,6 +32,7 @@ from engines.core.events import (
 from engines.core.plans import subagent_event_from_message, route_subagent_message
 from engines.core.schema import EngineImage
 from engines.core.schema import EngineConfigField, EngineConfigOption
+from services import providers as provider_service
 from services.config import (
     CLAUDE_PERMISSION_MODES,
     claude_custom_settings_env,
@@ -89,12 +90,17 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
         except ValueError:
             return {}
 
-    def build_provider_runtime(self, provider, model):
+    def build_provider_runtime(self, provider, model, protocol=None):
+        # 本引擎只消费 Anthropic Messages 协议（protocol 由基类解析）。
+        selected_protocol = str(protocol or "anthropic_messages")
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
             model=model,
+            protocol=selected_protocol,
             env={
-                "ANTHROPIC_BASE_URL": str(provider.get("base_url") or ""),
+                "ANTHROPIC_BASE_URL": provider_service.provider_runtime_base_url(
+                    provider, selected_protocol
+                ),
                 "ANTHROPIC_API_KEY": str(provider.get("api_key") or ""),
                 **claude_model_map_env(self._model_map()),
             },

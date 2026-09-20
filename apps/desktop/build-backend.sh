@@ -28,8 +28,9 @@ test -n "$python_root"
 python_bin="$(find "$python_root/bin" -maxdepth 1 -type f -name 'python3.12' -print -quit)"
 test -x "$python_bin"
 uv pip install --break-system-packages --python "$python_bin" \
+  --require-hashes \
   -r "$desktop_dir/backend/requirements-prod.txt" \
-  pip
+  -r "$desktop_dir/backend/requirements-bootstrap.txt"
 
 rm -rf "$output_dir"
 mkdir -p "$output_dir/app/daemon"
@@ -40,3 +41,11 @@ for runtime_dir in agent_assistants api data engines models schemas services sta
   cp -R "$daemon_dir/$runtime_dir" "$output_dir/app/daemon/$runtime_dir"
 done
 cp -R "$web_dir/dist" "$output_dir/web_dist"
+
+release_version="${WORKSTEP_BUILD_VERSION:-0.1.0}"
+release_version="${release_version#v}"
+mkdir -p "$output_dir/legal"
+cp "$repo_dir/LICENSE" "$repo_dir/NOTICE" "$repo_dir/THIRD_PARTY_NOTICES.md" "$output_dir/legal/"
+python "$repo_dir/scripts/generate_release_sbom.py" \
+  --version "$release_version" \
+  --output "$output_dir/legal/sbom.cdx.json"

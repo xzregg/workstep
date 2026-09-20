@@ -28,8 +28,8 @@ test('classifies project files without intercepting external links', () => {
 
 test('resolves file:// absolute links to previewable project files', () => {
   assert.deepEqual(
-    classifyProjectFileLink('file:///Users/xzr/Desktop/workstep/demo-preview.html', 'project-1'),
-    { path: '/Users/xzr/Desktop/workstep/demo-preview.html', name: 'demo-preview.html' },
+    classifyProjectFileLink('file:///Users/example/workstep/demo-preview.html', 'project-1'),
+    { path: '/Users/example/workstep/demo-preview.html', name: 'demo-preview.html' },
   )
   // Windows file URLs keep the drive letter without the URL's leading slash.
   assert.deepEqual(
@@ -53,8 +53,8 @@ test('resolves file:// absolute links to previewable project files', () => {
 
 test('splits clickable file line suffixes from Unix and Windows paths', () => {
   assert.deepEqual(
-    classifyProjectFileLink('/Users/xzr/Desktop/workstep/app.py:1071', 'project-1'),
-    { path: '/Users/xzr/Desktop/workstep/app.py', name: 'app.py', line: 1071 },
+    classifyProjectFileLink('/Users/example/workstep/app.py:1071', 'project-1'),
+    { path: '/Users/example/workstep/app.py', name: 'app.py', line: 1071 },
   )
   assert.deepEqual(
     classifyProjectFileLink('src/app.ts#L42', 'project-1'),
@@ -70,7 +70,7 @@ test('renders file:// project links as preview actions', () => {
   const html = renderToStaticMarkup(
     <I18nProvider>
       <MarkdownMessage
-        content={'[preview](file:///Users/xzr/Desktop/workstep/demo-preview.html) [site](https://example.com)'}
+        content={'[preview](file:///Users/example/workstep/demo-preview.html) [site](https://example.com)'}
         projectId="project-1"
       />
     </I18nProvider>,
@@ -79,7 +79,7 @@ test('renders file:// project links as preview actions', () => {
   // Only the file:// link is marked as a preview action; the https link is not.
   assert.match(html, /class="markdown-file-link"/)
   assert.match(html, /data-file-preview="true"/)
-  assert.match(html, /href="file:\/\/\/Users\/xzr\/Desktop\/workstep\/demo-preview\.html"/)
+  assert.match(html, /href="file:\/\/\/Users\/example\/workstep\/demo-preview\.html"/)
   assert.match(html, /href="https:\/\/example\.com"/)
   assert.doesNotMatch(html, /class="markdown-file-link"[^>]*href="https:\/\/example\.com"/)
 })

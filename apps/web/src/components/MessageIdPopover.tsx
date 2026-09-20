@@ -52,13 +52,14 @@ function useCopy(value: string) {
 
 interface IdPartProps {
   label: string; value: string; ariaLabel: string
+  copyValue?: string
   /** 开发模式下 ID 行的「打开」动作：reveal JSONL 日志目录；不传则不渲染按钮。 */
   onOpenJournal?: () => Promise<void>
   openAriaLabel?: string
 }
 
-function IdRow({ label, value, ariaLabel, onOpenJournal, openAriaLabel }: IdPartProps) {
-  const { state, copy, t } = useCopy(value)
+function IdRow({ label, value, ariaLabel, copyValue, onOpenJournal, openAriaLabel }: IdPartProps) {
+  const { state, copy, t } = useCopy(copyValue ?? value)
   const [openState, setOpenState] = useState<CopyState>('idle')
   useEffect(() => {
     if (openState === 'idle') return
@@ -167,6 +168,9 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
 
   const hasSession = hasId(sessionId)
   const hasMessage = hasId(messageId)
+  const messageCopyValue = hasSession && sessionId && hasMessage && messageId
+    ? `${t('meta.sessionIdLabel')}: ${sessionId}\n${t('meta.messageIdLabel')}: ${messageId}`
+    : messageId || ''
   // 开发模式 + 有宿主项目时，每个 ID 行的复制按钮旁多一个「打开」按钮，
   // 在文件管理器里 reveal 该会话/消息的 JSONL 事件日志目录。
   const canOpenJournal = Boolean(openEnabled && projectId)
@@ -239,6 +243,7 @@ export default function MessageIdPopover({ messageId, sessionId, projectId, open
               <IdRow
                 label={t('meta.messageIdLabel')}
                 value={messageId}
+                copyValue={messageCopyValue}
                 ariaLabel={t('meta.copyMessageIdAria')}
                 onOpenJournal={canOpenJournal ? openJournal : undefined}
                 openAriaLabel={t('meta.openJournalAria')}

@@ -148,7 +148,11 @@ class PydanticAIEngine(AcpEngineBase):
         provider = await asyncio.to_thread(config_store.get_provider, runtime.provider_id)
         if provider is None or not provider.get("base_url") or not model_name:
             raise RuntimeError("Pydantic AI 尚未配置供应商和模型")
-        loaded_model = cls.build_model(provider=provider, model_name=model_name)
+        loaded_model = cls.build_model(
+            provider=provider,
+            model_name=model_name,
+            protocol=runtime.protocol,
+        )
         from pydantic_ai import Agent
 
         agent = Agent(loaded_model)
@@ -366,19 +370,32 @@ class PydanticAIEngine(AcpEngineBase):
         )
         if provider is None:
             return []
-        entry = await asyncio.to_thread(config_store.get_provider_models, provider["id"])
+        protocol = self.pick_protocol(provider)
+        entry = await asyncio.to_thread(
+            config_store.get_provider_models, provider["id"], protocol
+        )
         if not refresh and entry:
-            return await asyncio.to_thread(provider_service.saved_models, provider["id"])
-        return await provider_service.fetch_and_save_models(provider)
+            return await asyncio.to_thread(
+                provider_service.saved_models, provider["id"], protocol
+            )
+        return await provider_service.fetch_and_save_models(
+            provider, protocol=protocol
+        )
 
     @staticmethod
-    def build_model(*, provider: dict, model_name: str):
-        """Construct the Pydantic AI model from a stored provider record."""
+    def build_model(*, provider: dict, model_name: str, protocol: str | None = None):
+        """Construct the Pydantic AI model from a stored provider record.
+
+        ``protocol`` 由基类 ``pick_protocol`` 解析（供应商多协议时按其
+        列表顺序与本引擎支持集合取交集）；缺省回退供应商默认协议。
+        """
         provider_type = str(provider.get("type") or "custom")
-        protocol = provider_service.normalize_provider_protocol(
-            str(provider.get("protocol") or ""), provider_type
+        protocol = str(protocol or "").strip() or (
+            provider_service.normalize_provider_protocol(
+                str(provider.get("protocol") or ""), provider_type
+            )
         )
-        base_url = str(provider.get("base_url") or "").rstrip("/")
+        base_url = provider_service.provider_runtime_base_url(provider, protocol)
         api_key = str(provider.get("api_key") or "")
         if protocol == "anthropic_messages":
             from pydantic_ai.models.anthropic import AnthropicModel
@@ -1324,6 +1341,7 @@ class PydanticAIEngine(AcpEngineBase):
             loaded_model = self.build_model(
                 provider=provider,
                 model_name=model_name,
+                protocol=provider_runtime.protocol,
             )
             event_queue: asyncio.Queue[InternalEvent] = asyncio.Queue()
             run_kwargs: dict[str, Any] = {

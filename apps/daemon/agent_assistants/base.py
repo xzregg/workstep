@@ -1526,6 +1526,7 @@ class AssistantRuntime:
             active_journal_ref = [journal_ref]
             active_segment_events: list[dict] = []
             live_split_count = [0]
+            turn_persisted = [False]
             try:
                 session.cwd = await asyncio.to_thread(self._cwd, session.project_id)
                 prompt = await asyncio.to_thread(self._build_prompt, session)
@@ -1915,20 +1916,6 @@ class AssistantRuntime:
                         await self._record_journal_event(
                             active_journal_ref[0], structured_event
                         )
-                seq_holder[0] = await self._publish(
-                    session,
-                    active_message_id[0],
-                    "message_snapshot",
-                    {"content": reply},
-                    seq_holder[0],
-                )
-                seq_holder[0] = await self._publish(
-                    session,
-                    active_message_id[0],
-                    "message_completed",
-                    {"status": "succeeded", "content": reply},
-                    seq_holder[0],
-                )
                 active_message[0].update(
                     {
                         "role": "assistant",
@@ -1962,6 +1949,24 @@ class AssistantRuntime:
                     active_message[0],
                     {"type": "status", "data": {"status": "succeeded"}},
                 )
+                # 终态对外可见之前先落库最终快照：否则客户端可能在
+                # message_completed / status=completed 之后、最终 save 之前
+                # 读历史，拿到缺 engine_session_id 或旧消息的快照。
+                turn_persisted[0] = await self._persist_session(session)
+                seq_holder[0] = await self._publish(
+                    session,
+                    active_message_id[0],
+                    "message_snapshot",
+                    {"content": reply},
+                    seq_holder[0],
+                )
+                seq_holder[0] = await self._publish(
+                    session,
+                    active_message_id[0],
+                    "message_completed",
+                    {"status": "succeeded", "content": reply},
+                    seq_holder[0],
+                )
                 self._turn_states[turn_id]["status"] = "completed"
             except asyncio.CancelledError:
                 ended_at = utc_now().isoformat()
@@ -1987,6 +1992,7 @@ class AssistantRuntime:
                     active_message[0],
                     {"type": "status", "data": {"status": "stopped"}},
                 )
+                turn_persisted[0] = await self._persist_session(session)
                 try:
                     await self._publish(
                         session,
@@ -2027,6 +2033,7 @@ class AssistantRuntime:
                         active_message[0],
                         {"type": "status", "data": {"status": "stopped"}},
                     )
+                    turn_persisted[0] = await self._persist_session(session)
                     try:
                         await self._publish(
                             session,
@@ -2067,6 +2074,7 @@ class AssistantRuntime:
                     active_message[0],
                     {"type": "error", "data": {"message": str(exc)}},
                 )
+                turn_persisted[0] = await self._persist_session(session)
                 try:
                     seq = await self._publish(
                         session,
@@ -2088,11 +2096,32 @@ class AssistantRuntime:
                 self._turn_states[turn_id]["error"] = str(exc)
             finally:
                 session.last_active = time.monotonic()
-                if self._config.persistence is not None:
-                    await self._project_manager.run_db(
-                        session.project_id,
-                        lambda _project: self._config.persistence.save(session),
-                    )
+                # 兜底：各终态分支已在对外可见前落库；只有终态保存失败
+                # （或被跳过）时才在这里重试一次，避免状态先于数据可见。
+                if not turn_persisted[0]:
+                    await self._persist_session(session)
+
+    async def _persist_session(self, session: "AssistantSession") -> bool:
+        """持久化会话快照；保存失败只记日志、不中断回合。
+
+        Returns:
+            保存是否执行成功（无持久化适配器时为 True，表示无需兜底）。
+        """
+        if self._config.persistence is None:
+            return True
+        if self._project_manager is None:
+            return False
+        try:
+            await self._project_manager.run_db(
+                session.project_id,
+                lambda _project: self._config.persistence.save(session),
+            )
+            return True
+        except Exception:
+            logger.exception(
+                "Failed to persist assistant session %s", session.session_id
+            )
+            return False
 
     async def _record_journal_event(
         self,

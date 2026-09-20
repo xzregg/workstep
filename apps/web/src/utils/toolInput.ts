@@ -60,6 +60,20 @@ function pickKeys(record: Record<string, unknown>, keys: readonly string[]): str
   return ''
 }
 
+function pickFileChangePath(record: Record<string, unknown>): string {
+  const changes = record.changes
+  if (!Array.isArray(changes)) return ''
+  for (const change of changes) {
+    if (typeof change === 'string' && change) return change
+    const changeRecord = recordFromObject(change)
+    if (changeRecord) {
+      const path = pickKeys(changeRecord, FILE_TARGET_KEYS)
+      if (path) return path
+    }
+  }
+  return ''
+}
+
 /**
  * 扫描字符串中所有顶层平衡的 JSON 对象（正确处理字符串内的花括号与
  * 转义），逐个解析后按顺序合并为单个对象。
@@ -105,7 +119,9 @@ function parseTopLevelFragments(source: string): Record<string, unknown>[] {
 }
 
 function infoFromRecord(record: Record<string, unknown> | null): ToolTargetInfo {
-  const fileTarget = record ? pickKeys(record, FILE_TARGET_KEYS) : ''
+  const fileTarget = record
+    ? pickKeys(record, FILE_TARGET_KEYS) || pickFileChangePath(record)
+    : ''
   const searchTarget = record ? pickKeys(record, SEARCH_TARGET_KEYS) : ''
   return {
     record,

@@ -2,6 +2,7 @@
 """Fail CI when public repository essentials drift or leak internal URLs."""
 
 from pathlib import Path
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,10 @@ FORBIDDEN = (
     "your-username",
     "example/repository.git",
 )
+PRIVATE_MARKERS = (
+    "/Users/" + "x" + "zr/",
+    "@" + "qq.com",
+)
 
 
 def check() -> list[str]:
@@ -52,6 +57,24 @@ def check() -> list[str]:
     for readme, peer in (("README.md", "README.zh-CN.md"), ("README.zh-CN.md", "README.md")):
         if peer not in (ROOT / readme).read_text(encoding="utf-8"):
             failures.append(f"{readme} does not link to {peer}")
+    tracked = subprocess.run(
+        ["git", "ls-files", "-co", "--exclude-standard", "-z"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+    ).stdout.split(b"\0")
+    for encoded in tracked:
+        if not encoded:
+            continue
+        path = ROOT / encoded.decode("utf-8", errors="surrogateescape")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        relative = path.relative_to(ROOT)
+        for marker in PRIVATE_MARKERS:
+            if marker.lower() in text.lower():
+                failures.append(f"source {relative} contains private marker: {marker}")
     return failures
 
 

@@ -59,6 +59,10 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 5. 生成 NSIS `.exe`、`.dmg`/更新用 `.zip`、`.AppImage` 和更新元数据。
 6. 创建草稿 GitHub Release；人工发布后客户端才会收到更新。
 
-更新安装严格执行：停止 sidecar → 等待进程退出 → 额外等待 500ms → `quitAndInstall`。macOS 自动更新要求正式发布包完成代码签名。
+更新下载完成后不会直接退出应用。桌面壳先检查所有项目是否仍有运行中的任务或会话；繁忙时只提示稍后更新，空闲时也必须由用户确认，之后才执行：停止 sidecar → 等待进程退出 → 额外等待 500ms → `quitAndInstall`。
 
-Windows 构建使用 `--windows-console-mode=attach`，由 Electron 的 `windowsHide` 隐藏窗口并保留 stdout 管道；若使用 `disable`，`PORT:<port>` 就绪协议无法可靠传回主进程。
+生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为目标 loopback origin 的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
+
+后端包的 `legal/` 目录包含 `LICENSE`、`NOTICE`、第三方说明和 CycloneDX SBOM。Windows release 必须完成 Authenticode 签名；macOS 签名和公证在早期发布阶段暂为可选。
+
+Windows 构建使用隐藏子进程窗口并保留 stdout 管道，以便 `PORT:<port>` 就绪协议可靠传回主进程。

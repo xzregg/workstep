@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",
+  "license": "Apache-2.0",
+  "author": "WorkStep contributors",
+  "homepage": "https://github.com/xzregg/workstep",
+  "repository": "github:xzregg/workstep",
   "main": "src/main.cjs",
   "engines": {
     "node": ">=22.12.0"
@@ -27,6 +31,15 @@
     "appId": "com.workstep.desktop",
     "productName": "WorkStep",
     "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "files": [
       "src/**/*",
       "package.json"
@@ -55,6 +68,7 @@
     },
     "win": {
       "target": ["nsis"],
+      "forceCodeSigning": true,
       "artifactName": "WorkStep-${version}-windows-${arch}.${ext}"
     },
     "nsis": {

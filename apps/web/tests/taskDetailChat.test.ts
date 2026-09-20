@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   findPreferredArtifact,
+  findActionablePendingReview,
   resolveStageDisplayStatus,
 } from '../src/pages/taskDetailChat.ts'
 
@@ -11,6 +12,30 @@ test('keeps previous stage result visible while the current run is pending', () 
   assert.equal(resolveStageDisplayStatus('pending', 'failed'), 'failed')
   assert.equal(resolveStageDisplayStatus('pending', null), 'pending')
   assert.equal(resolveStageDisplayStatus('running', 'passed'), 'running')
+})
+
+test('only exposes a pending review while its stage is currently awaiting review', () => {
+  const reviews = [
+    { id: 'old-pending', step_key: 'develop', status: 'pending', started_at: '2026-09-17T10:00:00Z' },
+  ]
+
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'cancelled' },
+  ]), undefined)
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'awaiting_review' },
+  ])?.id, 'old-pending')
+})
+
+test('ignores an old pending review when a newer review attempt already finished', () => {
+  const reviews = [
+    { id: 'old-pending', step_key: 'develop', status: 'pending', started_at: '2026-09-17T10:00:00Z' },
+    { id: 'new-passed', step_key: 'develop', status: 'passed', started_at: '2026-09-17T11:00:00Z' },
+  ]
+
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'awaiting_review' },
+  ]), undefined)
 })
 
 test('prefers the selected latest artifact round over older eligible rounds', () => {

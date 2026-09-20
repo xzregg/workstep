@@ -6,7 +6,7 @@
 .task-detail-stages > *, .task-detail-conversation > * { min-height: 0; }
 .mobile-overlay-backdrop, .mobile-sheet-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 35%); }
 .navigation-backdrop { z-index: 1200; }
-.mobile-sheet-backdrop { z-index: 1900; display: flex; align-items: end; }
+.mobile-sheet-backdrop { z-index: 2101; display: flex; align-items: end; }
 .mobile-sheet { background: var(--bg); color: var(--fg); border-radius: 16px 16px 0 0; width: 100%; max-height: calc(var(--app-viewport-height, 100dvh) - 24px); display: flex; flex-direction: column; box-shadow: 0 -8px 32px rgb(0 0 0 / 12%); padding-bottom: env(safe-area-inset-bottom); }
 .mobile-sheet > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
 .mobile-sheet > header button { width: 44px; height: 44px; padding: 0; justify-content: center; }
@@ -26,6 +26,9 @@
   .mobile-header button, .navigation-close, .mobile-task-toolbar > button { width: 44px; height: 44px; flex-shrink: 0; padding: 0; justify-content: center; }
   .responsive-navigation { position: fixed; inset: 0 auto 0 0; z-index: 1201; width: min(340px, calc(100vw - 48px)) !important; min-width: 0 !important; padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom); transform: translateX(-100%); visibility: hidden; transition: transform 180ms var(--ease), visibility 180ms; }
   .responsive-navigation.is-open { visibility: visible; transform: translateX(0); }
+  .responsive-navigation .onboarding-checklist,
+  .responsive-navigation .onboarding-launcher,
+  .responsive-navigation .onboarding-reopen-button { display: none !important; }
   .navigation-close { position: absolute; right: 4px; top: max(4px, env(safe-area-inset-top)); background: var(--bg); z-index: 1; }
   .responsive-navigation > div:first-of-type { padding-right: 44px !important; }
   .app-shell > .task-detail-split-handle { display: none; }
@@ -40,10 +43,11 @@
   .chat-input-root { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
   .chat-input-editor { min-height: 72px !important; max-height: min(180px, 28dvh) !important; height: auto !important; overflow-y: auto; }
   .chat-input-toolbar { flex-wrap: wrap; gap: 4px; }
-  .chat-input-toolbar > * { min-width: 0; }
+  .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-width: 0; }
   .chat-input-pill { max-width: min(240px, 65vw); }
   .chat-input-pill > span { overflow: hidden; text-overflow: ellipsis; }
   .chat-input-text-segment, input, textarea, select, [contenteditable="true"] { font-size: max(16px, calc(16px * var(--font-scale))) !important; }
+  .provider-protocol-toggle { min-height: 44px; }
   .chat-input-text-segment { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }
   .markdown-body pre, .markdown-message pre, .chat-message-row pre { max-width: 100%; overflow-x: auto; }
@@ -65,6 +69,14 @@
   .task-detail-header > div > div > span:first-child { font-size: calc(16px * var(--font-scale)) !important; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .task-detail-header > div > div { gap: 4px !important; }
   .task-detail-header > div > div + div { display: none; }
+  .task-detail-share-button { margin-left: auto !important; }
+  .task-detail-id-button {
+    max-width: 180px;
+    overflow: hidden;
+    font-size: calc(10px * var(--font-scale)) !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .mobile-detail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); padding-inline: 12px; }
   .mobile-detail-tabs button { flex: 1; padding: 10px 12px; min-height: 44px; justify-content: center; border-radius: 0; border-bottom: 2px solid transparent; }
   .mobile-detail-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
@@ -77,6 +89,28 @@
   .task-detail-artifacts { flex-direction: column; overflow-y: auto; padding: 16px; gap: 12px; }
   .task-detail-artifacts button { min-height: 44px; white-space: normal; text-align: left; overflow-wrap: anywhere; }
   .task-detail-conversation > div > div:first-child { padding: 8px 16px !important; flex-wrap: wrap; }
+  .task-detail-composer {
+    padding: 2px 2px max(2px, env(safe-area-inset-bottom)) !important;
+    gap: 4px !important;
+    border-top: 0 !important;
+    background: var(--bg) !important;
+  }
+  .task-detail-composer .chat-input-root { padding: 2px; }
+  .task-chat-history-wrapper::after {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 34px;
+    background: linear-gradient(to bottom, transparent, color-mix(in oklab, var(--bg), transparent 8%));
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000);
+    mask-image: linear-gradient(to bottom, transparent, #000);
+    pointer-events: none;
+  }
   .task-create-panel[inert] { visibility: hidden; }
   .task-create-panel .panel-header { padding: 8px 16px; }
   .task-create-panel .panel-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
@@ -112,12 +146,13 @@
   button, [role="button"], .ws-row { min-height: 36px; }
   .mobile-sheet-body > button, .mobile-sheet-body select { min-height: 44px; }
   .chat-input-menu-item { min-height: 48px; }
-  .chat-input-toolbar > * { min-height: 32px !important; }
+  .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-height: 32px !important; }
   .chat-message-row .chat-message-action, .chat-message-row .footer-usage-summary { opacity: 1; pointer-events: auto; }
 
   /* 需要紧凑的小按钮：图标按钮、消息操作、预览内按钮等 */
   .btn-icon, .btn-sm,
   .chat-message-action,
+  .chat-input-quota-refresh,
   .chat-input-image-remove,
   .conversation-new-messages-button,
   .artifact-download-button,
@@ -262,32 +297,32 @@
   }
   .chat-input-toolbar {
     flex-wrap: nowrap !important;
+    overflow: hidden;
+    min-height: 36px !important;
+  }
+  .chat-input-toolbar-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
-    min-height: 36px !important;
   }
-  .chat-input-toolbar::-webkit-scrollbar { display: none; }
-  .chat-input-toolbar > * {
+  .chat-input-toolbar-scroll::-webkit-scrollbar { display: none; }
+  .chat-input-toolbar-scroll > * {
     flex-shrink: 0 !important;
     min-height: 32px !important;
   }
-  /* 发送按钮固定在 toolbar 右侧，不随横滚移动；无输入时隐藏 */
+  /* 发送按钮独立占据 toolbar 右侧，不与横滚按钮区重叠；无输入时隐藏。 */
   .chat-input-send {
-    position: sticky !important;
-    right: 0 !important;
-    z-index: 1;
-    box-shadow: -8px 0 8px -4px var(--bg) !important;
+    flex: 0 0 32px !important;
     width: 32px !important;
     height: 32px !important;
     min-height: 32px !important;
   }
   .chat-input-send:disabled {
-    display: none !important;
-  }
-  /* 额度与上下文环移出首屏工具条（详情仍可从菜单/展开查看）。 */
-  .chat-input-quota,
-  .chat-input-context-breakdown-wrap {
     display: none !important;
   }
   .chat-input-pill {
@@ -296,8 +331,10 @@
 
   /* 图片预览：移动端适中尺寸 */
   .chat-input-image-block {
-    width: 110px !important;
-    height: 72px !important;
+    flex: 0 0 120px;
+    width: 120px !important;
+    min-width: 120px;
+    height: 68px !important;
   }
 
   /* 图片删除按钮：移动端适中大小 */
@@ -434,6 +471,13 @@
     min-height: 28px !important;
     min-width: 28px !important;
     padding: 0 !important;
+  }
+
+  /* 上下文详情面板：移动端由 JS 计算 fixed 定位，避免被 toolbar overflow 裁剪 */
+  .chat-input-context-tip.chat-input-context-detail {
+    min-width: 260px !important;
+    max-width: calc(100vw - 32px) !important;
+    white-space: normal !important;
   }
 }
 

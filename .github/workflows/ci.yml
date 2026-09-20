@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with: { python-version: "3.12" }
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
@@ -24,7 +26,9 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: { node-version: "20", cache: yarn, cache-dependency-path: apps/web/yarn.lock }
       - name: Repository health
-        run: python scripts/check_repository_health.py
+        run: |
+          python scripts/check_repository_health.py
+          python scripts/check_secrets.py
       - name: Daemon tests
         working-directory: apps/daemon
         # Optional-engine contract tests need vendor SDKs/CLIs that WorkStep

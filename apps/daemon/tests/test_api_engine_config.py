@@ -88,15 +88,25 @@ class MemoryEngineConfigStore:
 
     # --- provider model list cache ---
 
-    def get_provider_models(self, provider_id):
-        entry = self.provider_models.get(provider_id)
+    def get_provider_models(self, provider_id, protocol=""):
+        entry = self.provider_models.get(
+            f"{provider_id}::{protocol}" if protocol else provider_id
+        )
+        if not entry and protocol:
+            entry = self.provider_models.get(provider_id)
         return dict(entry) if entry else {}
 
-    def set_provider_models(self, provider_id, models, fetched_at):
-        self.provider_models[provider_id] = {"models": list(models), "fetched_at": fetched_at}
+    def set_provider_models(self, provider_id, models, fetched_at, protocol=""):
+        entry = {"models": list(models), "fetched_at": fetched_at}
+        self.provider_models[provider_id] = entry
+        if protocol:
+            self.provider_models[f"{provider_id}::{protocol}"] = entry
 
     def clear_provider_models(self, provider_id):
         self.provider_models.pop(provider_id, None)
+        for key in list(self.provider_models):
+            if key.startswith(f"{provider_id}::"):
+                self.provider_models.pop(key, None)
 
     def get_engine_models(self, engine_id):
         entry = self.engine_models.get(engine_id)
@@ -493,6 +503,11 @@ async def test_provider_crud_masks_and_reveals_key(engine_client):
     assert provider["name"] == "我的 DeepSeek"
     assert provider["type"] == "deepseek"
     assert provider["protocol"] == "openai_chat_completions"
+    assert provider["protocols"] == ["openai_chat_completions"]
+    assert provider["protocol_base_urls"] == {
+        "openai_chat_completions": "https://api.deepseek.com/v1"
+    }
+    assert provider["base_url"] == "https://api.deepseek.com/v1"
     assert provider["has_key"] is True
     assert provider["api_key"] == ""
     assert "sk-secret-value" not in created.text
@@ -580,16 +595,85 @@ async def test_provider_save_validates_input(engine_client):
     )
     assert plain_http.json()["saved"] is True
 
+    empty_protocols = await client.post(
+        "/api/provider",
+        json={
+            "name": "x",
+            "type": "custom",
+            "protocols": [],
+            "base_url": "https://api.x.com",
+        },
+    )
+    assert empty_protocols.json()["saved"] is False
+    assert "至少选择一个" in empty_protocols.json()["message"]
+
+    invalid_protocol = await client.post(
+        "/api/provider",
+        json={
+            "name": "x",
+            "type": "custom",
+            "protocols": ["not-a-protocol"],
+            "protocol_base_urls": {"not-a-protocol": "https://api.x.com"},
+            "base_url": "https://api.x.com",
+        },
+    )
+    assert invalid_protocol.json()["saved"] is False
+    assert "供应商协议" in invalid_protocol.json()["message"]
+
+    missing_protocol_url = await client.post(
+        "/api/provider",
+        json={
+            "name": "x",
+            "type": "custom",
+            "protocols": ["openai_responses", "anthropic_messages"],
+            "protocol_base_urls": {
+                "openai_responses": "https://openai.example.com",
+            },
+            "base_url": "",
+        },
+    )
+    assert missing_protocol_url.json()["saved"] is False
+    assert "Anthropic Messages" in missing_protocol_url.json()["message"]
+
+
+@pytest.mark.anyio
+async def test_provider_saves_independent_protocol_base_urls(engine_client):
+    client, store = engine_client
+    response = await client.post(
+        "/api/provider",
+        json={
+            "name": "多协议网关",
+            "type": "custom",
+            "protocols": ["openai_responses", "anthropic_messages"],
+            "protocol_base_urls": {
+                "openai_responses": "https://openai.example.com/api/v2/",
+                "anthropic_messages": "https://anthropic.example.com/proxy/v1",
+            },
+            "base_url": "https://ignored.example.com",
+            "api_key": "shared-key",
+        },
+    )
+
+    body = response.json()
+    assert body["saved"] is True
+    assert body["provider"]["protocol_base_urls"] == {
+        "openai_responses": "https://openai.example.com/api/v2",
+        "anthropic_messages": "https://anthropic.example.com/proxy/v1",
+    }
+    assert body["provider"]["base_url"] == "https://openai.example.com/api/v2"
+    saved = store.get_provider(body["provider"]["id"])
+    assert saved["protocol_base_urls"] == body["provider"]["protocol_base_urls"]
+
 
 @pytest.mark.anyio
 async def test_provider_test_and_models(engine_client, monkeypatch):
     client, store = engine_client
     provider = _add_provider(store)
 
-    async def fake_test(provider, timeout_seconds=30, transport=None):
+    async def fake_test(provider, timeout_seconds=30, transport=None, protocol=None):
         return EngineTestResult(success=True, message="连接成功，读取到 2 个模型", duration_ms=12)
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
 
     monkeypatch.setattr(provider_api.provider_service, "test_connection", fake_test)
@@ -607,13 +691,55 @@ async def test_provider_test_and_models(engine_client, monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_provider_is_verified_only_after_every_protocol_passes(
+    engine_client, monkeypatch
+):
+    client, store = engine_client
+    provider = {
+        "id": "prov_multi",
+        "name": "Multi",
+        "type": "custom",
+        "protocols": ["openai_responses", "anthropic_messages"],
+        "protocol": "openai_responses",
+        "protocol_base_urls": {
+            "openai_responses": "https://openai.example.com/v2",
+            "anthropic_messages": "https://anthropic.example.com/v1",
+        },
+        "base_url": "https://openai.example.com/v2",
+        "api_key": "shared-key",
+        "enabled": True,
+        "verified": False,
+    }
+    store.save_provider(provider)
+
+    async def fake_test(provider, timeout_seconds=30, transport=None, protocol=None):
+        return EngineTestResult(success=True, message=protocol, duration_ms=1)
+
+    monkeypatch.setattr(provider_api.provider_service, "test_connection", fake_test)
+
+    first = await client.post(
+        "/api/provider/prov_multi/test",
+        json={"timeout_seconds": 3, "protocol": "openai_responses"},
+    )
+    assert first.json()["success"] is True
+    assert store.get_provider("prov_multi")["verified"] is False
+
+    second = await client.post(
+        "/api/provider/prov_multi/test",
+        json={"timeout_seconds": 3, "protocol": "anthropic_messages"},
+    )
+    assert second.json()["success"] is True
+    assert store.get_provider("prov_multi")["verified"] is True
+
+
+@pytest.mark.anyio
 async def test_provider_save_only_fetches_models_after_explicit_refresh(
     engine_client, monkeypatch
 ):
     client, _ = engine_client
     calls = {"count": 0}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         calls["count"] += 1
         return [EngineModel(id="cached-model", label="Cached Model")]
 
@@ -642,7 +768,7 @@ async def test_provider_models_error_is_surfaced(engine_client, monkeypatch):
     client, store = engine_client
     provider = _add_provider(store)
 
-    async def boom(provider, transport=None):
+    async def boom(provider, transport=None, protocol=None):
         raise RuntimeError("401 Unauthorized")
 
     monkeypatch.setattr(provider_api.provider_service, "fetch_models", boom)
@@ -658,7 +784,7 @@ async def test_provider_models_returns_saved_copy_without_refetch(engine_client,
     provider = _add_provider(store)
     calls = {"count": 0}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         calls["count"] += 1
         return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
 
@@ -695,7 +821,7 @@ async def test_provider_list_includes_saved_model_status(engine_client, monkeypa
     client, store = engine_client
     provider = _add_provider(store)
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         return [
             EngineModel(id="deepseek-chat", label="DeepSeek Chat"),
             EngineModel(id="deepseek-reasoner", label="DeepSeek Reasoner"),
@@ -721,7 +847,7 @@ async def test_engine_pydantic_ai_models_uses_saved_copy(engine_client, monkeypa
     )
     calls = {"count": 0}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         calls["count"] += 1
         return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
 
@@ -791,7 +917,7 @@ async def test_engine_deepseek_harness_models_delegates_to_bound_provider(
     )
     calls = {"count": 0}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         calls["count"] += 1
         return [EngineModel(id="deepseek-v4-flash", label="DeepSeek V4 Flash")]
 
@@ -834,8 +960,9 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
 
     called: dict = {}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         called["provider"] = dict(provider)
+        called["protocol"] = protocol
         return [EngineModel(id="deepseek-chat", label="DeepSeek Chat")]
 
     monkeypatch.setattr(
@@ -854,6 +981,7 @@ async def test_engine_pydantic_ai_models_delegates_to_provider(engine_client, mo
     assert called["provider"]["id"] == provider["id"]
     assert called["provider"]["base_url"] == provider["base_url"]
     assert called["provider"]["api_key"] == provider["api_key"]
+    assert called["protocol"] == "openai_chat_completions"
 
 
 @pytest.mark.anyio
@@ -869,7 +997,7 @@ async def test_engine_pydantic_ai_models_provider_override(engine_client, monkey
 
     called: dict = {}
 
-    async def fake_models(provider, transport=None):
+    async def fake_models(provider, transport=None, protocol=None):
         called["provider"] = dict(provider)
         return [EngineModel(id="other-model", label="Other Model")]
 
@@ -1607,7 +1735,7 @@ async def test_pydantic_ai_run_simple_does_not_print_provider_request_in_dev(
         PydanticAIEngine,
         "build_model",
         staticmethod(
-            lambda *, provider, model_name: FunctionModel(function=respond)
+            lambda *, provider, model_name, protocol=None: FunctionModel(function=respond)
         ),
     )
 
@@ -1642,7 +1770,7 @@ async def test_pydantic_ai_run_simple_does_not_print_prompt_outside_dev(
         PydanticAIEngine,
         "build_model",
         staticmethod(
-            lambda *, provider, model_name: FunctionModel(function=respond)
+            lambda *, provider, model_name, protocol=None: FunctionModel(function=respond)
         ),
     )
 
@@ -1660,7 +1788,7 @@ async def test_pydantic_ai_spawn_uses_provider_config(monkeypatch):
     monkeypatch.setattr(pydantic_ai_engine_module, "config_store", store)
     loaded = {}
 
-    def fake_build_model(*, provider, model_name):
+    def fake_build_model(*, provider, model_name, protocol=None):
         loaded["provider"] = provider
         loaded["model_name"] = model_name
         return object()
@@ -1744,7 +1872,7 @@ async def test_pydantic_ai_spawn_does_not_print_provider_requests_in_dev(
         PydanticAIEngine,
         "build_model",
         staticmethod(
-            lambda *, provider, model_name: FunctionModel(stream_function=respond)
+            lambda *, provider, model_name, protocol=None: FunctionModel(stream_function=respond)
         ),
     )
     queue = asyncio.Queue()
@@ -1962,7 +2090,7 @@ async def test_pydantic_ai_spawn_forwards_live_message_queue(monkeypatch):
     monkeypatch.setattr(
         PydanticAIEngine,
         "build_model",
-        staticmethod(lambda *, provider, model_name: object()),
+        staticmethod(lambda *, provider, model_name, protocol=None: object()),
     )
 
     engine = PydanticAIEngine()
@@ -2008,7 +2136,7 @@ async def test_pydantic_ai_spawn_does_not_roundtrip_engine_state(monkeypatch, tm
     monkeypatch.setattr(
         PydanticAIEngine,
         "build_model",
-        staticmethod(lambda *, provider, model_name: object()),
+        staticmethod(lambda *, provider, model_name, protocol=None: object()),
     )
 
     store = MemoryEngineConfigStore()

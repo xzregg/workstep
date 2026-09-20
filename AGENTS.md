@@ -59,6 +59,10 @@ uv run uvicorn main:app --reload --port 8765
 uv run pytest
 ```
 
+### 后端异步 I/O 开发规范
+
+- **所有 I/O 不得阻塞主进程事件循环**：文件、网络、数据库、子进程管道及同步 SDK 等可能阻塞的 I/O，禁止在 `async def`、FastAPI 异步路由、WebSocket 处理器或后台协程中直接同步执行；优先使用原生异步接口，无异步接口时必须通过 `asyncio.to_thread`、项目数据库执行器或专用执行器隔离。
+
 ### Peewee 异步开发规范
 
 - **Peewee 一律异步隔离**：Peewee 是同步 ORM；任何 `async def`、FastAPI 异步路由、WebSocket 处理器和后台协程都不得直接执行查询、迭代惰性查询、写入、删除、事务或数据库连接操作。
@@ -98,6 +102,7 @@ npm run build
 - **流程与模板**：新项目默认没有流程，初始化和重新打开时均不自动创建默认流程；已有流程原样恢复。新流程默认空画布，模板由用户主动选择。模板以 `~/.workstep/data/templates/*.json` 为准；启动时从 `apps/daemon/data/templates/` 复制缺失文件但不覆盖。模板含 `id/name/description/steps`；内置模板标记 `default: true` 且不可删除。
 - **助手架构**：所有新助手和后续助手能力扩展必须建立在同一套基础设施上，禁止复制会话、流式事件、停止、引擎配置或聊天 UI 实现。后端通过 `agent_assistants/base.py` 的 `AssistantConfig` 注册并复用 `AssistantRuntime`，仅提供助手自己的 system prompt、上下文构建、结构化结果解析/校验和发布逻辑；创建态会话默认仅内存，需要跨重启恢复时才增加持久化适配器。前端通过 `createAssistantStore(config)` 创建配置实例，统一使用 `AssistantChatPanel`、`ChatMessageBubble`、`MessageMetaBar`、`MessageResponseFooter` 和 `ChatInput`；助手特有 UI 只通过组合插槽或薄包装组件扩展。每个助手必须使用独立 WebSocket `channel` 并按 channel 分流，结构化结果通过通用 store 的 `resultEvent` / `proposalEvent` 配置接入，不得让其它助手 store 接收。AI 流程助手统一用 `AiFlowChat`；方案选择必须呈现可点击的提案卡片（标题、步数、摘要、应用态）。新增助手必须覆盖会话隔离、结构化结果、停止、错误、无意外落库及既有助手回归测试。
 - **聊天与 Markdown**：任务对话和 AI 流程助手共用上述聊天组件，不得覆盖 `ChatInput` 的统一高度或重复实现上传/粘贴。Markdown 图片上传至项目 `.workstep/uploads/`，正文保存项目相对路径，并由 `MarkdownMessage` 映射预览地址。
+- **Mermaid 性能红线**：消息中的 Mermaid 围栏必须动态加载渲染器，并仅在流式结束且内容稳定后渲染；禁止静态导入 Mermaid 或在流式刷新期间生成图表。渲染结果须缓存，失败时回退显示源码。
 - **布局与样式**：复杂弹框顶部放表单，主区域占满余高、支持分隔拖动和弹框缩放；避免写死过矮高度。公共组件放入 modal 后须检查全局表单样式污染，必要时提高选择器特异性并人工核对。
 - **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。

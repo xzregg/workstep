@@ -49,6 +49,37 @@ test('completed edit tool renders the same file link', () => {
   assert.match(html, />main\.py</)
 })
 
+test('ACP edit kind renders a Codex file change as a previewable file name', () => {
+  const html = renderRow(
+    <ToolCallRow
+      activity={activity({
+        name: 'FileChange',
+        kind: 'edit',
+        input: { path: 'apps/web/src/App.tsx', changes: [{ path: 'apps/web/src/App.tsx' }] },
+      })}
+      projectId="project-1"
+    />,
+  )
+
+  assert.match(html, /class="markdown-file-link"/)
+  assert.match(html, />App\.tsx</)
+})
+
+test('historical Codex FileChange payloads remain previewable', () => {
+  const html = renderRow(
+    <ToolCallRow
+      activity={activity({
+        name: 'FileChange',
+        input: { changes: [{ path: 'apps/daemon/main.py', diff: '+change' }] },
+      })}
+      projectId="project-1"
+    />,
+  )
+
+  assert.match(html, /class="markdown-file-link"/)
+  assert.match(html, />main\.py</)
+})
+
 test('running tool renders the file link once the path arg is complete', () => {
   const html = renderRow(
     <ToolCallRow

@@ -8,6 +8,12 @@ const {
   protocolPath,
   resolveBackendPort,
 } = require('../src/sidecar.cjs')
+const {
+  isAllowedExternalUrl,
+  isTrustedNavigation,
+  projectsHaveActiveWork,
+  sessionsHaveActiveWork,
+} = require('../src/security.cjs')
 
 test('packaged desktop launches the bundled writable Python runtime', () => {
   assert.deepEqual(backendLaunch('/Applications/WorkStep/resources', 'darwin'), {
@@ -62,4 +68,45 @@ test('supported deep links are forwarded without accepting arbitrary URLs', () =
   )
   assert.throws(() => protocolPath('https://example.com'), /unsupported/i)
   assert.throws(() => protocolPath('workstep://unknown'), /unsupported/i)
+})
+
+test('desktop navigation remains on the authenticated local origin', () => {
+  const rootUrl = 'http://127.0.0.1:43123'
+
+  assert.equal(isTrustedNavigation(`${rootUrl}/tasks/1`, rootUrl), true)
+  assert.equal(isTrustedNavigation('http://127.0.0.1:43124/', rootUrl), false)
+  assert.equal(isTrustedNavigation('https://example.com/', rootUrl), false)
+  assert.equal(isTrustedNavigation('not a url', rootUrl), false)
+})
+
+test('only ordinary web links may be delegated to the system browser', () => {
+  assert.equal(isAllowedExternalUrl('https://example.com/docs'), true)
+  assert.equal(isAllowedExternalUrl('http://example.com/docs'), true)
+  assert.equal(isAllowedExternalUrl('file:///tmp/private'), false)
+  assert.equal(isAllowedExternalUrl('javascript:alert(1)'), false)
+  assert.equal(isAllowedExternalUrl('workstep://open'), false)
+})
+
+test('updates are blocked while any project has active work', () => {
+  assert.equal(projectsHaveActiveWork({ projects: [] }), false)
+  assert.equal(projectsHaveActiveWork({
+    projects: [{ id: 'idle', has_running_tasks: false }],
+  }), false)
+  assert.equal(projectsHaveActiveWork({
+    projects: [
+      { id: 'idle', has_running_tasks: false },
+      { id: 'busy', has_running_tasks: true },
+    ],
+  }), true)
+  assert.equal(projectsHaveActiveWork({
+    projects: [{ id: 'busy', workflows: [{ running: true }] }],
+  }), true)
+  assert.equal(projectsHaveActiveWork(null), true)
+})
+
+test('updates are blocked while any chat session has active work', () => {
+  assert.equal(sessionsHaveActiveWork({ sessions: [] }), false)
+  assert.equal(sessionsHaveActiveWork({ sessions: [{ running: false }] }), false)
+  assert.equal(sessionsHaveActiveWork({ sessions: [{ running: true }] }), true)
+  assert.equal(sessionsHaveActiveWork(null), true)
 })

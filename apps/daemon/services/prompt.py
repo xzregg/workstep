@@ -335,13 +335,14 @@ def _format_output_specs(
 
 
 def _format_subagent_guidance(count: int) -> str:
-    """Guide the main engine to produce each output via a subagent in one session."""
+    """Suggest optional delegation when a stage declares multiple outputs."""
     return (
         f"\n### Delegation (this stage has {count} artifacts)\n"
-        "Complete all artifacts for this stage in the **same conversation**; do not start a new engine session per artifact.\n"
-        "Prefer your subagent/subtask tool and assign one subagent per artifact:\n"
-        f"- Dispatch {count} subagents, one artifact each;\n"
-        "- Give each subagent the artifact name, format requirement, and output path;\n"
-        "- Return each subagent summary, key findings, and elapsed time to the main conversation;\n"
-        "- The main conversation aggregates results, verifies each artifact path, and explains any missing or empty artifact."
+        "Decide whether delegation is useful for this stage. Delegation is optional: you may work directly, or use subagents/subtasks only where separate or parallel work helps.\n"
+        "If you delegate:\n"
+        "- Keep all work in the **same conversation**; do not start a new engine session per artifact;\n"
+        "- Choose the number and scope of subagents based on the work that is actually needed;\n"
+        "- Give each subagent the relevant artifact name, format requirement, and output path;\n"
+        "- Return useful summaries and key findings to the main conversation;\n"
+        "- The main conversation aggregates results, verifies generated artifact paths, and explains any missing or empty artifact."
     )

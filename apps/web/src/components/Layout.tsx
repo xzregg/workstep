@@ -2,7 +2,7 @@ import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
 import { BrandIcon } from './BrandIcon'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
@@ -92,6 +92,8 @@ const addButtonStyle: React.CSSProperties = {
 }
 
 const hasWhitespace = (s: string) => /\s/.test(s)
+const SIDEBAR_LONG_PRESS_MS = 500
+const SIDEBAR_LONG_PRESS_MOVE_PX = 10
 
 interface Props {
   onSelectProject: (p: Project) => void
@@ -133,7 +135,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null)
   const [deleteProjectError, setDeleteProjectError] = useState('')
   const [shareProject, setShareProject] = useState<Project | null>(null)
-  const [projectContextMenu, setProjectContextMenu] = useState<{ x: number; y: number; project: Project } | null>(null)
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
   const [dragProjectId, setDragProjectId] = useState<string | null>(null)
   const [dropProjectId, setDropProjectId] = useState<string | null>(null)
@@ -167,9 +168,15 @@ export default function Layout({ onSelectProject, children }: Props) {
   const renameInputRef = useRef<HTMLInputElement>(null)
   const renameWfInputRef = useRef<HTMLInputElement>(null)
   const renameSessionInputRef = useRef<HTMLInputElement>(null)
-  const projectMenuRef = useRef<HTMLDivElement>(null)
   const moreMenuRef = useRef<HTMLDivElement>(null)
   const sessionMenuRef = useRef<HTMLDivElement>(null)
+  const sidebarLongPressRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    timer: number
+  } | null>(null)
+  const suppressSidebarClickUntilRef = useRef(0)
   const [sessionMenu, setSessionMenu] = useState<{ x: number; y: number; sessionId: string; projectId: string; title: string } | null>(null)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
   const [renameSessionProjectId, setRenameSessionProjectId] = useState<string | null>(null)
@@ -244,14 +251,12 @@ export default function Layout({ onSelectProject, children }: Props) {
   // stopPropagation handlers must not be able to swallow the close event).
   useEffect(() => {
     const closeAll = () => {
-      setProjectContextMenu(null)
       setMoreMenu(null)
       setSessionMenu(null)
     }
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as Node | null
       if (!target) return
-      if (projectMenuRef.current?.contains(target)) return
       if (moreMenuRef.current?.contains(target)) return
       if (sessionMenuRef.current?.contains(target)) return
       closeAll()
@@ -326,18 +331,67 @@ export default function Layout({ onSelectProject, children }: Props) {
     setBulkDeleteConfirm(false)
   }
 
-  const openMoreMenu = (e: React.MouseEvent, kind: 'project' | 'workflow', id: string) => {
-    e.stopPropagation()
-    setProjectContextMenu(null)
+  const cancelSidebarLongPress = () => {
+    const pending = sidebarLongPressRef.current
+    if (pending) window.clearTimeout(pending.timer)
+    sidebarLongPressRef.current = null
+  }
+
+  const startSidebarLongPress = (
+    event: ReactPointerEvent<HTMLElement>,
+    openMenu: (x: number, y: number) => void,
+  ) => {
+    if (event.pointerType !== 'touch') return
+    cancelSidebarLongPress()
+    const pending = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer: 0,
+    }
+    pending.timer = window.setTimeout(() => {
+      if (sidebarLongPressRef.current !== pending) return
+      sidebarLongPressRef.current = null
+      suppressSidebarClickUntilRef.current = Date.now() + 800
+      openMenu(pending.startX, pending.startY)
+    }, SIDEBAR_LONG_PRESS_MS)
+    sidebarLongPressRef.current = pending
+  }
+
+  const moveSidebarLongPress = (event: ReactPointerEvent<HTMLElement>) => {
+    const pending = sidebarLongPressRef.current
+    if (!pending || pending.pointerId !== event.pointerId) return
+    if (
+      Math.abs(event.clientX - pending.startX) > SIDEBAR_LONG_PRESS_MOVE_PX
+      || Math.abs(event.clientY - pending.startY) > SIDEBAR_LONG_PRESS_MOVE_PX
+    ) {
+      cancelSidebarLongPress()
+    }
+  }
+
+  const consumeSidebarLongPressClick = () => {
+    if (Date.now() > suppressSidebarClickUntilRef.current) return false
+    suppressSidebarClickUntilRef.current = 0
+    return true
+  }
+
+  useEffect(() => cancelSidebarLongPress, [])
+
+  const openMoreMenuAt = (kind: 'project' | 'workflow', id: string, x: number, y: number) => {
     setSessionMenu(null)
-    const rect = e.currentTarget.getBoundingClientRect()
-    const atCursor = e.type === 'contextmenu'
     setMoreMenu({
       kind,
       id,
-      x: Math.min(atCursor ? e.clientX : rect.left, window.innerWidth - 176),
-      y: Math.min(atCursor ? e.clientY : rect.bottom + 4, window.innerHeight - 128),
+      x: Math.min(x, window.innerWidth - 176),
+      y: Math.min(y, window.innerHeight - 128),
     })
+  }
+
+  const openMoreMenu = (e: React.MouseEvent, kind: 'project' | 'workflow', id: string) => {
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const atCursor = e.type === 'contextmenu'
+    openMoreMenuAt(kind, id, atCursor ? e.clientX : rect.left, atCursor ? e.clientY : rect.bottom + 4)
   }
 
   const menuTarget = moreMenu
@@ -438,20 +492,29 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
   }
 
-  const openSessionMenu = (e: React.MouseEvent, projectId: string, sessionId: string, title: string) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setProjectContextMenu(null)
+  const openSessionMenuAt = (projectId: string, sessionId: string, title: string, x: number, y: number) => {
     setMoreMenu(null)
-    const rect = e.currentTarget.getBoundingClientRect()
-    const atCursor = e.type === 'contextmenu'
     setSessionMenu({
-      x: Math.min(atCursor ? e.clientX : rect.left, window.innerWidth - 176),
-      y: Math.min(atCursor ? e.clientY : rect.bottom + 4, window.innerHeight - 128),
+      x: Math.min(x, window.innerWidth - 176),
+      y: Math.min(y, window.innerHeight - 128),
       sessionId,
       projectId,
       title,
     })
+  }
+
+  const openSessionMenu = (e: React.MouseEvent, projectId: string, sessionId: string, title: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const atCursor = e.type === 'contextmenu'
+    openSessionMenuAt(
+      projectId,
+      sessionId,
+      title,
+      atCursor ? e.clientX : rect.left,
+      atCursor ? e.clientY : rect.bottom + 4,
+    )
   }
 
   const handleCreateSession = async (project: Project) => {
@@ -508,9 +571,15 @@ export default function Layout({ onSelectProject, children }: Props) {
         const owner = projects.find((project) => project.id === deleteSessionTarget.projectId)
         const ownerName = owner?.name || activeProject?.name || ''
         if (next) {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}&session=${encodeURIComponent(next.id)}`, { replace: true })
+          navigate(`/chat?project=${encodeURIComponent(ownerName)}&session=${encodeURIComponent(next.id)}`, {
+            replace: true,
+            state: { preserveNavigationDrawer: true },
+          })
         } else {
-          navigate(`/chat?project=${encodeURIComponent(ownerName)}`, { replace: true })
+          navigate(`/chat?project=${encodeURIComponent(ownerName)}`, {
+            replace: true,
+            state: { preserveNavigationDrawer: true },
+          })
         }
       }
       setDeleteSessionTarget(null)
@@ -582,10 +651,16 @@ export default function Layout({ onSelectProject, children }: Props) {
             <div key={p.id}>
               <div
                 onClick={() => {
+                  if (consumeSidebarLongPressClick()) return
                   markProjectRead(p.id)
                   handleSelectProject(p)
                   toggleProjectExpanded(p.id)
                 }}
+                onPointerDown={(e) => startSidebarLongPress(e, (x, y) => openMoreMenuAt('project', p.id, x, y))}
+                onPointerMove={moveSidebarLongPress}
+                onPointerUp={cancelSidebarLongPress}
+                onPointerCancel={cancelSidebarLongPress}
+                onPointerLeave={cancelSidebarLongPress}
                 draggable={p.type === 'local' && renameId !== p.path}
                 onDragStart={(e) => {
                   e.stopPropagation()
@@ -624,17 +699,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                   }
                 }}
                 onDragEnd={() => { setDragProjectId(null); setDropProjectId(null) }}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setMoreMenu(null)
-                  setSessionMenu(null)
-                  setProjectContextMenu({
-                    x: e.clientX,
-                    y: Math.min(e.clientY, window.innerHeight - 48),
-                    project: p,
-                  })
-                }}
+                onContextMenu={(e) => openMoreMenu(e, 'project', p.id)}
                 className="ws-row"
                 style={{
                   ...projectItemStyle(activeProject?.id === p.id),
@@ -1024,6 +1089,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           key={session.id}
                           onClick={(e) => {
                             e.stopPropagation()
+                            if (consumeSidebarLongPressClick()) return
                             if (renameSessionId === session.id) return
                             handleSelect(session.id, { meta: e.metaKey || e.ctrlKey, shift: e.shiftKey }, p.id)
                             // Only navigate on plain click (no modifiers)
@@ -1039,6 +1105,11 @@ export default function Layout({ onSelectProject, children }: Props) {
                             setRenameSessionProjectId(p.id)
                             setRenameSessionValue(session.title)
                           }}
+                          onPointerDown={(e) => startSidebarLongPress(e, (x, y) => openSessionMenuAt(p.id, session.id, session.title, x, y))}
+                          onPointerMove={moveSidebarLongPress}
+                          onPointerUp={cancelSidebarLongPress}
+                          onPointerCancel={cancelSidebarLongPress}
+                          onPointerLeave={cancelSidebarLongPress}
                           onContextMenu={(e) => openSessionMenu(e, p.id, session.id, session.title)}
                           onMouseEnter={() => setHoveredSessionId(session.id)}
                           onMouseLeave={() => setHoveredSessionId(null)}
@@ -1181,6 +1252,7 @@ export default function Layout({ onSelectProject, children }: Props) {
 
         {onboardingStatus !== 'completed' && (
           <Button
+            className="onboarding-reopen-button"
             variant="ghost"
             onClick={() => useOnboardingStore.getState().reopen()}
             style={{
@@ -1223,70 +1295,13 @@ export default function Layout({ onSelectProject, children }: Props) {
         }}
       />
 
-      {projectContextMenu && (
-        <div
-          ref={projectMenuRef}
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed', left: projectContextMenu.x, top: projectContextMenu.y,
-            minWidth: 140, padding: '4px 0', zIndex: 500,
-            background: 'var(--bg)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
-          }}
-        >
-          {projectContextMenu.project.type !== 'remote' && (
-            <div
-              onClick={() => {
-                setRenameId(projectContextMenu.project.path)
-                setRenameName(projectContextMenu.project.name)
-                setRenameError('')
-                setProjectContextMenu(null)
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
-            >
-              <Icon name="pencil" size={14} />
-              {t('common.rename')}
-            </div>
-          )}
-          {projectContextMenu.project.type !== 'remote' && (
-            <div
-              onClick={() => {
-                setShareProject(projectContextMenu.project)
-                setProjectContextMenu(null)
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-              style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer' }}
-            >
-              <Icon name="share" size={14} />
-              {t('layout.remoteShareTitle')}
-            </div>
-          )}
-          <div
-            onClick={() => {
-              setDeleteProjectError('')
-              setDeleteProjectTarget(projectContextMenu.project)
-              setProjectContextMenu(null)
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-            style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer', color: 'var(--danger)' }}
-          >
-            <Icon name="trash" size={14} />
-            {t('layout.deleteProjectTitle')}
-          </div>
-        </div>
-      )}
-
       {moreMenu && (
         <div
           ref={moreMenuRef}
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: moreMenu.x, top: moreMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 500,
+            minWidth: 148, padding: '4px 0', zIndex: 1302,
             background: 'var(--bg)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
           }}
@@ -1405,7 +1420,7 @@ export default function Layout({ onSelectProject, children }: Props) {
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'fixed', left: sessionMenu.x, top: sessionMenu.y,
-            minWidth: 148, padding: '4px 0', zIndex: 500,
+            minWidth: 148, padding: '4px 0', zIndex: 1302,
             background: 'var(--bg)', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)', boxShadow: 'var(--elev-raised)',
           }}

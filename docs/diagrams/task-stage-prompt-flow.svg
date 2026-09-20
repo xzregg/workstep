@@ -56,7 +56,7 @@
     <text x="84" y="506" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">输出规范与真实写入路径</text>
     <text x="84" y="528" fill="#6e6e73" font-size="11" class="mono">step.outputs + output-types.json</text>
     <text x="84" y="550" fill="#424245" font-size="11" class="sans">名称 · 类型 · 格式约束 · .workstep/artifacts/&lt;workflow&gt;/&lt;task&gt;/&lt;step&gt;/</text>
-    <text x="84" y="570" fill="#a16207" font-size="11" class="sans">审查：多产物仍写“共派发 N 个子代理”，与可选产出存在张力</text>
+    <text x="84" y="570" fill="#16803c" font-size="11" class="sans">多产物仅建议按需分工；是否使用、数量和范围均由阶段 LLM 判断</text>
 
     <rect x="68" y="602" width="252" height="76" rx="6" fill="#ffffff" stroke="#d2d2d7"/>
     <text x="84" y="626" fill="#1d1d1f" font-size="13" font-weight="650" class="sans">用户输入</text>

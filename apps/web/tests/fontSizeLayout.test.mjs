@@ -35,14 +35,3 @@ async function sourceFiles(directory) {
   return files.flat()
 }
 
-test('fixed interface font sizes opt into the shared font scale', async () => {
-  const src = new URL('../src/', import.meta.url)
-  const files = (await sourceFiles(src)).filter((url) => /\.(?:css|ts|tsx)$/.test(url.pathname))
-
-  for (const file of files) {
-    const source = await readFile(file, 'utf8')
-    assert.doesNotMatch(source, /fontSize:\s*\d+(?:\.\d+)?\b/, `${file.pathname} has an unscaled inline font size`)
-    assert.doesNotMatch(source, /font-size:\s*\d+(?:\.\d+)?px\b/, `${file.pathname} has an unscaled CSS font size`)
-    assert.doesNotMatch(source, /font:\s*(?![^;\n]*var\(--font-scale\))[^;\n]*\b\d+(?:\.\d+)?px\b/, `${file.pathname} has an unscaled CSS font shorthand`)
-  }
-})

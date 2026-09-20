@@ -218,10 +218,17 @@ class DeepSeekHarnessEngine(AcpEngineBase):
         )
         if provider is None or provider.get("type") != "deepseek":
             return []
-        entry = await asyncio.to_thread(config_store.get_provider_models, provider["id"])
+        protocol = self.pick_protocol(provider)
+        entry = await asyncio.to_thread(
+            config_store.get_provider_models, provider["id"], protocol
+        )
         if entry and not refresh:
-            return await asyncio.to_thread(provider_service.saved_models, provider["id"])
-        return await provider_service.fetch_and_save_models(provider)
+            return await asyncio.to_thread(
+                provider_service.saved_models, provider["id"], protocol
+            )
+        return await provider_service.fetch_and_save_models(
+            provider, protocol=protocol
+        )
 
     def _build_harness(
         self,
@@ -254,7 +261,9 @@ class DeepSeekHarnessEngine(AcpEngineBase):
             "cwd": str(project_root),
             "runtime_cwd": str(project_root),
             "session_root": str(session_root),
-            "base_url": str(provider.get("base_url") or "").rstrip("/"),
+            "base_url": provider_service.provider_runtime_base_url(
+                provider, "openai_chat_completions"
+            ),
             "api_key": str(provider.get("api_key") or ""),
             "cordis": str(composition),
         }

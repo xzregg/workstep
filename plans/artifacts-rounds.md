@@ -37,7 +37,7 @@ Agent 难以稳定定位历史结果。
 不建议把项目业务仓库的 Git 作为第一版主机制，原因如下：
 
 - 项目初始化会把整个 `.workstep/` 写入 `.gitignore` 和 `.dockerignore`，
-  见 [project.py](/Users/xzr/Desktop/workstep/apps/daemon/services/project.py:649)。
+  见 [project.py](../apps/daemon/services/project.py)。
   默认情况下，WorkStep 产物不会进入用户业务仓库历史。
 - Git 擅长文件版本工具能力，但不直接表达 WorkStep 需要的业务语义：
   第几轮、是否审核通过、哪个轮次可被下游继承、当前阶段实际用了哪些上游轮次。
@@ -54,7 +54,7 @@ Git 后续可以作为可选增强，例如为任务产物建内部仓库或提�
 `轮数` 定义为“任务 + 阶段”的全局执行轮次，从 1 开始递增。
 
 不要复用现有 `task.run_round`。当前 `task.run_round` 是 `WorkflowRun` 父子链深度，
-见 [task.py](/Users/xzr/Desktop/workstep/apps/daemon/services/task.py:614)，和产物轮次语义不同。
+见 [task.py](../apps/daemon/services/task.py)，和产物轮次语义不同。
 
 ### 3.2 何时产生新轮
 
@@ -122,15 +122,15 @@ Git 后续可以作为可选增强，例如为任务产物建内部仓库或提�
 ### 4.1 已有骨架
 
 - Prompt 已声明产物目录为 `.workstep/artifacts/<工作流>/<任务>/<阶段>/`：
-  [prompt.py](/Users/xzr/Desktop/workstep/apps/daemon/services/prompt.py:19)。
+  [prompt.py](../apps/daemon/services/prompt.py)。
 - 产物列表已按“工作流 / 任务 / 阶段”扫描并读取阶段根目录下的 `manifest.json`：
-  [artifacts.py](/Users/xzr/Desktop/workstep/apps/daemon/services/artifacts.py:7)。
+  [artifacts.py](../apps/daemon/services/artifacts.py)。
 - `StepRun.attempt` 已表示某个 `WorkflowRun` 内该阶段第几次执行：
-  [run.py](/Users/xzr/Desktop/workstep/apps/daemon/models/run.py:34)。
+  [run.py](../apps/daemon/models/run.py)。
 - 审核 Prompt 当前扫描阶段根目录：
-  [review_gate.py](/Users/xzr/Desktop/workstep/apps/daemon/services/review_gate.py:231)。
+  [review_gate.py](../apps/daemon/services/review_gate.py)。
 - 协调 Agent 的 artifact index 当前按阶段根目录生成 ID：
-  [coordinator.py](/Users/xzr/Desktop/workstep/apps/daemon/agent_assistants/coordinator.py:1766)。
+  [coordinator.py](../apps/daemon/agent_assistants/coordinator.py)。
 
 ### 4.2 关键冲突
 
@@ -140,7 +140,7 @@ Git 后续可以作为可选增强，例如为任务产物建内部仓库或提�
 .workstep/artifacts/<阶段>/<任务>/
 ```
 
-见 [workflow_runtime.py](/Users/xzr/Desktop/workstep/apps/daemon/services/workflow_runtime.py:1603)。
+见 [workflow_runtime.py](../apps/daemon/services/workflow_runtime.py)。
 这和 Prompt、产物列表、协调 Agent 使用的路径不一致。
 
 新方案必须收敛到唯一路径：
@@ -173,13 +173,13 @@ apps/daemon/services/artifact_rounds.py
 
 调用方至少包括：
 
-- [prompt.py](/Users/xzr/Desktop/workstep/apps/daemon/services/prompt.py:136)
-- [artifacts.py](/Users/xzr/Desktop/workstep/apps/daemon/services/artifacts.py:7)
-- [review_gate.py](/Users/xzr/Desktop/workstep/apps/daemon/services/review_gate.py:231)
-- [task_runner.py](/Users/xzr/Desktop/workstep/apps/daemon/services/task_runner.py:697)
-- [workflow_runtime.py](/Users/xzr/Desktop/workstep/apps/daemon/services/workflow_runtime.py:1306)
-- [coordinator.py](/Users/xzr/Desktop/workstep/apps/daemon/agent_assistants/coordinator.py:1766)
-- [task_dispatch.py](/Users/xzr/Desktop/workstep/apps/daemon/services/task_dispatch.py:36)
+- [prompt.py](../apps/daemon/services/prompt.py)
+- [artifacts.py](../apps/daemon/services/artifacts.py)
+- [review_gate.py](../apps/daemon/services/review_gate.py)
+- [task_runner.py](../apps/daemon/services/task_runner.py)
+- [workflow_runtime.py](../apps/daemon/services/workflow_runtime.py)
+- [coordinator.py](../apps/daemon/agent_assistants/coordinator.py)
+- [task_dispatch.py](../apps/daemon/services/task_dispatch.py)
 
 ## 6. 数据模型
 
@@ -201,7 +201,7 @@ input_rounds_json TEXT
 | `input_rounds_json` | 本轮流实际选择的上游轮次，例如 `{"req":2,"design":1}` |
 
 端口数据库迁移沿用现有 additive migration 方式：
-在 [migrations.py](/Users/xzr/Desktop/workstep/apps/daemon/models/migrations.py:49)
+在 [migrations.py](../apps/daemon/models/migrations.py)
 的 `_ADDITIVE_COLUMNS["step_runs"]` 增加列，并补必要索引。
 
 建议增加非唯一索引：
@@ -404,7 +404,7 @@ eligible_for_downstream: boolean
 
 ### 11.3 API 契约测试
 
-更新 [test_api_contracts.py](/Users/xzr/Desktop/workstep/apps/daemon/tests/test_api_contracts.py:2072)：
+更新 [test_api_contracts.py](../apps/daemon/tests/test_api_contracts.py)：
 
 - 新轮目录被正确识别；
 - legacy 阶段根目录仍被识别为第 1 轮兼容数据；

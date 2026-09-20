@@ -1,5 +1,9 @@
 name: Desktop release
 
+concurrency:
+  group: desktop-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 on:
   push:
     tags: ["v*"]
@@ -13,7 +17,20 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
   macos:
+    needs: validate
     strategy:
       fail-fast: false
       matrix:
@@ -39,8 +56,10 @@ jobs:
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
-      - name: Build Nuitka backend
-        env: { BUILD_PLATFORM: mac }
+      - name: Build bundled backend
+        env:
+          BUILD_PLATFORM: mac
+          WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
         run: ./apps/desktop/build-backend.sh
       - name: Build macOS package and update metadata
         working-directory: apps/desktop
@@ -56,6 +75,12 @@ jobs:
           npm version "$version" --no-git-tag-version --allow-same-version
           ./inject-backend.sh
           yarn electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.publish.channel=latest-${{ matrix.arch }}
+          test -x resources-placeholder/backend/python/bin/python3
+          test -f resources-placeholder/backend/legal/LICENSE
+          test -f resources-placeholder/backend/legal/NOTICE
+          test -f resources-placeholder/backend/legal/THIRD_PARTY_NOTICES.md
+          test -f resources-placeholder/backend/legal/sbom.cdx.json
+          test -n "$(find dist -name 'WorkStep*.app' -type d -print -quit)"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-macos-${{ matrix.arch }}
@@ -67,6 +92,7 @@ jobs:
           if-no-files-found: error
 
   windows:
+    needs: validate
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -84,8 +110,10 @@ jobs:
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
-      - name: Build Nuitka backend
+      - name: Build bundled backend
         shell: pwsh
+        env:
+          WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
         run: ./apps/desktop/build-backend.ps1
       - name: Build Windows installer and update metadata
         shell: pwsh
@@ -100,6 +128,12 @@ jobs:
           npm version $version --no-git-tag-version --allow-same-version
           ./inject-backend.ps1
           yarn electron-builder --win nsis --x64 --publish never
+          if (-not (Test-Path "resources-placeholder/backend/python/python.exe")) { throw "Bundled Python missing" }
+          if (-not (Test-Path "resources-placeholder/backend/legal/sbom.cdx.json")) { throw "SBOM missing" }
+          $installer = Get-ChildItem "dist/WorkStep-*-windows-x64.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer missing" }
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          if ($signature.Status -ne "Valid") { throw "Invalid Windows signature: $($signature.Status)" }
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-windows-x64
@@ -110,6 +144,7 @@ jobs:
           if-no-files-found: error
 
   linux:
+    needs: validate
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -127,8 +162,10 @@ jobs:
       - name: Build React application
         working-directory: apps/web
         run: corepack enable && yarn install --frozen-lockfile && yarn build
-      - name: Build Nuitka backend
-        env: { BUILD_PLATFORM: linux }
+      - name: Build bundled backend
+        env:
+          BUILD_PLATFORM: linux
+          WORKSTEP_BUILD_VERSION: ${{ inputs.tag || github.ref_name }}
         run: ./apps/desktop/build-backend.sh
       - name: Build AppImage and update metadata
         working-directory: apps/desktop
@@ -142,6 +179,13 @@ jobs:
           npm version "$version" --no-git-tag-version --allow-same-version
           ./inject-backend.sh
           yarn electron-builder --linux AppImage --x64 --publish never
+          test -x resources-placeholder/backend/python/bin/python3
+          test -f resources-placeholder/backend/legal/LICENSE
+          test -f resources-placeholder/backend/legal/NOTICE
+          test -f resources-placeholder/backend/legal/THIRD_PARTY_NOTICES.md
+          test -f resources-placeholder/backend/legal/sbom.cdx.json
+          cp resources-placeholder/backend/legal/sbom.cdx.json "dist/WorkStep-${version}-sbom.cdx.json"
+          test -n "$(find dist -name 'WorkStep-*-linux-x64.AppImage' -type f -print -quit)"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: desktop-linux-x64
@@ -149,6 +193,7 @@ jobs:
             apps/desktop/dist/*.AppImage
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/*.yml
+            apps/desktop/dist/*-sbom.cdx.json
           if-no-files-found: error
 
   publish-draft:
@@ -156,12 +201,23 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    environment: release
     steps:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with: { pattern: desktop-*, merge-multiple: true, path: release }
       - name: Create checksums
         working-directory: release
-        run: sha256sum WorkStep-* > SHA256SUMS.txt
+        run: |
+          sha256sum WorkStep-* > SHA256SUMS.txt
+          test -s SHA256SUMS.txt
+      - name: Attest release artifacts
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            release/WorkStep-*
+            release/SHA256SUMS.txt
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

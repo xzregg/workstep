@@ -27,6 +27,7 @@ from services.remote_project import (
     serve_remote_project_socket,
     websocket_access_allowed,
 )
+from services.desktop_security import desktop_websocket_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,9 @@ def register_websocket_routes(app: FastAPI) -> None:
 
     @app.websocket("/ws/remote-project")
     async def remote_project_ws_endpoint(ws: WebSocket):
+        if not desktop_websocket_allowed(ws):
+            await ws.close(code=4401, reason="desktop authentication required")
+            return
         dispatcher = RemoteRouteDispatcher(app)
         try:
             await serve_remote_project_socket(
@@ -220,6 +224,9 @@ def register_websocket_routes(app: FastAPI) -> None:
         receives everything (backward compatible).
         """
         main = _main()
+        if not desktop_websocket_allowed(ws):
+            await ws.close(code=4401, reason="desktop authentication required")
+            return
         if not websocket_access_allowed(ws, main.remote_access_service):
             await ws.close(code=4401, reason="remote access locked")
             return
@@ -263,6 +270,10 @@ def register_websocket_routes(app: FastAPI) -> None:
         task, with coordinator and sensitive event types filtered out.
         """
         from services.share import resolve_share_session
+
+        if not desktop_websocket_allowed(ws):
+            await ws.close(code=4401, reason="desktop authentication required")
+            return
 
         ctx = resolve_share_session(session) if session else None
         if ctx is None:

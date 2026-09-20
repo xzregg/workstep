@@ -11,9 +11,10 @@ import {
   type ProviderInfo,
   type ProviderImportResult,
   type ProviderImportSource,
+  type ProviderTestResult,
   type ProviderTypeMeta,
 } from '../api/client'
-import { useI18n } from '../i18n'
+import { useI18n, type TKey } from '../i18n'
 import {
   filterProviderImportCandidates,
   providerImportTabs,
@@ -30,8 +31,8 @@ interface Props {
 interface ProviderForm {
   name: string
   type: string
-  protocol: string
-  base_url: string
+  protocols: string[]
+  protocol_base_urls: Record<string, string>
   api_key: string
   clear_key: boolean
 }
@@ -39,11 +40,17 @@ interface ProviderForm {
 const EMPTY_FORM: ProviderForm = {
   name: '',
   type: 'custom',
-  protocol: 'openai_chat_completions',
-  base_url: '',
+  protocols: ['openai_chat_completions'],
+  protocol_base_urls: { openai_chat_completions: '' },
   api_key: '',
   clear_key: false,
 }
+
+const ALL_PROTOCOLS: { value: string; labelKey: TKey }[] = [
+  { value: 'anthropic_messages', labelKey: 'providerSettings.protocolAnthropic' },
+  { value: 'openai_responses', labelKey: 'providerSettings.protocolResponses' },
+  { value: 'openai_chat_completions', labelKey: 'providerSettings.protocolChat' },
+]
 
 function ProviderBadge({ verified, enabled }: { verified: boolean; enabled: boolean }) {
   const { t } = useI18n()
@@ -165,7 +172,28 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
 
   const typeLabel = (id: string) => types.find((item) => item.id === id)?.label ?? id
   const typeDefaultBaseUrl = (id: string) => types.find((item) => item.id === id)?.default_base_url ?? ''
-  const typeDefaultProtocol = (id: string) => types.find((item) => item.id === id)?.default_protocol ?? 'openai_chat_completions'
+  const typeDefaultProtocols = (id: string) =>
+    types.find((item) => item.id === id)?.default_protocols?.length
+      ? types.find((item) => item.id === id)!.default_protocols
+      : [types.find((item) => item.id === id)?.default_protocol ?? 'openai_chat_completions']
+
+  const toggleProtocol = (value: string) => {
+    setForm((current) => {
+      const present = current.protocols.includes(value)
+      return {
+        ...current,
+        protocols: present
+          ? current.protocols.filter((item) => item !== value)
+          : [...current.protocols, value],
+        protocol_base_urls: present
+          ? current.protocol_base_urls
+          : {
+              ...current.protocol_base_urls,
+              [value]: current.protocol_base_urls[value] || typeDefaultBaseUrl(current.type),
+            },
+      }
+    })
+  }
 
   const openCreate = () => {
     setEditingId(null)
@@ -174,8 +202,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     setForm({
       ...EMPTY_FORM,
       type: typeId,
-      protocol: typeDefaultProtocol(typeId),
-      base_url: typeDefaultBaseUrl(typeId),
+      protocols: typeDefaultProtocols(typeId),
+      protocol_base_urls: Object.fromEntries(
+        typeDefaultProtocols(typeId).map((protocol) => [protocol, typeDefaultBaseUrl(typeId)]),
+      ),
     })
     setFormError('')
     setKeyRevealed(false)
@@ -189,13 +219,19 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   }, [autoCreate, loading, formOpen, types]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEdit = (provider: ProviderInfo) => {
+    const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
     setEditingId(provider.id)
     setCopySourceName('')
     setForm({
       name: provider.name,
       type: provider.type,
-      protocol: provider.protocol,
-      base_url: provider.base_url,
+      protocols,
+      protocol_base_urls: Object.fromEntries(
+        protocols.map((protocol) => [
+          protocol,
+          provider.protocol_base_urls?.[protocol] || provider.base_url,
+        ]),
+      ),
       api_key: '',
       clear_key: false,
     })
@@ -211,13 +247,19 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       const apiKey = provider.has_key
         ? (await providerApi.reveal(provider.id)).value || ''
         : ''
+      const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
       setEditingId(null)
       setCopySourceName(provider.name)
       setForm({
         name: t('providerSettings.copyName', { name: provider.name }),
         type: provider.type,
-        protocol: provider.protocol,
-        base_url: provider.base_url,
+        protocols,
+        protocol_base_urls: Object.fromEntries(
+          protocols.map((protocol) => [
+            protocol,
+            provider.protocol_base_urls?.[protocol] || provider.base_url,
+          ]),
+        ),
         api_key: apiKey,
         clear_key: false,
       })
@@ -243,13 +285,14 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   const changeType = (typeId: string) => {
     setForm((current) => {
       const defaultUrl = typeDefaultBaseUrl(typeId)
-      // 类型切换时预填默认地址（仅当用户尚未自定义输入时）
-      const keepUrl = current.base_url && current.base_url !== typeDefaultBaseUrl(current.type)
+      const protocols = typeDefaultProtocols(typeId)
       return {
         ...current,
         type: typeId,
-        protocol: typeDefaultProtocol(typeId),
-        base_url: keepUrl ? current.base_url : defaultUrl,
+        protocols,
+        protocol_base_urls: Object.fromEntries(
+          protocols.map((protocol) => [protocol, defaultUrl]),
+        ),
       }
     })
     setFormError('')
@@ -280,12 +323,21 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
 
   const save = async () => {
     const name = form.name.trim()
-    const baseUrl = form.base_url.trim()
     if (!name) {
       setFormError(t('providerSettings.needsName'))
       return
     }
-    if (!baseUrl) {
+    if (!form.protocols.length) {
+      setFormError(t('providerSettings.protocolsRequired'))
+      return
+    }
+    const protocolBaseUrls = Object.fromEntries(
+      form.protocols.map((protocol) => [
+        protocol,
+        (form.protocol_base_urls[protocol] || '').trim(),
+      ]),
+    )
+    if (Object.values(protocolBaseUrls).some((value) => !value)) {
       setFormError(t('providerSettings.needsBaseUrl'))
       return
     }
@@ -296,8 +348,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         id: editingId || undefined,
         name,
         type: form.type,
-        protocol: form.protocol,
-        base_url: baseUrl,
+        protocols: form.protocols,
+        protocol: form.protocols[0],
+        base_url: protocolBaseUrls[form.protocols[0]],
+        protocol_base_urls: protocolBaseUrls,
         api_key: form.api_key,
         clear: form.clear_key ? { api_key: true } : undefined,
       })
@@ -324,8 +378,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
         id: provider.id,
         name: provider.name,
         type: provider.type,
+        protocols: provider.protocols?.length ? provider.protocols : [provider.protocol],
         protocol: provider.protocol,
         base_url: provider.base_url,
+        protocol_base_urls: provider.protocol_base_urls,
         enabled: !provider.enabled,
       })
       await refresh()
@@ -345,10 +401,25 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       return next
     })
     try {
-      const result = await providerApi.test(provider.id)
+      const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
+      const results: Array<ProviderTestResult & { label: string }> = []
+      for (const protocol of protocols) {
+        const result = await providerApi.test(provider.id, protocol)
+        const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
+        results.push({
+          ...result,
+          label: option ? t(option.labelKey) : protocol,
+        })
+      }
+      const success = results.every((result) => result.success)
       setTestResults((current) => ({
         ...current,
-        [provider.id]: { success: result.success, message: result.message },
+        [provider.id]: {
+          success,
+          message: results
+            .map((result) => `${result.label}: ${result.message}`)
+            .join('；'),
+        },
       }))
       await refresh()
     } catch (reason) {
@@ -369,15 +440,28 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       return next
     })
     try {
-      const result = await providerApi.models(provider.id, true)
-      setModelLists((current) => ({ ...current, [provider.id]: result.models }))
-      setModelCounts((current) => ({ ...current, [provider.id]: result.models.length }))
+      const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
+      const merged = new Map<string, EngineModel>()
+      const errors: string[] = []
+      let fetchedAt: string | null = null
+      for (const protocol of protocols) {
+        const result = await providerApi.models(provider.id, true, protocol)
+        result.models.forEach((model) => merged.set(model.id, model))
+        fetchedAt = result.fetched_at || fetchedAt
+        if (result.error) {
+          const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
+          errors.push(`${option ? t(option.labelKey) : protocol}: ${result.error}`)
+        }
+      }
+      const models = [...merged.values()]
+      setModelLists((current) => ({ ...current, [provider.id]: models }))
+      setModelCounts((current) => ({ ...current, [provider.id]: models.length }))
       setModelFetchedAt((current) => ({
         ...current,
-        [provider.id]: result.fetched_at || null,
+        [provider.id]: fetchedAt,
       }))
-      if (result.error) {
-        setModelErrors((current) => ({ ...current, [provider.id]: String(result.error) }))
+      if (errors.length) {
+        setModelErrors((current) => ({ ...current, [provider.id]: errors.join('；') }))
       }
     } catch (reason) {
       setModelErrors((current) => ({
@@ -473,7 +557,10 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   const selectableImportIds = selectableProviderImportIds(visibleImportCandidates)
   const allSelectableImportsSelected = selectableImportIds.length > 0
     && selectableImportIds.every((id) => selectedIds.includes(id))
-  const saveDisabled = !form.name.trim() || !form.base_url.trim() || formSaving
+  const saveDisabled = !form.name.trim()
+    || !form.protocols.length
+    || form.protocols.some((protocol) => !form.protocol_base_urls[protocol]?.trim())
+    || formSaving
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
@@ -558,10 +645,16 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                       </span>
                     </div>
                     <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))', overflowWrap: 'anywhere' }}>
-                      {provider.base_url}
-                      <span style={{ marginLeft: 8 }}>
-                        {provider.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}
-                      </span>
+                      {(provider.protocols?.length ? provider.protocols : [provider.protocol]).map((protocol) => {
+                        const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
+                        return (
+                          <div key={protocol}>
+                            {option ? t(option.labelKey) : protocol}: {' '}
+                            {provider.protocol_base_urls?.[protocol] || provider.base_url}
+                          </div>
+                        )
+                      })}
+                      <div>{provider.has_key ? t('providerSettings.hasKey') : t('providerSettings.noKey')}</div>
                     </div>
                     {testResult && (
                       <div
@@ -1034,32 +1127,55 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                   ))}
                 </Select>
               </Field>
-              <Field label={t('providerSettings.protocol')} htmlFor="provider-protocol" required>
-                <Select
-                  id="provider-protocol"
-                  value={form.protocol}
-                  onChange={(event) => setForm((current) => ({
-                    ...current,
-                    protocol: event.target.value,
-                  }))}
-                  style={{ width: '100%', height: 32 }}
-                >
-                  <option value="anthropic_messages">{t('providerSettings.protocolAnthropic')}</option>
-                  <option value="openai_responses">{t('providerSettings.protocolResponses')}</option>
-                  <option value="openai_chat_completions">{t('providerSettings.protocolChat')}</option>
-                </Select>
-              </Field>
-              <Field label={t('providerSettings.baseUrl')} htmlFor="provider-base-url" required>
-                <Input
-                  id="provider-base-url"
-                  value={form.base_url}
-                  placeholder={t('providerSettings.baseUrlPlaceholder')}
-                  onChange={(event) => {
-                    setForm((current) => ({ ...current, base_url: event.target.value }))
-                    setFormError('')
-                  }}
-                  style={{ width: '100%', height: 32 }}
-                />
+              <Field label={t('providerSettings.protocols')} required>
+                <div className="provider-protocol-options">
+                  {ALL_PROTOCOLS.map((option) => {
+                    const enabled = form.protocols.includes(option.value)
+                    return (
+                      <div className="provider-protocol-setting" key={option.value}>
+                        <label className="provider-protocol-toggle">
+                          <span>{t(option.labelKey)}</span>
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            checked={enabled}
+                            onChange={() => toggleProtocol(option.value)}
+                          />
+                          <span className="provider-protocol-switch" aria-hidden="true" />
+                        </label>
+                        {form.protocols.includes(option.value) && (
+                          <Field
+                            className="provider-protocol-address"
+                            label={t('providerSettings.baseUrl')}
+                            htmlFor={`provider-base-url-${option.value}`}
+                            required
+                          >
+                            <Input
+                              id={`provider-base-url-${option.value}`}
+                              value={form.protocol_base_urls[option.value] || ''}
+                              placeholder={t('providerSettings.baseUrlPlaceholder')}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setForm((current) => ({
+                                  ...current,
+                                  protocol_base_urls: {
+                                    ...current.protocol_base_urls,
+                                    [option.value]: value,
+                                  },
+                                }))
+                                setFormError('')
+                              }}
+                              style={{ width: '100%', height: 32 }}
+                            />
+                          </Field>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>
+                  {t('providerSettings.protocolsHint')}
+                </div>
               </Field>
               <Field
                 label={t('providerSettings.apiKey')}

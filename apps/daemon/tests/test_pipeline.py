@@ -392,8 +392,8 @@ def test_assemble_prompt_empty_constraints_does_not_crash(tmp_path, monkeypatch)
     db.close()
 
 
-def test_assemble_prompt_multi_output_suggests_subagents(tmp_path):
-    """Multi-output steps get subagent delegation guidance in the prompt."""
+def test_assemble_prompt_multi_output_leaves_delegation_to_the_stage(tmp_path):
+    """Multi-output steps suggest delegation without requiring N subagents."""
     from models import init_db, Task
     import time, uuid
 
@@ -414,6 +414,9 @@ def test_assemble_prompt_multi_output_suggests_subagents(tmp_path):
     assert "subagent" in prompt
     assert "same conversation" in prompt
     assert "b1" in prompt and "b2" in prompt
+    assert "Decide whether delegation is useful" in prompt
+    assert "Dispatch 2 subagents" not in prompt
+    assert "assign one subagent per artifact" not in prompt
     assert "you may omit artifacts or leave them empty" in prompt
     assert "every artifact has been written" not in prompt
     assert "produce exactly the following list" not in prompt

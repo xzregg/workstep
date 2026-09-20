@@ -233,7 +233,9 @@ function AgentAssistantSettings() {
   const selectedEngineInfo = engines.find((item) => item.id === engine)
   const engineSupportsProvider = Boolean(selectedEngineInfo?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
-    (selectedEngineInfo?.provider_protocols || []).includes(item.protocol)
+    (selectedEngineInfo?.provider_protocols || []).some((protocol) =>
+      (item.protocols?.length ? item.protocols : [item.protocol]).includes(protocol),
+    )
   ))
 
   const loadAssistantModels = async (engineId: string, force: boolean) => {

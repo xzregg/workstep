@@ -31,3 +31,19 @@ test('clicking the more button opens an edit/delete menu for projects and workfl
   assert.match(source, /setRenameWfId\(menuTarget\.workflow\.id\)/)
   assert.match(source, /setDeleteWf\(\{/)
 })
+
+test('touch long press opens the existing project and session more menus', () => {
+  assert.match(source, /const startSidebarLongPress =/)
+  assert.match(source, /pointerType !== 'touch'/)
+  assert.match(source, /SIDEBAR_LONG_PRESS_MS/)
+  assert.match(source, /startSidebarLongPress\(e, \(x, y\) => openMoreMenuAt\('project', p\.id, x, y\)\)/)
+  assert.match(source, /startSidebarLongPress\(e, \(x, y\) => openSessionMenuAt\(p\.id, session\.id, session\.title, x, y\)\)/)
+  assert.match(source, /onPointerMove=\{moveSidebarLongPress\}/)
+  assert.match(source, /consumeSidebarLongPressClick\(\)/)
+})
+
+test('sidebar row menus render above the mobile navigation drawer', () => {
+  assert.match(mobileCss, /\.responsive-navigation\s*\{[^}]*z-index:\s*1201/s)
+  const menuLayers = source.match(/zIndex:\s*1302/g) ?? []
+  assert.equal(menuLayers.length, 2, 'project/workflow and session menus should both clear the drawer layer')
+})

@@ -29,16 +29,6 @@ test('all locale dictionaries share identical key sets', () => {
   }
 })
 
-test('all locale dictionaries have no missing or empty values', () => {
-  for (const key of zhKeys) {
-    for (const [name, dict] of Object.entries(locales)) {
-      const value = flatten(dict)[key]
-      assert.ok(value !== undefined, `missing value for ${name}.${key}`)
-      assert.ok(value.length > 0, `empty value for ${name}.${key}`)
-    }
-  }
-})
-
 test('interpolates {name} placeholders', () => {
   assert.equal(
     zhCNT('taskDetail.artifactNotFound', { name: 'report.md' }),

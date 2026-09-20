@@ -19,6 +19,10 @@ apps/desktop/.nuitka-venv/
 
 # Local environment secrets
 .env
+.env.*
+!.env.example
+.claude/settings.local.json
+.claude/*.local.json
 
 # Open Design
 .od/

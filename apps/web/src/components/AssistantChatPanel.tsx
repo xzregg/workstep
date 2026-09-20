@@ -91,6 +91,8 @@ export interface AssistantChatPanelProps {
   enhance?: ChatInputEnhance
   context?: ChatContextUsage | null
   quota?: ChatEngineQuota | null
+  onRefreshQuota?: () => void
+  quotaRefreshing?: boolean
   plan?: ChatInputPlan
   availableCommands?: EngineInputItem[]
   attachmentPrefix: string
@@ -248,7 +250,7 @@ const MessageItem = memo(function MessageItem({
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
-  locale, config, permission, enhance, context, quota, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
+  locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
@@ -681,6 +683,8 @@ export default function AssistantChatPanel({
             enhance={enhance}
             context={context}
             quota={quota}
+            onRefreshQuota={onRefreshQuota}
+            quotaRefreshing={quotaRefreshing}
             plan={plan}
             left={compactLayout && quickPrompts && quickPrompts.length > 0 ? (
               <>

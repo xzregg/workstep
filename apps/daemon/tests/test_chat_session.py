@@ -1166,7 +1166,7 @@ async def test_chat_history_converts_legacy_visualize_markers(chat_module, monke
     assert await _wait_turn(module, accepted.turn_id) == "completed"
 
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     marker = '\ue200visualize{"path":"<path>","mode":"wide"}\ue201'.replace("<path>", path)
@@ -1201,7 +1201,7 @@ async def test_chat_history_converts_bare_visualize_marker(chat_module, monkeypa
     assert await _wait_turn(module, accepted.turn_id) == "completed"
 
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'
@@ -1236,7 +1236,7 @@ async def test_chat_history_converts_visualize_marker_in_events(chat_module, mon
     assert await _wait_turn(module, accepted.turn_id) == "completed"
 
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'

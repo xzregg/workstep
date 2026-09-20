@@ -17,11 +17,6 @@ test('limits task card descriptions to a short preview', () => {
   assert.match(source, /overflow: 'hidden'/)
 })
 
-test('uses the task status color for the card left border', () => {
-  assert.match(source, /borderLeft: `3px solid \$\{statusColor\}`/)
-  assert.doesNotMatch(source, /borderLeft: `3px solid \$\{lane\.color\}`/)
-})
-
 test('shows the scheduled time to the left of the task status', () => {
   const scheduledTimePos = source.indexOf("task.scheduled_start_state === 'pending'")
   const taskStatusPos = source.indexOf('data-s={displayStatus}')

@@ -166,12 +166,20 @@ class EngineInstallResult:
     already_installed: bool = False
 
 
+#: 线协议 → Codex ``wire_api`` 取值（Codex CLI/SDK 的配置词汇）。
+WIRE_API_BY_PROTOCOL = {
+    "openai_responses": "responses",
+    "openai_chat_completions": "chat",
+}
+
+
 @dataclass(frozen=True)
 class ProviderRuntimeConfig:
     """Resolved provider material for one engine run, with secrets isolated."""
 
     provider_id: str = ""
     model: str | None = None
+    protocol: str = ""
     env: dict[str, str] = field(default_factory=dict)
     unset_env: set[str] = field(default_factory=set)
     engine_config: tuple[str, ...] = ()
@@ -181,6 +189,7 @@ class ProviderRuntimeConfig:
         return json.dumps({
             "provider_id": self.provider_id,
             "model": self.model,
+            "protocol": self.protocol,
             "env_keys": sorted(self.env),
             "unset_env": sorted(self.unset_env),
             "engine_config": list(self.engine_config),
@@ -382,22 +391,60 @@ class BaseLLMEngine(ABC):
         return config_store
 
     @classmethod
-    def supports_provider(cls, provider: dict[str, Any]) -> bool:
-        from services.config import default_provider_protocol
+    def provider_protocols(cls, provider: dict[str, Any]) -> list[str]:
+        """The provider's wire protocols, normalized (ordered, deduped)."""
+        from services.config import PROVIDER_PROTOCOLS, default_provider_protocol
 
-        protocol = str(provider.get("protocol") or "").strip()
-        if not protocol:
-            protocol = default_provider_protocol(str(provider.get("type") or ""))
-        return protocol in cls.supported_provider_protocols()
+        result: list[str] = []
+        raw = provider.get("protocols")
+        if isinstance(raw, (list, tuple)):
+            for value in raw:
+                value = str(value or "").strip()
+                if value in PROVIDER_PROTOCOLS and value not in result:
+                    result.append(value)
+        if result:
+            return result
+        legacy = str(provider.get("protocol") or "").strip()
+        if legacy in PROVIDER_PROTOCOLS:
+            return [legacy]
+        return [default_provider_protocol(str(provider.get("type") or "custom"))]
+
+    @classmethod
+    def supports_provider(cls, provider: dict[str, Any]) -> bool:
+        """供应商协议集合与本引擎支持的协议有交集即兼容。"""
+        return bool(
+            set(cls.provider_protocols(provider))
+            & cls.supported_provider_protocols()
+        )
+
+    @classmethod
+    def pick_protocol(cls, provider: dict[str, Any]) -> str:
+        """Pick the wire protocol this engine will use for the provider.
+
+        供应商列表顺序优先（用户可表达偏好），其次按引擎声明顺序。
+        """
+        supported = cls.supported_provider_protocols()
+        if not supported:
+            return ""
+        protocols = cls.provider_protocols(provider)
+        for value in protocols:
+            if value in supported:
+                return value
+        for value in supported:
+            if value in protocols:
+                return value
+        return ""
 
     def build_provider_runtime(
         self,
         provider: dict[str, Any],
         model: str | None,
+        protocol: str | None = None,
     ) -> ProviderRuntimeConfig:
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
             model=model,
+            protocol=str(protocol or ""),
         )
 
     def build_native_runtime(self, model: str | None) -> ProviderRuntimeConfig:
@@ -439,7 +486,8 @@ class BaseLLMEngine(ABC):
             raise ValueError("所选供应商已停用")
         if not self.supports_provider(provider):
             raise ValueError("所选供应商协议与该引擎不兼容")
-        return self.build_provider_runtime(provider, model)
+        protocol = self.pick_protocol(provider)
+        return self.build_provider_runtime(provider, model, protocol)
 
     @classmethod
     def provider_config_field(cls) -> EngineConfigField | None:
@@ -455,7 +503,7 @@ class BaseLLMEngine(ABC):
             )
             for provider in config_store.get_providers()
             if provider.get("enabled", True)
-            and str(provider.get("protocol") or "") in protocols
+            and bool(set(cls.provider_protocols(provider)) & protocols)
         )
         return EngineConfigField(
             key="provider_id",
@@ -799,6 +847,52 @@ class BaseLLMEngine(ABC):
         StepPersistence) return False: context lives engine-side, so the host
         passes neither ``message_history`` nor ``report_engine_state``.
         """
+        return False
+
+
+    @property
+    def supports_thinking_effort(self) -> bool:
+        """Whether ``spawn`` accepts a per-turn thinking effort override."""
+        return False
+
+
+    @property
+    def capabilities(self) -> EngineCapabilities:
+        return EngineCapabilities(
+            supports_coordinator=self.is_configured(),
+            supports_resume=self.supports_resume,
+            supports_tool_disable=True,
+            supports_native_schema=False,
+            supports_live_stage_message=self.supports_live_stage_message,
+            supports_sessions=self.supports_sessions,
+            supports_session_fork=self.supports_session_fork,
+            supports_tool_approval=self.supports_tool_approval,
+            supports_vision=self.supports_vision,
+            supports_workstep_tools=self.supports_workstep_tools,
+            supports_thinking_effort=self.supports_thinking_effort,
+        )
+
+    @property
+    def supports_session_fork(self) -> bool:
+        """Whether the engine can create an independent native session fork."""
+        return False
+
+
+    @property
+    def supports_workstep_tools(self) -> bool:
+        """Whether this engine can host the native ``workstep_call`` tool.
+
+        This is a transport mechanism only: whether an assistant loads the
+        WorkStep internal tools is decided by assistant config, not here.
+        """
+        return False
+
+
+    @property
+    def supports_vision(self) -> bool:
+        """Whether the engine can accept image content for multimodal models."""
+        return False
+
         return False
 
 

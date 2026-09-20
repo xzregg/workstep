@@ -110,7 +110,7 @@ function startSidecar({ executable, args = [], port, env = process.env, timeoutM
   })
 }
 
-async function stopSidecar(child, graceMs = 1500) {
+async function stopSidecar(child, graceMs = 10_000) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return
   await new Promise((resolve) => {
     const timeout = setTimeout(resolve, graceMs)

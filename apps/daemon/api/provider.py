@@ -21,8 +21,10 @@ class ProviderSaveRequest(BaseModel):
     id: str = Field(default="", max_length=64)
     name: str = Field(default="", max_length=100)
     type: str = Field(default="custom", max_length=32)
+    protocols: list[str] = Field(default_factory=list, max_length=8)
     protocol: str = Field(default="", max_length=64)
     base_url: str = Field(default="", max_length=2048)
+    protocol_base_urls: dict[str, str] = Field(default_factory=dict)
     api_key: str = Field(default="", max_length=4096)
     enabled: bool = True
     clear: dict[str, bool] = Field(default_factory=dict)
@@ -31,6 +33,7 @@ class ProviderSaveRequest(BaseModel):
 
 class ProviderTestRequest(BaseModel):
     timeout_seconds: float = Field(default=30, ge=3, le=120)
+    protocol: str = Field(default="", max_length=64)
 
 
 class ProviderImportRequest(BaseModel):
@@ -41,13 +44,26 @@ def _public_provider(provider: dict) -> dict:
     """Mask secrets before sending provider records to the frontend."""
     entry = config_store.get_provider_models(provider.get("id", ""))
     saved_models = entry.get("models") if isinstance(entry, dict) else None
+    default_protocol = default_provider_protocol(
+        str(provider.get("type") or "custom")
+    )
+    protocols = provider.get("protocols")
+    if not isinstance(protocols, list) or not protocols:
+        protocols = [
+            provider.get("protocol") or default_protocol
+        ]
+    protocol_base_urls = {
+        protocol: provider_service.provider_basic_url(provider, protocol)
+        for protocol in protocols
+    }
     return {
         "id": provider.get("id", ""),
         "name": provider.get("name", ""),
         "type": provider.get("type", "custom"),
-        "protocol": provider.get("protocol")
-        or default_provider_protocol(str(provider.get("type") or "custom")),
-        "base_url": provider.get("base_url", ""),
+        "protocols": protocols,
+        "protocol": protocols[0],
+        "base_url": protocol_base_urls.get(protocols[0], ""),
+        "protocol_base_urls": protocol_base_urls,
         "api_key": "",
         "has_key": bool(provider.get("api_key")),
         "enabled": bool(provider.get("enabled", True)),
@@ -118,14 +134,43 @@ async def save_provider(req: ProviderSaveRequest):
     """Create or update a provider; API keys keep engine-style masking."""
     name = str(req.name or "").strip()
     type_id = str(req.type or "").strip().lower()
-    base_url = str(req.base_url or "").strip().rstrip("/")
-    protocol = str(req.protocol or "").strip() or default_provider_protocol(type_id)
+    base_url = provider_service.normalize_provider_base_url(req.base_url)
+    fields_set = req.model_fields_set
+    if "protocols" in fields_set:
+        raw_protocols = list(req.protocols)
+    elif str(req.protocol or "").strip():
+        raw_protocols = [req.protocol]
+    else:
+        raw_protocols = provider_service.default_provider_protocols(type_id)
+    protocols: list[str] = []
+    for value in raw_protocols:
+        normalized = provider_service.canonical_provider_protocol(value)
+        if normalized not in protocols:
+            protocols.append(normalized)
+
+    raw_url_map = {
+        provider_service.canonical_provider_protocol(key): value
+        for key, value in req.protocol_base_urls.items()
+    }
+    if "protocol_base_urls" in fields_set:
+        protocol_base_urls = {
+            protocol: provider_service.normalize_provider_base_url(
+                raw_url_map.get(protocol, "")
+            )
+            for protocol in protocols
+        }
+    else:
+        protocol_base_urls = {
+            protocol: base_url
+            for protocol in protocols
+        }
 
     error = provider_service.validate_provider_values(
         name=name,
         type_id=type_id,
         base_url=base_url,
-        protocol=protocol,
+        protocols=protocols,
+        protocol_base_urls=protocol_base_urls,
     )
     if error:
         return {"saved": False, "message": error, "provider": None}
@@ -153,15 +198,38 @@ async def save_provider(req: ProviderSaveRequest):
     elif current.get("api_key"):
         api_key = current["api_key"]
 
+    current_protocols = provider_service.normalize_provider_protocols(
+        current.get("protocols") or current.get("protocol"),
+        str(current.get("type") or type_id),
+    ) if current else []
+    current_base_urls = {
+        protocol: provider_service.provider_basic_url(current, protocol)
+        for protocol in current_protocols
+    } if current else {}
+    connection_unchanged = bool(current) and (
+        current_protocols == protocols
+        and current_base_urls == protocol_base_urls
+        and str(current.get("api_key") or "") == str(api_key or "")
+    )
+
     provider = {
         "id": provider_id,
         "name": name,
         "type": type_id,
-        "protocol": protocol,
-        "base_url": base_url,
+        "protocols": protocols,
+        "protocol": protocols[0],
+        "base_url": protocol_base_urls[protocols[0]],
+        "protocol_base_urls": protocol_base_urls,
         "api_key": api_key or "",
         "enabled": bool(req.enabled),
-        "verified": bool(current.get("verified", False)),
+        "verified": (
+            bool(current.get("verified", False)) if connection_unchanged else False
+        ),
+        "verified_protocols": (
+            list(current.get("verified_protocols") or [])
+            if connection_unchanged
+            else []
+        ),
         "created_at": current.get("created_at") or time.strftime(
             "%Y-%m-%dT%H:%M:%S"
         ),
@@ -248,12 +316,22 @@ async def import_cc_switch(req: ProviderImportRequest):
                 "message": "已存在同名供应商",
             })
             continue
+        candidate_protocols = candidate.get("protocols") or [candidate["protocol"]]
         provider = {
             "id": f"prov_{uuid.uuid4().hex[:12]}",
             "name": name,
             "type": candidate["type"],
+            "protocols": candidate_protocols,
             "protocol": candidate["protocol"],
-            "base_url": candidate["base_url"],
+            "base_url": provider_service.normalize_provider_base_url(
+                candidate["base_url"]
+            ),
+            "protocol_base_urls": {
+                protocol: provider_service.normalize_provider_base_url(
+                    candidate["base_url"]
+                )
+                for protocol in candidate_protocols
+            },
             "api_key": candidate["api_key"] or "",
             "enabled": True,
             "verified": False,
@@ -318,16 +396,43 @@ async def delete_provider(provider_id: str):
 async def test_provider(provider_id: str, req: ProviderTestRequest):
     """Probe connectivity by fetching the provider's model list."""
     provider = await asyncio.to_thread(_require_provider, provider_id)
+    try:
+        selected_protocol = provider_service.select_provider_protocol(
+            provider, req.protocol or None
+        )
+    except ValueError as exc:
+        return {
+            "provider_id": provider_id,
+            "success": False,
+            "message": str(exc),
+            "duration_ms": 0,
+        }
     result = await provider_service.test_connection(
         provider,
         timeout_seconds=req.timeout_seconds,
+        protocol=selected_protocol,
     )
-    await asyncio.to_thread(
-        lambda: (
-            config_store.save_provider({**provider, "verified": result.success}),
-            refresh_registry(),
-        )
-    )
+    def save_result() -> None:
+        verified_protocols = {
+            str(value)
+            for value in provider.get("verified_protocols", [])
+        }
+        if result.success:
+            verified_protocols.add(selected_protocol)
+        else:
+            verified_protocols.discard(selected_protocol)
+        declared = set(provider_service.normalize_provider_protocols(
+            provider.get("protocols") or provider.get("protocol"),
+            str(provider.get("type") or "custom"),
+        ))
+        config_store.save_provider({
+            **provider,
+            "verified_protocols": sorted(verified_protocols),
+            "verified": declared.issubset(verified_protocols),
+        })
+        refresh_registry()
+
+    await asyncio.to_thread(save_result)
     return {
         "provider_id": provider_id,
         **asdict(result),
@@ -335,17 +440,29 @@ async def test_provider(provider_id: str, req: ProviderTestRequest):
 
 
 @router.get("/{provider_id}/models")
-async def provider_models(provider_id: str, refresh: bool = False):
+async def provider_models(
+    provider_id: str, refresh: bool = False, protocol: str = ""
+):
     """Return the provider's selectable models.
 
     Defaults to the locally saved copy; ``refresh=1`` re-fetches from the
-    provider address and saves the result.
+    provider address and saves the result. ``protocol`` 指定按哪种线协议
+    解析地址（缺省取供应商默认协议）。
     """
-    provider, entry = await asyncio.to_thread(
-        lambda: (
-            _require_provider(provider_id),
-            config_store.get_provider_models(provider_id),
+    provider = await asyncio.to_thread(_require_provider, provider_id)
+    try:
+        selected_protocol = provider_service.select_provider_protocol(
+            provider, protocol or None
         )
+    except ValueError as exc:
+        return {
+            "provider_id": provider_id,
+            "models": [],
+            "fetched_at": None,
+            "error": str(exc),
+        }
+    entry = await asyncio.to_thread(
+        config_store.get_provider_models, provider_id, selected_protocol
     )
     if not refresh:
         return {
@@ -354,7 +471,9 @@ async def provider_models(provider_id: str, refresh: bool = False):
                 [
                     asdict(model)
                     for model in await asyncio.to_thread(
-                        provider_service.saved_models, provider_id
+                        provider_service.saved_models,
+                        provider_id,
+                        selected_protocol,
                     )
                 ]
                 if entry
@@ -365,7 +484,9 @@ async def provider_models(provider_id: str, refresh: bool = False):
         }
     try:
         models = await asyncio.wait_for(
-            provider_service.fetch_and_save_models(provider),
+            provider_service.fetch_and_save_models(
+                provider, protocol=selected_protocol
+            ),
             timeout=15,
         )
         error = None
@@ -379,7 +500,11 @@ async def provider_models(provider_id: str, refresh: bool = False):
         "provider_id": provider_id,
         "models": [asdict(model) for model in models],
         "fetched_at": (
-            await asyncio.to_thread(config_store.get_provider_models, provider_id)
+            await asyncio.to_thread(
+                config_store.get_provider_models,
+                provider_id,
+                selected_protocol,
+            )
         ).get("fetched_at"),
         "error": error,
     }

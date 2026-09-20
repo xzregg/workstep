@@ -254,13 +254,24 @@ def parse_codex_custom_config(raw: Any) -> list[tuple[str, str]]:
     return entries
 
 
-def default_provider_protocol(type_id: str) -> str:
-    """Return the backward-compatible protocol for one provider preset."""
+def default_provider_protocols(type_id: str) -> list[str]:
+    """Return the default wire-protocol list for one provider preset.
+
+    一个 ``base_url`` 可能同时说多种协议；列表顺序即默认偏好，首项是
+    向后兼容的单值 ``protocol``。
+    """
     if type_id == "anthropic":
-        return "anthropic_messages"
+        return ["anthropic_messages"]
     if type_id == "openai":
-        return "openai_responses"
-    return "openai_chat_completions"
+        return ["openai_responses", "openai_chat_completions"]
+    if type_id == "custom":
+        return ["openai_chat_completions", "openai_responses"]
+    return ["openai_chat_completions"]
+
+
+def default_provider_protocol(type_id: str) -> str:
+    """Return the backward-compatible (first) protocol for one preset."""
+    return default_provider_protocols(type_id)[0]
 
 
 class ConfigStore:
@@ -1122,12 +1133,46 @@ class ConfigStore:
             if not isinstance(item, dict):
                 continue
             normalized = dict(item)
-            protocol = str(normalized.get("protocol") or "").strip()
-            if protocol not in PROVIDER_PROTOCOLS:
-                normalized["protocol"] = default_provider_protocol(
-                    str(normalized.get("type") or "custom")
-                )
+            type_id = str(normalized.get("type") or "custom")
+            protocols: list[str] = []
+            raw_protocols = normalized.get("protocols")
+            if isinstance(raw_protocols, (list, tuple)):
+                for value in raw_protocols:
+                    value = str(value or "").strip()
+                    if value in PROVIDER_PROTOCOLS and value not in protocols:
+                        protocols.append(value)
+            if not protocols:
+                # 旧版单值记录读时迁移为列表（首项=默认协议）。
+                legacy = str(normalized.get("protocol") or "").strip()
+                protocols = [
+                    legacy
+                    if legacy in PROVIDER_PROTOCOLS
+                    else default_provider_protocol(type_id)
+                ]
+            legacy_base_url = str(normalized.get("base_url") or "").strip().rstrip("/")
+            raw_base_urls = normalized.get("protocol_base_urls")
+            protocol_base_urls = {
+                protocol: str(
+                    (
+                        raw_base_urls.get(protocol)
+                        if isinstance(raw_base_urls, dict)
+                        else ""
+                    )
+                    or legacy_base_url
+                ).strip().rstrip("/")
+                for protocol in protocols
+            }
+            if (
+                normalized.get("protocols") != protocols
+                or normalized.get("protocol") != protocols[0]
+                or normalized.get("protocol_base_urls") != protocol_base_urls
+                or normalized.get("base_url") != protocol_base_urls[protocols[0]]
+            ):
                 changed = True
+            normalized["protocols"] = protocols
+            normalized["protocol"] = protocols[0]
+            normalized["protocol_base_urls"] = protocol_base_urls
+            normalized["base_url"] = protocol_base_urls[protocols[0]]
             providers.append(normalized)
         if changed:
             self._load()["providers"] = providers
@@ -1238,7 +1283,7 @@ class ConfigStore:
 
     # --- Provider model list cache (global config, not per-project DB) ---
 
-    def get_provider_models(self, provider_id: str) -> dict:
+    def get_provider_models(self, provider_id: str, protocol: str = "") -> dict:
         """Saved model list for a provider: ``{"models": [...], "fetched_at": ...}``.
 
         Stored in the global ``~/.workstep/config.json`` so model dropdowns never
@@ -1247,7 +1292,12 @@ class ConfigStore:
         cache = self.get("provider_models", {})
         if not isinstance(cache, dict):
             return {}
-        entry = cache.get(provider_id)
+        entry = cache.get(
+            f"{provider_id}::{protocol}" if protocol else provider_id
+        )
+        if not isinstance(entry, dict) and protocol:
+            # 旧版仅按供应商缓存；首次按协议读取时继续兼容旧缓存。
+            entry = cache.get(provider_id)
         return dict(entry) if isinstance(entry, dict) else {}
 
     def set_provider_models(
@@ -1255,15 +1305,19 @@ class ConfigStore:
         provider_id: str,
         models: list[dict],
         fetched_at: str,
+        protocol: str = "",
     ) -> None:
         cache = self.get("provider_models", {})
         if not isinstance(cache, dict):
             cache = {}
         cache = dict(cache)
-        cache[provider_id] = {
+        entry = {
             "models": models,
             "fetched_at": fetched_at,
         }
+        cache[provider_id] = entry
+        if protocol:
+            cache[f"{provider_id}::{protocol}"] = entry
         self.set("provider_models", cache)
 
     def clear_provider_models(self, provider_id: str) -> None:
@@ -1272,6 +1326,9 @@ class ConfigStore:
             return
         cache = dict(cache)
         cache.pop(provider_id, None)
+        for key in list(cache):
+            if key.startswith(f"{provider_id}::"):
+                cache.pop(key, None)
         self.set("provider_models", cache)
 
     def migrate_legacy_config(self) -> None:

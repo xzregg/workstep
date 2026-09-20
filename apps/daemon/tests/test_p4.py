@@ -224,7 +224,7 @@ def test_get_task_history_converts_legacy_visualize_markers(db_with_history):
     """任务消息历史读取时把旧 visualize 标记转成 Markdown 文件链接。"""
     _, task_id = db_with_history
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     marker = '\ue200visualize{"path":"<path>","mode":"wide"}\ue201'.replace(
@@ -249,7 +249,7 @@ def test_get_task_history_converts_bare_visualize_marker_in_events(db_with_histo
     """任务历史 events 里的正文 chunk 也要转换，保证前端交织渲染一致。"""
     _, task_id = db_with_history
     path = (
-        "/Users/xzr/Desktop/workstep/.workstep/visualizations/"
+        "/Users/example/workstep/.workstep/visualizations/"
         "stage-progress-card-prototypes.html"
     )
     bare = f'visualize{{"path":"{path}","mode":"wide"}}'

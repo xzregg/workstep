@@ -216,7 +216,9 @@ export default function CoordinatorConfigBar({
   const selectedEngine = engines.find((item) => item.id === engineId)
   const supportsProvider = Boolean(selectedEngine?.supports_provider)
   const compatibleProviders = providers.filter((item) => (
-    item.enabled && (selectedEngine?.provider_protocols || []).includes(item.protocol)
+    item.enabled && (selectedEngine?.provider_protocols || []).some((protocol) =>
+      (item.protocols?.length ? item.protocols : [item.protocol]).includes(protocol),
+    )
   ))
   useEffect(() => {
     if (!engineId) {

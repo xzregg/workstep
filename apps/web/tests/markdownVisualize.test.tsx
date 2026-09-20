@@ -7,7 +7,7 @@ import { I18nProvider } from '../src/i18n/index.tsx'
 import { convertVisualizeMarkers } from '../src/utils/markdownVisualize.ts'
 
 const VISUALIZE_PATH = (
-  '/Users/xzr/Desktop/workstep/.workstep/visualizations/'
+  '/Users/example/workstep/.workstep/visualizations/'
   + 'stage-progress-card-prototypes.html'
 )
 
@@ -61,7 +61,7 @@ test('message component renders converted visualize markers as clickable file li
   assert.match(html, /data-file-preview="true"/)
   assert.match(
     html,
-    /href="file:\/\/\/Users\/xzr\/Desktop\/workstep\/\.workstep\/visualizations\/stage-progress-card-prototypes\.html"/,
+    /href="file:\/\/\/Users\/example\/workstep\/\.workstep\/visualizations\/stage-progress-card-prototypes\.html"/,
   )
   assert.match(html, />stage-progress-card-prototypes\.html</)
   assert.doesNotMatch(html, /visualize\{/)

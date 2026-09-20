@@ -130,7 +130,7 @@ def test_harness_summarizer_uses_fast_model(tmp_path, monkeypatch):
         PydanticAIEngine,
         "build_model",
         staticmethod(
-            lambda *, provider, model_name: type(
+            lambda *, provider, model_name, protocol=None: type(
                 "FakeModel", (), {"model_name": model_name}
             )()
         ),

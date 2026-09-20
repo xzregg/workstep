@@ -45,6 +45,56 @@ def test_auth_headers_by_provider_type():
     none = provider_service.auth_headers({"type": "ollama", "api_key": ""})
     assert "Authorization" not in none
 
+    anthropic_gateway_chat = provider_service.auth_headers(
+        {"type": "anthropic", "api_key": "shared-key"},
+        "openai_chat_completions",
+    )
+    assert anthropic_gateway_chat["Authorization"] == "Bearer shared-key"
+    assert "x-api-key" not in anthropic_gateway_chat
+
+
+def test_protocol_base_urls_are_independent_and_versions_are_preserved():
+    provider = {
+        "type": "custom",
+        "protocols": ["openai_responses", "anthropic_messages"],
+        "base_url": "https://legacy.example.com/v1",
+        "protocol_base_urls": {
+            "openai_responses": "https://openai.example.com/api/v2/",
+            "anthropic_messages": "https://anthropic.example.com/proxy/v1",
+        },
+    }
+
+    assert provider_service.provider_basic_url(
+        provider, "openai_responses"
+    ) == "https://openai.example.com/api/v2"
+    assert provider_service.provider_basic_url(
+        provider, "anthropic_messages"
+    ) == "https://anthropic.example.com/proxy/v1"
+    assert provider_service.provider_runtime_base_url(
+        provider, "openai_responses"
+    ) == "https://openai.example.com/api/v2"
+    assert provider_service.provider_runtime_base_url(
+        provider, "anthropic_messages"
+    ) == "https://anthropic.example.com/proxy/v1"
+    assert provider_service.provider_endpoint_url(
+        provider, "anthropic_messages", "models"
+    ) == "https://anthropic.example.com/proxy/v1/models"
+
+
+def test_legacy_single_base_url_applies_to_every_declared_protocol():
+    provider = {
+        "type": "custom",
+        "protocols": ["openai_chat_completions", "anthropic_messages"],
+        "base_url": "https://gateway.example.com/v1",
+    }
+
+    assert provider_service.provider_endpoint_url(
+        provider, "openai_chat_completions", "models"
+    ) == "https://gateway.example.com/v1/models"
+    assert provider_service.provider_endpoint_url(
+        provider, "anthropic_messages", "models"
+    ) == "https://gateway.example.com/v1/models"
+
 
 def test_mask_api_key():
     assert provider_service.mask_api_key("") == ""
@@ -211,6 +261,7 @@ def test_cc_switch_scan_discovers_claude_code_providers(tmp_path, monkeypatch):
         "name": "Claude DeepSeek",
         "type": "anthropic",
         "protocol": "anthropic_messages",
+        "protocols": ["anthropic_messages"],
         "base_url": "https://api.deepseek.com/anthropic",
         "api_key": "sk-ant-secret",
         "has_key": True,
@@ -436,9 +487,9 @@ async def test_fetch_models_sends_anthropic_headers():
 
 
 @pytest.mark.anyio
-async def test_fetch_models_completes_anthropic_models_path_without_v1():
+async def test_fetch_models_does_not_guess_anthropic_version_path():
     async def handler(request):
-        assert request.url.path == "/v1/models"
+        assert request.url.path == "/models"
         return httpx.Response(200, json={"data": [{"id": "claude-test"}]})
 
     models = await provider_service.fetch_models(
@@ -447,6 +498,32 @@ async def test_fetch_models_completes_anthropic_models_path_without_v1():
             "base_url": "http://anthropic-gateway.example.com",
             "api_key": "sk-ant",
         },
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert [model.id for model in models] == ["claude-test"]
+
+
+@pytest.mark.anyio
+async def test_fetch_models_uses_selected_protocol_address_and_auth():
+    async def handler(request):
+        assert request.url == "https://anthropic.example.com/proxy/v2/models"
+        assert request.headers["x-api-key"] == "shared-key"
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"data": [{"id": "claude-test"}]})
+
+    models = await provider_service.fetch_models(
+        {
+            "type": "custom",
+            "protocols": ["openai_chat_completions", "anthropic_messages"],
+            "protocol_base_urls": {
+                "openai_chat_completions": "https://openai.example.com",
+                "anthropic_messages": "https://anthropic.example.com/proxy/v2",
+            },
+            "base_url": "https://openai.example.com",
+            "api_key": "shared-key",
+        },
+        protocol="anthropic_messages",
         transport=httpx.MockTransport(handler),
     )
 
@@ -504,6 +581,36 @@ async def test_chat_completion_direct_call():
         "stream": False,
         "thinking": {"type": "disabled"},
     }
+
+
+@pytest.mark.anyio
+async def test_chat_completion_adds_v1_and_uses_selected_protocol_auth():
+    async def handler(request):
+        assert request.url == "https://chat.example.com/api/v2/chat/completions"
+        assert request.headers["authorization"] == "Bearer shared-key"
+        assert "x-api-key" not in request.headers
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "ok"}}],
+        })
+
+    text = await provider_service.chat_completion(
+        {
+            "type": "custom",
+            "protocols": ["anthropic_messages", "openai_chat_completions"],
+            "protocol_base_urls": {
+                "anthropic_messages": "https://anthropic.example.com",
+                "openai_chat_completions": "https://chat.example.com/api/v2",
+            },
+            "base_url": "https://anthropic.example.com",
+            "api_key": "shared-key",
+        },
+        "model",
+        [{"role": "user", "content": "hello"}],
+        protocol="openai_chat_completions",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert text == "ok"
 
 
 @pytest.mark.anyio

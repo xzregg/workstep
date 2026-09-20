@@ -176,18 +176,30 @@ export default function ChatPage() {
     || assistantConfig?.configured.engine
     || 'claude'
   const [quota, setQuota] = useState<EngineQuota | null>(null)
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false)
+  const quotaRequestRef = useRef(0)
+  const refreshQuota = useCallback(async () => {
+    if (!activeProject?.id) return
+    const requestId = ++quotaRequestRef.current
+    setQuotaRefreshing(true)
+    try {
+      const result = await engineApi.quota(effectiveEngine, activeProject.id)
+      if (quotaRequestRef.current === requestId) setQuota(result.quota)
+    } catch {
+      if (quotaRequestRef.current === requestId) setQuota(null)
+    } finally {
+      if (quotaRequestRef.current === requestId) setQuotaRefreshing(false)
+    }
+  }, [effectiveEngine, activeProject?.id])
   useEffect(() => {
-    if (running || !activeProject?.id) return
-    let cancelled = false
-    void engineApi.quota(effectiveEngine, activeProject.id)
-      .then((result) => {
-        if (!cancelled) setQuota(result.quota)
-      })
-      .catch(() => {
-        if (!cancelled) setQuota(null)
-      })
-    return () => { cancelled = true }
-  }, [running, effectiveEngine, activeProject?.id])
+    if (running || !activeProject?.id) {
+      quotaRequestRef.current += 1
+      setQuotaRefreshing(false)
+      return
+    }
+    void refreshQuota()
+    return () => { quotaRequestRef.current += 1 }
+  }, [running, activeProject?.id, refreshQuota])
   const visibleQuota = quota?.engine_id === effectiveEngine ? quota : null
   const providerLabel = useCallback((providerId: string) => (
     providerId
@@ -1060,6 +1072,8 @@ export default function ChatPage() {
         enhance={enhance}
         context={context}
         quota={visibleQuota}
+        onRefreshQuota={() => { void refreshQuota() }}
+        quotaRefreshing={quotaRefreshing}
       />
 
       <ChatSessionForkDialog

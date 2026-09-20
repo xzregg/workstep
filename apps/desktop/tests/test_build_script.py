@@ -9,6 +9,10 @@ import subprocess
 
 REPO_DIR = Path(__file__).resolve().parents[3]
 BUILD_SCRIPT = REPO_DIR / "build.sh"
+BACKEND_BUILD_SCRIPTS = (
+    REPO_DIR / "apps" / "desktop" / "build-backend.sh",
+    REPO_DIR / "apps" / "desktop" / "build-backend.ps1",
+)
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -106,3 +110,14 @@ def test_unknown_option_is_rejected(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "Unknown option" in result.stderr
+
+
+def test_desktop_backend_includes_legal_notices_and_sbom() -> None:
+    for script in BACKEND_BUILD_SCRIPTS:
+        text = script.read_text(encoding="utf-8")
+        assert "LICENSE" in text
+        assert "NOTICE" in text
+        assert "THIRD_PARTY_NOTICES.md" in text
+        assert "generate_release_sbom.py" in text
+        assert "--require-hashes" in text
+        assert "requirements-bootstrap.txt" in text

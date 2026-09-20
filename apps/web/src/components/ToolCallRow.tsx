@@ -84,10 +84,13 @@ function basename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).pop() || path
 }
 
-function toolKind(name: string): ToolKind {
+function toolKind(name: string, protocolKind?: string): ToolKind {
+  if (protocolKind === 'edit' || protocolKind === 'read') return protocolKind
+  if (protocolKind === 'execute') return 'command'
+  if (protocolKind === 'search') return 'search'
   const normalized = name.toLowerCase()
   if (/(subagent|sub-agent|sub_agent|spawn_agent|spawn.*agent|delegate)/.test(normalized)) return 'subagent'
-  if (/(edit|write|patch|replace|create)/.test(normalized)) return 'edit'
+  if (/(edit|write|patch|replace|create|filechange|file_change)/.test(normalized)) return 'edit'
   if (/(read|open|view)/.test(normalized)) return 'read'
   if (/(bash|shell|command|exec|terminal)/.test(normalized)) return 'command'
   if (/(grep|glob|search|find|list)/.test(normalized)) return 'search'
@@ -109,7 +112,7 @@ function completedSummary(
   fileLink: ProjectFileLink | null,
   info: ToolTargetInfo,
 ): string {
-  const kind = toolKind(activity.name)
+  const kind = toolKind(activity.name, activity.kind)
   // 文件目标（path 系键）与搜索目标（pattern / query）分列：读取/编辑的
   // pattern 只是过滤关键词（如 read_tool_result 的 pattern:"fail"），
   // 绝不能当作文件名展示。
@@ -145,7 +148,7 @@ export default function ToolCallRow({
   // 否则流式期间每次重渲染都会 stringify 巨串并塞进 DOM，主线程被占满、页面失去响应。
   const [open, setOpen] = useState(false)
   const isRunning = messageRunning && !activity.hasResult
-  const kind = toolKind(activity.name)
+  const kind = toolKind(activity.name, activity.kind)
   const targetInfo = extractToolTarget(activity.input)
   // 读取/编辑目标渲染为 Markdown 风格的文件名链接（复用消息组件的文件预览逻辑）；
   // 执行中也立即呈现——只要目标值本身已完整（完整对象 / 完整 JSON / 截断 JSON

@@ -29,6 +29,7 @@ from services.config import (
     PROVIDER_PROTOCOLS,
     config_store,
     default_provider_protocol,
+    default_provider_protocols,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,9 +43,14 @@ class ProviderType:
     label: str
     default_base_url: str
     auth: str  # bearer | anthropic | none
-    default_protocol: str = "openai_chat_completions"
+    default_protocols: tuple[str, ...]
     supports_balance: bool = False
     help: str = ""
+
+    @property
+    def default_protocol(self) -> str:
+        """Backward-compatible single protocol (first of the list)."""
+        return self.default_protocols[0]
 
 
 PROVIDER_TYPES: dict[str, ProviderType] = {
@@ -53,6 +59,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="DeepSeek",
         default_base_url="https://api.deepseek.com/v1",
         auth="bearer",
+        default_protocols=("openai_chat_completions",),
         help="DeepSeek 官方 OpenAI-compatible 接口",
     ),
     "moonshot": ProviderType(
@@ -60,6 +67,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="Kimi（Moonshot）",
         default_base_url="https://api.moonshot.cn/v1",
         auth="bearer",
+        default_protocols=("openai_chat_completions",),
         help="Moonshot Kimi OpenAI-compatible 接口",
     ),
     "openai": ProviderType(
@@ -67,7 +75,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="OpenAI",
         default_base_url="https://api.openai.com/v1",
         auth="bearer",
-        default_protocol="openai_responses",
+        default_protocols=("openai_responses", "openai_chat_completions"),
         help="OpenAI 官方接口",
     ),
     "anthropic": ProviderType(
@@ -75,7 +83,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="Anthropic",
         default_base_url="https://api.anthropic.com/v1",
         auth="anthropic",
-        default_protocol="anthropic_messages",
+        default_protocols=("anthropic_messages",),
         help="Anthropic Messages API（x-api-key 鉴权）",
     ),
     "ollama": ProviderType(
@@ -83,6 +91,7 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="Ollama（本地）",
         default_base_url="http://localhost:11434/v1",
         auth="none",
+        default_protocols=("openai_chat_completions",),
         help="本地模型运行器，API Key 可留空",
     ),
     "custom": ProviderType(
@@ -90,11 +99,18 @@ PROVIDER_TYPES: dict[str, ProviderType] = {
         label="自定义",
         default_base_url="",
         auth="bearer",
+        default_protocols=("openai_chat_completions", "openai_responses"),
         help="任意 OpenAI-compatible 或 Anthropic-compatible 接口",
     ),
 }
 
 VALID_AUTH_STYLES = {"bearer", "anthropic", "none"}
+
+PROTOCOL_LABELS = {
+    "anthropic_messages": "Anthropic Messages",
+    "openai_responses": "OpenAI Responses",
+    "openai_chat_completions": "OpenAI Chat Completions",
+}
 
 CC_SWITCH_DEFAULT_BASE_URLS = {
     "codex": "https://api.openai.com/v1",
@@ -109,7 +125,12 @@ def get_type_meta(type_id: str) -> ProviderType | None:
 
 
 def list_provider_types() -> list[dict]:
-    return [asdict(item) for item in PROVIDER_TYPES.values()]
+    result: list[dict] = []
+    for item in PROVIDER_TYPES.values():
+        data = asdict(item)
+        data["default_protocol"] = item.default_protocol
+        result.append(data)
+    return result
 
 
 def mask_api_key(api_key: str) -> str:
@@ -121,16 +142,27 @@ def mask_api_key(api_key: str) -> str:
     return f"{api_key[:4]}****{api_key[-4:]}"
 
 
-def auth_headers(provider: dict) -> dict[str, str]:
-    """Build per-provider auth headers for OpenAI-compatible / Anthropic calls."""
+def auth_headers(provider: dict, protocol: str | None = None) -> dict[str, str]:
+    """Build per-provider auth headers for OpenAI-compatible / Anthropic calls.
+
+    ``protocol`` 指定本次调用使用的线协议（缺省取供应商默认协议）：
+    Anthropic 协议用 x-api-key 头，其余用 Bearer。
+    """
     provider_type = get_type_meta(str(provider.get("type") or "custom"))
     auth = provider_type.auth if provider_type else "bearer"
-    protocol = normalize_provider_protocol(
-        str(provider.get("protocol") or ""),
-        str(provider.get("type") or "custom"),
-    )
-    if protocol == "anthropic_messages":
+    selected = str(protocol or "").strip()
+    if not selected:
+        selected = (
+            normalize_provider_protocols(
+                provider.get("protocols") or provider.get("protocol"),
+                str(provider.get("type") or "custom"),
+            )
+            or [""]
+        )[0]
+    if selected == "anthropic_messages":
         auth = "anthropic"
+    elif selected in {"openai_responses", "openai_chat_completions"}:
+        auth = "none" if auth == "none" else "bearer"
     api_key = str(provider.get("api_key") or "")
     if auth == "anthropic":
         headers = {"anthropic-version": "2023-06-01", "Accept": "application/json"}
@@ -142,12 +174,39 @@ def auth_headers(provider: dict) -> dict[str, str]:
     return {"Accept": "application/json"}
 
 
+def normalize_provider_base_url(base_url: str) -> str:
+    """Normalize an API base without guessing or changing its version path."""
+    return str(base_url or "").strip().rstrip("/")
+
+
+def provider_basic_url(provider: dict, protocol: str) -> str:
+    """Return the basic URL configured for one protocol, with legacy fallback."""
+    mapping = provider.get("protocol_base_urls")
+    configured = mapping.get(protocol) if isinstance(mapping, dict) else ""
+    return normalize_provider_base_url(
+        str(configured or provider.get("base_url") or "")
+    )
+
+
+def provider_runtime_base_url(provider: dict, protocol: str) -> str:
+    """Return the configured protocol API base unchanged."""
+    return provider_basic_url(provider, protocol)
+
+
+def provider_endpoint_url(provider: dict, protocol: str, endpoint: str) -> str:
+    """Build a direct HTTP endpoint from a protocol-specific basic URL."""
+    basic = provider_basic_url(provider, protocol)
+    suffix = str(endpoint or "").strip("/")
+    return f"{basic}/{suffix}" if suffix else basic
+
+
 def validate_provider_values(
     *,
     name: str,
     type_id: str,
     base_url: str,
-    protocol: str | None = None,
+    protocols: list[str] | None = None,
+    protocol_base_urls: dict[str, str] | None = None,
 ) -> str | None:
     """Validate provider form values; return an error message or None."""
     if not name:
@@ -155,17 +214,30 @@ def validate_provider_values(
     provider_type = get_type_meta(type_id)
     if provider_type is None:
         return "不支持的供应商类型"
-    if not base_url:
-        return "API 地址不能为空"
-    if protocol is not None and protocol not in PROVIDER_PROTOCOLS:
-        return "不支持的供应商协议"
-    url_error = validate_api_base_url(base_url)
-    if url_error:
-        return url_error
+    if protocols is not None:
+        if not protocols:
+            return "至少选择一个供应商协议"
+        for value in protocols:
+            if value not in PROVIDER_PROTOCOLS:
+                return "不支持的供应商协议"
+    if protocols and protocol_base_urls is not None:
+        for protocol in protocols:
+            configured = str(protocol_base_urls.get(protocol) or "").strip()
+            if not configured:
+                return f"{PROTOCOL_LABELS.get(protocol, protocol)} API 地址不能为空"
+            url_error = validate_api_base_url(configured)
+            if url_error:
+                return f"{PROTOCOL_LABELS.get(protocol, protocol)}：{url_error}"
+    else:
+        if not base_url:
+            return "API 地址不能为空"
+        url_error = validate_api_base_url(base_url)
+        if url_error:
+            return url_error
     return None
 
 
-def normalize_provider_protocol(value: str, type_id: str = "custom") -> str:
+def canonical_provider_protocol(value: str) -> str:
     aliases = {
         "messages": "anthropic_messages",
         "anthropic": "anthropic_messages",
@@ -175,12 +247,60 @@ def normalize_provider_protocol(value: str, type_id: str = "custom") -> str:
         "openai-completions": "openai_chat_completions",
     }
     raw = str(value or "").strip()
-    normalized = aliases.get(raw, raw)
+    return aliases.get(raw, raw)
+
+
+def normalize_provider_protocol(value: str, type_id: str = "custom") -> str:
+    normalized = canonical_provider_protocol(value)
     return (
         normalized
         if normalized in PROVIDER_PROTOCOLS
         else default_provider_protocol(type_id)
     )
+
+
+def normalize_provider_protocols(
+    values: Any, type_id: str = "custom"
+) -> list[str]:
+    """把任意输入规范化为去重、保序的协议列表。
+
+    入参可以是列表、单个字符串或 None（空值回退到该供应商类型的默认
+    协议列表）；每个值经 ``normalize_provider_protocol`` 处理别名后去重。
+    """
+    if values is None:
+        raw_items: list[Any] = []
+    elif isinstance(values, str):
+        raw_items = [values]
+    elif isinstance(values, (list, tuple, set)):
+        raw_items = list(values)
+    else:
+        raw_items = [values]
+    fallback = (
+        list(get_type_meta(type_id).default_protocols)
+        if get_type_meta(type_id) is not None
+        else default_provider_protocols(type_id)
+    )
+    result: list[str] = []
+    for value in raw_items:
+        # 单值语义与 normalize_provider_protocol 一致：非法值回退类型默认。
+        normalized = normalize_provider_protocol(str(value), type_id)
+        if normalized not in result:
+            result.append(normalized)
+    return result or fallback
+
+
+def select_provider_protocol(provider: dict, protocol: str | None = None) -> str:
+    """Resolve one declared protocol, rejecting unsupported explicit choices."""
+    provider_type = str(provider.get("type") or "custom")
+    declared = normalize_provider_protocols(
+        provider.get("protocols") or provider.get("protocol"), provider_type
+    )
+    requested = canonical_provider_protocol(str(protocol or ""))
+    if requested:
+        if requested not in PROVIDER_PROTOCOLS or requested not in declared:
+            raise ValueError("所选协议未在该供应商中配置")
+        return requested
+    return declared[0]
 
 
 def detect_provider_type(base_url: str) -> str:
@@ -382,12 +502,14 @@ def _cc_switch_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         parsed.get("wire_api")
         or ("responses" if app_type == "codex" else "")
     )
+    protocol = normalize_provider_protocol(wire_api, type_id)
     return {
         "id": str(row.get("id") or ""),
         "source_type": app_type,
         "name": name,
         "type": type_id,
-        "protocol": normalize_provider_protocol(wire_api, type_id),
+        "protocol": protocol,
+        "protocols": [protocol],
         "base_url": base_url,
         "api_key": api_key,
         "has_key": bool(api_key),
@@ -441,20 +563,16 @@ def scan_cc_switch_codex_providers() -> list[dict[str, Any]]:
 async def fetch_models(
     provider: dict,
     transport: httpx.AsyncBaseTransport | None = None,
+    protocol: str | None = None,
 ) -> list[EngineModel]:
-    """Fetch the provider's model list using its protocol-specific path."""
-    base_url = str(provider.get("base_url") or "").rstrip("/")
-    provider_type = str(provider.get("type") or "custom")
-    protocol = normalize_provider_protocol(
-        str(provider.get("protocol") or ""), provider_type
-    )
-    base_path = urlparse(base_url).path.rstrip("/")
-    if protocol == "anthropic_messages" and not base_path.endswith("/v1"):
-        models_url = f"{base_url}/v1/models"
-    else:
-        models_url = f"{base_url}/models"
+    """Fetch the provider's model list using its protocol-specific path.
+
+    ``protocol`` 指定按哪种线协议解析地址（缺省取供应商默认协议）。
+    """
+    protocol = select_provider_protocol(provider, protocol)
+    models_url = provider_endpoint_url(provider, protocol, "models")
     async with httpx.AsyncClient(
-        headers=auth_headers(provider),
+        headers=auth_headers(provider, protocol),
         timeout=15,
         transport=transport,
     ) as client:
@@ -481,11 +599,11 @@ async def fetch_models(
     return sorted(models.values(), key=lambda item: item.label.lower())
 
 
-def saved_models(provider_id: str) -> list[EngineModel]:
+def saved_models(provider_id: str, protocol: str = "") -> list[EngineModel]:
     """Return the locally saved model list for a provider (no network call)."""
     from dataclasses import fields as dataclass_fields
 
-    entry = config_store.get_provider_models(provider_id)
+    entry = config_store.get_provider_models(provider_id, protocol)
     raw_models = entry.get("models") or []
     result: list[EngineModel] = []
     for item in raw_models:
@@ -501,7 +619,9 @@ def saved_models(provider_id: str) -> list[EngineModel]:
     return result
 
 
-def save_models(provider: dict, models: list[EngineModel]) -> None:
+def save_models(
+    provider: dict, models: list[EngineModel], protocol: str = ""
+) -> None:
     """Persist a provider's model list in the global config (no per-project DB)."""
     from dataclasses import asdict
     from datetime import datetime, timezone
@@ -510,13 +630,17 @@ def save_models(provider: dict, models: list[EngineModel]) -> None:
         str(provider.get("id") or ""),
         [asdict(model) for model in models],
         datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        protocol,
     )
 
 
-async def fetch_and_save_models(provider: dict) -> list[EngineModel]:
+async def fetch_and_save_models(
+    provider: dict, protocol: str | None = None
+) -> list[EngineModel]:
     """Fetch a provider's model list once and persist it locally."""
-    models = await fetch_models(provider)
-    await asyncio.to_thread(save_models, provider, models)
+    selected = select_provider_protocol(provider, protocol)
+    models = await fetch_models(provider, protocol=selected)
+    await asyncio.to_thread(save_models, provider, models, selected)
     return models
 
 
@@ -529,6 +653,7 @@ async def chat_completion(
     timeout: float = 60,
     transport: httpx.AsyncBaseTransport | None = None,
     thinking: str | None = None,
+    protocol: str | None = None,
 ) -> str:
     """One-shot OpenAI-compatible ``/chat/completions`` call (no agent machinery).
 
@@ -537,12 +662,23 @@ async def chat_completion(
     accepts ``"disabled"`` to turn off reasoning on models that support it
     (e.g. DeepSeek); providers that reject the field fall back to a plain call.
     """
-    base_url = str(provider.get("base_url") or "").rstrip("/")
     model = (model or "").strip()
-    if not base_url or not model:
+    has_base_url = bool(
+        provider.get("base_url") or provider.get("protocol_base_urls")
+    )
+    if not has_base_url or not model:
         raise ValueError("供应商或模型未配置")
-    if str(provider.get("type") or "") == "anthropic":
-        raise ValueError("该供应商类型不支持 chat/completions 直连")
+    protocols = normalize_provider_protocols(
+        provider.get("protocols") or provider.get("protocol"),
+        str(provider.get("type") or "custom"),
+    )
+    if "openai_chat_completions" not in protocols:
+        raise ValueError("该供应商不支持 chat/completions 直连")
+    selected = select_provider_protocol(
+        provider, protocol or "openai_chat_completions"
+    )
+    if selected != "openai_chat_completions":
+        raise ValueError("该供应商不支持 chat/completions 直连")
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
@@ -551,9 +687,9 @@ async def chat_completion(
     }
     if thinking:
         payload["thinking"] = {"type": thinking}
-    url = f"{base_url}/chat/completions"
+    url = provider_endpoint_url(provider, selected, "chat/completions")
     async with httpx.AsyncClient(
-        headers=auth_headers(provider),
+        headers=auth_headers(provider, selected),
         timeout=timeout,
         transport=transport,
     ) as client:
@@ -578,12 +714,16 @@ async def test_connection(
     provider: dict,
     timeout_seconds: float = 30,
     transport: httpx.AsyncBaseTransport | None = None,
+    protocol: str | None = None,
 ) -> EngineTestResult:
-    """Probe a provider by fetching its model list with a short timeout."""
+    """Probe a provider by fetching its model list with a short timeout.
+
+    ``protocol`` 指定按哪种线协议探测（缺省取供应商默认协议）。
+    """
     started = time.monotonic()
     try:
         models = await asyncio.wait_for(
-            fetch_models(provider, transport=transport),
+            fetch_models(provider, transport=transport, protocol=protocol),
             timeout=timeout_seconds,
         )
         duration_ms = int((time.monotonic() - started) * 1000)

@@ -32,6 +32,7 @@ function AppRoutes() {
         project.name,
         useProjectStore.getState().activeWorkflowId,
       ),
+      { state: { preserveNavigationDrawer: true } },
     )
   }
 

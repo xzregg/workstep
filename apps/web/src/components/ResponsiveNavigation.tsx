@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigationType } from 'react-router-dom'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
 import { useI18n } from '../i18n'
@@ -12,9 +12,17 @@ export default function ResponsiveNavigation({ children, title, onNew, style, di
   const compact = useCompactLayout()
   const [open, setOpen] = useState(false)
   const location = useLocation()
+  const navigationType = useNavigationType()
+  const preserveNavigationDrawer = Boolean(
+    (location.state as { preserveNavigationDrawer?: boolean } | null)?.preserveNavigationDrawer,
+  )
   const ref = useRef<HTMLElement>(null)
   useOverlay(compact && open, () => setOpen(false), ref)
-  useEffect(() => { setOpen(false) }, [location.key, compact, dismissSignal])
+  useEffect(() => {
+    if (navigationType === 'POP' || preserveNavigationDrawer) return
+    setOpen(false)
+  }, [location.key, navigationType, preserveNavigationDrawer])
+  useEffect(() => { setOpen(false) }, [compact, dismissSignal])
   return <>
     <header className="mobile-header">
       <button aria-label={t('mobile.openNavigation')} aria-expanded={open} aria-controls="workstep-navigation" onClick={() => setOpen(true)}><Icon name="menu" size={21} /></button>

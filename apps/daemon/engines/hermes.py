@@ -17,6 +17,7 @@ from engines.core.events import (
 )
 from engines.core.schema import EngineImage
 from engines.core.stream_lines import ChunkedLineReader
+from services import providers as provider_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,17 @@ class HermesEngine(AcpEngineBase):
     def supported_provider_protocols(cls) -> set[str]:
         return {"openai_chat_completions"}
 
-    def build_provider_runtime(self, provider, model):
+    def build_provider_runtime(self, provider, model, protocol=None):
+        # 本引擎只消费 OpenAI Chat Completions 协议（protocol 由基类解析）。
+        selected_protocol = str(protocol or "openai_chat_completions")
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
             model=model,
+            protocol=selected_protocol,
             env={
-                "OPENAI_BASE_URL": str(provider.get("base_url") or ""),
+                "OPENAI_BASE_URL": provider_service.provider_runtime_base_url(
+                    provider, selected_protocol
+                ),
                 "OPENAI_API_KEY": str(provider.get("api_key") or ""),
             },
         )

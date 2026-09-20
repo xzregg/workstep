@@ -86,6 +86,7 @@ export interface OnboardingProvider {
   has_key: boolean
   base_url: string
   protocol: string
+  protocols?: string[]
   type: string
 }
 

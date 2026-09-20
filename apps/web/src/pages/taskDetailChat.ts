@@ -709,6 +709,39 @@ export function resolveStageDisplayStatus(
     : status
 }
 
+interface PendingReviewCandidate {
+  id: string
+  step_key: string
+  status: string
+  started_at?: string | null
+}
+
+interface ReviewStageState {
+  step_key?: string
+  status?: string
+}
+
+/**
+ * 移动端审核入口只代表“当前可操作的审核”，不能被历史 pending 记录触发。
+ */
+export function findActionablePendingReview<T extends PendingReviewCandidate>(
+  reviews: readonly T[],
+  stages: readonly ReviewStageState[],
+): T | undefined {
+  for (const stage of stages) {
+    if (!stage.step_key || stage.status !== 'awaiting_review') continue
+    const stageReviews = reviews.filter((review) => review.step_key === stage.step_key)
+    const latest = stageReviews.reduce<T | undefined>((current, review) => {
+      if (!current) return review
+      const currentTime = toMilliseconds(current.started_at) ?? Number.NEGATIVE_INFINITY
+      const reviewTime = toMilliseconds(review.started_at) ?? Number.NEGATIVE_INFINITY
+      return reviewTime > currentTime ? review : current
+    }, undefined)
+    if (latest?.status === 'pending') return latest
+  }
+  return undefined
+}
+
 export function isTaskCompleted(steps: TaskStepStartState[]): boolean {
   return steps.length > 0
     && !isTaskNotStarted(steps)

@@ -11,6 +11,7 @@ const { removeMarkdownImage, resolveMarkdownImageSrc, splitMarkdownImages } = aw
   `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
 )
 const chatInputSource = await readFile(new URL('../src/components/ChatInput.tsx', import.meta.url), 'utf8')
+const mobileCss = await readFile(new URL('../src/mobile.css', import.meta.url), 'utf8')
 
 test('splits Markdown images into ordered visual-editor segments without changing the source', () => {
   const value = '先看这里\n\n![界面](demo/.workstep/uploads/shot.png)\n\n再看下面'
@@ -50,4 +51,15 @@ test('chat input renders image blocks in source order and exposes preview and re
   assert.match(chatInputSource, /className="chat-input-image"/)
   assert.match(chatInputSource, /className="chat-input-image-remove"/)
   assert.match(chatInputSource, /removeMarkdownImage\(value, segment\)/)
+})
+
+test('attachment pickers upload every selected file and keep the add button available', () => {
+  assert.match(chatInputSource, /ref=\{attachInputRef\}[\s\S]*?multiple/)
+  assert.match(chatInputSource, /ref=\{attachFileInputRef\}[\s\S]*?multiple/)
+  assert.match(chatInputSource, /handleAttachments\(Array\.from\(e\.target\.files \|\| \[\]\)\)/)
+  assert.match(chatInputSource, /className="chat-input-attach"/)
+})
+
+test('mobile attachment previews keep a compact landscape footprint', () => {
+  assert.match(mobileCss, /\.chat-input-image-block\s*\{[^}]*flex:\s*0 0 120px[^}]*width:\s*120px\s*!important[^}]*height:\s*68px\s*!important/s)
 })

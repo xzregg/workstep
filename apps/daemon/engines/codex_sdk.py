@@ -17,6 +17,7 @@ from engines.core.base import (
     EngineInstallResult,
     EngineModel,
     ProviderRuntimeConfig,
+    WIRE_API_BY_PROTOCOL,
     install_python_package,
     resolve_thinking_effort,
 )
@@ -35,8 +36,10 @@ from engines.core.interactions import permission_request, permission_signature
 from engines.core.input_items import workstep_input_commands
 from engines.core.plans import plan_event
 from engines.core.schema import EngineConfigField, EngineConfigOption, EngineImage
+from engines.core.tool_inputs import file_change_input
 from engines.codex_events import codex_raw_event
 from engines.codex_visualize import CodexVisualizeStream
+from services import providers as provider_service
 from services.config import (
     CODEX_REASONING_EFFORTS,
     CODEX_SANDBOX_MODES,
@@ -90,18 +93,25 @@ class CodexSDKEngine(AcpEngineBase):
     def supported_provider_protocols(cls) -> set[str]:
         return {"openai_responses"}
 
-    def build_provider_runtime(self, provider, model):
-        base_url = str(provider.get("base_url") or "")
+    def build_provider_runtime(self, provider, model, protocol=None):
+        selected_protocol = str(protocol or "openai_responses")
+        base_url = provider_service.provider_runtime_base_url(
+            provider, selected_protocol
+        )
+        wire_api = WIRE_API_BY_PROTOCOL.get(
+            selected_protocol, "responses"
+        )
         return ProviderRuntimeConfig(
             provider_id=str(provider.get("id") or ""),
             model=model,
+            protocol=selected_protocol,
             env={"WORKSTEP_LLM_API_KEY": str(provider.get("api_key") or "")},
             engine_config=(
                 'model_provider="workstep"',
                 'model_providers.workstep.name="WorkStep"',
                 f"model_providers.workstep.base_url={json.dumps(base_url)}",
                 'model_providers.workstep.env_key="WORKSTEP_LLM_API_KEY"',
-                'model_providers.workstep.wire_api="responses"',
+                f'model_providers.workstep.wire_api="{wire_api}"',
             ),
         )
 
@@ -290,8 +300,11 @@ class CodexSDKEngine(AcpEngineBase):
             name = f"{server}/{tool}" if server else tool
             tool_input = cls._plain(getattr(root, "arguments", {}) or {})
         elif rtype == "fileChange":
-            name = "FileChange"
-            tool_input = {"changes": cls._plain(getattr(root, "changes", []) or [])}
+            name = "EditFile"
+            kind = "edit"
+            tool_input = file_change_input(
+                cls._plain(getattr(root, "changes", []) or [])
+            )
         elif rtype == "webSearch":
             name = "WebSearch"
             tool_input = {"query": getattr(root, "query", "") or ""}
@@ -307,10 +320,12 @@ class CodexSDKEngine(AcpEngineBase):
         else:
             name = getattr(root, "tool", "") or ""
             tool_input = cls._plain(getattr(root, "arguments", {}) or {})
+        if rtype != "fileChange":
+            kind = "other"
         return tool_call_event(
             tool_call_id=str(getattr(root, "id", "") or ""),
             title=name,
-            kind="other",
+            kind=kind,
             raw_input=tool_input,
         )
 

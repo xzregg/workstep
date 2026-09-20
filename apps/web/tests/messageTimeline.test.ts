@@ -49,6 +49,27 @@ test('marks failed tool results without moving the original tool call', () => {
   assert.equal(timeline[0]?.type === 'tool' && timeline[0].activity.isError, true)
 })
 
+test('preserves ACP tool kind for protocol-level edit rendering', () => {
+  const timeline = buildMessageTimeline([
+    {
+      type: 'TOOL_CALL_START',
+      toolCallId: 'patch-1',
+      toolCallName: 'FileChange',
+      kind: 'edit',
+    },
+    {
+      type: 'TOOL_CALL_ARGS',
+      toolCallId: 'patch-1',
+      args: { path: 'apps/web/src/App.tsx' },
+    },
+  ])
+
+  assert.equal(
+    timeline[0]?.type === 'tool' && timeline[0].activity.kind,
+    'edit',
+  )
+})
+
 test('groups consecutive tool calls but starts a new group after assistant text', () => {
   const timeline = buildMessageTimeline([
     { type: 'tool_use', data: { id: 'read-1', name: 'Read' } },

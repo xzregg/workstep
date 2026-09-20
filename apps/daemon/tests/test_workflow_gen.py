@@ -1805,6 +1805,60 @@ async def test_workflow_history_persists_prompt_events_and_session_id(
 
 
 @pytest.mark.anyio
+async def test_history_is_fresh_when_turn_completes_under_slow_save(
+    gen_module, monkeypatch
+):
+    """终态可见前必须先落库：慢数据库下 completed 后立即读历史不得读到旧快照。
+
+    回归：save 曾放在 finally 里（status=completed 之后执行），慢盘/锁竞争
+    下客户端会在 message_completed 之后读到缺 engine_session_id 的旧行。
+    """
+    import time
+
+    import agent_assistants.base as assistant_base
+
+    module, bus, manager, project, _ = gen_module
+
+    orig_save = assistant_base.JsonRowPersistence.save
+
+    def slow_save(self, session):
+        time.sleep(0.2)  # 模拟 DB 工作线程繁忙（锁竞争/慢盘）
+        orig_save(self, session)
+
+    monkeypatch.setattr(assistant_base.JsonRowPersistence, "save", slow_save)
+
+    async def fake_invoke(engine_id, model, cwd, prompt, session_id, on_event=None, message_history=None):
+        events = [
+            {
+                "type": "session_started",
+                "data": {"session_id": "engine-sid-slow"},
+                "timestamp": 1000,
+            },
+        ]
+        return (
+            json.dumps({"reply": "ok", "flow_proposals": []}),
+            events,
+            "engine-sid-slow",
+        )
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    workflow_id = "wf-slow-save"
+    accepted = module.submit_message(
+        project.id, None, "设计一个流程", "idem-slow-1", workflow_id=workflow_id
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    # completed 对外可见时，最终快照必须已落库。
+    history = module.history(project.id, workflow_id)
+    assert history["engine_session_id"] == "engine-sid-slow"
+    assistants = [m for m in history["messages"] if m["role"] == "assistant"]
+    assert len(assistants) == 1
+    assert assistants[0]["status"] == "succeeded"
+    assert assistants[0]["content"] == "ok"
+    assert assistants[0]["events"] and assistants[0]["events"][0]["type"] == "session_started"
+
+
+@pytest.mark.anyio
 async def test_workflow_history_persists_error_message_prompt(
     gen_module, monkeypatch
 ):
