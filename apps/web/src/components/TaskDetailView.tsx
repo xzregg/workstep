@@ -47,6 +47,7 @@ import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
 import MarqueeText from './MarqueeText'
 import TaskStageProgressGraph from './TaskStageProgressGraph'
+import TaskExecutionAnalysis from './TaskExecutionAnalysis'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
@@ -552,6 +553,7 @@ export default function TaskDetailView({
   const compact = useCompactLayout()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'stages' | 'artifacts'>('conversation')
+  const [detailMode, setDetailMode] = useState<'detail' | 'analysis'>('detail')
   const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
   const SPLIT_HANDLE_WIDTH = 8
   const contentSplitRef = useRef<HTMLDivElement>(null)
@@ -3554,6 +3556,16 @@ export default function TaskDetailView({
       {/* Recovered hint */}
       {renderRecoveredHint()}
 
+      {!readOnly && projectId && (
+        <div className="task-detail-primary-tabs" role="tablist" aria-label={t('executionAnalysis.title')}>
+          <button type="button" role="tab" aria-selected={detailMode === 'detail'} onClick={() => setDetailMode('detail')}>{t('taskDetail.detailTab')}</button>
+          <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
+        </div>
+      )}
+
+      {detailMode === 'analysis' && projectId ? (
+        <TaskExecutionAnalysis taskId={task.id} projectId={projectId} />
+      ) : <>
       {compact && <div className="mobile-detail-tabs" role="tablist">
         {(['conversation', 'stages', 'artifacts'] as const).map(tab => <button key={tab} role="tab" aria-selected={mobileTab === tab} onClick={() => setMobileTab(tab)}>{t(`mobile.${tab}`)}</button>)}
       </div>}
@@ -3625,6 +3637,7 @@ export default function TaskDetailView({
           ))}
         </div>}
       </div>
+      </>}
     </>
   )
 }

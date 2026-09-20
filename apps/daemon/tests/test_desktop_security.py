@@ -21,6 +21,10 @@ def _app() -> FastAPI:
     async def index():
         return {'ok': True}
 
+    @app.get('/api/fs/project-raw/{project_ref}/{full_path:path}')
+    async def project_raw(project_ref: str, full_path: str):
+        return {'ok': True}
+
     @app.websocket('/ws')
     async def websocket_endpoint(ws: WebSocket):
         if not desktop_websocket_allowed(ws):
@@ -57,7 +61,23 @@ def test_static_shell_is_available_but_receives_security_headers(monkeypatch):
         response = client.get('/')
 
     assert response.status_code == 200
-    assert "frame-ancestors 'none'" in response.headers['content-security-policy']
+    assert "frame-ancestors *" in response.headers['content-security-policy']
+    assert 'x-frame-options' not in {k.lower() for k in response.headers}
+
+
+def test_project_raw_allows_same_origin_iframe(monkeypatch):
+    monkeypatch.setenv('WORKSTEP_DESKTOP_RUNTIME', '1')
+    monkeypatch.setenv('WORKSTEP_DESKTOP_TOKEN', 'runtime-secret')
+
+    with TestClient(_app()) as client:
+        response = client.get(
+            '/api/fs/project-raw/proj/foo.html',
+            headers={'X-WorkStep-Desktop-Token': 'runtime-secret'},
+        )
+
+    assert response.status_code == 200
+    assert 'x-frame-options' not in {k.lower() for k in response.headers}
+    assert "frame-ancestors *" in response.headers['content-security-policy']
 
 
 def test_desktop_websocket_requires_runtime_token(monkeypatch):

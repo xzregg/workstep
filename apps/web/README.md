@@ -1,32 +1,24 @@
-# React + TypeScript + Vite
+# WorkStep Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+WorkStep 的 React + TypeScript + Vite 前端，包含任务列表与详情、工作流画布、项目会话、助手和设置页面。它通过 `/api` 与 `/ws` 连接本地 daemon；前端 store 只消费对外的 AG-UI 事件。
 
-Currently, two official plugins are available:
+## 开发
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+需要 Node.js 20 和 Yarn 1。开发时先启动 `apps/daemon`，再运行：
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+yarn install --frozen-lockfile
+yarn dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Vite 开发服务器会把 `/api` 和 `/ws` 代理到本地 daemon。仓库根目录的 `./start.sh` 也可以同时启动前后端。
+
+## 验证
+
+```bash
+yarn test
+yarn lint
+yarn build
+```
+
+新增界面前请先阅读仓库根目录的 `AGENTS.md` 和 [`docs/frontend-design.md`](../../docs/frontend-design.md)。优先复用 `src/components/` 中的聊天、Markdown、确认框与引擎选择组件；移动端覆盖集中在 `src/mobile.css`。

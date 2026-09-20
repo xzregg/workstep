@@ -1,5 +1,7 @@
 # 定时任务助手：任务创建 Agent 的定时调用
 
+> 状态：已实现。本文为设计与实施记录，当前行为由 `services/schedule.py`、`agent_assistants/task_draft.py`、CLI、前端计划页及测试守护。
+
 ## 1. 结论
 
 定时任务的「AI 生成」执行模式不是新助手，而是**任务创建助手（`agent_assistants/task_draft.py`，channel `task_create`）的定时（headless）调用**。到点时由 `services/schedule.py` 以任务配置为上下文运行一次任务助手回合，助手产出最终任务标题、Markdown 任务内容与目标流程/阶段，`schedule.py` 再经 `create_project_task` 建任务并派发。静态模式（现有直接建任务）保留，两种模式并存且向后兼容。

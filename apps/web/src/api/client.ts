@@ -1095,6 +1095,83 @@ export interface ReviewRun {
   ended_at: string | null
 }
 
+export interface TaskExecutionRun {
+  id: string
+  round: number
+  status: string
+  parent_run_id: string | null
+  restart_from_step_key: string | null
+  started_at: string | null
+  ended_at: string | null
+}
+
+export interface TaskExecutionSegment {
+  id: string
+  type: 'execution' | 'review'
+  workflow_run_id: string
+  step_run_id: string
+  round: number
+  step_key: string
+  step_title: string
+  attempt: number
+  status: string
+  engine: string | null
+  model: string | null
+  started_at: string | null
+  ended_at: string | null
+  duration_ms: number | null
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_tokens: number
+  cost: number
+  cost_source: 'provider' | 'estimated' | 'mixed' | null
+  message_count: number
+}
+
+export interface TaskExecutionReport {
+  currency: string
+  generated_at: string
+  summary: {
+    duration_ms: number
+    total_tokens: number
+    cost: number
+    provider_cost: number
+    estimated_cost: number
+    usage_coverage: number | null
+    run_count: number
+    attempt_count: number
+    retry_count: number
+  }
+  runs: TaskExecutionRun[]
+  segments: TaskExecutionSegment[]
+  stage_breakdown: Array<{
+    step_key: string
+    step_title: string
+    status: string
+    attempt_count: number
+    duration_ms: number
+    total_tokens: number
+    cost: number
+  }>
+  milestones: Array<{
+    id: string
+    kind: 'step_completed' | 'review_completed' | 'task_completed'
+    step_key: string | null
+    step_title: string
+    status: string
+    at: string
+    duration_ms: number | null
+    total_tokens: number
+    cost: number
+  }>
+  data_quality: {
+    eligible_usage_calls: number
+    reported_usage_calls: number
+  }
+}
+
 export interface TaskArtifact {
   step_key: string
   round: number
@@ -1233,6 +1310,10 @@ export const taskApi = {
     }),
   get: (id: string, projectId: string) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`),
+  executionReport: (id: string, projectId: string) =>
+    request<TaskExecutionReport>(
+      `/task/${encodeURIComponent(id)}/execution-report?project_id=${encodeURIComponent(projectId)}`,
+    ),
   updateDescription: (id: string, projectId: string, description: string | undefined, reviewOverrides?: Record<string, any> | null) =>
     request<Task>(`/task/${id}?project_id=${encodeURIComponent(projectId)}`, {
       method: 'PATCH',

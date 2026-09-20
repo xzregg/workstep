@@ -23,6 +23,14 @@ test('splits Markdown images into ordered visual-editor segments without changin
   assert.equal(segments.map((segment) => segment.markdown).join(''), value)
 })
 
+test('an image at the start does not create an empty line before its preview', () => {
+  const value = '![界面](.workstep/uploads/shot.png)'
+  const segments = splitMarkdownImages(value)
+
+  assert.deepEqual(segments.map((segment) => segment.type), ['image', 'text'])
+  assert.equal(segments.map((segment) => segment.markdown).join(''), value)
+})
+
 test('removing an image deletes its Markdown token and only the adjacent separator', () => {
   const value = '上面的文字\n\n![图片](demo/.workstep/uploads/shot.png)\n\n下面的文字'
   const image = splitMarkdownImages(value).find((segment) => segment.type === 'image')
@@ -62,4 +70,8 @@ test('attachment pickers upload every selected file and keep the add button avai
 
 test('mobile attachment previews keep a compact landscape footprint', () => {
   assert.match(mobileCss, /\.chat-input-image-block\s*\{[^}]*flex:\s*0 0 120px[^}]*width:\s*120px\s*!important[^}]*height:\s*68px\s*!important/s)
+})
+
+test('mobile attachment button keeps the toolbar height after an upload', () => {
+  assert.match(mobileCss, /\.chat-input-attach\s*\{[^}]*width:\s*32px\s*!important[^}]*height:\s*32px\s*!important[^}]*min-height:\s*32px\s*!important/s)
 })

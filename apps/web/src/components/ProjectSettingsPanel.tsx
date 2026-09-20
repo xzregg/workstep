@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   chatSessionApi,
   projectApi,
@@ -23,8 +23,7 @@ interface ProjectSettingsPanelProps {
   onProjectRenamed?: (name: string) => void
 }
 
-type TabKey = 'general' | 'assistant' | 'concurrency' | 'share'
-const SYSTEM_PROMPT_TAB = 'system-prompt'
+type TabKey = 'general' | 'assistant' | 'quickButtons' | 'concurrency' | 'share'
 
 function randomId(): string {
   return `qb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -71,7 +70,9 @@ export default function ProjectSettingsPanel({
   const [buttonsSaving, setButtonsSaving] = useState(false)
   const [buttonsError, setButtonsError] = useState('')
   const [buttonsSaved, setButtonsSaved] = useState(false)
-  const [activeAssistantTab, setActiveAssistantTab] = useState(SYSTEM_PROMPT_TAB)
+  const [selectedQuickButtonId, setSelectedQuickButtonId] = useState('')
+  const [draggedQuickButtonId, setDraggedQuickButtonId] = useState('')
+  const draggedQuickButtonIdRef = useRef('')
   const saveQuickButtonsToStore = useChatListStore((state) => state.saveQuickButtons)
 
   // ── concurrency tab ───────────────────────────────────────────────
@@ -96,6 +97,7 @@ export default function ProjectSettingsPanel({
   const tabs: { key: TabKey; label: string }[] = useMemo(() => [
     { key: 'general', label: t('projectSettings.tabs.general') },
     { key: 'assistant', label: t('projectSettings.tabs.assistant') },
+    { key: 'quickButtons', label: t('projectSettings.tabs.quickButtons') },
     { key: 'concurrency', label: t('projectSettings.tabs.concurrency') },
     { key: 'share', label: t('projectSettings.tabs.share') },
   ], [t])
@@ -109,14 +111,13 @@ export default function ProjectSettingsPanel({
       setSettings(result)
       setNameDraft(result.name)
       setPromptDraft(result.chat_system_prompt || '')
-      setActiveAssistantTab(SYSTEM_PROMPT_TAB)
-      setButtonsDraft(
-        (result.quick_buttons || []).map((button: any) => ({
-          id: button.id || randomId(),
-          label: button.label || '',
-          prompt: button.prompt || '',
-        })),
-      )
+      const quickButtons = (result.quick_buttons || []).map((button: any) => ({
+        id: button.id || randomId(),
+        label: button.label || '',
+        prompt: button.prompt || '',
+      }))
+      setButtonsDraft(quickButtons)
+      setSelectedQuickButtonId(quickButtons[0]?.id || '')
       const override = result.concurrency?.project
       setConcurrencyDraft({
         maxTasks: override?.max_tasks == null ? '' : String(override.max_tasks),
@@ -203,12 +204,12 @@ export default function ProjectSettingsPanel({
     if (!projectId || buttonsSaving) return
     for (const button of buttonsDraft) {
       if (!button.label.trim()) {
-        setActiveAssistantTab(button.id)
+        setSelectedQuickButtonId(button.id)
         setButtonsError(t('chatSession.buttonLabelRequired'))
         return
       }
       if (!button.prompt.trim()) {
-        setActiveAssistantTab(button.id)
+        setSelectedQuickButtonId(button.id)
         setButtonsError(t('chatSession.buttonPromptRequired'))
         return
       }
@@ -289,8 +290,21 @@ export default function ProjectSettingsPanel({
   }
 
   const effective = settings?.concurrency?.effective
-  const activeQuickButtonIndex = buttonsDraft.findIndex((button) => button.id === activeAssistantTab)
+  const activeQuickButtonIndex = buttonsDraft.findIndex((button) => button.id === selectedQuickButtonId)
   const activeQuickButton = activeQuickButtonIndex >= 0 ? buttonsDraft[activeQuickButtonIndex] : null
+  const reorderQuickButton = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return
+    setButtonsDraft((current) => {
+      const sourceIndex = current.findIndex((button) => button.id === sourceId)
+      const targetIndex = current.findIndex((button) => button.id === targetId)
+      if (sourceIndex < 0 || targetIndex < 0) return current
+      const next = [...current]
+      const [moved] = next.splice(sourceIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+    setButtonsSaved(false)
+  }
   const formatEffective = (value: number) =>
     value === 0 ? t('projectSettings.concurrency.unlimited') : String(value)
 
@@ -400,151 +414,189 @@ export default function ProjectSettingsPanel({
               </div>
             ) : activeTab === 'assistant' ? (
               <div style={tabBodyStyle}>
-                <div
-                  role="tablist"
-                  aria-label={t('projectSettings.assistant.settingsTabs')}
-                  style={{
-                    display: 'flex', alignItems: 'flex-end', gap: 2,
-                    overflowX: 'auto', borderBottom: '1px solid var(--border-soft)',
-                  }}
+                <Field
+                  label={t('projectSettings.assistant.systemPrompt')}
+                  help={t('projectSettings.assistant.systemPromptHint')}
+                  error={promptError || undefined}
                 >
-                  {[{ id: SYSTEM_PROMPT_TAB, label: t('projectSettings.assistant.systemPrompt') }, ...buttonsDraft.map((button) => ({
-                    id: button.id,
-                    label: button.label.trim() || t('projectSettings.assistant.newButton'),
-                  }))].map((tab) => {
-                    const selected = activeAssistantTab === tab.id
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        onClick={() => setActiveAssistantTab(tab.id)}
-                        style={{
-                          flexShrink: 0, minHeight: 38, padding: '0 12px',
-                          border: 'none', borderBottom: selected ? '2px solid var(--accent)' : '2px solid transparent',
-                          background: 'transparent', color: selected ? 'var(--accent)' : 'var(--muted)',
-                          font: 'inherit', fontSize: 'calc(12px * var(--font-scale))',
-                          fontWeight: selected ? 650 : 500, cursor: 'pointer',
-                        }}
-                      >
-                        {tab.label}
-                      </button>
-                    )
-                  })}
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected="false"
-                    onClick={() => {
-                      const id = randomId()
-                      setButtonsDraft((current) => [...current, { id, label: '', prompt: '' }])
-                      setActiveAssistantTab(id)
-                      setButtonsError('')
-                      setButtonsSaved(false)
-                    }}
+                  <MarkdownEditor
+                    value={promptDraft}
+                    onChange={(value) => { setPromptDraft(value); setPromptError(''); setPromptSaved(false) }}
+                    projectId={projectId}
+                    imagePrefix="system-prompt"
+                    placeholder={t('chatSession.systemPromptPlaceholder')}
+                    minHeight={180}
+                    maxHeight={300}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                    <Button variant="primary" loading={promptSaving} onClick={() => void saveSystemPrompt()}>
+                      {t('common.save')}
+                    </Button>
+                    {promptSaved && (
+                      <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                        {t('projectSettings.assistant.promptSaved')}
+                      </span>
+                    )}
+                  </div>
+                </Field>
+              </div>
+            ) : activeTab === 'quickButtons' ? (
+              <div style={tabBodyStyle}>
+                <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                  {t('projectSettings.assistant.quickButtonsHint')} {t('projectSettings.assistant.quickButtonsDragHint')}
+                </p>
+                {buttonsError && (
+                  <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                    {buttonsError}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 18, alignItems: 'stretch', minHeight: 300 }}>
+                  <div
+                    data-testid="quick-button-list"
                     style={{
-                      flexShrink: 0, minHeight: 38, padding: '0 12px', border: 'none',
-                      borderBottom: '2px solid transparent', background: 'transparent',
-                      color: 'var(--accent)', font: 'inherit',
-                      fontSize: 'calc(12px * var(--font-scale))', fontWeight: 600, cursor: 'pointer',
+                      width: 180, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6,
+                      paddingRight: 14, borderRight: '1px solid var(--border-soft)',
                     }}
                   >
-                    {t('projectSettings.assistant.addButton')}
-                  </button>
-                </div>
-                {activeAssistantTab === SYSTEM_PROMPT_TAB ? (
-                  <Field
-                    label={t('projectSettings.assistant.systemPrompt')}
-                    help={t('projectSettings.assistant.systemPromptHint')}
-                    error={promptError || undefined}
-                  >
-                    <MarkdownEditor
-                      value={promptDraft}
-                      onChange={(value) => { setPromptDraft(value); setPromptError(''); setPromptSaved(false) }}
-                      projectId={projectId}
-                      imagePrefix="system-prompt"
-                      placeholder={t('chatSession.systemPromptPlaceholder')}
-                      minHeight={180}
-                      maxHeight={300}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
-                      <Button variant="primary" loading={promptSaving} onClick={() => void saveSystemPrompt()}>
-                        {t('common.save')}
-                      </Button>
-                      {promptSaved && (
-                        <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                          {t('projectSettings.assistant.promptSaved')}
-                        </span>
-                      )}
-                    </div>
-                  </Field>
-                ) : activeQuickButton ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <p style={{ margin: 0, color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                      {t('projectSettings.assistant.quickButtonsHint')}
-                    </p>
-                    {buttonsError && (
-                      <div role="status" style={{ color: 'var(--danger)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                        {buttonsError}
+                    {buttonsDraft.map((button) => {
+                      const selected = button.id === selectedQuickButtonId
+                      return (
+                        <button
+                          key={button.id}
+                          type="button"
+                          draggable
+                          aria-current={selected ? 'true' : undefined}
+                          onClick={() => setSelectedQuickButtonId(button.id)}
+                          onDragStart={(event) => {
+                            draggedQuickButtonIdRef.current = button.id
+                            setDraggedQuickButtonId(button.id)
+                            if (event.dataTransfer) {
+                              event.dataTransfer.effectAllowed = 'move'
+                              event.dataTransfer.setData('text/plain', button.id)
+                            }
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            reorderQuickButton(
+                              event.dataTransfer?.getData('text/plain') || draggedQuickButtonIdRef.current,
+                              button.id,
+                            )
+                            draggedQuickButtonIdRef.current = ''
+                            setDraggedQuickButtonId('')
+                          }}
+                          onDragEnd={() => {
+                            draggedQuickButtonIdRef.current = ''
+                            setDraggedQuickButtonId('')
+                          }}
+                          style={{
+                            width: '100%', minHeight: 38, padding: '7px 10px', borderRadius: 8,
+                            border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                            background: selected ? 'color-mix(in oklab, var(--accent), transparent 92%)' : 'var(--surface)',
+                            color: selected ? 'var(--accent)' : 'var(--fg-2)', textAlign: 'left',
+                            font: 'inherit', fontSize: 'calc(12px * var(--font-scale))',
+                            fontWeight: selected ? 650 : 500, cursor: 'grab',
+                            opacity: draggedQuickButtonId === button.id ? 0.55 : 1,
+                          }}
+                        >
+                          {button.label.trim() || t('projectSettings.assistant.newButton')}
+                        </button>
+                      )
+                    })}
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        const id = randomId()
+                        setButtonsDraft((current) => [...current, { id, label: '', prompt: '' }])
+                        setSelectedQuickButtonId(id)
+                        setButtonsError('')
+                        setButtonsSaved(false)
+                      }}
+                      style={{ width: '100%', justifyContent: 'flex-start' }}
+                    >
+                      {t('projectSettings.assistant.addButton')}
+                    </Button>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {activeQuickButton ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <Field label={t('projectSettings.assistant.buttonLabel')}>
+                          <Input
+                            value={activeQuickButton.label}
+                            onChange={(event) => {
+                              setButtonsDraft((current) => current.map((item, itemIndex) =>
+                                itemIndex === activeQuickButtonIndex ? { ...item, label: event.target.value } : item,
+                              ))
+                              setButtonsError('')
+                              setButtonsSaved(false)
+                            }}
+                            placeholder={t('projectSettings.assistant.buttonLabel')}
+                          />
+                        </Field>
+                        <Field label={t('projectSettings.assistant.buttonPrompt')}>
+                          <MarkdownEditor
+                            value={activeQuickButton.prompt}
+                            onChange={(value) => {
+                              setButtonsDraft((current) => current.map((item, itemIndex) =>
+                                itemIndex === activeQuickButtonIndex ? { ...item, prompt: value } : item,
+                              ))
+                              setButtonsError('')
+                              setButtonsSaved(false)
+                            }}
+                            projectId={projectId}
+                            imagePrefix="quick-button"
+                            placeholder={t('projectSettings.assistant.buttonPrompt')}
+                            minHeight={140}
+                            maxHeight={280}
+                          />
+                        </Field>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <Button variant="primary" loading={buttonsSaving} onClick={() => void saveQuickButtons()}>
+                            {t('common.save')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              const remaining = buttonsDraft.filter((_, index) => index !== activeQuickButtonIndex)
+                              const nextButton = remaining[activeQuickButtonIndex] || remaining[activeQuickButtonIndex - 1]
+                              setButtonsDraft(remaining)
+                              setSelectedQuickButtonId(nextButton?.id || '')
+                              setButtonsError('')
+                              setButtonsSaved(false)
+                            }}
+                            style={{ color: 'var(--danger)' }}
+                          >
+                            {t('common.delete')}
+                          </Button>
+                          {buttonsSaved && (
+                            <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                              {t('projectSettings.assistant.buttonsSaved')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ color: 'var(--muted)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                        {t('projectSettings.assistant.noQuickButtons')}
                       </div>
                     )}
-                    <Field label={t('projectSettings.assistant.buttonLabel')}>
-                      <Input
-                        value={activeQuickButton.label}
-                        onChange={(event) => {
-                          setButtonsDraft((current) => current.map((item, itemIndex) =>
-                            itemIndex === activeQuickButtonIndex ? { ...item, label: event.target.value } : item,
-                          ))
-                          setButtonsError('')
-                          setButtonsSaved(false)
-                        }}
-                        placeholder={t('projectSettings.assistant.buttonLabel')}
-                      />
-                    </Field>
-                    <Field label={t('projectSettings.assistant.buttonPrompt')}>
-                      <MarkdownEditor
-                        value={activeQuickButton.prompt}
-                        onChange={(value) => {
-                          setButtonsDraft((current) => current.map((item, itemIndex) =>
-                            itemIndex === activeQuickButtonIndex ? { ...item, prompt: value } : item,
-                          ))
-                          setButtonsError('')
-                          setButtonsSaved(false)
-                        }}
-                        projectId={projectId}
-                        imagePrefix="quick-button"
-                        placeholder={t('projectSettings.assistant.buttonPrompt')}
-                        minHeight={140}
-                        maxHeight={280}
-                      />
-                    </Field>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <Button variant="primary" loading={buttonsSaving} onClick={() => void saveQuickButtons()}>
-                        {t('common.save')}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          const remaining = buttonsDraft.filter((_, index) => index !== activeQuickButtonIndex)
-                          const nextButton = remaining[activeQuickButtonIndex] || remaining[activeQuickButtonIndex - 1]
-                          setButtonsDraft(remaining)
-                          setActiveAssistantTab(nextButton?.id || SYSTEM_PROMPT_TAB)
-                          setButtonsError('')
-                          setButtonsSaved(false)
-                        }}
-                        style={{ color: 'var(--danger)' }}
-                      >
-                        {t('common.delete')}
-                      </Button>
-                      {buttonsSaved && (
-                        <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))' }}>
-                          {t('projectSettings.assistant.buttonsSaved')}
-                        </span>
-                      )}
-                    </div>
                   </div>
-                ) : null}
+                </div>
+                {!activeQuickButton && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <Button variant="primary" loading={buttonsSaving} onClick={() => void saveQuickButtons()}>
+                      {t('common.save')}
+                    </Button>
+                    {buttonsSaved && (
+                      <span role="status" style={{ color: 'var(--success)', fontSize: 'calc(12px * var(--font-scale))' }}>
+                        {t('projectSettings.assistant.buttonsSaved')}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             ) : activeTab === 'concurrency' ? (
               <div style={tabBodyStyle}>

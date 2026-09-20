@@ -1,6 +1,6 @@
 # 并发限制与统一项目配置计划
 
-> 状态：方案已确认（2026-09-07），待实施。目标版本覆盖全局 + 项目级并发限制、定时任务豁免、统一「项目配置」弹窗。
+> 状态：已实现（2026-09-07）。全局和项目级并发限制、定时任务豁免及统一「项目配置」弹窗均已落地；末尾保留实现与验证记录。
 
 ## 目标
 
@@ -60,7 +60,7 @@
 
 不归入弹窗：定时任务管理页、工作流/流程画布、模板（全局）、远程访问地址（全局）、审核覆盖（任务/流程级）、项目记忆 `MEMORY.md`（内容编辑，保留看板「记忆」按钮）。
 
-## 已验证现状（2026-09-07 代码探查）
+## 实施前基线（2026-09-07 历史代码探查）
 
 - 任务启动唯一入口 `services/workflow_runtime.py::start()`（手动运行 / 定时调度 / 定时启动共用），内部 `TaskRunner` 直接开跑，无任何并发闸门。
 - `models/task.py::Task.status` 取值 `ready / running / paused / stopped`；`TaskStep.status` 含 `pending / running / passed / failed / cancelled / retrying / rework_waiting / rework / awaiting_review / reviewing / rejected`。

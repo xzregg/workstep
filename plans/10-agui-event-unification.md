@@ -1,5 +1,7 @@
 # 全引擎对齐 ACP + 前端事件统一为 AG-UI
 
+> 状态：已实现。本文为事件迁移记录；当前事件契约以 `apps/daemon/engines/core/events.py`、`agui.py` 和前端 `src/utils/agui.ts` 为准。
+
 ## 摘要
 - 内部事件层**直接采用 ACP 词汇**：`InternalEvent` 重构为 ACP session update 对齐模型，Codex / Codex SDK / Claude Code / Claude Agent SDK / Pydantic AI / Qoder / OpenClaw / Hermes(ACP) 全部适配器按 ACP 字段形状产出事件；内部=ACP，对外=AG-UI。
 - 新增唯一翻译层 `ACP 对齐内部事件 → AG-UI 标准事件`（`engines/core/agui.py`），WebSocket 实时推送与历史回放共用；前端所有 store 只消费 AG-UI。

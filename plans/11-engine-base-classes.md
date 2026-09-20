@@ -1,5 +1,7 @@
 # 引擎基类拆分：BaseLLMEngine（自定义函数）+ AcpEngineBase（ACP 协议）
 
+> 状态：已实现。本文为重构记录；当前能力声明和方法签名以两个基类及引擎契约测试为准。
+
 ## 摘要
 - 所有引擎统一继承 `AcpEngineBase`（ACP 协议基类），实现 ACP 协议事件（spawn / session / interaction / approval / coordinator seam）；不再直接继承 `BaseLLMEngine`。
 - `BaseLLMEngine` 只承载与协议无关的**自定义函数**：安装、版本、二进制解析、配置表单、模型枚举、能力声明。

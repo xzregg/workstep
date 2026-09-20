@@ -17,7 +17,7 @@ const project: Project = {
   workflows: [],
 }
 
-test('conversation assistant uses tabs and saved quick buttons take effect immediately', async () => {
+test('system prompt and reorderable quick buttons use separate settings tabs', async () => {
   const { window } = installDomEnvironment()
   const originalSettings = projectApi.settings
   const originalSaveQuickButtons = chatSessionApi.saveQuickButtons
@@ -56,17 +56,31 @@ test('conversation assistant uses tabs and saved quick buttons take effect immed
     assert.ok(assistantNav)
     await act(async () => assistantNav.click())
 
-    const tabList = container.querySelector('[role="tablist"]')
-    assert.ok(tabList)
-    assert.deepEqual(
-      [...tabList.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim()),
-      ['全局提示词', '解释', '写测试', '添加快捷按钮'],
-    )
+    assert.equal(container.querySelector('[role="tablist"]'), null)
+    assert.ok([...container.querySelectorAll('label')]
+      .some((label) => label.textContent?.includes('全局提示词')))
 
-    const testsTab = [...tabList.querySelectorAll('button')]
-      .find((button) => button.textContent?.trim() === '写测试')
-    assert.ok(testsTab)
-    await act(async () => testsTab.click())
+    const quickButtonsNav = [...container.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === '快捷按钮')
+    assert.ok(quickButtonsNav)
+    await act(async () => quickButtonsNav.click())
+
+    const buttonList = container.querySelector('[data-testid="quick-button-list"]')
+    assert.ok(buttonList)
+    const draggableButtons = [...buttonList.querySelectorAll<HTMLButtonElement>('button[draggable="true"]')]
+    assert.deepEqual(draggableButtons.map((button) => button.textContent?.trim()), ['解释', '写测试'])
+
+    await act(async () => {
+      draggableButtons[1].dispatchEvent(new Event('dragstart', { bubbles: true }))
+      draggableButtons[0].dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }))
+      draggableButtons[0].dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+    })
+
+    assert.deepEqual(
+      [...buttonList.querySelectorAll<HTMLButtonElement>('button[draggable="true"]')]
+        .map((button) => button.textContent?.trim()),
+      ['写测试', '解释'],
+    )
 
     const save = [...container.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === '保存')
@@ -75,15 +89,15 @@ test('conversation assistant uses tabs and saved quick buttons take effect immed
 
     assert.deepEqual(
       useChatListStore.getState().quickButtons.map((button) => button.label),
-      ['解释', '写测试'],
+      ['写测试', '解释'],
     )
 
-    const addTab = [...tabList.querySelectorAll('button')]
+    const addTab = [...buttonList.querySelectorAll('button')]
       .find((button) => button.textContent?.trim() === '添加快捷按钮')
     assert.ok(addTab)
     await act(async () => addTab.click())
-    assert.equal(tabList.querySelectorAll('[role="tab"]').length, 5)
-    assert.equal(tabList.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.trim(), '新快捷按钮')
+    assert.equal(buttonList.querySelectorAll('button[draggable="true"]').length, 3)
+    assert.equal(buttonList.querySelector('[aria-current="true"]')?.textContent?.trim(), '新快捷按钮')
   } finally {
     projectApi.settings = originalSettings
     chatSessionApi.saveQuickButtons = originalSaveQuickButtons

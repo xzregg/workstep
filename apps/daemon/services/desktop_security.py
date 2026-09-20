@@ -15,14 +15,14 @@ DESKTOP_TOKEN_HEADER = "x-workstep-desktop-token"
 CONTENT_SECURITY_POLICY = "; ".join(
     (
         "default-src 'self'",
-        "script-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob: https:",
         "font-src 'self' data:",
         "connect-src 'self' ws://127.0.0.1:* ws://localhost:*",
         "object-src 'none'",
         "base-uri 'self'",
-        "frame-ancestors 'none'",
+        "frame-ancestors *",
         "form-action 'self'",
     )
 )
@@ -65,9 +65,12 @@ class DesktopSecurityMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
             "Permissions-Policy",
             "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
         )
+
+        # 取消 iframe 嵌入限制：任何响应都不带 X-Frame-Options，CSP 允许任意祖先 frame。
+        del response.headers["X-Frame-Options"]
+
         return response

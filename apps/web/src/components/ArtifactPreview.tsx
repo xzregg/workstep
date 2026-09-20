@@ -432,7 +432,7 @@ export default function ArtifactPreview({
           <iframe
             src={rawUrl}
             title={t('artifact.htmlFile')}
-            sandbox="allow-scripts allow-popups"
+            sandbox="allow-scripts allow-same-origin allow-popups"
             style={{ flex: 1, minHeight: 0, width: '100%', border: 'none', background: '#fff', display: 'block' }}
           />
         </div>

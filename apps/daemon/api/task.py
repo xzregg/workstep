@@ -177,6 +177,25 @@ async def get_task(task_id: str, pid: str = Query(..., alias="project_id")):
     return task
 
 
+@router.get("/{task_id}/execution-report")
+async def get_task_execution_report(
+    task_id: str,
+    pid: str = Query(..., alias="project_id"),
+):
+    """Return one task's execution rounds, timeline, usage, and milestones."""
+    from services.task_execution_report import build_task_execution_report
+
+    _project(pid)
+    pricing = await asyncio.to_thread(config_store.get_model_pricing)
+    report = await _run_db(
+        pid,
+        lambda: build_task_execution_report(task_id, pricing=pricing),
+    )
+    if report is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return report
+
+
 @router.patch("/{task_id}")
 async def update_task(
     task_id: str,

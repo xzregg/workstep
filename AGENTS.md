@@ -13,24 +13,24 @@
 
 ## 项目概述
 
-本仓库包含 **WorkStep** 的设计原型与技术文档——一个本地优先的工作流编排工具，将多个 LLM 引擎（Codex、Codex CLI、Hermes ACP 等）串联为可定制的研发管道。
+本仓库包含 **WorkStep** 的可运行应用、桌面端、官网与技术文档。WorkStep 是一个本地优先的工作流编排工具，将多个 CLI、SDK 与 ACP LLM 引擎串联为可定制的研发管道。
 
-当前项目包含可运行的前后端应用、早期静态原型与设计文档：
+当前项目主要包含：
 - `apps/daemon` — Python + FastAPI 本地后台服务
 - `apps/web` — React + TypeScript + Vite Web 前端
-- 静态 HTML 原型（无需构建）
-- 产品需求与技术架构文档
-- 示例数据结构
+- `apps/desktop` — Electron 桌面端与内置后端打包
+- `apps/landing` — 产品官网
+- `apps/wechat-bridge` — 微信渠道桥接服务
+- `docs/`、`plans/` — 产品、架构、开发与实施文档
 
 ## 目录结构
 
 ```
-apps/            # 可运行应用（daemon 后端 + web 前端）
-ui/              # 前端原型（浏览器直接打开）
-docs/            # 产品文档（PRD、引擎协议设计）
-plans/           # 技术架构文档（按功能拆分）
-steps.json       # 示例工作流定义
-cards.json       # 示例任务数据
+apps/            # 可运行应用（daemon、web、desktop、landing、wechat-bridge）
+ui/DESIGN/       # 设计系统静态参考页
+docs/            # 架构、开发与维护文档
+plans/           # 功能设计与实施方案
+scripts/         # 仓库检查、发布与维护脚本
 AGENTS.md        # 本文件
 ```
 
@@ -38,7 +38,7 @@ AGENTS.md        # 本文件
 
 ### `apps/daemon`
 
-WorkStep 本地后台服务，使用 Python 3.11+、FastAPI、Peewee 构建，负责 REST API、WebSocket 实时事件、项目管理、工作流编排、LLM 引擎调用与 SQLite 持久化。
+WorkStep 本地后台服务，最低支持 Python 3.11，使用 FastAPI、Peewee 构建，负责 REST API、WebSocket 实时事件、项目管理、工作流编排、LLM 引擎调用与 SQLite 持久化。默认开发环境、CI 与桌面打包使用 Python 3.12，Docker 运行时使用 Python 3.14；调整版本时须同时核对 `pyproject.toml`、`.python-version`、CI、Dockerfile 与桌面打包脚本。
 
 主要目录：
 - `api/` — API 路由与接口
@@ -61,7 +61,8 @@ uv run pytest
 
 ### 后端异步 I/O 开发规范
 
-- **所有 I/O 不得阻塞主进程事件循环**：文件、网络、数据库、子进程管道及同步 SDK 等可能阻塞的 I/O，禁止在 `async def`、FastAPI 异步路由、WebSocket 处理器或后台协程中直接同步执行；优先使用原生异步接口，无异步接口时必须通过 `asyncio.to_thread`、项目数据库执行器或专用执行器隔离。
+- **所有可能阻塞的 I/O 均不得运行在事件循环线程**：文件、网络、数据库、子进程管道及同步 SDK 等 I/O，禁止在 `async def`、FastAPI 异步路由、WebSocket 处理器或后台协程中直接同步执行；优先使用原生异步接口，无异步接口时必须通过 `asyncio.to_thread`、项目数据库执行器或专用执行器隔离。同步辅助函数可以执行 I/O，但其所有异步调用路径必须保证已进入执行器；仅声明为 `async def` 或放入后台协程不构成隔离。
+- **阻塞回归必须有 canary**：新增或修改可能阻塞的 I/O 路径时，使用慢盘、网络延迟、慢 SDK 或锁竞争模拟，并配合健康检查或轻量协程证明事件循环仍可及时响应。
 
 ### Peewee 异步开发规范
 
@@ -79,23 +80,22 @@ WorkStep Web 前端，使用 React、TypeScript、Vite、React Flow 和 Zustand 
 
 ```bash
 cd apps/web
-npm install
-npm run dev
-npm run build
+yarn install --frozen-lockfile
+yarn dev
+yarn test
+yarn build
 ```
 
-## 查看原型
+### 其他应用
 
-浏览器直接打开 `ui/` 下的 HTML 文件：
-- `ui/index.html` — 主面板（任务列表 + 看板视图）
-- `ui/canvas-editor.html` — Dify 风格节点画布编辑器
-- `ui/card-detail.html` — 任务详情（阶段时间线 + LLM 对话）
-- `ui/ai-research-harness.html` — 备选界面
+- `apps/desktop` 的开发与打包命令以其 `README.md` 和 `package.json` 为准。
+- `apps/landing`、`apps/wechat-bridge` 的命令以各自 `package.json` 为准。
+- 静态设计参考页为 `ui/DESIGN/index.html`，不代表当前可运行前端功能。
 
 ## 前端开发规范（`apps/web`）
 
 - **优先复用**：同一 UI 出现两次即抽公共组件并统一默认值，禁止复制实现。现有入口：消息用 `ChatMessageBubble` + `MessageMetaBar` + `MessageResponseFooter`；输入用 `ChatInput`（配置菜单用 `CoordinatorConfigBar`）；Markdown 编辑/展示用 `MarkdownEditor` / `MarkdownMessage`；确认用 `ConfirmDialog`。
-- **页面与布局职责**：`Layout` 和页面层只负责路由级数据选择、区域编排与少量跨区域协调，不得内联实现完整业务流程。一个弹框、侧栏分区或编辑器只要同时拥有独立状态、异步请求、校验和确认交互，就应抽成自管理的组合模块；调用方只传稳定标识和结果/关闭回调，禁止为了“拆文件”透传整组 state/setter。新增职责前先检查文件复杂度；文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个均视为拆分信号，继续增长必须先抽离职责或在变更说明中写明理由。
+- **页面与布局职责**：`Layout` 和页面层只负责路由级数据选择、区域编排与少量跨区域协调，不得内联实现完整业务流程。一个弹框、侧栏分区或编辑器只要同时拥有独立状态、异步请求、校验和确认交互，就应抽成自管理的组合模块；调用方只传稳定标识和结果/关闭回调，禁止为了“拆文件”透传整组 state/setter。文件超过 800 行、局部状态超过 15 个或 effect 超过 10 个均视为拆分信号；现有超限文件属于待治理技术债，修改时不得继续加入新的独立业务职责或显著增加复杂度。新增复杂流程必须先抽离模块；确实无法拆分时须在变更说明中写明理由。
 - **模块测试归属**：行为测试应面向实际拥有该行为的模块，不得把页面源码文本当成所有子功能的测试入口。页面层只测试模块是否正确组装；状态、请求、校验、关闭保护和错误恢复由组合模块自己的测试覆盖。重构移动职责时同步迁移测试目标，避免测试反向阻止合理拆分。
 - **交互与校验**：禁用原生 `alert/confirm`。必填项为空时提交类按钮禁用；触发类按钮（如「AI 创建」）可点击，但须在弹框固定高度区域提示、聚焦缺失字段。侧边面板有改动时，关闭前用 `ConfirmDialog` 确认；无改动时遮罩点击直接关闭。
 - **命名**：新建/重命名项目与工作流时禁止空白字符，前端即时校验，后端 schema 同步强制。
@@ -122,10 +122,10 @@ npm run build
 
 | 层 | 技术 | 说明 |
 |---|---|---|
-| Daemon | **Python + FastAPI** | 异步 API，SSE 推送，子进程管理 |
+| Daemon | **Python + FastAPI** | 异步 API，WebSocket 实时推送，子进程管理 |
 | ORM | **Peewee** | SQLite 友好，轻量 |
 | 子进程 | **asyncio.subprocess** | 流式读取 LLM CLI stdout |
-| SSE | **sse-starlette** | 全局单流推送 |
+| 实时通道 | **WebSocket** | `/ws` 主事件流及分享、远程项目专用通道 |
 | 内部事件 | **ACP 词汇** | 各引擎统一产出 ACP session update 对齐事件，`events.py` 定义（内部=ACP） |
 | 对外事件 | **AG-UI** | WebSocket 实时推送与历史回放共用 `engines/core/agui.py` 翻译层（对外=AG-UI） |
 | 前端 | React + TypeScript + Vite | 画布编辑器是核心约束；store 只消费 AG-UI 事件 |
@@ -135,23 +135,11 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 
 ## 多引擎支持
 
-`BaseLLMEngine` = **我方系统扩展**：安装、版本、二进制解析、配置表单、能力声明等 WorkStep 特有自定义函数。
-`AcpEngineBase` = **通用 ACP 协议调用**：spawn / session / interaction / approval 等协议方法，所有引擎继承它。
-新增引擎 = 新增一个文件：继承 `AcpEngineBase` 并实现 `BaseLLMEngine` 的抽象自定义函数
-（`is_installed` / `get_version` / `resolve_binary`）。ACP 原生引擎（如 Hermes）声明 `COMMAND` 即可，
-基类直接提供全部协议实现；非 ACP 引擎用自己的传输实现 `spawn`，并**完整实现等价会话 / 审批方法**
-（`create_session` / `resume_session` / `close_session` / `cancel_session` / `approve_tool` / `approve_tool_option`
-等，无原生入口的如实声明能力并安全降级），上层调用只依赖 `AcpEngineBase`：
+`BaseLLMEngine` 负责安装、版本、二进制解析、配置表单与能力声明等 WorkStep 扩展；`AcpEngineBase` 提供统一的 spawn / session / interaction / approval 协议接口，所有引擎均继承它。引擎由 `engines/core/registry.py` 自动发现：在 `engines/` 一级模块或包中新增 `AcpEngineBase` 子类并声明唯一 `ENGINE_ID`，无需维护静态注册表。
 
-| 引擎 | stdin | stdout | 会话恢复 | ACP 事件 | 状态 |
-|------|-------|--------|---------|---------|------|
-| Codex | JSONL 流（保持打开） | JSONL | `exec resume <thread_id>` | 实际子集 | P1 实现 |
-| Codex SDK | 官方 SDK 进程内驱动 | 消息流 | `thread_resume` | 实际子集 | 已实现 |
-| Claude Code | 纯文本（写完关闭）/ stream-json 双向 | JSONL | `--resume <session_id>` | 实际子集 | P2 实现 |
-| Hermes | JSON-RPC 双向 | JSON-RPC | 原生 ACP session | 全集 | P2 实现 |
-| Claude / Qoder Agent SDK | 官方 SDK 进程内驱动 | 消息流 | SDK `resume` | 实际子集 | 已实现 |
-| OpenClaw | 一次性 exec | JSON 信封 | 无 | 信封实际子集 | P5 实现 |
-| Pydantic AI（内置 Agent） | 官方 SDK 进程内驱动，绑定供应商 base_url/key | 消息流 | 无（message_history）；harness 自动挂载 StepPersistence | 实际子集 | 已实现 |
+当前实现包含 Claude Code、Codex CLI、Hermes ACP、OpenClaw、Claude Agent SDK、Codex SDK、Qoder SDK、DeepSeek Harness 与内置 Pydantic AI。完整能力矩阵以 `docs/architecture.md`、`docs/llm-engine-development-guide.md`、引擎类的 capability 声明及测试为准，AGENTS.md 不维护易漂移的传输与版本状态表。
+
+ACP 原生引擎（如 Hermes）声明 `COMMAND` 即可复用基类协议实现；非 ACP 引擎用自己的传输实现 `spawn`，并完整实现等价会话与审批方法（`create_session` / `resume_session` / `close_session` / `cancel_session` / `approve_tool` / `approve_tool_option` 等）。没有原生入口的能力必须如实声明并安全降级，上层调用只依赖 `AcpEngineBase`。
 
 各引擎声明 `acp_events` capability 元数据（**声明 = 实际**：有原生等价就映射，无来源不发、不合成默认值；
 `tests/test_engine_base_hierarchy.py` 保证 `acp_events ⊆ ACP_EVENTS` 且映射路径产出的事件都被声明）；
@@ -171,47 +159,22 @@ WebSocket `/ws` 支持按连接订阅过滤（`{"type":"subscribe","task_ids":[.
 `tests/test_stream_lines.py` 覆盖超长单行、超时保缓冲、真实子进程与 Claude/Codex 引擎级回归，
 并守护「不得再用原生 readline 读子进程 stdout」。
 
-Pydantic AI 固定挂载 harness `Coder` 与 `Skills(<项目>/.workstep/skills)`；Skills 只消费
-SkillCenter 白名单镜像，项目记忆只使用流程层注入的 `.workstep/MEMORY.md`，不挂载 Harness 私有
-Memory。思考强度通过 Pydantic AI
-`Thinking(effort=...)` capability 传递，不再使用 `model_settings.thinking`。动态配置仍不暴露
-`harness` 字段并固定写回 `auto`；`TieredCompaction`（ClearToolResults → SlidingWindow → Summarizing 阶梯，
-摘要模型用配置的 `fast_model`，空则回退 coordinator 快速模型，再空则用 run 模型）
-+ `WarnNearLimits` 自动上下文压缩，
-`StepPersistence` 把会话历史持久化到项目 `.workstep/harness_runs.db`（每 run 保留 1 个快照），
-按 `conversation_id=session_id` 从最近一个有快照的 run 恢复；`ConversationSearch`（scope=conversation）
-与 `StepPersistence` 共享同一 store，通过 BM25 检索同会话已持久化历史；单次 Agent run 的 Pydantic AI
-`request_limit` 固定为 100，工具参数校验重试为 3 次，既容纳长编码任务及非严格模型的参数纠错，
-又保留失控保护。Coder shell 在默认安全命令基础上允许项目构建所需的 `yarn/npm/npx/node`；
-命令固定从项目根执行，不允许用 `cd/bash/sh` 绕过白名单。压缩发生时经 receipts 排空产出
-`compacted` 事件（`acp_events` 已声明）。Shell 命令策略拒绝以普通工具结果返回给模型，不消耗
-Pydantic AI 的工具重试预算，避免连续尝试不在白名单中的命令终止整个回合。Coder 自带
-`Planning` 工具集（`write_plan` / `add_task` / `update_task_status` / `update_task_statuses` /
-`remove_task` 等，Pydantic 引擎独有）直接改固定 `InMemoryPlanStore`；引擎在每次 planning 工具
-调用完成后回读 store 并发布标准 ACP `plan` 快照（未变化则去重），前端按与其它引擎一致的
-`plan` 事件渲染计划清单；`blocked`→`pending`、`cancelled`→`completed` 归一到 ACP 稳定三态
-（`engines/core/plans.py: normalize_plan_status`）。
+Pydantic AI 的关键不变量：固定挂载 harness `Coder` 与项目 Skills 白名单镜像；项目记忆仅使用 `.workstep/MEMORY.md`；思考强度通过 `Thinking(effort=...)` 传递；上下文压缩、会话恢复与同会话检索统一使用 `TieredCompaction`、`WarnNearLimits`、`StepPersistence`、`ConversationSearch`，持久化到 `.workstep/harness_runs.db`。单次 run 的 `request_limit` 固定为 100，工具参数重试为 3；Coder shell 只能从项目根执行白名单命令，不允许用 `cd/bash/sh` 绕过。Planning 工具写入固定 `InMemoryPlanStore`，引擎发布去重后的标准 ACP `plan` 快照，并通过 `engines/core/plans.py` 归一状态。更具体的 Harness 行为以 `engines/pydantic_ai/` 及 `tests/test_pydantic_ai_harness.py` 为准。
 
-统一内部事件（`apps/daemon/engines/core/events.py`，内部=ACP 词汇）：
-- 引擎内容事件（ACP session update 对齐）：`agent_message_chunk`、`agent_thought_chunk`、`tool_call`（完整保留 `tool_call_id/title/kind/status/content/locations/raw_input/raw_output/_meta`）、`tool_call_update`（完整保留增量字段）、`plan`、`plan_update`、`plan_removed`、`usage_update`（`used/size/cost{amount,currency}`）、`user_message_chunk`、`session_info_update`、`available_commands_update`、`config_option_update`、`current_mode_update`、`mcp_message`、`elicitation_completed`
-- 编排事件（保留非 ACP 词汇）：`status`、`session_started`（可复用引擎会话标识）、`live_message`（阶段中途插入消息）、`interaction_request`（权限申请 / 提问弹窗，ACP 语义）、`interaction_response`（弹窗用户回复）、`subagent`（子代理 / 后台任务生命周期事件）、`compacted`（上下文已自动压缩）、`engine_state`（进程内引擎状态快照）、`error`、`a2ui`（A2UI 载荷）、`acp_raw`（未知 ACP update 透传）
-- 旧 `events_json` 兼容：历史回放经 `map_legacy_event` 将旧词汇映射到新词汇后再翻译
-
-对外事件（AG-UI，`apps/daemon/engines/core/agui.py` 统一翻译，WebSocket 实时推送与历史回放共用）：
-- 消息：`TEXT_MESSAGE_START / TEXT_MESSAGE_CHUNK / TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_END`、`REASONING_MESSAGE_CHUNK`
-- 工具：`TOOL_CALL_START / TOOL_CALL_ARGS / TOOL_CALL_CHUNK / TOOL_CALL_RESULT`（`toolCallId/toolCallName/args/output/isError`）
-- 运行：`RUN_STARTED / RUN_FINISHED / RUN_ERROR`（`threadId=task_id`、`runId=task_id::step_key`）
-- 自定义：`CUSTOM{name:"workstep.*"}`（plan / usage / interaction / subagent / task_draft / flow_proposals / status 等）与 `CUSTOM{name:"a2ui.surface"}`（A2UI 载荷，按 messageId 追加；` ```a2ui ` fence 仅作旧消息回退）
-- 前端 `apps/web` 所有 store（`taskStore` / `assistantStore` 及其配置实例）只消费 AG-UI，统一入口 `src/utils/agui.ts`
+事件边界的权威来源为 `apps/daemon/engines/core/events.py`、`engines/core/agui.py` 和前端 `src/utils/agui.ts`：引擎内部使用 ACP 对齐内容事件并保留必要的编排事件；未知 ACP update 通过 `acp_raw` 透传，旧 `events_json` 经 `map_legacy_event` 兼容。WebSocket 实时推送与历史回放必须共用 AG-UI 翻译层；前端所有 store 只消费 AG-UI，A2UI 使用 `CUSTOM{name:"a2ui.surface"}`，Markdown fence 仅作为旧消息回退。
 
 ## 数据模型
 
 每个项目一个 `.workstep/workstep.db`，核心表：
 - `tasks` — 任务（对应前端"卡片"）
-- `task_steps` — 每阶段进度（支持并行分支）
-- `messages` — LLM 消息正文、事件摘要与 JSONL 日志索引
-- `agent_sessions` — 引擎会话（Codex --resume 用）
-- `artifacts` — 产物记录
+- `task_steps` — 每阶段当前进度与引擎会话标识
+- `workflows`、`workflow_runs`、`step_runs`、`review_runs` — 流程定义及执行/审核轮次
+- `messages` — 任务消息正文、事件摘要与 JSONL 日志索引
+- `chat_sessions`、`chat_messages` — 项目会话及消息；可恢复引擎会话标识保存在会话或阶段字段中
+- `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements` — 协调助手状态
+- `schedules`、`schedule_runs`、`task_shares`、`channels` — 定时任务、分享与外部渠道
+
+完整表集合以 `apps/daemon/models/__init__.py::ALL_MODELS` 为准。产物不是 `artifacts` 数据表，而是项目 `.workstep/artifacts/` 下的文件与 manifest。
 
 任务阶段执行的完整过程事件以项目 `.workstep/event_logs/task-<task_id>/<session_id>/<message_id>.jsonl`
 为权威日志；`messages` 表只保留可见 `content`、必要的摘要事件、`event_summary_json`、

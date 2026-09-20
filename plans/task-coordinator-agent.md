@@ -1,5 +1,7 @@
 # 用户消息接入工作流：任务协调 Agent
 
+> 状态：核心链路已实现。协调会话、动作提案、阶段补充、审核决策、指定阶段重跑和阶段消息已接入；本文前半部分保留实施前可行性分析，当前契约以代码、`docs/architecture.md` 和测试为准。
+
 ## 1. 结论与可行性
 
 ### 1.1 总体结论
@@ -685,7 +687,8 @@ GET 响应同时返回任务配置、最终生效配置和可切换引擎摘要�
   `supports_vision` 能力位：API 直调与 PydanticAI 以原生图片内容块/部件
   发送，Claude Code / Claude Agent SDK 以 markdown 图片引用读取，其余引擎
   把图片引用注入 prompt 降级处理（模型不支持时至少可见路径）。
-- 协调用户消息中的图片（`![alt](项目名/.workstep/uploads/...)` 或裸
+- 协调用户消息中的图片（Markdown 图片引用，目标为
+  `项目名/.workstep/uploads/...`，或裸
   `.workstep/uploads/...` 路径）会被解析并路由到引擎；仅接受项目
   uploads 目录内的文件，其余路径忽略。
 - JSON 解析失败只修复一次，失败后不创建提案。

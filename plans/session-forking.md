@@ -11,13 +11,15 @@
 - 跨引擎上下文使用引擎无关的结构化交接包，而不是简单拼接所有原始事件。
 - 分叉后源会话保持不变；新旧会话可以独立继续、停止、删除和恢复。
 
-## 已验证现状
+## 实施前基线（历史）
 
-- 会话及消息分别持久化在 `chat_sessions` / `chat_messages`，但没有父会话、分叉点或交接方式字段。
-- `ChatPage` 当前只支持新建、重命名、删除，没有分叉入口。
+以下条目记录方案启动前的缺口，不描述当前实现：
+
+- 会话及消息分别持久化在 `chat_sessions` / `chat_messages`，当时还没有父会话、分叉点或交接方式字段。
+- `ChatPage` 当时只支持新建、重命名、删除，没有分叉入口。
 - `AssistantRuntime._get_or_create_session` 检测到引擎切换时只清空 `resolved_session_id`，仍保留 WorkStep 消息。
-- 对支持 resume 的引擎，`ChatSessionModule._build_prompt` 在没有引擎会话 ID 时发送系统提示词和最后一条用户消息，不会把旧消息交给新引擎。因此当前在已有会话中直接切换引擎会造成上下文断层。
-- 引擎公共能力只有 `supports_resume` / `supports_sessions`，还没有原生会话分叉接口或能力声明。
+- 对支持 resume 的引擎，`ChatSessionModule._build_prompt` 在没有引擎会话 ID 时只发送系统提示词和最后一条用户消息，切换引擎会造成上下文断层。
+- 引擎公共能力当时只有 `supports_resume` / `supports_sessions`，没有原生会话分叉接口或能力声明。
 - `engine_state` 只适用于能序列化自身历史的进程内引擎，不能作为跨引擎格式直接复用。
 
 ## 产品语义

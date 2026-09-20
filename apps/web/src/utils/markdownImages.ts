@@ -26,12 +26,14 @@ export function splitMarkdownImages(markdown: string): MarkdownInputSegment[] {
 
   for (const match of markdown.matchAll(MARKDOWN_IMAGE)) {
     const start = match.index
-    segments.push({
-      type: 'text',
-      markdown: markdown.slice(cursor, start),
-      start: cursor,
-      end: start,
-    })
+    if (start > cursor) {
+      segments.push({
+        type: 'text',
+        markdown: markdown.slice(cursor, start),
+        start: cursor,
+        end: start,
+      })
+    }
     const imageMarkdown = match[0]
     segments.push({
       type: 'image',

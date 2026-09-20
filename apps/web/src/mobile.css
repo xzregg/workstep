@@ -315,6 +315,11 @@
     flex-shrink: 0 !important;
     min-height: 32px !important;
   }
+  .chat-input-attach {
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+  }
   /* 发送按钮独立占据 toolbar 右侧，不与横滚按钮区重叠；无输入时隐藏。 */
   .chat-input-send {
     flex: 0 0 32px !important;

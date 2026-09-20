@@ -1266,6 +1266,84 @@ async def test_task_api_keeps_previous_stage_status_after_restart_reset(api_cont
     assert steps["frontend"]["previous_status"] is None
 
 
+@pytest.mark.anyio
+async def test_task_execution_report_api_returns_task_scoped_analysis(api_context):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "execution-report"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Execution report task",
+            "cwd": str(project_dir),
+            "workflow_id": workflow["id"],
+            "engine": "claude",
+        },
+    )
+    task_id = created.json()["id"]
+
+    response = await client.get(
+        f"/api/task/{task_id}/execution-report?project_id={project_id}"
+    )
+    assert response.status_code == 200
+    assert response.json()["summary"]["run_count"] == 0
+    assert response.json()["segments"] == []
+
+    missing = await client.get(
+        f"/api/task/missing/execution-report?project_id={project_id}"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_task_execution_report_slow_sql_does_not_block_health(api_context, monkeypatch):
+    client, tmp_path = api_context
+    project_dir = tmp_path / "slow-execution-report"
+    project_dir.mkdir()
+    initialized = await client.post("/api/project/init", json={"path": str(project_dir)})
+    project_id = initialized.json()["id"]
+    workflow = await _create_test_workflow(client, project_id)
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "Slow report",
+            "cwd": str(project_dir),
+            "workflow_id": workflow["id"],
+            "engine": "claude",
+        },
+    )
+    task_id = created.json()["id"]
+    project = __import__("main").project_manager.get_project_by_id(project_id)
+    original_execute_sql = project.db.execute_sql
+    query_started = threading.Event()
+
+    def slow_message_query(sql, params=None, commit=None):
+        if 'FROM "message"' in sql and not query_started.is_set():
+            query_started.set()
+            time.sleep(0.35)
+        return original_execute_sql(sql, params)
+
+    monkeypatch.setattr(project.db, "execute_sql", slow_message_query)
+    report_task = asyncio.create_task(client.get(
+        f"/api/task/{task_id}/execution-report?project_id={project_id}"
+    ))
+    assert await asyncio.to_thread(query_started.wait, 1)
+    started_at = time.perf_counter()
+    health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+    health_elapsed = time.perf_counter() - started_at
+    report = await report_task
+
+    assert health.status_code == 200
+    assert health_elapsed < 0.2
+    assert report.status_code == 200
+
+
 
 @pytest.mark.anyio
 async def test_task_archive_contract(api_context):

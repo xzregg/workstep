@@ -1,6 +1,6 @@
 # 会话聊天模式（Codex 式）实施计划
 
-> 状态：已实现（2026-08-12）。本文档为功能规划与落地记录。
+> 状态：已实现（首版 2026-08-12，后续持续演进）。本文档保留首版规划与落地记录；分叉、权限模式、Provider、视觉模型和 JSONL 事件日志等当前能力以代码及 `plans/session-forking.md` 为准。
 
 ## 摘要
 - 新增"会话聊天"：按 **项目 → 流程 → 会话** 三级展示，每个流程下可建多个会话；通用编码对话，`cwd` 为项目目录，多轮流式、可停止、引擎/模型可切换。
@@ -12,9 +12,10 @@
 
 ## 关键改动
 
-### 数据模型（迁移 v33，`LATEST_SCHEMA_VERSION` 30→33）
-- 新表 `chat_sessions`：`id`(uuid)、`project_id`、`workflow_id`、`title`、`sort_order`（拖拽排序，v33 新增）、`engine`、`model`、`fast_model`、`engine_session_id`、`engine_state_json`、`created_at`、`updated_at`，索引 `(project_id, workflow_id, updated_at)`。
-- 新表 `chat_messages`：`id`、`session`(FK)、`role`、`content`、`status`、`engine`、`model`、`prompt`、`events_json`、`usage_json`、`created_at`、`ended_at`，索引 `(session, created_at)`。
+### 数据模型（当前 schema bootstrap + additive migration）
+- 当前迁移器直接用模型定义收敛新旧数据库，`LATEST_SCHEMA_VERSION = 0` 仅表示当前基线，不再累计历史迁移号。
+- `chat_sessions` 除首版字段外，现已包含 Provider、视觉模型、权限模式、父会话、分叉点、交接上下文和分叉状态等字段。
+- `chat_messages` 除首版字段外，现已包含作者快照、JSONL 事件日志路径、事件摘要、事件计数和末序号；`events_json` 只用于旧数据兼容。
 - 新表 `project_settings`：`project_id`、`key`、`value_json`、`updated_at`，唯一 `(project_id, key)`，存项目级快捷按钮配置。
 - 新模型注册进 `ALL_MODELS`。
 
@@ -30,13 +31,11 @@
 - `Layout.tsx` 侧边栏：流程下展开"会话"列表（新建/点击进入/右键重命名删除，`ConfirmDialog` 确认）；新增"会话"导航按钮。
 - i18n：`zh-CN.ts` 先行（`chatSession.*` 42 键），`en-US` 真实翻译，`zh-TW`/`ja-JP` 中文占位，键集合一致。
 
-## 测试计划（已完成）
-- 后端 `tests/test_chat_session.py`（7 项通过）：迁移建表与版本 32；会话 CRUD round-trip；消息仅写入 `chat_messages`（不污染 `tasks`/`messages`）；跨 runtime 恢复；chat 幂等重放；事件 `channel="session_chat"` 隔离；删除运行中会话报错；quick-buttons 默认值与校验；HTTP 全契约（create/list/get/rename/chat/stop/404/400/删除）。
-- 前端 `tests/chatSessionStore.test.ts`（4 项通过）：`session_chat` channel 过滤；会话列表按流程增删改；快捷按钮经 API 保存并更新本地；zh-CN 词典键存在。
-- 回归：`uv run pytest` 全量 630+ 通过（4 个既有失败与本次无关，见下）；前端既有测试 + `npm run build` 通过。
+## 首版测试记录
+- 后端覆盖迁移、CRUD、独立消息表、跨 runtime 恢复、幂等、channel 隔离、运行中保护、快捷按钮和 HTTP 契约；当前用例数量以测试收集结果为准。
+- 前端覆盖 `session_chat` channel、会话列表、快捷按钮和 i18n；分叉与交接另见对应测试。
 
 ## 假设与说明
 - 会话挂在流程下（项目 → 流程 → 会话）；会话标题默认取首条用户消息的**第一句话**（按句末标点切分，最长 40 字），可重命名（允许空白字符，仅要求非空）。
 - 通用对话不绑定画布、不改动工作流定义。
 - 中继：复用现有 Provider 自定义 `base_url` / cc-switch 导入。
-- 既有失败（与本次改动无关）：`test_models.py::test_init_db_creates_tables`、`test_workflow_definition.py` 两个用例在 HEAD 上即失败；`test_e2e.py::test_e2e_task_run_publishes_events` 为 WIP 中测试桩（`MemoryConfigStore`）未实现新配置 API 导致。

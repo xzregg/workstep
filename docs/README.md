@@ -6,6 +6,7 @@
 - [Project skill center](skill-center.md) — discovery, project selection, mirroring, API, and engine isolation.
 - [GitHub settings](github-settings.md) — repository features, rulesets, security, Pages, and analytics.
 - [Release checklist](releasing.md) — signing, SBOM, provenance, approval, and clean-machine validation.
+- [Plan index](../plans/README.md) — implementation records, historical plans, and future proposals with explicit status.
 - [Product requirements](../PRODUCT.md) and [design system](../DESIGN.md) — product and visual decisions.
 
 Repository-agent instructions remain in [`AGENTS.md`](../AGENTS.md); they point back to these human-facing documents instead of duplicating them.
