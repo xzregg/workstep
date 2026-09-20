@@ -47,7 +47,7 @@ SESSION_TTL_SECONDS = 60 * 60
 
 SYSTEM_PROMPT = """You are the WorkStep workflow design assistant. Return canvas JSON for an executable workflow.
 +
-+Ask at most two questions about goal, I/O, constraints, review, parallelism, and stages. When ready, return short text plus materially different proposals. For edits, return a patch unless a full redesign is requested or the canvas is empty; if clear, use one proposal with autoApply true.
++Ask at most two questions about goal, I/O, constraints, review, parallelism, and stages. When ready, return short text plus materially different proposals. For edits, always return a patch unless the canvas is empty. A full redesign must set replaceCanvas true explicitly; if clear, use one proposal with autoApply true.
 +
 +Patch: upsertNodes (full changed nodes; existing id updates, omitted id adds), removeNodeIds, optional connections (merged list; omit to keep links).
 +Canvas JSON: {"nodes":[...],"connections":[...]}. Node fields: id, type, title, autoStart, engine, model, color, prompt, inputs. Connection fields: from, fromPort, to, toPort, kind.
@@ -353,14 +353,28 @@ class WorkflowGenModule(AssistantRuntime):
         """
         if not proposals:
             return proposals
+        base_steps = getattr(session, "steps", None)
         merged: list[dict] = []
         for item in proposals:
             steps = item.get("steps")
+            # Models occasionally put only the touched nodes in a canvas-shaped
+            # ``{"nodes": [...]}`` payload.  In edit mode that must be treated
+            # as an incremental patch; otherwise applying it erases every
+            # omitted stage.  Full replacement is deliberately opt-in.
+            if (
+                not is_patch(steps)
+                and not item.get("replaceCanvas")
+                and isinstance(steps, dict)
+                and isinstance(steps.get("nodes"), list)
+                and isinstance((base_steps or {}).get("nodes"), list)
+                and (base_steps or {}).get("nodes")
+            ):
+                steps = self._canvas_payload_to_patch(base_steps, steps)
             if not is_patch(steps):
                 merged.append(item)
                 continue
             try:
-                full, changes, resolved = apply_patch(session.steps, steps)
+                full, changes, resolved = apply_patch(base_steps, steps)
             except WorkflowPatchError:
                 continue
             item = {**item, "steps": full}
@@ -371,6 +385,54 @@ class WorkflowGenModule(AssistantRuntime):
                 item["patch"] = resolved
             merged.append(item)
         return merged
+
+    @staticmethod
+    def _canvas_payload_to_patch(base_steps: dict, candidate: dict) -> dict:
+        """Convert an edit-mode canvas payload into a non-destructive patch."""
+        base_nodes = {
+            node.get("id"): node
+            for node in base_steps.get("nodes", [])
+            if isinstance(node, dict) and isinstance(node.get("id"), int)
+        }
+        candidate_nodes = [
+            node for node in candidate.get("nodes", []) if isinstance(node, dict)
+        ]
+        changed_nodes = [
+            node
+            for node in candidate_nodes
+            if node.get("id") not in base_nodes
+            or base_nodes[node.get("id")] != node
+        ]
+        patch: dict = {
+            "upsertNodes": changed_nodes,
+            "removeNodeIds": [],
+        }
+        if isinstance(candidate.get("connections"), list):
+            base_connections = [
+                conn
+                for conn in base_steps.get("connections", [])
+                if isinstance(conn, dict)
+            ]
+            candidate_connections = [
+                conn for conn in candidate["connections"] if isinstance(conn, dict)
+            ]
+            candidate_ids = {
+                node.get("id")
+                for node in candidate_nodes
+                if isinstance(node.get("id"), int)
+            }
+            # A complete node set may safely carry a complete connection set.
+            # For a node subset, preserve unrelated links and only add links
+            # supplied with the touched stages.
+            if set(base_nodes).issubset(candidate_ids):
+                patch["connections"] = candidate_connections
+            else:
+                connections = list(base_connections)
+                for connection in candidate_connections:
+                    if connection not in connections:
+                        connections.append(connection)
+                patch["connections"] = connections
+        return patch
 
     async def _resolve_proposal(
         self,
@@ -389,6 +451,7 @@ class WorkflowGenModule(AssistantRuntime):
                     "steps": canvas,
                     "autoApply": True,
                 }]
+                proposals = self._merge_patch_proposals(session, proposals)
             except WorkflowValidationError as exc:
                 events.append({
                     "type": "flow_proposals_rejected",
@@ -767,6 +830,7 @@ class WorkflowGenModule(AssistantRuntime):
             ),
             "steps": steps,
             "autoApply": bool(item.get("autoApply", False)),
+            "replaceCanvas": item.get("replaceCanvas") is True,
         }
 
     @staticmethod

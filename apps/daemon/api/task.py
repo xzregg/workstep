@@ -544,6 +544,7 @@ async def get_task_reviews(
             "id": row.id,
             "workflow_run_id": row.workflow_run_id,
             "step_run_id": row.step_run_id,
+            "artifact_round": row.step_run.artifact_round,
             "step_key": row.step_key,
             "mode": row.mode,
             "status": row.status,

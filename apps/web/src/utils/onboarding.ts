@@ -15,6 +15,7 @@ export interface OnboardingState {
   workflowId: string | null
   taskId: string | null
   canvasHintSeen: boolean
+  completedSteps: OnboardingStep[]
 }
 
 interface StorageLike {
@@ -33,6 +34,7 @@ export const DEFAULT_ONBOARDING_STATE: OnboardingState = {
   workflowId: null,
   taskId: null,
   canvasHintSeen: false,
+  completedSteps: [],
 }
 
 const statuses = new Set<OnboardingStatus>(['active', 'dismissed', 'completed'])
@@ -49,8 +51,14 @@ export function loadOnboardingState(storage: StorageLike | null = typeof window 
     if (!statuses.has(value.status as OnboardingStatus) || !steps.has(value.currentStep as OnboardingStep)) {
       return { ...DEFAULT_ONBOARDING_STATE }
     }
+    const completedSteps = Array.isArray(value.completedSteps)
+      ? value.completedSteps.filter((step): step is OnboardingStep => steps.has(step as OnboardingStep))
+      : []
+    const status = value.status === 'active' && [...steps].every((step) => completedSteps.includes(step))
+      ? 'completed'
+      : value.status as OnboardingStatus
     return {
-      status: value.status as OnboardingStatus,
+      status,
       currentStep: value.currentStep as OnboardingStep,
       collapsed: typeof value.collapsed === 'boolean' ? value.collapsed : false,
       setupMode: setupModes.has(value.setupMode as OnboardingSetupMode)
@@ -62,6 +70,7 @@ export function loadOnboardingState(storage: StorageLike | null = typeof window 
       workflowId: nullableString(value.workflowId),
       taskId: nullableString(value.taskId),
       canvasHintSeen: typeof value.canvasHintSeen === 'boolean' ? value.canvasHintSeen : false,
+      completedSteps,
     }
   } catch {
     return { ...DEFAULT_ONBOARDING_STATE }

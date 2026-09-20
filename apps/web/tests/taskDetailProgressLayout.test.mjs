@@ -59,3 +59,15 @@ test('shows pending outputs before the file type and only opens generated files'
   assert.match(source, /role=\{outputReady \? 'button' : undefined\}/)
   assert.match(source, /cursor: outputReady \? 'pointer' : 'default'/)
 })
+
+test('shows artifact round status and modified time in stage IO rows', () => {
+  assert.match(source, /const formatArtifactUpdatedAt = useCallback/)
+  assert.match(source, /role="tablist"/)
+  assert.match(source, /setSelectedIoRound\(round\)/)
+  assert.match(source, /const inputArtifact = findArtifact/)
+  assert.match(source, /const inputUpdatedAt = formatArtifactUpdatedAt\(inputArtifact\?\.updated_at\)/)
+  assert.match(source, /const outputUpdatedAt = formatArtifactUpdatedAt\(outArtifact\?\.updated_at\)/)
+  assert.match(source, /taskDetail\.artifactModifiedAt/)
+  assert.match(source, /t\('taskDetail\.artifactRound'/)
+  assert.match(source, /t\('taskDetail\.outputDone'\)/)
+})

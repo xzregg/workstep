@@ -194,6 +194,8 @@ def test_migrate_database_adds_remote_actor_columns_to_existing_message_tables(t
         "event_summary_json",
         "event_count",
         "last_event_seq",
+        "step_run_id",
+        "artifact_round",
     }.issubset({column.name for column in db.get_columns("message")})
     chat_columns = {column.name for column in db.get_columns("chat_messages")}
     assert expected.issubset(chat_columns)

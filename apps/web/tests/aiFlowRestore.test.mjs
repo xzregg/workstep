@@ -40,7 +40,7 @@ test('AI flow chat repeatedly restores the initial canvas and bypasses proposal 
   assert.match(assistantPanelSource, /composerActions\?: ReactNode/)
   assert.match(assistantPanelSource, /\{composerActions\}/)
   assert.match(editorPanelSource, /onRestore=\{onRestore\}/)
-  assert.match(canvasEditorSource, /onRestore=\{\(steps\) => canvasRef\.current\?\.loadSteps\(steps\)\}/)
+  assert.match(canvasEditorSource, /onRestore=\{\(steps\) => \{ void applyAiSteps\(steps\) \}\}/)
   assert.match(templateSettingsSource, /onRestore=\{\(steps\) => canvasRef\.current\?\.loadSteps\(steps\)\}/)
   assert.match(workflowCreateDialogSource, /onRestore=\{\(nextSteps\) => canvasRef\.current\?\.loadSteps\(nextSteps\)\}/)
 })

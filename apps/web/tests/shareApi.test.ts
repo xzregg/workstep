@@ -62,3 +62,53 @@ test('share errors preserve string messages and fall back for non-JSON responses
     name: 'ApiError', status: 502, message: 'HTTP 502',
   })
 })
+
+test('interactive share uploads attachments through its session and resolves stored upload paths', async (t) => {
+  const originalFetch = globalThis.fetch
+  const originalFileReader = globalThis.FileReader
+  t.after(() => {
+    globalThis.fetch = originalFetch
+    globalThis.FileReader = originalFileReader
+  })
+  class Reader {
+    result: string | ArrayBuffer | null = null
+    onload: null | (() => void) = null
+    onerror: null | (() => void) = null
+    readAsDataURL() {
+      this.result = 'data:image/png;base64,aW1hZ2U='
+      this.onload?.()
+    }
+  }
+  globalThis.FileReader = Reader as unknown as typeof FileReader
+  globalThis.fetch = async (input, options) => {
+    assert.equal(String(input), '/api/task-share/public/share-token/upload/image')
+    assert.equal(new Headers(options?.headers).get('X-Share-Session'), 'share-session')
+    assert.deepEqual(JSON.parse(String(options?.body)), {
+      filename: 'shot.png',
+      data_url: 'data:image/png;base64,aW1hZ2U=',
+      prefix: 'task1234',
+    })
+    return Response.json({
+      url: '.workstep/uploads/task1234-file.png',
+      filename: 'task1234-file.png',
+      size: 5,
+    })
+  }
+
+  const uploaded = await shareApi.uploadAttachment(
+    'share-token',
+    'share-session',
+    new File(['image'], 'shot.png', { type: 'image/png' }),
+    'task1234',
+  )
+
+  assert.equal(uploaded.url, '.workstep/uploads/task1234-file.png')
+  assert.equal(
+    shareApi.resolveAttachmentUrl('share-token', 'share-session', uploaded.url),
+    '/api/task-share/public/share-token/uploads/task1234-file.png?session=share-session',
+  )
+  assert.equal(
+    shareApi.resolveAttachmentUrl('share-token', 'share-session', 'https://example.com/image.png'),
+    'https://example.com/image.png',
+  )
+})

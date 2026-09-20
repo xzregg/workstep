@@ -542,29 +542,6 @@ export default function TaskStageProgressGraph({
     applyZoom(zoomRef.current + delta)
   }, [applyZoom])
 
-  useEffect(() => {
-    const surface = surfaceRef.current
-    if (!surface) return
-    const handleWheel = (event: WheelEvent) => {
-      if (event.ctrlKey || event.metaKey) return
-      if (event.deltaY === 0 && event.deltaX === 0) return
-      const currentZoom = zoomRef.current
-      const rect = surface.getBoundingClientRect()
-      const screenX = event.clientX - rect.left
-      const screenY = event.clientY - rect.top
-      const direction = event.deltaY > 0 ? -1 : 1
-      event.preventDefault()
-      applyZoom(currentZoom + direction * ZOOM_STEP, {
-        contentX: (surface.scrollLeft + screenX) / currentZoom,
-        contentY: (surface.scrollTop + screenY) / currentZoom,
-        screenX,
-        screenY,
-      })
-    }
-    surface.addEventListener('wheel', handleWheel, { passive: false })
-    return () => surface.removeEventListener('wheel', handleWheel)
-  }, [applyZoom])
-
   const setSurfaceScroll = (left: number, top: number) => {
     const surface = surfaceRef.current
     if (!surface) return

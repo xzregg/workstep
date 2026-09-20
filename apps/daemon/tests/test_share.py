@@ -138,6 +138,34 @@ def test_create_share_rejects_unknown_mode(manager, tmp_path):
         db_proxy.reset(ctx)
 
 
+def test_shared_task_uses_owner_display_fields_without_private_paths(manager, tmp_path):
+    """Share payload stays aligned with task detail while removing private project data."""
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-fields")
+
+    ctx = _bind(project)
+    try:
+        payload = share_service.load_shared_task(task["id"])
+    finally:
+        db_proxy.reset(ctx)
+
+    assert payload is not None
+    for key in (
+        "run_round",
+        "restart_from_step_key",
+        "recovered_count",
+        "creator_name",
+        "creator_device_name",
+        "scheduled_start_at",
+        "completed_at",
+        "duration_ms",
+        "total_tokens",
+    ):
+        assert key in payload
+    assert "cwd" not in payload
+    assert "coordinator_session_id" not in payload
+    assert all("session_id" not in step for step in payload["steps"])
+
+
 @pytest.mark.asyncio
 async def test_public_share_api_exposes_mode_and_enforces_interactive_writes(
     manager,
@@ -188,6 +216,96 @@ async def test_public_share_api_exposes_mode_and_enforces_interactive_writes(
     assert interactive_meta.json()["mode"] == "interactive"
     assert rejected.status_code == 403
     assert rejected.json()["detail"] == "Share is read-only"
+
+
+@pytest.mark.asyncio
+async def test_interactive_share_can_upload_and_read_message_attachments(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """Interactive uploads stay project-scoped and are readable by the share session."""
+    import base64
+    import main
+    import services.project as project_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-upload")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="interactive")
+    finally:
+        db_proxy.reset(ctx)
+
+    content = b"shared image bytes"
+    data_url = "data:image/png;base64," + base64.b64encode(content).decode()
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(
+            f"/api/task-share/public/{share['token']}/unlock",
+            json={"password": ""},
+        )
+        session_token = unlocked.json()["session_token"]
+        uploaded = await client.post(
+            f"/api/task-share/public/{share['token']}/upload/image",
+            headers={"X-Share-Session": session_token},
+            json={"filename": "shot.png", "data_url": data_url, "prefix": "shared"},
+        )
+
+        assert uploaded.status_code == 200
+        upload = uploaded.json()
+        assert upload["url"].startswith(".workstep/uploads/shared-")
+        served = await client.get(
+            f"/api/task-share/public/{share['token']}/uploads/{upload['filename']}",
+            params={"session": session_token},
+        )
+
+    assert served.status_code == 200
+    assert served.content == content
+    assert served.headers["content-security-policy"] == "sandbox"
+    assert served.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.asyncio
+async def test_read_only_share_cannot_upload_message_attachments(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """Attachment writes follow the same interactive-share permission boundary as chat."""
+    import main
+    import services.project as project_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-read-upload")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="read_only")
+    finally:
+        db_proxy.reset(ctx)
+
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(
+            f"/api/task-share/public/{share['token']}/unlock",
+            json={"password": ""},
+        )
+        response = await client.post(
+            f"/api/task-share/public/{share['token']}/upload/file",
+            headers={"X-Share-Session": unlocked.json()["session_token"]},
+            json={
+                "filename": "notes.txt",
+                "data_url": "data:text/plain;base64,aGVsbG8=",
+                "prefix": "shared",
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Share is read-only"
 
 
 @pytest.mark.asyncio
@@ -304,8 +422,8 @@ async def test_interactive_share_interaction_response_must_match_shared_task(
             pass
 
 
-def test_shared_history_scrubs_interactions_for_read_only_only():
-    """Only interactive shares expose engine permission interaction events."""
+def test_shared_history_display_is_identical_across_share_modes():
+    """Share mode changes the composer only, never the visible event history."""
     events = [
         {"type": "CUSTOM", "name": "workstep.interaction_request"},
         {"type": "CUSTOM", "name": "workstep.interaction_response"},
@@ -317,8 +435,4 @@ def test_shared_history_scrubs_interactions_for_read_only_only():
     interactive = share_service._scrub_events(events, mode="interactive")
 
     assert [event.get("name") or event["type"] for event in read_only] == ["TEXT_MESSAGE_CHUNK"]
-    assert [event.get("name") or event["type"] for event in interactive] == [
-        "workstep.interaction_request",
-        "workstep.interaction_response",
-        "TEXT_MESSAGE_CHUNK",
-    ]
+    assert interactive == read_only

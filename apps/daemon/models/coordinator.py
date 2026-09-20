@@ -89,9 +89,9 @@ class ActionProposal(BaseModel):
 class StageSupplement(BaseModel):
     """Append-only stage guidance for current and future stage attempts.
 
-    Created either by a confirmed coordinator ``supplement_stage`` proposal
-    (source_proposal set) or directly by a live stage message marked
-    ``as_guidance`` (source_proposal NULL).
+    Created by a confirmed coordinator ``supplement_stage`` / prompted
+    ``rerun_from_stage`` proposal (source_proposal set), or directly by a live
+    stage message marked ``as_guidance`` (source_proposal NULL).
     """
 
     id = pw.TextField(primary_key=True)

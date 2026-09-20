@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import Icon from './Icon'
 import { resolveMarkdownImageSrc } from '../utils/markdownImages'
 import { useI18n } from '../i18n'
+import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
 
 /* ══════════════════════════════════════════
    ImagePreview — shared full-screen image
@@ -23,7 +24,8 @@ export interface ImagePreviewProps {
 
 export default function ImagePreview({ src, alt, projectId, onClose }: ImagePreviewProps) {
   const { t } = useI18n()
-  const resolved = resolveMarkdownImageSrc(src, projectId)
+  const markdownUrlResolver = useMarkdownUrlResolver()
+  const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

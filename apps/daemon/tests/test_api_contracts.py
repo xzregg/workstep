@@ -141,6 +141,81 @@ async def _create_test_workflow(client, project_id):
 
 
 @pytest.mark.anyio
+async def test_task_detail_ignores_steps_removed_from_active_run(api_context):
+    """Task completion is based on the active run snapshot, not stale stages."""
+    import main
+    from models import Task, TaskStep, WorkflowRun
+    from models.fields import utc_now
+
+    client, tmp_path = api_context
+    project_dir = tmp_path / "removed-stage-task"
+    project_dir.mkdir()
+    initialized = await client.post(
+        "/api/project/init",
+        json={"path": str(project_dir)},
+    )
+    project_id = initialized.json()["id"]
+    workflow_response = await client.post(
+        f"/api/workflow/create?project_id={project_id}",
+        json={
+            "name": "可变流程",
+            "steps": {
+                "nodes": [
+                    {"id": 1, "type": "build", "title": "构建"},
+                    {"id": 2, "type": "deploy", "title": "上线"},
+                ],
+                "connections": [],
+            },
+        },
+    )
+    assert workflow_response.status_code == 200
+    workflow_id = workflow_response.json()["id"]
+    created = await client.post(
+        f"/api/task/create?project_id={project_id}",
+        json={
+            "title": "已完成任务",
+            "cwd": str(project_dir),
+            "workflow_id": workflow_id,
+            "auto_start": False,
+        },
+    )
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+
+    now = utc_now()
+    with main.project_manager.activate_project_by_id(project_id):
+        TaskStep.update(status="passed").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == "build")
+        ).execute()
+        TaskStep.update(status="failed").where(
+            (TaskStep.task == task_id) & (TaskStep.step_key == "deploy")
+        ).execute()
+        run = WorkflowRun.create(
+            id="active-run-with-removed-stage",
+            task=task_id,
+            status="succeeded",
+            workflow_schema_version=1,
+            workflow_snapshot_json=json.dumps({"steps": [{"key": "build"}]}),
+            started_at=now,
+            ended_at=now,
+        )
+        Task.update(
+            status="ready",
+            active_workflow_run_id=run.id,
+        ).where(Task.id == task_id).execute()
+
+    response = await client.get(
+        f"/api/task/{task_id}",
+        params={"project_id": project_id},
+    )
+
+    assert response.status_code == 200
+    assert [(step["step_key"], step["status"]) for step in response.json()["steps"]] == [
+        ("build", "passed"),
+    ]
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("endpoint", ["init", "register"])
 async def test_new_project_stays_empty_after_reopening(api_context, endpoint):
     client, tmp_path = api_context

@@ -523,6 +523,19 @@ async def test_automatic_review_retries_with_feedback(tmp_path):
             .order_by(Message.sequence)
         )
         assert len(review_messages) == 2
+        assert [message.artifact_round for message in review_messages] == [1, 2]
+        assert [message.step_run_id for message in review_messages] == [
+            run.id for run in step_runs
+        ]
+        execution_messages = list(
+            Message.select()
+            .where((Message.task == task) & (Message.channel == "execution"))
+            .order_by(Message.sequence)
+        )
+        assert [message.artifact_round for message in execution_messages] == [1, 2]
+        assert [message.step_run_id for message in execution_messages] == [
+            run.id for run in step_runs
+        ]
         assert all(message.usage_json is not None for message in review_messages)
         usage = json.loads(review_messages[-1].usage_json)
         assert usage["input_tokens"] == 104

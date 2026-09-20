@@ -5,7 +5,15 @@ import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
+from api.fs import (
+    UploadFileRequest,
+    UploadImageRequest,
+    _serve_upload_file,
+    upload_file,
+    upload_image,
+)
 from schemas.base import BaseSchema
 from services import share as share_service
 from services.intervention import intervention_manager
@@ -144,6 +152,18 @@ async def _require_share_session(request: Request) -> dict:
     return ctx
 
 
+async def _require_share_session_token(session_token: str) -> dict:
+    """Validate a session passed in a URL (needed by browser image requests)."""
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Missing share session token")
+    ctx = await asyncio.to_thread(
+        share_service.resolve_share_session, session_token
+    )
+    if ctx is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired share session")
+    return ctx
+
+
 @router.get("/public/{token}/task")
 async def public_share_task(token: str, request: Request):
     """Load the shared task (read-only). Requires an unlocked session."""
@@ -220,6 +240,7 @@ async def public_share_reviews(token: str, request: Request):
             "id": row.id,
             "workflow_run_id": row.workflow_run_id,
             "step_run_id": row.step_run_id,
+            "artifact_round": row.step_run.artifact_round,
             "step_key": row.step_key,
             "mode": row.mode,
             "status": row.status,
@@ -237,6 +258,59 @@ async def public_share_reviews(token: str, request: Request):
         } for row in rows]
 
     return {"reviews": await project_manager.run_db(ctx["project_id"], lambda _project: load_reviews())}
+
+
+@router.post("/public/{token}/upload/image")
+async def public_share_upload_image(
+    token: str,
+    req: UploadImageRequest,
+    request: Request,
+):
+    """Upload an image from an interactive share into the shared project."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    return await upload_image(req, ctx["project_id"])
+
+
+@router.post("/public/{token}/upload/file")
+async def public_share_upload_file(
+    token: str,
+    req: UploadFileRequest,
+    request: Request,
+):
+    """Upload a file from an interactive share into the shared project."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    _require_interactive_share(ctx)
+    return await upload_file(req, ctx["project_id"])
+
+
+@router.get("/public/{token}/uploads/{filename}", response_class=FileResponse)
+async def public_share_upload_asset(
+    token: str,
+    filename: str,
+    session: str = Query(...),
+):
+    """Serve a project upload only to a valid session for this share."""
+    ctx = await _require_share_session_token(session)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    from main import project_manager
+
+    project = project_manager.get_project_by_id(ctx["project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    response = await asyncio.to_thread(
+        _serve_upload_file,
+        project.workstep_dir / "uploads",
+        filename,
+    )
+    response.headers["Content-Security-Policy"] = "sandbox"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.post("/public/{token}/steps/{step_key}/message")

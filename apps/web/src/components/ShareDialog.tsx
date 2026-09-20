@@ -6,6 +6,7 @@ import ConfirmDialog from './ConfirmDialog'
 import SegmentedControl from './SegmentedControl'
 import { taskApi, type ShareInfo } from '../api/client'
 import { useI18n } from '../i18n'
+import { copyText } from '../utils/clipboard'
 
 type ShareMode = 'read_only' | 'interactive'
 
@@ -106,12 +107,10 @@ export default function ShareDialog({
   }
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl)
+    const ok = await copyText(shareUrl)
+    if (ok) {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Fallback: select input text.
     }
   }
 

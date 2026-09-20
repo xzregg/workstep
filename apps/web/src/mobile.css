@@ -17,6 +17,9 @@
 .mobile-node-config dd { overflow-wrap: anywhere; margin-top: 4px; }
 .mobile-node-config pre { max-width: 100%; overflow: auto; }
 .mobile-canvas-notice { padding: 10px 16px; font-size: calc(13px * var(--font-scale)); color: var(--meta); background: var(--surface); }
+.ai-flow-editor-host { display: contents; }
+.ai-flow-editor-mobile-header { display: none; }
+.ai-flow-editor-error { position: absolute; right: 16px; bottom: 16px; z-index: 3; max-width: min(420px, calc(100% - 32px)); padding: 10px 12px; border: 1px solid var(--danger); border-radius: 10px; color: var(--danger); background: var(--bg); box-shadow: 0 8px 28px rgb(0 0 0 / 16%); }
 
 @media (max-width: 1023px) {
   html, body, #root { height: 100%; width: 100%; overflow: hidden; }
@@ -24,11 +27,42 @@
   .mobile-header { display: flex; height: 56px; flex-shrink: 0; align-items: center; gap: 8px; padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); border-bottom: 1px solid var(--border-soft); background: var(--bg); }
   .mobile-header > span { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(16px * var(--font-scale)); font-weight: 600; }
   .mobile-header button, .navigation-close, .mobile-task-toolbar > button { width: 44px; height: 44px; flex-shrink: 0; padding: 0; justify-content: center; }
+  .ai-flow-entry-button { min-height: 36px; padding-inline: 12px !important; color: var(--ai-assistant); }
+  .ai-flow-editor-host {
+    position: absolute;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    min-width: 0;
+    background: var(--bg);
+  }
+  .ai-flow-editor-handle { display: none; }
+  .ai-flow-editor-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+    height: 100%;
+    border-left: 0 !important;
+  }
+  .ai-flow-editor-mobile-header {
+    display: flex;
+    min-height: 52px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px max(12px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg);
+  }
+  .ai-flow-editor-mobile-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ai-flow-editor-mobile-header button { min-width: 56px; min-height: 44px; padding-inline: 12px; }
+  .ai-flow-editor-panel > .assistant-chat-panel { flex: 1; min-height: 0; }
+  .ai-flow-editor-error { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
   .responsive-navigation { position: fixed; inset: 0 auto 0 0; z-index: 1201; width: min(340px, calc(100vw - 48px)) !important; min-width: 0 !important; padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom); transform: translateX(-100%); visibility: hidden; transition: transform 180ms var(--ease), visibility 180ms; }
   .responsive-navigation.is-open { visibility: visible; transform: translateX(0); }
   .responsive-navigation .onboarding-checklist,
-  .responsive-navigation .onboarding-launcher,
-  .responsive-navigation .onboarding-reopen-button { display: none !important; }
+  .responsive-navigation .onboarding-launcher { display: none !important; }
   .navigation-close { position: absolute; right: 4px; top: max(4px, env(safe-area-inset-top)); background: var(--bg); z-index: 1; }
   .responsive-navigation > div:first-of-type { padding-right: 44px !important; }
   .app-shell > .task-detail-split-handle { display: none; }

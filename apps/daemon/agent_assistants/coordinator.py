@@ -835,22 +835,13 @@ class CoordinatorModule:
                         payload,
                     )
                 elif proposal_type == "rerun_from_stage":
-                    requested_rounds = (
-                        payload.get("input_rounds")
-                        if isinstance(payload, dict) else None
-                    )
-                    input_rounds = self._normalize_input_rounds(
-                        requested_rounds,
-                        action["target_step_key"] or "",
-                    )
-                    handle = await self._workflow_runtime.restart_from_stage(
+                    result = await self._execute_rerun_from_stage(
                         project_id,
                         task_id,
-                        action["target_step_key"] or "",
-                        expected_run_id=action["expected_workflow_run_id"],
-                        input_rounds=input_rounds or None,
+                        proposal_id,
+                        action,
+                        payload,
                     )
-                    result = {"run_id": handle.id, "status": "started"}
                 else:
                     raise RuntimeError(f"Unsupported action: {proposal_type}")
             except Exception as exc:
@@ -1596,11 +1587,14 @@ class CoordinatorModule:
             "action, but never execute it. Allowed proposal types are "
             "supplement_stage, rerun_from_stage, review_decision. For a proposal "
             "return {type, target_step_key, payload}. supplement payload requires "
-            "content; review_decision requires review_run_id and decision; rerun "
-            "requires a target step. To reuse a specific upstream artifact round, "
-            "rerun payload may include input_rounds mapping stage keys to round "
-            "numbers from artifacts. If active_workflow_run_id is null, rerun starts "
-            "a new first workflow run from that stage. Request artifacts only by "
+            "content; review_decision requires review_run_id and decision. For rerun, "
+            "choose the earliest target stage that should execute; that stage and its "
+            "DAG downstream stages will run. Decide whether the target stage needs "
+            "new user context. If it does, include a concise stage-specific instruction "
+            "in rerun payload.content; otherwise omit content. To reuse a specific "
+            "upstream artifact round, rerun payload may include input_rounds mapping "
+            "stage keys to round numbers from artifacts. If active_workflow_run_id is "
+            "null, rerun starts a new first workflow run from that stage. Request artifacts only by "
             "artifact_id. If the user's message references an image and your model "
             "cannot accept image input, use coordinator_vision_model to analyze the "
             "image before replying. Return "
@@ -1916,12 +1910,15 @@ class CoordinatorModule:
                 return None
             payload = {"content": content}
         elif proposal_type == "rerun_from_stage":
+            content = str(payload.get("content", "")).strip()
             payload = {
                 "input_rounds": self._normalize_input_rounds(
                     payload.get("input_rounds"),
                     target_step_key or "",
                 )
             }
+            if content:
+                payload["content"] = content
         elif proposal_type == "review_decision":
             review_id = str(payload.get("review_run_id", ""))
             decision = str(payload.get("decision", "")).replace("-", "_")
@@ -1984,6 +1981,78 @@ class CoordinatorModule:
             task.updated_at = utc_now()
             task.save()
             return {"supplement_id": supplement.id, "status": "saved"}
+
+    async def _execute_rerun_from_stage(
+        self,
+        project_id: str,
+        task_id: str,
+        proposal_id: str,
+        action: dict,
+        payload: dict,
+    ) -> dict:
+        target_step_key = action["target_step_key"] or ""
+        content = str(payload.get("content", "")).strip()
+        input_rounds = self._normalize_input_rounds(
+            payload.get("input_rounds"),
+            target_step_key,
+        )
+        supplement_id = None
+        if content:
+            supplement_id = await self._run_db(
+                project_id,
+                lambda: self._ensure_rerun_supplement_sync(
+                    task_id,
+                    proposal_id,
+                    content,
+                ),
+            )
+        handle = await self._workflow_runtime.restart_from_stage(
+            project_id,
+            task_id,
+            target_step_key,
+            expected_run_id=action["expected_workflow_run_id"],
+            stage_followup=content or None,
+            input_rounds=input_rounds or None,
+        )
+        return {
+            "run_id": handle.id,
+            "status": "started",
+            "supplement_id": supplement_id,
+        }
+
+    @staticmethod
+    def _ensure_rerun_supplement_sync(
+        task_id: str,
+        proposal_id: str,
+        content: str,
+    ) -> str:
+        proposal = ActionProposal.get_by_id(proposal_id)
+        existing = StageSupplement.get_or_none(
+            StageSupplement.source_proposal == proposal
+        )
+        if existing is not None:
+            return existing.id
+        task = Task.get_by_id(task_id)
+        supplement = StageSupplement.create(
+            id=str(uuid.uuid4()),
+            task=task,
+            step_key=proposal.target_step_key,
+            content=content,
+            source_proposal=proposal,
+            created_sequence=proposal.source_message.sequence or 0,
+            created_at=utc_now(),
+        )
+        task.state_version += 1
+        task.updated_at = utc_now()
+        task.save()
+        # The proposal itself caused this version change. Keep failed reruns
+        # retryable while still expiring other proposals based on the old state.
+        proposal.expected_task_version = task.state_version
+        proposal.updated_at = task.updated_at
+        proposal.save(
+            only=[ActionProposal.expected_task_version, ActionProposal.updated_at]
+        )
+        return supplement.id
 
     def _begin_action_sync(self, task_id, proposal_id, idempotency_key):
         proposal = ActionProposal.get_or_none(

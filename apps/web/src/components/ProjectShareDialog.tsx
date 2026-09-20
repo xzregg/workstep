@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { remoteProjectApi, type Project, type RemoteDevice } from '../api/client'
 import { useI18n } from '../i18n'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
+import { copyText } from '../utils/clipboard'
 import Button from './Button'
 import Field from './Field'
 import Input from './Input'
@@ -187,7 +188,7 @@ export default function ProjectShareDialog({ project, onClose }: ProjectShareDia
         </div>
         <div className="modal-footer">
           <Button variant="ghost" onClick={onClose}>{t('common.close')}</Button>
-          {shareValue && <Button variant="ghost" onClick={() => void navigator.clipboard.writeText(shareValue)}>{t('common.copy')}</Button>}
+          {shareValue && <Button variant="ghost" onClick={() => void copyText(shareValue)}>{t('common.copy')}</Button>}
           <Button
             variant="primary"
             loading={loading}

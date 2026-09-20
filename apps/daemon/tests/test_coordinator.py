@@ -1886,6 +1886,86 @@ async def test_confirmed_stage_supplement_is_persisted(
 
 
 @pytest.mark.anyio
+async def test_confirmed_rerun_can_inject_optional_stage_prompt(
+    api_context,
+    monkeypatch,
+):
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import StageSupplement
+    import main
+
+    client, tmp_path = api_context
+    monkeypatch.setitem(ENGINE_REGISTRY, "claude", CoordinatorFakeEngine)
+    project_id, task_id = await _create_task(client, tmp_path)
+    injected_prompt = "先复现登录超时，再修复刷新令牌竞争条件并补充回归测试"
+    CoordinatorFakeEngine.calls = []
+    CoordinatorFakeEngine.reply = {
+        "version": 1,
+        "reply": "建议从需求阶段开始，并把 bug 约束注入本轮执行。",
+        "intent": "propose_action",
+        "target_step_key": "req",
+        "artifact_requests": [],
+        "proposal": {
+            "type": "rerun_from_stage",
+            "target_step_key": "req",
+            "payload": {"content": injected_prompt},
+        },
+    }
+    try:
+        accepted = await client.post(
+            f"/api/task/{task_id}/chat?project_id={project_id}",
+            headers={"Idempotency-Key": "chat-rerun-with-prompt"},
+            json={"content": "登录偶发超时，请判断从哪里重新执行"},
+        )
+        assistant = await _wait_for_reply(
+            client,
+            project_id,
+            task_id,
+            accepted.json()["assistant_message_id"],
+        )
+
+        proposal = assistant["proposals"][0]
+        assert proposal["payload"]["content"] == injected_prompt
+
+        confirmed = await client.post(
+            f"/api/task/{task_id}/actions/{proposal['id']}/confirm"
+            f"?project_id={project_id}",
+            headers={"Idempotency-Key": "confirm-rerun-with-prompt"},
+        )
+
+        assert confirmed.status_code == 200
+        assert confirmed.json()["status"] == "succeeded"
+        assert confirmed.json()["result"]["status"] == "started"
+        assert confirmed.json()["result"]["supplement_id"]
+        with main.project_manager.activate_project_by_id(project_id):
+            supplement = StageSupplement.get(
+                StageSupplement.source_proposal == proposal["id"]
+            )
+            assert supplement.step_key == "req"
+            assert supplement.content == injected_prompt
+
+        for _ in range(100):
+            if any(
+                "## User-confirmed stage supplements" in call["prompt"]
+                and injected_prompt in call["prompt"]
+                for call in CoordinatorFakeEngine.calls
+            ):
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("Injected prompt did not reach the target stage")
+    finally:
+        CoordinatorFakeEngine.reply = {
+            "version": 1,
+            "reply": "协调回复",
+            "intent": "answer",
+            "target_step_key": None,
+            "artifact_requests": [],
+            "proposal": None,
+        }
+
+
+@pytest.mark.anyio
 async def test_coordinator_can_start_from_stage_before_any_workflow_run(
     api_context,
     monkeypatch,

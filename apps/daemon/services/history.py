@@ -14,10 +14,49 @@ from engines.codex_visualize import (
 from engines.core.agui import AGUIContext, to_agui_events
 from engines.core.events import map_legacy_event
 from models.message import Message
+from models.run import StepRun, WorkflowRun
 from models.task import Task
 
 logger = logging.getLogger(__name__)
 _event_journal = TurnEventJournal()
+
+
+def message_artifact_projections(
+    task_id: str,
+    messages: list[Message],
+) -> dict[str, tuple[str | None, int | None]]:
+    """Resolve the concrete step/artifact run for new and legacy messages."""
+    runs_by_step: dict[str, list[StepRun]] = {}
+    for step_run in (
+        StepRun.select()
+        .join(WorkflowRun)
+        .where(WorkflowRun.task == task_id)
+        .order_by(StepRun.started_at, StepRun.attempt)
+    ):
+        runs_by_step.setdefault(step_run.step_key, []).append(step_run)
+
+    projections: dict[str, tuple[str | None, int | None]] = {}
+    for message in messages:
+        if message.step_run_id or message.artifact_round is not None:
+            projections[message.id] = (
+                message.step_run_id,
+                message.artifact_round,
+            )
+            continue
+        message_time = message.started_at or message.created_at
+        candidates = [
+            step_run
+            for step_run in runs_by_step.get(message.step_key, [])
+            if step_run.started_at is not None
+            and message_time is not None
+            and step_run.started_at <= message_time
+        ]
+        if candidates:
+            step_run = candidates[-1]
+            projections[message.id] = (step_run.id, step_run.artifact_round)
+        else:
+            projections[message.id] = (None, None)
+    return projections
 
 
 def session_id_from_events(events: list[dict]) -> str | None:

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 import Button from '../components/Button'
 import Input from '../components/Input'
 import Spinner from '../components/Spinner'
@@ -21,13 +20,11 @@ import {
   createOptimisticUserMessage,
   isStageResumableWithMessage,
   isTaskCompleted,
-  isTaskNotStarted,
   resolveStageDisplayStatus,
-  resolveTaskDetailAdvanceState,
   findPreferredArtifact,
 } from './taskDetailChat'
-import { a2uiActionMessageParams } from '../utils/a2ui'
 import { useI18n } from '../i18n'
+import { formatScheduledStart } from '../utils/scheduledStart'
 
 type Phase =
   | { kind: 'loading-meta' }
@@ -74,8 +71,6 @@ export default function SharedTaskView() {
   const [prompt, setPrompt] = useState('')
   const [chatError, setChatError] = useState('')
   const [stoppingStepKeys, setStoppingStepKeys] = useState<string[]>([])
-  const [reviewActionPending, setReviewActionPending] = useState(false)
-  const [reviewComment, setReviewComment] = useState('')
   const selectedStageTaskRef = useRef<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reunlockAttemptsRef = useRef(0)
@@ -571,6 +566,13 @@ export default function SharedTaskView() {
   const executionStageModel = activeStage?.model || task?.model || ''
   const taskCompleted = isTaskCompleted(task?.steps || [])
   const interactive = meta?.mode === 'interactive'
+  const shareSessionToken = phase.kind === 'ready' ? phase.sessionToken : ''
+  const markdownUrlResolver = useCallback(
+    (src: string) => token && shareSessionToken
+      ? shareApi.resolveAttachmentUrl(token, shareSessionToken, src)
+      : src,
+    [token, shareSessionToken],
+  )
   const runningStages = useMemo(
     () => stages.filter((stage) => (
       stageProgress.some((progress) => (
@@ -669,14 +671,6 @@ export default function SharedTaskView() {
     if (sent) setPrompt('')
   }, [prompt, sendStageContent])
 
-  const handleA2uiAction = useCallback((action: A2uiClientAction) => {
-    const content = t(
-      'taskDetail.a2uiActionMessage',
-      a2uiActionMessageParams(action),
-    )
-    void sendStageContent(content)
-  }, [sendStageContent, t])
-
   const handleStopStage = useCallback(async (stepKey: string) => {
     if (!token || phase.kind !== 'ready') return
     if (stoppingStepKeys.includes(stepKey)) return
@@ -698,96 +692,22 @@ export default function SharedTaskView() {
     refreshSharedTask,
   ])
 
-  const handleReviewAction = useCallback(async (
-    decision: 'approve' | 'reject' | 'force-approve',
-    review?: ReviewRun,
-    stepKey?: string,
-  ) => {
-    if (!token || phase.kind !== 'ready' || !review || !stepKey) return
-    setReviewActionPending(true)
-    setChatError('')
-    try {
-      await shareApi.decideReview(
-        token,
-        phase.sessionToken,
-        stepKey,
-        review.id,
-        decision,
-        reviewComment.trim() || undefined,
-      )
-      setReviewComment('')
-      const [reviewsData] = await Promise.all([
-        shareApi.reviews(token, phase.sessionToken),
-        refreshSharedTask(phase.sessionToken),
-      ])
-      setReviews(reviewsData.reviews || [])
-    } catch (reason) {
-      setChatError(reason instanceof Error ? reason.message : t('common.unknownError'))
-    } finally {
-      setReviewActionPending(false)
-    }
-  }, [
-    token,
-    phase,
-    reviewComment,
-    t,
-    refreshSharedTask,
-  ])
-
-  const handleInteractionRespond = useCallback(async (
-    interactionId: string,
-    response: Record<string, unknown>,
-  ) => {
-    if (!token || phase.kind !== 'ready') return
-    await shareApi.respondInteraction(
-      token,
-      phase.sessionToken,
-      interactionId,
-      response,
-    )
-  }, [token, phase])
-
   const findArtifact = (
     name: string,
     preferredStepKey?: string,
     source?: TaskArtifact[],
+    round?: number,
   ) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey, round)
   }
 
-  const openArtifact = (name: string, preferredStepKey?: string) => {
-    const artifact = findArtifact(name, preferredStepKey)
+  const openArtifact = (name: string, preferredStepKey?: string, round?: number) => {
+    const artifact = findArtifact(name, preferredStepKey, undefined, round)
     if (artifact) {
       setPreviewArtifact(artifact)
     } else {
       setArtifactNotice(t('taskDetail.artifactNotFound', { name }))
       window.setTimeout(() => setArtifactNotice(null), 3000)
-    }
-  }
-
-  // 底部主操作与 owner 弹窗共用同一状态机；分享页只开放可交互分享的推进动作。
-  const taskNotStarted = isTaskNotStarted(task?.steps || [])
-  const activeStageProgress = stageProgress[activeStageIndex]
-  const activeStepStatus = activeStageProgress?.status || 'pending'
-  const activeReview = reviews.find(
-    (review) => review.step_key === activeStage.key,
-  )
-  const shareAdvanceState = resolveTaskDetailAdvanceState({
-    taskNotStarted,
-    running: false,
-    taskStatus: task?.status,
-    stepStates: task?.steps || [],
-    activeStepStatus,
-    reviewActionPending,
-    hasActiveReview: Boolean(activeReview),
-    t,
-  })
-  const handleShareAdvance = () => {
-    if (!interactive || !activeReview) return
-    if (activeStepStatus === 'awaiting_review') {
-      void handleReviewAction('approve', activeReview, activeStage.key)
-    } else if (activeStepStatus === 'rejected') {
-      void handleReviewAction('force-approve', activeReview, activeStage.key)
     }
   }
 
@@ -927,22 +847,11 @@ export default function SharedTaskView() {
     </>
   )
 
-  const canAdvanceReview = interactive
-    && (activeStepStatus === 'awaiting_review' || activeStepStatus === 'rejected')
-  const sharePrimaryAction = canAdvanceReview
-    ? {
-        label: shareAdvanceState.label,
-        disabled: shareAdvanceState.disabled,
-        loading: reviewActionPending,
-        onClick: handleShareAdvance,
-      }
-    : undefined
-
   return (
     <SharePageShell>
       <TaskDetailPage
-        readOnly={!interactive}
-        interactionOnly={interactive}
+        readOnly
+        chatEnabled={interactive}
         task={task}
         stages={stages}
         stageProgress={stageProgress}
@@ -953,20 +862,24 @@ export default function SharedTaskView() {
         events={[]}
         content=""
         reviews={reviews}
-        reviewActionPending={reviewActionPending}
-        reviewComment={reviewComment}
-        onReviewCommentChange={setReviewComment}
-        onReviewAction={interactive ? handleReviewAction : undefined}
         chatTarget={chatTarget}
         onChatTargetChange={setChatTarget}
         chatError={chatError}
         prompt={prompt}
         onPromptChange={setPrompt}
         onSend={interactive ? handleSend : undefined}
+        chatAttachment={interactive && token ? {
+          prefix: task.id.slice(0, 8),
+          upload: (file, prefix) => shareApi.uploadAttachment(
+            token,
+            shareSessionToken,
+            file,
+            prefix,
+          ),
+          onError: setChatError,
+        } : undefined}
         onStopStage={interactive ? handleStopStage : undefined}
         stoppingStepKeys={stoppingStepKeys}
-        onA2uiAction={interactive ? handleA2uiAction : undefined}
-        onInteractionRespond={interactive ? handleInteractionRespond : undefined}
         artifacts={artifacts}
         onOpenArtifact={openArtifact}
         headerActions={headerActions}
@@ -977,15 +890,16 @@ export default function SharedTaskView() {
         currentStageColor={currentStageColor}
         activeStageColor={activeStageColor}
         taskCompleted={taskCompleted}
-        runningStages={interactive ? runningStages : []}
+        runningStages={runningStages}
         executionStageModel={executionStageModel}
         sessionIdForStep={() => null}
         onViewingPromptChange={() => {}}
         running={task.status === 'running'}
-        primaryAction={sharePrimaryAction}
+        scheduledStartText={formatScheduledStart(task.scheduled_start_at)}
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}
+        markdownUrlResolver={markdownUrlResolver}
       />
     </SharePageShell>
   )

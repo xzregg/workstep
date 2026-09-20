@@ -307,6 +307,7 @@ export function findPreferredArtifact<T extends ArtifactRoundChoice>(
   artifacts: readonly T[],
   name: string,
   preferredStepKey?: string,
+  preferredRound?: number,
 ): T | undefined {
   const normalize = (value: string) =>
     value.toLocaleLowerCase().replace(/[\s_.-]/g, '')
@@ -314,9 +315,12 @@ export function findPreferredArtifact<T extends ArtifactRoundChoice>(
   const candidates = preferredStepKey
     ? artifacts.filter((artifact) => artifact.step_key === preferredStepKey)
     : artifacts
-  const preferred = candidates.filter((artifact) => artifact.is_selected)
-  const latest = candidates.filter((artifact) => artifact.is_latest)
-  const ordered = [...preferred, ...latest, ...candidates]
+  const roundCandidates = preferredRound === undefined
+    ? candidates
+    : candidates.filter((artifact) => artifact.round === preferredRound)
+  const preferred = roundCandidates.filter((artifact) => artifact.is_selected)
+  const latest = roundCandidates.filter((artifact) => artifact.is_latest)
+  const ordered = [...preferred, ...latest, ...roundCandidates]
   return (
     ordered.find((artifact) => artifact.logical_name === name) ||
     ordered.find((artifact) => {
@@ -329,6 +333,17 @@ export function findPreferredArtifact<T extends ArtifactRoundChoice>(
       )
     })
   )
+}
+
+export function artifactsForMessage<T extends ArtifactRoundChoice>(
+  artifacts: readonly T[],
+  stepKey: string,
+  artifactRound?: number | null,
+): T[] {
+  if (!artifactRound) return []
+  return artifacts.filter((artifact) => (
+    artifact.step_key === stepKey && artifact.round === artifactRound
+  ))
 }
 
 export function resolveMessageReview<T extends MessageReview>(

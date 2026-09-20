@@ -1,6 +1,7 @@
 import Icon from './Icon'
 import { useEffect, useMemo, useState } from 'react'
 import { engineLabel } from '../engineMeta'
+import { copyText } from '../utils/clipboard'
 import Button from './Button'
 import {
   durationMilliseconds,
@@ -97,19 +98,8 @@ export function formatTokenUsage(
 }
 
 export async function copyMessageText(content: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content)
-    return
-  }
-  const textarea = document.createElement('textarea')
-  textarea.value = content
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  textarea.remove()
-  if (!copied) throw new Error('Copy failed')
+  const ok = await copyText(content)
+  if (!ok) throw new Error('Copy failed')
 }
 
 export function MessageCopyButton({

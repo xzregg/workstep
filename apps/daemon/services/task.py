@@ -35,6 +35,7 @@ from services.messages import (
 )
 from services.history import (
     event_detail,
+    message_artifact_projections,
     restore_running_projection,
     session_id_from_events,
 )
@@ -298,8 +299,10 @@ class TaskService:
             .offset(offset)
         )
         result = []
+        artifact_projections = message_artifact_projections(task_id, messages)
         import json as json_mod
         for msg in reversed(messages):
+            step_run_id, artifact_round = artifact_projections[msg.id]
             entry = {
                 "id": msg.id,
                 "role": msg.role,
@@ -313,6 +316,8 @@ class TaskService:
                 "channel": msg.channel,
                 "sequence": msg.sequence,
                 "run_status": msg.run_status,
+                "step_run_id": step_run_id,
+                "artifact_round": artifact_round,
                 "engine": msg.engine,
                 "model": msg.model,
                 "started_at": msg.started_at,
@@ -674,8 +679,35 @@ class TaskService:
         for agui_event in to_agui_events(payload, ctx):
             await self._event_bus.publish(agui_event)
 
-    def _task_to_dict(self, task: Task) -> dict:
-        steps = list(TaskStep.select().where(TaskStep.task == task))
+    @staticmethod
+    def _task_to_dict(task: Task) -> dict:
+        active_run = None
+        active_step_keys: set[str] | None = None
+        if task.active_workflow_run_id:
+            active_run = WorkflowRun.get_or_none(
+                (WorkflowRun.id == task.active_workflow_run_id)
+                & (WorkflowRun.task == task)
+            )
+            if active_run is not None:
+                try:
+                    snapshot = json.loads(active_run.workflow_snapshot_json)
+                    active_steps = (
+                        WorkflowDefinition.load(snapshot)
+                        .compile()
+                        .to_steps_config()["steps"]
+                    )
+                    active_step_keys = {step["key"] for step in active_steps}
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    logger.warning(
+                        "Invalid workflow snapshot for active run %s",
+                        active_run.id,
+                        exc_info=True,
+                    )
+
+        steps_query = TaskStep.select().where(TaskStep.task == task)
+        if active_step_keys is not None:
+            steps_query = steps_query.where(TaskStep.step_key.in_(active_step_keys))
+        steps = list(steps_query)
         previous_status_by_step = latest_previous_stage_statuses(task)
         # 「执行过」判定：阶段是否有 execution 频道的用户/助手消息。
         # 一次分组查询取回所有已执行阶段，避免逐阶段查询。
@@ -719,27 +751,22 @@ class TaskService:
         restart_from_step_key = None
         recovered_at = None
         recovered_count = 0
-        if task.active_workflow_run_id:
-            run = WorkflowRun.get_or_none(
-                (WorkflowRun.id == task.active_workflow_run_id)
-                & (WorkflowRun.task == task)
-            )
-            if run is not None:
-                restart_from_step_key = run.restart_from_step_key
-                recovered_at = run.recovered_at
-                recovered_count = run.recovered_count or 0
-                depth = 1
-                current = run
-                while current.parent_run_id:
-                    parent = WorkflowRun.get_or_none(
-                        (WorkflowRun.id == current.parent_run_id)
-                        & (WorkflowRun.task == task)
-                    )
-                    if parent is None:
-                        break
-                    current = parent
-                    depth += 1
-                run_round = depth
+        if active_run is not None:
+            restart_from_step_key = active_run.restart_from_step_key
+            recovered_at = active_run.recovered_at
+            recovered_count = active_run.recovered_count or 0
+            depth = 1
+            current = active_run
+            while current.parent_run_id:
+                parent = WorkflowRun.get_or_none(
+                    (WorkflowRun.id == current.parent_run_id)
+                    & (WorkflowRun.task == task)
+                )
+                if parent is None:
+                    break
+                current = parent
+                depth += 1
+            run_round = depth
         first_message = (
             Message.select(Message.created_at)
             .where(Message.task == task)

@@ -1,5 +1,6 @@
 import Select from '../components/Select'
 import { randomUuid } from '../utils/uuid'
+import { copyText } from '../utils/clipboard'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useTaskRoute } from '../hooks/useTaskRoute'
 import { useOverlay } from '../hooks/useOverlay'
@@ -557,12 +558,10 @@ export default function TaskList() {
   }
 
   const copyWorkflowId = async () => {
-    try {
-      await navigator.clipboard.writeText(activeWorkflowId || 'default')
+    const ok = await copyText(activeWorkflowId || 'default')
+    if (ok) {
       setCopiedWorkflowId(true)
       setTimeout(() => setCopiedWorkflowId(false), 1500)
-    } catch {
-      // Clipboard unavailable — leave state untouched.
     }
   }
 

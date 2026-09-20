@@ -39,18 +39,26 @@ test('public share client exposes mode and interactive actions', () => {
 
 test('shared task view enables interactions only for interactive shares', () => {
   assert.match(sharedViewSource, /meta\?\.mode === 'interactive'/)
-  assert.match(sharedViewSource, /readOnly=\{!interactive\}/)
-  assert.match(sharedViewSource, /interactionOnly=\{interactive\}/)
-  assert.match(sharedViewSource, /onReviewAction=\{interactive \?/)
+  assert.match(sharedViewSource, /readOnly/)
+  assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
+  assert.doesNotMatch(sharedViewSource, /interactionOnly=/)
+  assert.doesNotMatch(sharedViewSource, /onReviewAction=\{interactive \?/)
+  assert.match(sharedViewSource, /uploadAttachment/)
+  assert.match(sharedViewSource, /markdownUrlResolver/)
+})
+
+test('read-only and interactive shares differ only by the chat composer capability', () => {
+  assert.match(sharedViewSource, /readOnly\s*\n/)
+  assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
+  assert.doesNotMatch(sharedViewSource, /runningStages=\{interactive \?/)
+  assert.doesNotMatch(sharedViewSource, /sharePrimaryAction/)
 })
 
 
-test('interactive share selects an actionable stage and mounts live interaction events', () => {
+test('interactive share selects an actionable stage for its composer', () => {
   assert.match(sharedViewSource, /resumableStages/)
   assert.match(sharedViewSource, /runningStages\[0\]\?\.key \?\? resumableStages\[0\]\?\.key/)
   assert.match(sharedViewSource, /workstep\.interaction_request/)
   assert.match(sharedViewSource, /workstep\.interaction_response/)
   assert.match(sharedViewSource, /shouldRefreshReviews/)
-  assert.match(sharedViewSource, /handleA2uiAction/)
-  assert.match(sharedViewSource, /onA2uiAction=\{interactive \? handleA2uiAction/)
 })

@@ -52,3 +52,9 @@ test('assistant store hydrates proposals and a2ui payloads from history', () => 
   assert.match(storeSource, /rejectionMessage = config\.rejectionMessageExtractor/)
   assert.match(storeSource, /a2uiMessages\[message\.id\] = a2uiPayloads/)
 })
+
+test('auto-applied patches merge onto the latest live canvas', () => {
+  assert.match(chatSource, /applyWorkflowPatch\(currentSteps, proposal\.patch, null\)/)
+  assert.match(chatSource, /getCanvasStepsRef\.current\?\.\(\)/)
+  assert.match(chatSource, /applyFlowSteps\(steps, card\.id, false\)/)
+})

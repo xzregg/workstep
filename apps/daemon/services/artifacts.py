@@ -2,12 +2,17 @@
 
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 
 from services.artifact_rounds import (
     MANIFEST_NAME,
     is_round_child_name,
     iter_artifact_rounds,
 )
+
+
+def _mtime_iso(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
 
 
 def list_task_artifacts(project, task_id: str) -> list[dict]:
@@ -106,6 +111,7 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         "relative_path": str(file_path.relative_to(round_dir)),
                         "size": resolved.stat().st_size,
                         "is_dir": False,
+                        "updated_at": _mtime_iso(resolved),
                     })
 
                 for dir_path, metadata in sorted(
@@ -126,5 +132,6 @@ def list_task_artifacts(project, task_id: str) -> list[dict]:
                         "relative_path": str(dir_path.relative_to(round_dir)) + "/",
                         "size": None,
                         "is_dir": True,
+                        "updated_at": _mtime_iso(dir_path),
                     })
     return artifacts

@@ -39,6 +39,7 @@ function CanvasEditorInner() {
   const [pendingAiSteps, setPendingAiSteps] = useState<any>(null)
   const [aiGenBusy, setAiGenBusy] = useState(false)
   const [aiConfirmClose, setAiConfirmClose] = useState(false)
+  const [aiApplyError, setAiApplyError] = useState('')
   const canvasRef = useRef<FlowCanvasHandle>(null)
   const onboardingWorkflowId = useOnboardingStore((state) => state.workflowId)
   const canvasHintSeen = useOnboardingStore((state) => state.canvasHintSeen)
@@ -95,6 +96,22 @@ function CanvasEditorInner() {
     setAiConfirmClose(false)
   }
 
+  const applyAiSteps = async (steps: any) => {
+    if (!activeProject) return
+    setAiApplyError('')
+    canvasRef.current?.loadSteps(steps)
+    if (!compact) return
+    try {
+      await saveSteps(activeProject.id, steps)
+      setActiveProject({ ...activeProject, steps })
+      setCanvasDirty(false)
+    } catch (reason) {
+      setAiApplyError(t('flow.saveFailed', {
+        error: reason instanceof Error ? reason.message : t('flow.networkError'),
+      }))
+    }
+  }
+
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -142,8 +159,9 @@ function CanvasEditorInner() {
             )}
             <Button
               variant="ghost"
+              className="ai-flow-entry-button"
               title={activeProject?.id ? t('canvas.aiEditTitle') : t('canvas.aiEditNoProject')}
-              disabled={!activeProject?.id || compact}
+              disabled={!activeProject?.id}
               aria-expanded={aiPanelOpen}
               onClick={toggleAiPanel}
               style={{ height: 28, fontSize: 'calc(13px * var(--font-scale))', whiteSpace: 'nowrap' }}
@@ -168,22 +186,24 @@ function CanvasEditorInner() {
 
       </div>
 
-      {/* AI flow-design right side panel (inline, pushes the canvas — not a floating overlay) */}
-      {aiPanelOpen && <div style={{ display: compact ? 'none' : 'contents' }}>
+      {/* Desktop: inline side panel. Mobile: full-screen editor overlay. */}
+      {aiPanelOpen && <div className="ai-flow-editor-host">
         <AiFlowEditorPanel
           projectId={activeProject?.id || ''}
           workflowId={activeWorkflowId || undefined}
           workflowName={activeWorkflow?.name || ''}
           getCanvasSteps={() => canvasRef.current?.getSteps()}
           onProposal={(steps) => {
+            if (compact) { void applyAiSteps(steps); return }
             if (dirty) { setPendingAiSteps(steps); return }
-            canvasRef.current?.loadSteps(steps)
+            void applyAiSteps(steps)
           }}
-          onRestore={(steps) => canvasRef.current?.loadSteps(steps)}
+          onRestore={(steps) => { void applyAiSteps(steps) }}
           onBusyChange={setAiGenBusy}
           onRequestClose={requestCloseAiPanel}
           title={t('canvas.aiEditFlowTitle')}
         />
+        {aiApplyError && <div className="ai-flow-editor-error" role="alert">{aiApplyError}</div>}
       </div>}
 
       {/* AI panel: close while generating */}

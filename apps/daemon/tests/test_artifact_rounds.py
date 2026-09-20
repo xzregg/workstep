@@ -1,5 +1,6 @@
 """Artifact round directory contracts."""
 
+from datetime import datetime
 import json
 
 from services.artifact_rounds import (
@@ -88,6 +89,8 @@ def test_list_task_artifacts_marks_only_latest_eligible_round_selected(tmp_path)
     selected = [item for item in artifacts if item["is_selected"]]
     assert [item["round"] for item in selected] == [2]
     assert [item["eligible_for_downstream"] for item in artifacts] == [True, True]
+    datetime.fromisoformat(artifacts[0]["updated_at"])
+    assert artifacts[0]["updated_at"].endswith("+00:00")
 
 
 def test_select_upstream_round_honours_explicit_round(tmp_path):

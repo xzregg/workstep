@@ -12,6 +12,7 @@ import Button from './Button'
 import { useI18n } from '../i18n'
 import MarkdownMessage from './MarkdownMessage'
 import CodeFilePreview from './CodeFilePreview'
+import { copyText } from '../utils/clipboard'
 
 interface ArtifactPreviewProps {
   path: string
@@ -27,33 +28,13 @@ type PreviewView =
   | { kind: 'listing'; path: string }
   | { kind: 'file'; path: string; parent: string }
 
-async function copyText(content: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content)
-    return
-  }
-  const textarea = document.createElement('textarea')
-  textarea.value = content
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  textarea.remove()
-  if (!copied) throw new Error('Copy failed')
-}
-
 function CopyTextButton({ content }: { content: string }) {
   const { t } = useI18n()
   const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle')
 
   const copy = async () => {
-    try {
-      await copyText(content)
-      setState('copied')
-    } catch {
-      setState('failed')
-    }
+    const ok = await copyText(content)
+    setState(ok ? 'copied' : 'failed')
   }
 
   return (

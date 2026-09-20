@@ -94,6 +94,16 @@ test('passes through immediately when not streaming', async () => {
   await h.unmount()
 })
 
+test('shows preloaded running history immediately instead of replaying its text', async () => {
+  outputs = []
+  const h = await renderHarness({ content: '刷新前已经显示的历史正文', streaming: true })
+  assert.equal(outputs[outputs.length - 1], '刷新前已经显示的历史正文')
+  const count = outputs.length
+  await sleep(250)
+  assert.equal(outputs.length, count, 'preloaded history must not schedule reveal frames')
+  await h.unmount()
+})
+
 test('passes through when reveal disabled', async () => {
   outputs = []
   const h = await renderHarness({ content: 'abcdef', streaming: true, enabled: false })
@@ -105,8 +115,9 @@ test('passes through when reveal disabled', async () => {
 
 test('converges to full content while streaming', async () => {
   outputs = []
-  const h = await renderHarness({ content: 'abcdefgh', streaming: true })
+  const h = await renderHarness({ content: '', streaming: true })
   assert.equal(outputs[0], '', 'first mount in stream starts empty')
+  await h.set({ content: 'abcdefgh' })
   const settled = await waitForSettle()
   assert.equal(settled, 'abcdefgh')
   // 收敛后不再揭示（性能红线：不能一直重画）
@@ -129,7 +140,8 @@ test('content replacement (non-extension) resets to full content immediately', a
 test('streaming end keeps draining instead of jumping to full', async () => {
   outputs = []
   const text = 'a'.repeat(60)
-  const h = await renderHarness({ content: text, streaming: true })
+  const h = await renderHarness({ content: '', streaming: true })
+  await h.set({ content: text })
   // 常规节奏：每帧 REVEAL_STEP_CHARS 字，90ms 一帧；120ms 后应仍在揭示中途
   await act(async () => { await sleep(120) })
   const partial = outputs[outputs.length - 1]
@@ -145,7 +157,8 @@ test('streaming end keeps draining instead of jumping to full', async () => {
 test('a long burst still reveals gradually instead of appearing at once', async () => {
   outputs = []
   const longText = 'a'.repeat(5000)
-  const h = await renderHarness({ content: longText, streaming: true })
+  const h = await renderHarness({ content: '', streaming: true })
+  await h.set({ content: longText })
   await act(async () => { await sleep(300) })
   const partial = outputs[outputs.length - 1]
   // 5000 字按 120 字/秒，300ms 只能揭示一小部分
@@ -179,6 +192,9 @@ test('still reveals while streaming after StrictMode cleanup + re-setup', async 
   const root = createRoot(host)
   // StrictMode 在开发环境会"挂载→清理→再挂载"执行 effect（同一实例、同一 ref）。
   // 清理若不置空 timerRef，重挂载后守卫恒为 false，正文会一直空白到 streaming 结束。
+  await act(async () => {
+    root.render(<StrictMode><Harness content="" streaming /></StrictMode>)
+  })
   await act(async () => {
     root.render(<StrictMode><Harness content={strictText} streaming /></StrictMode>)
   })

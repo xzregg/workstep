@@ -1152,7 +1152,7 @@ class ChatSessionModule(AssistantRuntime):
         session_id: str,
         permission_mode: str,
     ) -> dict:
-        """Persist a permission mode and apply it to the active turn immediately."""
+        """Persist a permission mode, then best-effort apply it to the active turn."""
         permission_mode = (permission_mode or "").strip()
         if permission_mode and not is_valid_permission_mode(permission_mode):
             raise ValueError(f"Unsupported permission mode: {permission_mode}")
@@ -1167,7 +1167,6 @@ class ChatSessionModule(AssistantRuntime):
         await self._project_manager.run_db(
             project_id, lambda _project: ensure_session_exists()
         )
-        await self.set_running_permission_mode(session_id, permission_mode)
 
         def persist_and_load() -> dict:
             with self._project_ctx(project_id):
@@ -1178,9 +1177,21 @@ class ChatSessionModule(AssistantRuntime):
                 ).execute()
                 return self.get_session(project_id, session_id)
 
-        return await self._project_manager.run_db(
+        result = await self._project_manager.run_db(
             project_id, lambda _project: persist_and_load()
         )
+        # 先落库保证用户设置一定保存成功；热切换失败（例如 CLI 拒绝运行中
+        # 切换到 bypassPermissions）不能让请求 500，新模式下一轮生效。
+        try:
+            await self.set_running_permission_mode(session_id, permission_mode)
+        except Exception:
+            logger.warning(
+                "权限模式 %r 落库成功，但应用到运行中会话 %s 失败（下一轮生效）",
+                permission_mode,
+                session_id,
+                exc_info=True,
+            )
+        return result
 
     def submit_message(
         self,

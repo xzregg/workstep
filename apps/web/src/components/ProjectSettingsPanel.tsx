@@ -8,6 +8,7 @@ import {
   type RemoteDevice,
 } from '../api/client'
 import { useI18n } from '../i18n'
+import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
 import Button from './Button'
@@ -736,7 +737,7 @@ export default function ProjectSettingsPanel({
                       style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--surface)', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 'calc(11px * var(--font-scale))' }}
                     />
                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <Button variant="ghost" size="sm" onClick={() => void navigator.clipboard.writeText(shareValue)}>
+                      <Button variant="ghost" size="sm" onClick={() => void copyText(shareValue)}>
                         {t('common.copy')}
                       </Button>
                       <Button variant="ghost" size="sm" onClick={() => setShareValue('')}>

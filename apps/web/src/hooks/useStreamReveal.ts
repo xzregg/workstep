@@ -62,7 +62,7 @@ export function revealStepFor(
  *
  * 不变量（只加视觉节奏，不改语义）：
  * - enabled=false：恒等直通，零开销
- * - 首次挂载时不在流式中（历史消息）：恒等直通，不复现动画
+ * - 首次挂载时已有正文（包括仍标记 running 的恢复消息）：恒等直通，不复现动画
  * - frozen（选区冻结）结束：立即全量直通
  * - content 不是已揭示前缀的延伸（内容被替换而非追加）：重置并全额直通
  * - 一旦开始揭示就按固定速度排空，streaming 结束也不跳满；
@@ -74,9 +74,12 @@ export default function useStreamReveal(
   frozen: boolean,
   enabled: boolean,
 ): string {
-  // 首次挂载就在流式中：从空开始揭示（新消息"浮现"）；否则直通。
-  // 历史消息因此在挂载瞬间就是完整的，不会被重新"打一遍字"。
-  const [shown, setShown] = useState(() => (enabled && streaming ? '' : content))
+  // 只有“空气泡挂载后再收到 token”才是本次页面中的新流。
+  // 首屏已带正文表示它来自历史恢复；即使后端仍标记 running，
+  // 也必须直接显示，避免刷新页面后重新“打一遍字”。
+  const [shown, setShown] = useState(() => (
+    enabled && streaming && content.length === 0 ? '' : content
+  ))
   const shownRef = useRef(shown)
   // tick 在 setTimeout 里异步执行，闭包里的 content 是"排程那一刻"的快照。
   // 流式期间新内容不断追加，必须读最新值，否则揭示会停在旧长度上不再前进。

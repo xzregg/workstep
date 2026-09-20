@@ -28,6 +28,7 @@ import { applyAssistantQuickPrompt } from '../utils/taskQuickPrompts.js'
 import { flushWsSubscriptionNow } from '../hooks/useWebSocket'
 import { usePromptEnhance } from '../hooks/usePromptEnhance'
 import { cloneCanvasSteps } from '../utils/canvasRestore'
+import { applyWorkflowPatch } from '../utils/workflowPatch'
 
 /* ══════════════════════════════════════════
    AiFlowChat — reusable AI flow-design chat.
@@ -145,12 +146,20 @@ export default function AiFlowChat({
     setAppliedCardId(null)
   }, [latestProposals])
 
-  const applyFlowSteps = useCallback((steps: any, proposalId: string) => {
+  const applyFlowSteps = useCallback((
+    steps: any,
+    proposalId: string,
+    mergePatch = true,
+  ) => {
     // 仅当按钮载荷携带 proposalId 时才更新“已应用”标记：历史按钮没有该字段，
     // 置空会让 autoApply effect 把最近一轮自动方案重新应用，覆盖用户刚选的方案。
     if (proposalId) setAppliedCardId(proposalId)
     const proposal = latestProposals.find((item) => item.id === proposalId)
-    onProposal?.(steps, proposal)
+    const currentSteps = getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }
+    const resolvedSteps = mergePatch && proposal?.patch
+      ? applyWorkflowPatch(currentSteps, proposal.patch, null)
+      : steps
+    onProposal?.(resolvedSteps, proposal)
   }, [latestProposals, onProposal])
 
   useEffect(() => {
@@ -438,7 +447,7 @@ export default function AiFlowChat({
           <FlowStageApplyPanel
             cards={partialApplyCards}
             currentSteps={() => getCanvasStepsRef.current?.() ?? { nodes: [], connections: [] }}
-            onApply={(steps, card) => applyFlowSteps(steps, card.id)}
+            onApply={(steps, card) => applyFlowSteps(steps, card.id, false)}
             appliedCardId={appliedCardId}
             disabled={running}
           />

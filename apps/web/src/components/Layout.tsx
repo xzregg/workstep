@@ -29,6 +29,7 @@ import OnboardingChecklist from './OnboardingChecklist'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { buildStarterWorkflow } from '../utils/onboarding'
 import {
+  engineApi,
   fetchEngineModels,
   chatSessionApi,
   type Project,
@@ -123,8 +124,6 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('providers')
   const [settingsFocus, setSettingsFocus] = useState<SettingsFocusTarget | undefined>()
-  const onboardingStatus = useOnboardingStore((state) => state.status)
-  const [onboardingRefreshToken, setOnboardingRefreshToken] = useState(0)
   const [onboardingWorkflowBusy, setOnboardingWorkflowBusy] = useState(false)
   const [onboardingError, setOnboardingError] = useState('')
   const [addWfProjectId, setAddWfProjectId] = useState<string | null>(null)
@@ -412,10 +411,9 @@ export default function Layout({ onSelectProject, children }: Props) {
     if (
       project.type !== 'remote'
       && onboarding.status === 'active'
-      && onboarding.currentStep === 'project'
+      && onboarding.completedSteps.includes('project')
     ) {
       onboarding.recordProject(project.id)
-      setOnboardingRefreshToken((value) => value + 1)
     }
     onSelectProject(project)
   }
@@ -435,13 +433,22 @@ export default function Layout({ onSelectProject, children }: Props) {
   const createOnboardingWorkflow = async () => {
     const onboarding = useOnboardingStore.getState()
     const project = projects.find((item) => item.id === onboarding.projectId && item.type !== 'remote')
-    if (!project || !onboarding.engineId || onboardingWorkflowBusy) return
+      ?? (activeProject?.type !== 'remote' ? activeProject : undefined)
+    if (onboardingWorkflowBusy) return
+    if (!project) {
+      setOnboardingError(t('onboarding.projectRequired'))
+      return
+    }
     setOnboardingWorkflowBusy(true)
     setOnboardingError('')
     try {
+      const execution = await engineApi.executionConfig()
+      const engineId = onboarding.engineId || execution.engine
+      if (!engineId) throw new Error(t('onboarding.engineRequired'))
+      if (onboarding.engineId !== engineId) onboarding.recordEngine(engineId)
       let model = ''
       try {
-        const result = await fetchEngineModels(onboarding.engineId, false, onboarding.providerId || '', project.id)
+        const result = await fetchEngineModels(engineId, false, onboarding.providerId || '', project.id)
         model = result.default_model || ''
       } catch {
         // The engine may validly use its own implicit default model.
@@ -451,14 +458,13 @@ export default function Layout({ onSelectProject, children }: Props) {
         project.id,
         '分析与执行',
         undefined,
-        buildStarterWorkflow(onboarding.engineId, model),
+        buildStarterWorkflow(engineId, model),
       )
       onboarding.recordWorkflow(workflow.id)
       await fetchProjects()
       const refreshedProject = useProjectStore.getState().projects.find((item) => item.id === project.id)
       if (refreshedProject) setActiveProject(refreshedProject)
       await setActiveWorkflow(workflow.id)
-      setOnboardingRefreshToken((value) => value + 1)
       navigate(`/canvas?project=${encodeURIComponent(project.name)}&workflow=${encodeURIComponent(workflow.id)}&onboarding=1`)
     } catch (reason) {
       setOnboardingError(reason instanceof Error ? reason.message : t('onboarding.createWorkflowFailed'))
@@ -469,10 +475,14 @@ export default function Layout({ onSelectProject, children }: Props) {
 
   const openOnboardingTask = () => {
     const onboarding = useOnboardingStore.getState()
-    const project = projects.find((item) => item.id === onboarding.projectId)
-    if (!project || !onboarding.workflowId) return
+    const project = projects.find((item) => item.id === onboarding.projectId) ?? activeProject
+    const workflowId = onboarding.workflowId || activeWorkflowId
+    if (!project || !workflowId) {
+      setOnboardingError(t('onboarding.workflowRequired'))
+      return
+    }
     setActiveProject(project)
-    void setActiveWorkflow(onboarding.workflowId)
+    void setActiveWorkflow(workflowId)
     navigate(`/tasks?project=${encodeURIComponent(project.name)}&onboarding=create-task`)
   }
 
@@ -1250,21 +1260,6 @@ export default function Layout({ onSelectProject, children }: Props) {
           )}
         </div>
 
-        {onboardingStatus !== 'completed' && (
-          <Button
-            className="onboarding-reopen-button"
-            variant="ghost"
-            onClick={() => useOnboardingStore.getState().reopen()}
-            style={{
-              margin: '0 12px 4px', width: 'calc(100% - 24px)', height: 34,
-              padding: '0 10px', justifyContent: 'flex-start', gap: 9,
-              borderRadius: 9, fontSize: 'calc(13px * var(--font-scale))', color: 'var(--fg-2)',
-            }}
-          >
-            <Icon name="sparkles" size={16} strokeWidth={2} />
-            {t('onboarding.reopen')}
-          </Button>
-        )}
         <Button
           variant="ghost"
           onClick={() => { setSettingsSection('providers'); setSettingsFocus(undefined); setShowSettings(true) }}
@@ -1484,17 +1479,19 @@ export default function Layout({ onSelectProject, children }: Props) {
           initialSection={settingsSection}
           focusTarget={settingsFocus}
           preferredProviderId={useOnboardingStore.getState().providerId}
-          onConfigurationChanged={() => setOnboardingRefreshToken((value) => value + 1)}
+          onConfigurationChanged={() => {
+            void engineApi.executionConfig().then((config) => {
+              if (config.engine) useOnboardingStore.getState().recordEngine(config.engine)
+            }).catch(() => undefined)
+          }}
           onClose={() => {
             setShowSettings(false)
             setSettingsFocus(undefined)
-            setOnboardingRefreshToken((value) => value + 1)
           }}
         />
       )}
 
       <OnboardingChecklist
-        refreshToken={onboardingRefreshToken}
         creatingWorkflow={onboardingWorkflowBusy}
         error={onboardingError}
         onOpenProvider={() => {

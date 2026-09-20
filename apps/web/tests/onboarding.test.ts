@@ -37,6 +37,7 @@ test('onboarding state round-trips and rejects malformed persisted values', () =
     workflowId: 'workflow-1',
     taskId: null,
     canvasHintSeen: false,
+    completedSteps: ['provider', 'engine'],
   }
 
   saveOnboardingState(state, storage)
@@ -54,7 +55,15 @@ test('onboarding state round-trips and rejects malformed persisted values', () =
     workflowId: null,
     taskId: null,
     canvasHintSeen: false,
+    completedSteps: [],
   })
+
+  storage.setItem('workstep:onboarding:v1', JSON.stringify({
+    status: 'active',
+    currentStep: 'task',
+    completedSteps: ['provider', 'engine', 'project', 'workflow', 'task'],
+  }))
+  assert.equal(loadOnboardingState(storage).status, 'completed')
 })
 
 test('only a new installation is offered onboarding automatically', () => {
@@ -88,6 +97,7 @@ test('engine readiness requires an explicitly saved and tested default engine', 
 
 test('onboarding can choose either a provider or a local Agent setup path', () => {
   resetOnboardingStoreForTests()
+  useOnboardingStore.getState().start()
   useOnboardingStore.getState().chooseSetupMode('local')
   assert.equal(useOnboardingStore.getState().setupMode, 'local')
   assert.equal(useOnboardingStore.getState().providerId, null)
@@ -96,6 +106,55 @@ test('onboarding can choose either a provider or a local Agent setup path', () =
   useOnboardingStore.getState().chooseSetupMode('provider')
   assert.equal(useOnboardingStore.getState().setupMode, 'provider')
   assert.equal(useOnboardingStore.getState().currentStep, 'provider')
+})
+
+test('onboarding steps are completed by action clicks and persisted locally', () => {
+  resetOnboardingStoreForTests()
+  useOnboardingStore.getState().start()
+  useOnboardingStore.getState().completeStep('provider')
+  useOnboardingStore.getState().completeStep('engine')
+
+  const state = useOnboardingStore.getState()
+  assert.deepEqual(state.completedSteps, ['provider', 'engine'])
+  assert.equal(state.currentStep, 'project')
+  assert.equal(state.status, 'active')
+})
+
+test('onboarding can be completely skipped', () => {
+  resetOnboardingStoreForTests()
+  useOnboardingStore.getState().start()
+  useOnboardingStore.getState().skip()
+
+  const state = useOnboardingStore.getState()
+  assert.equal(state.status, 'completed')
+  assert.deepEqual(state.completedSteps, ['provider', 'engine', 'project', 'workflow', 'task'])
+})
+
+test('completed onboarding ignores every automatic progress update until explicitly reopened', () => {
+  resetOnboardingStoreForTests()
+  useOnboardingStore.getState().start()
+  useOnboardingStore.getState().skip()
+
+  const onboarding = useOnboardingStore.getState()
+  onboarding.completeStep('provider')
+  onboarding.chooseSetupMode('local')
+  onboarding.recordProvider('provider-1')
+  onboarding.recordEngine('codex_sdk')
+  onboarding.recordProject('project-1')
+  onboarding.recordWorkflow('workflow-1')
+  onboarding.recordTask('task-1')
+  onboarding.setCurrentStep('provider')
+  onboarding.rollback('workflow')
+
+  const state = useOnboardingStore.getState()
+  assert.equal(state.status, 'completed')
+  assert.equal(state.setupMode, null)
+  assert.equal(state.providerId, null)
+  assert.equal(state.engineId, null)
+  assert.equal(state.projectId, null)
+  assert.equal(state.workflowId, null)
+  assert.equal(state.taskId, null)
+  assert.deepEqual(state.completedSteps, ['provider', 'engine', 'project', 'workflow', 'task'])
 })
 
 test('starter workflow connects analysis output to execution input with one engine', () => {
@@ -117,7 +176,7 @@ test('starter workflow connects analysis output to execution input with one engi
   assert.equal(steps.nodes.some((node) => node.autoStart), false)
 })
 
-test('resource deletion rolls the persisted checklist back to the affected step', () => {
+test('resource deletion rolls an active checklist back to the affected step', () => {
   resetOnboardingStoreForTests()
   const onboarding = useOnboardingStore.getState()
   onboarding.start()
@@ -125,7 +184,6 @@ test('resource deletion rolls the persisted checklist back to the affected step'
   onboarding.recordEngine('pydantic_ai')
   onboarding.recordProject('project-1')
   onboarding.recordWorkflow('workflow-1')
-  onboarding.recordTask('task-1')
 
   useOnboardingStore.getState().rollback('workflow')
   const state = useOnboardingStore.getState()

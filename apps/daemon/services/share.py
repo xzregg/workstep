@@ -11,10 +11,8 @@ import logging
 import secrets
 import uuid
 
-from peewee import fn
-
 from engines.codex_visualize import convert_visualize_markers
-from models import Task, TaskShare, TaskStep, StepRun, Workflow, WorkflowRun
+from models import Task, TaskShare, Workflow
 from models.fields import utc_now
 
 logger = logging.getLogger(__name__)
@@ -238,68 +236,50 @@ def invalidate_session(session_token: str) -> None:
 
 
 def load_shared_task(task_id: str) -> dict | None:
-    """Load a task with its steps and workflow metadata for the share view."""
+    """Load the canonical task-detail payload, minus private project/session data."""
     try:
         task = Task.get_by_id(task_id)
     except Task.DoesNotExist:
         return None
-    from services.task import (
-        TaskService,
-        latest_previous_stage_statuses,
-    )  # local import to avoid cycles
-    # Re-use TaskService._task_to_dict logic via a fresh instance would need
-    # event_bus; instead build the payload manually here.
+    from services.task import TaskService  # local import to avoid cycles
+
     import json as _json
-    from models import Message
-    executed_step_keys = {
-        row.step_key
-        for row in (
-            Message.select(Message.step_key)
-            .where(
-                (Message.task == task_id)
-                & (Message.channel == "execution")
-                & (Message.role.in_(["user", "assistant"]))
-            )
-            .group_by(Message.step_key)
-        )
-    }
-    latest_artifact_round_by_step = {
-        row.step_key: row.max_round
-        for row in (
-            StepRun.select(
-                StepRun.step_key,
-                fn.MAX(StepRun.artifact_round).alias("max_round"),
-            )
-            .join(WorkflowRun)
-            .where(
-                (WorkflowRun.task == task_id)
-                & (StepRun.artifact_round.is_null(False))
-                & (StepRun.status.in_(["succeeded", "reused"]))
-            )
-            .group_by(StepRun.step_key)
-        )
-    }
-    previous_status_by_step = latest_previous_stage_statuses(task)
-    steps = []
-    for step in (
-        TaskStep.select()
-        .where(TaskStep.task == task_id)
-        .order_by(TaskStep.step_key)
-    ):
-        steps.append({
-            "step_key": step.step_key,
-            "status": step.status,
-            "engine": step.engine,
-            "started_at": step.started_at,
-            "ended_at": step.ended_at,
-            "error": step.error,
-            "artifact_round": latest_artifact_round_by_step.get(step.step_key),
-            "previous_status": previous_status_by_step.get(step.step_key),
-            "has_history": (
-                step.step_key in executed_step_keys
-                or step.started_at is not None
-            ),
-        })
+    canonical = TaskService._task_to_dict(task)
+    shared_fields = (
+        "id",
+        "title",
+        "description",
+        "status",
+        "engine",
+        "model",
+        "coordinator_engine",
+        "coordinator_model",
+        "coordinator_fast_model",
+        "run_round",
+        "restart_from_step_key",
+        "recovered_at",
+        "recovered_count",
+        "state_version",
+        "workflow_id",
+        "first_message_at",
+        "completed_at",
+        "duration_ms",
+        "total_tokens",
+        "created_at",
+        "updated_at",
+        "creator_id",
+        "creator_name",
+        "creator_device_id",
+        "creator_device_name",
+        "scheduled_start_at",
+        "scheduled_start_state",
+        "scheduled_start_error",
+    )
+    payload = {key: canonical.get(key) for key in shared_fields}
+    payload["steps"] = [
+        {key: value for key, value in step.items() if key != "session_id"}
+        for step in canonical["steps"]
+    ]
     workflow = None
     if task.workflow_id:
         try:
@@ -311,19 +291,8 @@ def load_shared_task(task_id: str) -> dict | None:
             }
         except Workflow.DoesNotExist:
             workflow = None
-    return {
-        "id": task.id,
-        "title": task.title,
-        "description": task.description,
-        "status": task.status,
-        "engine": task.engine,
-        "model": task.model,
-        "workflow_id": task.workflow_id,
-        "workflow": workflow,
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
-        "steps": steps,
-    }
+    payload["workflow"] = workflow
+    return payload
 
 
 def load_shared_history(
@@ -351,8 +320,10 @@ def load_shared_history(
     )
     result = []
     import json as _json
-    from services.history import translate_events
+    from services.history import message_artifact_projections, translate_events
+    artifact_projections = message_artifact_projections(task_id, messages)
     for msg in reversed(messages):
+        step_run_id, artifact_round = artifact_projections[msg.id]
         raw_events: list[dict] = []
         if msg.events_json:
             try:
@@ -379,6 +350,8 @@ def load_shared_history(
             "channel": msg.channel,
             "sequence": msg.sequence,
             "run_status": msg.run_status,
+            "step_run_id": step_run_id,
+            "artifact_round": artifact_round,
             "engine": msg.engine,
             "model": msg.model,
             "started_at": msg.started_at,
@@ -403,17 +376,12 @@ def _scrub_events(events: list[dict], mode: str = "read_only") -> list[dict]:
     AG-UI 统一词汇下按 ``CUSTOM name`` 脱敏（``workstep.interaction_*``、
     ``workstep.engine_state``）。
     """
-    scrubbed = (
-        _SCRUBBED_CUSTOM_NAMES
-        if mode != "interactive"
-        else {"workstep.engine_state"}
-    )
     return [
         event
         for event in events
         if not (
             event.get("type") == "CUSTOM"
-            and event.get("name") in scrubbed
+            and event.get("name") in _SCRUBBED_CUSTOM_NAMES
         )
     ]
 

@@ -75,7 +75,19 @@ class ClaudeAgentSDKEngine(AcpEngineBase):
                 or "acceptEdits"
             )
         )
-        await client.set_permission_mode("default" if mapped == "manual" else mapped)
+        try:
+            await client.set_permission_mode(
+                "default" if mapped == "manual" else mapped
+            )
+        except Exception:
+            # Claude Code CLI 拒绝运行中切换到 bypassPermissions（除非进程启动时
+            # 带 --dangerously-skip-permissions）。跳过热切换：已持久化的模式会
+            # 在下一轮启动时通过 --permission-mode 生效。
+            logger.warning(
+                "claude_agent_sdk 热切换权限模式到 %r 失败，将在下一轮生效",
+                mapped,
+                exc_info=True,
+            )
 
     @classmethod
     def supported_provider_protocols(cls) -> set[str]:

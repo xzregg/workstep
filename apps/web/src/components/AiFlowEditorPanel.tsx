@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import AiFlowChat from './AiFlowChat'
+import Button from './Button'
 import type { GenProposalCard } from '../stores/workflowGenStore'
 
 interface AiFlowEditorPanelProps {
@@ -50,6 +51,7 @@ export default function AiFlowEditorPanel({
   return (
     <>
       <div
+        className="ai-flow-editor-handle"
         onMouseDown={startDrag}
         title={t('layout.dragResizeChat')}
         style={{
@@ -61,11 +63,17 @@ export default function AiFlowEditorPanel({
           width: 1, background: 'var(--border-soft)',
         }} />
       </div>
-      <div ref={panelRef} style={{
+      <div ref={panelRef} className="ai-flow-editor-panel" style={{
         width: width ?? '33.333%', maxWidth: '90vw', flexShrink: 0,
         background: 'var(--surface)', borderLeft: '1px solid var(--border-soft)',
         display: 'flex', flexDirection: 'column', minHeight: 0,
       }}>
+        <header className="ai-flow-editor-mobile-header">
+          <strong>{title}</strong>
+          <Button variant="ghost" size="sm" onClick={onRequestClose}>
+            {t('common.close')}
+          </Button>
+        </header>
         <AiFlowChat
           projectId={projectId}
           workflowId={workflowId}

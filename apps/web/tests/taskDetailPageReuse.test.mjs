@@ -35,8 +35,12 @@ test('share renders the shared detail page instead of a parallel detail tree', (
   assert.match(taskDetailPage, /onCloseArtifactPreview/)
 })
 
-test('bottom advance action is derived from one shared helper', () => {
+test('owner detail derives its advance action while shares stay display-only', () => {
   assert.match(chatHelpers, /export function resolveTaskDetailAdvanceState/)
   assert.match(taskDetail, /resolveTaskDetailAdvanceState/)
-  assert.match(sharedView, /resolveTaskDetailAdvanceState/)
+  assert.doesNotMatch(sharedView, /resolveTaskDetailAdvanceState/)
+  assert.doesNotMatch(sharedView, /primaryAction/)
+  assert.doesNotMatch(sharedView, /onReviewAction/)
+  assert.match(sharedView, /readOnly/)
+  assert.match(sharedView, /chatEnabled=\{interactive\}/)
 })

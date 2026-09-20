@@ -1769,15 +1769,15 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     t,
   })
 
-  const findArtifact = (name: string, preferredStepKey?: string, source?: TaskArtifact[]) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
+  const findArtifact = (name: string, preferredStepKey?: string, source?: TaskArtifact[], round?: number) => {
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey, round)
   }
 
-  const openArtifact = (name: string, preferredStepKey?: string) => {
+  const openArtifact = (name: string, preferredStepKey?: string, round?: number) => {
     if (artifactsLoading && artifacts.length === 0) {
       setArtifactNotice(t('taskDetail.artifactLoading'))
     } else {
-      const artifact = findArtifact(name, preferredStepKey)
+      const artifact = findArtifact(name, preferredStepKey, undefined, round)
       if (artifact) {
         setPreviewArtifact(artifact)
         setArtifactNotice('')
@@ -1786,7 +1786,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       // 阶段可能刚执行完、产物列表尚未刷新：重新拉取一次再尝试打开。
       setArtifactNotice(t('taskDetail.artifactLoading'))
       refreshArtifacts().then((fresh) => {
-        const latest = findArtifact(name, preferredStepKey, fresh)
+        const latest = findArtifact(name, preferredStepKey, fresh, round)
         if (latest) {
           setPreviewArtifact(latest)
           setArtifactNotice('')

@@ -192,7 +192,7 @@ test('stage progress graph clicks cards but not after a card drag', async () => 
   }
 })
 
-test('stage progress graph zooms with wheel and centers the selected stage', async () => {
+test('stage progress graph ignores wheel zoom and centers the selected stage', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))
   const root = createRoot(container)
@@ -227,7 +227,7 @@ test('stage progress graph zooms with wheel and centers the selected stage', asy
         deltaY: -120,
       }))
     })
-    assert.match(grid.style.transform, /scale\(1\.1\)/)
+    assert.match(grid.style.transform, /scale\(1\)/)
 
     const selected = container.querySelectorAll<HTMLElement>('[data-stage-key]')[3]
     assert.ok(Number.parseFloat(selected.style.left) > 28)

@@ -25,6 +25,8 @@ class Message(BaseModel):
     engine = pw.TextField(null=True)
     model = pw.TextField(null=True)
     run_id = pw.TextField(null=True)
+    step_run_id = pw.TextField(null=True)
+    artifact_round = pw.IntegerField(null=True)
     run_status = pw.TextField(null=True)  # running / succeeded / failed
     events_json = pw.TextField(null=True)  # JSON array of InternalEvents
     event_log_path = pw.TextField(null=True)

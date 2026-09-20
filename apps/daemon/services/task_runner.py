@@ -178,6 +178,7 @@ class TaskRunner:
         self,
         task: Task,
         step: Step,
+        step_run: StepRun,
         artifacts_dir: Path,
         review_config: dict,
     ) -> tuple[str, JournalRef]:
@@ -210,6 +211,8 @@ class TaskRunner:
                 engine=engine,
                 model=model,
                 run_id=message_id,
+                step_run_id=step_run.id,
+                artifact_round=step_run.artifact_round,
                 run_status="running",
                 event_log_path=journal_ref.relative_path,
                 position=0,
@@ -823,6 +826,8 @@ class TaskRunner:
                 engine=step.engine,
                 model=resolved_model,
                 run_id=msg_id,
+                step_run_id=step_run.id if step_run is not None else None,
+                artifact_round=artifact_round,
                 run_status="running",
                 event_log_path=journal_ref.relative_path,
                 prompt_json=json.dumps({"prompt": prompt}, ensure_ascii=False),
@@ -1068,6 +1073,8 @@ class TaskRunner:
                                 engine=step.engine,
                                 model=resolved_model,
                                 run_id=new_msg_id,
+                                step_run_id=step_run.id if step_run is not None else None,
+                                artifact_round=artifact_round,
                                 run_status="running",
                                 event_log_path=journal_ref.relative_path,
                                 prompt_json=(
@@ -1280,6 +1287,7 @@ class TaskRunner:
                                 await self._start_automatic_review_message(
                                     task,
                                     step,
+                                    step_run,
                                     artifacts_dir,
                                     review_config,
                                 )
@@ -1449,6 +1457,8 @@ class TaskRunner:
                             engine=outcome.review_run.engine,
                             model=outcome.review_run.model,
                             run_id=rmsg_id,
+                            step_run_id=step_run.id,
+                            artifact_round=artifact_round,
                             run_status="completed",
                             event_log_path=review_journal_ref.relative_path,
                             prompt_json=outcome.review_run.prompt_json,

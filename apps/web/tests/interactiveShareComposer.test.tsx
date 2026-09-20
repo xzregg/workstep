@@ -25,14 +25,19 @@ const task = {
   steps: [{ step_key: 'build', status: 'running' }],
   created_at: '2026-09-17T00:00:00Z',
   updated_at: '2026-09-17T00:00:00Z',
-  workflow_definition: {
-    steps: [
-      { key: 'build', label: 'Build', engine: 'codex', inputs: [], outputs: [] },
-    ],
+  workflow: {
+    id: 'workflow-1',
+    name: 'Workflow',
+    steps: {
+      nodes: [
+        { key: 'build', title: 'Build', prompt: 'Build stage prompt', engine: 'codex', inputs: [], outputs: [] },
+      ],
+      connections: [],
+    },
   },
 }
 
-test('interactive task share window shows the task-detail message composer', async () => {
+async function renderShare(mode: 'read_only' | 'interactive') {
   const { window, document } = installDomEnvironment()
   const originalFetch = globalThis.fetch
   const originalWebSocket = globalThis.WebSocket
@@ -49,7 +54,7 @@ test('interactive task share window shows the task-detail message composer', asy
   globalThis.fetch = async (input) => {
     const url = String(input)
     if (url.endsWith('/meta')) {
-      return jsonResponse({ mode: 'interactive', title: 'Shared', password_required: false })
+      return jsonResponse({ mode, title: 'Shared', password_required: false })
     }
     if (url.endsWith('/unlock')) return jsonResponse({ session_token: 'session-1' })
     if (url.endsWith('/task')) return jsonResponse(task)
@@ -76,22 +81,44 @@ test('interactive task share window shows the task-detail message composer', asy
       await new Promise((resolve) => window.setTimeout(resolve, 0))
     })
 
-    const composer = document.querySelector<HTMLTextAreaElement>('textarea')
-    assert.ok(composer, 'interactive share should expose the shared task-detail composer')
-    assert.equal(composer.disabled, false)
-    assert.match(
-      composer.getAttribute('placeholder') ?? '',
-      /输入|发送|type a message|insert message|stage execution/i,
-    )
-    assert.match(document.body.textContent ?? '', /build/i)
-    assert.ok(
-      document.body.textContent?.includes('Agent')
-      || document.body.textContent?.includes('Coordinator'),
-    )
+    const displayClone = document.body.cloneNode(true) as HTMLElement
+    displayClone.querySelector('.task-detail-composer')?.remove()
+    return {
+      hasComposer: Boolean(document.querySelector<HTMLTextAreaElement>('.task-detail-composer textarea')),
+      hasAttachment: Boolean(document.querySelector('.chat-input-attach')),
+      fileInputCount: document.querySelectorAll('input[type="file"]').length,
+      text: document.body.textContent ?? '',
+      hasDescriptionEdit: Boolean(document.querySelector('[aria-label*="描述"], [aria-label*="description"]')),
+      displayHtml: displayClone.innerHTML,
+    }
   } finally {
     await act(async () => root.unmount())
     globalThis.fetch = originalFetch
     globalThis.WebSocket = originalWebSocket
     await window.happyDOM.close()
   }
+}
+
+test('interactive task share window shows the task-detail message composer', async () => {
+  const rendered = await renderShare('interactive')
+  assert.equal(rendered.hasComposer, true)
+  assert.equal(rendered.hasAttachment, true)
+  assert.equal(rendered.fileInputCount, 2)
+  assert.match(rendered.text, /build/i)
+})
+
+test('share modes keep the same task display and differ only by the composer', async () => {
+  const interactive = await renderShare('interactive')
+  const readOnly = await renderShare('read_only')
+
+  assert.equal(interactive.hasComposer, true)
+  assert.equal(readOnly.hasComposer, false)
+  assert.equal(interactive.hasDescriptionEdit, false)
+  assert.equal(readOnly.hasDescriptionEdit, false)
+  for (const label of ['Shared interactive task', 'Task description', 'build']) {
+    assert.match(interactive.text, new RegExp(label, 'i'))
+    assert.match(readOnly.text, new RegExp(label, 'i'))
+  }
+  assert.match(interactive.text, /Build stage prompt/)
+  assert.equal(interactive.displayHtml, readOnly.displayHtml)
 })

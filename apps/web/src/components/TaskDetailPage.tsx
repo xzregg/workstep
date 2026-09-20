@@ -4,6 +4,10 @@ import Button from './Button'
 import ArtifactPreview from './ArtifactPreview'
 import PromptViewerDialog from './PromptViewerDialog'
 import TaskDetailView, { type TaskDetailViewProps } from './TaskDetailView'
+import {
+  MarkdownAssetUrlProvider,
+  type MarkdownUrlResolver,
+} from '../contexts/MarkdownAssetUrlContext'
 
 export interface TaskDetailPrimaryAction {
   label: string
@@ -29,6 +33,8 @@ export interface TaskDetailPageProps extends TaskDetailViewProps {
   onCloseViewingPrompt?: () => void
   /** 额外浮层（如 owner 的分享弹窗、提示词编辑框）由调用方注入。 */
   overlays?: React.ReactNode
+  /** Resolve project-relative Markdown uploads for session-scoped public views. */
+  markdownUrlResolver?: MarkdownUrlResolver
 }
 
 export default function TaskDetailPage({
@@ -42,12 +48,14 @@ export default function TaskDetailPage({
   viewingPrompt,
   onCloseViewingPrompt,
   overlays,
+  markdownUrlResolver,
   onClose,
   ...viewProps
 }: TaskDetailPageProps) {
   const { t } = useI18n()
 
   return (
+    <MarkdownAssetUrlProvider resolver={markdownUrlResolver}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView {...viewProps} onClose={onClose} />
 
@@ -165,5 +173,6 @@ export default function TaskDetailPage({
 
       {overlays}
     </div>
+    </MarkdownAssetUrlProvider>
   )
 }

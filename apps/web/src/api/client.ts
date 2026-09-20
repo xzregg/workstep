@@ -1069,6 +1069,7 @@ export interface ReviewRun {
   id: string
   workflow_run_id: string
   step_run_id: string
+  artifact_round: number | null
   step_key: string
   mode: 'auto' | 'manual'
   status: 'pending' | 'running' | 'passed' | 'rejected' | 'failed' | 'skipped'
@@ -1186,6 +1187,7 @@ export interface TaskArtifact {
   relative_path: string
   size: number | null
   is_dir?: boolean
+  updated_at?: string | null
 }
 
 export interface ActionProposal {
@@ -1599,11 +1601,39 @@ export interface SharedTask {
   status: string
   engine: string
   model: string | null
+  coordinator_engine?: string | null
+  coordinator_model?: string | null
+  coordinator_fast_model?: string | null
+  run_round?: number
+  restart_from_step_key?: string | null
+  recovered_at?: string | null
+  recovered_count?: number
+  state_version?: number
   workflow_id: string | null
   workflow: { id: string; name: string; steps: any } | null
+  first_message_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  total_tokens?: number | null
+  creator_id?: string | null
+  creator_name?: string | null
+  creator_device_id?: string | null
+  creator_device_name?: string | null
+  scheduled_start_at?: string | null
+  scheduled_start_state?: 'pending' | 'missed' | 'failed' | null
+  scheduled_start_error?: string | null
   created_at: string
   updated_at: string
   steps: TaskStepState[]
+}
+
+async function fileDataUrl(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 async function shareRequest<T>(
@@ -1674,6 +1704,28 @@ export const shareApi = {
       `/task-share/public/${encodeURIComponent(token)}/reviews`,
       sessionToken,
     ),
+  uploadAttachment: async (
+    token: string,
+    sessionToken: string,
+    file: File,
+    prefix = '',
+  ) => shareRequest<{ url: string; filename: string; size: number }>(
+    `/task-share/public/${encodeURIComponent(token)}/upload/${file.type.startsWith('image/') ? 'image' : 'file'}`,
+    sessionToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        filename: file.name,
+        data_url: await fileDataUrl(file),
+        prefix,
+      }),
+    },
+  ),
+  resolveAttachmentUrl: (token: string, sessionToken: string, src: string) => {
+    const match = src.match(/^(?:[^/]+\/)?\.workstep\/uploads\/([^/?#]+)$/)
+    if (!match) return src
+    return `${BASE}/task-share/public/${encodeURIComponent(token)}/uploads/${encodeURIComponent(match[1])}?session=${encodeURIComponent(sessionToken)}`
+  },
   sendStageMessage: (
     token: string,
     sessionToken: string,
@@ -2568,12 +2620,7 @@ export const fsApi = {
       }
     ),
   uploadImage: async (file: File, projectId: string, prefix?: string) => {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+    const dataUrl = await fileDataUrl(file)
     const res = await fetch(
       `${BASE}/fs/upload/image?project_id=${encodeURIComponent(projectId)}`,
       {
@@ -2587,12 +2634,7 @@ export const fsApi = {
     return data as { url: string; filename: string; size: number }
   },
   uploadFile: async (file: File, projectId: string, prefix?: string) => {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+    const dataUrl = await fileDataUrl(file)
     const res = await fetch(
       `${BASE}/fs/upload/file?project_id=${encodeURIComponent(projectId)}`,
       {

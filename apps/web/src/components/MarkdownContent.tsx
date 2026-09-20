@@ -6,6 +6,7 @@ import { convertVisualizeMarkers } from '../utils/markdownVisualize'
 import { classifyProjectFileLink, type ProjectFileLink } from '../utils/markdownFilePreview'
 import { useI18n } from '../i18n'
 import MermaidBlock, { MarkdownStreamingContext } from './MermaidBlock'
+import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
 
 interface MarkdownContentProps {
   content: string
@@ -79,12 +80,13 @@ export default function MarkdownContent({
   rootRef,
 }: MarkdownContentProps) {
   const { t } = useI18n()
+  const markdownUrlResolver = useMarkdownUrlResolver()
   const normalizedContent = convertVisualizeMarkers(content)
   const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
     if (!src) return null
-    const resolved = resolveMarkdownImageSrc(src, projectId)
+    const resolved = markdownUrlResolver?.(src) ?? resolveMarkdownImageSrc(src, projectId)
     if (!onImageClick) {
       return <img src={resolved} alt={alt} />
     }
@@ -99,12 +101,13 @@ export default function MarkdownContent({
         <img src={resolved} alt={alt} />
       </button>
     )
-  }, [onImageClick, projectId, t])
+  }, [markdownUrlResolver, onImageClick, projectId, t])
 
   const renderLink = useCallback((href: string | undefined, label: React.ReactNode, title?: string) => {
+    const resolvedHref = href && (markdownUrlResolver?.(href) ?? href)
     const file = classifyProjectFileLink(href, projectId)
     if (!file || !onFileClick) {
-      return <a href={href} title={title}>{label}</a>
+      return <a href={resolvedHref} title={title}>{label}</a>
     }
     return (
       <a
@@ -121,7 +124,7 @@ export default function MarkdownContent({
         {label}
       </a>
     )
-  }, [onFileClick, projectId, t])
+  }, [markdownUrlResolver, onFileClick, projectId, t])
 
   const components = useMemo(() => ({
     p: ({ children }: { children?: React.ReactNode }) => compactParagraphs

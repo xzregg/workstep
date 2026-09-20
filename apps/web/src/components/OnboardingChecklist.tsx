@@ -1,14 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { engineApi, providerApi, taskApi } from '../api/client'
 import { useI18n, type TKey } from '../i18n'
 import { useOnboardingStore } from '../stores/onboardingStore'
-import { useProjectStore } from '../stores/projectStore'
-import { isEngineReady, isProviderReady, type OnboardingStep } from '../utils/onboarding'
+import { type OnboardingStep } from '../utils/onboarding'
 import Button from './Button'
 import Icon from './Icon'
 
 interface Props {
-  refreshToken: number
   creatingWorkflow: boolean
   error: string
   onOpenProvider: () => void
@@ -30,7 +26,6 @@ const COPY: Record<OnboardingStep, { title: TKey; path: TKey; description: TKey;
 }
 
 export default function OnboardingChecklist({
-  refreshToken,
   creatingWorkflow,
   error,
   onOpenProvider,
@@ -42,100 +37,9 @@ export default function OnboardingChecklist({
 }: Props) {
   const { t } = useI18n()
   const state = useOnboardingStore()
-  const projects = useProjectStore((value) => value.projects)
-  const fetchProjects = useProjectStore((value) => value.fetchProjects)
-  const [checking, setChecking] = useState(false)
-  const [localEngineReady, setLocalEngineReady] = useState(false)
-  const checkingRef = useRef(false)
-
-  const refresh = useCallback(async () => {
-    if (state.status === 'dismissed' || state.status === 'completed' || checkingRef.current) return
-    checkingRef.current = true
-    setChecking(true)
-    try {
-      const [providerResult, engineResult, execution] = await Promise.all([
-        providerApi.list(),
-        engineApi.list(),
-        engineApi.executionConfig(),
-        fetchProjects(),
-      ])
-      const latest = useOnboardingStore.getState()
-      const readyProviders = providerResult.providers.filter((provider) =>
-        isProviderReady(provider, providerResult.types.find((type) => type.id === provider.type)),
-      )
-      const localEngines = engineResult.engines.filter((engine) => (
-        engine.installed
-        && engine.configured
-        && !String(engine.config?.values?.provider_id || '').trim()
-      ))
-      setLocalEngineReady(localEngines.length > 0)
-
-      let setupMode = latest.setupMode
-      if (!setupMode && latest.providerId) setupMode = 'provider'
-      if (!setupMode) return
-
-      if (setupMode === 'provider') {
-        const provider = readyProviders.find((item) => item.id === latest.providerId) ?? readyProviders[0]
-        if (!provider) return
-        if (latest.providerId !== provider.id) latest.recordProvider(provider.id)
-      } else if (localEngines.length === 0) {
-        return
-      }
-
-      const engine = engineResult.engines.find((item) => isEngineReady(item, execution))
-      if (!engine) {
-        if (latest.engineId || latest.status === 'completed') latest.rollback('engine')
-        return
-      }
-      if (latest.engineId !== engine.id) latest.recordEngine(engine.id)
-
-      const current = useOnboardingStore.getState()
-      const currentProjects = useProjectStore.getState().projects
-      const project = currentProjects.find((item) => item.id === current.projectId && item.type !== 'remote')
-      if (current.projectId && !project) {
-        current.rollback('project')
-        return
-      }
-      if (!project) return
-
-      const workflow = project.workflows?.find((item) => item.id === current.workflowId && !item.deleted)
-      if (current.workflowId && !workflow) {
-        current.rollback('workflow')
-        return
-      }
-      if (!workflow) return
-
-      if (current.taskId) {
-        try {
-          await taskApi.get(current.taskId, project.id)
-        } catch {
-          useOnboardingStore.getState().rollback('task')
-        }
-      }
-    } finally {
-      checkingRef.current = false
-      setChecking(false)
-    }
-  }, [state.status, fetchProjects])
-
-  useEffect(() => {
-    void refresh()
-    const onFocus = () => void refresh()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [refresh, refreshToken, state.currentStep])
-
-  const completed = useMemo<Record<OnboardingStep, boolean>>(() => {
-    const project = projects.find((item) => item.id === state.projectId && item.type !== 'remote')
-    const workflow = project?.workflows?.find((item) => item.id === state.workflowId && !item.deleted)
-    return {
-      provider: state.setupMode === 'provider' ? Boolean(state.providerId) : localEngineReady,
-      engine: Boolean(state.engineId),
-      project: Boolean(project),
-      workflow: Boolean(project && workflow),
-      task: Boolean(project && workflow && state.taskId),
-    }
-  }, [projects, localEngineReady, state.setupMode, state.providerId, state.engineId, state.projectId, state.workflowId, state.taskId])
+  const completed = Object.fromEntries(
+    STEP_ORDER.map((step) => [step, state.completedSteps.includes(step)]),
+  ) as Record<OnboardingStep, boolean>
   const completedCount = STEP_ORDER.filter((step) => completed[step]).length
   const currentStep = STEP_ORDER.find((step) => !completed[step]) ?? 'task'
   const actions: Record<OnboardingStep, () => void> = {
@@ -144,6 +48,10 @@ export default function OnboardingChecklist({
     project: onOpenProject,
     workflow: onCreateWorkflow,
     task: onCreateTask,
+  }
+  const runAction = (step: OnboardingStep, action: () => void) => {
+    action()
+    state.completeStep(step)
   }
 
   if (state.status === 'dismissed' || state.status === 'completed') return null
@@ -169,8 +77,8 @@ export default function OnboardingChecklist({
           <Button variant="icon" aria-label={t('onboarding.collapse')} title={t('onboarding.collapse')} onClick={() => state.setCollapsed(true)} style={{ width: 28, height: 28, padding: 0 }}>
             <Icon name="chevron-down" size={15} />
           </Button>
-          <Button variant="icon" aria-label={t('onboarding.dismiss')} title={t('onboarding.dismiss')} onClick={state.dismiss} style={{ width: 28, height: 28, padding: 0 }}>
-            <Icon name="x" size={14} />
+          <Button variant="ghost" onClick={state.skip} style={{ minHeight: 28, padding: '0 6px', fontSize: 'calc(11px * var(--font-scale))' }}>
+            {t('onboarding.skipAll')}
           </Button>
         </div>
       </div>
@@ -197,15 +105,13 @@ export default function OnboardingChecklist({
                     <div className="onboarding-setup-actions">
                       <Button
                         variant="primary"
-                        disabled={checking}
-                        onClick={onOpenProvider}
+                        onClick={() => runAction('provider', onOpenProvider)}
                       >
                         {t(COPY.provider.action)}
                       </Button>
                       <Button
                         variant="ghost"
-                        disabled={checking}
-                        onClick={onOpenLocalAgent}
+                        onClick={() => runAction('provider', onOpenLocalAgent)}
                       >
                         {t('onboarding.steps.provider.localAction')}
                       </Button>
@@ -214,8 +120,8 @@ export default function OnboardingChecklist({
                     <Button
                       variant="primary"
                       loading={step === 'workflow' && creatingWorkflow}
-                      disabled={checking || (step === 'workflow' && creatingWorkflow)}
-                      onClick={actions[step]}
+                      disabled={step === 'workflow' && creatingWorkflow}
+                      onClick={() => runAction(step, actions[step])}
                     >
                       {step === 'workflow' && creatingWorkflow ? t('onboarding.createWorkflowBusy') : t(COPY[step].action)}
                     </Button>

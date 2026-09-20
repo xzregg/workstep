@@ -427,6 +427,12 @@ payload 必须包含精确的 `review_run_id`、决策和可选 comment。
 
 ### 7.3 `rerun_from_stage`
 
+协调 Agent 根据任务状态和用户反馈选择一个起始阶段；后端执行该阶段及其所有
+DAG 下游阶段。提案的 `payload.content` 为可选字段：协调 Agent 判断目标阶段需要
+新的 bug 描述、验证要求或修复约束时携带该字段，用户确认后后端幂等创建
+`StageSupplement`，并将相同内容注入本轮阶段执行；不需要新上下文时省略该字段。
+确认卡必须展示将注入的完整内容。
+
 使用当前活动 run 的不可变工作流快照，而不是项目中后来修改的流程定义。
 
 受影响集合：目标阶段加所有传递下游阶段。需要在 DAG 中新增 `get_all_downstream(step_key)`。

@@ -3,6 +3,7 @@ import { Apple, Check, Copy, Monitor, Server } from 'lucide-react'
 import { PLATFORM_DOWNLOADS, SOURCE_REPO_URL, SOURCE_START_COMMAND } from '../config/downloads'
 import { useI18n } from '../i18n'
 import { Modal } from './Modal'
+import { copyText } from '../utils/clipboard'
 
 const PLATFORM_ICONS = {
   macos: Apple,
@@ -17,13 +18,9 @@ export function DownloadModal({ onClose }: { onClose: () => void }) {
   const sourceCommands = `git clone ${SOURCE_REPO_URL}\ncd workstep\n${SOURCE_START_COMMAND}`
 
   const copySource = async () => {
-    try {
-      await navigator.clipboard.writeText(sourceCommands)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
-    } catch {
-      setCopied(false)
-    }
+    const ok = await copyText(sourceCommands)
+    setCopied(ok)
+    if (ok) window.setTimeout(() => setCopied(false), 1600)
   }
 
   return (

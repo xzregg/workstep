@@ -56,6 +56,8 @@ _ADDITIVE_COLUMNS = {
         "event_summary_json": "TEXT",
         "event_count": "INTEGER DEFAULT 0",
         "last_event_seq": "INTEGER DEFAULT 0",
+        "step_run_id": "TEXT",
+        "artifact_round": "INTEGER",
     },
     "chat_messages": {
         "author_id": "TEXT",

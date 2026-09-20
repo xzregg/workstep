@@ -27,6 +27,7 @@ import {
 import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import { loadDraft, loadTaskDraft, saveDraft, saveTaskDraft } from '../utils/chatDraft'
+import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
 
 const inputItemIcon = (item: EngineInputItem) => {
   if (item.kind === 'skill') return 'sparkles' as const
@@ -100,7 +101,9 @@ export interface ChatInputEngineConfig {
 }
 
 export interface ChatInputImageAttach {
-  projectId: string
+  projectId?: string
+  /** Public/share composers can inject their session-scoped upload transport. */
+  upload?: (file: File, prefix?: string) => Promise<{ url: string; filename: string; size: number }>
   /** Filename prefix for the uploaded image (task/flow scoping). */
   prefix?: string
   /** Called with '' when an upload starts and a message on failure. */
@@ -243,6 +246,7 @@ export default function ChatInput({
   maxHeight = 120,
 }: ChatInputProps) {
   const { t, locale } = useI18n()
+  const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
   const inputFocusedRef = useRef(false)
@@ -536,9 +540,11 @@ export default function ChatInput({
       for (const file of files) {
         const isImage = file.type.startsWith('image/')
         try {
-          const uploaded = isImage
-            ? await fsApi.uploadImage(file, imageAttach.projectId, imageAttach.prefix)
-            : await fsApi.uploadFile(file, imageAttach.projectId, imageAttach.prefix)
+          const uploaded = imageAttach.upload
+            ? await imageAttach.upload(file, imageAttach.prefix)
+            : isImage
+              ? await fsApi.uploadImage(file, imageAttach.projectId!, imageAttach.prefix)
+              : await fsApi.uploadFile(file, imageAttach.projectId!, imageAttach.prefix)
           const markdown = formatMarkdownAttachment(file, uploaded.url)
           const before = nextValue.slice(0, nextCursor)
           const after = nextValue.slice(nextCursor)
@@ -727,7 +733,8 @@ export default function ChatInput({
                       onClick={() => setPreviewImage(segment)}
                     >
                       <img
-                        src={resolveMarkdownImageSrc(segment.url, imageAttach?.projectId)}
+                        src={markdownUrlResolver?.(segment.url)
+                          ?? resolveMarkdownImageSrc(segment.url, imageAttach?.projectId)}
                         alt={segment.alt || imageAlt}
                       />
                     </button>

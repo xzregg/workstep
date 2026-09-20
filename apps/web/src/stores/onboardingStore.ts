@@ -12,6 +12,8 @@ interface OnboardingStore extends OnboardingState {
   start: () => void
   reopen: () => void
   dismiss: () => void
+  skip: () => void
+  completeStep: (step: OnboardingStep) => void
   setCollapsed: (collapsed: boolean) => void
   chooseSetupMode: (mode: OnboardingSetupMode) => void
   recordProvider: (providerId: string) => void
@@ -29,6 +31,8 @@ const persist = (state: OnboardingState) => {
   return state
 }
 
+const stepOrder: OnboardingStep[] = ['provider', 'engine', 'project', 'workflow', 'task']
+
 const snapshot = (state: OnboardingStore): OnboardingState => ({
   status: state.status,
   currentStep: state.currentStep,
@@ -40,6 +44,7 @@ const snapshot = (state: OnboardingStore): OnboardingState => ({
   workflowId: state.workflowId,
   taskId: state.taskId,
   canvasHintSeen: state.canvasHintSeen,
+  completedSteps: state.completedSteps,
 })
 
 export const useOnboardingStore = create<OnboardingStore>((set) => ({
@@ -59,36 +64,76 @@ export const useOnboardingStore = create<OnboardingStore>((set) => ({
     status: 'dismissed',
     collapsed: false,
   })),
+  skip: () => set((current) => persist({
+    ...snapshot(current), status: 'completed', currentStep: 'task', collapsed: false,
+    completedSteps: [...stepOrder],
+  })),
+  completeStep: (step) => set((current) => {
+    if (current.status !== 'active') return current
+    const completedSteps = current.completedSteps.includes(step)
+      ? current.completedSteps
+      : [...current.completedSteps, step]
+    const nextStep = stepOrder[stepOrder.indexOf(step) + 1]
+    return persist({
+      ...snapshot(current),
+      completedSteps,
+      currentStep: nextStep ?? 'task',
+      status: step === 'task' ? 'completed' : 'active',
+    })
+  }),
   setCollapsed: (collapsed) => set((current) => persist({ ...snapshot(current), collapsed })),
-  chooseSetupMode: (setupMode) => set((current) => persist({
-    ...snapshot(current),
-    setupMode,
-    providerId: setupMode === 'local' ? null : current.providerId,
-    currentStep: setupMode === 'local' ? 'engine' : 'provider',
-    status: 'active',
-  })),
-  recordProvider: (providerId) => set((current) => persist({
-    ...snapshot(current), setupMode: 'provider', providerId, currentStep: 'engine', status: 'active',
-  })),
-  recordEngine: (engineId) => set((current) => persist({
-    ...snapshot(current), engineId, currentStep: 'project', status: 'active',
-  })),
-  recordProject: (projectId) => set((current) => persist({
-    ...snapshot(current), projectId, workflowId: null, taskId: null,
-    currentStep: 'workflow', status: 'active',
-  })),
-  recordWorkflow: (workflowId) => set((current) => persist({
-    ...snapshot(current), workflowId, taskId: null, currentStep: 'task', status: 'active',
-  })),
-  recordTask: (taskId) => set((current) => persist({
-    ...snapshot(current), taskId, currentStep: 'task', status: 'completed', collapsed: false,
-  })),
-  setCurrentStep: (currentStep) => set((current) => persist({
-    ...snapshot(current), currentStep,
-    status: current.status === 'completed' ? 'active' : current.status,
-  })),
+  chooseSetupMode: (setupMode) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current),
+      setupMode,
+      providerId: setupMode === 'local' ? null : current.providerId,
+      currentStep: setupMode === 'local' ? 'engine' : 'provider',
+      status: 'active',
+    })
+  }),
+  recordProvider: (providerId) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current), setupMode: 'provider', providerId, currentStep: 'engine', status: 'active',
+    })
+  }),
+  recordEngine: (engineId) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current), engineId, currentStep: 'project', status: 'active',
+    })
+  }),
+  recordProject: (projectId) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current), projectId, workflowId: null, taskId: null,
+      currentStep: 'workflow', status: 'active',
+    })
+  }),
+  recordWorkflow: (workflowId) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current), workflowId, taskId: null, currentStep: 'task', status: 'active',
+    })
+  }),
+  recordTask: (taskId) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({
+      ...snapshot(current), taskId, currentStep: 'task', status: 'completed', collapsed: false,
+    })
+  }),
+  setCurrentStep: (currentStep) => set((current) => {
+    if (current.status !== 'active') return current
+    return persist({ ...snapshot(current), currentStep })
+  }),
   rollback: (step) => set((current) => {
-    const next = { ...snapshot(current), status: 'active' as const, currentStep: step }
+    if (current.status !== 'active') return current
+    const rollbackIndex = stepOrder.indexOf(step)
+    const next = {
+      ...snapshot(current), status: 'active' as const, currentStep: step,
+      completedSteps: current.completedSteps.filter((item) => stepOrder.indexOf(item) < rollbackIndex),
+    }
     if (step === 'provider') Object.assign(next, { setupMode: null, providerId: null, engineId: null, projectId: null, workflowId: null, taskId: null })
     if (step === 'engine') Object.assign(next, { engineId: null, projectId: null, workflowId: null, taskId: null })
     if (step === 'project') Object.assign(next, { projectId: null, workflowId: null, taskId: null })

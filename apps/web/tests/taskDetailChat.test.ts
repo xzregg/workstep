@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  artifactsForMessage,
   findPreferredArtifact,
   findActionablePendingReview,
   resolveStageDisplayStatus,
@@ -82,6 +83,24 @@ test('keeps preferred stage filtering when artifacts share a logical name', () =
   ]
 
   assert.equal(findPreferredArtifact(artifacts, 'Spec', 'req')?.step_key, 'req')
+})
+
+test('selects only the artifact round owned by a task message', () => {
+  const artifacts = [
+    { step_key: 'req', round: 1, is_latest: false, is_selected: false, name: 'prd.md' },
+    { step_key: 'req', round: 2, is_latest: true, is_selected: true, name: 'prd.md' },
+    { step_key: 'build', round: 1, is_latest: true, is_selected: true, name: 'result.md' },
+  ]
+  assert.deepEqual(
+    artifactsForMessage(artifacts, 'req', 1).map((artifact: any) => artifact.round),
+    [1],
+  )
+  assert.deepEqual(
+    artifactsForMessage(artifacts, 'req', 2).map((artifact: any) => artifact.round),
+    [2],
+  )
+  assert.deepEqual(artifactsForMessage(artifacts, 'req', null), [])
+  assert.equal(findPreferredArtifact(artifacts, 'prd.md', 'req', 1)?.round, 1)
 })
 
 import {

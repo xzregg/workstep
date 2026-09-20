@@ -148,6 +148,52 @@ def test_task_history_returns_latest_page_in_chronological_order(db_and_service)
     assert [message["content"] for message in history] == ["second", "third"]
 
 
+def test_task_history_infers_artifact_round_for_legacy_messages(db_and_service):
+    service, _ = db_and_service
+    task = service.create_task(title="Legacy rounds", cwd="/tmp")
+    from models import Message, StepRun, WorkflowRun
+
+    workflow_run = WorkflowRun.create(
+        id="legacy-run",
+        task=task["id"],
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    for round_number in (1, 2):
+        started_at = datetime(2026, 1, round_number, tzinfo=timezone.utc)
+        StepRun.create(
+            id=f"step-{round_number}",
+            run=workflow_run,
+            step_key="do",
+            attempt=round_number,
+            artifact_round=round_number,
+            status="succeeded",
+            started_at=started_at,
+        )
+        Message.create(
+            id=f"message-{round_number}",
+            task=task["id"],
+            step_key="do",
+            channel="execution",
+            role="assistant",
+            content=f"round {round_number}",
+            run_status="succeeded",
+            position=round_number,
+            started_at=started_at + timedelta(seconds=1),
+            created_at=started_at + timedelta(seconds=1),
+            # Legacy rows have neither field persisted.
+            step_run_id=None,
+            artifact_round=None,
+        )
+
+    history = service.get_task_history(task["id"])
+
+    assert [message["artifact_round"] for message in history] == [1, 2]
+    assert [message["step_run_id"] for message in history] == ["step-1", "step-2"]
+
+
 def test_create_task_from_later_stage_skips_predecessors(db_and_service):
     """A stage-specific task does not require outputs from earlier stages."""
     service, _ = db_and_service
@@ -418,6 +464,43 @@ def test_get_task(db_and_service):
     assert found["title"] == "Find me"
 
     assert service.get_task("nonexistent") is None
+
+
+def test_get_task_ignores_steps_removed_from_active_workflow(db_and_service):
+    """A stale TaskStep must not hide a completed active workflow run."""
+    from models import Task, TaskStep, WorkflowRun
+
+    service, _ = db_and_service
+    created = service.create_task(
+        title="Changed workflow",
+        cwd="/tmp",
+        workflow={"steps": [{"key": "build"}, {"key": "deploy"}]},
+    )
+    TaskStep.update(status="passed").where(
+        (TaskStep.task == created["id"]) & (TaskStep.step_key == "build")
+    ).execute()
+    TaskStep.update(status="failed").where(
+        (TaskStep.task == created["id"]) & (TaskStep.step_key == "deploy")
+    ).execute()
+    run = WorkflowRun.create(
+        id="active-run",
+        task=created["id"],
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps({"steps": [{"key": "build"}]}),
+        started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ended_at=datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc),
+    )
+    Task.update(
+        status="ready",
+        active_workflow_run_id=run.id,
+    ).where(Task.id == created["id"]).execute()
+
+    found = service.get_task(created["id"])
+
+    assert [(step["step_key"], step["status"]) for step in found["steps"]] == [
+        ("build", "passed"),
+    ]
 
 
 def test_get_task_exposes_step_session_id(db_and_service):

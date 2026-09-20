@@ -2063,6 +2063,36 @@ async def test_canvas_json_in_reply_becomes_hidden_auto_apply_proposal(
                for event in events)
 
 
+@pytest.mark.anyio
+async def test_partial_canvas_json_fence_preserves_untouched_stages(gen_module):
+    module, _bus, _manager, project, _ = gen_module
+    base = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "需求"},
+            {"id": 2, "type": "dev", "title": "开发"},
+        ],
+        "connections": [{"from": 1, "to": 2}],
+    }
+    session = SimpleNamespace(
+        engine="claude",
+        fast_model="claude-fast",
+        cwd=str(project.path),
+        steps=base,
+    )
+    partial = {"nodes": [{"id": 2, "type": "dev", "title": "开发 v2"}]}
+    _reply, proposals, _events = await module._resolve_proposal(
+        session,
+        json.dumps({
+            "reply": f"已调整。\n```json\n{json.dumps(partial)}\n```",
+            "flow_proposals": [],
+        }),
+    )
+
+    assert [node["id"] for node in proposals[0]["steps"]["nodes"]] == [1, 2]
+    assert proposals[0]["steps"]["nodes"][1]["title"] == "开发 v2"
+    assert proposals[0]["stageChanges"][0]["id"] == 2
+
+
 class ResumeFakeEngine:
     capabilities = SimpleNamespace(supports_coordinator=True)
     supports_resume = True
@@ -2452,3 +2482,65 @@ async def test_incremental_patch_merges_into_canvas(gen_module, monkeypatch):
     upsert_ids = {node["id"] for node in card["patch"]["upsertNodes"]}
     assert upsert_ids == {2, 3}
     WorkflowDefinition.load(card["steps"]).validate()
+
+
+@pytest.mark.anyio
+async def test_partial_nodes_payload_is_merged_instead_of_replacing_canvas(
+    gen_module, monkeypatch
+):
+    """Edit-mode ``nodes`` subsets must not erase untouched stages."""
+    module, bus, _manager, project, _ = gen_module
+    queue = bus.subscribe()
+    base = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "需求"},
+            {"id": 2, "type": "dev", "title": "开发"},
+            {"id": 3, "type": "publish", "title": "发布"},
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 2, "fromPort": 0, "to": 3, "toPort": 0},
+        ],
+    }
+    raw = json.dumps({
+        "reply": "已修改开发阶段",
+        "flow_proposals": [{
+            "title": "修改开发阶段",
+            "steps": {
+                "nodes": [{"id": 2, "type": "dev", "title": "开发 v2"}],
+            },
+            "autoApply": True,
+        }],
+    })
+
+    async def fake_invoke(*args, **kwargs):
+        return raw, [], None
+
+    monkeypatch.setattr(module, "_invoke", fake_invoke)
+    accepted = module.submit_message(
+        project.id,
+        None,
+        "只修改开发阶段",
+        "idem-partial-nodes",
+        steps=base,
+        context_mode="canvas_updated",
+    )
+    assert await _wait_turn(module, accepted.turn_id) == "completed"
+
+    cards = None
+    while True:
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        if event["type"] == "CUSTOM" and event["name"] == "workstep.flow_proposals":
+            cards = event["value"]["proposals"]
+            break
+
+    card = cards[0]
+    assert [node["id"] for node in card["steps"]["nodes"]] == [1, 2, 3]
+    assert card["steps"]["nodes"][1]["title"] == "开发 v2"
+    assert card["stageChanges"] == [{
+        "id": 2,
+        "key": "dev",
+        "title": "开发 v2",
+        "change": "updated",
+    }]
+    assert [node["id"] for node in card["patch"]["upsertNodes"]] == [2]

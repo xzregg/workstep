@@ -1409,6 +1409,37 @@ details[open] > summary > .process-trace-chevron {
   margin-top: 4px;
 }
 
+/* 审核报告在任务详情的紧凑卡片里渲染：标题用相对字号随容器缩放
+   （总结 13px、问题条目 11px），块间距收紧，避免撑大左侧卡片。 */
+.markdown-message.review-report-markdown {
+  line-height: 1.6;
+}
+
+.markdown-message.review-report-summary {
+  font-size: calc(13px * var(--font-scale));
+}
+
+.markdown-message.review-report-markdown p,
+.markdown-message.review-report-markdown ul,
+.markdown-message.review-report-markdown ol,
+.markdown-message.review-report-markdown blockquote,
+.markdown-message.review-report-markdown pre,
+.markdown-message.review-report-markdown table {
+  margin: 0 0 6px;
+}
+
+.markdown-message.review-report-markdown h1,
+.markdown-message.review-report-markdown h2,
+.markdown-message.review-report-markdown h3,
+.markdown-message.review-report-markdown h4 {
+  margin: 10px 0 6px;
+}
+
+.markdown-message.review-report-markdown h1 { font-size: 1.15em; }
+.markdown-message.review-report-markdown h2 { font-size: 1.1em; }
+.markdown-message.review-report-markdown h3 { font-size: 1em; font-weight: 600; }
+.markdown-message.review-report-markdown h4 { font-size: 1em; font-weight: 600; }
+
 /* ── Streaming Markdown messages ── */
 
 .markdown-message {

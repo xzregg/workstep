@@ -36,6 +36,7 @@ import {
 import { OUTPUT_TYPES, DEFAULT_OUTPUT_TYPE } from '../config/outputTypes'
 import { DEFAULT_EXECUTION_ENGINE, engineLabel } from '../engineMeta'
 import { initialStageConfig, normalizeStepConfig } from '../utils/stageConfig'
+import { copyText } from '../utils/clipboard'
 import StageConfigFields from './StageConfigFields'
 import { useI18n } from '../i18n'
 import { useEngineRevision } from '../stores/engineAvailabilityStore'
@@ -1479,7 +1480,6 @@ function FlowCanvasInner({
     getSteps: () => buildCanvasJson(),
     validate: () => computeStepError(),
     loadSteps: (steps: any) => {
-      if (readOnly) return
       const { nodes: nn, connections: nc } = loadCanvasData(steps)
       setNodes([...canvasToFlowNodes(nn), ...loadBookmarks(steps)])
       setEdges(canvasToFlowEdges(nc, nn))
@@ -1607,16 +1607,18 @@ function FlowCanvasInner({
   const handleExportJson = () => {
     const text = JSON.stringify(buildCanvasJson(), null, 2)
     setShowJson(true)
-    navigator.clipboard.writeText(text)
-      .then(() => { setSaveMsg(t('flow.copyJsonSuccess')); setSaveMsgKind('success') })
-      .catch(() => { setSaveMsg(t('flow.copyJsonFailedHint')); setSaveMsgKind('error') })
+    void copyText(text).then((ok) => {
+      setSaveMsg(ok ? t('flow.copyJsonSuccess') : t('flow.copyJsonFailedHint'))
+      setSaveMsgKind(ok ? 'success' : 'error')
+    })
     setTimeout(() => setSaveMsg(''), 3000)
   }
 
   const handleCopyJson = () => {
-    navigator.clipboard.writeText(JSON.stringify(buildCanvasJson(), null, 2))
-      .then(() => { setSaveMsg(t('flow.copyJsonSuccess')); setSaveMsgKind('success') })
-      .catch(() => { setSaveMsg(t('flow.copyFailed')); setSaveMsgKind('error') })
+    void copyText(JSON.stringify(buildCanvasJson(), null, 2)).then((ok) => {
+      setSaveMsg(ok ? t('flow.copyJsonSuccess') : t('flow.copyFailed'))
+      setSaveMsgKind(ok ? 'success' : 'error')
+    })
     setTimeout(() => setSaveMsg(''), 3000)
   }
 

@@ -34,7 +34,10 @@ import ChatMessageBubble from './ChatMessageBubble'
 import AssistantThinkingMessage from './AssistantThinkingMessage'
 import StreamingStatusText from './StreamingStatusText'
 import ConversationNewMessagesButton from './ConversationNewMessagesButton'
-import ChatInput, { type ChatInputEngineConfig } from './ChatInput'
+import ChatInput, {
+  type ChatInputEngineConfig,
+  type ChatInputImageAttach,
+} from './ChatInput'
 import MessageMetaBar from './MessageMetaBar'
 import MessageResponseFooter, {
   usageFromEvents,
@@ -42,6 +45,7 @@ import MessageResponseFooter, {
 import { stripA2uiBlocks } from '../utils/a2ui'
 import MarkdownEditor from './MarkdownEditor'
 import MarkdownMessage from './MarkdownMessage'
+import ReviewReportContent from './ReviewReportContent'
 import ProcessTrace from './ProcessTrace'
 import Icon from './Icon'
 import PendingMessageInserts from './PendingMessageInserts'
@@ -59,6 +63,7 @@ import {
   isStageResumableWithMessage,
   isSelectedStageRunning,
   findPreferredArtifact,
+  artifactsForMessage,
   findActionablePendingReview,
   isNearConversationBottom,
   hasActiveSelectionWithin,
@@ -163,10 +168,10 @@ function lastEventTimestamp(events: any[]): number | null {
 // ─── Props ───────────────────────────────────────────────────────────────
 
 export interface TaskDetailViewProps {
-  /** Hides all editing controls — suitable for the shared read-only view. */
+  /** Hides owner-only task mutation controls. */
   readOnly?: boolean
-  /** Allows execution interactions (messages/reviews) without configuration editors. */
-  interactionOnly?: boolean
+  /** Shows the chat composer independently from owner-only task controls. */
+  chatEnabled?: boolean
 
   // ── Task data ──
   task: {
@@ -221,7 +226,7 @@ export interface TaskDetailViewProps {
 
   // ── Artifacts ──
   artifacts: TaskArtifact[]
-  onOpenArtifact: (name: string, stepKey?: string) => void
+  onOpenArtifact: (name: string, stepKey?: string, round?: number) => void
 
   // ── Chat (edit mode only) ──
   chatTarget?: string | 'coordinator'
@@ -245,6 +250,8 @@ export interface TaskDetailViewProps {
   /** 正在重建会话重跑的阶段 key，用于禁用重复点击。 */
   restartingStageKeys?: string[]
   chatInputRef?: React.RefObject<HTMLTextAreaElement | null>
+  /** Alternate attachment transport for public interactive shares. */
+  chatAttachment?: ChatInputImageAttach
 
   // ── Stage inserts (edit mode only) ──
   stageInserts?: Array<{ id: string; content: string }>
@@ -353,7 +360,7 @@ export interface TaskDetailViewProps {
 
 export default function TaskDetailView({
   readOnly,
-  interactionOnly = false,
+  chatEnabled,
   task,
   stages,
   stageProgress,
@@ -393,6 +400,7 @@ export default function TaskDetailView({
   onRestartStageWithFreshSession,
   restartingStageKeys,
   chatInputRef,
+  chatAttachment,
   // Stage inserts
   stageInserts,
   onStageInsertRemove,
@@ -480,6 +488,7 @@ export default function TaskDetailView({
   onChatError,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
+  const canChat = chatEnabled ?? !readOnly
   const localUserName = useUserSettingsStore((state) => state.userName)
   // 协调引擎下拉的可用性走共享状态，设置页改动后即时跟随（由 TaskDetail 拉取时播种）。
   const sharedCoordinatorEngines = useCoordinatorEngines()
@@ -762,14 +771,43 @@ export default function TaskDetailView({
   const selectedReviewActor = selectedReview
     ? reviewActorLabel(selectedReview)
     : undefined
+  const currentStageArtifactRounds = useMemo(() => {
+    const rounds = new Set<number>()
+    artifacts.forEach((artifact) => {
+      if (artifact.step_key === currentStage.key && artifact.round) {
+        rounds.add(artifact.round)
+      }
+    })
+    return [...rounds].sort((a, b) => b - a)
+  }, [artifacts, currentStage.key])
+  const [selectedIoRound, setSelectedIoRound] = useState<number | null>(null)
+  const activeIoRound = selectedIoRound && currentStageArtifactRounds.includes(selectedIoRound)
+    ? selectedIoRound
+    : currentStageArtifactRounds[0]
+
+  useEffect(() => {
+    setSelectedIoRound(null)
+  }, [currentStage.key])
 
   const findArtifact = (
     name: string,
     preferredStepKey?: string,
     source?: TaskArtifact[],
+    preferredRound?: number,
   ) => {
-    return findPreferredArtifact(source || artifacts, name, preferredStepKey)
+    return findPreferredArtifact(source || artifacts, name, preferredStepKey, preferredRound)
   }
+
+  const formatArtifactUpdatedAt = useCallback((value?: string | null) => {
+    const milliseconds = toMilliseconds(value)
+    if (milliseconds === null) return ''
+    return new Date(milliseconds).toLocaleString(locale, {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }, [locale])
 
   const renderMessageArtifacts = (
     messageArtifacts: TaskArtifact[],
@@ -792,11 +830,11 @@ export default function TaskDetailView({
           role="button"
           tabIndex={0}
           aria-label={t('taskDetail.openOutputAria', { name: artifact.name })}
-          onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}
+          onClick={() => onOpenArtifact(artifact.name, artifact.step_key, artifact.round)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault()
-              onOpenArtifact(artifact.name, artifact.step_key)
+              onOpenArtifact(artifact.name, artifact.step_key, artifact.round)
             }
           }}
           title={t('taskDetail.openFileTitle', { name: artifact.name })}
@@ -983,11 +1021,7 @@ export default function TaskDetailView({
   // ── Render: Recovered hint ──
 
   const renderRecoveredHint = () => {
-    if (
-      readOnly ||
-      task?.status !== 'running' ||
-      !(task?.recovered_count || 0)
-    )
+    if (task?.status !== 'running' || !(task?.recovered_count || 0))
       return null
     return (
       <div
@@ -1075,7 +1109,7 @@ export default function TaskDetailView({
                 </span>
               )}
             </div>
-            {!readOnly && !interactionOnly && !editingDescription && (
+            {!readOnly && !editingDescription && (
               <Button
                 variant="ghost"
                 aria-label={t('taskDetail.editDescriptionAria')}
@@ -1190,7 +1224,6 @@ export default function TaskDetailView({
         />
 
         {/* Stage prompt */}
-        {!readOnly && (
           <div>
             <div
               style={{
@@ -1223,14 +1256,16 @@ export default function TaskDetailView({
               >
                 {t('taskDetail.stagePrompt')}
               </div>
-              <Button
-                variant="ghost"
-                onClick={onOpenPromptEditor}
-                style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
-              >
-                <span aria-hidden="true">✎</span>
-                {t('taskDetail.quickEdit')}
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  onClick={onOpenPromptEditor}
+                  style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
+                >
+                  <span aria-hidden="true">✎</span>
+                  {t('taskDetail.quickEdit')}
+                </Button>
+              )}
             </div>
             <div
               style={{
@@ -1256,14 +1291,61 @@ export default function TaskDetailView({
               )}
             </div>
           </div>
-        )}
 
         {/* I/O section */}
         <div>
           <div
-            style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, marginBottom: 8 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 8,
+            }}
           >
-            {t('taskDetail.stageIo')}
+            <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
+              {t('taskDetail.stageIo')}
+            </span>
+            {currentStageArtifactRounds.length > 0 && (
+              <span
+                role="tablist"
+                aria-label={t('taskDetail.artifactRoundTabsAria')}
+                style={{
+                  display: 'flex',
+                  gap: 4,
+                  overflowX: 'auto',
+                  minWidth: 0,
+                }}
+              >
+                {currentStageArtifactRounds.map((round) => {
+                  const selected = round === activeIoRound
+                  return (
+                    <button
+                      key={round}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setSelectedIoRound(round)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        height: 24,
+                        padding: '0 7px',
+                        borderRadius: 4,
+                        border: '1px solid var(--border-soft)',
+                        background: selected ? 'var(--accent)' : 'var(--surface)',
+                        color: selected ? 'var(--accent-fg)' : 'var(--meta)',
+                        fontSize: 'calc(11px * var(--font-scale))',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <span>{t('taskDetail.runRoundShort', { round })}</span>
+                    </button>
+                  )
+                })}
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div
@@ -1300,6 +1382,8 @@ export default function TaskDetailView({
                   (inp: any, inpIdx: number) => {
                     const subOutputs =
                       inpIdx === 0 ? stageOutputs : []
+                    const inputArtifact = findArtifact(inp.name)
+                    const inputUpdatedAt = formatArtifactUpdatedAt(inputArtifact?.updated_at)
                     return (
                       <div
                         key={inpIdx}
@@ -1340,6 +1424,20 @@ export default function TaskDetailView({
                             cursor: 'pointer',
                           }}
                         >
+                          {inputUpdatedAt && (
+                            <span
+                              title={t('taskDetail.artifactModifiedAt', { time: inputUpdatedAt })}
+                              style={{
+                                width: 64,
+                                flexShrink: 0,
+                                color: 'var(--meta)',
+                                fontSize: 'calc(11px * var(--font-scale))',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {inputUpdatedAt}
+                            </span>
+                          )}
                           <div
                             style={{
                               width: 6,
@@ -1351,12 +1449,70 @@ export default function TaskDetailView({
                           />
                           <span
                             style={{
-                              fontSize: 'calc(13px * var(--font-scale))',
-                              fontWeight: 500,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 6,
                               flex: 1,
+                              minWidth: 0,
                             }}
                           >
-                            {inp.name}
+                            <span
+                              style={{
+                                fontSize: 'calc(13px * var(--font-scale))',
+                                fontWeight: 500,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                minWidth: 0,
+                              }}
+                            >
+                              {inp.name}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 'calc(11px * var(--font-scale))',
+                                color: 'var(--meta)',
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border-soft)',
+                                padding: '0 4px',
+                                borderRadius: 3,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {inp.type}
+                            </span>
+                          </span>
+                          {inputArtifact?.round ? (
+                            <span
+                              style={{
+                                fontSize: 'calc(11px * var(--font-scale))',
+                                color: 'var(--meta)',
+                                background: 'var(--surface)',
+                                border: '1px solid var(--border-soft)',
+                                padding: '0 3px',
+                                borderRadius: 2,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {t('taskDetail.artifactRound', {
+                                round: inputArtifact.round,
+                              })}
+                            </span>
+                          ) : null}
+                          <span
+                            style={{
+                              fontSize: 'calc(11px * var(--font-scale))',
+                              color: inputArtifact ? 'var(--success)' : 'var(--meta)',
+                              background: 'var(--surface)',
+                              border: '1px solid var(--border-soft)',
+                              padding: '0 3px',
+                              borderRadius: 2,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {inputArtifact
+                              ? t('taskDetail.outputDone')
+                              : t('taskDetail.outputPending')}
                           </span>
                           <span
                             style={{
@@ -1366,18 +1522,6 @@ export default function TaskDetailView({
                           >
                             {t('taskDetail.view')}
                           </span>
-                          <span
-                            style={{
-                              fontSize: 'calc(11px * var(--font-scale))',
-                              color: 'var(--meta)',
-                              background: 'var(--surface)',
-                              border: '1px solid var(--border-soft)',
-                              padding: '0 4px',
-                              borderRadius: 3,
-                            }}
-                          >
-                            {inp.type}
-                          </span>
                         </div>
                         {/* Sub-outputs */}
                         {subOutputs.map(
@@ -1386,7 +1530,10 @@ export default function TaskDetailView({
                             const outArtifact = findArtifact(
                               out.name,
                               currentStage.key,
+                              undefined,
+                              activeIoRound,
                             )
+                            const outputUpdatedAt = formatArtifactUpdatedAt(outArtifact?.updated_at)
                             const outputReady = Boolean(outArtifact)
                             return (
                               <div
@@ -1404,6 +1551,7 @@ export default function TaskDetailView({
                                     onOpenArtifact(
                                       out.name,
                                       currentStage.key,
+                                      activeIoRound,
                                     )
                                   : undefined}
                                 onKeyDown={outputReady
@@ -1416,6 +1564,7 @@ export default function TaskDetailView({
                                       onOpenArtifact(
                                         out.name,
                                         currentStage.key,
+                                        activeIoRound,
                                       )
                                     }
                                   }
@@ -1443,6 +1592,20 @@ export default function TaskDetailView({
                                 >
                                   ↳
                                 </span>
+                                {outputUpdatedAt && (
+                                  <span
+                                    title={t('taskDetail.artifactModifiedAt', { time: outputUpdatedAt })}
+                                    style={{
+                                      width: 64,
+                                      flexShrink: 0,
+                                      color: 'var(--meta)',
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      fontVariantNumeric: 'tabular-nums',
+                                    }}
+                                  >
+                                    {outputUpdatedAt}
+                                  </span>
+                                )}
                                 {outArtifact?.is_dir ? (
                                   <Icon
                                     name="folder"
@@ -1465,12 +1628,41 @@ export default function TaskDetailView({
                                 )}
                                 <span
                                   style={{
-                                    fontSize: 'calc(13px * var(--font-scale))',
-                                  flex: 1,
-                                }}
-                              >
-                                  {out.name}
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    flex: 1,
+                                    minWidth: 0,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: 'calc(13px * var(--font-scale))',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                      minWidth: 0,
+                                    }}
+                                  >
+                                    {out.name}
+                                  </span>
                                 </span>
+                                {outArtifact?.round ? (
+                                  <span
+                                    style={{
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      color: 'var(--meta)',
+                                      background: 'var(--surface)',
+                                      border: '1px solid var(--border-soft)',
+                                      padding: '0 3px',
+                                      borderRadius: 2,
+                                    }}
+                                  >
+                                    {t('taskDetail.artifactRound', {
+                                      round: outArtifact.round,
+                                    })}
+                                  </span>
+                                ) : null}
                                 <span
                                   style={{
                                     fontSize: 'calc(11px * var(--font-scale))',
@@ -1493,26 +1685,11 @@ export default function TaskDetailView({
                                     border: '1px solid var(--border-soft)',
                                     padding: '0 3px',
                                     borderRadius: 2,
+                                    flexShrink: 0,
                                   }}
                                 >
                                   {out.type}
                                 </span>
-                                {outArtifact?.round ? (
-                                  <span
-                                    style={{
-                                      fontSize: 'calc(11px * var(--font-scale))',
-                                      color: 'var(--meta)',
-                                      background: 'var(--surface)',
-                                      border: '1px solid var(--border-soft)',
-                                      padding: '0 3px',
-                                      borderRadius: 2,
-                                    }}
-                                  >
-                                    {t('taskDetail.artifactRound', {
-                                      round: outArtifact.round,
-                                    })}
-                                  </span>
-                                ) : null}
                                 {outputReady && (
                                   <span
                                     style={{
@@ -1616,41 +1793,20 @@ export default function TaskDetailView({
                         : t('taskDetail.reviewWaiting')}
                 </span>
               </div>
+              {/* 审核报告是 Markdown 文本，统一走 ReviewReportContent 按 Markdown 渲染：
+                  分享页与 owner 弹窗都经 TaskDetailView 渲染，复用同一份实现。 */}
               {selectedReview.report && (
-                <>
-                  <div style={{ fontSize: 'calc(13px * var(--font-scale))', lineHeight: 1.6 }}>
-                    {selectedReview.report.score !== null && (
-                      <strong>
-                        {t('taskDetail.scorePoints', {
+                <ReviewReportContent
+                  scoreLabel={
+                    selectedReview.report.score !== null
+                      ? t('taskDetail.scorePoints', {
                           score: selectedReview.report.score,
-                        })}
-                      </strong>
-                    )}
-                    {selectedReview.report.summary}
-                  </div>
-                  {selectedReview.report.issues.map(
-                    (issue: any, index: number) => (
-                      <div
-                        key={`${issue.category}-${index}`}
-                        style={{
-                          fontSize: 'calc(11px * var(--font-scale))',
-                          lineHeight: 1.5,
-                          padding: '7px 9px',
-                          borderRadius: 6,
-                          background:
-                            issue.severity === 'error'
-                              ? 'color-mix(in oklab, var(--danger), transparent 90%)'
-                              : 'color-mix(in oklab, var(--warn), transparent 90%)',
-                        }}
-                      >
-                        <strong>{issue.description}</strong>
-                        {issue.suggestion && (
-                          <div>{issue.suggestion}</div>
-                        )}
-                      </div>
-                    ),
-                  )}
-                </>
+                        })
+                      : ''
+                  }
+                  report={selectedReview.report}
+                  projectId={projectId}
+                />
               )}
               {selectedReview.decision && selectedReviewActor && (
                 <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--muted)' }}>
@@ -1719,7 +1875,7 @@ export default function TaskDetailView({
         )}
 
         {/* Review config drawer (edit mode only) */}
-        {!readOnly && !interactionOnly && (
+        {!readOnly && (
           <div style={{ marginTop: 20 }}>
             <button
               onClick={() =>
@@ -2187,9 +2343,24 @@ export default function TaskDetailView({
                               later.role === 'assistant' &&
                               later.channel === 'execution',
                           )
+                        const isCompletedExecutionResponse =
+                          !isUser &&
+                          !isReview &&
+                          !isCoordinator &&
+                          !isSystem &&
+                          ['succeeded', 'completed'].includes(msg.run_status)
+                        const messageArtifactRound =
+                          msg.artifact_round ?? msgReview?.artifact_round
                         const msgArtifacts =
-                          isReview || isLastExecutionResponse
-                            ? (() => {
+                          isReview || isCompletedExecutionResponse
+                            ? messageArtifactRound
+                              ? artifactsForMessage(
+                                  artifacts,
+                                  stageKey,
+                                  messageArtifactRound,
+                                )
+                              : isLastExecutionResponse
+                                ? (() => {
                                 const stageArtifacts = artifacts.filter(
                                   (artifact) => artifact.step_key === stageKey,
                                 )
@@ -2200,7 +2371,8 @@ export default function TaskDetailView({
                                   (artifact) => artifact.is_latest,
                                 )
                                 return selected.length ? selected : latest
-                              })()
+                                  })()
+                                : []
                             : []
                         const processEvents =
                           Array.isArray(
@@ -3114,7 +3286,7 @@ export default function TaskDetailView({
         </div>
 
         {/* Chat input (edit mode only) */}
-        {!readOnly && (
+        {canChat && (
           <div
             className="task-detail-composer"
             style={{
@@ -3355,7 +3527,7 @@ export default function TaskDetailView({
               enhance={enhance}
               inputRef={chatInputRef}
               imageAttach={
-                projectId
+                chatAttachment ?? (projectId
                   ? {
                       projectId,
                       prefix:
@@ -3365,7 +3537,7 @@ export default function TaskDetailView({
                         /* handled by parent */
                       },
                     }
-                  : undefined
+                  : undefined)
               }
               stopTitle={
                 chatTarget !== 'coordinator'
@@ -3458,11 +3630,11 @@ export default function TaskDetailView({
                       } as ChatInputEngineConfig
               }
               disabled={composerState.disabled || (
-                !interactionOnly
+                !readOnly
                 && chatTarget !== 'coordinator'
                 && (stageEngineConfigLoading || !stageEngineConfig || Boolean(stageEngineConfig.saving))
               )}
-              running={interactionOnly ? false : composerState.running}
+              running={readOnly ? false : composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
@@ -3632,7 +3804,7 @@ export default function TaskDetailView({
               <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
                 {roundArtifacts[0]?.step_key} · {t('taskDetail.artifactRound', { round: roundArtifacts[0]?.round || 1 })}
               </div>
-              {roundArtifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.round}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}{artifact.round ? ` · ${t('taskDetail.artifactRound', { round: artifact.round })}` : ''}</span></button>)}
+              {roundArtifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.round}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key, artifact.round)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}{artifact.round ? ` · ${t('taskDetail.artifactRound', { round: artifact.round })}` : ''}</span></button>)}
             </div>
           ))}
         </div>}
@@ -3659,6 +3831,9 @@ function CoordinatorProposalCard({
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const current = proposal
+  const injectedPrompt = typeof current.payload.content === 'string'
+    ? current.payload.content.trim()
+    : ''
   const retryable =
     current.status === 'failed' && current.type === 'rerun_from_stage'
   const canAct = (current.status === 'pending' || retryable) && !pending
@@ -3743,6 +3918,38 @@ function CoordinatorProposalCard({
             step: current.target_step_key || t('common.none'),
           })}
       </div>
+      {injectedPrompt && (
+        <div
+          style={{
+            padding: '8px 10px',
+            borderRadius: 6,
+            border: '1px solid var(--border-soft)',
+            background: 'var(--surface)',
+          }}
+        >
+          <div
+            style={{
+              marginBottom: 4,
+              color: 'var(--meta)',
+              fontSize: 'calc(11px * var(--font-scale))',
+              fontWeight: 600,
+            }}
+          >
+            {t('taskDetail.proposalInjectedPrompt')}
+          </div>
+          <div
+            style={{
+              color: 'var(--text)',
+              fontSize: 'calc(12px * var(--font-scale))',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {injectedPrompt}
+          </div>
+        </div>
+      )}
       <div
         style={{
           fontSize: 'calc(11px * var(--font-scale))',
