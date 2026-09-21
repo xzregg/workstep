@@ -232,15 +232,73 @@ async def test_switch_checks_dirty_active_and_worktree_occupation(client, layout
     service.active_provider = lambda _: True
     assert (await http.post(url + '/switch', json=body)).status_code == 409
     service.active_provider = lambda _: False
-    (repo / 'untracked').write_text('keep me')
-    body['snapshot'] = (await http.get(url + '/status')).json()['snapshot']
-    assert (await http.post(url + '/switch', json=body)).status_code == 409
-    (repo / 'untracked').unlink()
     body['snapshot'] = (await http.get(url + '/status')).json()['snapshot']
     response = await http.post(url + '/switch', json=body)
     assert response.status_code == 200, response.text
     assert response.json()['branch'] == 'other'
     assert git(repo, 'branch', '--show-current') == 'other'
+
+
+async def test_switch_allows_git_to_carry_safe_uncommitted_changes(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    git(repo, 'branch', 'other')
+    (repo / 'one.txt').write_text('carry this change\n')
+    (repo / 'untracked').write_text('keep me\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/switch', json={
+        'branch': 'other', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()['branch'] == 'other'
+    assert (repo / 'one.txt').read_text() == 'carry this change\n'
+    assert (repo / 'untracked').read_text() == 'keep me\n'
+
+
+async def test_switch_keeps_original_branch_when_dirty_change_would_be_overwritten(client, layout):
+    http, _ = client
+    _, repo, _ = layout
+    git(repo, 'switch', '-c', 'other')
+    (repo / 'one.txt').write_text('other branch version\n')
+    git(repo, 'add', 'one.txt')
+    git(repo, 'commit', '-m', 'change on other')
+    git(repo, 'switch', 'main')
+    (repo / 'one.txt').write_text('unsaved local version\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/switch', json={
+        'branch': 'other', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 400
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert (repo / 'one.txt').read_text() == 'unsaved local version\n'
+
+
+async def test_fetch_lists_remote_branches_and_switch_creates_local_tracking_branch(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    remote = tmp_path / 'switch-origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'push', 'origin', 'main:remote-only')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+
+    fetched = await http.post(url + '/fetch')
+    assert fetched.status_code == 200, fetched.text
+    assert {'name': 'origin/remote-only', 'remote': 'origin', 'branch': 'remote-only',
+        'head': git(repo, 'rev-parse', 'refs/remotes/origin/remote-only')} in fetched.json()['remote_branches']
+
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/switch', json={
+        'branch': 'remote-only', 'remote': 'origin', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()['branch'] == 'remote-only'
+    assert git(repo, 'rev-parse', '--abbrev-ref', '@{upstream}') == 'origin/remote-only'
 
 
 async def test_commit_handles_literal_new_paths_deletion_and_hook_failure(client, layout):
@@ -436,7 +494,104 @@ async def test_branch_sync_fetch_and_fast_forward_pull(client, layout, tmp_path)
     assert response.json()['behind'] == 0
 
 
-async def test_pull_refuses_dirty_active_diverged_and_missing_upstream(client, layout, tmp_path):
+async def test_fast_forward_inactive_branch_keeps_current_dirty_files(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    remote = tmp_path / 'advance-origin.git'
+    git(tmp_path, 'init', '--bare', str(remote))
+    git(repo, 'remote', 'add', 'origin', str(remote))
+    git(repo, 'branch', 'release')
+    git(repo, 'push', '-u', 'origin', 'release')
+    peer = repository(tmp_path / 'advance-peer')
+    git(peer, 'remote', 'add', 'origin', str(remote))
+    git(peer, 'fetch', 'origin')
+    git(peer, 'reset', '--hard', 'origin/release')
+    (peer / 'remote-release.txt').write_text('new release\n')
+    git(peer, 'add', '.')
+    git(peer, 'commit', '-m', 'advance release')
+    git(peer, 'push', 'origin', 'HEAD:release')
+    (repo / 'one.txt').write_text('dirty current branch\n')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+
+    response = await http.post(url + '/advance', json={
+        'branch': 'release', 'snapshot': state['snapshot'],
+    })
+    assert response.status_code == 200, response.text
+    release = next(branch for branch in response.json()['branches'] if branch['name'] == 'release')
+    assert (release['ahead'], release['behind']) == (0, 0)
+    assert git(repo, 'rev-parse', 'refs/heads/release') == git(remote, 'rev-parse', 'refs/heads/release')
+    assert git(repo, 'branch', '--show-current') == 'main'
+    assert (repo / 'one.txt').read_text() == 'dirty current branch\n'
+
+
+async def test_remote_inventory_and_explicit_push_target_support_multiple_remotes(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    origin = tmp_path / 'origin.git'
+    backup = tmp_path / 'backup.git'
+    git(tmp_path, 'init', '--bare', str(origin))
+    git(tmp_path, 'init', '--bare', str(backup))
+    git(repo, 'remote', 'add', 'origin', str(origin))
+    git(repo, 'remote', 'add', 'backup', str(backup))
+    git(repo, 'push', '-u', 'origin', 'main')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+
+    inventory = await http.get(url + '/remotes')
+    assert inventory.status_code == 200, inventory.text
+    assert [item['name'] for item in inventory.json()['remotes']] == ['backup', 'origin']
+    assert inventory.json()['upstream'] == {'remote': 'origin', 'branch': 'main'}
+
+    (repo / 'release.txt').write_text('release\n')
+    git(repo, 'add', '.')
+    git(repo, 'commit', '-m', 'release')
+    state = (await http.get(url + '/status')).json()
+    response = await http.post(url + '/push', json={
+        'branch': 'main', 'snapshot': state['snapshot'], 'remote': 'backup',
+        'target_branch': 'release/next', 'set_upstream': False,
+    })
+    assert response.status_code == 200, response.text
+    assert git(backup, 'rev-parse', 'refs/heads/release/next') == git(repo, 'rev-parse', 'HEAD')
+    assert git(origin, 'rev-parse', 'refs/heads/main') != git(repo, 'rev-parse', 'HEAD')
+    assert git(repo, 'rev-parse', '--abbrev-ref', '@{upstream}') == 'origin/main'
+
+    refreshed = await http.post(url + '/fetch-remote', json={'remote': 'backup'})
+    assert refreshed.status_code == 200, refreshed.text
+    remote = next(item for item in refreshed.json()['remotes'] if item['name'] == 'backup')
+    assert any(branch['name'] == 'release/next' for branch in remote['branches'])
+
+
+async def test_explicit_pull_uses_selected_remote_branch_and_can_set_upstream(client, layout, tmp_path):
+    http, _ = client
+    _, repo, _ = layout
+    backup = tmp_path / 'backup.git'
+    git(tmp_path, 'init', '--bare', str(backup))
+    git(repo, 'remote', 'add', 'backup', str(backup))
+    git(repo, 'push', 'backup', 'main:release')
+    peer = repository(tmp_path / 'remote-peer')
+    git(peer, 'remote', 'add', 'backup', str(backup))
+    git(peer, 'fetch', 'backup')
+    git(peer, 'reset', '--hard', 'backup/release')
+    (peer / 'remote-release.txt').write_text('remote release\n')
+    git(peer, 'add', '.')
+    git(peer, 'commit', '-m', 'remote release')
+    git(peer, 'push', 'backup', 'HEAD:release')
+    id = await payment_id(http)
+    url = f'/api/git/worktrees/{id}'
+    state = (await http.get(url + '/status')).json()
+
+    response = await http.post(url + '/pull', json={
+        'branch': 'main', 'snapshot': state['snapshot'], 'remote': 'backup',
+        'target_branch': 'release', 'set_upstream': True,
+    })
+    assert response.status_code == 200, response.text
+    assert (repo / 'remote-release.txt').read_text() == 'remote release\n'
+    assert git(repo, 'rev-parse', '--abbrev-ref', '@{upstream}') == 'backup/release'
+
+
+async def test_pull_preserves_dirty_files_and_refuses_active_diverged_and_missing_upstream(client, layout, tmp_path):
     http, service = client
     _, repo, _ = layout
     remote = tmp_path / 'origin.git'
@@ -449,7 +604,7 @@ async def test_pull_refuses_dirty_active_diverged_and_missing_upstream(client, l
         state = (await http.get(url + '/status')).json()
         return await http.post(url + '/pull', json={'branch': 'main', 'snapshot': state['snapshot']})
     (repo / 'one.txt').write_text('do not lose')
-    assert (await pull()).status_code == 409
+    assert (await pull()).status_code == 200
     assert (repo / 'one.txt').read_text() == 'do not lose'
     git(repo, 'add', '.')
     git(repo, 'commit', '-m', 'local only')

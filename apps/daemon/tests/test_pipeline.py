@@ -208,6 +208,47 @@ def test_assemble_prompt_basic(tmp_path):
     db.close()
 
 
+def test_assemble_prompt_renders_stage_template_variables(tmp_path):
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()),
+        title="修复登录问题",
+        description="登录后偶发跳回首页",
+        creator_name="小王",
+        cwd=str(tmp_path),
+        workflow_id="delivery",
+        created_at=int(time.time()),
+        updated_at=int(time.time()),
+    )
+    step = Step(
+        key="develop",
+        label="开发",
+        prompt=(
+            "请 {name}（{trigger_name}）处理 {task_title}。\n"
+            "任务创建者：{creator_name} / {task_creator_name}\n"
+            "任务：{task_description}\n"
+            "阶段：{stage_name}（{stage_key}）\n"
+            "全角变量：｛name｝\n"
+            "未知变量：{custom_value}"
+        ),
+    )
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+
+    prompt = assemble_prompt(task, step, artifacts_dir, trigger_name="小李")
+
+    assert "请 小李（小李）处理 修复登录问题。" in prompt
+    assert "任务创建者：小王 / 小王" in prompt
+    assert "任务：登录后偶发跳回首页" in prompt
+    assert "阶段：开发（develop）" in prompt
+    assert "全角变量：小李" in prompt
+    assert "未知变量：{custom_value}" in prompt
+    db.close()
+
+
 def test_assemble_prompt_injects_project_memory(tmp_path):
     from models import init_db, Task
     import time, uuid
@@ -435,10 +476,11 @@ def test_assemble_followup_prompt_only_contains_message_and_output_requirements(
     artifacts_dir.mkdir()
 
     prompt = assemble_followup_prompt(
-        task, step, artifacts_dir, "只修改结论部分"
+        task, step, artifacts_dir, "只修改结论部分", trigger_name="小李"
     )
 
     assert "只修改结论部分" in prompt
+    assert "## Triggered by\n小李" in prompt
     assert "旧任务说明不应重复发送" not in prompt
     assert "旧阶段要求不应重复发送" not in prompt
     assert SYSTEM_PROMPT not in prompt

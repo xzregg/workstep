@@ -43,6 +43,11 @@ async def branches(id: str):
     return await result(git_service.branches(id))
 
 
+@router.get('/worktrees/{id}/remotes')
+async def remotes(id: str):
+    return await result(git_service.remotes(id))
+
+
 @router.get('/worktrees/{id}/history')
 async def history(id: str, ref: str | None = None, offset: int = Query(0, ge=0, le=1000000)):
     return await result(git_service.history(id, ref, offset))
@@ -79,6 +84,20 @@ class CommitRequest(BaseModel):
 class SwitchRequest(BaseModel):
     branch: str = Field(min_length=1, max_length=1024)
     snapshot: str = Field(min_length=64, max_length=64)
+
+
+class BranchSwitchRequest(SwitchRequest):
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+
+
+class RemoteSyncRequest(SwitchRequest):
+    remote: str | None = Field(default=None, min_length=1, max_length=1024)
+    target_branch: str | None = Field(default=None, min_length=1, max_length=1024)
+    set_upstream: bool = False
+
+
+class RemoteRequest(BaseModel):
+    remote: str = Field(min_length=1, max_length=1024)
 
 
 class FileActionRequest(BaseModel):
@@ -121,8 +140,13 @@ async def commit_message(id: str, body: CommitMessageRequest):
 
 
 @router.post('/worktrees/{id}/switch')
-async def switch(id: str, body: SwitchRequest):
-    return await result(git_service.switch(id, body.branch, body.snapshot))
+async def switch(id: str, body: BranchSwitchRequest):
+    return await result(git_service.switch(id, body.branch, body.snapshot, body.remote))
+
+
+@router.post('/worktrees/{id}/advance')
+async def advance(id: str, body: SwitchRequest):
+    return await result(git_service.advance(id, body.branch, body.snapshot))
 
 
 @router.post('/worktrees/{id}/fetch')
@@ -130,11 +154,16 @@ async def fetch(id: str):
     return await result(git_service.fetch(id))
 
 
+@router.post('/worktrees/{id}/fetch-remote')
+async def fetch_remote(id: str, body: RemoteRequest):
+    return await result(git_service.fetch_remote(id, body.remote))
+
+
 @router.post('/worktrees/{id}/pull')
-async def pull(id: str, body: SwitchRequest):
-    return await result(git_service.pull(id, body.branch, body.snapshot))
+async def pull(id: str, body: RemoteSyncRequest):
+    return await result(git_service.pull(id, body.branch, body.snapshot, body.remote, body.target_branch, body.set_upstream))
 
 
 @router.post('/worktrees/{id}/push')
-async def push(id: str, body: SwitchRequest):
-    return await result(git_service.push(id, body.branch, body.snapshot))
+async def push(id: str, body: RemoteSyncRequest):
+    return await result(git_service.push(id, body.branch, body.snapshot, body.remote, body.target_branch, body.set_upstream))

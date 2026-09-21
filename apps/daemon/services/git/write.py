@@ -229,23 +229,70 @@ class GitWrites:
             raise GitError(f'生成提交说明失败：{detail}', 502) from exc
         return {'message': normalize_commit_message(result)}
 
-    async def switch(self, id, branch, snapshot):
+    async def switch(self, id, branch, snapshot, remote=None):
         directory = await self.directory(id)
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
-            if state['files']:
-                raise GitError('当前工作目录有未提交文件，请先提交或在本地处理后再切换。', 409)
             if state['active']:
                 raise GitError('此项目有正在运行的任务或对话，请结束后再切换分支。', 409)
-            branches = (await self.branches(id))['branches']
+            _, code = await self.command(directory['path'], 'check-ref-format', '--branch', branch, check=False)
+            if code:
+                raise GitError('分支名称无效。')
+            branch_data = await self.branches(id)
+            branches = branch_data['branches']
             target = next((b for b in branches if b['name'] == branch), None)
-            if not target:
+            if remote:
+                await self.validate_remote(directory['path'], remote)
+                remote_target = next((item for item in branch_data['remote_branches']
+                    if item['remote'] == remote and item['branch'] == branch), None)
+                if not remote_target:
+                    raise GitError('远程分支不存在，请重新拉取分支。', 404)
+            elif not target:
                 raise GitError('本地分支不存在，请刷新。', 404)
-            if target['worktree_id'] and target['worktree_id'] != id:
+            if target and target['worktree_id'] and target['worktree_id'] != id:
                 raise GitError('该分支已在其他工作目录中检出，请定位到该目录。', 409)
             if branch != state['branch']:
-                await self.command(directory['path'], 'switch', '--no-guess', '--', branch)
+                if target:
+                    await self.command(directory['path'], 'switch', '--no-guess', '--', branch)
+                else:
+                    await self.command(directory['path'], 'switch', '--no-guess', '--track', '-c', branch, remote + '/' + branch)
             return await self.status(id)
+
+    async def advance(self, id, branch, snapshot):
+        directory = await self.directory(id)
+        path = directory['path']
+        async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            state = await self.reviewed(id, snapshot)
+            if state['active']:
+                raise GitError('项目有正在运行的任务或对话，请结束后再更新分支。', 409)
+            if state['branch'] == branch:
+                raise GitError('当前分支请使用拉取操作更新。', 409)
+            target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
+            if not target:
+                raise GitError('本地分支不存在，请刷新。', 404)
+            if target['worktree_id']:
+                raise GitError('该分支已在工作目录中检出，请定位到对应目录后拉取。', 409)
+            if not target['remote'] or target['remote'] == '.' or not target['upstream_ref']:
+                raise GitError('该分支没有可拉取的远程上游。', 409)
+            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120)
+            self.fetched_at[directory['common_dir']] = time.time()
+            state = await self.reviewed(id, snapshot)
+            if state['active']:
+                raise GitError('项目有正在运行的任务或对话，请结束后再更新分支。', 409)
+            target = next((item for item in (await self.branches(id))['branches'] if item['name'] == branch), None)
+            if not target or target['worktree_id'] or not target['upstream_ref']:
+                raise GitError('分支状态已变化，请刷新后重试。', 409)
+            remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
+            if code:
+                raise GitError('上游分支已不存在，请重新拉取分支。', 409)
+            remote_sha = text(remote_head).strip()
+            counts, _ = await self.command(path, 'rev-list', '--left-right', '--count', target['head'] + '...' + remote_sha, '--')
+            ahead, behind = map(int, counts.split())
+            if ahead and behind:
+                raise GitError('本地与上游分支已分叉，无法快进更新。', 409)
+            if behind:
+                await self.command(path, 'update-ref', 'refs/heads/' + branch, remote_sha, target['head'])
+            return await self.branches(id)
 
 
     async def fetch(self, id):
@@ -255,22 +302,50 @@ class GitWrites:
             self.fetched_at[directory['common_dir']] = time.time()
             return await self.branches(id)
 
-    async def pull(self, id, branch, snapshot):
+    async def validate_remote(self, path, remote):
+        names_raw, _ = await self.command(path, 'remote')
+        if remote not in text(names_raw).splitlines():
+            raise GitError('远程源不存在，请刷新远程列表。', 404)
+        return remote
+
+    async def remote_target(self, path, branch, remote=None, target_branch=None):
+        if bool(remote) != bool(target_branch):
+            raise GitError('请选择完整的远程源和远程分支。')
+        if not remote:
+            raw, _ = await self.command(path, 'for-each-ref',
+                '--format=%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/' + branch)
+            remote, _, remote_ref = text(raw).strip().partition('\0')
+            if not remote or remote == '.' or not remote_ref.startswith('refs/heads/'):
+                raise GitError('当前分支未配置远程上游，请选择远程源和目标分支。', 409)
+            target_branch = remote_ref.removeprefix('refs/heads/')
+        await self.validate_remote(path, remote)
+        _, code = await self.command(path, 'check-ref-format', '--branch', target_branch, check=False)
+        if code:
+            raise GitError('远程分支名称无效。')
+        return remote, target_branch
+
+    async def fetch_remote(self, id, remote):
+        directory = await self.directory(id)
+        async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
+            remote = await self.validate_remote(directory['path'], remote)
+            await self.command(directory['path'], 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120)
+            self.fetched_at[directory['common_dir']] = time.time()
+            return await self.remotes(id)
+
+    async def pull(self, id, branch, snapshot, remote=None, target_branch=None, set_upstream=False):
         directory = await self.directory(id)
         path = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             state = await self.reviewed(id, snapshot)
             self.require_pullable(state, branch)
-            target = next((b for b in (await self.branches(id))['branches'] if b['name'] == branch), None)
-            if not target or not target['upstream_ref'] or not target['remote']:
-                raise GitError('当前分支未设置上游，请先在本地 Git 中设置跟踪分支。', 409)
-            if target['remote'] != '.':
-                await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', target['remote'], timeout=120)
-                self.fetched_at[directory['common_dir']] = time.time()
+            remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
+            await self.command(path, 'fetch', '--prune', '--no-recurse-submodules', '--', remote, timeout=120)
+            self.fetched_at[directory['common_dir']] = time.time()
             # Network I/O may take a while: recheck files, branch and active tasks before updating HEAD.
             state = await self.reviewed(id, snapshot)
             self.require_pullable(state, branch)
-            remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', target['upstream_ref'] + '^{commit}', check=False)
+            remote_ref = f'refs/remotes/{remote}/{target_branch}'
+            remote_head, code = await self.command(path, 'rev-parse', '--verify', '--end-of-options', remote_ref + '^{commit}', check=False)
             if code:
                 raise GitError('上游分支已不存在，请检查远程分支设置。', 409)
             sha = text(remote_head).strip()
@@ -280,19 +355,19 @@ class GitWrites:
                 raise GitError('本地与上游分支已分叉，无法快进更新。请在本地处理合并或变基。', 409)
             if behind:
                 await self.command(path, '-c', 'merge.autoStash=false', 'merge', '--ff-only', '--no-edit', sha, timeout=120)
+            if set_upstream:
+                await self.command(path, 'branch', '--set-upstream-to=' + remote + '/' + target_branch, '--', branch)
             return await self.status(id)
 
     @staticmethod
     def require_pullable(state, branch):
         if not state['branch'] or state['branch'] != branch:
             raise GitError('只能拉取当前检出的分支，请先切换或定位到对应工作目录。', 409)
-        if state['files']:
-            raise GitError('当前目录有未提交修改，请先处理后再拉取。', 409)
         if state['active']:
             raise GitError('项目有正在运行的任务或对话，请结束后再拉取。', 409)
 
 
-    async def push(self, id, branch, snapshot):
+    async def push(self, id, branch, snapshot, remote=None, target_branch=None, set_upstream=False):
         directory = await self.directory(id)
         path = directory['path']
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
@@ -300,17 +375,16 @@ class GitWrites:
             if not state['branch'] or state['branch'] != branch or not state['head']:
                 raise GitError('只能推送当前已提交的分支，请刷新状态。', 409)
             if state['files']:
-                raise GitError('存在未提交修改或未跟踪文件，请全部处理后再 Push。', 409)
+                raise GitError('存在未提交修改或未跟踪文件，请全部处理后再推送。', 409)
             if state['active']:
-                raise GitError('项目有正在运行的任务或对话，请结束后再 Push。', 409)
-            raw, _ = await self.command(path, 'for-each-ref',
-                '--format=%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/' + branch)
-            remote, _, remote_ref = text(raw).strip().partition('\0')
-            if not remote or remote == '.' or not remote_ref.startswith('refs/heads/'):
-                raise GitError('当前分支未配置远程上游，请先在本地 Git 中设置。', 409)
+                raise GitError('项目有正在运行的任务或对话，请结束后再推送。', 409)
+            remote, target_branch = await self.remote_target(path, branch, remote, target_branch)
+            remote_ref = 'refs/heads/' + target_branch
             # Explicit reviewed commit + upstream ref: never use push.default, matching,
             # mirror, automatic tags, force, or another branch's current HEAD.
             await self.command(path, '-c', 'remote.' + remote + '.mirror=false', 'push',
                 '--porcelain', '--no-force', '--no-follow-tags', '--recurse-submodules=no',
                 '--', remote, state['head'] + ':' + remote_ref, timeout=120)
+            if set_upstream:
+                await self.command(path, 'branch', '--set-upstream-to=' + remote + '/' + target_branch, '--', branch)
             return await self.status(id)

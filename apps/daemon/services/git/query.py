@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path, PurePosixPath
 
 from .command import GitError, text
@@ -130,7 +131,67 @@ class GitQueries:
             result.append({'name': name, 'head': head, 'worktree_id': occupied['id'] if occupied else None,
                 'path': occupied['path'] if occupied else None, 'upstream': upstream, 'upstream_ref': upstream_ref,
                 'remote': remote, 'ahead': ahead, 'behind': behind, 'upstream_gone': gone})
-        return {'branches': result, 'fetched_at': self.fetched_at.get(directory['common_dir'])}
+        remotes_raw, _ = await self.command(path, 'remote')
+        remote_names = sorted(text(remotes_raw).splitlines(), key=len, reverse=True)
+        remote_raw, _ = await self.command(path, 'for-each-ref',
+            '--format=%(refname:short)%00%(objectname)%00', 'refs/remotes/')
+        remote_branches = []
+        remote_fields = remote_raw.split(b'\0')
+        for index in range(0, len(remote_fields) - 1, 2):
+            name = text(remote_fields[index]).lstrip('\n')
+            remote = next((candidate for candidate in remote_names if name.startswith(candidate + '/')), None)
+            if remote and not name.endswith('/HEAD'):
+                remote_branches.append({'name': name, 'remote': remote,
+                    'branch': name[len(remote) + 1:], 'head': text(remote_fields[index + 1])})
+        return {'branches': result, 'remote_branches': remote_branches,
+            'fetched_at': self.fetched_at.get(directory['common_dir'])}
+
+    @staticmethod
+    def public_remote_url(value):
+        """Keep a useful location label without exposing credentials in HTTP responses."""
+        value = value.strip()
+        if '://' in value:
+            parsed = urlsplit(value)
+            host = parsed.hostname or ''
+            if parsed.port:
+                host += f':{parsed.port}'
+            return urlunsplit((parsed.scheme, host, parsed.path, '', ''))
+        if '@' in value and ':' in value.partition('@')[2]:
+            return value.partition('@')[2]
+        return value
+
+    async def remotes(self, id):
+        directory = await self.directory(id)
+        path = directory['path']
+        names_raw, _ = await self.command(path, 'remote')
+        names = sorted(name for name in text(names_raw).splitlines() if name)
+        refs_raw, _ = await self.command(path, 'for-each-ref',
+            '--format=%(refname:short)%00%(objectname)%00', 'refs/remotes/')
+        refs = []
+        fields = refs_raw.split(b'\0')
+        for index in range(0, len(fields) - 1, 2):
+            name = text(fields[index]).lstrip('\n')
+            if name and not name.endswith('/HEAD'):
+                refs.append((name, text(fields[index + 1])))
+        result = []
+        for name in names:
+            fetch_url, _ = await self.command(path, 'remote', 'get-url', '--', name)
+            push_url, _ = await self.command(path, 'remote', 'get-url', '--push', '--', name)
+            prefix = name + '/'
+            branches = [{'name': ref[len(prefix):], 'head': head} for ref, head in refs if ref.startswith(prefix)]
+            result.append({'name': name, 'url': self.public_remote_url(text(fetch_url)),
+                'push_url': self.public_remote_url(text(push_url)), 'branches': branches})
+        upstream = None
+        branch_raw, branch_code = await self.command(path, 'symbolic-ref', '--quiet', '--short', 'HEAD', check=False)
+        if not branch_code:
+            current = text(branch_raw).strip()
+            raw, _ = await self.command(path, 'for-each-ref',
+                '--format=%(upstream:remotename)%00%(upstream:remoteref)', 'refs/heads/' + current)
+            remote, _, remote_ref = text(raw).strip().partition('\0')
+            if remote and remote != '.' and remote_ref.startswith('refs/heads/'):
+                upstream = {'remote': remote, 'branch': remote_ref.removeprefix('refs/heads/')}
+        return {'remotes': result, 'upstream': upstream,
+            'fetched_at': self.fetched_at.get(directory['common_dir'])}
 
     async def history(self, id, ref=None, offset=0):
         directory = await self.directory(id)

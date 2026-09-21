@@ -34,6 +34,7 @@ import {
 import { copyMessageText } from '../components/MessageResponseFooter'
 import { a2uiActionMessageParams } from '../utils/a2ui'
 import MarkdownEditor from '../components/MarkdownEditor'
+import StagePromptVariablesHint from '../components/StagePromptVariablesHint'
 import Icon from '../components/Icon'
 import ShareDialog from '../components/ShareDialog'
 import TaskDetailPage from '../components/TaskDetailPage'
@@ -2081,6 +2082,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                     autoFocus
                     ariaLabel={t('taskDetail.stagePromptAria', { stage: currentStage.label })}
                   />
+                  <StagePromptVariablesHint />
                   {promptSaveError && (
                     <div role="alert" style={{ marginTop: 8, color: 'var(--danger)', fontSize: 'calc(13px * var(--font-scale))' }}>
                       {promptSaveError}

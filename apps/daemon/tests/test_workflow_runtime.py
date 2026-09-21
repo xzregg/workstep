@@ -1789,8 +1789,10 @@ class ResumeFakeEngine(RuntimeFakeEngine):
     def __init__(self):
         self.started = asyncio.Event()
         self.release = asyncio.Event()
+        self.prompts: list[str] = []
 
     async def spawn(self, prompt, cwd, **kwargs):
+        self.prompts.append(prompt)
         self.started.set()
         try:
             await asyncio.wait_for(self.release.wait(), timeout=0.2)
@@ -1830,6 +1832,7 @@ async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
     task = Task.create(
         id="task-resume",
         title="Resume after cancel",
+        creator_name="任务创建者",
         cwd=str(tmp_path),
         engine="claude",
         created_at=1,
@@ -1846,7 +1849,7 @@ async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
                     "type": "do",
                     "title": "执行",
                     "engine": "claude",
-                    "prompt": "work",
+                    "prompt": "触发者：{name}；任务创建者：{creator_name}",
                 }
             ],
             "connections": [],
@@ -1889,6 +1892,7 @@ async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
             task.id,
             "do",
             "请改用中文输出",
+            author_name="阶段触发人",
         )
         assert accepted["step_key"] == "do"
         assert accepted["status"] == "queued"
@@ -1903,6 +1907,7 @@ async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
         assert message.role == "user"
         assert message.step_key == "do"
         assert message.content == "请改用中文输出"
+        assert message.author_name == "阶段触发人"
         assert message.run_status == "completed"
 
         # 4) 同时保存为阶段引导，后续重跑提示中包含该消息
@@ -1920,6 +1925,7 @@ async def test_resume_stage_after_cancel_persists_message_and_reruns(tmp_path):
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "passed"
         assert Task.get_by_id(task.id).status == "ready"
+        assert "触发者：阶段触发人；任务创建者：任务创建者" in instances[1].prompts[0]
 
         prompt = assemble_prompt(
             task,

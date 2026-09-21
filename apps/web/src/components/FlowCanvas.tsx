@@ -38,6 +38,7 @@ import { DEFAULT_EXECUTION_ENGINE, engineLabel } from '../engineMeta'
 import { initialStageConfig, normalizeStepConfig } from '../utils/stageConfig'
 import { copyText } from '../utils/clipboard'
 import StageConfigFields from './StageConfigFields'
+import StagePromptVariablesHint from './StagePromptVariablesHint'
 import { useI18n } from '../i18n'
 import { useEngineRevision } from '../stores/engineAvailabilityStore'
 
@@ -854,6 +855,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
               placeholder={t('flow.promptPlaceholder')}
               ariaLabel={t('flow.stagePromptAria')}
             />
+            <StagePromptVariablesHint />
           </div>
           <InputEditor
             inputs={draft.inputs}

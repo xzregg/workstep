@@ -134,6 +134,7 @@ class TaskRunner:
         source_project_id=None,
         database_executor=None,
         stage_followups: dict[str, str] | None = None,
+        stage_trigger_names: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
         execution_scope: set[str] | None = None,
     ):
@@ -142,11 +143,13 @@ class TaskRunner:
         self._source_project_id = source_project_id
         self._database_executor = database_executor
         self._stage_followups = stage_followups or {}
+        self._stage_trigger_names = stage_trigger_names or {}
         self._input_rounds_by_step = input_rounds_by_step or {}
         # 本次运行只执行这些阶段；范围外的阶段只满足 DAG 依赖，不改其持久状态。
         self._execution_scope = execution_scope
         self._running_engines: dict[str, object] = {}  # step_run_key → engine
         self._live_message_queues: dict[str, asyncio.Queue] = {}
+        self._live_message_prompts: dict[str, str] = {}
         self._cancelled_steps: set[str] = set()
         self._graceful_shutdown = False
         self._event_journal = TurnEventJournal()
@@ -939,6 +942,7 @@ class TaskRunner:
         # Assemble prompt
         feedback = review_feedback or manual_review_feedback or rework_feedback
         followup = self._stage_followups.get(step_key, "").strip()
+        trigger_name = self._stage_trigger_names.get(step_key, "").strip()
         if followup and ts.session_id and engine is not None and engine.supports_resume:
             prompt = await asyncio.to_thread(
                 assemble_followup_prompt,
@@ -947,6 +951,7 @@ class TaskRunner:
                 artifacts_dir,
                 followup,
                 artifact_round,
+                trigger_name,
             )
         else:
             prompt = await self._run_db(
@@ -958,6 +963,7 @@ class TaskRunner:
                     artifact_round,
                     input_rounds,
                     input_snapshot,
+                    trigger_name,
                 )
             )
         if pending_handoff:
@@ -1229,7 +1235,10 @@ class TaskRunner:
                             )
                             live_message.ended_at = utc_now()
                             live_message.save()
-                            return live_message.content
+                            return self._live_message_prompts.pop(
+                                live_message_id,
+                                live_message.content,
+                            )
                         try:
                             live_message_content = await self._run_db(
                                 finish_live_message
@@ -1810,6 +1819,7 @@ class TaskRunner:
                 while not live_queue.empty():
                     pending.append(live_queue.get_nowait())
                 for message_id, _ in pending:
+                    self._live_message_prompts.pop(message_id, None)
                     await self._run_db(
                         lambda mid=message_id: self._fail_live_message(mid)
                     )
@@ -2283,6 +2293,12 @@ class TaskRunner:
                 started_at=now,
                 created_at=now,
             )
+            trigger_name = message.author_name or task.creator_name or ""
+            injected_content = (
+                f"## Triggered by\n{trigger_name}\n\n## User message\n{normalized}"
+                if trigger_name
+                else normalized
+            )
             if as_guidance:
                 StageSupplement.create(
                     id=str(uuid.uuid4()),
@@ -2299,9 +2315,10 @@ class TaskRunner:
                 )
                 task.state_version += 1
                 task.save()
-            return message.sequence
+            return message.sequence, injected_content
 
-        sequence = await self._run_db(persist_live_message)
+        sequence, injected_content = await self._run_db(persist_live_message)
+        self._live_message_prompts[message_id] = injected_content
         await self._publish(task_id, step_key, {
             "channel": "execution",
             "message_id": message_id,
@@ -2313,7 +2330,7 @@ class TaskRunner:
                 "as_guidance": as_guidance,
             },
         })
-        queue.put_nowait((message_id, normalized))
+        queue.put_nowait((message_id, injected_content))
         return {
             "message_id": message_id,
             "step_key": step_key,

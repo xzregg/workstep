@@ -6,6 +6,10 @@ export interface GitRepository { id: string; name: string; common_dir: string; w
 export interface GitDiscovery { projects: { id: string; name: string; path: string }[]; repositories: GitRepository[]; depth: number; scanned_at: number | null; errors: { path: string; message: string }[] }
 export interface GitStatus { id: string; path: string; head: string | null; branch: string | null; files: GitFile[]; snapshot: string; operation: string | null; active: boolean; ahead: number | null; behind: number | null; upstream: string | null }
 export interface GitBranch { upstream?: string | null; upstream_gone?: boolean; remote?: string | null; ahead?: number | null; behind?: number | null; name: string; head: string; worktree_id: string | null; path: string | null }
+export interface GitRemoteBranch { name: string; head: string }
+export interface GitTrackedRemoteBranch { name: string; remote: string; branch: string; head: string }
+export interface GitRemote { name: string; url: string; push_url: string; branches: GitRemoteBranch[] }
+export interface GitRemotes { remotes: GitRemote[]; upstream: { remote: string; branch: string } | null; fetched_at: number | null }
 export interface GitCommit { hash: string; author: string; time: number; message: string }
 export interface GitDiff { path: string; old_path: string; base: string | null; target: string | null; patch: string; before: string; after: string; binary: boolean; truncated: boolean; submodule: boolean; snapshot?: string }
 export interface BlameLine { line: number; hash: string; author: string; time: number; message: string }
@@ -19,7 +23,8 @@ export const gitApi = {
   progress: (id: string) => request<ScanJob>(`/git/scans/${id}`),
   repositories: () => request<GitDiscovery>('/git/repositories'),
   status: (id: string) => request<GitStatus>(route(id) + '/status'),
-  branches: (id: string) => request<{ branches: GitBranch[]; fetched_at?: number | null }>(route(id) + '/branches'),
+  branches: (id: string) => request<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/branches'),
+  remotes: (id: string) => request<GitRemotes>(route(id) + '/remotes'),
   history: (id: string, ref?: string, offset = 0) => request<{ commits: GitCommit[]; has_more: boolean }>(route(id) + '/history' + query({ ref, offset })),
   changes: (id: string, comparison: Comparison) => request<{ files: GitFile[] }>(route(id) + '/changes' + query({ ...comparison })),
   diff: (id: string, path: string, comparison: Comparison) => request<GitDiff>(route(id) + '/diff' + query({ path, ...comparison })),
@@ -29,8 +34,10 @@ export const gitApi = {
   ignore: (id: string, path: string, snapshot: string) => request<GitStatus>(route(id) + '/ignore', post({ path, snapshot })),
   saveFile: (id: string, path: string, content: string, snapshot: string) => request<GitStatus>(route(id) + '/files/content', post({ path, content, snapshot })),
   generateCommitMessage: (id: string, paths: string[], snapshot: string) => request<{ message: string }>(route(id) + '/commit-message', post({ paths, snapshot })),
-  fetch: (id: string) => request<{ branches: GitBranch[]; fetched_at?: number | null }>(route(id) + '/fetch', post()),
-  push: (id: string, branch: string, snapshot: string) => request<GitStatus>(route(id) + '/push', post({ branch, snapshot })),
-  pull: (id: string, branch: string, snapshot: string) => request<GitStatus>(route(id) + '/pull', post({ branch, snapshot })),
-  switch: (id: string, branch: string, snapshot: string) => request<GitStatus>(route(id) + '/switch', post({ branch, snapshot })),
+  fetch: (id: string) => request<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/fetch', post()),
+  fetchRemote: (id: string, remote: string) => request<GitRemotes>(route(id) + '/fetch-remote', post({ remote })),
+  push: (id: string, branch: string, snapshot: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => request<GitStatus>(route(id) + '/push', post({ branch, snapshot, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),
+  pull: (id: string, branch: string, snapshot: string, target?: { remote: string; targetBranch: string; setUpstream: boolean }) => request<GitStatus>(route(id) + '/pull', post({ branch, snapshot, remote: target?.remote, target_branch: target?.targetBranch, set_upstream: target?.setUpstream || false })),
+  switch: (id: string, branch: string, snapshot: string, remote?: string) => request<GitStatus>(route(id) + '/switch', post({ branch, snapshot, remote })),
+  advance: (id: string, branch: string, snapshot: string) => request<{ branches: GitBranch[]; remote_branches?: GitTrackedRemoteBranch[]; fetched_at?: number | null }>(route(id) + '/advance', post({ branch, snapshot })),
 }

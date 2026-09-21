@@ -1,6 +1,7 @@
 """Prompt assembly — builds the full prompt for each pipeline step."""
 
 import json
+import re
 from pathlib import Path
 
 from models import StageSupplement
@@ -17,6 +18,37 @@ _OUTPUT_GUIDANCE = "Decide from the stage requirements and available context whe
 SYSTEM_PROMPT = """You are executing one stage in a WorkStep workflow.
 Work in the current project root and complete only the stage requirements.
 When an output specification is present, follow its artifact contract."""
+
+_STAGE_TEMPLATE_VARIABLE = re.compile(
+    r"\{([a-z][a-z0-9_]*)\}|｛([a-z][a-z0-9_]*)｝",
+    re.IGNORECASE,
+)
+
+
+def render_stage_prompt(
+    template: str,
+    task: Task,
+    step: Step,
+    trigger_name: str = "",
+) -> str:
+    """Render supported task and stage variables in a stage prompt template."""
+    effective_trigger_name = trigger_name or task.creator_name or ""
+    values = {
+        "name": effective_trigger_name,
+        "trigger_name": effective_trigger_name,
+        "creator_name": task.creator_name or "",
+        "task_creator_name": task.creator_name or "",
+        "task_title": task.title or "",
+        "task_description": task.description or "",
+        "stage_name": step.label or "",
+        "stage_key": step.key or "",
+    }
+
+    def replace(match: re.Match[str]) -> str:
+        key = (match.group(1) or match.group(2)).lower()
+        return str(values[key]) if key in values else match.group(0)
+
+    return _STAGE_TEMPLATE_VARIABLE.sub(replace, template)
 
 
 def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None:
@@ -66,6 +98,7 @@ def assemble_prompt(
     artifact_round: int | None = None,
     input_rounds: dict[str, int] | None = None,
     input_snapshot: dict | None = None,
+    trigger_name: str = "",
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -121,7 +154,10 @@ def assemble_prompt(
 
     # Step prompt
     if step.prompt:
-        parts.append(f"## Stage requirements\n{step.prompt}")
+        parts.append(
+            "## Stage requirements\n"
+            + render_stage_prompt(step.prompt, task, step, trigger_name)
+        )
 
     supplements = list(
         StageSupplement.select()
@@ -205,6 +241,7 @@ def assemble_followup_prompt(
     artifacts_dir: Path,
     user_input: str,
     artifact_round: int | None = None,
+    trigger_name: str = "",
 ) -> str:
     """Build a compact prompt for an existing stage engine session.
 
@@ -212,7 +249,10 @@ def assemble_followup_prompt(
     user ``@stage`` follow-up therefore only needs the new message plus the
     output contract that must still be honoured.
     """
-    parts = [f"## User message\n{user_input.strip()}"]
+    parts = []
+    if trigger_name:
+        parts.append(f"## Triggered by\n{trigger_name}")
+    parts.append(f"## User message\n{user_input.strip()}")
     workflow_name = task.workflow_id or "default"
     out_dir = (
         step_round_dir(artifacts_dir, workflow_name, task.id, step.key, artifact_round)

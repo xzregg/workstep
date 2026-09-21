@@ -324,12 +324,17 @@ async def test_runner_sends_compact_prompt_for_resumed_stage_followup(tmp_path):
     ]
     ResumablePromptFakeEngine.prompts = []
     ResumablePromptFakeEngine.sessions = []
-    runner = TaskRunner(bus, stage_followups={"do": "只更新摘要"})
+    runner = TaskRunner(
+        bus,
+        stage_followups={"do": "只更新摘要"},
+        stage_trigger_names={"do": "阶段触发人"},
+    )
     try:
         await runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
 
         prompt = ResumablePromptFakeEngine.prompts[0]
         assert "只更新摘要" in prompt
+        assert "## Triggered by\n阶段触发人" in prompt
         assert "结果.md" in prompt
         assert "## 阶段要求\nwork" not in prompt
         assert "WorkStep 工作流中的一个执行阶段" not in prompt
@@ -453,7 +458,9 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path, monkeypatch)
         assert inserted.author_name == "阶段操作人"
         assert post_insert.author_id == "user-live"
         assert post_insert.author_name == "阶段操作人"
-        assert json.loads(post_insert.prompt_json)["prompt"] == "插入内容"
+        assert json.loads(post_insert.prompt_json)["prompt"] == (
+            "## Triggered by\n阶段操作人\n\n## User message\n插入内容"
+        )
         assert pre_insert.sequence < inserted.sequence < post_insert.sequence
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
         assert "第二段" not in (tmp_path / pre_insert.event_log_path).read_text()

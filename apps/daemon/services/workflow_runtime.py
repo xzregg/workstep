@@ -373,6 +373,7 @@ class WorkflowRuntime:
         stage_followups: dict[str, str] | None = None,
         input_rounds_by_step: dict[str, dict[str, int]] | None = None,
         execution_scope: set[str] | None = None,
+        stage_trigger_names: dict[str, str] | None = None,
     ) -> WorkflowRunHandle:
         """Attach prepared persistent state to event-loop-owned runtime state."""
         task = prepared.task
@@ -383,6 +384,7 @@ class WorkflowRuntime:
             source_project_id=prepared.project_id,
             database_executor=prepared.database_executor,
             stage_followups=stage_followups,
+            stage_trigger_names=stage_trigger_names,
             input_rounds_by_step=input_rounds_by_step,
             execution_scope=execution_scope,
         )
@@ -595,9 +597,13 @@ class WorkflowRuntime:
             )
             task.state_version += 1
             task.save()
-            return user_message, pending_review.id if pending_review else None
+            return (
+                user_message,
+                pending_review.id if pending_review else None,
+                user_message.author_name or task.creator_name or "",
+            )
 
-        user_message, pending_review_id = await self._run_db(
+        user_message, pending_review_id, trigger_name = await self._run_db(
             project_id, lambda _project: persist_message()
         )
         message_id = user_message.id
@@ -606,6 +612,7 @@ class WorkflowRuntime:
             task_id,
             step_key,
             stage_followup=normalized,
+            trigger_name=trigger_name,
         )
         await self._publish_user_message(
             task_id,
@@ -1545,6 +1552,7 @@ class WorkflowRuntime:
         *,
         expected_run_id: str | None = None,
         stage_followup: str | None = None,
+        trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
     ) -> WorkflowRunHandle:
         """Stop the current runner and start a child run from one DAG stage.
@@ -1614,6 +1622,8 @@ class WorkflowRuntime:
                     project_id,
                     task_id,
                     step_key,
+                    stage_followup=stage_followup,
+                    trigger_name=trigger_name,
                     input_rounds=input_rounds,
                 )
             parent_run_id = inspected["parent_run_id"]
@@ -1667,6 +1677,9 @@ class WorkflowRuntime:
                 {step_key: stage_followup} if stage_followup else None,
                 {step_key: input_rounds} if input_rounds else None,
                 execution_scope=affected | interrupted,
+                stage_trigger_names=(
+                    {step_key: trigger_name} if trigger_name else None
+                ),
             )
 
     def _validate_input_rounds(
@@ -1712,6 +1725,8 @@ class WorkflowRuntime:
         project_id: str,
         task_id: str,
         step_key: str,
+        stage_followup: str | None = None,
+        trigger_name: str | None = None,
         input_rounds: dict[str, int] | None = None,
     ) -> WorkflowRunHandle:
         prepared = await self._run_db(
@@ -1723,7 +1738,9 @@ class WorkflowRuntime:
         return self._launch_prepared_run(
             prepared,
             "",
+            stage_followups={step_key: stage_followup} if stage_followup else None,
             input_rounds_by_step={step_key: input_rounds} if input_rounds else None,
+            stage_trigger_names={step_key: trigger_name} if trigger_name else None,
         )
 
     def _prepare_start_from_stage_without_parent(
