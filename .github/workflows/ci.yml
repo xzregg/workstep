@@ -61,6 +61,7 @@ jobs:
             --deselect=tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
             --deselect=tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
             --deselect='tests/test_live_stage_message.py::test_runner_splits_stage_message_on_live_insert[asyncio]' \
+            --deselect='tests/test_recovery.py::test_e2e_three_stage_run_resumes_after_crash[asyncio]' \
             --deselect=tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
             --deselect=tests/test_recovery.py::test_recovery_takes_over_expired_lease
       - name: Isolation-sensitive daemon contracts
@@ -74,6 +75,7 @@ jobs:
             tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
             tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
             'tests/test_live_stage_message.py::test_runner_splits_stage_message_on_live_insert[asyncio]' \
+            'tests/test_recovery.py::test_e2e_three_stage_run_resumes_after_crash[asyncio]' \
             tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
             tests/test_recovery.py::test_recovery_takes_over_expired_lease
       - name: Desktop protocol tests
