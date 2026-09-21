@@ -59,7 +59,9 @@ jobs:
             --deselect=tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
             --deselect=tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
             --deselect=tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
-            --deselect=tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear
+            --deselect=tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
+            --deselect=tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
+            --deselect=tests/test_recovery.py::test_recovery_takes_over_expired_lease
       - name: Isolation-sensitive daemon contracts
         working-directory: apps/daemon
         run: |
@@ -69,7 +71,9 @@ jobs:
             tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
             tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
             tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
-            tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear
+            tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
+            tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
+            tests/test_recovery.py::test_recovery_takes_over_expired_lease
       - name: Desktop protocol tests
         run: |
           uv run --project apps/daemon --frozen --group dev pytest \
