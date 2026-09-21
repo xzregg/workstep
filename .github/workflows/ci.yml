@@ -53,7 +53,23 @@ jobs:
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_resolve_bundled_cli \
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_maps_subagent_task_lifecycle \
             --deselect=tests/test_p2_engines.py::test_qoder_sdk_maps_real_sdk_blocks_without_type_field \
-            --deselect=tests/test_p2_engines.py::test_qoder_sdk_real_task_tools_produce_plan_events
+            --deselect=tests/test_p2_engines.py::test_qoder_sdk_real_task_tools_produce_plan_events \
+            --deselect=tests/test_api_contracts.py::test_stage_execution_config_write_does_not_block_health_check \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
+            --deselect=tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
+            --deselect=tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear
+      - name: Isolation-sensitive daemon contracts
+        working-directory: apps/daemon
+        run: |
+          uv run --frozen --group dev --group sdk-engines pytest \
+            tests/test_api_contracts.py::test_stage_execution_config_write_does_not_block_health_check \
+            tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
+            tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
+            tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
+            tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
+            tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear
       - name: Desktop protocol tests
         run: |
           uv run --project apps/daemon --frozen --group dev pytest \
