@@ -1107,6 +1107,71 @@ async def test_task_runner_stage_session_id_isolated_and_reused(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_task_runner_inherited_global_provider_change_starts_new_session(
+    tmp_path,
+):
+    """沿用引擎配置时，全局供应商变化不得复用旧供应商会话。"""
+    from models import init_db, Task, TaskStep
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.config import config_store
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="Provider switch", cwd=str(tmp_path),
+        engine="claude",
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    seen: list = []
+    provider = {"id": "provider-a"}
+
+    class InheritedProviderResumeEngine(PipelineResumeEngine):
+        ENGINE_ID = "claude"
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = lambda: InheritedProviderResumeEngine(
+        "output", seen
+    )
+    try:
+        runner = TaskRunner(EventBus())
+        steps_config = {
+            "steps": [
+                {"key": "a", "label": "A", "engine": "claude", "prompt": "Do A"},
+            ]
+        }
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        with patch.object(
+            config_store,
+            "get_engine_provider",
+            side_effect=lambda _engine_id: provider["id"],
+        ):
+            await runner.run_pipeline(task, steps_config, artifacts_dir)
+            step = TaskStep.get(
+                (TaskStep.task == task) & (TaskStep.step_key == "a")
+            )
+            assert step.session_id == "sess-1"
+            assert step.session_provider == "provider-a"
+
+            provider["id"] = "provider-b"
+            step.status = "pending"
+            step.save()
+            await runner.run_pipeline(task, steps_config, artifacts_dir)
+
+        step = TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "a")
+        )
+        assert seen == [None, None]
+        assert step.session_id == "sess-2"
+        assert step.session_provider == "provider-b"
+    finally:
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_task_runner_linear_pipeline(tmp_path):
     """Run a 2-step linear pipeline: A → B."""
     from models import init_db, Task

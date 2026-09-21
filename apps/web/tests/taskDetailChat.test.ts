@@ -124,6 +124,7 @@ import {
   shouldPauseConversationFollow,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isReviewActionable,
   isLostEngineSessionError,
   isStageResumableWithMessage,
   isSelectedStageRunning,
@@ -141,6 +142,21 @@ import {
   shouldRenderLegacyExecution,
   stageAvatarText,
 } from '../src/pages/taskDetailChat.ts'
+
+test('only exposes review actions while the stage is awaiting that latest review', () => {
+  const reviews = [
+    { id: 'old-rejected', step_key: 'review', status: 'rejected', started_at: '2026-09-17T10:00:00Z' },
+  ]
+
+  assert.equal(isReviewActionable(reviews[0], reviews, 'failed'), false)
+  assert.equal(isReviewActionable(reviews[0], reviews, 'awaiting_review'), true)
+
+  const newerReviews = [
+    ...reviews,
+    { id: 'new-pending', step_key: 'review', status: 'pending', started_at: '2026-09-17T11:00:00Z' },
+  ]
+  assert.equal(isReviewActionable(reviews[0], newerReviews, 'awaiting_review'), false)
+})
 
 test('formats the person who completed a manual review', () => {
   assert.equal(reviewActorLabel({

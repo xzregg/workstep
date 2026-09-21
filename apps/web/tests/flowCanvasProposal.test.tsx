@@ -310,3 +310,40 @@ test('stage return rounds default to three and remain editable independently of 
     await window.happyDOM.close()
   }
 })
+
+
+test('saving the workflow also commits the active stage draft without staging it first', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  let savedSteps: any = null
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas
+          initialSteps={{
+            nodes: [{ id: 1, type: 'test', title: '测试', maxReturnRounds: 3 }],
+            connections: [],
+          }}
+          onSave={(steps) => { savedSteps = steps }}
+        />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+
+    const stageNode = container.querySelector<HTMLElement>('.react-flow__node')!
+    await act(async () => stageNode.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="最大返回次数"]')!
+    await act(async () => {
+      setNativeValue(window, input, '6')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+
+    const save = [...container.querySelectorAll('button')].find(button => button.textContent === '保存')!
+    await act(async () => save.click())
+
+    assert.equal(savedSteps.nodes[0].maxReturnRounds, 6)
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})

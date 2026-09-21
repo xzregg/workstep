@@ -242,6 +242,7 @@ class TaskRunner:
                 "role": "assistant",
                 "status": "running",
                 "content": "审核中",
+                "artifact_round": step_run.artifact_round,
             },
             "created_at": now.isoformat(),
         })
@@ -671,6 +672,26 @@ class TaskRunner:
         """Execute a single pipeline step."""
         step_key = step.key
         run_key = f"{task.id}:{step_key}"
+        engine = create_engine(step.engine) if step.kind != "task_dispatch" else None
+        configured_provider_id = str(
+            (step.config or {}).get("provider_id") or ""
+        ).strip()
+        effective_provider_id = configured_provider_id
+        if engine is not None:
+            resolve_provider_id = getattr(engine, "resolve_provider_id", None)
+            if callable(resolve_provider_id):
+                effective_provider_id = await asyncio.to_thread(
+                    resolve_provider_id,
+                    configured_provider_id,
+                )
+            elif not effective_provider_id:
+                effective_provider_id = await asyncio.to_thread(
+                    config_store.get_engine_provider,
+                    step.engine,
+                )
+        effective_config = dict(step.config or {})
+        if effective_provider_id:
+            effective_config["provider_id"] = effective_provider_id
         default_model = await asyncio.to_thread(
             config_store.get_engine_default_model, step.engine
         )
@@ -719,7 +740,7 @@ class TaskRunner:
             # task context (plus the handoff reference when one is pending),
             # but the new endpoint must create its own session instead of
             # receiving an incompatible ID.
-            session_provider = str((step.config or {}).get("provider_id") or "").strip()
+            session_provider = effective_provider_id
             if ts.session_id and (
                 ts.pending_handoff_json
                 or (session_engine and session_engine != step.engine)
@@ -915,10 +936,6 @@ class TaskRunner:
                 })
             return
 
-        # Instantiate before prompt assembly so compact follow-ups are only
-        # used when the engine can genuinely resume the saved stage session.
-        engine = create_engine(step.engine)
-
         # Assemble prompt
         feedback = review_feedback or manual_review_feedback or rework_feedback
         followup = self._stage_followups.get(step_key, "").strip()
@@ -1044,7 +1061,7 @@ class TaskRunner:
             "model": resolved_model,
             "event_sequence": 0,
             "type": "message_started",
-            "data": {"prompt": prompt},
+            "data": {"prompt": prompt, "artifact_round": artifact_round},
             "created_at": message_started_at.isoformat(),
         })
 
@@ -1131,7 +1148,7 @@ class TaskRunner:
                 cwd=task.cwd,
                 model=resolved_model,
                 session_id=engine_session_id,
-                config_overrides=step.config or None,
+                config_overrides=effective_config or None,
             )
             if live_queue is not None:
                 spawn_kwargs["live_message_queue"] = live_queue
@@ -1394,9 +1411,7 @@ class TaskRunner:
             if captured_session_id:
                 # 同任务同阶段重跑时复用该会话（session/resume）。
                 # 记录建立会话时使用的供应商，供重跑前判断 resume 兼容性。
-                captured_session_provider = str(
-                    (step.config or {}).get("provider_id") or ""
-                ).strip()
+                captured_session_provider = effective_provider_id
 
                 def save_session_id():
                     current = TaskStep.get(
@@ -1893,6 +1908,13 @@ class TaskRunner:
                 routing_state=self._routing_state,
             )
             self._routing_state = result.state
+            for connection in result.solid_edges:
+                target_step = str(connection.get("to") or "").strip()
+                if target_step:
+                    self._input_rounds_by_step.setdefault(
+                        target_step,
+                        {},
+                    )[step.key] = artifact.round
 
             def persist_routing_state():
                 row = WorkflowRun.get_by_id(workflow_run.id)

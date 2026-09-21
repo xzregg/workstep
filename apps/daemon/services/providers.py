@@ -710,6 +710,111 @@ async def chat_completion(
     return content
 
 
+def _responses_text(data: Any) -> str:
+    """Extract assistant text from an OpenAI Responses payload."""
+    if not isinstance(data, dict):
+        return ""
+    direct = data.get("output_text")
+    if isinstance(direct, str) and direct:
+        return direct
+    parts: list[str] = []
+    for output in data.get("output", []):
+        if not isinstance(output, dict):
+            continue
+        for item in output.get("content", []):
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if item.get("type") in {"output_text", "text"} and isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
+
+
+async def text_completion(
+    provider: dict,
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int = 4096,
+    timeout: float = 60,
+    transport: httpx.AsyncBaseTransport | None = None,
+    thinking: str | None = None,
+    protocol: str | None = None,
+) -> str:
+    """Run a one-shot text request through any configured provider protocol."""
+    model = (model or "").strip()
+    has_base_url = bool(
+        provider.get("base_url") or provider.get("protocol_base_urls")
+    )
+    if not has_base_url or not model:
+        raise ValueError("供应商或模型未配置")
+    selected = select_provider_protocol(provider, protocol)
+    if selected == "openai_chat_completions":
+        return await chat_completion(
+            provider,
+            model,
+            messages,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            transport=transport,
+            thinking=thinking,
+            protocol=selected,
+        )
+
+    if selected == "anthropic_messages":
+        system_parts = [
+            str(item.get("content") or "")
+            for item in messages
+            if item.get("role") == "system" and item.get("content")
+        ]
+        payload: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "stream": False,
+            "messages": [
+                {"role": item["role"], "content": item.get("content") or ""}
+                for item in messages
+                if item.get("role") in {"user", "assistant"}
+            ],
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+        endpoint = "messages"
+    elif selected == "openai_responses":
+        payload = {
+            "model": model,
+            "input": messages,
+            "max_output_tokens": max_tokens,
+            "stream": False,
+        }
+        endpoint = "responses"
+    else:
+        raise ValueError("该供应商协议不支持单轮文本调用")
+
+    url = provider_endpoint_url(provider, selected, endpoint)
+    async with httpx.AsyncClient(
+        headers=auth_headers(provider, selected),
+        timeout=timeout,
+        transport=transport,
+    ) as client:
+        response = await client.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+    if selected == "anthropic_messages":
+        content = data.get("content", []) if isinstance(data, dict) else []
+        result = "".join(
+            str(item.get("text") or "")
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        )
+    else:
+        result = _responses_text(data)
+    if not result:
+        raise RuntimeError("模型未返回内容，请重试")
+    return result
+
+
 async def test_connection(
     provider: dict,
     timeout_seconds: float = 30,

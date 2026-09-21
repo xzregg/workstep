@@ -30,6 +30,8 @@ from api.statistics import router as statistics_router
 from api.share import router as share_router
 from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
+from api.git import router as git_router
+from services.git import git_service
 from api.skills import router as skills_router
 from api.project_settings import router as project_settings_router
 from api.pending_message_inserts import router as pending_message_inserts_router
@@ -171,6 +173,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await git_service.close()
         from services.engine_runtime import runtime_manager
         await runtime_manager.shutdown()
         logger.info("WorkStep Daemon shutting down")
@@ -234,6 +237,7 @@ app.include_router(assistant_router)
 app.include_router(project_settings_router)
 app.include_router(channels_router)
 app.include_router(system_settings_router)
+app.include_router(git_router)
 app.include_router(skills_router)
 app.include_router(remote_project_router)
 

@@ -296,6 +296,7 @@ export default function ChatInput({
   const [focused, setFocused] = useState(false)
   const [allSelected, setAllSelected] = useState(false)
   const allSelectedRef = useRef(false)
+  const undoSnapshotRef = useRef<{ before: string; after: string } | null>(null)
   const [contextTipOpen, setContextTipOpen] = useState(false)
   const contextRef = useRef<HTMLSpanElement>(null)
   const [contextTipStyle, setContextTipStyle] = useState<React.CSSProperties | undefined>(undefined)
@@ -491,10 +492,15 @@ export default function ChatInput({
     new Intl.NumberFormat(locale).format(Math.max(0, Math.round(count)))
 
   const focusMarkdownCursor = (markdown: string, cursor: number) => {
-    const segments = splitMarkdownImages(markdown)
+    const segments = splitComposerSegments(markdown)
     let textIndex = -1
-    const target = segments.find((segment) => {
+    const target = segments.find((segment, segmentIndex) => {
       if (segment.type !== 'text') return false
+      const hiddenSeparator = segment.markdown.trim() === ''
+        && segment.end > segment.start
+        && segments[segmentIndex - 1]?.type === 'image'
+        && segments[segmentIndex + 1]?.type === 'image'
+      if (hiddenSeparator) return false
       textIndex += 1
       return cursor >= segment.start && cursor <= segment.end
     }) as MarkdownTextSegment | undefined
@@ -509,6 +515,18 @@ export default function ChatInput({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const modifier = event.metaKey || event.ctrlKey
     const key = event.key.toLocaleLowerCase()
+    if (
+      modifier && !event.shiftKey && key === 'z'
+      && undoSnapshotRef.current?.after === value
+    ) {
+      event.preventDefault()
+      const restored = undoSnapshotRef.current.before
+      undoSnapshotRef.current = null
+      onChange(restored)
+      setSlashCursor(restored.length)
+      requestAnimationFrame(() => focusMarkdownCursor(restored, restored.length))
+      return
+    }
     if (hasImage && modifier && key === 'a') {
       event.preventDefault()
       allSelectedRef.current = true
@@ -520,6 +538,7 @@ export default function ChatInput({
     }
     if (allSelectedRef.current && (key === 'backspace' || key === 'delete')) {
       event.preventDefault()
+      undoSnapshotRef.current = { before: value, after: '' }
       allSelectedRef.current = false
       setAllSelected(false)
       setSlashCursor(0)
@@ -661,7 +680,8 @@ export default function ChatInput({
     if (!imageAttach || files.length === 0) return
     imageAttach.onError?.('')
     setUploadingImage(true)
-    let nextValue = valueRef.current
+    const previousValue = valueRef.current
+    let nextValue = previousValue
     let nextCursor = Math.max(0, Math.min(slashCursor, nextValue.length))
     let uploadedAny = false
     try {
@@ -696,6 +716,7 @@ export default function ChatInput({
         }
       }
       if (uploadedAny) {
+        undoSnapshotRef.current = { before: previousValue, after: nextValue }
         valueRef.current = nextValue
         onChange(nextValue)
         setSlashCursor(nextCursor)
@@ -738,6 +759,7 @@ export default function ChatInput({
     nextText: string,
     localCursor: number,
   ) => {
+    undoSnapshotRef.current = null
     allSelectedRef.current = false
     setAllSelected(false)
     onChange(value.slice(0, segment.start) + nextText + value.slice(segment.end))
@@ -748,6 +770,7 @@ export default function ChatInput({
   }
 
   const removeImageSegment = (segment: MarkdownImageSegment) => {
+    undoSnapshotRef.current = null
     const nextValue = removeMarkdownImage(value, segment)
     const nextCursor = Math.min(segment.start, nextValue.length)
     onChange(nextValue)

@@ -110,26 +110,58 @@ async def test_enhance_config_round_trip(assistant_client):
     payload = response.json()
     assert payload["provider_id"] == ""
     assert payload["model"] == ""
+    assert payload["protocol"] == ""
     assert any(item["id"] == "p-enhance" for item in payload["providers"])
 
     response = await client.put("/api/assistant/enhance-config", json={
         "provider_id": "p-enhance",
         "model": "deepseek-v4-flash",
+        "protocol": "openai_chat_completions",
     })
     assert response.status_code == 200
     assert response.json()["model"] == "deepseek-v4-flash"
     assert store.get_prompt_enhance_config() == {
         "provider_id": "p-enhance",
         "model": "deepseek-v4-flash",
+        "protocol": "openai_chat_completions",
     }
 
     # 清空
     response = await client.put("/api/assistant/enhance-config", json={
         "provider_id": "",
         "model": "",
+        "protocol": "",
     })
     assert response.status_code == 200
-    assert store.get_prompt_enhance_config() == {"provider_id": "", "model": ""}
+    assert store.get_prompt_enhance_config() == {"provider_id": "", "model": "", "protocol": ""}
+
+
+async def test_enhance_config_accepts_anthropic_messages(assistant_client):
+    client, store = assistant_client
+    store.save_provider({
+        "id": "anthropic-enhance",
+        "name": "Anthropic Enhance",
+        "type": "custom",
+        "protocols": ["anthropic_messages"],
+        "protocol_base_urls": {
+            "anthropic_messages": "https://gateway.example.com/v1",
+        },
+        "api_key": "sk-test",
+        "enabled": True,
+    })
+
+    response = await client.put("/api/assistant/enhance-config", json={
+        "provider_id": "anthropic-enhance",
+        "model": "claude-model",
+        "protocol": "anthropic_messages",
+    })
+
+    assert response.status_code == 200
+    assert store.get_prompt_enhance_config() == {
+        "provider_id": "anthropic-enhance",
+        "model": "claude-model",
+        "protocol": "anthropic_messages",
+    }
 
 
 async def test_enhance_config_validates_provider(assistant_client):

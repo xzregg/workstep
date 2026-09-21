@@ -1205,20 +1205,24 @@ class ConfigStore:
         return dict(provider)
 
     def get_prompt_enhance_config(self) -> dict[str, str]:
-        """Provider + model used by the one-shot prompt enhancement."""
+        """Provider, protocol and model used by one-shot prompt enhancement."""
         raw = self.get("prompt_enhance", {})
         if not isinstance(raw, dict):
             raw = {}
         return {
             "provider_id": str(raw.get("provider_id") or ""),
             "model": str(raw.get("model") or ""),
+            "protocol": str(raw.get("protocol") or ""),
         }
 
-    def set_prompt_enhance_config(self, *, provider_id: str, model: str) -> None:
-        """Save the prompt enhancement provider + model (empty clears)."""
+    def set_prompt_enhance_config(
+        self, *, provider_id: str, model: str, protocol: str = ""
+    ) -> None:
+        """Save the prompt enhancement provider, protocol and model."""
         self.set("prompt_enhance", {
             "provider_id": str(provider_id or "").strip(),
             "model": str(model or "").strip(),
+            "protocol": str(protocol or "").strip(),
         })
 
     # ── concurrency limits (global defaults, per-project overrides live in DB) ──

@@ -579,6 +579,7 @@ function PromptEnhanceSettings() {
   const { t } = useI18n()
   const [providerId, setProviderId] = useState('')
   const [model, setModel] = useState('')
+  const [protocol, setProtocol] = useState('')
   const [providers, setProviders] = useState<EnhanceProviderInfo[]>([])
   const [models, setModels] = useState<EngineModel[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -598,6 +599,8 @@ function PromptEnhanceSettings() {
       setProviderId(result.provider_id || '')
       setModel(result.model || '')
       setProviders(result.providers || [])
+      const configuredProvider = result.providers?.find((item) => item.id === result.provider_id)
+      setProtocol(result.protocol || configuredProvider?.protocols?.[0] || '')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.enhanceLoadFailed'))
     } finally {
@@ -618,10 +621,14 @@ function PromptEnhanceSettings() {
       setModelError('')
       return
     }
+    if (!protocol) {
+      setModels([])
+      return
+    }
     let active = true
     setModelsLoading(true)
     setModelError('')
-    providerApi.models(providerId)
+    providerApi.models(providerId, false, protocol)
       .then((result) => {
         if (!active) return
         setModels(result.models || [])
@@ -637,22 +644,39 @@ function PromptEnhanceSettings() {
       })
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerId])
+  }, [providerId, protocol])
 
   const changeProvider = (value: string) => {
     setProviderId(value)
+    setProtocol(providers.find((item) => item.id === value)?.protocols?.[0] || '')
     setModel('')
     setNotice('')
   }
+
+  const changeProtocol = (value: string) => {
+    setProtocol(value)
+    setModel('')
+    setNotice('')
+  }
+
+  const protocolLabel = (value: string) => {
+    if (value === 'anthropic_messages') return t('providerSettings.protocolAnthropic')
+    if (value === 'openai_responses') return t('providerSettings.protocolResponses')
+    if (value === 'openai_chat_completions') return t('providerSettings.protocolChat')
+    return value
+  }
+
+  const selectedProvider = providers.find((item) => item.id === providerId)
 
   const save = async () => {
     setSaving(true)
     setError('')
     setNotice('')
     try {
-      const result = await assistantApi.setEnhanceConfig({ providerId, model })
+      const result = await assistantApi.setEnhanceConfig({ providerId, model, protocol })
       setProviderId(result.provider_id)
       setModel(result.model)
+      setProtocol(result.protocol)
       setNotice(t('settings.enhanceSaved'))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('settings.enhanceSaveFailed'))
@@ -687,13 +711,32 @@ function PromptEnhanceSettings() {
           ))}
         </Select>
       </div>
+      {providerId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
+            {t('settings.enhanceProtocol')}
+          </label>
+          <Select
+            value={protocol}
+            disabled={loading || saving}
+            onChange={(event) => changeProtocol(event.target.value)}
+            aria-label={t('settings.enhanceProtocol')}
+            style={{ flex: 1, minWidth: 0, height: 30 }}
+          >
+            <option value="">{t('settings.enhanceSelectProtocol')}</option>
+            {(selectedProvider?.protocols || []).map((item) => (
+              <option key={item} value={item}>{protocolLabel(item)}</option>
+            ))}
+          </Select>
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <label style={{ flexShrink: 0, fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, width: 84 }}>
           {t('settings.enhanceModel')}
         </label>
         <Select
           value={model}
-          disabled={!providerId || modelsLoading || saving}
+          disabled={!providerId || !protocol || modelsLoading || saving}
           onChange={(event) => setModel(event.target.value)}
           aria-label={t('settings.enhanceModel')}
           style={{ flex: 1, minWidth: 0, height: 30 }}
@@ -712,11 +755,11 @@ function PromptEnhanceSettings() {
           <Button
             variant="ghost"
             style={{ flexShrink: 0, height: 28, padding: '0 8px', fontSize: 'calc(11px * var(--font-scale))' }}
-            disabled={modelsLoading || saving}
+            disabled={!protocol || modelsLoading || saving}
             onClick={() => {
               setModelsLoading(true)
               setModelError('')
-              providerApi.models(providerId, true)
+              providerApi.models(providerId, true, protocol)
                 .then((result) => {
                   setModels(result.models || [])
                   setModelError(result.error || '')
@@ -740,7 +783,7 @@ function PromptEnhanceSettings() {
         </div>
         <Button
           variant="primary"
-          disabled={loading || saving}
+          disabled={loading || saving || Boolean(providerId && (!protocol || !model))}
           loading={saving}
           onClick={() => void save()}
         >
@@ -756,6 +799,7 @@ interface EnhanceProviderInfo {
   name: string
   type: string
   base_url: string
+  protocols: string[]
   enabled: boolean
 }
 

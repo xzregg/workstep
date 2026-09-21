@@ -2,7 +2,7 @@ import { useVisualViewport } from '../hooks/useVisualViewport'
 import Icon from './Icon'
 import ResponsiveNavigation from './ResponsiveNavigation'
 import { BrandIcon } from './BrandIcon'
-import { useState, useEffect, useRef, type PointerEvent as ReactPointerEvent } from 'react'
+import { useState, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useI18n } from '../i18n'
@@ -28,6 +28,7 @@ import { loadSidebarSectionState, saveSidebarSectionState } from '../utils/sideb
 import OnboardingChecklist from './OnboardingChecklist'
 import { useOnboardingStore } from '../stores/onboardingStore'
 import { buildStarterWorkflow } from '../utils/onboarding'
+import { filterSidebarProject } from '../utils/sidebarSearch'
 import {
   engineApi,
   fetchEngineModels,
@@ -137,6 +138,9 @@ export default function Layout({ onSelectProject, children }: Props) {
   const [moreMenu, setMoreMenu] = useState<{ kind: 'project' | 'workflow'; id: string; x: number; y: number } | null>(null)
   const [dragProjectId, setDragProjectId] = useState<string | null>(null)
   const [dropProjectId, setDropProjectId] = useState<string | null>(null)
+  const [sidebarSearchOpen, setSidebarSearchOpen] = useState(false)
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('')
+  const sidebarSearchInputRef = useRef<HTMLInputElement>(null)
   const sessionsByProject = useChatListStore((s) => s.sessionsByProject)
   const tasks = useTaskStore((s) => s.tasks)
   const selectedIds = useChatListStore((s) => s.selectedIds)
@@ -193,6 +197,14 @@ export default function Layout({ onSelectProject, children }: Props) {
     storedSidebarSections.flowsByProject,
   )
   const [creatingSession, setCreatingSession] = useState(false)
+  const sidebarSearchResults = useMemo(() => new Map(projects.map((project) => [
+    project.id,
+    filterSidebarProject(project, sessionsByProject[project.id] || [], sidebarSearchQuery),
+  ])), [projects, sessionsByProject, sidebarSearchQuery])
+  const sidebarSearchActive = sidebarSearchQuery.trim().length > 0
+  const visibleProjects = sidebarSearchActive
+    ? projects.filter((project) => sidebarSearchResults.get(project.id)?.visible)
+    : projects
   const previousSessionProjectIdsRef = useRef(new Set<string>())
   const sessionProjectIdsKey = [...new Set([
     ...expandedProjectIds,
@@ -292,7 +304,11 @@ export default function Layout({ onSelectProject, children }: Props) {
     if (rememberedProject) setActiveProject(rememberedProject)
   }, [projectName, projects, activeProject, setActiveProject, storedSidebarSections.expandedProjectIds])
 
-  const isProjectExpanded = (projectId: string) => expandedProjectIds.includes(projectId)
+  const isProjectExpanded = (projectId: string) => {
+    if (!sidebarSearchActive) return expandedProjectIds.includes(projectId)
+    const result = sidebarSearchResults.get(projectId)
+    return Boolean(result && (result.workflows.length > 0 || result.sessions.length > 0))
+  }
 
   const toggleProjectExpanded = (projectId: string) => {
     setExpandedProjectIds((current) => (
@@ -313,6 +329,17 @@ export default function Layout({ onSelectProject, children }: Props) {
     }
     previousSessionProjectIdsRef.current = sessionProjectIds
   }, [sessionProjectIdsKey])
+
+  useEffect(() => {
+    if (!sidebarSearchOpen) return
+    const timer = window.setTimeout(() => sidebarSearchInputRef.current?.focus(), 0)
+    for (const project of projects) {
+      if (!(project.id in sessionsByProject)) {
+        void useChatListStore.getState().fetchSessions(project.id)
+      }
+    }
+    return () => window.clearTimeout(timer)
+  }, [projects, sessionsByProject, sidebarSearchOpen])
 
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
@@ -660,22 +687,60 @@ export default function Layout({ onSelectProject, children }: Props) {
           {t('nav.statistics')}
         </Button>
 
-        {import.meta.env.DEV && (
-          <Button variant="ghost" style={addButtonStyle} onClick={() => navigate('/prototype/git?variant=C')}>
-            <Icon name="git-fork" size={17} strokeWidth={2} />
-            {t('nav.gitPrototype')}
-          </Button>
-        )}
-
         <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
           <Icon name="plus" size={17} strokeWidth={2} />
           {t('nav.addProject')}
         </Button>
 
-        <div style={sectionLabel}>{t('layout.projects')}</div>
+        <div style={sectionLabel}>
+          <span>{t('layout.projects')}</span>
+          <Button
+            variant="icon"
+            aria-label={t('layout.searchSidebar')}
+            title={t('layout.searchSidebar')}
+            aria-expanded={sidebarSearchOpen}
+            onClick={() => {
+              setSidebarSearchOpen((open) => {
+                if (open) setSidebarSearchQuery('')
+                return !open
+              })
+            }}
+            style={{ width: 24, height: 24, padding: 0, color: sidebarSearchOpen ? 'var(--accent)' : 'var(--meta)' }}
+          >
+            <Icon name="search" size={14} strokeWidth={2} />
+          </Button>
+        </div>
+
+        {sidebarSearchOpen && (
+          <div style={{ position: 'relative', margin: '2px 12px 6px' }}>
+            <Icon
+              name="search"
+              size={14}
+              strokeWidth={2}
+              style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--meta)', pointerEvents: 'none' }}
+            />
+            <Input
+              ref={sidebarSearchInputRef}
+              type="search"
+              aria-label={t('layout.searchSidebar')}
+              placeholder={t('layout.searchSidebarPlaceholder')}
+              value={sidebarSearchQuery}
+              onChange={(event) => setSidebarSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setSidebarSearchQuery('')
+                  setSidebarSearchOpen(false)
+                }
+              }}
+              style={{ width: '100%', height: 32, paddingLeft: 30, fontSize: 'calc(12px * var(--font-scale))' }}
+            />
+          </div>
+        )}
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
-          {projects.map((p) => (
+          {visibleProjects.map((p) => {
+            const searchResult = sidebarSearchResults.get(p.id)!
+            return (
             <div key={p.id}>
               <div
                 onClick={() => {
@@ -872,7 +937,9 @@ export default function Layout({ onSelectProject, children }: Props) {
               {isProjectExpanded(p.id) && (
                 <div id={`sidebar-project-${p.id}`}>
                   {(() => {
-                    const flowOpen = flowSectionOpen[p.id] !== false
+                    const flowOpen = sidebarSearchActive
+                      ? searchResult.workflows.length > 0
+                      : flowSectionOpen[p.id] !== false
                     return (
                       <>
                         <div
@@ -897,7 +964,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                             />
                           )}
                         </div>
-                        {flowOpen && (p.workflows || []).map(wf => (
+                        {flowOpen && searchResult.workflows.map(wf => (
                 (() => {
                   const deleted = !!wf.deleted
                   const isDragSource = dragWfId === wf.id
@@ -1038,8 +1105,10 @@ export default function Layout({ onSelectProject, children }: Props) {
                     )
                   })()}
               {(() => {
-                const open = sessionSectionOpen[p.id]
-                  ?? (location.pathname === '/chat' && !!activeSessionId)
+                const open = sidebarSearchActive
+                  ? searchResult.sessions.length > 0
+                  : sessionSectionOpen[p.id]
+                    ?? (location.pathname === '/chat' && !!activeSessionId)
                 return (
                   <>
                     <div
@@ -1106,7 +1175,7 @@ export default function Layout({ onSelectProject, children }: Props) {
                           </Button>
                         </div>
                       )}
-                      {(sessionsByProject[p.id] || []).map(session => {
+                      {searchResult.sessions.map(session => {
                         const isDragSource = dragSessionId === session.id
                         const isDropTarget = dropSessionId === session.id
                         const sessionRunning = Boolean(runningChatSessions[session.id])
@@ -1270,10 +1339,16 @@ export default function Layout({ onSelectProject, children }: Props) {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
           {projects.length === 0 && (
             <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
               {t('nav.noProjects')}
+            </div>
+          )}
+          {projects.length > 0 && visibleProjects.length === 0 && (
+            <div style={{ padding: '12px 14px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)', fontStyle: 'italic' }}>
+              {t('layout.noSidebarMatches')}
             </div>
           )}
         </div>

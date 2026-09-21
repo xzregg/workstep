@@ -27,7 +27,7 @@ function errorDetailMessage(detail: unknown, status: number): string {
   return `HTTP ${status}`
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const run = async () => {
     const res = await fetch(`${BASE}${path}`, {
       ...options,
@@ -2536,11 +2536,13 @@ export const engineApi = {
 export interface EnhanceConfigResult {
   provider_id: string
   model: string
+  protocol: string
   providers: {
     id: string
     name: string
     type: string
     base_url: string
+    protocols: string[]
     enabled: boolean
   }[]
 }
@@ -2581,14 +2583,15 @@ export interface ProjectSettingsResult {
 export const assistantApi = {
   list: () => request<{ assistants: AssistantConfigInfo[] }>('/assistant/list'),
   enhanceConfig: () => request<EnhanceConfigResult>('/assistant/enhance-config'),
-  setEnhanceConfig: (config: { providerId: string; model: string }) =>
-    request<{ saved: boolean; provider_id: string; model: string }>(
+  setEnhanceConfig: (config: { providerId: string; model: string; protocol: string }) =>
+    request<{ saved: boolean; provider_id: string; model: string; protocol: string }>(
       '/assistant/enhance-config',
       {
         method: 'PUT',
         body: JSON.stringify({
           provider_id: config.providerId,
           model: config.model,
+          protocol: config.protocol,
         }),
       },
     ),

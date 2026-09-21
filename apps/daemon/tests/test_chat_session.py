@@ -73,10 +73,15 @@ class MemoryConfigStore:
         return {
             "provider_id": raw.get("provider_id", ""),
             "model": raw.get("model", ""),
+            "protocol": raw.get("protocol", ""),
         }
 
-    def set_prompt_enhance_config(self, *, provider_id, model):
-        self.values["prompt_enhance"] = {"provider_id": provider_id, "model": model}
+    def set_prompt_enhance_config(self, *, provider_id, model, protocol=""):
+        self.values["prompt_enhance"] = {
+            "provider_id": provider_id,
+            "model": model,
+            "protocol": protocol,
+        }
 
     def get_provider(self, provider_id):
         for item in self.values.get("providers", []):
@@ -999,22 +1004,34 @@ async def test_enhance_prompt_falls_back_to_default_engine(chat_module, monkeypa
 
 
 @pytest.mark.anyio
-async def test_enhance_prompt_uses_configured_provider_direct_chat_completions(chat_module, monkeypatch):
-    """With an enhance provider + model configured, the rewrite goes through direct chat/completions."""
+async def test_enhance_prompt_uses_configured_provider_protocol(chat_module, monkeypatch):
+    """The configured provider protocol is forwarded to the one-shot request."""
     module, bus, manager, project, config_store = chat_module
     config_store.set_prompt_enhance_config(
         provider_id="p-1",
         model="fast-model-x",
+        protocol="anthropic_messages",
     )
     config_store.values["providers"] = [
-        {"id": "p-1", "base_url": "http://localhost:1/v1", "api_key": "k", "enabled": True}
+        {
+            "id": "p-1",
+            "base_url": "http://localhost:1/v1",
+            "api_key": "k",
+            "enabled": True,
+            "protocols": ["anthropic_messages"],
+        }
     ]
     calls: list[dict] = []
     pydantic_calls: list = []
     invoke_calls: list = []
 
-    async def fake_chat_completion(provider, model, messages, **kwargs):
-        calls.append({"provider": provider["id"], "model": model, "messages": messages})
+    async def fake_text_completion(provider, model, messages, **kwargs):
+        calls.append({
+            "provider": provider["id"],
+            "model": model,
+            "messages": messages,
+            "protocol": kwargs.get("protocol"),
+        })
         return "改写后的清晰提示词。"
 
     async def fake_simple(prompt):
@@ -1026,8 +1043,8 @@ async def test_enhance_prompt_uses_configured_provider_direct_chat_completions(c
         return "", [], None
 
     monkeypatch.setattr(
-        "services.providers.chat_completion",
-        fake_chat_completion,
+        "services.providers.text_completion",
+        fake_text_completion,
     )
     monkeypatch.setattr(
         "engines.pydantic_ai.engine.PydanticAIEngine.run_simple",
@@ -1040,6 +1057,7 @@ async def test_enhance_prompt_uses_configured_provider_direct_chat_completions(c
     assert calls and calls[0]["model"] == "fast-model-x"
     assert calls[0]["messages"][-1]["content"] == "帮我写个函数"
     assert calls[0]["messages"][0]["role"] == "system"
+    assert calls[0]["protocol"] == "anthropic_messages"
     assert not pydantic_calls and not invoke_calls
 
     # 清空配置后回退 Pydantic AI 路径

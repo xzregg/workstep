@@ -15,7 +15,7 @@ from services.artifact_routing import (
     route_artifact_round,
     source_for_connection,
 )
-from services.pipeline import Step
+from services.pipeline import DAGScheduler, Step
 from services.workflow_definition import WorkflowDefinition
 from streaming.bus import EventBus
 
@@ -114,6 +114,77 @@ def test_stage_return_limit_overrides_default(tmp_path):
 
     assert len(first.feedback_edges) == 1
     assert len(second.exhausted_edges) == 1
+
+
+@pytest.mark.anyio
+async def test_new_upstream_round_replaces_recovered_input_pin(tmp_path):
+    """A reworked producer must move downstream off the round pinned at recovery."""
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="refresh-input-round-task",
+        title="刷新输入轮次",
+        cwd=str(tmp_path),
+        workflow_id="flow",
+        created_at=1,
+        updated_at=1,
+    )
+    run = WorkflowRun.create(
+        id="refresh-input-round-run",
+        task=task,
+        status="running",
+        workflow_schema_version=1,
+        workflow_snapshot_json="{}",
+        started_at=1,
+    )
+    connection = {
+        "id": "write-to-review",
+        "from": "write",
+        "fromPort": 0,
+        "to": "review",
+        "toPort": 0,
+        "kind": "solid",
+    }
+    write = Step(
+        key="write",
+        label="编写",
+        outputs=[{"name": "初稿", "type": "md"}],
+        outgoing_connections=[connection],
+    )
+    review = Step(
+        key="review",
+        label="审校",
+        inputs=[{"name": "初稿", "type": "md"}],
+        depends_on=["write"],
+        incoming_connections=[connection],
+    )
+    runner = TaskRunner(
+        EventBus(),
+        input_rounds_by_step={"review": {"write": 2}},
+    )
+    try:
+        await runner._apply_artifact_routes(
+            task=task,
+            step=write,
+            scheduler=DAGScheduler([write, review]),
+            workflow_run=run,
+            artifacts_dir=tmp_path / "artifacts",
+            artifact_round=3,
+            manifest={
+                "outputs": [{
+                    "port": 0,
+                    "name": "初稿",
+                    "path": "初稿.md",
+                    "size": 12,
+                    "nonempty": True,
+                }],
+            },
+            completed=set(),
+            failed=set(),
+        )
+
+        assert runner._input_rounds_by_step["review"]["write"] == 3
+    finally:
+        db.close()
 
 
 class ArtifactWritingEngine:

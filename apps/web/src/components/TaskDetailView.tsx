@@ -61,6 +61,7 @@ import {
   isUnpersistedLiveMessage,
   isManualReviewMessage,
   isMessageReviewActionable,
+  isReviewActionable,
   isLostEngineSessionError,
   isStageResumableWithMessage,
   isSelectedStageRunning,
@@ -782,6 +783,11 @@ export default function TaskDetailView({
   const selectedReviewActor = selectedReview
     ? reviewActorLabel(selectedReview)
     : undefined
+  const selectedReviewActionable = isReviewActionable(
+    selectedReview,
+    reviews,
+    stageProgress[selectedStage]?.status,
+  )
   const currentStageArtifactRounds = useMemo(() => {
     const rounds = new Set<number>()
     artifacts.forEach((artifact) => {
@@ -1249,75 +1255,6 @@ export default function TaskDetailView({
           onStageClick={handleStageClick}
         />
 
-        {/* Stage prompt */}
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                color: `${currentStageColor}`,
-              }}
-            >
-              {' '}
-              {currentStage.label}{' '}
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 'calc(11px * var(--font-scale))',
-                  fontWeight: 600,
-                  color: 'var(--muted)',
-                  fontFamily: 'var(--font-mono)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                }}
-              >
-                {t('taskDetail.stagePrompt')}
-              </div>
-              {onOpenPromptEditor && (
-                <Button
-                  variant="ghost"
-                  onClick={onOpenPromptEditor}
-                  style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
-                >
-                  <span aria-hidden="true">✎</span>
-                  {t('taskDetail.quickEdit')}
-                </Button>
-              )}
-            </div>
-            <div
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: '1px solid var(--border-soft)',
-                fontSize: 'calc(13px * var(--font-scale))',
-                lineHeight: 1.6,
-                overflowWrap: 'anywhere',
-                maxHeight: '33vh',
-                overflowY: 'auto',
-              }}
-            >
-              {currentStage.prompt ? (
-                <MarkdownMessage
-                  content={currentStage.prompt}
-                  projectId={projectId}
-                />
-              ) : (
-                <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
-                  {t('taskDetail.noStagePrompt')}
-                </div>
-              )}
-            </div>
-          </div>
-
         {/* I/O section */}
         <div>
           <div
@@ -1763,6 +1700,75 @@ export default function TaskDetailView({
           </div>
         </div>
 
+        {/* Stage prompt */}
+        <div>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              color: `${currentStageColor}`,
+            }}
+          >
+            {' '}
+            {currentStage.label}{' '}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 'calc(11px * var(--font-scale))',
+                fontWeight: 600,
+                color: 'var(--muted)',
+                fontFamily: 'var(--font-mono)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+              }}
+            >
+              {t('taskDetail.stagePrompt')}
+            </div>
+            {onOpenPromptEditor && (
+              <Button
+                variant="ghost"
+                onClick={onOpenPromptEditor}
+                style={{ height: 28, padding: '0 9px', fontSize: 'calc(13px * var(--font-scale))', gap: 4 }}
+              >
+                <span aria-hidden="true">✎</span>
+                {t('taskDetail.quickEdit')}
+              </Button>
+            )}
+          </div>
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: '1px solid var(--border-soft)',
+              fontSize: 'calc(13px * var(--font-scale))',
+              lineHeight: 1.6,
+              overflowWrap: 'anywhere',
+              maxHeight: '33vh',
+              overflowY: 'auto',
+            }}
+          >
+            {currentStage.prompt ? (
+              <MarkdownMessage
+                content={currentStage.prompt}
+                projectId={projectId}
+              />
+            ) : (
+              <div style={{ fontSize: 'calc(13px * var(--font-scale))', color: 'var(--meta)' }}>
+                {t('taskDetail.noStagePrompt')}
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Review results */}
         {selectedReview && (
           <div ref={mobileReviewRef}>
@@ -1844,9 +1850,7 @@ export default function TaskDetailView({
                 </div>
               )}
               {/* Review action buttons (edit mode only) */}
-              {onReviewAction &&
-                (selectedReview.status === 'pending' ||
-                  selectedReview.status === 'rejected') && (
+              {onReviewAction && selectedReviewActionable && (
                   <>
                     <Textarea
                       rows={2}
@@ -2703,6 +2707,7 @@ export default function TaskDetailView({
                                             : null)
                                   }
                                   messageId={msg.id}
+                                  artifactRound={isCoordinator ? undefined : messageArtifactRound}
                                   onViewPrompt={
                                     onViewingPromptChange
                                   }

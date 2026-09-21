@@ -51,6 +51,8 @@ export interface MessageMetaBarProps {
   sessionId?: string | null
   /** 消息 ID：与 sessionId 一起显示在「会话 ID」悬停面板中。 */
   messageId?: string | null
+  /** 该消息所属阶段的产物输出轮次。 */
+  artifactRound?: number | null
   onViewPrompt: (prompt: string) => void
   /** Terminal message status shown as a pill (cancelled/stopped/failed). */
   status?: 'cancelled' | 'stopped' | 'failed'
@@ -85,6 +87,7 @@ export default function MessageMetaBar({
   prompt,
   sessionId,
   messageId,
+  artifactRound,
   onViewPrompt,
   status,
   reviewMode = false,
@@ -141,9 +144,14 @@ export default function MessageMetaBar({
         <Icon name={reviewStatus === 'passed' ? 'check' : 'x'} size={11} strokeWidth={2.2} />
         {t('taskDetail.manualReview')}
       </span>
+      {artifactRound && artifactRound > 0 && (
+        <span style={{ marginLeft: 'auto', flexShrink: 0, whiteSpace: 'nowrap' }}>
+          {t('taskDetail.artifactRound', { round: artifactRound })}
+        </span>
+      )}
       <span
         title={formatConversationDateTime(displayStartedAt, Date.now(), locale)}
-        style={{ marginLeft: 'auto', minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}
+        style={{ marginLeft: artifactRound && artifactRound > 0 ? 0 : 'auto', minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0 }}
       >
         {formatConversationDateTime(displayStartedAt, Date.now(), locale)}
       </span>
@@ -263,9 +271,14 @@ export default function MessageMetaBar({
                 {t('meta.viewPrompt')}
               </button>
             )}
+            {artifactRound && artifactRound > 0 && (
+              <span style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                {t('taskDetail.artifactRound', { round: artifactRound })}
+              </span>
+            )}
             <span
               title={formatConversationDateTime(displayStartedAt, Date.now(), locale)}
-              style={{ minWidth: 112, minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+              style={{ minHeight: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
             >
               {formatConversationDateTime(displayStartedAt, Date.now(), locale)}
             </span>

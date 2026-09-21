@@ -462,17 +462,7 @@ class BaseLLMEngine(ABC):
     ) -> ProviderRuntimeConfig:
         """Resolve turn override before engine default and validate it."""
         config_store = self.provider_config_store()
-
-        selected = str(provider_id or "").strip()
-        if not selected:
-            selected = str(self.get_config_values().get("provider_id") or "").strip()
-        if not selected:
-            get_engine_provider = getattr(config_store, "get_engine_provider", None)
-            selected = (
-                get_engine_provider(self.ENGINE_ID)
-                if callable(get_engine_provider)
-                else ""
-            )
+        selected = self.resolve_provider_id(provider_id)
         if not model:
             model = config_store.get_engine_default_model(self.ENGINE_ID) or None
         if not selected:
@@ -488,6 +478,23 @@ class BaseLLMEngine(ABC):
             raise ValueError("所选供应商协议与该引擎不兼容")
         protocol = self.pick_protocol(provider)
         return self.build_provider_runtime(provider, model, protocol)
+
+    def resolve_provider_id(self, provider_id: str | None = None) -> str:
+        """Resolve an explicit provider override against the engine default."""
+        selected = str(provider_id or "").strip()
+        if not selected:
+            selected = str(
+                self.get_config_values().get("provider_id") or ""
+            ).strip()
+        if selected:
+            return selected
+        config_store = self.provider_config_store()
+        get_engine_provider = getattr(config_store, "get_engine_provider", None)
+        return (
+            str(get_engine_provider(self.ENGINE_ID) or "").strip()
+            if callable(get_engine_provider)
+            else ""
+        )
 
     @classmethod
     def provider_config_field(cls) -> EngineConfigField | None:

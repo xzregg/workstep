@@ -132,12 +132,16 @@ def test_status_step_level_maps_to_custom():
 
 def test_message_lifecycle_maps_to_text_message_events():
     started = to_agui_events(
-        InternalEvent(type="message_started", data={"prompt": "p"}),
+        InternalEvent(
+            type="message_started",
+            data={"prompt": "p", "artifact_round": 2},
+        ),
         _ctx(),
     )[0]
     assert started["type"] == "TEXT_MESSAGE_START"
     assert started["role"] == "assistant"
     assert started["prompt"] == "p"
+    assert started["artifact_round"] == 2
 
     snapshot = to_agui_events(
         InternalEvent(type="message_snapshot", data={"content": "full"}),

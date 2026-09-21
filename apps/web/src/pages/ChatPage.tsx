@@ -1,3 +1,4 @@
+import ProjectGitButton from '../components/git/ProjectGitButton'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -781,6 +782,7 @@ export default function ChatPage() {
               {t('common.delete')}
             </Button>
             <OpenLocationButton activeProject={activeProject} t={t} />
+            <ProjectGitButton project={activeProject} />
             <Button
               variant="ghost"
               size="sm"
@@ -1006,6 +1008,7 @@ export default function ChatPage() {
         <div onClick={() => setMobileMenuOpen(false)}>
           <OpenLocationButton activeProject={activeProject} t={t} />
         </div>
+        <ProjectGitButton project={activeProject} />
         <Button
           variant="ghost"
           onClick={() => { setMobileMenuOpen(false); setShowSettingsPanel(true) }}

@@ -109,3 +109,10 @@ test('provider settings can copy an existing provider into a new configuration',
   assert.match(providerSource, /setEditingId\(null\)/)
   assert.match(providerSource, /name: t\('providerSettings\.copyName', \{ name: provider\.name \}\)/)
 })
+
+test('prompt enhancement selects and persists a provider protocol', () => {
+  assert.match(settingsSource, /setProtocol\(result\.protocol \|\| configuredProvider\?\.protocols\?\.\[0\] \|\| ''\)/)
+  assert.match(settingsSource, /providerApi\.models\(providerId, false, protocol\)/)
+  assert.match(settingsSource, /setEnhanceConfig\(\{ providerId, model, protocol \}\)/)
+  assert.match(apiClientSource, /protocol: config\.protocol/)
+})

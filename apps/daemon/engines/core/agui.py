@@ -275,6 +275,7 @@ def to_agui_events(
                 **({"prompt": data["prompt"]} if data.get("prompt") is not None else {}),
                 **({"content": data["content"]} if data.get("content") is not None else {}),
                 **({"status": data["status"]} if data.get("status") is not None else {}),
+                **({"artifact_round": data["artifact_round"]} if data.get("artifact_round") is not None else {}),
             },
         )]
     if event_type == "message_snapshot":

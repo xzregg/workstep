@@ -7,7 +7,6 @@ import Input from '../components/Input'
 import Select from '../components/Select'
 import {
   providerApi,
-  type EngineModel,
   type ProviderInfo,
   type ProviderImportResult,
   type ProviderImportSource,
@@ -21,6 +20,10 @@ import {
   selectableProviderImportIds,
   toggleProviderImportSelection,
 } from '../utils/providerImport'
+import {
+  summarizeProviderProtocolModels,
+  type ProviderProtocolModels,
+} from '../utils/providerModels'
 
 interface Props {
   /** 供应商变更后回调（设置页据此刷新引擎列表，同步 Pydantic AI 的供应商下拉） */
@@ -116,7 +119,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
   const [modelCounts, setModelCounts] = useState<Record<string, number>>({})
   const [modelFetchedAt, setModelFetchedAt] = useState<Record<string, string | null>>({})
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
-  const [modelLists, setModelLists] = useState<Record<string, EngineModel[]>>({})
+  const [modelGroups, setModelGroups] = useState<Record<string, ProviderProtocolModels[]>>({})
   const [deleting, setDeleting] = useState<ProviderInfo | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [importOpen, setImportOpen] = useState(false)
@@ -142,20 +145,33 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
       setModelFetchedAt(Object.fromEntries(
         result.providers.map((item) => [item.id, item.models_fetched_at]),
       ))
-      const lists: Record<string, EngineModel[]> = {}
+      const groups: Record<string, ProviderProtocolModels[]> = {}
+      const counts: Record<string, number> = {}
+      const fetchedAt: Record<string, string | null> = {}
       await Promise.all(
-        result.providers
-          .filter((item) => item.models_fetched_at)
-          .map(async (item) => {
+        result.providers.map(async (item) => {
+          const protocols = item.protocols?.length ? item.protocols : [item.protocol]
+          const entries = await Promise.all(protocols.map(async (protocol) => {
             try {
-              const models = await providerApi.models(item.id, false)
-              lists[item.id] = models.models
+              const response = await providerApi.models(item.id, false, protocol)
+              return {
+                protocol,
+                models: response.models,
+                fetchedAt: response.fetched_at || null,
+              }
             } catch {
-              // 缓存读取失败时保持空列表，行内状态仍会显示获取时间
+              return { protocol, models: [], fetchedAt: null }
             }
-          }),
+          }))
+          const summary = summarizeProviderProtocolModels(entries)
+          groups[item.id] = summary.groups
+          counts[item.id] = summary.uniqueCount
+          fetchedAt[item.id] = summary.latestFetchedAt
+        }),
       )
-      setModelLists(lists)
+      setModelGroups(groups)
+      setModelCounts(counts)
+      setModelFetchedAt(fetchedAt)
       setError('')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('providerSettings.loadFailed'))
@@ -441,24 +457,26 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
     })
     try {
       const protocols = provider.protocols?.length ? provider.protocols : [provider.protocol]
-      const merged = new Map<string, EngineModel>()
+      const entries: ProviderProtocolModels[] = []
       const errors: string[] = []
-      let fetchedAt: string | null = null
       for (const protocol of protocols) {
         const result = await providerApi.models(provider.id, true, protocol)
-        result.models.forEach((model) => merged.set(model.id, model))
-        fetchedAt = result.fetched_at || fetchedAt
+        entries.push({
+          protocol,
+          models: result.models,
+          fetchedAt: result.fetched_at || null,
+        })
         if (result.error) {
           const option = ALL_PROTOCOLS.find((item) => item.value === protocol)
           errors.push(`${option ? t(option.labelKey) : protocol}: ${result.error}`)
         }
       }
-      const models = [...merged.values()]
-      setModelLists((current) => ({ ...current, [provider.id]: models }))
-      setModelCounts((current) => ({ ...current, [provider.id]: models.length }))
+      const summary = summarizeProviderProtocolModels(entries)
+      setModelGroups((current) => ({ ...current, [provider.id]: summary.groups }))
+      setModelCounts((current) => ({ ...current, [provider.id]: summary.uniqueCount }))
       setModelFetchedAt((current) => ({
         ...current,
-        [provider.id]: fetchedAt,
+        [provider.id]: summary.latestFetchedAt,
       }))
       if (errors.length) {
         setModelErrors((current) => ({ ...current, [provider.id]: errors.join('；') }))
@@ -611,7 +629,7 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
           {providers.map((provider) => {
             const testResult = testResults[provider.id]
             const modelCount = modelCounts[provider.id]
-            const modelList = modelLists[provider.id] || []
+            const providerModelGroups = modelGroups[provider.id] || []
             return (
               <div
                 key={provider.id}
@@ -683,26 +701,45 @@ export default function ProviderSettings({ onChanged, autoCreate = false }: Prop
                         {t('providerSettings.modelsNotFetched')}
                       </div>
                     )}
-                    {modelList.length > 0 && (
-                      <div role="list" style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {modelList.map((model) => (
-                          <span
-                            key={model.id}
-                            role="listitem"
-                            title={model.description || model.label || model.id}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: 999,
-                              fontSize: 'calc(11px * var(--font-scale))',
-                              background: 'var(--surface)',
-                              color: 'var(--text)',
-                              border: '1px solid var(--border)',
-                              overflowWrap: 'anywhere',
-                            }}
-                          >
-                            {model.label || model.id}
-                          </span>
-                        ))}
+                    {providerModelGroups.some((group) => group.models.length > 0) && (
+                      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {providerModelGroups.filter((group) => group.models.length > 0).map((group) => {
+                          const option = ALL_PROTOCOLS.find((item) => item.value === group.protocol)
+                          return (
+                            <div key={group.protocol} data-model-protocol={group.protocol}>
+                              <div style={{
+                                marginBottom: 4,
+                                color: 'var(--muted)',
+                                fontSize: 'calc(10px * var(--font-scale))',
+                                fontWeight: 650,
+                              }}>
+                                {option ? t(option.labelKey) : group.protocol}
+                                {' · '}
+                                {t('providerSettings.modelsCount', { count: group.models.length })}
+                              </div>
+                              <div role="list" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                {group.models.map((model) => (
+                                  <span
+                                    key={model.id}
+                                    role="listitem"
+                                    title={model.description || model.label || model.id}
+                                    style={{
+                                      padding: '2px 8px',
+                                      borderRadius: 999,
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      background: 'var(--surface)',
+                                      color: 'var(--text)',
+                                      border: '1px solid var(--border)',
+                                      overflowWrap: 'anywhere',
+                                    }}
+                                  >
+                                    {model.label || model.id}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

@@ -547,7 +547,7 @@ function randomStageColor(currentColor?: string) {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
+function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, enginesError, defaultExecutionEngine, onValidationChange, onDraftChange, onSave, onRequestDelete, onClose, onDirtyChange, projectId }: {
   node: StepNodeData
   unavailableKeys: string[]
   engines: EngineInfo[]
@@ -555,6 +555,7 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   enginesError: string
   defaultExecutionEngine: string
   onValidationChange: (error: string) => void
+  onDraftChange: (data: StepNodeData) => void
   onSave: (data: StepNodeData) => void
   onRequestDelete: () => void
   onClose: () => void
@@ -580,7 +581,8 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
   useEffect(() => {
     const changed = JSON.stringify(draft) !== JSON.stringify(node)
     onDirtyChange(changed)
-  }, [draft, node, onDirtyChange])
+    onDraftChange(draft)
+  }, [draft, node, onDirtyChange, onDraftChange])
   useEffect(() => {
     setDraft({ ...node, inputs: node.inputs.map((i) => ({ ...i, outputs: [...i.outputs] })) })
   }, [node])
@@ -1154,6 +1156,7 @@ function FlowCanvasInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState(canvasToFlowEdges(initial.connections, initial.nodes))
   const [previewNode, setPreviewNode] = useState<StepNodeData | null>(null)
   const [selectedNode, setSelectedNode] = useState<StepNodeData | null>(null)
+  const [nodeConfigDraft, setNodeConfigDraft] = useState<StepNodeData | null>(null)
   const [nodeConfigError, setNodeConfigError] = useState('')
   const [nodeConfigDirty, setNodeConfigDirty] = useState(false)
   const [showJson, setShowJson] = useState(false)
@@ -1496,9 +1499,9 @@ function FlowCanvasInner({
   }
   const buildCanvasJson = () => buildCanvasJsonFromNodes(nodes, edges)
 
-  const computeStepError = (): string | null => {
+  const computeStepError = (candidateNodes = nodes): string | null => {
     if (nodeConfigError) return t('flow.stageConfigIncomplete', { error: nodeConfigError })
-    const stepTypes = nodes.filter(node => node.type !== 'bookmark').map((node, index) => {
+    const stepTypes = candidateNodes.filter(node => node.type !== 'bookmark').map((node, index) => {
       const data = node.data as StepNodeData
       return {
         index,
@@ -1510,7 +1513,7 @@ function FlowCanvasInner({
     if (missingType) {
       return t('flow.stageTypeRequired', { label: missingType.label })
     }
-    const missingDispatch = nodes.find((node) => {
+    const missingDispatch = candidateNodes.find((node) => {
       const data = node.data as StepNodeData
       return data.kind === 'task_dispatch' && (!data.dispatch?.targetProjectId || !data.dispatch.targetWorkflowId || !data.dispatch.targetStartStepKey)
     })
@@ -1635,7 +1638,13 @@ function FlowCanvasInner({
 
   const handleSave = async () => {
     if (readOnly) return
-    const stepError = computeStepError()
+    const activeDraft = selectedNode && nodeConfigDraft?.nodeId === selectedNode.nodeId
+      ? { ...nodeConfigDraft, key: (nodeConfigDraft.key ?? '').trim() }
+      : null
+    const nodesToSave = activeDraft
+      ? nodes.map((node) => node.id === String(activeDraft.nodeId) ? { ...node, data: activeDraft } : node)
+      : nodes
+    const stepError = computeStepError(nodesToSave)
     if (stepError) {
       setSaveMsg(t('flow.saveFailed', { error: stepError }))
       setSaveMsgKind('error')
@@ -1644,8 +1653,14 @@ function FlowCanvasInner({
     }
 
     try {
-      const steps = buildCanvasJson()
+      const steps = buildCanvasJsonFromNodes(nodesToSave, edges)
       await onSave(steps)
+      if (activeDraft) {
+        setNodes(nodesToSave)
+        setSelectedNode(activeDraft)
+        setNodeConfigDraft(activeDraft)
+        setNodeConfigDirty(false)
+      }
       setDirty(false)
       setSaveMsg(t('flow.saveSuccess'))
       setSaveMsgKind('success')
@@ -1806,11 +1821,13 @@ function FlowCanvasInner({
               .filter((node) => node.nodeId !== selectedNode.nodeId)
               .map((node) => node.key)}
             onValidationChange={setNodeConfigError}
+            onDraftChange={setNodeConfigDraft}
             onSave={(data) => {
               setNodes((nds) => nds.map((n) =>
                 n.id === String(data.nodeId) ? { ...n, data } : n
               ))
               setSelectedNode(data)
+              setNodeConfigDraft(data)
               setNodeConfigError('')
               setDirty(true)
             }}

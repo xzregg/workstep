@@ -1,3 +1,4 @@
+import ProjectGitButton from '../components/git/ProjectGitButton'
 import Select from '../components/Select'
 import { randomUuid } from '../utils/uuid'
 import { copyText } from '../utils/clipboard'
@@ -809,6 +810,7 @@ export default function TaskList() {
       {/* Topbar */}
       {compact && <div className="mobile-task-toolbar">
         <strong>{activeWorkflowName || t('mobile.taskList')}</strong>
+        <ProjectGitButton project={activeProject} />
         <button onClick={() => setFiltersOpen(true)} aria-label={t('mobile.filters')}><Icon name="sliders-horizontal" size={20} /></button>
         <Button variant="primary" onClick={() => openNewPanel()} disabled={!activeWorkflowId}>{t('taskList.new')}</Button>
       </div>}
@@ -968,6 +970,7 @@ export default function TaskList() {
           showInlineNotice={false}
           onNoticeChange={setDirectoryNotice}
         />
+        <ProjectGitButton project={activeProject} />
         <Button
           variant="ghost"
           onClick={() => setShowSettingsPanel(true)}

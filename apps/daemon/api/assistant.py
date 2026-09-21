@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from agent_assistants.base import assistant_registry
 from engines.core.registry import create_engine, get_available_engines
+from services import providers as provider_service
 from services.config import CODEX_REASONING_EFFORTS, config_store
 
 router = APIRouter(prefix="/api/assistant")
@@ -27,6 +28,7 @@ ASSISTANT_FIELDS: tuple[str, ...] = (
 class EnhanceConfigRequest(BaseModel):
     provider_id: str = Field(default="", max_length=200)
     model: str = Field(default="", max_length=200)
+    protocol: str = Field(default="", max_length=64)
 
 
 class ConcurrencyConfigRequest(BaseModel):
@@ -109,7 +111,7 @@ async def list_assistants():
 
 @router.get("/enhance-config")
 async def get_enhance_config():
-    """Return the prompt enhancement provider + model (agent assistant settings)."""
+    """Return the prompt enhancement provider, protocol and model."""
     def load() -> dict:
         config = config_store.get_prompt_enhance_config()
         providers = [
@@ -118,6 +120,10 @@ async def get_enhance_config():
                 "name": item.get("name") or item["id"],
                 "type": item.get("type") or "custom",
                 "base_url": item.get("base_url") or "",
+                "protocols": provider_service.normalize_provider_protocols(
+                    item.get("protocols") or item.get("protocol"),
+                    str(item.get("type") or "custom"),
+                ),
                 "enabled": bool(item.get("enabled", True)),
             }
             for item in config_store.get_providers()
@@ -125,6 +131,7 @@ async def get_enhance_config():
         return {
             "provider_id": config["provider_id"],
             "model": config["model"],
+            "protocol": config["protocol"],
             "providers": providers,
         }
 
@@ -133,19 +140,27 @@ async def get_enhance_config():
 
 @router.put("/enhance-config")
 async def set_enhance_config(req: EnhanceConfigRequest):
-    """Save the prompt enhancement provider + model (empty clears)."""
+    """Save the prompt enhancement provider, protocol and model."""
     provider_id = req.provider_id.strip()
     model = req.model.strip()
+    protocol = req.protocol.strip()
     if provider_id or model:
         if not provider_id or not model:
             raise HTTPException(status_code=400, detail="供应商与模型需同时填写")
         provider = await asyncio.to_thread(config_store.get_provider, provider_id)
         if provider is None:
             raise HTTPException(status_code=404, detail=f"供应商不存在：{provider_id}")
-        if str(provider.get("type") or "") == "anthropic":
-            raise HTTPException(status_code=400, detail="该供应商类型不支持 chat/completions 直连")
+        try:
+            protocol = provider_service.select_provider_protocol(provider, protocol or None)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    else:
+        protocol = ""
+
     def save() -> dict:
-        config_store.set_prompt_enhance_config(provider_id=provider_id, model=model)
+        config_store.set_prompt_enhance_config(
+            provider_id=provider_id, model=model, protocol=protocol
+        )
         return {"saved": True, **config_store.get_prompt_enhance_config()}
 
     return await asyncio.to_thread(save)

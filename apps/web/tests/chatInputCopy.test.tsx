@@ -103,3 +103,54 @@ test('delete clears all text and images after selecting the complete composer', 
     await window.happyDOM.close()
   }
 })
+
+test('undo restores text and images removed by select-all delete', async () => {
+  const { window } = installDomEnvironment()
+  const value = '开头![截图](.workstep/uploads/shot.png)结尾'
+  let root!: Root
+
+  try {
+    const container = window.document.body.appendChild(window.document.createElement('div'))
+    await act(async () => {
+      root = createRoot(container as never)
+      root.render(<StatefulComposer initial={value} />)
+      await Promise.resolve()
+    })
+
+    let textarea = container.querySelector('textarea') as HTMLTextAreaElement
+    await act(async () => {
+      textarea.dispatchEvent(new window.KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'a',
+        metaKey: true,
+      }))
+      textarea.dispatchEvent(new window.KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'Backspace',
+      }))
+    })
+    assert.equal(container.querySelectorAll('.chat-input-image-block').length, 0)
+
+    textarea = container.querySelector('textarea') as HTMLTextAreaElement
+    await act(async () => {
+      textarea.dispatchEvent(new window.KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'z',
+        metaKey: true,
+      }))
+    })
+
+    assert.equal(container.querySelectorAll('.chat-input-image-block').length, 1)
+    assert.equal(
+      Array.from(container.querySelectorAll('textarea')).map((element) => element.value).join(''),
+      '开头结尾',
+    )
+
+    await act(async () => { root.unmount() })
+  } finally {
+    await window.happyDOM.close()
+  }
+})

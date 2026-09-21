@@ -1,0 +1,121 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { gitApi, type BlameLine, type Comparison, type GitDiff } from '../../api/git'
+import { useI18n } from '../../i18n'
+import { useOverlay } from '../../hooks/useOverlay'
+import { parseGitPatch, type DiffLine } from './gitDiff'
+import Icon from '../Icon'
+import Button from '../Button'
+import ConfirmDialog from '../ConfirmDialog'
+import GitCodeEditor from './GitCodeEditor'
+
+export default function GitDiffDialog({ id, files, path, comparison, onSelect, onSaved, onClose }: { id: string; files: string[]; path: string; comparison: Comparison; onSelect: (path: string) => void; onSaved?: () => Promise<void>; onClose: () => void }) {
+  const { t } = useI18n()
+  const dialog = useRef<HTMLDivElement>(null)
+  const [data, setData] = useState<GitDiff | null>(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [split, setSplit] = useState(true)
+  const [showBlame, setShowBlame] = useState(false)
+  const [blame, setBlame] = useState<{ before: BlameLine[]; after: BlameLine[] }>({ before: [], after: [] })
+  const [leftWidth, setLeftWidth] = useState(50)
+  const content = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const [blameLoading, setBlameLoading] = useState(false)
+  const [retry, setRetry] = useState(0)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [pendingExit, setPendingExit] = useState<'editor' | 'dialog' | null>(null)
+  const [editLines, setEditLines] = useState({ before: 1, after: 1 })
+  const dirty = editing && !!data && draft !== data.after
+  function requestClose() { if (dirty) setPendingExit('dialog'); else onClose() }
+  useOverlay(true, requestClose, dialog)
+  useEffect(() => {
+    let current = true
+    setLoading(true); setData(null); setError(''); setBlame({ before: [], after: [] }); setEditing(false)
+    gitApi.diff(id, path, { ref: comparison.ref, commit: comparison.commit }).then(r => { if (current) { setData(r); setDraft(r.after) } }).catch(e => { if (current) setError(e.message) }).finally(() => { if (current) setLoading(false) })
+    return () => { current = false }
+  }, [id, path, comparison.ref, comparison.commit, retry])
+  useEffect(() => {
+    let current = true
+    setBlameLoading(false)
+    if (!showBlame || !data) return
+    setBlameLoading(true)
+    Promise.all([
+      data.base ? gitApi.blame(id, data.old_path, data.base) : Promise.resolve({ lines: [] }),
+      data.target ? gitApi.blame(id, data.path, data.target) : Promise.resolve({ lines: [] }),
+    ]).then(([before, after]) => { if (current) setBlame({ before: before.lines, after: after.lines }) }).catch(e => { if (current) setError(e.message) }).finally(() => { if (current) setBlameLoading(false) })
+    return () => { current = false }
+  }, [showBlame, id, data])
+  const hunks = useMemo(() => parseGitPatch(data?.patch || ''), [data?.patch])
+  const authors = useMemo(() => ({ before: new Map(blame.before.map(line => [line.line, line])), after: new Map(blame.after.map(line => [line.line, line])) }), [blame])
+  const index = files.indexOf(path)
+  const editable = !comparison.ref && !comparison.commit && !!data?.snapshot && !data.binary && !data.truncated && !data.submodule
+  async function save() {
+    if (!data?.snapshot || !dirty || saving) return
+    setSaving(true); setError('')
+    try {
+      await gitApi.saveFile(id, path, draft, data.snapshot)
+      setEditing(false)
+      setRetry(value => value + 1)
+      await onSaved?.()
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
+    finally { setSaving(false) }
+  }
+  function exitEditor() {
+    if (dirty) setPendingExit('editor')
+    else setEditing(false)
+  }
+  function startEditing() {
+    const sections = [...(content.current?.querySelectorAll<HTMLElement>('[data-hunk-index]') || [])]
+    const viewport = content.current?.querySelector<HTMLElement>('.git-diff-scroll')
+    const center = viewport ? viewport.getBoundingClientRect().top + viewport.clientHeight / 2 : 0
+    const distance = (section: HTMLElement) => {
+      const rect = section.getBoundingClientRect()
+      return center < rect.top ? rect.top - center : center > rect.bottom ? center - rect.bottom : 0
+    }
+    const selected = sections.reduce<HTMLElement | undefined>((best, section) => {
+      if (!best) return section
+      return distance(section) < distance(best) ? section : best
+    }, undefined)
+    const index = Number(selected?.dataset.hunkIndex || 0)
+    const rows = hunks[index]?.rows || []
+    setEditLines({
+      before: rows.find(row => row.before)?.before?.number || 1,
+      after: rows.find(row => row.after)?.after?.number || 1,
+    })
+    setEditing(true)
+  }
+  function confirmExit() {
+    const action = pendingExit
+    setPendingExit(null)
+    setDraft(data?.after || '')
+    setEditing(false)
+    if (action === 'dialog') onClose()
+  }
+  function cell(line: DiffLine | undefined, side: 'before' | 'after', sourceLine?: number) {
+    const working = side === 'after' && !data?.target
+    const author = working ? (!line?.changed && sourceLine ? authors.before.get(sourceLine) : undefined) : authors[side].get(line?.number || 0)
+    const uncommitted = working && line?.changed
+    return <div className={`git-code-cell ${line?.changed ? side === 'before' ? 'removed' : 'added' : ''}`}>
+      {showBlame && <span className="git-blame" title={author ? `${author.author} · ${new Date(author.time * 1000).toLocaleString()}\n${author.hash.slice(0, 8)} ${author.message}` : uncommitted ? t('git.newLine') : ''}><span>{author ? new Date(author.time * 1000).toLocaleDateString() : ''}</span><span>{author?.author || (uncommitted ? t('git.newLine') : '')}</span></span>}
+      <span className="git-line-number">{line?.number}</span><code>{line?.text ?? ' '}</code>
+    </div>
+  }
+  return createPortal(<><div className="git-diff-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) requestClose() }}><div ref={dialog} className={`git-diff-dialog ${split ? 'split' : 'unified'}`} role="dialog" aria-modal="true" aria-label={t('git.diff')} tabIndex={-1}>
+    <header><Icon name="file" size={17} /><strong title={path}>{path}</strong><Button variant="icon" aria-label={t('git.previous')} disabled={editing || index <= 0} onClick={() => onSelect(files[index - 1])}><Icon name="chevron-right" style={{ transform: 'rotate(180deg)' }} size={16} /></Button><Button variant="icon" aria-label={t('git.next')} disabled={editing || index < 0 || index >= files.length - 1} onClick={() => onSelect(files[index + 1])}><Icon name="chevron-right" size={16} /></Button><Button variant="icon" aria-label={t('git.close')} onClick={requestClose}><Icon name="x" size={18} /></Button></header>
+    <div className="git-diff-toolbar">{editing ? <><Button size="sm" variant="primary" loading={saving} disabled={!dirty} onClick={() => void save()}><Icon name="check" size={14} />{t('git.saveFile')}</Button><Button size="sm" disabled={saving} onClick={exitEditor}>{t('common.cancel')}</Button><small>{t('git.saveShortcut')}</small></> : <><Button size="sm" onClick={() => setSplit(!split)}>{split ? t('git.unified') : t('git.split')}</Button><Button size="sm" loading={blameLoading} aria-pressed={showBlame} onClick={() => setShowBlame(!showBlame)}>{t('git.blame')}</Button>{editable && <Button size="sm" onClick={startEditing}><Icon name="pencil" size={14} />{t('git.editFile')}</Button>}<select aria-label={t('git.hunks')} defaultValue="" onChange={e => { document.getElementById(`git-hunk-${e.target.value}`)?.scrollIntoView({ block: 'start' }) }}><option value="">{t('git.hunks')}</option>{hunks.map((h, i) => <option key={i} value={i}>{h.label}</option>)}</select></>}</div>
+    <div className="git-diff-labels" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><span>{t('git.before')} · {data?.base?.slice(0, 8) || '∅'} · {t('git.readonly')}</span><span>{t('git.after')} · {data?.target?.slice(0, 8) || t('git.changes')}{editing ? ` · ${t('git.editable')}` : ''}</span></div>
+    {error && <div className="git-error" role="alert">{error}<Button size="sm" onClick={() => setRetry(n => n + 1)}>{t('git.retry')}</Button></div>}
+    <div className="git-diff-content" ref={content}>
+      {editing && data ? <div className="git-file-editor" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><GitCodeEditor filename={data.old_path} value={data.before} targetLine={editLines.before} ariaLabel={t('git.before')} /><GitCodeEditor filename={data.path} value={draft} targetLine={editLines.after} editable ariaLabel={t('git.editable')} onChange={setDraft} onSave={() => void save()} /></div> : <div className="git-diff-scroll">{loading ? <div className="git-empty"><Icon name="loader-circle" className="git-spin" size={24} />{t('git.loading')}</div> : data?.binary || data?.truncated || data?.submodule ? <p className="git-empty">{t('git.noPreview')}</p> : hunks.length ? hunks.map((h, i) => <section key={i} id={`git-hunk-${i}`} data-hunk-index={i}><h4>{h.header}</h4>{split ? <div className="git-hunk-panes" style={{ gridTemplateColumns: `${leftWidth}% minmax(0, 1fr)` }}><div className="git-code-pane" data-diff-side="before">{h.rows.map((row, n) => <div key={n}>{cell(row.before, 'before')}</div>)}</div><div className="git-code-pane" data-diff-side="after">{h.rows.map((row, n) => <div key={n}>{cell(row.after, 'after', row.before?.number)}</div>)}</div></div> : h.rows.map((row, n) => <div key={n}>{row.before?.changed && cell(row.before, 'before')}{row.after && cell(row.after, 'after', row.before?.number)}</div>)}</section>) : !error && <p className="git-empty">{t('git.noDiff')}</p>}</div>}
+      {split && <div className="git-diff-divider" role="separator" aria-label={t('git.resizeSplit')} aria-orientation="vertical" aria-valuemin={20} aria-valuemax={80} aria-valuenow={leftWidth} tabIndex={0} style={{ left: `${leftWidth}%` }}
+        onPointerDown={e => { if (e.button !== 0) return; e.preventDefault(); dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId) }}
+        onPointerMove={e => { if (!dragging.current || !content.current) return; const rect = content.current.getBoundingClientRect(); if (rect.width) setLeftWidth(Math.round(Math.max(20, Math.min(80, (e.clientX - rect.left) / rect.width * 100)))) }}
+        onPointerUp={e => { dragging.current = false; if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId) }}
+        onPointerCancel={() => { dragging.current = false }} onLostPointerCapture={() => { dragging.current = false }}
+        onDoubleClick={() => setLeftWidth(50)} onKeyDown={e => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { e.preventDefault(); setLeftWidth(value => e.key === 'Home' ? 20 : e.key === 'End' ? 80 : Math.max(20, Math.min(80, value + (e.key === 'ArrowRight' ? 5 : -5)))) } }} />}
+    </div>
+  </div></div><ConfirmDialog open={!!pendingExit} title={t('git.unsavedTitle')} message={t('git.unsavedMessage')} confirmText={t('git.discardEditor')} danger onConfirm={confirmExit} onCancel={() => setPendingExit(null)} /></>, document.body)
+}

@@ -214,7 +214,7 @@ test('task store consumes AG-UI text and run events for live messages', () => {
       task_id: 'task-1',
       channel: 'execution',
     })
-  send({ type: 'TEXT_MESSAGE_START', messageId: 'm-1', step_key: 's1', prompt: '完整整理提示词' })
+  send({ type: 'TEXT_MESSAGE_START', messageId: 'm-1', step_key: 's1', prompt: '完整整理提示词', artifact_round: 2 })
   send({ type: 'TEXT_MESSAGE_CHUNK', messageId: 'm-1', delta: '处理中' })
   send({ type: 'TEXT_MESSAGE_END', messageId: 'm-1', status: 'succeeded' })
   send({ type: 'RUN_FINISHED', status: 'succeeded' })
@@ -224,6 +224,7 @@ test('task store consumes AG-UI text and run events for live messages', () => {
   assert.equal(message.status, 'succeeded')
   assert.equal(message.step_key, 's1')
   assert.equal(message.prompt, '完整整理提示词')
+  assert.equal(message.artifact_round, 2)
   assert.deepEqual(
     useTaskStore.getState().events['task-1'].map((event) => event.type),
     ['RUN_FINISHED'],

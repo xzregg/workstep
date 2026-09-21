@@ -47,6 +47,14 @@ test('uses the dedicated stage progress graph component', () => {
   assert.doesNotMatch(source, /\/\* Progress timeline \*\//)
 })
 
+test('places stage input and output before the stage prompt', () => {
+  const ioPos = source.indexOf("{t('taskDetail.stageIo')}")
+  const promptPos = source.indexOf("{t('taskDetail.stagePrompt')}")
+
+  assert.ok(ioPos >= 0, 'stage input and output section missing')
+  assert.ok(promptPos > ioPos, 'stage input and output should precede the stage prompt')
+})
+
 test('keeps the output file type beside its name and only opens generated files', () => {
   const outputReadyPos = source.indexOf('const outputReady = Boolean(outArtifact)')
   const namePos = source.indexOf('{out.name}', outputReadyPos)

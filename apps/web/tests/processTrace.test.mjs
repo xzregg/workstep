@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile(new URL('../src/components/ProcessTrace.tsx', import.meta.url), 'utf8')
 const messageTimelineSource = await readFile(new URL('../src/components/MessageTimeline.tsx', import.meta.url), 'utf8')
 const messageMetaBarSource = await readFile(new URL('../src/components/MessageMetaBar.tsx', import.meta.url), 'utf8')
+const taskDetailSource = await readFile(new URL('../src/components/TaskDetailView.tsx', import.meta.url), 'utf8')
 const styles = await readFile(new URL('../src/index.css', import.meta.url), 'utf8')
 const subagentSource = await readFile(
   new URL('../src/components/SubagentTimelineItem.tsx', import.meta.url),
@@ -76,6 +77,23 @@ test('message metadata shares the summary row without narrowing the process body
   assert.match(messageMetaBarSource, /className="message-meta-details"/)
 })
 
+test('task message metadata shows its artifact round immediately before the timestamp', () => {
+  assert.match(messageMetaBarSource, /artifactRound\?:\s*number\s*\|\s*null/)
+  assert.match(
+    messageMetaBarSource,
+    /taskDetail\.artifactRound[\s\S]*formatConversationDateTime\(displayStartedAt/,
+  )
+  assert.match(taskDetailSource, /artifactRound=\{isCoordinator \? undefined : messageArtifactRound\}/)
+})
+
+test('task and review message metadata keep the artifact round directly beside the timestamp', () => {
+  assert.doesNotMatch(messageMetaBarSource, /MESSAGE_TIMESTAMP_MIN_WIDTH/)
+  assert.doesNotMatch(
+    messageMetaBarSource,
+    /title=\{formatConversationDateTime\(displayStartedAt[\s\S]{0,240}minWidth/,
+  )
+})
+
 test('message metadata shows compacted status without exposing the summary body', () => {
   assert.match(messageMetaBarSource, /hasCompactedEvent\(events\)/)
   assert.match(messageMetaBarSource, /t\('meta\.compactedTitle'\)/)
@@ -123,4 +141,3 @@ test('subagent markdown uses compact spacing inside the event timeline', () => {
   assert.match(styles, /\.subagent-event-markdown p,[\s\S]*?margin-bottom:\s*4px;/)
   assert.match(styles, /\.subagent-event-markdown li \+ li\s*\{[\s\S]*?margin-top:\s*1px;/)
 })
-

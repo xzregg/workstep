@@ -6,6 +6,7 @@ import { isTaskCompleted } from '../pages/taskDetailChat'
 import Button from './Button'
 import ConfirmDialog from './ConfirmDialog'
 import Icon from './Icon'
+import Input from './Input'
 
 interface Lane {
   key: string
@@ -80,11 +81,23 @@ export default function TaskTableView({
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingAction, setPendingAction] = useState<'archive' | 'delete' | null>(null)
   const [busy, setBusy] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase(locale)
+  const visibleTasksByLane = useMemo(() => {
+    if (!normalizedSearchQuery) return tasksByLane
+    return Object.fromEntries(lanes.map((lane) => [
+      lane.key,
+      (tasksByLane[lane.key] || []).filter((task) => (
+        [task.title, task.description, task.creator_name]
+          .some((value) => value?.toLocaleLowerCase(locale).includes(normalizedSearchQuery))
+      )),
+    ]))
+  }, [lanes, locale, normalizedSearchQuery, tasksByLane])
   const actionableIds = useMemo(
-    () => lanes.flatMap((lane) => tasksByLane[lane.key] || [])
+    () => lanes.flatMap((lane) => visibleTasksByLane[lane.key] || [])
       .filter((task) => task.status !== 'running')
       .map((task) => task.id),
-    [lanes, tasksByLane],
+    [lanes, visibleTasksByLane],
   )
 
   useEffect(() => {
@@ -145,6 +158,22 @@ export default function TaskTableView({
           />
           {t('taskList.selectAll')}
         </label>
+        <div style={{ position: 'relative', width: 220, flexShrink: 0 }}>
+          <Icon
+            name="search"
+            size={14}
+            strokeWidth={2}
+            style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--meta)', pointerEvents: 'none' }}
+          />
+          <Input
+            type="search"
+            aria-label={t('taskList.searchTasks')}
+            placeholder={t('taskList.searchTasksPlaceholder')}
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            style={{ width: '100%', height: 30, paddingLeft: 29 }}
+          />
+        </div>
         <span style={{ color: 'var(--meta)', fontSize: 'calc(12px * var(--font-scale))' }}>
           {t('taskList.selectedTasks', { count: selectedIds.length })}
         </span>
@@ -172,7 +201,7 @@ export default function TaskTableView({
       </div>
 
       {lanes.map((lane) => {
-        const laneTasks = tasksByLane[lane.key] || []
+        const laneTasks = visibleTasksByLane[lane.key] || []
         const isCollapsed = !!collapsedLanes[lane.key]
         return (
           <div key={lane.key} style={{ border: '1px solid var(--border-soft)', borderRadius: 'var(--radius-md)', marginBottom: 14, overflow: 'hidden' }}>
@@ -274,7 +303,7 @@ export default function TaskTableView({
               </table>
             ) : (
               <div style={{ padding: '18px 14px', fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>
-                {t('taskList.emptyGroup')}
+                {t(normalizedSearchQuery ? 'taskList.noMatchingTasks' : 'taskList.emptyGroup')}
               </div>
             ))}
           </div>

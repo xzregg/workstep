@@ -1452,7 +1452,7 @@ class ChatSessionModule(AssistantRuntime):
         return prompt
 
     async def enhance_prompt(self, project_id: str, prompt: str) -> str:
-        """Rewrite a draft prompt via the configured enhance provider (direct chat/completions).
+        """Rewrite a draft through the configured provider protocol.
 
         未配置提示词增强供应商时回退 Pydantic AI 一次性调用；仍未配置时回退
         协调引擎（fast model + minimal 强度 + 自动批准）。
@@ -1473,7 +1473,7 @@ class ChatSessionModule(AssistantRuntime):
             )
             if provider is None:
                 raise ValueError("提示词增强的供应商不存在，请在设置中重新配置")
-            raw = await provider_service.chat_completion(
+            raw = await provider_service.text_completion(
                 provider,
                 enhance_config["model"],
                 [
@@ -1481,6 +1481,7 @@ class ChatSessionModule(AssistantRuntime):
                     {"role": "user", "content": prompt},
                 ],
                 thinking="disabled",
+                protocol=enhance_config.get("protocol") or None,
             )
             result = raw.strip()
             if not result:

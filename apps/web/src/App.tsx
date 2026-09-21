@@ -17,6 +17,8 @@ import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
 import { projectSelectionPath } from './utils/projectSelectionPath'
 
+const GitWorkspace = lazy(() => import('./pages/GitWorkspace'))
+
 const GitPrototype = import.meta.env.DEV
   ? lazy(() => import('./pages/prototype/GitPrototype'))
   : null
@@ -63,6 +65,7 @@ function AppRoutes() {
     <Layout onSelectProject={handleSelectProject}>
       <Routes>
         <Route path="/" element={<WelcomeView />} />
+        <Route path="/git" element={<Suspense fallback={null}><GitWorkspace /></Suspense>} />
         <Route path="/tasks" element={activeProject ? <TaskList /> : <WelcomeView />} />
         <Route path="/canvas" element={<CanvasEditor />} />
         <Route path="/statistics" element={<StatisticsPage />} />

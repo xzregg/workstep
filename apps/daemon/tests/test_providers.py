@@ -584,6 +584,92 @@ async def test_chat_completion_direct_call():
 
 
 @pytest.mark.anyio
+async def test_text_completion_supports_anthropic_messages():
+    captured = {}
+
+    async def handler(request):
+        captured["url"] = str(request.url)
+        captured["headers"] = dict(request.headers)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "content": [{"type": "text", "text": "Anthropic 改写结果"}],
+        })
+
+    text = await provider_service.text_completion(
+        {
+            "type": "custom",
+            "protocols": ["anthropic_messages"],
+            "protocol_base_urls": {
+                "anthropic_messages": "https://gateway.example.com/v1",
+            },
+            "api_key": "sk-ant",
+        },
+        "claude-model",
+        [
+            {"role": "system", "content": "system prompt"},
+            {"role": "user", "content": "user prompt"},
+        ],
+        protocol="anthropic_messages",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert text == "Anthropic 改写结果"
+    assert captured["url"] == "https://gateway.example.com/v1/messages"
+    assert captured["headers"]["x-api-key"] == "sk-ant"
+    assert captured["body"] == {
+        "model": "claude-model",
+        "max_tokens": 4096,
+        "stream": False,
+        "system": "system prompt",
+        "messages": [{"role": "user", "content": "user prompt"}],
+    }
+
+
+@pytest.mark.anyio
+async def test_text_completion_supports_openai_responses():
+    captured = {}
+
+    async def handler(request):
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "Responses 改写结果"}],
+            }],
+        })
+
+    messages = [
+        {"role": "system", "content": "system prompt"},
+        {"role": "user", "content": "user prompt"},
+    ]
+    text = await provider_service.text_completion(
+        {
+            "type": "custom",
+            "protocols": ["openai_responses"],
+            "protocol_base_urls": {
+                "openai_responses": "https://gateway.example.com/v1",
+            },
+            "api_key": "sk-openai",
+        },
+        "gpt-model",
+        messages,
+        protocol="openai_responses",
+        max_tokens=800,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert text == "Responses 改写结果"
+    assert captured["url"] == "https://gateway.example.com/v1/responses"
+    assert captured["body"] == {
+        "model": "gpt-model",
+        "input": messages,
+        "max_output_tokens": 800,
+        "stream": False,
+    }
+
+
+@pytest.mark.anyio
 async def test_chat_completion_adds_v1_and_uses_selected_protocol_auth():
     async def handler(request):
         assert request.url == "https://chat.example.com/api/v2/chat/completions"

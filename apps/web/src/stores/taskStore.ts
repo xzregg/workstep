@@ -49,6 +49,7 @@ export interface TaskEvent {
   source_item_id?: string
   content?: string
   prompt?: string
+  artifact_round?: number
   status?: string
   error?: string
   ended_at?: string
@@ -71,6 +72,7 @@ export interface LiveMessage {
   engine?: string
   model?: string
   prompt?: string
+  artifact_round?: number | null
   created_at?: string
   role?: 'user' | 'assistant'
   author_id?: string
@@ -434,6 +436,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
           prompt: event.type === 'TEXT_MESSAGE_START'
             ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
             : undefined,
+          artifact_round: typeof event.artifact_round === 'number'
+            ? event.artifact_round
+            : undefined,
           created_at: event.created_at,
           author_id: event.actor?.id,
           author_name: event.actor?.name,
@@ -466,6 +471,9 @@ export const useTaskStore = create<TaskState>((set, get) => ({
                 prompt: event.type === 'TEXT_MESSAGE_START'
                   ? String(event.prompt ?? (event.data as Record<string, unknown> | undefined)?.prompt ?? '')
                   : current.prompt,
+                artifact_round: typeof event.artifact_round === 'number'
+                  ? event.artifact_round
+                  : current.artifact_round,
                 created_at: current.created_at || event.created_at,
                 author_id: current.author_id || event.actor?.id,
                 author_name: current.author_name || event.actor?.name,

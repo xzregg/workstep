@@ -122,6 +122,18 @@ test('pasting an image inserts it at the caret without adding line breaks', asyn
     assert.equal(changes.at(-1), '前![shot.png](.workstep/uploads/shot.png)后')
     assert.doesNotMatch(changes.at(-1) ?? '', /\n/)
 
+    const trailingTextarea = Array.from(container.querySelectorAll('textarea')).at(-1) as HTMLTextAreaElement
+    await act(async () => {
+      trailingTextarea.dispatchEvent(new window.KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'z',
+        ctrlKey: true,
+      }))
+    })
+    assert.equal(changes.at(-1), '前后')
+    assert.equal(container.querySelectorAll('.chat-input-image-block').length, 0)
+
     await act(async () => { root.unmount() })
   } finally {
     await window.happyDOM.close()

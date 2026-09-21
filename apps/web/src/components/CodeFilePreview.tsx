@@ -45,18 +45,22 @@ interface CodeFilePreviewProps {
   line?: number
 }
 
-function languageForFilename(filename: string): string {
+export function languageForFilename(filename: string): string {
   const extension = filename.split('.').at(-1)?.toLowerCase() ?? ''
   return LANGUAGE_BY_EXTENSION[extension] ?? 'plaintext'
 }
 
-export default function CodeFilePreview({ filename, content, line }: CodeFilePreviewProps) {
-  const targetRef = useRef<HTMLSpanElement>(null)
+export function highlightedLines(filename: string, content: string): { language: string; lines: string[] } {
   const language = languageForFilename(filename)
-  const highlighted = language === 'plaintext'
+  const value = language === 'plaintext'
     ? hljs.highlightAuto(content, []).value
     : hljs.highlight(content, { language, ignoreIllegals: true }).value
-  const lines = highlighted.split('\n')
+  return { language, lines: value.split('\n') }
+}
+
+export default function CodeFilePreview({ filename, content, line }: CodeFilePreviewProps) {
+  const targetRef = useRef<HTMLSpanElement>(null)
+  const { language, lines } = highlightedLines(filename, content)
 
   useEffect(() => {
     targetRef.current?.scrollIntoView({ block: 'center' })

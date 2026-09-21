@@ -351,8 +351,16 @@ export function isMessageReviewActionable<T extends MessageReview>(
   reviews: readonly T[],
   stepStatus?: string,
 ): boolean {
-  if (stepStatus !== 'awaiting_review') return false
   const review = resolveMessageReview(message, reviews)
+  return isReviewActionable(review, reviews, stepStatus)
+}
+
+export function isReviewActionable<T extends MessageReview>(
+  review: T | undefined,
+  reviews: readonly T[],
+  stepStatus?: string,
+): boolean {
+  if (stepStatus !== 'awaiting_review') return false
   if (!review || (review.status !== 'pending' && review.status !== 'rejected')) {
     return false
   }
