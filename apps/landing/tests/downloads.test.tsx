@@ -32,7 +32,7 @@ describe('public download configuration', () => {
 
     expect(desktopPackage.build.mac.artifactName).toBe('WorkStep-macos-${arch}.${ext}')
     expect(desktopPackage.build.win.artifactName).toBe('WorkStep-windows-${arch}.${ext}')
-    expect(desktopPackage.build.linux.artifactName).toBe('WorkStep-linux-${arch}.${ext}')
+    expect(desktopPackage.build.linux.artifactName).toBe('WorkStep-linux-x64.${ext}')
   })
 
   it('shows a copyable GitHub clone command on the page', () => {
