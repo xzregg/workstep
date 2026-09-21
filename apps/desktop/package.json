@@ -84,7 +84,7 @@
       "icon": "build/icons",
       "target": ["AppImage"],
       "category": "Development",
-      "artifactName": "WorkStep-linux-${arch}.${ext}"
+      "artifactName": "WorkStep-linux-x64.${ext}"
     }
   }
 }
