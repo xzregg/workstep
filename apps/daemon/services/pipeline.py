@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from services.config import DEFAULT_EXECUTION_ENGINE
+from services.workflow_limits import MAX_RETURN_ROUNDS
 
 
 @dataclass
@@ -24,6 +25,9 @@ class Step:
     condition: str = ""  # Optional condition expression for conditional routing
     review: dict | None = None
     rework_upstream: list[str] = field(default_factory=list)  # 验证失败时返工的上游生产者
+    max_return_rounds: int = MAX_RETURN_ROUNDS
+    incoming_connections: list[dict] = field(default_factory=list)
+    outgoing_connections: list[dict] = field(default_factory=list)
     kind: str = "llm"
     dispatch: dict = field(default_factory=dict)
 
@@ -43,6 +47,9 @@ class Step:
             condition=d.get("condition", ""),
             review=d.get("review"),
             rework_upstream=list(d.get("reworkUpstream", [])),
+            max_return_rounds=int(d.get("maxReturnRounds", MAX_RETURN_ROUNDS)),
+            incoming_connections=list(d.get("incomingConnections", [])),
+            outgoing_connections=list(d.get("outgoingConnections", [])),
             kind=d.get("kind", "llm"),
             dispatch=dict(d.get("dispatch") or {}),
         )
@@ -91,6 +98,7 @@ class DAGScheduler:
         completed: set[str],
         running: set[str] | None = None,
         step_results: dict[str, bool] | None = None,
+        active_edges: set[str] | None = None,
     ) -> list[Step]:
         """Return steps whose dependencies are all completed and not already running.
 
@@ -101,13 +109,27 @@ class DAGScheduler:
         """
         running = running or set()
         step_results = step_results or {}
+        active_edges = active_edges or set()
         return [
             s for s in self.steps.values()
             if s.key not in completed
             and s.key not in running
             and all(dep in completed for dep in s.depends_on)
+            and self._solid_inputs_are_active(s, active_edges)
             and self._evaluate_condition(s.condition, step_results)
         ]
+
+    @staticmethod
+    def _solid_inputs_are_active(step: Step, active_edges: set[str]) -> bool:
+        """Require every compiled solid input edge to have a non-empty value."""
+        solid = [
+            connection
+            for connection in step.incoming_connections
+            if connection.get("kind", "solid") == "solid"
+        ]
+        if not solid:
+            return True
+        return all(str(connection.get("id")) in active_edges for connection in solid)
 
     def _evaluate_condition(self, condition: str, step_results: dict[str, bool]) -> bool:
         """Evaluate a condition expression against step results.
@@ -166,6 +188,38 @@ class DAGScheduler:
     def get_downstream(self, step_key: str) -> list[Step]:
         """Return all steps that directly depend on the given step."""
         return [s for s in self.steps.values() if step_key in s.depends_on]
+
+    def get_skippable_steps(
+        self,
+        completed: set[str],
+        excluded: set[str] | None = None,
+        active_edges: set[str] | None = None,
+    ) -> list[Step]:
+        """Return branches whose completed sources produced no routed input."""
+        excluded = excluded or set()
+        active_edges = active_edges or set()
+        result: list[Step] = []
+        for step in self.steps.values():
+            if step.key in completed or step.key in excluded:
+                continue
+            solid = [
+                connection
+                for connection in step.incoming_connections
+                if connection.get("kind", "solid") == "solid"
+            ]
+            if not solid:
+                continue
+            sources = {str(connection.get("from")) for connection in solid}
+            if not all(dep in completed for dep in step.depends_on):
+                continue
+            if not sources.issubset(completed):
+                continue
+            if any(
+                str(connection.get("id")) not in active_edges
+                for connection in solid
+            ):
+                result.append(step)
+        return result
 
     def get_all_downstream(self, step_key: str) -> set[str]:
         """Return all transitive downstream step keys."""

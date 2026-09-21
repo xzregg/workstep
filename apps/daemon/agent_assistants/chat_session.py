@@ -394,12 +394,14 @@ class ChatRowPersistence(PersistenceAdapter):
 class ChatAccepted:
     session_id: str
     turn_id: str
+    assistant_message_id: str
     status: str
 
     def to_dict(self) -> dict:
         return {
             "session_id": self.session_id,
             "turn_id": self.turn_id,
+            "assistant_message_id": self.assistant_message_id,
             "status": self.status,
         }
 
@@ -1288,6 +1290,7 @@ class ChatSessionModule(AssistantRuntime):
         return ChatAccepted(
             session_id=accepted.session_id,
             turn_id=accepted.turn_id,
+            assistant_message_id=accepted.assistant_message_id,
             status=accepted.status,
         )
 

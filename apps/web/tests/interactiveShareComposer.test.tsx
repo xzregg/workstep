@@ -85,6 +85,8 @@ async function renderShare(mode: 'read_only' | 'interactive') {
     displayClone.querySelector('.task-detail-composer')?.remove()
     return {
       hasComposer: Boolean(document.querySelector<HTMLTextAreaElement>('.task-detail-composer textarea')),
+      hasAnalysisTab: Array.from(document.querySelectorAll('[role="tab"]'))
+        .some((tab) => /执行分析/.test(tab.textContent ?? '')),
       hasAttachment: Boolean(document.querySelector('.chat-input-attach')),
       fileInputCount: document.querySelectorAll('input[type="file"]').length,
       text: document.body.textContent ?? '',
@@ -113,6 +115,8 @@ test('share modes keep the same task display and differ only by the composer', a
 
   assert.equal(interactive.hasComposer, true)
   assert.equal(readOnly.hasComposer, false)
+  assert.equal(interactive.hasAnalysisTab, true)
+  assert.equal(readOnly.hasAnalysisTab, true)
   assert.equal(interactive.hasDescriptionEdit, false)
   assert.equal(readOnly.hasDescriptionEdit, false)
   for (const label of ['Shared interactive task', 'Task description', 'build']) {

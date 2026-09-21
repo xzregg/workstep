@@ -14,6 +14,10 @@ const sharedViewSource = await readFile(
   new URL('../src/pages/SharedTaskView.tsx', import.meta.url),
   'utf8',
 )
+const taskDetailViewSource = await readFile(
+  new URL('../src/components/TaskDetailView.tsx', import.meta.url),
+  'utf8',
+)
 
 test('task sharing creates either a read-only or interactive link', () => {
   assert.match(componentSource, /type ShareMode = 'read_only' \| 'interactive'/)
@@ -39,17 +43,19 @@ test('public share client exposes mode and interactive actions', () => {
 
 test('shared task view enables interactions only for interactive shares', () => {
   assert.match(sharedViewSource, /meta\?\.mode === 'interactive'/)
-  assert.match(sharedViewSource, /readOnly/)
   assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
   assert.doesNotMatch(sharedViewSource, /interactionOnly=/)
   assert.doesNotMatch(sharedViewSource, /onReviewAction=\{interactive \?/)
   assert.match(sharedViewSource, /uploadAttachment/)
   assert.match(sharedViewSource, /markdownUrlResolver/)
+  assert.match(sharedViewSource, /shareApi\.executionReport/)
+  assert.match(sharedViewSource, /executionReportLoader=\{executionReportLoader\}/)
 })
 
 test('read-only and interactive shares differ only by the chat composer capability', () => {
-  assert.match(sharedViewSource, /readOnly\s*\n/)
   assert.match(sharedViewSource, /chatEnabled=\{interactive\}/)
+  assert.doesNotMatch(sharedViewSource, /\breadOnly\b/)
+  assert.doesNotMatch(taskDetailViewSource, /\breadOnly\b/)
   assert.doesNotMatch(sharedViewSource, /runningStages=\{interactive \?/)
   assert.doesNotMatch(sharedViewSource, /sharePrimaryAction/)
 })

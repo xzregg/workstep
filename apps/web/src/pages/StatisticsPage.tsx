@@ -8,6 +8,7 @@ import {
   type StatisticsReport,
   type StatisticsStageRow,
   type StatisticsTrendPoint,
+  type StatisticsUserRow,
   type StatisticsWorkflowRow,
 } from '../api/client'
 import Button from '../components/Button'
@@ -489,6 +490,7 @@ export default function StatisticsPage() {
             />
           )}
           {report.scope.level === 'workflow' && <StageTable rows={report.stages} locale={locale} />}
+          <StatisticsUserTable rows={report.users ?? []} locale={locale} currency={report.currency} />
           <EngineTable rows={report.engines} locale={locale} currency={report.currency} />
 
           <div className="statistics-coverage" title={t('statistics.tokenCoverageHelp')}>
@@ -499,6 +501,36 @@ export default function StatisticsPage() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+
+export function StatisticsUserTable({ rows, locale, currency }: {
+  rows: StatisticsUserRow[]
+  locale: string
+  currency: 'USD' | 'CNY'
+}) {
+  const { t } = useI18n()
+  if (rows.length === 0) return null
+  return (
+    <TableShell title={t('statistics.userBreakdown')}>
+      <table className="statistics-table"><thead><tr>
+        <th>{t('statistics.user')}</th><th>{t('statistics.callCount')}</th>
+        <th>{t('statistics.inputTokens')}</th><th>{t('statistics.outputTokens')}</th>
+        <th>{t('statistics.cacheTokens')}</th><th>{t('statistics.totalTokens')}</th>
+        <th>{t('statistics.totalCost')}</th>
+      </tr></thead><tbody>{rows.map((row) => (
+        <tr key={row.author_id || `name:${row.author_name}`}>
+          <td className="statistics-name-cell"><Icon name="user" size={14} />{row.author_name || t('statistics.unknownUser')}</td>
+          <td>{formatCompactMetric(row.call_count, locale)}</td>
+          <td>{formatCompactMetric(row.input_tokens, locale)}</td>
+          <td>{formatCompactMetric(row.output_tokens, locale)}</td>
+          <td>{formatCompactMetric(row.cache_read_tokens + row.cache_write_tokens, locale)}</td>
+          <td>{formatCompactMetric(row.total_tokens, locale)}</td>
+          <td>{formatCost(row.cost, currency, locale)}</td>
+        </tr>
+      ))}</tbody></table>
+    </TableShell>
   )
 }
 

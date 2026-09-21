@@ -84,6 +84,42 @@ def test_dag_parallel_branch():
     assert [s.key for s in dag.get_ready_steps({"a", "b", "c"})] == ["d"]
 
 
+def test_dag_requires_each_solid_input_connection_to_be_activated():
+    source = Step(
+        key="test",
+        label="测试",
+        outputs=[{"name": "测试报告"}, {"name": "Bug列表"}],
+        outgoing_connections=[
+            {
+                "id": "connection-0", "from": "test", "fromPort": 0,
+                "to": "publish", "toPort": 0, "kind": "solid",
+            },
+            {
+                "id": "connection-1", "from": "test", "fromPort": 1,
+                "to": "develop", "toPort": 1, "kind": "dashed",
+            },
+        ],
+    )
+    publish = Step(
+        key="publish",
+        label="交付",
+        depends_on=["test"],
+        incoming_connections=[source.outgoing_connections[0]],
+    )
+    dag = DAGScheduler([source, publish])
+
+    assert dag.get_ready_steps({"test"}, active_edges=set()) == []
+    assert [
+        step.key
+        for step in dag.get_ready_steps(
+            {"test"}, active_edges={"connection-0"}
+        )
+    ] == ["publish"]
+    assert dag.get_ready_steps(
+        {"test"}, active_edges={"connection-1"}
+    ) == []
+
+
 def test_dag_running_excludes():
     """Running steps are excluded from ready list."""
     steps = [
@@ -315,6 +351,72 @@ def test_assemble_prompt_with_user_input(tmp_path):
     db.close()
 
 
+def test_assemble_prompt_renders_dynamic_input_port_snapshot(tmp_path):
+    from models import init_db, Task
+    import time, uuid
+
+    db = init_db(str(tmp_path / "test.db"))
+    task = Task.create(
+        id=str(uuid.uuid4()), title="研发任务", cwd=str(tmp_path),
+        created_at=int(time.time()), updated_at=int(time.time()),
+    )
+    step = Step(
+        key="develop",
+        label="开发",
+        prompt="完成本阶段工作",
+        inputs=[{"name": "PRD"}, {"name": "Bug列表"}],
+    )
+    prd = tmp_path / "prd.md"
+    bugs = tmp_path / "bugs.md"
+    prd.write_text("需求", encoding="utf-8")
+    bugs.write_text("BUG-1", encoding="utf-8")
+    snapshot = {
+        "execution_type": "feedback",
+        "triggered_edges": ["connection-3"],
+        "ports": [
+            {
+                "port": 0,
+                "name": "PRD",
+                "status": "ready",
+                "sources": [{
+                    "edge_id": "connection-0", "kind": "solid",
+                    "step": "requirements", "output_port": 0,
+                    "round": 1, "name": "PRD", "path": str(prd),
+                    "size": prd.stat().st_size,
+                }],
+            },
+            {
+                "port": 1,
+                "name": "Bug列表",
+                "status": "ready",
+                "sources": [{
+                    "edge_id": "connection-3", "kind": "dashed",
+                    "step": "test", "output_port": 1,
+                    "round": 2, "name": "Bug列表", "path": str(bugs),
+                    "size": bugs.stat().st_size,
+                }],
+            },
+        ],
+    }
+
+    prompt = assemble_prompt(
+        task,
+        step,
+        tmp_path / "artifacts",
+        input_snapshot=snapshot,
+    )
+
+    assert "## Execution input snapshot" in prompt
+    assert "Execution type: `feedback`" in prompt
+    assert "Input port 0: PRD" in prompt
+    assert "Input port 1: Bug列表" in prompt
+    assert str(prd) in prompt
+    assert str(bugs) in prompt
+    assert "当前是首次开发" not in prompt
+    assert "不是缺陷返工" not in prompt
+    db.close()
+
+
 def test_assemble_followup_prompt_only_contains_message_and_output_requirements(tmp_path):
     """A resumed @stage turn relies on its engine session for prior context."""
     from models import init_db, Task
@@ -466,12 +568,13 @@ def test_assemble_prompt_file_output_uses_single_file_path(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
-    assert "## Artifact output directory\n" + str(artifacts_dir / "default" / task.id / "do") in prompt
-    assert "说明: " + str(artifacts_dir / "default" / task.id / "do" / "说明.md") in prompt
-    assert "数据: " + str(artifacts_dir / "default" / task.id / "do" / "数据.json") in prompt
-    assert ".workstep/artifacts/default/" + task.id + "/do/说明.md" in prompt
-    assert "数据.json" in prompt
-    assert "Write generated artifacts" in prompt
+    doc_path = str(artifacts_dir / "default" / task.id / "do" / "说明.md")
+    data_path = str(artifacts_dir / "default" / task.id / "do" / "数据.json")
+    assert prompt.count(doc_path) == 1
+    assert prompt.count(data_path) == 1
+    assert "## Artifact output directory" not in prompt
+    assert ".workstep/artifacts/<workflow>/<task>/<stage>/<round>/" not in prompt
+    assert "Write generated artifacts to the matching paths" not in prompt
     assert "one file" in prompt
     assert "do not wrap it in another same-named directory" in prompt
     db.close()
@@ -495,11 +598,14 @@ def test_assemble_prompt_directory_output_allows_multiple_files(tmp_path):
 
     prompt = assemble_prompt(task, step, artifacts_dir)
 
+    output_path = str(artifacts_dir / "default" / task.id / "design" / "原型集合") + "/"
     assert "type: `directory`" in prompt
     assert "Directory artifact" in prompt
     assert "multiple files and subdirectories" in prompt
     assert "do not merge everything into one file" in prompt
-    assert "it may contain multiple files and subdirectories" in prompt
+    assert prompt.count(output_path) == 1
+    assert "## Artifact output directory" not in prompt
+    assert "Write generated artifacts to the matching paths" not in prompt
     db.close()
 
 

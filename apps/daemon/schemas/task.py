@@ -41,6 +41,7 @@ class ReviewDecisionRequest(BaseSchema):
 
 class CoordinatorChatRequest(BaseSchema):
     content: str
+    pending_insert_ids: list[str] = Field(default_factory=list)
 
 
 class StageMessageRequest(BaseSchema):

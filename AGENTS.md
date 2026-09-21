@@ -106,6 +106,7 @@ yarn build
 - **布局与样式**：复杂弹框顶部放表单，主区域占满余高、支持分隔拖动和弹框缩放；避免写死过矮高度。公共组件放入 modal 后须检查全局表单样式污染，必要时提高选择器特异性并人工核对。
 - **状态与视觉**：异步处理中状态必须配持续旋转图标，结束、暂停或等待用户时停止。`ChatInput` 的发送/停止、附件选中态和配置菜单样式以组件现有实现为准，不在调用处另行定制。
 - **图标按钮**：按钮直接内联 `svg`/`Icon` 时必须显式 `padding: 0`（或按设计给最小内边距），禁止依赖全局 `button` 默认 padding（`4px 8px`），否则固定尺寸按钮的内容区被压缩、图标被裁剪。
+- **复选框**：原生 `input[type="checkbox"]` 必须使用全局紧凑规格，默认可见尺寸统一为 `16px × 16px`，特殊密集选择场景最多 `18px × 18px`；禁止继承文本输入框的 `width: 100%` / `height: 32px`，也禁止通过放大可见方框满足触控尺寸。需要扩大点击区域时应使用 `label` 或外层容器提供命中范围，复选框本体仍保持紧凑。
 - **移动端适配**（`apps/web/src/mobile.css`，断点 `≤1023px`）：
   - 所有交互元素最小触控高度 44px（`mobile.css` 全局规则），但消息操作按钮（`.chat-message-action`）和浮层小按钮（如 `.conversation-new-messages-button`）必须排除该规则，保持原始紧凑尺寸。新增浮层/弹出式小按钮时须同步在 `min-height: 44px` 的 `:not()` 排除列表中补充。
   - `.btn-ghost` 在消息区域（`.chat-message-row`、`.process-trace-thinking-copy`、`.llm-tool-call`）内必须去掉 border、强制 `min-height/min-width: 24px`，避免 ghost 边框在小按钮上显得过大。

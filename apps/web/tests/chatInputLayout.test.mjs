@@ -60,12 +60,13 @@ test('mobile chat input controls scroll only within the space before the send bu
   assert.doesNotMatch(mobileCss, /\.chat-input-send\s*\{[^}]*position:\s*sticky/s)
 })
 
-test('mobile task composer sits at the bottom with two-pixel padding and a blurred history edge', () => {
+test('task composer shares the blurred history edge across desktop and mobile', () => {
   assert.match(taskDetail, /\{\/\* Chat input \(edit mode only\) \*\/\}[\s\S]*?className="task-detail-composer"/)
   assert.match(taskDetail, /className="task-chat-history-wrapper"/)
   assert.match(mobileCss, /\.task-detail-composer\s*\{[^}]*padding:\s*2px 2px max\(2px, env\(safe-area-inset-bottom\)\)/s)
   assert.match(mobileCss, /\.task-detail-composer \.chat-input-root\s*\{[^}]*padding:\s*2px/s)
-  assert.match(mobileCss, /\.task-chat-history-wrapper::after\s*\{[^}]*backdrop-filter:\s*blur\(10px\)/s)
+  assert.match(css, /\.task-chat-history-wrapper::after\s*\{[^}]*height:\s*24px[^}]*backdrop-filter:\s*blur\(10px\)/s)
+  assert.doesNotMatch(mobileCss, /\.task-chat-history-wrapper::after/)
 })
 
 test('mobile task header keeps the compact id beside the share action', () => {

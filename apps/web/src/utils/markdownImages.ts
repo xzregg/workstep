@@ -56,10 +56,14 @@ export function splitMarkdownImages(markdown: string): MarkdownInputSegment[] {
 }
 
 export function removeMarkdownImage(markdown: string, image: MarkdownImageSegment): string {
-  const before = markdown.slice(0, image.start)
+  let before = markdown.slice(0, image.start)
   let after = markdown.slice(image.end)
   if (before.endsWith('\n\n') && after.startsWith('\n\n')) after = after.slice(2)
   else if (before.endsWith('\n') && after.startsWith('\n')) after = after.slice(1)
+  else if (!after && before.endsWith('\n\n')) before = before.slice(0, -2)
+  else if (!after && before.endsWith('\n')) before = before.slice(0, -1)
+  else if (!before && after.startsWith('\n\n')) after = after.slice(2)
+  else if (!before && after.startsWith('\n')) after = after.slice(1)
   return before + after
 }
 

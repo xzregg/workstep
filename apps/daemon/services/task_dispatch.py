@@ -6,13 +6,58 @@ import asyncio
 import json
 import base64
 import shutil
+import sys
+import ctypes
 from pathlib import Path
 
 from models import Task
 from services.artifact_rounds import select_upstream_round
 from services.task import TaskService
 from services.workflow_definition import WorkflowDefinition
-from services.remote_project import RemoteHttpRequest
+from services.remote_project import REMOTE_REQUEST_BODY_LIMIT, RemoteHttpRequest
+
+
+def _try_clone_file(source: Path, destination: Path) -> bool:
+    """Clone a file without copying its data when the filesystem supports it."""
+    if sys.platform == "darwin":
+        try:
+            clonefile = ctypes.CDLL(None, use_errno=True).clonefile
+            clonefile.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+            clonefile.restype = ctypes.c_int
+            return clonefile(
+                bytes(source),
+                bytes(destination),
+                0,
+            ) == 0
+        except (AttributeError, OSError):
+            return False
+
+    if sys.platform.startswith("linux"):
+        import fcntl
+
+        # Linux fs.h: clone the source file's extents into the destination.
+        ficlone = 0x40049409
+        created = False
+        try:
+            with source.open("rb") as source_file:
+                with destination.open("xb") as destination_file:
+                    created = True
+                    fcntl.ioctl(destination_file.fileno(), ficlone, source_file.fileno())
+            shutil.copystat(source, destination)
+            return True
+        except OSError:
+            if created:
+                destination.unlink(missing_ok=True)
+            return False
+
+    return False
+
+
+def _copy_local_artifact(source: Path, destination: Path) -> None:
+    """Prefer a copy-on-write clone and safely fall back to a full copy."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if not _try_clone_file(source, destination):
+        shutil.copy2(source, destination)
 
 
 class TaskDispatchService:
@@ -175,8 +220,8 @@ class TaskDispatchService:
             "files": files,
         }
         body = json.dumps(payload, ensure_ascii=False).encode()
-        if len(body) > 12 * 1024 * 1024:
-            raise ValueError("远程输入产物超过单次派发大小限制（12 MiB）")
+        if len(body) > REMOTE_REQUEST_BODY_LIMIT:
+            raise ValueError("远程输入产物超过单次派发大小限制（64 MiB）")
         response = await client_manager.request(
             target_project_id,
             RemoteHttpRequest(
@@ -264,8 +309,7 @@ class TaskDispatchService:
                     continue
                 relative = source.relative_to(source_root)
                 destination = target_root / step_key / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, destination)
+                _copy_local_artifact(source, destination)
                 manifest.append({
                     "source_project_id": source_project_id,
                     "source_task_id": source_task.id,

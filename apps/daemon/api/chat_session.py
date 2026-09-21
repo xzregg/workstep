@@ -6,6 +6,7 @@ global WebSocket keyed by ``session_id`` on the ``session_chat`` channel.
 """
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
+from pydantic import Field
 
 from schemas.base import BaseSchema
 
@@ -74,6 +75,7 @@ class ChatMessageRequest(BaseSchema):
 class ChatLiveMessageRequest(BaseSchema):
     project_id: str
     content: str
+    pending_insert_ids: list[str] = Field(default_factory=list)
 
 
 class SystemPromptRequest(BaseSchema):
@@ -433,6 +435,7 @@ async def send_live_message(session_id: str, req: ChatLiveMessageRequest):
             session_id,
             req.content,
             project_id=req.project_id,
+            pending_insert_ids=req.pending_insert_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=_error_status(exc), detail=str(exc)) from exc

@@ -155,11 +155,6 @@ export function useSidebarActivity(activeSessionId: string | null) {
   }, [activeSessionId])
 
   useEffect(() => {
-    if (!activeProject?.id) return
-    void useChatListStore.getState().fetchSessions(activeProject.id)
-  }, [activeProject?.id])
-
-  useEffect(() => {
     setSessionProjectMap((previous) => {
       let changed = false
       const next = { ...previous }

@@ -4,12 +4,67 @@ from datetime import datetime
 import json
 
 from services.artifact_rounds import (
+    active_output_ports,
     iter_artifact_rounds,
     next_artifact_round,
     select_upstream_round,
     step_round_dir,
     write_round_manifest,
 )
+
+
+def test_manifest_marks_only_nonempty_declared_outputs_active(tmp_path):
+    artifacts_root = tmp_path / ".workstep" / "artifacts"
+    round_dir = step_round_dir(artifacts_root, "dev", "task-1", "test", 1)
+    round_dir.mkdir(parents=True)
+    (round_dir / "测试报告.md").write_text("测试通过", encoding="utf-8")
+    (round_dir / "Bug列表.md").write_bytes(b"")
+
+    manifest = write_round_manifest(
+        artifacts_root=artifacts_root,
+        workflow_id="dev",
+        task_id="task-1",
+        step_key="test",
+        artifact_round=1,
+        status="passed",
+        eligible_for_downstream=True,
+        outputs=[
+            {"name": "测试报告", "type": "md"},
+            {"name": "Bug列表", "type": "md"},
+            {"name": "诊断附件", "type": "json"},
+        ],
+    )
+
+    assert manifest["outputs"] == [
+        {
+            "port": 0,
+            "name": "测试报告",
+            "type": "md",
+            "path": "测试报告.md",
+            "exists": True,
+            "size": len("测试通过".encode("utf-8")),
+            "nonempty": True,
+        },
+        {
+            "port": 1,
+            "name": "Bug列表",
+            "type": "md",
+            "path": "Bug列表.md",
+            "exists": True,
+            "size": 0,
+            "nonempty": False,
+        },
+        {
+            "port": 2,
+            "name": "诊断附件",
+            "type": "json",
+            "path": "诊断附件.json",
+            "exists": False,
+            "size": 0,
+            "nonempty": False,
+        },
+    ]
+    assert active_output_ports(manifest) == {0}
 from services.artifacts import list_task_artifacts
 
 

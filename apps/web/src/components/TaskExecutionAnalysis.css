@@ -89,7 +89,7 @@
 
 .execution-gantt-scroll { overflow-x: auto; }
 .execution-gantt { min-width: 830px; display: grid; grid-template-columns: 160px minmax(640px, 1fr); }
-.execution-gantt-axis-label { min-height: 36px; padding: 11px 13px; color: var(--meta); background: var(--surface); border-bottom: 1px solid var(--border-soft); font-size: var(--text-caption); }
+.execution-gantt-axis-label { position: sticky; left: 0; z-index: 3; min-height: 36px; padding: 11px 13px; color: var(--meta); background: var(--surface); border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); box-shadow: 5px 0 8px -8px var(--fg); font-size: var(--text-caption); }
 .execution-gantt-axis { position: relative; min-height: 36px; background: var(--surface); border-bottom: 1px solid var(--border-soft); }
 .execution-gantt-axis span { position: absolute; top: 10px; color: var(--meta); font-size: var(--text-caption); transform: translateX(-50%); white-space: nowrap; }
 .execution-gantt-axis span:first-child { transform: none; }
@@ -98,7 +98,7 @@
 .execution-gantt-round-title { grid-column: 1 / -1; min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 13px; background: color-mix(in oklab, var(--surface), var(--bg) 36%); border-bottom: 1px solid var(--border-soft); }
 .execution-gantt-round-title span { color: var(--meta); font-size: var(--text-caption); }
 .execution-gantt-row { display: contents; }
-.execution-gantt-label { min-height: 48px; padding: 7px 13px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-soft); }
+.execution-gantt-label { position: sticky; left: 0; z-index: 2; min-height: 48px; padding: 7px 13px; display: flex; align-items: center; gap: 8px; border-right: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); background: var(--bg); box-shadow: 5px 0 8px -8px var(--fg); }
 .execution-gantt-label > i { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; color: var(--meta); background: var(--surface); font-size: 10px; font-style: normal; }
 .execution-gantt-label > i[data-tone="done"] { color: var(--success); background: color-mix(in oklab, var(--success), transparent 88%); }
 .execution-gantt-label > i[data-tone="failed"] { color: var(--danger); background: color-mix(in oklab, var(--danger), transparent 88%); }
@@ -114,6 +114,7 @@
 .execution-gantt-lane > button[data-tone="running"] { background: var(--accent); }
 .execution-gantt-lane > button[data-tone="waiting"] { color: var(--muted); background: var(--surface); border: 1px dashed var(--border); }
 .execution-gantt-lane > button[data-type="review"] { color: var(--warn-text); background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--warn), transparent 72%) 0 6px, color-mix(in oklab, var(--warn), transparent 88%) 6px 12px); border: 1px solid color-mix(in oklab, var(--warn), var(--border) 50%); }
+.execution-gantt-lane > button .ws-marquee { text-align: left; }
 .execution-gantt-lane .task-status-spinner { width: 12px; height: 12px; border-width: 2px; flex: 0 0 auto; }
 
 .execution-analysis-lower { display: grid; grid-template-columns: 1.08fr .92fr; gap: 12px; margin-top: 12px; }

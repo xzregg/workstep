@@ -277,22 +277,24 @@ export default function PendingMessageInserts({
                 </>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => onSend?.(item)}
-                    disabled={isSending}
-                    title={t('taskDetail.sendInsertTitle')}
-                    style={{
-                      padding: '2px 6px',
-                      fontSize: 'calc(11px * var(--font-scale))',
-                      border: 'none',
-                      background: 'transparent',
-                      color: 'var(--accent)',
-                      cursor: isSending ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {t('chatInput.send')}
-                  </button>
+                  {onSend && (
+                    <button
+                      type="button"
+                      onClick={() => onSend(item)}
+                      disabled={isSending}
+                      title={t('taskDetail.sendInsertTitle')}
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: 'calc(11px * var(--font-scale))',
+                        border: 'none',
+                        background: 'transparent',
+                        color: 'var(--accent)',
+                        cursor: isSending ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {t('chatInput.send')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => onEditStart?.(item)}
@@ -336,7 +338,7 @@ export default function PendingMessageInserts({
         )
       })}
 
-      {items.length > 1 && (
+      {items.length > 1 && (onSendAll || onClear) && (
         <div
           style={{
             display: 'flex',
@@ -346,40 +348,44 @@ export default function PendingMessageInserts({
             borderTop: '1px solid var(--border-soft)',
           }}
         >
-          <button
-            type="button"
-            onClick={onSendAll}
-            disabled={sendingIds.length > 0}
-            title={t('taskDetail.sendAllTitle')}
-            style={{
-              padding: '2px 8px',
-              fontSize: 'calc(11px * var(--font-scale))',
-              borderRadius: 6,
-              border: 'none',
-              background: 'var(--accent)',
-              color: 'var(--accent-fg)',
-              cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {allSending ? t('chatInput.generating') : t('taskDetail.sendAll', { count: items.length })}
-          </button>
-          <button
-            type="button"
-            onClick={onClear}
-            disabled={sendingIds.length > 0}
-            title={t('taskDetail.clearAllTitle')}
-            style={{
-              padding: '2px 8px',
-              fontSize: 'calc(11px * var(--font-scale))',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'var(--meta)',
-              cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {t('taskDetail.clearAll')}
-          </button>
+          {onSendAll && (
+            <button
+              type="button"
+              onClick={onSendAll}
+              disabled={sendingIds.length > 0}
+              title={t('taskDetail.sendAllTitle')}
+              style={{
+                padding: '2px 8px',
+                fontSize: 'calc(11px * var(--font-scale))',
+                borderRadius: 6,
+                border: 'none',
+                background: 'var(--accent)',
+                color: 'var(--accent-fg)',
+                cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {allSending ? t('chatInput.generating') : t('taskDetail.sendAll', { count: items.length })}
+            </button>
+          )}
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              disabled={sendingIds.length > 0}
+              title={t('taskDetail.clearAllTitle')}
+              style={{
+                padding: '2px 8px',
+                fontSize: 'calc(11px * var(--font-scale))',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--meta)',
+                cursor: sendingIds.length > 0 ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {t('taskDetail.clearAll')}
+            </button>
+          )}
         </div>
       )}
     </div>

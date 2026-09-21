@@ -263,6 +263,7 @@ async def chat_with_coordinator(
             task_id,
             req.content,
             idempotency_key,
+            pending_insert_ids=req.pending_insert_ids,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

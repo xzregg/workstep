@@ -25,6 +25,7 @@ import {
   type ProviderInfo,
   type ReviewRun,
   type TaskArtifact,
+  type TaskExecutionReport,
   type TaskStepState,
 } from '../api/client'
 import Button from './Button'
@@ -52,6 +53,7 @@ import PendingMessageInserts from './PendingMessageInserts'
 import MarqueeText from './MarqueeText'
 import TaskStageProgressGraph from './TaskStageProgressGraph'
 import TaskExecutionAnalysis from './TaskExecutionAnalysis'
+import TaskArtifactBrowser from './TaskArtifactBrowser'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import {
   isVisibleHistoryMessage,
@@ -80,6 +82,7 @@ import {
   reviewActorLabel,
   shouldRenderLegacyExecution,
   stageAvatarText,
+  taskTargetStagesInWorkflowOrder,
 } from '../pages/taskDetailChat'
 import {
   formatConversationDateTime,
@@ -168,9 +171,7 @@ function lastEventTimestamp(events: any[]): number | null {
 // ─── Props ───────────────────────────────────────────────────────────────
 
 export interface TaskDetailViewProps {
-  /** Hides owner-only task mutation controls. */
-  readOnly?: boolean
-  /** Shows the chat composer independently from owner-only task controls. */
+  /** The URL access context only decides whether the shared composer is present. */
   chatEnabled?: boolean
 
   // ── Task data ──
@@ -253,8 +254,9 @@ export interface TaskDetailViewProps {
   /** Alternate attachment transport for public interactive shares. */
   chatAttachment?: ChatInputImageAttach
 
-  // ── Stage inserts (edit mode only) ──
+  // ── Pending inserts for the active stage/coordinator message (edit mode only) ──
   stageInserts?: Array<{ id: string; content: string }>
+  stageInsertSendingIds?: string[]
   onStageInsertRemove?: (id: string) => void
   onStageInsertSend?: (insert: { id: string; content: string }) => void
   onStageInsertEditStart?: (insert: { id: string; content: string }) => void
@@ -354,12 +356,13 @@ export interface TaskDetailViewProps {
 
   // ── Project ──
   projectId?: string
+  /** Public shares inject their session-scoped report loader instead of a project id. */
+  executionReportLoader?: () => Promise<TaskExecutionReport>
 }
 
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function TaskDetailView({
-  readOnly,
   chatEnabled,
   task,
   stages,
@@ -403,6 +406,7 @@ export default function TaskDetailView({
   chatAttachment,
   // Stage inserts
   stageInserts,
+  stageInsertSendingIds,
   onStageInsertRemove,
   onStageInsertSend,
   onStageInsertEditStart,
@@ -485,10 +489,12 @@ export default function TaskDetailView({
   onViewingPromptChange,
   running,
   projectId,
+  executionReportLoader,
   onChatError,
 }: TaskDetailViewProps) {
   const { t } = useI18n()
-  const canChat = chatEnabled ?? !readOnly
+  const canChat = chatEnabled ?? true
+  const canShowAnalysis = Boolean(projectId || executionReportLoader)
   const localUserName = useUserSettingsStore((state) => state.userName)
   // 协调引擎下拉的可用性走共享状态，设置页改动后即时跟随（由 TaskDetail 拉取时播种）。
   const sharedCoordinatorEngines = useCoordinatorEngines()
@@ -521,6 +527,11 @@ export default function TaskDetailView({
   const resumableTarget = chatTarget !== 'coordinator'
     ? resumableStages.find((stage) => stage.key === chatTarget) ?? null
     : null
+  const targetStages = taskTargetStagesInWorkflowOrder(
+    stages,
+    runningStages.map((stage) => stage.key),
+    resumableStages.map((stage) => stage.key),
+  )
   const selectedStageRunning = isSelectedStageRunning(
     chatTarget ?? 'coordinator',
     runningStages.map((stage) => stage.key),
@@ -562,7 +573,7 @@ export default function TaskDetailView({
   const compact = useCompactLayout()
   const mobileReviewRef = useRef<HTMLDivElement>(null)
   const [mobileTab, setMobileTab] = useState<'conversation' | 'stages' | 'artifacts'>('conversation')
-  const [detailMode, setDetailMode] = useState<'detail' | 'analysis'>('detail')
+  const [detailMode, setDetailMode] = useState<'detail' | 'artifacts' | 'analysis'>('detail')
   const SPLIT_RATIO_KEY = 'workstep:task-detail-split-ratio'
   const SPLIT_HANDLE_WIDTH = 8
   const contentSplitRef = useRef<HTMLDivElement>(null)
@@ -778,12 +789,12 @@ export default function TaskDetailView({
         rounds.add(artifact.round)
       }
     })
-    return [...rounds].sort((a, b) => b - a)
+    return [...rounds].sort((a, b) => a - b)
   }, [artifacts, currentStage.key])
   const [selectedIoRound, setSelectedIoRound] = useState<number | null>(null)
   const activeIoRound = selectedIoRound && currentStageArtifactRounds.includes(selectedIoRound)
     ? selectedIoRound
-    : currentStageArtifactRounds[0]
+    : currentStageArtifactRounds[currentStageArtifactRounds.length - 1]
 
   useEffect(() => {
     setSelectedIoRound(null)
@@ -869,6 +880,14 @@ export default function TaskDetailView({
     </div>
   ) : null
 
+  const renderArtifactPanel = () => (
+    <TaskArtifactBrowser
+      artifacts={artifacts}
+      stages={stages}
+      onOpenArtifact={onOpenArtifact}
+    />
+  )
+
   const handleStageClick = (stageIndex: number) => {
     onStageClick(stageIndex)
     const stageKey = stages[stageIndex]?.key
@@ -917,11 +936,6 @@ export default function TaskDetailView({
           >
             ⠿
           </span>
-        )}
-        {!readOnly && onClose && (
-          <Button variant="icon" onClick={onClose}>
-            ←
-          </Button>
         )}
         <div style={{ flex: 1 }}>
           <div
@@ -1014,6 +1028,18 @@ export default function TaskDetailView({
             </span>
           </div>
         </div>
+        {onClose && (
+          <Button
+            variant="icon"
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={onClose}
+            style={{ padding: 0, flexShrink: 0 }}
+          >
+            <Icon name="x" size={16} />
+          </Button>
+        )}
       </div>
     )
   }
@@ -1109,7 +1135,7 @@ export default function TaskDetailView({
                 </span>
               )}
             </div>
-            {!readOnly && !editingDescription && (
+            {onOpenDescriptionEditor && !editingDescription && (
               <Button
                 variant="ghost"
                 aria-label={t('taskDetail.editDescriptionAria')}
@@ -1256,7 +1282,7 @@ export default function TaskDetailView({
               >
                 {t('taskDetail.stagePrompt')}
               </div>
-              {!readOnly && (
+              {onOpenPromptEditor && (
                 <Button
                   variant="ghost"
                   onClick={onOpenPromptEditor}
@@ -1428,11 +1454,12 @@ export default function TaskDetailView({
                             <span
                               title={t('taskDetail.artifactModifiedAt', { time: inputUpdatedAt })}
                               style={{
-                                width: 64,
+                                width: 82,
                                 flexShrink: 0,
                                 color: 'var(--meta)',
                                 fontSize: 'calc(11px * var(--font-scale))',
                                 fontVariantNumeric: 'tabular-nums',
+                                whiteSpace: 'nowrap',
                               }}
                             >
                               {inputUpdatedAt}
@@ -1596,11 +1623,12 @@ export default function TaskDetailView({
                                   <span
                                     title={t('taskDetail.artifactModifiedAt', { time: outputUpdatedAt })}
                                     style={{
-                                      width: 64,
+                                      width: 82,
                                       flexShrink: 0,
                                       color: 'var(--meta)',
                                       fontSize: 'calc(11px * var(--font-scale))',
                                       fontVariantNumeric: 'tabular-nums',
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
                                     {outputUpdatedAt}
@@ -1646,6 +1674,19 @@ export default function TaskDetailView({
                                   >
                                     {out.name}
                                   </span>
+                                  <span
+                                    style={{
+                                      fontSize: 'calc(11px * var(--font-scale))',
+                                      color: 'var(--meta)',
+                                      background: 'var(--surface)',
+                                      border: '1px solid var(--border-soft)',
+                                      padding: '0 3px',
+                                      borderRadius: 2,
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {out.type}
+                                  </span>
                                 </span>
                                 {outArtifact?.round ? (
                                   <span
@@ -1676,19 +1717,6 @@ export default function TaskDetailView({
                                   {outputReady
                                     ? t('taskDetail.outputDone')
                                     : t('taskDetail.outputPending')}
-                                </span>
-                                <span
-                                  style={{
-                                    fontSize: 'calc(11px * var(--font-scale))',
-                                    color: 'var(--meta)',
-                                    background: 'var(--surface)',
-                                    border: '1px solid var(--border-soft)',
-                                    padding: '0 3px',
-                                    borderRadius: 2,
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {out.type}
                                 </span>
                                 {outputReady && (
                                   <span
@@ -1816,7 +1844,7 @@ export default function TaskDetailView({
                 </div>
               )}
               {/* Review action buttons (edit mode only) */}
-              {!readOnly &&
+              {onReviewAction &&
                 (selectedReview.status === 'pending' ||
                   selectedReview.status === 'rejected') && (
                   <>
@@ -1875,7 +1903,7 @@ export default function TaskDetailView({
         )}
 
         {/* Review config drawer (edit mode only) */}
-        {!readOnly && (
+        {onShowReviewDrawerChange && (
           <div style={{ marginTop: 20 }}>
             <button
               onClick={() =>
@@ -2489,8 +2517,7 @@ export default function TaskDetailView({
                             errorActions={(() => {
                               const msgError = resolveMessageError(processEvents)
                               if (
-                                readOnly
-                                || !onRestartStageWithFreshSession
+                                !onRestartStageWithFreshSession
                                 || !isLostEngineSessionError(msgError)
                               ) {
                                 return undefined
@@ -2533,36 +2560,26 @@ export default function TaskDetailView({
                               ) : undefined
                             }
                             onEdit={
-                              !readOnly && isUser
+                              canChat && isUser && onPromptChange && onSend
                                 ? (content) => {
                                     // Handle edit user message — parent should provide
-                                    if (onPromptChange && onSend) {
-                                      onPromptChange(content)
-                                      chatInputRef?.current?.focus()
-                                    }
+                                    onPromptChange(content)
+                                    chatInputRef?.current?.focus()
                                   }
                                 : undefined
                             }
                             onSendToInput={
-                              !readOnly && isUser && onPromptChange
+                              canChat && isUser && onPromptChange
                                 ? (content) => {
                                     onPromptChange(content)
                                     chatInputRef?.current?.focus()
                                   }
                                 : undefined
                             }
-                            onA2uiAction={
-                              !readOnly
-                                ? onA2uiAction
-                                : undefined
-                            }
+                            onA2uiAction={onA2uiAction}
                             events={processEvents}
                             interactionsEnabled={msg.run_status === 'running'}
-                            onInteractionRespond={
-                              !readOnly
-                                ? onInteractionRespond
-                                : undefined
-                            }
+                            onInteractionRespond={onInteractionRespond}
                             rootProps={{
                               ref:
                                 i ===
@@ -2783,7 +2800,7 @@ export default function TaskDetailView({
                                           'stopped')
                                     }
                                     onContinueStage={
-                                      !readOnly &&
+                                      canChat &&
                                       !isCoordinator &&
                                       task?.id
                                         ? () => {
@@ -2796,7 +2813,7 @@ export default function TaskDetailView({
                                 : undefined
                             }
                           >
-                            {!readOnly &&
+                            {onProposalOverride && projectId &&
                               (msg.proposals ||
                                 [])
                                 .map(
@@ -2856,7 +2873,7 @@ export default function TaskDetailView({
                                     msgArtifacts,
                                     stageInfo?.color,
                                   )}
-                                  {!readOnly &&
+                                  {onReviewAction &&
                                     msgReview!.status ===
                                       'pending' && (
                                       <Textarea
@@ -2879,7 +2896,7 @@ export default function TaskDetailView({
                                         )}
                                       />
                                     )}
-                                  {!readOnly && (
+                                  {onReviewAction && (
                                     <div
                                       style={{
                                         display:
@@ -3027,21 +3044,13 @@ export default function TaskDetailView({
                       message.status === 'running'
                     }
                     variant="bg"
-                    onA2uiAction={
-                      !readOnly
-                        ? onA2uiAction
-                        : undefined
-                    }
+                    onA2uiAction={onA2uiAction}
                     events={message.events}
                     interactionsEnabled={
                       !isUser &&
                       message.status === 'running'
                     }
-                    onInteractionRespond={
-                      !readOnly
-                        ? onInteractionRespond
-                        : undefined
-                    }
+                    onInteractionRespond={onInteractionRespond}
                     header={
                       isUser ? (
                         <>
@@ -3139,7 +3148,7 @@ export default function TaskDetailView({
                     }
                   >
                     {!isUser &&
-                      !readOnly &&
+                      onProposalOverride && projectId &&
                       message.proposals.map(
                         (rawProposal) => {
                           const proposal =
@@ -3200,18 +3209,10 @@ export default function TaskDetailView({
                 projectId={projectId}
                 streaming={running}
                 variant="bg"
-                onA2uiAction={
-                  !readOnly
-                    ? onA2uiAction
-                    : undefined
-                }
+                onA2uiAction={onA2uiAction}
                 events={events}
                 interactionsEnabled={Boolean(running)}
-                onInteractionRespond={
-                  !readOnly
-                    ? onInteractionRespond
-                    : undefined
-                }
+                onInteractionRespond={onInteractionRespond}
                 header={
                   <ProcessTrace
                     events={events}
@@ -3291,7 +3292,7 @@ export default function TaskDetailView({
             className="task-detail-composer"
             style={{
               position: 'relative',
-              padding: '14px 20px',
+              padding: '4px 20px',
               borderTop: '1px solid var(--border-soft)',
               background: 'var(--bg)',
               display: 'flex',
@@ -3300,7 +3301,7 @@ export default function TaskDetailView({
               flexShrink: 0,
             }}
           >
-            {selectedStageRunning && (
+            {composerState.running && (
               <ComposerOverlayHostContext.Provider value={registerOverlay}>
               <PendingMessageInserts
                 items={stageInserts ?? []}
@@ -3310,6 +3311,7 @@ export default function TaskDetailView({
                 })}
                 editingId={editingInsertId}
                 editingContent={editingInsertContent}
+                sendingIds={stageInsertSendingIds}
                 onEditingContentChange={onEditingInsertContentChange}
                 onEditStart={onStageInsertEditStart}
                 onEditSave={onStageInsertEditSave}
@@ -3382,7 +3384,7 @@ export default function TaskDetailView({
                 >
                   {t('aiFlow.agent')}
                 </button>
-                {runningStages.map((stage) => (
+                {targetStages.map((stage) => (
                   <button
                     key={stage.key}
                     type="button"
@@ -3395,35 +3397,9 @@ export default function TaskDetailView({
                       chatTarget === stage.key
                     }
                     title={t(
-                      'taskDetail.stageTabTitle',
-                      {
-                        stage: stage.label,
-                      },
-                    )}
-                    style={stageTabStyle(
-                      stage.color || 'var(--accent)',
-                      chatTarget === stage.key,
-                    )}
-                  >
-                    {stage.label}
-                  </button>
-                ))}
-                {resumableStages.filter((stage) => (
-                  !runningStages.some((runningStage) => runningStage.key === stage.key)
-                )).map((stage) => (
-                  <button
-                    key={stage.key}
-                    type="button"
-                    onClick={() =>
-                      onChatTargetChange?.(
-                        stage.key,
-                      )
-                    }
-                    aria-pressed={
-                      chatTarget === stage.key
-                    }
-                    title={t(
-                      resumableStatusOf(stage.key) === 'pending'
+                      runningStages.some((runningStage) => runningStage.key === stage.key)
+                        ? 'taskDetail.stageTabTitle'
+                        : resumableStatusOf(stage.key) === 'pending'
                         ? 'taskDetail.pendingStageTabTitle'
                         : resumableStatusOf(stage.key) === 'passed'
                           || resumableStatusOf(stage.key) === 'skipped'
@@ -3505,6 +3481,22 @@ export default function TaskDetailView({
             <ChatInput
               projectId={projectId}
               taskId={task?.id}
+              mentions={{
+                options: [
+                  {
+                    id: 'coordinator',
+                    label: t('aiFlow.agent'),
+                    color: 'var(--accent)',
+                  },
+                  ...targetStages.map((stage) => ({
+                    id: stage.key,
+                    label: stage.label,
+                    color: stage.color,
+                  })),
+                ],
+                menuLabel: t('taskDetail.stageMentionMenu'),
+                onSelect: (stageKey) => onChatTargetChange?.(stageKey),
+              }}
               availableCommands={availableCommands?.[
                 chatTarget === 'coordinator'
                   ? 'coordinator:'
@@ -3630,11 +3622,12 @@ export default function TaskDetailView({
                       } as ChatInputEngineConfig
               }
               disabled={composerState.disabled || (
-                !readOnly
+                Boolean(projectId)
                 && chatTarget !== 'coordinator'
                 && (stageEngineConfigLoading || !stageEngineConfig || Boolean(stageEngineConfig.saving))
               )}
-              running={readOnly ? false : composerState.running}
+              running={composerState.running}
+              allowSendWhileRunning={composerState.running}
               stopping={
                 (chatTarget !== 'coordinator' &&
                   (stoppingStepKeys ?? []).includes(chatTarget ?? '')) ||
@@ -3704,7 +3697,7 @@ export default function TaskDetailView({
         }}
       >
         {t('taskDetail.taskNotFound')}
-        {!readOnly && onClose && (
+        {onClose && (
           <>
             <br />
             <Button
@@ -3728,15 +3721,26 @@ export default function TaskDetailView({
       {/* Recovered hint */}
       {renderRecoveredHint()}
 
-      {!readOnly && projectId && (
+      {(!compact || canShowAnalysis) && (
         <div className="task-detail-primary-tabs" role="tablist" aria-label={t('executionAnalysis.title')}>
           <button type="button" role="tab" aria-selected={detailMode === 'detail'} onClick={() => setDetailMode('detail')}>{t('taskDetail.detailTab')}</button>
-          <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
+          {!compact && (
+            <button type="button" role="tab" aria-selected={detailMode === 'artifacts'} onClick={() => setDetailMode('artifacts')}>{t('mobile.artifacts')}</button>
+          )}
+          {canShowAnalysis && (
+            <button type="button" role="tab" aria-selected={detailMode === 'analysis'} onClick={() => setDetailMode('analysis')}>{t('executionAnalysis.title')}</button>
+          )}
         </div>
       )}
 
-      {detailMode === 'analysis' && projectId ? (
-        <TaskExecutionAnalysis taskId={task.id} projectId={projectId} />
+      {detailMode === 'analysis' && canShowAnalysis ? (
+        <TaskExecutionAnalysis
+          taskId={task.id}
+          projectId={projectId}
+          loadReport={executionReportLoader}
+        />
+      ) : detailMode === 'artifacts' && !compact ? (
+        renderArtifactPanel()
       ) : <>
       {compact && <div className="mobile-detail-tabs" role="tablist">
         {(['conversation', 'stages', 'artifacts'] as const).map(tab => <button key={tab} role="tab" aria-selected={mobileTab === tab} onClick={() => setMobileTab(tab)}>{t(`mobile.${tab}`)}</button>)}
@@ -3789,25 +3793,7 @@ export default function TaskDetailView({
 
         {/* Right panel (conversation) */}
         <div className="task-detail-conversation">{renderConversation()}</div>
-        {compact && <div className="task-detail-artifacts">
-          {!artifacts.length && <p>{t('mobile.noArtifacts')}</p>}
-          {Array.from(
-            artifacts.reduce((groups, artifact) => {
-              const key = `${artifact.step_key}:${artifact.round}`
-              const current = groups.get(key) || []
-              current.push(artifact)
-              groups.set(key, current)
-              return groups
-            }, new Map<string, TaskArtifact[]>()),
-          ).map(([key, roundArtifacts]) => (
-            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ color: 'var(--muted)', fontSize: 'calc(11px * var(--font-scale))' }}>
-                {roundArtifacts[0]?.step_key} · {t('taskDetail.artifactRound', { round: roundArtifacts[0]?.round || 1 })}
-              </div>
-              {roundArtifacts.map(artifact => <button key={`${artifact.step_key}:${artifact.round}:${artifact.path}`} onClick={() => onOpenArtifact(artifact.name, artifact.step_key, artifact.round)}><Icon name="file" size={18} /><span>{artifact.logical_name || artifact.name}{artifact.round ? ` · ${t('taskDetail.artifactRound', { round: artifact.round })}` : ''}</span></button>)}
-            </div>
-          ))}
-        </div>}
+        {compact && renderArtifactPanel()}
       </div>
       </>}
     </>

@@ -267,6 +267,30 @@ def test_dashed_feedback_edge_is_excluded_from_dependencies_and_cycles():
     assert steps["test"]["dependsOn"] == ["frontend"]
     assert steps["frontend"]["dependsOn"] == []
     assert steps["test"]["reworkUpstream"] == ["frontend"]
+    assert steps["test"]["incomingConnections"] == [{
+        "id": "connection-0",
+        "from": "frontend",
+        "fromPort": 0,
+        "to": "test",
+        "toPort": 0,
+        "kind": "solid",
+    }]
+    assert steps["test"]["outgoingConnections"] == [{
+        "id": "connection-1",
+        "from": "test",
+        "fromPort": 0,
+        "to": "frontend",
+        "toPort": 0,
+        "kind": "dashed",
+    }]
+    assert steps["frontend"]["incomingConnections"] == [{
+        "id": "connection-1",
+        "from": "test",
+        "fromPort": 0,
+        "to": "frontend",
+        "toPort": 0,
+        "kind": "dashed",
+    }]
 
 
 def test_dashed_edge_must_target_an_upstream_producer():
@@ -561,6 +585,46 @@ def test_review_config_rejects_non_dict():
     }
 
     with pytest.raises(WorkflowValidationError, match="expected a dict"):
+        WorkflowDefinition.load(raw).compile()
+
+
+def test_return_rounds_default_and_stage_override():
+    raw = {
+        "nodes": [
+            {"id": 1, "type": "build", "title": "Build"},
+            {
+                "id": 2,
+                "type": "test",
+                "title": "Test",
+                "maxReturnRounds": 5,
+            },
+        ],
+        "connections": [
+            {"from": 1, "to": 2},
+            {"from": 2, "to": 1, "kind": "dashed"},
+        ],
+    }
+
+    compiled = WorkflowDefinition.load(raw).compile().to_steps_config()["steps"]
+    by_key = {step["key"]: step for step in compiled}
+
+    assert by_key["build"]["maxReturnRounds"] == 3
+    assert by_key["test"]["maxReturnRounds"] == 5
+
+
+@pytest.mark.parametrize("value", [0, 21, True, "3"])
+def test_return_rounds_reject_invalid_value(value):
+    raw = {
+        "nodes": [{
+            "id": 1,
+            "type": "test",
+            "title": "Test",
+            "maxReturnRounds": value,
+        }],
+        "connections": [],
+    }
+
+    with pytest.raises(WorkflowValidationError, match="maxReturnRounds"):
         WorkflowDefinition.load(raw).compile()
 
 

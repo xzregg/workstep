@@ -83,6 +83,7 @@ export default function MarkdownContent({
   const markdownUrlResolver = useMarkdownUrlResolver()
   const normalizedContent = convertVisualizeMarkers(content)
   const markdown = streaming ? closeStreamingFence(normalizedContent) : normalizedContent
+  const plainSegments = plainText ? splitPlainText(normalizedContent) : []
 
   const renderImage = useCallback((src: string | undefined, alt: string) => {
     if (!src) return null
@@ -150,9 +151,16 @@ export default function MarkdownContent({
         className={`markdown-message${streaming ? ' is-streaming' : ''}${className ? ` ${className}` : ''}`}
         aria-live={streaming ? 'polite' : undefined}
       >
-        {plainText ? splitPlainText(normalizedContent).map((segment, index) => {
-          if (segment.type === 'image') return <span key={index}>{renderImage(segment.url, segment.alt)}</span>
+        {plainText ? plainSegments.map((segment, index) => {
+          if (segment.type === 'image') {
+            return <span key={index} className="markdown-inline-image">{renderImage(segment.url, segment.alt)}</span>
+          }
           if (segment.type === 'link') return <span key={index}>{renderLink(segment.url, segment.label)}</span>
+          if (
+            segment.text.trim() === ''
+            && plainSegments[index - 1]?.type === 'image'
+            && plainSegments[index + 1]?.type === 'image'
+          ) return null
           return <span key={index}>{segment.text}</span>
         }) : (
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={fileAwareUrlTransform}>

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from services.remote_project import (
     ACCESS_COOKIE_NAME,
+    REMOTE_REQUEST_BODY_LIMIT,
     ActorSnapshot,
     BrowserActorMiddleware,
     RemoteAccessService,
@@ -782,6 +783,10 @@ def test_remote_websocket_authenticates_and_dispatches_requests_concurrently():
         actor = get_current_actor()
         return {"project_id": project_id, "actor": actor.user_name if actor else None}
 
+    @app.post("/api/upload")
+    async def upload(payload: dict, project_id: str):
+        return {"project_id": project_id, "value": payload["value"]}
+
     bus = EventBus()
 
     @app.websocket("/ws/remote-project")
@@ -843,6 +848,43 @@ def test_remote_websocket_authenticates_and_dispatches_requests_concurrently():
                 "project_id": "owner-project",
                 "actor": "张三",
             }
+
+            body = json.dumps({"value": "chunked"}).encode()
+            ws.send_json({
+                "type": "http.request.start",
+                "request_id": "upload",
+                "method": "POST",
+                "path": "/api/upload",
+                "query": {"project_id": "forged"},
+                "headers": {"content-type": "application/json"},
+                "body_size": len(body),
+            })
+            for chunk in (body[:5], body[5:]):
+                ws.send_json({
+                    "type": "http.request.chunk",
+                    "request_id": "upload",
+                    "body_b64": base64.b64encode(chunk).decode(),
+                })
+            ws.send_json({"type": "http.request.end", "request_id": "upload"})
+            uploaded = ws.receive_json()
+            assert uploaded["status"] == 200
+            assert json.loads(base64.b64decode(uploaded["body_b64"])) == {
+                "project_id": "owner-project",
+                "value": "chunked",
+            }
+
+            ws.send_json({
+                "type": "http.request.start",
+                "request_id": "too-large",
+                "method": "POST",
+                "path": "/api/upload",
+                "query": {},
+                "headers": {"content-type": "application/json"},
+                "body_size": REMOTE_REQUEST_BODY_LIMIT + 1,
+            })
+            rejected = ws.receive_json()
+            assert rejected["request_id"] == "too-large"
+            assert rejected["status"] == 413
     assert access.list_devices("owner-project")[0]["connected"] is False
 
 
@@ -1209,7 +1251,9 @@ async def test_proxy_middleware_keeps_remote_scope_for_html_relative_assets():
     assert forwarded.path == "/api/fs/project-raw/remote:abc/docs/theme.css"
 
 
-async def test_client_manager_reuses_authenticated_socket_for_rpc():
+async def test_client_manager_reuses_authenticated_socket_for_rpc(monkeypatch):
+    import services.remote_project as remote_project_service
+
     config = MemoryConfig()
     access = RemoteAccessService(config)
     access.update_settings(
@@ -1259,6 +1303,18 @@ async def test_client_manager_reuses_authenticated_socket_for_rpc():
                         }
                     )
                 )
+            elif message["type"] == "http.request.end":
+                await self.incoming.put(
+                    json.dumps(
+                        {
+                            "type": "http.response",
+                            "request_id": message["request_id"],
+                            "status": 200,
+                            "headers": {"content-type": "application/json"},
+                            "body_b64": base64.b64encode(b'{"ok":true}').decode(),
+                        }
+                    )
+                )
 
         async def recv(self):
             return await self.incoming.get()
@@ -1288,10 +1344,36 @@ async def test_client_manager_reuses_authenticated_socket_for_rpc():
         project["id"],
         RemoteHttpRequest("req", "GET", "/api/sessions", {"project_id": project["id"]}),
     )
+    monkeypatch.setattr(remote_project_service, "REMOTE_REQUEST_CHUNK_BYTES", 4)
+    large_response = await manager.request(
+        project["id"],
+        RemoteHttpRequest(
+            "req-large",
+            "POST",
+            "/api/sessions",
+            {"project_id": project["id"]},
+            body=b"0123456789",
+        ),
+    )
 
     assert response.json() == {"ok": True}
+    assert large_response.json() == {"ok": True}
     assert connects == 1
-    assert [message["type"] for message in socket.sent] == ["auth", "http.request"]
+    assert [message["type"] for message in socket.sent] == [
+        "auth",
+        "http.request",
+        "http.request.start",
+        "http.request.chunk",
+        "http.request.chunk",
+        "http.request.chunk",
+        "http.request.end",
+    ]
+    chunks = [
+        base64.b64decode(message["body_b64"])
+        for message in socket.sent
+        if message["type"] == "http.request.chunk"
+    ]
+    assert b"".join(chunks) == b"0123456789"
     assert registry.get(project["id"])["credential"] == "issued-secret"
     await manager.close()
 

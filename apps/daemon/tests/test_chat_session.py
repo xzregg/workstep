@@ -1315,7 +1315,7 @@ async def test_running_chat_accepts_and_persists_live_message(
     monkeypatch,
 ):
     """运行中的会话允许像任务阶段一样插入普通用户消息。"""
-    module, _bus, _manager, project, _ = chat_module
+    module, _bus, manager, project, _ = chat_module
     invoke_started = asyncio.Event()
 
     async def blocking_invoke(
@@ -1340,7 +1340,25 @@ async def test_running_chat_accepts_and_persists_live_message(
     )
     await asyncio.wait_for(invoke_started.wait(), timeout=1)
 
-    inserted = await module.send_live_message(session["id"], "改为先补测试")
+    from services.pending_message_inserts import (
+        create_pending_insert,
+        list_pending_inserts,
+    )
+
+    queued = await manager.run_db(
+        project.id,
+        lambda _project: create_pending_insert(
+            accepted.assistant_message_id,
+            "改为先补测试",
+            "测试用户",
+        ),
+    )
+
+    inserted = await module.send_live_message(
+        session["id"],
+        "改为先补测试",
+        pending_insert_ids=[queued["id"]],
+    )
 
     assert inserted["status"] == "queued"
     queue = module._turn_states[accepted.turn_id]["live_message_queue"]
@@ -1348,9 +1366,84 @@ async def test_running_chat_accepts_and_persists_live_message(
     detail = module.get_session(project.id, session["id"])
     assert detail["messages"][-1]["role"] == "user"
     assert detail["messages"][-1]["content"] == "改为先补测试"
+    assert await manager.run_db(
+        project.id,
+        lambda _project: list_pending_inserts(accepted.assistant_message_id),
+    ) == []
 
     assert await module.stop_current(session["id"]) is True
     assert await _wait_turn(module, accepted.turn_id) == "stopped"
+
+
+@pytest.mark.anyio
+async def test_completed_chat_merges_persisted_pending_inserts_into_one_turn(
+    chat_module,
+    monkeypatch,
+):
+    """页面不参与调度；回复结束后后端合并队列并自动启动下一轮。"""
+    module, _bus, manager, project, _ = chat_module
+    release_first = asyncio.Event()
+    prompts: list[str] = []
+
+    async def invoke(
+        engine_id,
+        model,
+        cwd,
+        prompt,
+        session_id,
+        on_event=None,
+        message_history=None,
+    ):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            await release_first.wait()
+        return f"回复 {len(prompts)}", [], None
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    session = module.create_session(project.id, "wf-pending-inserts")
+    first = module.submit_message(
+        project.id,
+        session["id"],
+        "开始执行",
+        "pending-first",
+    )
+    while module._turn_states[first.turn_id]["status"] != "running":
+        await asyncio.sleep(0)
+
+    from services.pending_message_inserts import (
+        create_pending_insert,
+        list_pending_inserts,
+    )
+
+    await manager.run_db(
+        project.id,
+        lambda _project: (
+            create_pending_insert(first.assistant_message_id, "补充一", "小王"),
+            create_pending_insert(first.assistant_message_id, "补充二", "小王"),
+        ),
+    )
+    release_first.set()
+
+    deadline = time.monotonic() + 2
+    while len(prompts) < 2 and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert len(prompts) == 2
+    second_turn_id = next(
+        turn_id for turn_id in module._turn_states if turn_id != first.turn_id
+    )
+    assert await _wait_turn(module, second_turn_id) == "completed"
+
+    detail = module.get_session(project.id, session["id"])
+    assert [item["content"] for item in detail["messages"] if item["role"] == "user"] == [
+        "开始执行",
+        "补充一\n\n补充二",
+    ]
+    assert detail["messages"][2]["author_name"] == "小王"
+    remaining = await manager.run_db(
+        project.id,
+        lambda _project: list_pending_inserts(first.assistant_message_id),
+    )
+    assert remaining == []
 
 
 @pytest.mark.anyio
@@ -1418,6 +1511,8 @@ async def test_live_message_splits_chat_reply_around_inserted_user_message(
     assert detail["messages"][1]["status"] == "succeeded"
     assert detail["messages"][3]["status"] == "succeeded"
     assert detail["messages"][3]["prompt"] == "插入要求"
+    assert detail["messages"][3]["author_name"] == detail["messages"][2]["author_name"]
+    assert detail["messages"][3]["author_id"] == detail["messages"][2]["author_id"]
 
 
 @pytest.mark.anyio
@@ -1731,6 +1826,11 @@ async def test_submit_publishes_user_message_live_event_with_actor(chat_module, 
     assert user_message["role"] == "user"
     assert user_message["author_name"] == "本地用户"
     assert user_message["author_device_id"] == "device-a"
+    assistant_message = detail["messages"][1]
+    assert assistant_message["role"] == "assistant"
+    assert assistant_message["author_id"] == user_message["author_id"]
+    assert assistant_message["author_name"] == "本地用户"
+    assert assistant_message["author_device_id"] == "device-a"
 
 
 @pytest.mark.anyio

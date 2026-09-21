@@ -77,6 +77,13 @@ test('translates the channel chat assistant name', () => {
   assert.equal(createT(jaJP)('settings.assistantNames.channelChat'), 'チャンネルチャット')
 })
 
+test('uses the concise coordinator name without an Agent suffix', () => {
+  assert.equal(zhCNT('aiFlow.agent'), '协调')
+  assert.equal(createT(enUS)('aiFlow.agent'), 'Coordinator')
+  assert.equal(createT(zhTW)('aiFlow.agent'), '協調')
+  assert.equal(createT(jaJP)('aiFlow.agent'), 'コーディネーター')
+})
+
 test('uses duration wording for completed and stopped LLM messages', () => {
   assert.equal(zhCNT('trace.processed'), '耗时')
   assert.equal(zhCNT('trace.stoppedAfter', { duration: '3秒' }), '已停止，耗时 3秒')

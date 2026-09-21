@@ -219,6 +219,97 @@ async def test_public_share_api_exposes_mode_and_enforces_interactive_writes(
 
 
 @pytest.mark.asyncio
+async def test_public_share_exposes_task_execution_report(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """Both share modes can read the same execution analysis as task detail."""
+    import main
+    import services.project as project_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-report")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="read_only")
+    finally:
+        db_proxy.reset(ctx)
+
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(
+            f"/api/task-share/public/{share['token']}/unlock",
+            json={"password": ""},
+        )
+        response = await client.get(
+            f"/api/task-share/public/{share['token']}/execution-report",
+            headers={"X-Share-Session": unlocked.json()["session_token"]},
+        )
+
+    assert response.status_code == 200
+    report = response.json()
+    assert report["summary"]["run_count"] == 0
+    assert report["runs"] == []
+    assert report["segments"] == []
+
+
+@pytest.mark.asyncio
+async def test_slow_shared_execution_report_does_not_block_health(
+    manager,
+    tmp_path,
+    monkeypatch,
+):
+    """The share report's synchronous database work stays off the event loop."""
+    import threading
+    import main
+    import services.project as project_service
+    import services.task_execution_report as report_service
+
+    project, task = _create_task_in_project(manager, tmp_path / "proj-share-slow-report")
+    monkeypatch.setattr(project_service, "project_manager", manager)
+    monkeypatch.setattr(main, "project_manager", manager)
+
+    ctx = _bind(project)
+    try:
+        share = share_service.create_share(task["id"], mode="read_only")
+    finally:
+        db_proxy.reset(ctx)
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_report(*_args, **_kwargs):
+        started.set()
+        release.wait(timeout=1)
+        return {"summary": {}, "runs": [], "segments": []}
+
+    monkeypatch.setattr(report_service, "build_task_execution_report", slow_report)
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unlocked = await client.post(
+            f"/api/task-share/public/{share['token']}/unlock",
+            json={"password": ""},
+        )
+        session_token = unlocked.json()["session_token"]
+        report_task = asyncio.create_task(client.get(
+            f"/api/task-share/public/{share['token']}/execution-report",
+            headers={"X-Share-Session": session_token},
+        ))
+        assert await asyncio.to_thread(started.wait, 0.5)
+        try:
+            health = await asyncio.wait_for(client.get("/api/health"), timeout=0.2)
+        finally:
+            release.set()
+        response = await report_task
+
+    assert health.status_code == 200
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_interactive_share_can_upload_and_read_message_attachments(
     manager,
     tmp_path,

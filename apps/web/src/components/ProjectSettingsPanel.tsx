@@ -12,6 +12,7 @@ import { copyText } from '../utils/clipboard'
 import { useChatListStore } from '../stores/chatSessionStore'
 import { resolveAccessExpiresAt, type AccessDurationPreset } from '../utils/remoteDeviceAccess'
 import Button from './Button'
+import ConcurrencyLimitInput from './ConcurrencyLimitInput'
 import Field from './Field'
 import Input from './Input'
 import MarkdownEditor from './MarkdownEditor'
@@ -120,10 +121,11 @@ export default function ProjectSettingsPanel({
       setButtonsDraft(quickButtons)
       setSelectedQuickButtonId(quickButtons[0]?.id || '')
       const override = result.concurrency?.project
+      const effective = result.concurrency?.effective
       setConcurrencyDraft({
-        maxTasks: override?.max_tasks == null ? '' : String(override.max_tasks),
-        maxChats: override?.max_chats == null ? '' : String(override.max_chats),
-        scheduleExempt: override?.schedule_exempt === true,
+        maxTasks: String(override?.max_tasks ?? effective?.max_tasks ?? 0),
+        maxChats: String(override?.max_chats ?? effective?.max_chats ?? 0),
+        scheduleExempt: override?.schedule_exempt ?? effective?.schedule_exempt ?? false,
       })
     } catch (reason) {
       setLoadError(reason instanceof Error ? reason.message : t('projectSettings.loadFailed'))
@@ -234,11 +236,10 @@ export default function ProjectSettingsPanel({
 
   const saveConcurrency = async () => {
     if (!projectId || concurrencySaving) return
-    const parseLimit = (value: string): number | null => {
+    const parseLimit = (value: string): number => {
       const trimmed = value.trim()
-      if (trimmed === '') return null
-      const parsed = Number(trimmed)
-      return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : NaN
+      if (trimmed === '') return NaN
+      return /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
     }
     const maxTasks = parseLimit(concurrencyDraft.maxTasks)
     const maxChats = parseLimit(concurrencyDraft.maxChats)
@@ -257,8 +258,8 @@ export default function ProjectSettingsPanel({
       })
       const override = result.project
       setConcurrencyDraft({
-        maxTasks: override.max_tasks == null ? '' : String(override.max_tasks),
-        maxChats: override.max_chats == null ? '' : String(override.max_chats),
+        maxTasks: String(override.max_tasks ?? 0),
+        maxChats: String(override.max_chats ?? 0),
         scheduleExempt: override.schedule_exempt === true,
       })
       setConcurrencySaved(true)
@@ -612,24 +613,22 @@ export default function ProjectSettingsPanel({
                     help={t('projectSettings.concurrency.projectLevelHint')}
                     error={concurrencyError || undefined}
                   >
-                    <Input
-                      type="number"
-                      min={0}
+                    <ConcurrencyLimitInput
+                      id="project-max-tasks"
                       value={concurrencyDraft.maxTasks}
-                      onChange={(event) => { setConcurrencyDraft((current) => ({ ...current, maxTasks: event.target.value })); setConcurrencySaved(false) }}
-                      placeholder={t('projectSettings.concurrency.followGlobal')}
+                      unlimitedLabel={t('projectSettings.concurrency.unlimited')}
+                      onValueChange={(value) => { setConcurrencyDraft((current) => ({ ...current, maxTasks: value })); setConcurrencySaved(false) }}
                     />
                   </Field>
                   <Field
                     label={t('projectSettings.concurrency.maxChats')}
                     help={t('projectSettings.concurrency.projectLevelHint')}
                   >
-                    <Input
-                      type="number"
-                      min={0}
+                    <ConcurrencyLimitInput
+                      id="project-max-chats"
                       value={concurrencyDraft.maxChats}
-                      onChange={(event) => { setConcurrencyDraft((current) => ({ ...current, maxChats: event.target.value })); setConcurrencySaved(false) }}
-                      placeholder={t('projectSettings.concurrency.followGlobal')}
+                      unlimitedLabel={t('projectSettings.concurrency.unlimited')}
+                      onValueChange={(value) => { setConcurrencyDraft((current) => ({ ...current, maxChats: value })); setConcurrencySaved(false) }}
                     />
                   </Field>
                 </div>

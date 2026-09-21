@@ -10,3 +10,10 @@ const source = await readFile(
 test('WebSocket subscribes to every session shown in the sidebar', () => {
   assert.match(source, /Object\.values\(useChatListStore\.getState\(\)\.sessionsByProject\)/)
 })
+
+test('WebSocket refreshes tasks after reconnect but not on the initial connection', () => {
+  assert.match(source, /let hasOpened = false/)
+  assert.match(source, /const isReconnect = hasOpened/)
+  assert.match(source, /hasOpened = true/)
+  assert.match(source, /if \(isReconnect && projectId\)/)
+})

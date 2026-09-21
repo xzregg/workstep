@@ -47,14 +47,17 @@ test('uses the dedicated stage progress graph component', () => {
   assert.doesNotMatch(source, /\/\* Progress timeline \*\//)
 })
 
-test('shows pending outputs before the file type and only opens generated files', () => {
+test('keeps the output file type beside its name and only opens generated files', () => {
   const outputReadyPos = source.indexOf('const outputReady = Boolean(outArtifact)')
+  const namePos = source.indexOf('{out.name}', outputReadyPos)
+  const typePos = source.indexOf('{out.type}', namePos)
   const statusPos = source.indexOf("t('taskDetail.outputDone')", outputReadyPos)
-  const typePos = source.indexOf('{out.type}', statusPos)
 
   assert.ok(outputReadyPos >= 0, 'output readiness guard missing')
+  assert.ok(namePos > outputReadyPos, 'output name missing')
+  assert.ok(typePos > namePos, 'output file type should follow the output name')
   assert.ok(statusPos > outputReadyPos, 'output status badge missing')
-  assert.ok(typePos > statusPos, 'output status badge should precede the file type')
+  assert.ok(statusPos > typePos, 'output status badge should follow the file type')
   assert.match(source, /outputReady &&[\s\S]*\{t\('common\.open'\)\}/)
   assert.match(source, /role=\{outputReady \? 'button' : undefined\}/)
   assert.match(source, /cursor: outputReady \? 'pointer' : 'default'/)
@@ -62,6 +65,8 @@ test('shows pending outputs before the file type and only opens generated files'
 
 test('shows artifact round status and modified time in stage IO rows', () => {
   assert.match(source, /const formatArtifactUpdatedAt = useCallback/)
+  assert.match(source, /return \[\.\.\.rounds\]\.sort\(\(a, b\) => a - b\)/)
+  assert.match(source, /currentStageArtifactRounds\[currentStageArtifactRounds\.length - 1\]/)
   assert.match(source, /role="tablist"/)
   assert.match(source, /setSelectedIoRound\(round\)/)
   assert.match(source, /const inputArtifact = findArtifact/)
@@ -70,4 +75,22 @@ test('shows artifact round status and modified time in stage IO rows', () => {
   assert.match(source, /taskDetail\.artifactModifiedAt/)
   assert.match(source, /t\('taskDetail\.artifactRound'/)
   assert.match(source, /t\('taskDetail\.outputDone'\)/)
+})
+
+test('keeps artifact dates and times on one line', () => {
+  const inputUpdatedAtPos = source.indexOf('{inputUpdatedAt}')
+  const outputUpdatedAtPos = source.indexOf('{outputUpdatedAt}')
+
+  assert.match(source.slice(inputUpdatedAtPos - 500, inputUpdatedAtPos), /whiteSpace: 'nowrap'/)
+  assert.match(source.slice(outputUpdatedAtPos - 500, outputUpdatedAtPos), /whiteSpace: 'nowrap'/)
+})
+
+test('reuses the mobile artifact panel from a desktop artifact tab', () => {
+  assert.match(source, /useState<'detail' \| 'artifacts' \| 'analysis'>\('detail'\)/)
+  assert.match(
+    source,
+    /!compact && \([\s\S]*setDetailMode\('artifacts'\)[\s\S]*t\('mobile\.artifacts'\)/,
+  )
+  assert.match(source, /detailMode === 'artifacts' && !compact[\s\S]*renderArtifactPanel\(\)/)
+  assert.match(source, /compact && renderArtifactPanel\(\)/)
 })

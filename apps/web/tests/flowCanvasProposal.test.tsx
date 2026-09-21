@@ -76,6 +76,43 @@ test('renders an applied AI proposal that uses the historical assistant shape', 
 })
 
 
+test('keyboard deletion removes connections attached to the deleted stage', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas
+          ref={canvasRef}
+          initialSteps={{
+            nodes: [
+              { id: 1, type: 'draft', title: '起草' },
+              { id: 2, type: 'review', title: '审核' },
+            ],
+            connections: [{ from: 1, to: 2 }],
+          }}
+          onSave={() => {}}
+        />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+
+    const stageNodes = container.querySelectorAll<HTMLElement>('.react-flow__node')
+    assert.equal(stageNodes.length, 2)
+    await act(async () => stageNodes[0].click())
+    assert.match(stageNodes[0].className, /selected/)
+    await act(async () => window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Delete' })))
+
+    assert.deepEqual(canvasRef.current?.getSteps().nodes.map((node: { id: number }) => node.id), [2])
+    assert.deepEqual(canvasRef.current?.getSteps().connections, [])
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
 test('bookmarks round-trip separately from executable stages and can be added from the stage menu', async () => {
   const window = installDom()
   const container = document.body.appendChild(document.createElement('div'))
@@ -215,6 +252,59 @@ test('an executable stage with an empty engine follows the default and new stage
 
     const added = canvasRef.current?.getSteps().nodes.at(-1)
     assert.equal(added.engine, '')
+  } finally {
+    await act(async () => root.unmount())
+    await window.happyDOM.close()
+  }
+})
+
+
+test('stage return rounds default to three and remain editable independently of review retries', async () => {
+  const window = installDom()
+  const container = document.body.appendChild(document.createElement('div'))
+  const root = createRoot(container)
+  const canvasRef = createRef<FlowCanvasHandle>()
+  try {
+    await act(async () => root.render(
+      <I18nProvider><ReactFlowProvider>
+        <FlowCanvas
+          ref={canvasRef}
+          initialSteps={{
+            nodes: [{
+              id: 1,
+              type: 'test',
+              title: '测试',
+              maxReturnRounds: 5,
+              review: { mode: 'auto', auto: true, maxRetries: 1 },
+            }],
+            connections: [],
+          }}
+          onSave={() => {}}
+        />
+      </ReactFlowProvider></I18nProvider>,
+    ))
+    assert.equal(canvasRef.current?.getSteps().nodes[0].maxReturnRounds, 5)
+    assert.equal(canvasRef.current?.getSteps().nodes[0].review.maxRetries, 1)
+
+    const stageNode = container.querySelector<HTMLElement>('.react-flow__node')!
+    await act(async () => stageNode.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true })))
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="最大返回次数"]')!
+    assert.ok(input)
+    assert.equal(input.value, '5')
+    await act(async () => {
+      setNativeValue(window, input, '4')
+      input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    })
+    const stash = [...container.querySelectorAll('button')].find(button => button.textContent === '暂存')!
+    await act(async () => stash.click())
+    assert.equal(canvasRef.current?.getSteps().nodes[0].maxReturnRounds, 4)
+    assert.equal(canvasRef.current?.getSteps().nodes[0].review.maxRetries, 1)
+
+    const menu = [...container.querySelectorAll('button')].find(button => /阶段.*▾/.test(button.textContent || ''))!
+    await act(async () => menu.click())
+    const addStage = [...document.querySelectorAll('button')].find(button => button.textContent === '+ 阶段')!
+    await act(async () => addStage.click())
+    assert.equal(canvasRef.current?.getSteps().nodes.at(-1).maxReturnRounds, 3)
   } finally {
     await act(async () => root.unmount())
     await window.happyDOM.close()

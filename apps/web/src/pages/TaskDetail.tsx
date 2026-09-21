@@ -1,4 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
+import { useShallow } from 'zustand/react/shallow'
 import { randomUuid } from '../utils/uuid'
 import { useOverlay } from '../hooks/useOverlay'
 import { useCompactLayout } from '../hooks/useCompactLayout'
@@ -40,7 +41,6 @@ import TaskStageConfigController from '../components/TaskStageConfigController'
 import {
   createOptimisticCoordinatorMessage,
   createOptimisticUserMessage,
-  resolveTaskDetailAdvanceState,
   resolveTaskChatTarget,
   isVisibleLiveExecutionMessage,
   isUnpersistedLiveMessage,
@@ -48,21 +48,22 @@ import {
   isTaskNotStarted,
   isStageResumableWithMessage,
   resolveStageDisplayStatus,
-  shouldAutoDrainStageInsert,
   mergeLoadedTaskMessageEvents,
   mergeRefreshedTaskHistory,
   findPreferredArtifact,
+  findActiveStageIndex,
 } from './taskDetailChat'
 import { CUSTOM } from '../utils/agui'
 import {
-  loadTaskInsertQueue,
-  saveTaskInsertQueue,
-} from '../utils/chatInsertQueue'
+  pendingInsertQueueKey,
+  usePendingMessageInsertStore,
+} from '../stores/pendingMessageInsertStore'
 import { useI18n, type TKey } from '../i18n'
 import { formatScheduledStart, localDateTimeAfter, localDateTimeToIso, utcToLocalDateTime } from '../utils/scheduledStart'
 
 const EMPTY_EVENTS: any[] = []
 const EMPTY_LIVE_MESSAGES: Record<string, LiveMessage> = {}
+const EMPTY_PENDING_INSERTS: never[] = []
 
 type StageVisualState =
   | 'completed'
@@ -269,7 +270,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const availableCommands = useTaskStore((s) => (
     taskId ? s.availableCommands[taskId] : undefined
   ))
-  const runTask = useTaskStore((s) => s.runTask)
   const updateTaskDescription = useTaskStore((s) => s.updateTaskDescription)
   const fetchTasks = useTaskStore((s) => s.fetchTasks)
   const refreshTask = useTaskStore((s) => s.refreshTask)
@@ -324,12 +324,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const [restartingStageKeys, setRestartingStageKeys] = useState<string[]>([])
   const [coordinatorStopping, setCoordinatorStopping] = useState(false)
   const [stageResuming, setStageResuming] = useState(false)
-  const [stageInserts, setStageInserts] = useState<Array<{
-    id: string
-    content: string
-  }>>([])
   const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
   const [editingInsertContent, setEditingInsertContent] = useState('')
+  const [stageInsertSendingIds, setStageInsertSendingIds] = useState<string[]>([])
   const [activeCoordinatorMessageId, setActiveCoordinatorMessageId] = useState<string | null>(null)
   const [coordinatorConfig, setCoordinatorConfig] = useState<CoordinatorConfig | null>(null)
   const [coordinatorConfigSaving, setCoordinatorConfigSaving] = useState(false)
@@ -881,15 +878,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         step?.previous_status,
       ) as TaskStepState['status']
     })
-    let activeIndex = rawStatuses.findIndex((status) =>
-      ['running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(status)
-    )
-    if (activeIndex < 0) {
-      activeIndex = rawStatuses.findIndex((status) => status === 'failed')
-    }
-    if (activeIndex < 0) {
-      activeIndex = rawStatuses.findIndex((status) => status === 'pending')
-    }
+    const activeIndex = findActiveStageIndex(rawStatuses, task?.status)
 
     return stages.map((stage, index) => {
       const step = stepByKey.get(stage.key)
@@ -908,7 +897,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       else if (index === activeIndex) visualState = 'current'
       return { ...step, visualState }
     })
-  }, [stages, task?.steps])
+  }, [stages, task?.status, task?.steps])
 
   const activeStageIndex = useMemo(() => {
     const current = stageProgress.findIndex((progress: StageProgress) =>
@@ -920,8 +909,16 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const failed = stageProgress.findIndex((progress: StageProgress) =>
       progress.visualState === 'failed'
     )
-    return failed >= 0 ? failed : Math.max(0, stages.length - 1)
-  }, [stageProgress, stages.length])
+    if (failed >= 0) return failed
+    const restartTarget = stages.findIndex((stage) =>
+      stage.key === task?.restart_from_step_key
+    )
+    if (restartTarget >= 0) return restartTarget
+    for (let index = stageProgress.length - 1; index >= 0; index -= 1) {
+      if (stageProgress[index].visualState !== 'pending') return index
+    }
+    return 0
+  }, [stageProgress, stages, task?.restart_from_step_key])
 
   const currentStage = stages[selectedStage] || stages[0]
   const activeStage = stages[activeStageIndex] || stages[0]
@@ -945,7 +942,9 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setEditReviewPrompt(config?.prompt ?? '')
   }, [currentStage.key, task?.review_overrides])
 
-  const shouldTickDuration = taskStatus === 'running' || stageProgress.some(
+  const shouldTickDuration = coordinatorRunning
+    || Boolean(activeCoordinatorMessageId)
+    || taskStatus === 'running' || stageProgress.some(
     (progress) => [
       'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting',
     ].includes(progress.visualState)
@@ -987,12 +986,63 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     : null
   const activeStageRunning = targetStage !== null
     && runningStages.some((stage) => stage.key === targetStage.key)
-  const activeStepStatus = stageProgress[activeStageIndex]?.status || 'pending'
+  const runningMessageByChannel = useMemo(() => {
+    const messages = new Map<string, any>()
+    for (const message of historyMessages) messages.set(String(message.id), message)
+    for (const message of Object.values(liveMessages)) messages.set(String(message.id), message)
+    const runningMessages = [...messages.values()].filter((message) => (
+      message.role !== 'user'
+      && ['queued', 'running'].includes(message.status || message.run_status || '')
+    ))
+    return {
+      coordinator: [...runningMessages].reverse().find(
+        (message) => message.channel === 'coordinator',
+      )?.id as string | undefined,
+      execution: [...runningMessages].reverse().find((message) => (
+        message.channel === 'execution'
+        && (message.context_step_key || message.step_key) === targetStage?.key
+      ))?.id as string | undefined,
+    }
+  }, [historyMessages, liveMessages, targetStage?.key])
+  const coordinatorMessageId = coordinatorRunning && activeCoordinatorMessageId
+    ? activeCoordinatorMessageId
+    : runningMessageByChannel.coordinator || null
+  const coordinatorIsRunning = coordinatorRunning || Boolean(coordinatorMessageId)
+  const pendingTargetMessageId = chatTarget === 'coordinator'
+    ? coordinatorMessageId
+    : (activeStageRunning ? runningMessageByChannel.execution || null : null)
+  const pendingQueueKey = projectId && pendingTargetMessageId
+    ? pendingInsertQueueKey(projectId, pendingTargetMessageId)
+    : ''
+  const stageInserts = usePendingMessageInsertStore(
+    (state) => state.queues[pendingQueueKey] || EMPTY_PENDING_INSERTS,
+  )
+  const pendingInsertActions = usePendingMessageInsertStore(useShallow((state) => ({
+    load: state.load,
+    add: state.add,
+    update: state.update,
+    remove: state.remove,
+    clear: state.clear,
+    reorder: state.reorder,
+    discard: state.discard,
+  })))
+
+  useEffect(() => {
+    if (!projectId || !pendingTargetMessageId) return
+    void pendingInsertActions.load(projectId, pendingTargetMessageId).catch((reason) => {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+    })
+  }, [pendingInsertActions, pendingTargetMessageId, projectId, t])
+
+  useEffect(() => {
+    setEditingInsertId(null)
+    setEditingInsertContent('')
+  }, [pendingTargetMessageId])
 
   // When a stage engine starts, the input switches to the matching stage tab
   // for direct insert-into-execution messages; when no stage is running the
   // tab stays on a stopped/failed stage so a message can re-run it; otherwise
-  // it returns to the coordinator Agent. Manual user selection is preserved.
+  // it returns to the coordinator. Manual user selection is preserved.
   useEffect(() => {
     setChatTarget((current) => {
       if (runningStages.length === 0) {
@@ -1063,22 +1113,24 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const handleRun = async () => {
     if (!taskId || !projectId) return
-    if (!chatTargetStage && coordinatorRunning) return
-    // Stage mode (Codex-like): while the stage runs, sends land in the
-    // "Insert message" panel above and are injected after the user confirms;
-    // after a manual stop, sending persists the message and re-runs the stage.
-    if (chatTargetStage) {
-      const submittedPrompt = prompt.trim()
-      if (!submittedPrompt || stageResuming) return
-      if (activeStageRunning) {
-        setStageInserts((current) => [
-          ...current,
-          { id: `insert-${randomUuid()}`, content: submittedPrompt },
-        ])
+    const submittedPrompt = prompt.trim()
+    if (!submittedPrompt) return
+    if ((chatTargetStage && activeStageRunning) || (!chatTargetStage && coordinatorIsRunning)) {
+      if (!pendingTargetMessageId) return
+      setChatError('')
+      try {
+        await pendingInsertActions.add(projectId, pendingTargetMessageId, submittedPrompt)
         setPrompt('')
-        setChatError('')
-        return
+      } catch (reason) {
+        setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
       }
+      return
+    }
+    // Stage mode (Codex-like): while the stage runs, sends land in the
+    // pending-insert table; after completion the backend merges and runs them.
+    // After a manual stop, sending persists the message and re-runs the stage.
+    if (chatTargetStage) {
+      if (stageResuming) return
       if (!targetStage) return
       setPrompt('')
       await resumeStageWithPrompt(submittedPrompt, {
@@ -1086,8 +1138,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
       })
       return
     }
-    const submittedPrompt = prompt.trim()
-    if (!submittedPrompt) return
     shouldFollowMessagesRef.current = true
     const optimisticId = `pending-${randomUuid()}`
     const optimisticMessage = createOptimisticCoordinatorMessage(
@@ -1160,8 +1210,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setStoppingStepKeys((current) => [...current, stepKey])
     try {
       await taskApi.cancelStep(taskId, stepKey, projectId)
-      // 用户手动停止：该次执行结束不自动推进队列，尊重停止意图
-      userStoppedRef.current = true
     } catch (reason) {
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.stopFailed'))
     } finally {
@@ -1188,53 +1236,13 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const sendStageInserts = async (items: Array<{ id: string; content: string }>) => {
-    if (!taskId || !projectId || !targetStage) return
-    if (!items.length) return
-    const submitted = items.map((item) => item.content).join('\n\n')
-    setChatError('')
-    const optimisticId = `pending-${randomUuid()}`
-    const optimisticMessage = createOptimisticUserMessage(
-      optimisticId,
-      submitted,
-      targetStage.key,
-      new Date().toISOString(),
-    )
-    setHistoryMessages((current) => [...current, optimisticMessage])
-    setStageInserts((current) => current.filter(
-      (item) => !items.some((target) => target.id === item.id)
-    ))
+  const handleStageInsertRemove = async (insertId: string) => {
+    if (!projectId || !pendingTargetMessageId) return
     try {
-      const accepted = await taskApi.sendStageMessage(
-        taskId,
-        targetStage.key,
-        submitted,
-        projectId,
-        false,
-      )
-      setHistoryMessages((current) => current.map((message) => (
-        message.id === optimisticId
-          ? {
-              ...message,
-              id: accepted.message_id,
-              run_id: accepted.message_id,
-              channel: 'execution',
-              run_status: 'completed',
-              sequence: accepted.sequence,
-              created_at: accepted.created_at || message.created_at,
-            }
-            : message
-      )))
+      await pendingInsertActions.remove(projectId, pendingTargetMessageId, insertId)
     } catch (reason) {
-      setHistoryMessages((current) => current.filter(
-        (message) => message.id !== optimisticId
-      ))
       setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
     }
-  }
-
-  const handleStageInsertRemove = (insertId: string) => {
-    setStageInserts((current) => current.filter((item) => item.id !== insertId))
   }
 
   const handleStageInsertEditStart = (insert: { id: string; content: string }) => {
@@ -1242,14 +1250,21 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setEditingInsertContent(insert.content)
   }
 
-  const handleStageInsertEditSave = (insertId: string) => {
+  const handleStageInsertEditSave = async (insertId: string) => {
     const nextContent = editingInsertContent.trim()
-    if (!nextContent) return
-    setStageInserts((current) => current.map((item) => (
-      item.id === insertId ? { ...item, content: nextContent } : item
-    )))
-    setEditingInsertId(null)
-    setEditingInsertContent('')
+    if (!nextContent || !projectId || !pendingTargetMessageId) return
+    try {
+      await pendingInsertActions.update(
+        projectId,
+        pendingTargetMessageId,
+        insertId,
+        nextContent,
+      )
+      setEditingInsertId(null)
+      setEditingInsertContent('')
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+    }
   }
 
   const handleStageInsertEditCancel = () => {
@@ -1257,115 +1272,109 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     setEditingInsertContent('')
   }
 
-  const handleStageInsertSend = (insert: { id: string; content: string }) => {
-    void sendStageInserts([insert])
-  }
+  const sendStageInserts = async (items: Array<{ id: string; content: string }>) => {
+    if (!taskId || !projectId || !targetStage || !pendingTargetMessageId) return
+    if (!activeStageRunning || items.length === 0) return
+    const submitted = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
+    if (!submitted) return
 
-  const handleSendAllInserts = () => {
-    void sendStageInserts(stageInserts)
-  }
-
-  // ── 插入队列持久化 ─────────────────────────────
-  // 任务详情无会话概念，队列是任务级的，以 taskId 为作用域保存，刷新后恢复。
-  // stageQueueOwnerRef 记录当前队列表项归属的 task。切换任务时先把旧 owner
-  // 的内容落盘，再恢复新 task；保存 effect 不跟随“新 task + 旧 items”的中间态。
-  const stageQueueOwnerRef = useRef<{
-    projectId: string
-    taskId: string
-    items: Array<{ id: string; content: string }>
-  } | null>(null)
-  const stageQueueKey = taskId && projectId ? projectId + ':' + taskId : ''
-  const [stageQueueReadyKey, setStageQueueReadyKey] = useState('')
-  const stageQueueReady = Boolean(stageQueueKey && stageQueueReadyKey === stageQueueKey)
-
-  const removeStageQueueItems = useCallback((
-    owner: NonNullable<typeof stageQueueOwnerRef.current>,
-    ids: string[],
-  ) => {
-    owner.items = owner.items.filter((item) => !ids.includes(item.id))
-    saveTaskInsertQueue(owner.taskId, owner.items)
-    const current = stageQueueOwnerRef.current
-    if (
-      current?.projectId === owner.projectId
-      && current.taskId === owner.taskId
-    ) {
-      setStageInserts(owner.items)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!taskId || !projectId) return
-    const owner = stageQueueOwnerRef.current
-    if (owner && owner.taskId !== taskId) {
-      saveTaskInsertQueue(owner.taskId, owner.items)
-    }
-    const items = loadTaskInsertQueue(taskId, projectId)
-    stageQueueOwnerRef.current = { projectId, taskId, items }
-    setStageInserts(owner?.taskId === taskId ? owner.items : items)
-    setStageQueueReadyKey(stageQueueKey)
-  }, [taskId, projectId, stageQueueKey])
-
-  useEffect(() => {
-    const owner = stageQueueOwnerRef.current
-    if (!owner || !stageQueueReady) return
-    owner.items = stageInserts
-    saveTaskInsertQueue(owner.taskId, stageInserts)
-  }, [stageInserts, stageQueueReady])
-
-  // ─ 插入队列自动推进 ─────────────────────────────
-  // 阶段运行中插入的消息先排队；队列非空且该阶段已不再运行、可重新发送时，
-  // 自动发送队首消息并重新执行该阶段，直至队列清空。
-  // 成功完成或页面重挂后没有 running 跃迁，也要继续推进；手动停止仍尊重停止意图。
-  const prevStageRunRef = useRef<{ key: string | null; running: boolean }>({
-    key: null,
-    running: false,
-  })
-  const stageAutoDrainingRef = useRef(false)
-  const awaitingStageRunStartKeysRef = useRef<Set<string>>(new Set())
-  const userStoppedRef = useRef(false)
-  const stageRunKey = taskId && targetStage ? `${taskId}:${targetStage.key}` : ''
-
-  useEffect(() => {
-    if (activeStageRunning && stageRunKey) {
-      awaitingStageRunStartKeysRef.current.delete(stageRunKey)
-    }
-  }, [activeStageRunning, stageRunKey])
-
-  useEffect(() => {
-    const prev = prevStageRunRef.current
-    const shouldDrain = shouldAutoDrainStageInsert({
-      previousKey: prev.key,
-      stageRunKey,
-      queueReady: stageQueueReady,
-      activeStageRunning,
-      autoDraining: stageAutoDrainingRef.current,
-      awaitingRunStart: awaitingStageRunStartKeysRef.current.has(stageRunKey),
-      editingInsert: editingInsertId !== null,
-      queueLength: stageInserts.length,
-    })
-    prevStageRunRef.current = { key: stageRunKey || null, running: activeStageRunning }
-    if (!shouldDrain) return
-    if (userStoppedRef.current) {
-      // 用户手动停止的这次结束不自动推进
-      userStoppedRef.current = false
+    const sendingIds = items.map((item) => item.id)
+    const optimisticId = `pending-${randomUuid()}`
+    const optimisticMessage = createOptimisticUserMessage(
+      optimisticId,
+      submitted,
+      targetStage.key,
+      new Date().toISOString(),
+    )
+    setChatError('')
+    setStageInsertSendingIds((current) => [...new Set([...current, ...sendingIds])])
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    let accepted
+    try {
+      accepted = await taskApi.sendStageMessage(
+        taskId,
+        targetStage.key,
+        submitted,
+        projectId,
+        false,
+      )
+    } catch (reason) {
+      setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+      setStageInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
       return
     }
-    if (!taskId || !projectId || !targetStage) return
-    const owner = stageQueueOwnerRef.current
-    if (!owner || owner.taskId !== taskId || owner.projectId !== projectId) return
-    const first = stageInserts[0]
-    const submittedStageRunKey = stageRunKey
-    stageAutoDrainingRef.current = true
-    void resumeStageWithPrompt(first.content).then((ok) => {
-      if (ok) {
-        awaitingStageRunStartKeysRef.current.add(submittedStageRunKey)
-        removeStageQueueItems(owner, [first.id])
-        setEditingInsertId(null)
-        setEditingInsertContent('')
-      }
-      stageAutoDrainingRef.current = false
-    })
-  }, [activeStageRunning, targetStage, stageInserts, editingInsertId, taskId, projectId, stageRunKey, stageQueueReady, resumeStageWithPrompt, removeStageQueueItems])
+
+    setHistoryMessages((current) => current.map((message) => (
+      message.id === optimisticId
+        ? {
+            ...message,
+            id: accepted.message_id,
+            run_id: accepted.message_id,
+            channel: 'execution',
+            run_status: 'running',
+            sequence: accepted.sequence,
+            created_at: accepted.created_at || message.created_at,
+          }
+        : message
+    )))
+    try {
+      await Promise.all(items.map((item) => (
+        pendingInsertActions.remove(projectId, pendingTargetMessageId, item.id)
+      )))
+    } catch (reason) {
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+    } finally {
+      setStageInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
+    }
+  }
+
+  const sendCoordinatorInserts = async (items: Array<{ id: string; content: string }>) => {
+    if (!taskId || !projectId || !pendingTargetMessageId || items.length === 0) return
+    const submitted = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
+    if (!submitted) return
+
+    const sendingIds = items.map((item) => item.id)
+    const optimisticId = `pending-${randomUuid()}`
+    const optimisticMessage = createOptimisticCoordinatorMessage(
+      optimisticId,
+      submitted,
+      activeStage.key,
+      new Date().toISOString(),
+    )
+    shouldFollowMessagesRef.current = true
+    setHasUnreadMessages(false)
+    setChatError('')
+    setStageInsertSendingIds((current) => [...new Set([...current, ...sendingIds])])
+    setHistoryMessages((current) => [...current, optimisticMessage])
+    try {
+      const accepted = await taskApi.chat(
+        taskId,
+        submitted,
+        projectId,
+        randomUuid(),
+        sendingIds,
+      )
+      pendingInsertActions.discard(projectId, pendingTargetMessageId, sendingIds)
+      setHistoryMessages((current) => current.map((message) => (
+        message.id === optimisticId
+          ? {
+              ...message,
+              id: accepted.user_message_id,
+              channel: 'coordinator',
+              run_status: 'completed',
+            }
+          : message
+      )))
+      setCoordinatorRunning(true)
+      setActiveCoordinatorMessageId(accepted.assistant_message_id)
+    } catch (reason) {
+      setHistoryMessages((current) => current.filter((message) => message.id !== optimisticId))
+      setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+    } finally {
+      setStageInsertSendingIds((current) => current.filter((id) => !sendingIds.includes(id)))
+    }
+  }
 
   // A2UI protocol: clicks inside rendered UI bubbles (buttons, pickers, ...)
   // arrive as client actions. Relay them to the coordinator as a user message
@@ -1600,16 +1609,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const handleStart = async () => {
-    if (!taskId || !projectId || !taskNotStarted || running) return
-    setRunning(true)
-    try {
-      await runTask(taskId, '', projectId)
-    } catch {
-      setRunning(false)
-    }
-  }
-
   const scheduleInputValue = scheduledDraft || utcToLocalDateTime(task?.scheduled_start_at)
   if (!task) {
     return (
@@ -1624,7 +1623,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const currentStageColor = currentStage.color || 'var(--accent)'
   const activeStageColor = activeStage.color || 'var(--accent)'
   const selectedReview = reviews.find((review) => review.step_key === currentStage.key)
-  const activeReview = reviews.find((review) => review.step_key === activeStage.key)
 
   const openDescriptionEditor = () => {
     setDescriptionDraft(task.description || '')
@@ -1745,30 +1743,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     }
   }
 
-  const globalAdvance = () => {
-    if (taskNotStarted) {
-      void handleStart()
-      return
-    }
-    if (!activeReview) return
-    if (activeStepStatus === 'awaiting_review') {
-      void decideReview('approve', activeReview, activeStage.key)
-    } else if (activeStepStatus === 'rejected') {
-      void decideReview('force-approve', activeReview, activeStage.key)
-    }
-  }
-
-  const globalAdvanceState = resolveTaskDetailAdvanceState({
-    taskNotStarted,
-    running,
-    taskStatus: task.status,
-    stepStates: task.steps,
-    activeStepStatus,
-    reviewActionPending,
-    hasActiveReview: Boolean(activeReview),
-    t,
-  })
-
   const findArtifact = (name: string, preferredStepKey?: string, source?: TaskArtifact[], round?: number) => {
     return findPreferredArtifact(source || artifacts, name, preferredStepKey, round)
   }
@@ -1871,7 +1845,7 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onOpenArtifact={openArtifact}
         chatTarget={chatTarget}
         onChatTargetChange={setChatTarget}
-        coordinatorRunning={coordinatorRunning}
+        coordinatorRunning={coordinatorIsRunning}
         coordinatorConfig={coordinatorConfig}
         stageEngineConfig={stageEngineConfig}
         stageEngineConfigLoading={stageEngineConfigLoading}
@@ -1891,27 +1865,39 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         restartingStageKeys={restartingStageKeys}
         chatInputRef={chatInputRef}
         stageInserts={stageInserts}
-        onStageInsertRemove={handleStageInsertRemove}
-        onStageInsertSend={handleStageInsertSend}
+        stageInsertSendingIds={stageInsertSendingIds}
+        onStageInsertSend={(insert) => {
+          if (chatTarget === 'coordinator') void sendCoordinatorInserts([insert])
+          else void sendStageInserts([insert])
+        }}
+        onSendAllInserts={() => {
+          if (chatTarget === 'coordinator') void sendCoordinatorInserts(stageInserts)
+          else void sendStageInserts(stageInserts)
+        }}
+        onStageInsertRemove={(insertId) => void handleStageInsertRemove(insertId)}
         onStageInsertEditStart={handleStageInsertEditStart}
-        onStageInsertEditSave={handleStageInsertEditSave}
+        onStageInsertEditSave={(insertId) => void handleStageInsertEditSave(insertId)}
         onStageInsertEditCancel={handleStageInsertEditCancel}
         editingInsertId={editingInsertId}
         editingInsertContent={editingInsertContent}
         onEditingInsertContentChange={setEditingInsertContent}
-        onSendAllInserts={handleSendAllInserts}
-        onClearInserts={() => setStageInserts([])}
-        onStageInsertReorder={(fromIndex, toIndex) => setStageInserts((current) => {
-          if (
-            fromIndex === toIndex
-            || fromIndex < 0 || fromIndex >= current.length
-            || toIndex < 0 || toIndex >= current.length
-          ) return current
-          const next = [...current]
-          const [moved] = next.splice(fromIndex, 1)
-          next.splice(toIndex, 0, moved)
-          return next
-        })}
+        onClearInserts={() => {
+          if (!projectId || !pendingTargetMessageId) return
+          void pendingInsertActions.clear(projectId, pendingTargetMessageId).catch((reason) => {
+            setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+          })
+        }}
+        onStageInsertReorder={(fromIndex, toIndex) => {
+          if (!projectId || !pendingTargetMessageId) return
+          void pendingInsertActions.reorder(
+            projectId,
+            pendingTargetMessageId,
+            fromIndex,
+            toIndex,
+          ).catch((reason) => {
+            setChatError(reason instanceof Error ? reason.message : t('taskDetail.sendFailed'))
+          })
+        }}
         onCoordinatorEngineChange={handleCoordinatorEngineChange}
         onCoordinatorProviderChange={handleCoordinatorProviderChange}
         providers={providers}
@@ -2047,12 +2033,6 @@ export default function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onViewingPromptChange={setViewingPrompt}
         running={running}
         projectId={projectId}
-        primaryAction={{
-          label: globalAdvanceState.label,
-          disabled: globalAdvanceState.disabled,
-          loading: reviewActionPending,
-          onClick: globalAdvance,
-        }}
         previewArtifact={previewArtifact}
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         onOpenArtifactDirectory={openArtifactDirectory}

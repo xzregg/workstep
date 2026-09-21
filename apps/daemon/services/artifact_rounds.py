@@ -236,8 +236,8 @@ def _declared_entries(round_dir: Path, outputs: Iterable[dict] | None) -> dict[P
     from services.prompt import _output_path
 
     result: dict[Path, dict] = {}
-    for index, output in enumerate(outputs, 1):
-        name = str(output.get("name") or f"产物{index}")
+    for index, output in enumerate(outputs):
+        name = str(output.get("name") or f"产物{index + 1}")
         output_type = str(output.get("type") or "file")
         _label, value = _output_path(str(round_dir), name, output_type)
         path = Path(value).resolve()
@@ -248,8 +248,56 @@ def _declared_entries(round_dir: Path, outputs: Iterable[dict] | None) -> dict[P
         result[path] = {
             "name": name,
             "type": output_type,
+            "port": index,
         }
     return result
+
+
+def _declared_output_statuses(
+    round_dir: Path,
+    declared: dict[Path, dict],
+) -> list[dict]:
+    """Return deterministic existence/size facts for every declared output."""
+    root = round_dir.resolve()
+    statuses: list[dict] = []
+    for path, metadata in sorted(
+        declared.items(), key=lambda item: int(item[1]["port"])
+    ):
+        exists = path.is_file() or path.is_dir()
+        if path.is_file():
+            size = path.stat().st_size
+        elif path.is_dir():
+            size = sum(
+                child.stat().st_size
+                for child in path.rglob("*")
+                if child.is_file() and not child.is_symlink()
+            )
+        else:
+            size = 0
+        statuses.append({
+            "port": int(metadata["port"]),
+            "name": metadata["name"],
+            "type": metadata["type"],
+            "path": str(path.relative_to(root)),
+            "exists": exists,
+            "size": size,
+            "nonempty": bool(exists and size > 0),
+        })
+    return statuses
+
+
+def active_output_ports(manifest: dict | None) -> set[int]:
+    """Return output port indexes backed by a non-empty declared artifact."""
+    if not isinstance(manifest, dict):
+        return set()
+    return {
+        int(output["port"])
+        for output in manifest.get("outputs", [])
+        if isinstance(output, dict)
+        and output.get("nonempty") is True
+        and isinstance(output.get("port"), int)
+        and not isinstance(output.get("port"), bool)
+    }
 
 
 def build_manifest_entry(path: Path, round_dir: Path, metadata: dict | None = None) -> dict:
@@ -328,6 +376,7 @@ def write_round_manifest(
         "status": status,
         "eligible_for_downstream": bool(eligible_for_downstream),
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "outputs": _declared_output_statuses(round_dir, declared),
         "artifacts": sorted(entries.values(), key=lambda item: str(item["path"])),
     }
     path = manifest_path(round_dir)

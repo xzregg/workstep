@@ -1,4 +1,5 @@
 import { BrandIcon } from './components/BrandIcon'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useProjectStore } from './stores/projectStore'
 import Layout from './components/Layout'
@@ -15,6 +16,10 @@ import { useI18n } from './i18n'
 import FirstUseDialog from './components/FirstUseDialog'
 import RemoteAccessGate from './components/RemoteAccessGate'
 import { projectSelectionPath } from './utils/projectSelectionPath'
+
+const GitPrototype = import.meta.env.DEV
+  ? lazy(() => import('./pages/prototype/GitPrototype'))
+  : null
 
 function AppRoutes() {
   const navigate = useNavigate()
@@ -95,6 +100,10 @@ function App() {
 
 function GatedApp() {
   const location = useLocation()
+  // Development-only mock surface: no daemon, project selection or Git operations.
+  if (GitPrototype && location.pathname === '/prototype/git') {
+    return <Suspense fallback={<div>…</div>}><GitPrototype /></Suspense>
+  }
   // Public share pages authenticate with their own session token and must
   // stay reachable even when the remote access password is enabled.
   const bypassGate =

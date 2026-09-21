@@ -62,6 +62,7 @@ function singleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
 }
 
 export interface SystemSettings {
+  git_scan_depth: number
   user_name: string
   open_mode: boolean
   default_project_directory: string
@@ -102,6 +103,10 @@ export type ModelSetting = ModelPrice
 export type ModelSettings = ModelPricingSettings
 
 export const systemSettingsApi = {
+  updateGitScanDepth: (depth: number) => request<SystemSettings>('/system-settings', {
+    method: 'PUT',
+    body: JSON.stringify({ git_scan_depth: depth }),
+  }),
   get: () => request<SystemSettings>('/system-settings'),
   updateDefaultProjectDirectory: (directory: string) => request<SystemSettings>('/system-settings', {
     method: 'PUT',
@@ -428,6 +433,18 @@ export interface StatisticsEngineRow {
   cost: number
 }
 
+export interface StatisticsUserRow {
+  author_id: string
+  author_name: string
+  call_count: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_tokens: number
+  cost: number
+}
+
 export interface StatisticsReport {
   currency: 'USD' | 'CNY'
   scope: StatisticsScope
@@ -444,6 +461,7 @@ export interface StatisticsReport {
   workflows: StatisticsWorkflowRow[]
   stages: StatisticsStageRow[]
   engines: StatisticsEngineRow[]
+  users: StatisticsUserRow[]
   quality: {
     step_attempt_count: number
     step_failed: number
@@ -546,6 +564,7 @@ export const workflowApi = {
 export interface WorkflowGenAccepted {
   session_id: string
   turn_id: string
+  assistant_message_id: string
   status: string
 }
 
@@ -651,6 +670,7 @@ export const workflowGenApi = {
 export interface TaskDraftAccepted {
   session_id: string
   turn_id: string
+  assistant_message_id: string
   status: string
 }
 
@@ -746,7 +766,64 @@ export interface ChatQuickButton {
 export interface ChatAccepted {
   session_id: string
   turn_id: string
+  assistant_message_id: string
   status: string
+}
+
+export interface PendingMessageInsertItem {
+  id: string
+  target_message_id: string
+  content: string
+  position: number
+  username: string
+  created_at: string
+  updated_at: string
+}
+
+export const pendingMessageInsertApi = {
+  list: (projectId: string, targetMessageId: string) =>
+    request<{ items: PendingMessageInsertItem[] }>(
+      `/pending-message-inserts?project_id=${encodeURIComponent(projectId)}`
+      + `&target_message_id=${encodeURIComponent(targetMessageId)}`,
+    ),
+  create: (projectId: string, targetMessageId: string, content: string) =>
+    request<PendingMessageInsertItem>('/pending-message-inserts', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_id: projectId,
+        target_message_id: targetMessageId,
+        content,
+      }),
+    }),
+  update: (projectId: string, insertId: string, content: string) =>
+    request<PendingMessageInsertItem>(
+      `/pending-message-inserts/${encodeURIComponent(insertId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ project_id: projectId, content }),
+      },
+    ),
+  reorder: (projectId: string, targetMessageId: string, ids: string[]) =>
+    request<{ items: PendingMessageInsertItem[] }>('/pending-message-inserts/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({
+        project_id: projectId,
+        target_message_id: targetMessageId,
+        ids,
+      }),
+    }),
+  remove: (projectId: string, insertId: string) =>
+    request<{ deleted: boolean }>(
+      `/pending-message-inserts/${encodeURIComponent(insertId)}`
+      + `?project_id=${encodeURIComponent(projectId)}`,
+      { method: 'DELETE' },
+    ),
+  clear: (projectId: string, targetMessageId: string) =>
+    request<{ deleted: number }>(
+      `/pending-message-inserts?project_id=${encodeURIComponent(projectId)}`
+      + `&target_message_id=${encodeURIComponent(targetMessageId)}`,
+      { method: 'DELETE' },
+    ),
 }
 
 export interface ChatMessageEventsPage {
@@ -889,12 +966,21 @@ export const chatSessionApi = {
         plan_mode: options.plan_mode || undefined,
       }),
     }),
-  sendLiveMessage: (sessionId: string, projectId: string, content: string) =>
+  sendLiveMessage: (
+    sessionId: string,
+    projectId: string,
+    content: string,
+    pendingInsertIds: string[] = [],
+  ) =>
     request<{ message_id: string; status: string; created_at: string }>(
       `/chat-sessions/${encodeURIComponent(sessionId)}/live-message`,
       {
         method: 'POST',
-        body: JSON.stringify({ project_id: projectId, content }),
+        body: JSON.stringify({
+          project_id: projectId,
+          content,
+          pending_insert_ids: pendingInsertIds,
+        }),
       },
     ),
   stop: (sessionId: string, projectId: string) =>
@@ -1156,6 +1242,17 @@ export interface TaskExecutionReport {
     total_tokens: number
     cost: number
   }>
+  user_breakdown: Array<{
+    author_id: string
+    author_name: string
+    message_count: number
+    input_tokens: number
+    output_tokens: number
+    cache_read_tokens: number
+    cache_write_tokens: number
+    total_tokens: number
+    cost: number
+  }>
   milestones: Array<{
     id: string
     kind: 'step_completed' | 'review_completed' | 'task_completed'
@@ -1340,7 +1437,13 @@ export const taskApi = {
       method: 'POST',
       body: JSON.stringify({ intervention_id: interactionId, data }),
     }),
-  chat: (taskId: string, content: string, projectId: string, idempotencyKey: string) =>
+  chat: (
+    taskId: string,
+    content: string,
+    projectId: string,
+    idempotencyKey: string,
+    pendingInsertIds: string[] = [],
+  ) =>
     request<{
       turn_id: string
       user_message_id: string
@@ -1349,7 +1452,7 @@ export const taskApi = {
     }>(`/task/${taskId}/chat?project_id=${encodeURIComponent(projectId)}`, {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, pending_insert_ids: pendingInsertIds }),
     }),
   stopCoordinator: (taskId: string, projectId: string) =>
     request<{ stopped: boolean }>(
@@ -1678,6 +1781,11 @@ export const shareApi = {
   task: (token: string, sessionToken: string) =>
     shareRequest<SharedTask>(
       `/task-share/public/${encodeURIComponent(token)}/task`,
+      sessionToken,
+    ),
+  executionReport: (token: string, sessionToken: string) =>
+    shareRequest<TaskExecutionReport>(
+      `/task-share/public/${encodeURIComponent(token)}/execution-report`,
       sessionToken,
     ),
   history: async (token: string, sessionToken: string, limit = FULL_PAGE_LIMIT, offset = 0) => {

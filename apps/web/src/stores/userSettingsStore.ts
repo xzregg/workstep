@@ -3,6 +3,8 @@ import { systemSettingsApi } from '../api/client'
 import { loadBrowserActor, saveBrowserActor } from '../utils/browserActor'
 
 interface UserSettingsState {
+  gitScanDepth: number
+  saveGitScanDepth: (depth: number) => Promise<void>
   userName: string
   openMode: boolean
   defaultProjectDirectory: string
@@ -12,12 +14,18 @@ interface UserSettingsState {
   loaded: boolean
   loading: boolean
   error: string
-  load: () => Promise<void>
+  load: (force?: boolean) => Promise<void>
   saveUserName: (name: string) => Promise<boolean>
   saveOpenMode: (enabled: boolean) => Promise<boolean>
 }
 
 export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
+  gitScanDepth: 5,
+  saveGitScanDepth: async (depth) => {
+    const settings = await systemSettingsApi.updateGitScanDepth(depth)
+    if (settings.git_scan_depth !== depth) throw new Error('Git 扫描设置未保存，请检查后台服务版本后重试。')
+    set({ gitScanDepth: settings.git_scan_depth })
+  },
   userName: '',
   openMode: false,
   defaultProjectDirectory: '',
@@ -30,14 +38,15 @@ export const useUserSettingsStore = create<UserSettingsState>((set, get) => ({
   loaded: false,
   loading: false,
   error: '',
-  load: async () => {
-    if (get().loaded || get().loading) return
+  load: async (force = false) => {
+    if ((get().loaded && !force) || get().loading) return
     set({ loading: true, error: '' })
     const actor = loadBrowserActor()
     try {
       const settings = await systemSettingsApi.get()
       set({
         defaultProjectDirectory: settings.default_project_directory || '',
+        gitScanDepth: settings.git_scan_depth ?? 5,
         userName: actor?.name || '',
         openMode: settings.open_mode,
         deviceId: actor?.deviceId || '',

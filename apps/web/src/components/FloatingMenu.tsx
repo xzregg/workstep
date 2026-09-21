@@ -117,13 +117,19 @@ export default function FloatingMenu({
       if (triggerRef?.current?.contains(event.target as Node)) return
       onClose()
     }
+    const closeWhenAnchorScrolls = (event: Event) => {
+      const trigger = triggerRef?.current
+      const scrollTarget = event.target
+      if (trigger && scrollTarget instanceof Node && !scrollTarget.contains(trigger)) return
+      onClose()
+    }
     window.addEventListener('mousedown', closeOnOutside)
     window.addEventListener('resize', onClose)
-    window.addEventListener('scroll', onClose, true)
+    window.addEventListener('scroll', closeWhenAnchorScrolls, true)
     return () => {
       window.removeEventListener('mousedown', closeOnOutside)
       window.removeEventListener('resize', onClose)
-      window.removeEventListener('scroll', onClose, true)
+      window.removeEventListener('scroll', closeWhenAnchorScrolls, true)
     }
   }, [onClose, triggerRef, compact])
 

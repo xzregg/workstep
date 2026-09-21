@@ -251,7 +251,7 @@ export default function AiFlowChat({
 
   const send = useCallback(async (contentOverride?: string) => {
     const content = (contentOverride ?? input).trim()
-    if (!content || running) return
+    if (!content || (running && contentOverride === undefined)) return false
     setSendError('')
     let sid = sessionId
     if (!sid) {
@@ -306,8 +306,10 @@ export default function AiFlowChat({
         }
         setSessionId(accepted.session_id)
       }
+      return true
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('aiFlow.sendFailed'))
+      return false
     }
   }, [input, running, sessionId, projectId, selectedEngine, selectedProvider, selectedModel, selectedFastModel, selectedVisionModel, selectedThinkingEffort, getCanvasSteps, workflowId, workflowName, t, resetEnhance])
 
@@ -392,6 +394,7 @@ export default function AiFlowChat({
         scrollKey={latestProposals.length}
         onInputChange={(value) => { enhanceInputChanged(value); setInput(value); setSendError('') }}
         onSend={() => void send()}
+        onSendContent={(content) => send(content)}
         onStop={() => void stop()}
         enhance={enhance}
         onAttachmentError={setSendError}

@@ -500,6 +500,11 @@ class ConfigStore:
     def get_open_mode(self) -> bool:
         return self.get("open_mode", False) is True
 
+    def get_git_scan_depth(self) -> int:
+        """Project root is depth 0; discover repositories down to depth 5 by default."""
+        value = self.get("git_scan_depth", 5)
+        return value if type(value) is int and 0 <= value <= 9007199254740991 else 5
+
     def set_open_mode(self, enabled: bool) -> None:
         self.set("open_mode", enabled)
 

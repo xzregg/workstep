@@ -108,6 +108,15 @@ function DropdownMenu({ label, children }: { label: string; children: (close: ()
 interface SubOutput { name: string; type: string }
 interface InputField { name: string; type: string; outputs: SubOutput[] }
 interface OutputField { name: string; type: string }
+const DEFAULT_MAX_RETURN_ROUNDS = 3
+const MAX_CONFIGURED_RETURN_ROUNDS = 20
+
+function normalizeMaxReturnRounds(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed)) return DEFAULT_MAX_RETURN_ROUNDS
+  return Math.max(1, Math.min(MAX_CONFIGURED_RETURN_ROUNDS, parsed))
+}
+
 interface ReviewConfig {
   mode: 'skip' | 'auto' | 'manual'
   auto: boolean
@@ -140,6 +149,7 @@ interface StepNodeData {
   config: Record<string, string>
   inputs: InputField[]
   outputs: OutputField[]
+  maxReturnRounds: number
   review?: ReviewConfig
   kind?: 'llm' | 'task_dispatch'
   dispatch?: {
@@ -250,6 +260,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
           outputs: (typeof inp === 'object' && Array.isArray(inp?.outputs) ? inp.outputs : []).map(normalizeOutput),
         })),
         outputs: (Array.isArray(n.outputs) ? n.outputs : []).map(normalizeOutput),
+        maxReturnRounds: normalizeMaxReturnRounds(n.maxReturnRounds),
         kind: n.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
         dispatch: n.dispatch,
       }
@@ -310,6 +321,7 @@ function loadCanvasData(stepsJson: any): { nodes: StepNodeData[]; connections: C
         outputs: (inp.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || DEFAULT_OUTPUT_TYPE })),
       })),
       outputs: (s.outputs || []).map((o: any) => ({ name: o.name || o, type: o.type || 'markdown' })),
+      maxReturnRounds: normalizeMaxReturnRounds(s.maxReturnRounds),
       kind: s.kind === 'task_dispatch' ? 'task_dispatch' : 'llm',
       dispatch: s.dispatch,
     }))
@@ -924,6 +936,35 @@ function NodeConfigPanel({ node, unavailableKeys, engines, enginesLoading, engin
             </div>
           )}
           <div>
+            <div style={sectionTitle}>{t('flow.returnRouting')}</div>
+            <label
+              htmlFor={`stage-max-return-rounds-${draft.nodeId}`}
+              style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 500, color: 'var(--fg-2)', display: 'block', marginBottom: 4 }}
+            >
+              {t('flow.maxReturnRounds')}
+            </label>
+            <Input
+              id={`stage-max-return-rounds-${draft.nodeId}`}
+              aria-label={t('flow.maxReturnRounds')}
+              type="number"
+              min={1}
+              max={MAX_CONFIGURED_RETURN_ROUNDS}
+              step={1}
+              value={draft.maxReturnRounds}
+              onChange={(event) => updateDraft(
+                'maxReturnRounds',
+                normalizeMaxReturnRounds(event.target.value),
+              )}
+              style={{ width: 72, height: 32, fontVariantNumeric: 'tabular-nums' }}
+            />
+            <div style={{ marginTop: 5, fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)', lineHeight: 1.5, maxWidth: '68ch' }}>
+              {t('flow.maxReturnRoundsHint', {
+                default: DEFAULT_MAX_RETURN_ROUNDS,
+                max: MAX_CONFIGURED_RETURN_ROUNDS,
+              })}
+            </div>
+          </div>
+          <div>
             <div style={sectionTitle}>{t('flow.stageReview')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1210,14 +1251,23 @@ function FlowCanvasInner({
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const tag = (e.target as HTMLElement)?.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-        if (nodes.some(node => node.selected && node.type === 'bookmark')) setDirty(true)
-        setNodes((nds) => nds.filter((n) => !n.selected))
-        setEdges((eds) => eds.filter((ed) => !ed.selected))
+        const deletedNodeIds = new Set(nodes.filter((node) => node.selected).map((node) => node.id))
+        if (deletedNodeIds.size > 0 || edges.some((edge) => edge.selected)) setDirty(true)
+        setNodes((nds) => nds.filter((node) => !deletedNodeIds.has(node.id)))
+        setEdges((eds) => eds.filter((edge) => (
+          !edge.selected
+          && !deletedNodeIds.has(edge.source)
+          && !deletedNodeIds.has(edge.target)
+        )))
+        if (selectedNode && deletedNodeIds.has(String(selectedNode.nodeId))) {
+          setSelectedNode(null)
+          setNodeConfigError('')
+        }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [setNodes, setEdges, readOnly, nodes, setDirty])
+  }, [setNodes, setEdges, readOnly, nodes, edges, selectedNode, setDirty])
 
   const onEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     setEdges((eds) => eds.filter((e) => e.id !== edge.id))
@@ -1252,7 +1302,7 @@ function FlowCanvasInner({
     const newNode: Node = {
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
-      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), kind: 'llm', autoStart: false, engine: '', model: '', color: randomStageColor(), prompt: '', review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
+      data: { nodeId, key: `step_${id}`, label: t('flow.newStage'), kind: 'llm', autoStart: false, engine: '', model: '', color: randomStageColor(), prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS, review: { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' }, inputs: [{ name: 'input', type: DEFAULT_OUTPUT_TYPE, outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] }], outputs: [{ name: 'output', type: DEFAULT_OUTPUT_TYPE }] } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
   }
@@ -1265,7 +1315,7 @@ function FlowCanvasInner({
       id: String(nodeId), type: 'step',
       position: { x: 300 + Math.random() * 200, y: 150 + Math.random() * 200 },
       data: {
-        nodeId, key: `handoff_${id}`, label: t('flow.newDispatchStage'), kind: 'task_dispatch', color: '#eb6c36', engine: '', model: '', prompt: '',
+        nodeId, key: `handoff_${id}`, label: t('flow.newDispatchStage'), kind: 'task_dispatch', color: '#eb6c36', engine: '', model: '', prompt: '', maxReturnRounds: DEFAULT_MAX_RETURN_ROUNDS,
         inputs: [{ name: t('flow.upstreamInputs'), type: DEFAULT_OUTPUT_TYPE, outputs: [] }], outputs: [], config: {},
         dispatch: { targetProjectId: '', targetWorkflowId: '', targetStartStepKey: '', startMode: 'inherit' },
       } as StepNodeData,
@@ -1363,6 +1413,7 @@ function FlowCanvasInner({
         inputs: JSON.parse(JSON.stringify(source.inputs || [])),
         outputs: JSON.parse(JSON.stringify(source.outputs || [])),
         review: source.review ? JSON.parse(JSON.stringify(source.review)) : { mode: 'manual', auto: false, maxRetries: 1, engine: '', model: '', prompt: '' },
+        maxReturnRounds: normalizeMaxReturnRounds(source.maxReturnRounds),
       } as StepNodeData,
     }
     setNodes((nds) => [...nds, newNode])
@@ -1423,11 +1474,14 @@ function FlowCanvasInner({
         kind: d.kind || 'llm',
         dispatch: d.dispatch,
         config: d.config || {},
+        maxReturnRounds: normalizeMaxReturnRounds(d.maxReturnRounds),
         review: d.review || emptyReview(),
         inputs: d.inputs, outputs: d.outputs,
       }
     })
-    const connsArr = conns.map((e) => {
+    const connsArr = conns.filter((edge) => (
+      idToNum.has(edge.source) && idToNum.has(edge.target)
+    )).map((e) => {
       const sourceHandle = e.sourceHandle || 'out-0'
       const targetHandle = e.targetHandle || 'in-0'
       return {

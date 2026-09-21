@@ -32,6 +32,7 @@ from api.assistant import router as assistant_router
 from api.system_settings import router as system_settings_router
 from api.skills import router as skills_router
 from api.project_settings import router as project_settings_router
+from api.pending_message_inserts import router as pending_message_inserts_router
 from api.channels import router as channels_router
 import api.remote_project as remote_project_api
 from api.remote_project import router as remote_project_router
@@ -226,6 +227,7 @@ app.include_router(task_draft_router)
 app.include_router(task_dispatch_router)
 app.include_router(schedule_router)
 app.include_router(chat_session_router)
+app.include_router(pending_message_inserts_router)
 app.include_router(statistics_router)
 app.include_router(share_router)
 app.include_router(assistant_router)

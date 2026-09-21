@@ -26,6 +26,14 @@ test('project list refreshes when chat turns start or finish', () => {
   assert.match(activityHook, /setTimeout\(\(\) => \{ void fetchProjects\(\) \}, 300\)/)
 })
 
+test('sidebar session lists have one initialization owner', () => {
+  assert.doesNotMatch(activityHook, /fetchSessions\(activeProject\.id\)/)
+  assert.match(source, /const sessionProjectIdsKey = \[\.\.\.new Set/)
+  assert.match(source, /previousSessionProjectIdsRef/)
+  assert.match(source, /activeProject\?\.id/)
+  assert.match(source, /useChatListStore\.getState\(\)\.fetchSessions\(projectId\)/)
+})
+
 test('project type declares the backend running aggregate', () => {
   assert.match(client, /has_running_tasks\?: boolean/)
 })

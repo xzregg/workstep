@@ -49,7 +49,7 @@ SYSTEM_PROMPT = """You are the WorkStep workflow design assistant. Return canvas
 +
 +Ask at most two questions about goal, I/O, constraints, review, parallelism, and stages. When ready, return short text plus materially different proposals. For edits, always return a patch unless the canvas is empty. A full redesign must set replaceCanvas true explicitly; if clear, use one proposal with autoApply true.
 +
-+Patch: upsertNodes (full changed nodes; existing id updates, omitted id adds), removeNodeIds, optional connections (merged list; omit to keep links).
++Patch: upsertNodes (full changed nodes only; never include untouched nodes; existing id updates, omitted id adds), removeNodeIds, optional connections (merged list; omit to keep links).
 +Canvas JSON: {"nodes":[...],"connections":[...]}. Node fields: id, type, title, autoStart, engine, model, color, prompt, inputs. Connection fields: from, fromPort, to, toPort, kind.
 +Rules: id is a unique positive integer. type is unique, lowercase letters/hyphens: req, ui-design, dev-backend, test, publish. engine defaults to "claude". review is optional: {"auto":true,"maxRetries":1,"prompt":"review criteria"}. connections may be omitted for serial order. kind is "solid" or "dashed".
 +
@@ -64,12 +64,14 @@ SYSTEM_PROMPT = """You are the WorkStep workflow design assistant. Return canvas
 class ChatAccepted:
     session_id: str
     turn_id: str
+    assistant_message_id: str
     status: str
 
     def to_dict(self) -> dict:
         return {
             "session_id": self.session_id,
             "turn_id": self.turn_id,
+            "assistant_message_id": self.assistant_message_id,
             "status": self.status,
         }
 
@@ -166,6 +168,7 @@ class WorkflowGenModule(AssistantRuntime):
         return ChatAccepted(
             session_id=accepted.session_id,
             turn_id=accepted.turn_id,
+            assistant_message_id=accepted.assistant_message_id,
             status=accepted.status,
         )
 
@@ -397,12 +400,18 @@ class WorkflowGenModule(AssistantRuntime):
         candidate_nodes = [
             node for node in candidate.get("nodes", []) if isinstance(node, dict)
         ]
-        changed_nodes = [
-            node
-            for node in candidate_nodes
-            if node.get("id") not in base_nodes
-            or base_nodes[node.get("id")] != node
-        ]
+        changed_nodes = []
+        for node in candidate_nodes:
+            base_node = base_nodes.get(node.get("id"))
+            if base_node is None:
+                changed_nodes.append(node)
+                continue
+            # Canvas-shaped fallback payloads are often abbreviated. Merge
+            # omitted fields from the live node before comparing, so merely
+            # echoing a stage does not turn it into a reported modification.
+            merged_node = {**base_node, **node}
+            if merged_node != base_node:
+                changed_nodes.append(merged_node)
         patch: dict = {
             "upsertNodes": changed_nodes,
             "removeNodeIds": [],
@@ -789,14 +798,10 @@ class WorkflowGenModule(AssistantRuntime):
                 card["stageChanges"] = stage_changes
                 if isinstance(item.get("patch"), dict):
                     card["patch"] = item["patch"]
-                # A multi-stage patch is applied stage-by-stage by the editor,
-                # so never auto-apply it wholesale over the user's canvas.
-                node_changes = [
-                    entry for entry in stage_changes
-                    if entry.get("change") in ("added", "updated")
-                ]
-                if len(stage_changes) > 1 or not node_changes:
-                    card["autoApply"] = False
+                # Editing an existing workflow always waits for an explicit
+                # user action. One changed stage applies directly; multiple
+                # stages open the stage picker in the editor.
+                card["autoApply"] = False
             proposal_cards.append(card)
         data = {"proposals": proposal_cards}
         seq = await self._publish(

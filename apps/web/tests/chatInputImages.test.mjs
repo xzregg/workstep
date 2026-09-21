@@ -55,7 +55,7 @@ test('resolves project and global upload paths through the upload serving endpoi
 })
 
 test('chat input renders image blocks in source order and exposes preview and removal actions', () => {
-  assert.match(chatInputSource, /splitMarkdownImages\(value\)/)
+  assert.match(chatInputSource, /splitComposerSegments\(value\)/)
   assert.match(chatInputSource, /className="chat-input-image"/)
   assert.match(chatInputSource, /className="chat-input-image-remove"/)
   assert.match(chatInputSource, /removeMarkdownImage\(value, segment\)/)

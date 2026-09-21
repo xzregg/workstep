@@ -16,6 +16,7 @@ from api.fs import (
 )
 from schemas.base import BaseSchema
 from services import share as share_service
+from services.config import config_store
 from services.intervention import intervention_manager
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,28 @@ async def public_share_task(token: str, request: Request):
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.get("/public/{token}/execution-report")
+async def public_share_execution_report(token: str, request: Request):
+    """Return the shared task's execution analysis for either share mode."""
+    ctx = await _require_share_session(request)
+    if ctx["token"] != token:
+        raise HTTPException(status_code=403, detail="Session does not match share")
+    from main import project_manager
+    from services.task_execution_report import build_task_execution_report
+
+    pricing = await asyncio.to_thread(config_store.get_model_pricing)
+    report = await project_manager.run_db(
+        ctx["project_id"],
+        lambda _project: build_task_execution_report(
+            ctx["task_id"],
+            pricing=pricing,
+        ),
+    )
+    if report is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return report
 
 
 @router.get("/public/{token}/history")

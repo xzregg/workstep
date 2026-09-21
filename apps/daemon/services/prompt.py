@@ -15,10 +15,8 @@ _OUTPUT_GUIDANCE = "Decide from the stage requirements and available context whe
 
 # System prompt injected at the start of every step
 SYSTEM_PROMPT = """You are executing one stage in a WorkStep workflow.
-Work in the current project root and produce outputs only when the stage has enough information.
-Write artifacts under .workstep/artifacts/<workflow>/<task>/<stage>/<round>/.
-For a directory output, create a directory named <artifact>/. For a file output, write the file directly as <artifact>.<extension>.
-Follow the declared output names, types, and paths; an empty artifact is allowed when appropriate."""
+Work in the current project root and complete only the stage requirements.
+When an output specification is present, follow its artifact contract."""
 
 
 def _load_project_memory(artifacts_dir: Path, limit: int = 50_000) -> str | None:
@@ -67,6 +65,7 @@ def assemble_prompt(
     user_input: str = "",
     artifact_round: int | None = None,
     input_rounds: dict[str, int] | None = None,
+    input_snapshot: dict | None = None,
 ) -> str:
     """Assemble the full prompt for a pipeline step.
 
@@ -102,15 +101,23 @@ def assemble_prompt(
 
     # Upstream artifacts
     workflow_name = task.workflow_id or "default"
-    upstream = _collect_upstream_artifacts(
-        task,
-        step,
-        artifacts_dir,
-        workflow_name,
-        input_rounds=input_rounds,
+    out_dir = (
+        step_round_dir(artifacts_dir, workflow_name, task.id, step.key, artifact_round)
+        if artifact_round is not None
+        else artifacts_dir / workflow_name / task.id / step.key
     )
-    if upstream:
-        parts.append(_format_artifact_refs(upstream))
+    if input_snapshot is not None:
+        parts.append(_format_input_snapshot(input_snapshot))
+    else:
+        upstream = _collect_upstream_artifacts(
+            task,
+            step,
+            artifacts_dir,
+            workflow_name,
+            input_rounds=input_rounds,
+        )
+        if upstream:
+            parts.append(_format_artifact_refs(upstream))
 
     # Step prompt
     if step.prompt:
@@ -136,10 +143,7 @@ def assemble_prompt(
         parts.append(
             _format_output_specs(
                 step.outputs,
-                task.id,
-                step.key,
-                workflow_name,
-                artifact_round=artifact_round,
+                out_dir,
             )
         )
 
@@ -147,24 +151,52 @@ def assemble_prompt(
     if user_input:
         parts.append(f"## User input\n{user_input}")
 
-    # Output directory (workflow / task / stage / round)
-    out_dir = (
-        step_round_dir(artifacts_dir, workflow_name, task.id, step.key, artifact_round)
-        if artifact_round is not None
-        else artifacts_dir / workflow_name / task.id / step.key
-    )
-    parts.append(f"## Artifact output directory\n{out_dir}")
-    if step.outputs:
-        out_labels = []
-        for i, out in enumerate(step.outputs, 1):
-            name = out.get("name", f"artifact-{i}")
-            otype = out.get("type", "file")
-            path_label, output_path = _output_path(out_dir, name, otype)
-            suffix = "/" if path_label == "output directory" else ""
-            out_labels.append(f"- {name}: {output_path}{suffix}")
-        parts.append("Artifact output paths:\n" + "\n".join(out_labels))
+    if not step.outputs:
+        parts.append(f"## Artifact output directory\n{out_dir}")
 
     return "\n\n".join(parts)
+
+
+def _format_input_snapshot(snapshot: dict) -> str:
+    """Render runtime-resolved port values without business-specific wording."""
+    execution_type = str(snapshot.get("execution_type") or "forward")
+    lines = [
+        "## Execution input snapshot",
+        f"Execution type: `{execution_type}`",
+    ]
+    triggered = [str(value) for value in snapshot.get("triggered_edges", [])]
+    lines.append(
+        "Triggered connections: " + (", ".join(triggered) if triggered else "none")
+    )
+    for port in snapshot.get("ports", []):
+        if not isinstance(port, dict):
+            continue
+        index = port.get("port")
+        name = str(port.get("name") or f"input-{index}")
+        status = str(port.get("status") or "inactive")
+        lines.extend([
+            "",
+            f"### Input port {index}: {name}",
+            f"Status: `{status}`",
+        ])
+        sources = port.get("sources") or []
+        if not sources:
+            lines.append("Sources: none")
+            continue
+        for source in sources:
+            if not isinstance(source, dict):
+                continue
+            lines.append(
+                "- "
+                f"{source.get('step', 'task')} output {source.get('output_port', '-')}; "
+                f"connection `{source.get('edge_id', '-')}`; "
+                f"kind `{source.get('kind', 'solid')}`; "
+                f"round {source.get('round', '-')}; "
+                f"artifact {source.get('name', '')}; "
+                f"size {source.get('size', 0)} bytes; "
+                f"path {source.get('path', '')}"
+            )
+    return "\n".join(lines)
 
 
 def assemble_followup_prompt(
@@ -298,19 +330,13 @@ def _output_path(out_base: str, name: str, otype: str) -> tuple[str, str]:
 
 def _format_output_specs(
     outputs: list[dict],
-    task_id: str,
-    step_key: str,
-    workflow_name: str = "default",
-    *,
-    artifact_round: int | None = None,
+    out_base: str | Path,
 ) -> str:
-    """Describe optional outputs and the format required when produced."""
+    """Describe optional outputs once, including their exact destination."""
     lines = ["## Output specification"]
     lines.append(_OUTPUT_GUIDANCE)
-    lines.append("The list below defines artifact format and output paths when generated:\n")
-
-    round_suffix = f"/{int(artifact_round)}" if artifact_round is not None else ""
-    out_base = f".workstep/artifacts/{workflow_name}/{task_id}/{step_key}{round_suffix}"
+    lines.append("The list below defines each artifact's format and exact output path when generated:\n")
+    out_base = str(out_base)
 
     for i, out in enumerate(outputs, 1):
         name = out.get("name", f"artifact-{i}")
@@ -326,10 +352,8 @@ def _format_output_specs(
     if len(outputs) > 1:
         lines.append(_format_subagent_guidance(len(outputs)))
 
-    lines.append(f"\nWrite generated artifacts to the matching paths under `{out_base}/`:")
-    lines.append("- Directory artifact (`directory`): create a directory named `<artifact>/`; it may contain multiple files and subdirectories.")
-    lines.append("- File artifact (such as `md` or `json`): write one file named `<artifact>.<extension>`; do not wrap it in another same-named directory.")
-    lines.append("File extensions must match the declared output specification; do not use undeclared formats.")
+    if any(str(out.get("type", "file")).lower() != "directory" for out in outputs):
+        lines.append("\nFor each file artifact, write one file directly at its declared output path; do not wrap it in another same-named directory or use another extension.")
 
     return "\n".join(lines)
 

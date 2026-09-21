@@ -106,6 +106,7 @@ export function useWebSocket() {
 
   useEffect(() => {
     let active = true
+    let hasOpened = false
     let reconnectAttempt = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -122,13 +123,15 @@ export function useWebSocket() {
 
       ws.onopen = () => {
         console.log('[WS] connected')
+        const isReconnect = hasOpened
+        hasOpened = true
         reconnectAttempt = 0
         // Narrow the server-side fan-out to what this client renders.
         flushSubscription()
         // A reconnect (e.g. daemon restart) may have changed persisted task
         // state; re-fetch so the board reflects recovered runs immediately.
         const projectId = useProjectStore.getState().activeProject?.id
-        if (projectId) void useTaskStore.getState().fetchTasks(projectId)
+        if (isReconnect && projectId) void useTaskStore.getState().fetchTasks(projectId)
       }
       ws.onmessage = (event) => {
         try {

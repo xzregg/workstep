@@ -168,3 +168,54 @@ async def test_dispatch_stage_creates_child_task_with_direct_inputs(tmp_path):
     assert result["source_dispatch_id"] == "parent-1:handoff"
     assert result["input_manifest"][0]["name"] == "brief.md"
     assert runtime.started == [("project-b", result["id"], "")]
+
+
+def test_local_dispatch_copy_prefers_clone(monkeypatch, tmp_path):
+    import services.task_dispatch as task_dispatch
+
+    source = tmp_path / "source.bin"
+    destination = tmp_path / "target" / "destination.bin"
+    source.write_bytes(b"artifact")
+    clone_calls = []
+
+    def clone_file(source_path, destination_path):
+        clone_calls.append((source_path, destination_path))
+        destination_path.write_bytes(source_path.read_bytes())
+        return True
+
+    monkeypatch.setattr(task_dispatch, "_try_clone_file", clone_file)
+    monkeypatch.setattr(
+        task_dispatch.shutil,
+        "copy2",
+        lambda *_args, **_kwargs: pytest.fail("copy2 should not run after clone"),
+    )
+
+    task_dispatch._copy_local_artifact(source, destination)
+
+    assert clone_calls == [(source, destination)]
+    assert destination.read_bytes() == b"artifact"
+
+
+def test_local_dispatch_copy_falls_back_when_clone_is_unavailable(
+    monkeypatch, tmp_path
+):
+    import services.task_dispatch as task_dispatch
+
+    source = tmp_path / "source.bin"
+    destination = tmp_path / "target" / "destination.bin"
+    source.write_bytes(b"artifact")
+    copy_calls = []
+    original_copy2 = task_dispatch.shutil.copy2
+
+    monkeypatch.setattr(task_dispatch, "_try_clone_file", lambda *_args: False)
+
+    def copy_file(source_path, destination_path):
+        copy_calls.append((source_path, destination_path))
+        return original_copy2(source_path, destination_path)
+
+    monkeypatch.setattr(task_dispatch.shutil, "copy2", copy_file)
+
+    task_dispatch._copy_local_artifact(source, destination)
+
+    assert copy_calls == [(source, destination)]
+    assert destination.read_bytes() == b"artifact"

@@ -8,6 +8,7 @@
  */
 import { useMemo, useState } from 'react'
 import Button from './Button'
+import ConfirmDialog from './ConfirmDialog'
 import { useI18n } from '../i18n'
 import { applyWorkflowPatch, changedStageIds } from '../utils/workflowPatch'
 import type { GenProposalCard } from '../stores/workflowGenStore'
@@ -42,6 +43,7 @@ export default function FlowStageApplyPanel({
   const { t } = useI18n()
   // Per-card selection of stage ids; unknown ⇒ default to every changed stage.
   const [selection, setSelection] = useState<Record<string, Set<number>>>({})
+  const [activeCardId, setActiveCardId] = useState<string | null>(null)
 
   const defaults = useMemo(() => {
     const map: Record<string, Set<number>> = {}
@@ -51,6 +53,7 @@ export default function FlowStageApplyPanel({
 
   const selectedFor = (card: GenProposalCard) =>
     selection[card.id] ?? defaults[card.id] ?? new Set<number>()
+  const activeCard = cards.find((card) => card.id === activeCardId)
 
   const toggleStage = (card: GenProposalCard, stageId: number) => {
     const next = new Set(selectedFor(card))
@@ -64,92 +67,106 @@ export default function FlowStageApplyPanel({
     if (selected.size === 0) return
     const merged = applyWorkflowPatch(currentSteps(), card.patch ?? {}, selected)
     onApply(merged, card)
+    setActiveCardId(null)
+  }
+
+  const requestApply = (card: GenProposalCard) => {
+    const changes = card.stageChanges ?? []
+    if (changes.length === 1) {
+      applyCard(card)
+      return
+    }
+    setActiveCardId(card.id)
   }
 
   if (cards.length === 0) return null
 
   return (
-    <div style={{
-      marginTop: 6, display: 'flex', flexDirection: 'column', gap: 10,
-      padding: '10px 12px', borderRadius: 10,
-      border: '1px solid var(--border-soft)', background: 'var(--surface)',
-    }}>
-      <div style={{ fontSize: 'calc(12px * var(--font-scale))', color: 'var(--meta)' }}>
-        {t('aiFlow.stageApplyHint')}
-      </div>
+    <div className="flow-stage-apply-panel">
       {cards.map((card) => {
-        const selected = selectedFor(card)
         const changes = card.stageChanges ?? []
-        const applied = appliedCardId === card.id
-        return (
-          <div key={card.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-            }}>
-              <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}>
-                {card.title}
+        return <div key={card.id} className="flow-stage-apply-card">
+          <div className="flow-stage-apply-card-copy">
+            <strong>{card.title}</strong>
+            {card.summary && <span>{card.summary}</span>}
+          </div>
+          <span className="flow-stage-apply-card-count">
+            {changes.length === 1
+              ? `${t(CHANGE_LABEL[changes[0].change] ?? 'aiFlow.stageChangeUpdated')}：${changes[0].title || changes[0].key || `#${changes[0].id}`}`
+              : t('aiFlow.stageChangeCount', { count: changes.length })}
+          </span>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={disabled}
+            onClick={() => requestApply(card)}
+          >
+            {appliedCardId === card.id ? t('aiFlow.applied') : t('aiFlow.stageApplyOpen')}
+          </Button>
+        </div>
+      })}
+
+      <ConfirmDialog
+        open={Boolean(activeCard)}
+        title={t('aiFlow.stageApplyTitle')}
+        message={t('aiFlow.stageApplyHint')}
+        confirmText={t('aiFlow.stageApplyButton')}
+        confirmDisabled={!activeCard || selectedFor(activeCard).size === 0}
+        width={440}
+        onConfirm={() => { if (activeCard) applyCard(activeCard) }}
+        onCancel={() => setActiveCardId(null)}
+      >
+        {activeCard && (
+          <div className="flow-stage-apply-dialog">
+            <div className="flow-stage-apply-dialog-toolbar">
+              <span>
+                {t('aiFlow.stageApplyCount', {
+                  count: selectedFor(activeCard).size,
+                  total: activeCard.stageChanges?.length ?? 0,
+                })}
               </span>
-              <span style={{ fontSize: 'calc(11px * var(--font-scale))', color: 'var(--meta)' }}>
-                {t('aiFlow.stageApplyCount', { count: selected.size, total: changes.length })}
-              </span>
+              <div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelection((current) => ({
+                    ...current,
+                    [activeCard.id]: changedStageIds(activeCard.stageChanges),
+                  }))}
+                >
+                  {t('aiFlow.stageSelectAll')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelection((current) => ({
+                    ...current,
+                    [activeCard.id]: new Set(),
+                  }))}
+                >
+                  {t('aiFlow.stageSelectNone')}
+                </Button>
+              </div>
             </div>
-            {changes.map((change) => (
-              <label
-                key={`${card.id}-${change.id}`}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  fontSize: 'calc(13px * var(--font-scale))', cursor: 'pointer',
-                }}
-              >
+            {activeCard?.stageChanges?.map((change) => (
+              <label key={`${activeCard.id}-${change.id}`} className="flow-stage-apply-option">
                 <input
+                  className="flow-stage-apply-checkbox"
                   type="checkbox"
-                  checked={selected.has(change.id)}
-                  onChange={() => toggleStage(card, change.id)}
-                  style={{ flexShrink: 0 }}
+                  checked={selectedFor(activeCard).has(change.id)}
+                  onChange={() => toggleStage(activeCard, change.id)}
                 />
-                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span className="flow-stage-apply-option-title">
                   {change.title || change.key || `#${change.id}`}
                 </span>
-                <span style={{
-                  flexShrink: 0, fontSize: 'calc(11px * var(--font-scale))',
-                  color: 'var(--meta)',
-                }}>
+                <span className={`flow-stage-apply-change flow-stage-apply-change--${change.change}`}>
                   {t(CHANGE_LABEL[change.change] ?? 'aiFlow.stageChangeUpdated')}
                 </span>
               </label>
             ))}
-            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => setSelection((current) => ({
-                  ...current,
-                  [card.id]: new Set(changes.map((entry) => entry.id)),
-                }))}
-              >
-                {t('aiFlow.stageSelectAll')}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => setSelection((current) => ({ ...current, [card.id]: new Set() }))}
-              >
-                {t('aiFlow.stageSelectNone')}
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={disabled || selected.size === 0}
-                onClick={() => applyCard(card)}
-              >
-                {applied ? t('aiFlow.applied') : t('aiFlow.stageApplyButton')}
-              </Button>
-            </div>
           </div>
-        )
-      })}
+        )}
+      </ConfirmDialog>
     </div>
   )
 }

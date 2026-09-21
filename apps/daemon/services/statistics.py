@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from models import Message, ReviewRun, StepRun, Task, WorkflowRun
+from models import ChatMessage, ChatSession, Message, ReviewRun, StepRun, Task, WorkflowRun
 from models.fields import utc_now
 from services.config import config_store
 
@@ -135,6 +135,7 @@ class StatisticsModule:
         workflow_buckets: dict[tuple[str, str], MetricBucket] = {}
         stage_buckets: dict[str, dict[str, Any]] = {}
         engine_buckets: dict[tuple[str, str], dict[str, Any]] = {}
+        user_buckets: dict[str, dict[str, Any]] = {}
         quality = {
             "step_attempt_count": 0,
             "step_succeeded": 0,
@@ -288,6 +289,13 @@ class StatisticsModule:
                     engine["call_count"] += 1
                     _add_usage_to_dict(engine, usage)
                     engine["cost"] += cost
+                    _add_user_usage(
+                        user_buckets,
+                        message.author_id,
+                        message.author_name,
+                        usage,
+                        cost,
+                    )
 
                     if query.workflow_id is not None and message.channel in {"execution", "review"}:
                         stage = stage_buckets.setdefault(
@@ -295,6 +303,62 @@ class StatisticsModule:
                             _new_stage_bucket(message.step_key),
                         )
                         stage["total_tokens"] += usage["total_tokens"]
+
+                chat_query = (
+                    ChatMessage.select(ChatMessage, ChatSession)
+                    .join(ChatSession)
+                    .where(ChatSession.project_id == project.id)
+                )
+                if query.workflow_id is not None:
+                    chat_query = chat_query.where(
+                        ChatSession.workflow_id == query.workflow_id
+                    )
+                for message in chat_query:
+                    timestamp = message.created_at
+                    if not (
+                        message.role == "assistant"
+                        and message.status in TERMINAL_MESSAGE_STATUSES
+                        and _in_period(timestamp, period)
+                    ):
+                        continue
+                    global_bucket.eligible_calls += 1
+                    project_bucket.eligible_calls += 1
+                    workflow_id = message.session.workflow_id or None
+                    workflow_bucket = None
+                    if workflow_id:
+                        workflow_bucket = self._workflow_bucket(
+                            workflow_buckets,
+                            project.id,
+                            workflow_id,
+                        )
+                        workflow_bucket.eligible_calls += 1
+                    usage = _parse_usage(message.usage_json, message.engine)
+                    if usage is None:
+                        continue
+                    cost = _usage_cost(
+                        usage,
+                        message.model or "",
+                        pricing,
+                        engine=message.engine or "",
+                    )
+                    global_bucket.add_usage(usage, cost)
+                    project_bucket.add_usage(usage, cost)
+                    if workflow_bucket is not None:
+                        workflow_bucket.add_usage(usage, cost)
+                    self._trend_bucket(trend, timestamp, period).add_usage(usage, cost)
+                    earliest = _earlier(earliest, timestamp)
+                    engine_key = (message.engine or "unknown", message.model or "")
+                    engine = engine_buckets.setdefault(engine_key, _new_engine_bucket())
+                    engine["call_count"] += 1
+                    _add_usage_to_dict(engine, usage)
+                    engine["cost"] += cost
+                    _add_user_usage(
+                        user_buckets,
+                        message.author_id,
+                        message.author_name,
+                        usage,
+                        cost,
+                    )
 
         if query.range_key == "all":
             period = self._all_time_period(period, earliest)
@@ -339,6 +403,7 @@ class StatisticsModule:
             ) if query.project_id is not None and query.workflow_id is None else [],
             "stages": self._stage_reports(stage_buckets, projects, query),
             "engines": self._engine_reports(engine_buckets),
+            "users": _user_reports(user_buckets),
             "quality": quality_report,
             "data_quality": {
                 "eligible_token_calls": global_bucket.eligible_calls,
@@ -644,6 +709,46 @@ def _add_usage_to_dict(target: dict[str, Any], usage: dict[str, int]) -> None:
         "cache_write_tokens", "total_tokens",
     ):
         target[key] += usage[key]
+
+
+def _add_user_usage(
+    buckets: dict[str, dict[str, Any]],
+    author_id: str | None,
+    author_name: str | None,
+    usage: dict[str, Any],
+    cost: float,
+) -> None:
+    normalized_name = str(author_name or "").strip() or "未知用户"
+    normalized_id = str(author_id or "").strip()
+    key = normalized_id or f"name:{normalized_name}"
+    bucket = buckets.setdefault(key, {
+        "author_id": normalized_id,
+        "author_name": normalized_name,
+        "call_count": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "total_tokens": 0,
+        "cost": 0.0,
+    })
+    if normalized_name != "未知用户":
+        bucket["author_name"] = normalized_name
+    bucket["call_count"] += 1
+    _add_usage_to_dict(bucket, usage)
+    bucket["cost"] += cost
+
+
+def _user_reports(buckets: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    reports = []
+    for bucket in buckets.values():
+        report = dict(bucket)
+        report["cost"] = round(report["cost"], 6)
+        reports.append(report)
+    return sorted(
+        reports,
+        key=lambda row: (-row["total_tokens"], row["author_name"], row["author_id"]),
+    )
 
 
 def _parse_usage(raw: str | None, engine: str | None = None) -> dict[str, Any] | None:

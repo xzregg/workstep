@@ -108,6 +108,8 @@ def execution_report_fixture(tmp_path):
             usage: dict,
             engine: str,
             model: str,
+            author_id: str,
+            author_name: str,
         ) -> None:
             Message.create(
                 id=message_id,
@@ -118,6 +120,8 @@ def execution_report_fixture(tmp_path):
                 content="done",
                 engine=engine,
                 model=model,
+                author_id=author_id,
+                author_name=author_name,
                 run_id=message_id,
                 run_status="succeeded",
                 usage_json=json.dumps(usage),
@@ -140,6 +144,8 @@ def execution_report_fixture(tmp_path):
             },
             engine="claude",
             model="sonnet",
+            author_id="user-a",
+            author_name="小王",
         )
         message(
             "message-frontend-1",
@@ -149,6 +155,8 @@ def execution_report_fixture(tmp_path):
             usage={"input_tokens": 100, "output_tokens": 100, "total_tokens": 200},
             engine="codex",
             model="gpt-5",
+            author_id="user-a",
+            author_name="小王",
         )
         message(
             "message-review",
@@ -163,6 +171,8 @@ def execution_report_fixture(tmp_path):
             },
             engine="claude",
             model="sonnet",
+            author_id="user-a",
+            author_name="小王",
         )
         message(
             "message-frontend-2",
@@ -177,6 +187,8 @@ def execution_report_fixture(tmp_path):
             },
             engine="codex",
             model="gpt-5",
+            author_id="user-b",
+            author_name="小李",
         )
 
         pricing = {
@@ -225,6 +237,30 @@ def test_execution_report_groups_rounds_segments_usage_and_milestones(execution_
     assert report["segments"][3]["round"] == 2
     assert report["stage_breakdown"][0]["step_key"] == "frontend"
     assert report["stage_breakdown"][0]["total_tokens"] == 550
+    assert report["user_breakdown"] == [
+        {
+            "author_id": "user-a",
+            "author_name": "小王",
+            "message_count": 3,
+            "input_tokens": 190,
+            "output_tokens": 160,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "total_tokens": 350,
+            "cost": 0.0153,
+        },
+        {
+            "author_id": "user-b",
+            "author_name": "小李",
+            "message_count": 1,
+            "input_tokens": 200,
+            "output_tokens": 100,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "total_tokens": 300,
+            "cost": 0.03,
+        },
+    ]
     assert report["milestones"][0]["kind"] == "task_completed"
     assert report["milestones"][0]["at"] == "2026-09-20T02:18:00+00:00"
 

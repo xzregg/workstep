@@ -177,6 +177,99 @@ async def test_runtime_executes_saved_canvas_workflow(tmp_path):
 
 
 @pytest.mark.anyio
+async def test_runtime_merges_pending_inserts_after_stage_finishes(tmp_path):
+    """阶段结束后由后端合并待插入消息并重跑，不依赖页面存活。"""
+    from engines.core.registry import ENGINE_REGISTRY
+    from models import Message, PendingMessageInsert
+    from services.pending_message_inserts import create_pending_insert
+    from services.workflow_runtime import WorkflowRuntime
+
+    class BlockingFirstRunEngine(RuntimeFakeEngine):
+        calls = 0
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def spawn(self, prompt, cwd, **kwargs):
+            type(self).calls += 1
+            if type(self).calls == 1:
+                type(self).started.set()
+                await type(self).release.wait()
+            yield InternalEvent(
+                type="agent_message_chunk",
+                data={"content": {"text": "done"}},
+            )
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    task = Task.create(
+        id="task-pending-stage",
+        title="Pending stage inserts",
+        cwd=str(tmp_path),
+        engine="claude",
+        created_at=1,
+        updated_at=1,
+    )
+    project = SimpleNamespace(
+        id="project-pending-stage",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps={
+            "nodes": [
+                {"id": 1, "type": "do", "title": "执行", "engine": "claude"}
+            ],
+            "connections": [],
+        },
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = BlockingFirstRunEngine
+    bus = EventBus()
+    runtime = WorkflowRuntime(bus, ProjectManagerStub())
+    try:
+        first_run = asyncio.create_task(runtime.run(project.id, task.id, "开始"))
+        await asyncio.wait_for(BlockingFirstRunEngine.started.wait(), timeout=1)
+        target = (
+            Message.select()
+            .where(
+                (Message.task == task)
+                & (Message.channel == "execution")
+                & (Message.role == "assistant")
+                & (Message.run_status == "running")
+            )
+            .get()
+        )
+        create_pending_insert(target.id, "补充第一条", "测试用户")
+        create_pending_insert(target.id, "补充第二条", "测试用户")
+
+        BlockingFirstRunEngine.release.set()
+        await asyncio.wait_for(first_run, timeout=3)
+        for _ in range(200):
+            merged = Message.get_or_none(
+                (Message.task == task)
+                & (Message.role == "user")
+                & (Message.content == "补充第一条\n\n补充第二条")
+            )
+            if merged is not None and BlockingFirstRunEngine.calls == 2:
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError("pending stage inserts were not consumed")
+
+        assert merged.author_name == "测试用户"
+        assert PendingMessageInsert.select().count() == 0
+    finally:
+        await runtime.shutdown()
+        await bus.close()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
 async def test_restart_without_parent_reuses_passed_upstream_steps(tmp_path):
     """A legacy task retry starts at the requested stage, not its prerequisites."""
     from engines.core.registry import ENGINE_REGISTRY
@@ -521,6 +614,180 @@ async def test_restart_from_stage_picks_up_edited_engine(tmp_path):
         step = TaskStep.get((TaskStep.task == task) & (TaskStep.step_key == "do"))
         assert step.status == "passed"
         assert step.engine == "engine-b"
+    finally:
+        await runtime.shutdown()
+        ENGINE_REGISTRY.clear()
+        ENGINE_REGISTRY.update(original)
+        db.close()
+
+
+@pytest.mark.anyio
+async def test_restart_routes_reused_round_even_when_legacy_manifest_is_stale(tmp_path):
+    """A passed reused stage remains routable when its old manifest was not updated."""
+    import json
+
+    from engines.core.registry import ENGINE_REGISTRY
+    from services.artifact_rounds import step_round_dir, write_round_manifest
+    from services.workflow_runtime import WorkflowRuntime
+
+    db = init_db(str(tmp_path / "workstep.db"))
+    now = utc_now()
+    task = Task.create(
+        id="task-stale-reused-manifest",
+        title="Restart review",
+        cwd=str(tmp_path),
+        engine="claude",
+        workflow_id="workflow-1",
+        created_at=now,
+        updated_at=now,
+    )
+    workflow = {
+        "nodes": [
+            {
+                "id": 1,
+                "type": "write",
+                "title": "Write",
+                "engine": "claude",
+                "outputs": [{"name": "draft", "type": "md"}],
+            },
+            {
+                "id": 2,
+                "type": "review",
+                "title": "Review",
+                "engine": "claude",
+                "inputs": [{"name": "draft", "type": "md"}],
+            },
+            {
+                "id": 3,
+                "type": "publish",
+                "title": "Publish",
+                "engine": "claude",
+            },
+            {
+                "id": 4,
+                "type": "manual-extra",
+                "title": "Manual extra",
+                "engine": "claude",
+            },
+        ],
+        "connections": [
+            {"from": 1, "fromPort": 0, "to": 2, "toPort": 0},
+            {"from": 2, "fromPort": 0, "to": 3, "toPort": 0},
+        ],
+    }
+    project = SimpleNamespace(
+        id="project-stale-reused-manifest",
+        path=tmp_path,
+        workstep_dir=tmp_path / ".workstep",
+        steps=workflow,
+        workflow_by_id=lambda workflow_id: (
+            {"id": workflow_id, "steps": workflow}
+            if workflow_id == "workflow-1"
+            else None
+        ),
+    )
+    parent = WorkflowRun.create(
+        id="run-stale-reused-parent",
+        task=task,
+        status="succeeded",
+        workflow_schema_version=1,
+        workflow_snapshot_json=json.dumps(workflow),
+        started_at=now,
+        ended_at=now,
+    )
+    task.active_workflow_run_id = parent.id
+    task.save()
+    for step_key, status in (
+        ("write", "passed"),
+        ("review", "passed"),
+        ("publish", "passed"),
+        ("manual-extra", "pending"),
+    ):
+        TaskStep.create(
+            task=task,
+            step_key=step_key,
+            status=status,
+            engine="claude",
+            started_at=now if status == "passed" else None,
+            ended_at=now if status == "passed" else None,
+        )
+    source_run = StepRun.create(
+        id="step-run-stale-write",
+        run=parent,
+        step_key="write",
+        attempt=1,
+        artifact_round=1,
+        status="succeeded",
+        engine="claude",
+        started_at=now,
+        ended_at=now,
+    )
+    round_dir = step_round_dir(
+        project.workstep_dir / "artifacts",
+        task.workflow_id,
+        task.id,
+        "write",
+        1,
+    )
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "draft.md").write_text("approved draft", encoding="utf-8")
+    write_round_manifest(
+        artifacts_root=project.workstep_dir / "artifacts",
+        workflow_id=task.workflow_id,
+        task_id=task.id,
+        step_key="write",
+        artifact_round=1,
+        workflow_run_id=parent.id,
+        step_run_id=source_run.id,
+        status="awaiting_review",
+        eligible_for_downstream=False,
+        outputs=[{"name": "draft", "type": "md"}],
+    )
+    # Older WorkStep versions only recorded the artifact list.  Reusing one
+    # of those rounds must still restore its outgoing forward route.
+    manifest_path = round_dir / "manifest.json"
+    legacy_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    legacy_manifest.pop("outputs")
+    manifest_path.write_text(
+        json.dumps(legacy_manifest, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    class ProjectManagerStub:
+        def activate_project_by_id(self, project_id):
+            assert project_id == project.id
+            return nullcontext(project)
+
+    original = ENGINE_REGISTRY.copy()
+    ENGINE_REGISTRY["claude"] = RuntimeFakeEngine
+    runtime = WorkflowRuntime(EventBus(), ProjectManagerStub())
+    try:
+        handle = await runtime.restart_from_stage(
+            project.id,
+            task.id,
+            "review",
+        )
+        await runtime.wait(handle)
+
+        child = WorkflowRun.get_by_id(handle.id)
+        runs = {
+            row.step_key: row.status
+            for row in StepRun.select().where(StepRun.run == child)
+        }
+        assert runs == {
+            "write": "reused",
+            "review": "succeeded",
+            "publish": "succeeded",
+        }
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "review")
+        ).status == "passed"
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "publish")
+        ).status == "passed"
+        assert TaskStep.get(
+            (TaskStep.task == task) & (TaskStep.step_key == "manual-extra")
+        ).status == "pending"
     finally:
         await runtime.shutdown()
         ENGINE_REGISTRY.clear()

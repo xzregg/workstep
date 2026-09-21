@@ -36,8 +36,19 @@ test('plainText keeps typed newlines as literal line breaks without Markdown blo
 test('plainText still renders uploaded images and file links', () => {
   const html = render('看图 ![shot](.workstep/uploads/a.png) 结束 [报告](docs/report.pdf)', true)
   assert.match(html, /<img/)
+  assert.match(html, /class="markdown-inline-image"/)
   assert.match(html, /src="\/api\/fs\/serve\/a\.png\?project_id=project-1"/)
   assert.match(html, /class="markdown-file-link"/)
   assert.match(html, /data-file-preview="true"/)
   assert.match(html, /href="docs\/report\.pdf"/)
+})
+
+test('plainText groups consecutive images inline even when markdown contains blank separators', () => {
+  const html = render(
+    '![one](.workstep/uploads/one.png)\n\n![two](.workstep/uploads/two.png)',
+    true,
+  )
+
+  assert.equal((html.match(/class="markdown-inline-image"/g) ?? []).length, 2)
+  assert.doesNotMatch(html, /<\/span>\n\n<span class="markdown-inline-image">/)
 })

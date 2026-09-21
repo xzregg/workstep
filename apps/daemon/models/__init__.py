@@ -4,6 +4,7 @@ import peewee as pw
 from models.base import db_proxy, BaseModel
 from models.task import Task, TaskStep
 from models.message import Message
+from models.pending_message_insert import PendingMessageInsert
 from models.schema import SchemaVersion
 from models.run import StepRun, WorkflowRun
 from models.review import ReviewRun
@@ -27,6 +28,7 @@ ALL_MODELS = [
     Task,
     TaskStep,
     Message,
+    PendingMessageInsert,
     WorkflowRun,
     StepRun,
     ReviewRun,

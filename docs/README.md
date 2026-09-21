@@ -1,6 +1,7 @@
 # WorkStep documentation
 
 - [Architecture](architecture.md) — components, storage, engine boundary, and event flow.
+- [Workflow engine execution](workflow-engine-execution.md) — task creation, DAG scheduling, stage prompts, reviews, artifact routing, reruns, coordinator actions, and recovery.
 - [Engine runtime management](engine-runtime-management.md) — version selection, measured package downloads, and rollback.
 - [Development](development.md) — setup, test commands, coding conventions, and pull-request checks.
 - [Project skill center](skill-center.md) — discovery, project selection, mirroring, API, and engine isolation.

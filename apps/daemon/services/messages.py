@@ -39,6 +39,81 @@ def current_actor_task_fields() -> dict[str, str]:
     }
 
 
+_AUTHOR_FIELDS = (
+    "author_id",
+    "author_name",
+    "author_device_id",
+    "author_device_name",
+)
+
+
+def _message_author_fields(message: Message | None) -> dict[str, str]:
+    if message is None:
+        return {}
+    return {
+        field: value
+        for field in _AUTHOR_FIELDS
+        if (value := getattr(message, field, None))
+    }
+
+
+def attributed_actor_message_fields(
+    task: Task,
+    *,
+    reply_to_message_id: str | None = None,
+    channel: str | None = None,
+    step_key: str | None = None,
+) -> dict[str, str]:
+    """Resolve the person whose action caused a task assistant message.
+
+    Prefer an explicit replied-to message, then the newest attributed task
+    message.  This makes live ``@stage`` continuations switch attribution at
+    the exact response boundary while automatic stages inherit the persisted
+    execution chain.  The task creator is the final fallback.
+    """
+    source = None
+    if reply_to_message_id:
+        source = Message.get_or_none(Message.id == reply_to_message_id)
+    if source is None:
+        base_predicate = (
+            (Message.task == task)
+            & (Message.author_name.is_null(False))
+            & (Message.author_name != "")
+        )
+        if channel == "review" and step_key:
+            predicate = base_predicate & (
+                (Message.step_key == step_key)
+                & (Message.channel.in_(["execution", "review"]))
+            )
+        elif channel:
+            predicate = base_predicate & (Message.channel == channel)
+            if step_key:
+                source = (
+                    Message.select()
+                    .where(predicate & (Message.step_key == step_key))
+                    .order_by(Message.sequence.desc(), Message.created_at.desc())
+                    .first()
+                )
+        else:
+            predicate = base_predicate
+        if source is None:
+            source = (
+                Message.select()
+                .where(predicate)
+                .order_by(Message.sequence.desc(), Message.created_at.desc())
+                .first()
+            )
+    fields = _message_author_fields(source)
+    if fields:
+        return fields
+    return {
+        "author_id": task.creator_id,
+        "author_name": task.creator_name,
+        "author_device_id": task.creator_device_id,
+        "author_device_name": task.creator_device_name,
+    } if task.creator_name else {}
+
+
 _UUID7_RANDOM_BITS = 74
 _UUID7_RANDOM_MASK = (1 << _UUID7_RANDOM_BITS) - 1
 _uuid7_lock = threading.Lock()
@@ -105,7 +180,19 @@ def create_task_message(*, task: Task, channel: str, **fields) -> Message:
     if "id" not in fields:
         fields["id"] = new_message_id()
     if fields.get("role") == "user":
-        for key, value in current_actor_message_fields().items():
+        actor_fields = current_actor_message_fields()
+        provided_name = str(fields.get("author_name") or "").strip()
+        if not provided_name or provided_name == actor_fields.get("author_name"):
+            for key, value in actor_fields.items():
+                fields.setdefault(key, value)
+    elif fields.get("role") == "assistant":
+        actor_fields = attributed_actor_message_fields(
+            task,
+            reply_to_message_id=fields.get("reply_to_message_id"),
+            channel=channel,
+            step_key=fields.get("step_key"),
+        )
+        for key, value in actor_fields.items():
             fields.setdefault(key, value)
     return Message.create(
         task=task,

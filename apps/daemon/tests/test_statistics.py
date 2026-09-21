@@ -8,7 +8,15 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from models import Message, ReviewRun, StepRun, Task, WorkflowRun
+from models import (
+    ChatMessage,
+    ChatSession,
+    Message,
+    ReviewRun,
+    StepRun,
+    Task,
+    WorkflowRun,
+)
 from services.project import DEFAULT_STEPS, ProjectManager
 from services.statistics import StatisticsModule, StatisticsQuery, _usage_cost
 
@@ -336,6 +344,82 @@ def test_statistics_aggregates_projects_runs_usage_and_quality(statistics_fixtur
     assert engine["model"] == "gpt-5"
     assert engine["call_count"] == 3
     assert engine["total_tokens"] == 215
+
+
+def test_statistics_groups_task_and_chat_usage_by_user(statistics_fixture):
+    manager, project, _, base = statistics_fixture
+    workflow = project.default_workflow()
+    assert workflow is not None
+    with manager.activate_project_by_id(project.id):
+        task_message = Message.get_by_id("message-execution")
+        task_message.author_id = "user-a"
+        task_message.author_name = "小王"
+        task_message.save()
+        Message.update(author_id="user-b", author_name="小李").where(
+            Message.id.in_(["message-review", "message-coordinator"])
+        ).execute()
+
+        session = ChatSession.create(
+            id="chat-statistics",
+            project_id=project.id,
+            workflow_id=workflow["id"],
+            title="统计会话",
+            engine="codex",
+            model="gpt-5",
+            created_at=base,
+            updated_at=base,
+        )
+        ChatMessage.create(
+            id="chat-assistant",
+            session=session,
+            role="assistant",
+            content="完成",
+            author_id="user-a",
+            author_name="小王",
+            status="succeeded",
+            engine="codex",
+            model="gpt-5",
+            usage_json=json.dumps({
+                "input_tokens": 40,
+                "output_tokens": 10,
+                "total_tokens": 50,
+            }),
+            created_at=base + timedelta(hours=3),
+            ended_at=base + timedelta(hours=3, minutes=1),
+        )
+
+    report = StatisticsModule(manager).overview(StatisticsQuery(
+        project_id=project.id,
+        range_key="custom",
+        start=base,
+        end=base + timedelta(days=1),
+    ))
+
+    assert report["summary"]["total_tokens"] == 265
+    assert report["users"] == [
+        {
+            "author_id": "user-a",
+            "author_name": "小王",
+            "call_count": 2,
+            "input_tokens": 140,
+            "output_tokens": 30,
+            "cache_read_tokens": 30,
+            "cache_write_tokens": 10,
+            "total_tokens": 170,
+            "cost": 0.0,
+        },
+        {
+            "author_id": "user-b",
+            "author_name": "小李",
+            "call_count": 2,
+            "input_tokens": 80,
+            "output_tokens": 15,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "total_tokens": 95,
+            "cost": 0.0,
+        },
+    ]
 
 
 def test_statistics_cache_rate_uses_inclusive_input_semantics(statistics_fixture):

@@ -48,6 +48,8 @@ export interface ChatInputTextSegmentProps {
   placeholder?: string
   disabled?: boolean
   rows?: number
+  /** Keep short text beside an adjacent image instead of forcing a full row. */
+  inlineWithImage?: boolean
   /** Forwarded to the textarea (the last text run exposes it to focus flows). */
   externalRef?: Ref<HTMLTextAreaElement>
   /** Element registration so the parent keeps its focus/segment maps. */
@@ -67,6 +69,7 @@ export default function ChatInputTextSegment({
   placeholder,
   disabled = false,
   rows = 1,
+  inlineWithImage = false,
   externalRef,
   onElement,
   onCommitText,
@@ -176,7 +179,7 @@ export default function ChatInputTextSegment({
   return (
     <textarea
       ref={attachRef}
-      className="chat-input-text-segment"
+      className={`chat-input-text-segment${inlineWithImage ? ' chat-input-text-segment--inline' : ''}`}
       value={draft ?? markdown}
       onChange={handleChange}
       onCompositionStart={handleCompositionStart}

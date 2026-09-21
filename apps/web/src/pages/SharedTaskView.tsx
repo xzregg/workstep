@@ -22,6 +22,7 @@ import {
   isTaskCompleted,
   resolveStageDisplayStatus,
   findPreferredArtifact,
+  findActiveStageIndex,
 } from './taskDetailChat'
 import { useI18n } from '../i18n'
 import { formatScheduledStart } from '../utils/scheduledStart'
@@ -477,17 +478,7 @@ export default function SharedTaskView() {
         step?.previous_status,
       )
     })
-    let activeIndex = rawStatuses.findIndex((status) =>
-      ['running', 'reviewing', 'awaiting_review', 'retrying', 'rework', 'rework_waiting'].includes(
-        status,
-      ),
-    )
-    if (activeIndex < 0) {
-      activeIndex = rawStatuses.findIndex((status) => status === 'failed')
-    }
-    if (activeIndex < 0) {
-      activeIndex = rawStatuses.findIndex((status) => status === 'pending')
-    }
+    const activeIndex = findActiveStageIndex(rawStatuses, task?.status)
     return keys.map((key, index) => {
       const step = stepByKey.get(key)
       const status = rawStatuses[index]
@@ -505,7 +496,7 @@ export default function SharedTaskView() {
       else if (index === activeIndex) visualState = 'current'
       return { ...step, visualState }
     })
-  }, [task?.steps, workflowNodes])
+  }, [task?.status, task?.steps, workflowNodes])
 
   const activeStageIndex = useMemo(() => {
     const current = stageProgress.findIndex((progress: StageProgress) =>
@@ -522,8 +513,16 @@ export default function SharedTaskView() {
     const failed = stageProgress.findIndex(
       (progress: StageProgress) => progress.visualState === 'failed',
     )
-    return failed >= 0 ? failed : Math.max(0, stages.length - 1)
-  }, [stageProgress, stages.length])
+    if (failed >= 0) return failed
+    const restartTarget = stages.findIndex((stage) =>
+      stage.key === task?.restart_from_step_key
+    )
+    if (restartTarget >= 0) return restartTarget
+    for (let index = stageProgress.length - 1; index >= 0; index -= 1) {
+      if (stageProgress[index].visualState !== 'pending') return index
+    }
+    return 0
+  }, [stageProgress, stages, task?.restart_from_step_key])
 
   useEffect(() => {
     if (!task?.id || selectedStageTaskRef.current === task.id) return
@@ -573,6 +572,12 @@ export default function SharedTaskView() {
       : src,
     [token, shareSessionToken],
   )
+  const executionReportLoader = useCallback(() => {
+    if (!token || !shareSessionToken) {
+      return Promise.reject(new Error(t('share.sessionExpired')))
+    }
+    return shareApi.executionReport(token, shareSessionToken)
+  }, [shareSessionToken, t, token])
   const runningStages = useMemo(
     () => stages.filter((stage) => (
       stageProgress.some((progress) => (
@@ -850,7 +855,6 @@ export default function SharedTaskView() {
   return (
     <SharePageShell>
       <TaskDetailPage
-        readOnly
         chatEnabled={interactive}
         task={task}
         stages={stages}
@@ -900,6 +904,7 @@ export default function SharedTaskView() {
         onCloseArtifactPreview={() => setPreviewArtifact(null)}
         artifactNotice={artifactNotice || undefined}
         markdownUrlResolver={markdownUrlResolver}
+        executionReportLoader={executionReportLoader}
       />
     </SharePageShell>
   )

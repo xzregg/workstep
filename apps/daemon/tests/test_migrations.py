@@ -47,6 +47,26 @@ def test_init_db_creates_latest_schema_for_fresh_projects(tmp_path):
 
         task_shares = {column.name for column in db.get_columns("task_shares")}
         assert "mode" in task_shares
+
+        workflow_runs = {
+            column.name for column in db.get_columns("workflow_runs")
+        }
+        assert "routing_state_json" in workflow_runs
+        step_runs = {column.name for column in db.get_columns("step_runs")}
+        assert "input_snapshot_json" in step_runs
+
+        pending = {
+            column.name for column in db.get_columns("pending_message_inserts")
+        }
+        assert pending == {
+            "id",
+            "target_message_id",
+            "content",
+            "position",
+            "username",
+            "created_at",
+            "updated_at",
+        }
     finally:
         db.close()
 

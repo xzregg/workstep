@@ -410,10 +410,22 @@ async def test_runner_delivers_live_message_to_running_stage(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_runner_splits_stage_message_on_live_insert(tmp_path):
+async def test_runner_splits_stage_message_on_live_insert(tmp_path, monkeypatch):
     """An injected message lands between the pre-insert stage output and the
     stage's follow-up response, like Codex conversation segments."""
     db, task, steps_config, bus, runner, original = _make_runner_task(tmp_path, SplitLiveFakeEngine)
+    from services.remote_project import ActorSnapshot
+
+    monkeypatch.setattr(
+        "services.remote_project.get_effective_actor",
+        lambda: ActorSnapshot(
+            actor_id="user-live",
+            user_name="阶段操作人",
+            device_id="device-live",
+            device_name="操作电脑",
+            source="local",
+        ),
+    )
     LiveFakeEngine.received = []
     try:
         pipeline = asyncio.create_task(
@@ -438,6 +450,9 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path):
         assert post_insert.content == "第二段输出"
         assert pre_insert.run_status == "succeeded"
         assert post_insert.run_status == "succeeded"
+        assert inserted.author_name == "阶段操作人"
+        assert post_insert.author_id == "user-live"
+        assert post_insert.author_name == "阶段操作人"
         assert json.loads(post_insert.prompt_json)["prompt"] == "插入内容"
         assert pre_insert.sequence < inserted.sequence < post_insert.sequence
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。

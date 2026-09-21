@@ -23,6 +23,28 @@ test('reconnect refresh preserves the board workflow and archive filter', async 
   }
 })
 
+test('concurrent refreshes for the same board query share one request', async () => {
+  const original = taskApi.list
+  let calls = 0
+  let finish!: (value: { tasks: Task[] }) => void
+  taskApi.list = async () => {
+    calls++
+    return new Promise(resolve => { finish = resolve })
+  }
+  try {
+    const first = useTaskStore.getState().fetchTasks('project', 'default', false)
+    const second = useTaskStore.getState().fetchTasks('project', 'default', false)
+
+    await Promise.resolve()
+    assert.equal(calls, 1)
+    finish({ tasks: [{ id: 'default-task' }] as Task[] })
+    await Promise.all([first, second])
+    assert.deepEqual(useTaskStore.getState().tasks.map(task => task.id), ['default-task'])
+  } finally {
+    taskApi.list = original
+  }
+})
+
 test('a late response from the previous workflow cannot replace the current list', async () => {
   const original = taskApi.list
   let finishOld!: (value: { tasks: Task[] }) => void

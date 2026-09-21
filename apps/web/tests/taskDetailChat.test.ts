@@ -3,10 +3,17 @@ import test from 'node:test'
 
 import {
   artifactsForMessage,
+  findActiveStageIndex,
   findPreferredArtifact,
   findActionablePendingReview,
   resolveStageDisplayStatus,
 } from '../src/pages/taskDetailChat.ts'
+
+test('does not present an idle pending stage as currently running', () => {
+  assert.equal(findActiveStageIndex(['passed', 'skipped', 'pending'], 'ready'), -1)
+  assert.equal(findActiveStageIndex(['passed', 'skipped', 'pending'], 'running'), 2)
+  assert.equal(findActiveStageIndex(['passed', 'failed', 'pending'], 'ready'), 1)
+})
 
 test('keeps previous stage result visible while the current run is pending', () => {
   assert.equal(resolveStageDisplayStatus('pending', 'passed'), 'passed')
@@ -127,12 +134,12 @@ import {
   orderConversationMessages,
   resolveMessageReview,
   resolveTaskChatTarget,
+  taskTargetStagesInWorkflowOrder,
   reviewActorLabel,
   resolveMessageError,
   resolveMessagePrompt,
   shouldRenderLegacyExecution,
   stageAvatarText,
-  shouldAutoDrainStageInsert,
 } from '../src/pages/taskDetailChat.ts'
 
 test('formats the person who completed a manual review', () => {
@@ -174,32 +181,17 @@ test('the chat target stays on coordinator unless a selected stage is still avai
   )
 })
 
-test('stage insert auto-drain requires the same task-stage queue owner', () => {
-  const ready = {
-    previousKey: 'task-a:implement',
-    stageRunKey: 'task-a:implement',
-    queueReady: true,
-    activeStageRunning: false,
-    autoDraining: false,
-    awaitingRunStart: false,
-    editingInsert: false,
-    queueLength: 1,
-  }
+test('orders stage targets by workflow instead of execution state', () => {
+  const stages = [
+    { key: 'requirement', label: '需求' },
+    { key: 'design', label: '设计' },
+    { key: 'develop', label: '开发' },
+  ]
 
-  assert.equal(shouldAutoDrainStageInsert(ready), true)
-  assert.equal(
-    shouldAutoDrainStageInsert({
-      ...ready,
-      stageRunKey: 'task-b:implement',
-    }),
-    false,
-  )
-  assert.equal(
-    shouldAutoDrainStageInsert({
-      ...ready,
-      queueReady: false,
-    }),
-    false,
+  assert.deepEqual(
+    taskTargetStagesInWorkflowOrder(stages, ['develop'], ['requirement', 'design'])
+      .map((stage) => stage.key),
+    ['requirement', 'design', 'develop'],
   )
 })
 
@@ -677,6 +669,49 @@ test('moves a still-running stage message below the inserted user message', () =
     { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容', run_status: 'completed' },
   ], now)
   assert.deepEqual(ordered.map((m) => m.id), ['U', 'A'])
+})
+
+test('keeps a coordinator reply after the user message when their timestamps are equal', () => {
+  const ordered = orderConversationMessages([
+    {
+      id: 'assistant',
+      role: 'assistant',
+      channel: 'coordinator',
+      reply_to_message_id: 'user',
+      run_status: 'running',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+    {
+      id: 'user',
+      role: 'user',
+      channel: 'coordinator',
+      run_status: 'completed',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+
+  assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
+})
+
+test('never gives a running reply an effective time before its own creation', () => {
+  const ordered = orderConversationMessages([
+    {
+      id: 'assistant',
+      role: 'assistant',
+      channel: 'coordinator',
+      run_status: 'running',
+      created_at: '2026-09-21T06:40:25.100Z',
+    },
+    {
+      id: 'user',
+      role: 'user',
+      channel: 'coordinator',
+      run_status: 'completed',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+
+  assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
 })
 
 test('sorts finished stage messages by their completion time', () => {

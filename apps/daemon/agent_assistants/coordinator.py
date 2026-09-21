@@ -44,6 +44,10 @@ from services.messages import (
     current_actor_message_fields,
     new_message_id,
 )
+from services.pending_message_inserts import (
+    delete_pending_insert_batch,
+    pending_insert_batch,
+)
 from services.task_runner import extract_usage_json
 from services.remote_project import current_actor_event_fields
 from services.tool_registry import workstep_cli_instruction
@@ -465,6 +469,9 @@ class CoordinatorModule:
         task_id: str,
         content: str,
         idempotency_key: str,
+        *,
+        author_name: str = "",
+        pending_insert_ids: list[str] | None = None,
     ) -> ChatAccepted:
         normalized = content.strip()
         if not normalized:
@@ -475,7 +482,12 @@ class CoordinatorModule:
         persisted = await self._run_db(
             project_id,
             lambda: self._persist_submission(
-                project_id, task_id, normalized, idempotency_key
+                project_id,
+                task_id,
+                normalized,
+                idempotency_key,
+                author_name=author_name,
+                pending_insert_ids=pending_insert_ids,
             ),
         )
         accepted, user_message, created = persisted
@@ -502,6 +514,9 @@ class CoordinatorModule:
         task_id: str,
         normalized: str,
         idempotency_key: str,
+        *,
+        author_name: str = "",
+        pending_insert_ids: list[str] | None = None,
     ):
         with self._project_manager.activate_project_by_id(project_id) as project:
             existing = CoordinatorTurn.get_or_none(
@@ -542,6 +557,10 @@ class CoordinatorModule:
                 user_sequence = allocate_message_sequences(current.id, count=2)
                 assistant_sequence = user_sequence + 1
                 current.next_message_sequence = assistant_sequence + 1
+                actor_fields = current_actor_message_fields()
+                if author_name.strip():
+                    if author_name.strip() != actor_fields.get("author_name"):
+                        actor_fields = {"author_name": author_name.strip()}
                 user_message = Message.create(
                     id=user_message_id,
                     task=current,
@@ -557,7 +576,7 @@ class CoordinatorModule:
                     started_at=now,
                     ended_at=now,
                     created_at=now,
-                    **current_actor_message_fields(),
+                    **actor_fields,
                 )
                 assistant_message = Message.create(
                     id=assistant_message_id,
@@ -576,6 +595,7 @@ class CoordinatorModule:
                     event_log_path=journal_ref.relative_path,
                     position=1,
                     created_at=now,
+                    **actor_fields,
                 )
                 CoordinatorTurn.create(
                     id=turn_id,
@@ -588,6 +608,7 @@ class CoordinatorModule:
                     model=model,
                     created_at=now,
                 )
+                delete_pending_insert_batch(pending_insert_ids or [])
 
             return (
                 ChatAccepted(
@@ -1166,6 +1187,32 @@ class CoordinatorModule:
                     {"status": "failed", "error": str(exc)},
                     2,
                 )
+            await self._consume_pending_inserts(
+                project_id,
+                task_id,
+                turn.assistant_message_id,
+            )
+
+    async def _consume_pending_inserts(
+        self,
+        project_id: str,
+        task_id: str,
+        target_message_id: str,
+    ) -> None:
+        ids, content, username = await self._run_db(
+            project_id,
+            lambda: pending_insert_batch(target_message_id),
+        )
+        if not ids or not content:
+            return
+        await self.submit_message(
+            project_id,
+            task_id,
+            content,
+            f"pending-inserts:{target_message_id}",
+            author_name=username,
+            pending_insert_ids=ids,
+        )
 
     def _record_unstreamed_journal_events(
         self,

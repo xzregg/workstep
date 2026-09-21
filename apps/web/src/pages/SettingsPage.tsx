@@ -1,3 +1,4 @@
+import GitScanSettings from './GitScanSettings'
 import ProjectDirectorySetting from '../components/ProjectDirectorySetting'
 import { useCompactLayout } from '../hooks/useCompactLayout'
 import { useOverlay } from '../hooks/useOverlay'
@@ -32,6 +33,7 @@ import RemoteProjectSettings from './RemoteProjectSettings'
 import ModelPricingSettings from './ModelPricingSettings'
 import SkillCenterSettings from './SkillCenterSettings'
 import ChannelsPage from './ChannelsPage'
+import GlobalConcurrencySettings from './GlobalConcurrencySettings'
 import {
   ENGINE_COLORS,
   engineLabel,
@@ -757,7 +759,7 @@ interface EnhanceProviderInfo {
   enabled: boolean
 }
 
-export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'skills' | 'channels' | 'remote' | 'system'
+export type SettingsSection = 'engines' | 'providers' | 'pricing' | 'assistants' | 'templates' | 'skills' | 'channels' | 'remote' | 'concurrency' | 'git' | 'system'
 export type SettingsFocusTarget = 'provider-create' | 'execution-engine'
 
 interface SettingsPageProps {
@@ -1238,6 +1240,30 @@ export default function SettingsPage({
           {t('nav.remoteProjects')}
         </button>
         <button
+          aria-current={activeSection === 'concurrency' ? 'page' : undefined}
+          onClick={() => setActiveSection('concurrency')}
+          style={{
+            width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+            gap: 9, borderRadius: 8, background: activeSection === 'concurrency' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'concurrency' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
+          }}
+        >
+          <Icon name="layers" size={16} strokeWidth={2} />
+          {t('projectSettings.tabs.concurrency')}
+        </button>
+        <button
+          aria-current={activeSection === 'git' ? 'page' : undefined}
+          onClick={() => setActiveSection('git')}
+          style={{ width: '100%', height: 38, padding: '0 11px', marginTop: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 9, borderRadius: 8,
+            background: activeSection === 'git' ? 'var(--bg)' : 'transparent',
+            color: activeSection === 'git' ? 'var(--fg)' : 'var(--muted)', fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600 }}
+        >
+          <Icon name="git-fork" size={16} />
+          {t('gitSettings.title')}
+        </button>
+        <button
           aria-current={activeSection === 'system' ? 'page' : undefined}
           onClick={() => setActiveSection('system')}
           style={{
@@ -1697,6 +1723,10 @@ export default function SettingsPage({
           <ChannelsPage />
         ) : activeSection === 'remote' ? (
           <RemoteProjectSettings />
+        ) : activeSection === 'concurrency' ? (
+          <GlobalConcurrencySettings />
+        ) : activeSection === 'git' ? (
+          <GitScanSettings />
         ) : activeSection === 'system' ? (
           <div style={{ maxWidth: 640, margin: '0 auto' }}>
             <h1 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 650, marginBottom: 6 }}>{t('settings.systemTitle')}</h1>

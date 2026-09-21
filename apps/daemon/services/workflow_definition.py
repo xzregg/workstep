@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from services.config import resolve_execution_engine
+from services.workflow_limits import (
+    MAX_CONFIGURED_RETURN_ROUNDS,
+    MAX_RETURN_ROUNDS,
+)
 
 
 class WorkflowValidationError(ValueError):
@@ -237,7 +241,23 @@ class WorkflowDefinition:
             nodes = self._raw.get("nodes", [])
             dependencies = {node["id"]: [] for node in nodes}
             rework_by_id: dict[Any, list[str]] = {node["id"]: [] for node in nodes}
-            for connection in self._raw.get("connections", []):
+            incoming_by_id: dict[Any, list[dict[str, Any]]] = {
+                node["id"]: [] for node in nodes
+            }
+            outgoing_by_id: dict[Any, list[dict[str, Any]]] = {
+                node["id"]: [] for node in nodes
+            }
+            for index, connection in enumerate(self._raw.get("connections", [])):
+                compiled_connection = {
+                    "id": f"connection-{index}",
+                    "from": self._node_key_by_id(connection["from"]),
+                    "fromPort": int(connection.get("fromPort", 0)),
+                    "to": self._node_key_by_id(connection["to"]),
+                    "toPort": int(connection.get("toPort", 0)),
+                    "kind": connection.get("kind", "solid"),
+                }
+                outgoing_by_id[connection["from"]].append(compiled_connection)
+                incoming_by_id[connection["to"]].append(compiled_connection)
                 if connection.get("kind", "solid") == "dashed":
                     # Dashed edges point from the verifier to its producers:
                     # the verifier declares the producers as rework targets.
@@ -260,6 +280,11 @@ class WorkflowDefinition:
                         ),
                         "dependsOn": dependencies[node["id"]],
                         "reworkUpstream": rework_by_id[node["id"]],
+                        "maxReturnRounds": node.get(
+                            "maxReturnRounds", MAX_RETURN_ROUNDS
+                        ),
+                        "incomingConnections": incoming_by_id[node["id"]],
+                        "outgoingConnections": outgoing_by_id[node["id"]],
                     }
                 )
                 for node in nodes
@@ -329,6 +354,27 @@ class WorkflowDefinition:
             "condition": step.get("condition", ""),
             "reworkUpstream": list(step.get("reworkUpstream", [])),
         }
+        if "maxReturnRounds" in step:
+            max_return_rounds = step.get("maxReturnRounds")
+            if (
+                not isinstance(max_return_rounds, int)
+                or isinstance(max_return_rounds, bool)
+                or max_return_rounds < 1
+                or max_return_rounds > MAX_CONFIGURED_RETURN_ROUNDS
+            ):
+                raise WorkflowValidationError(
+                    f"step '{normalized['key']}'.maxReturnRounds: expected "
+                    f"an integer between 1 and {MAX_CONFIGURED_RETURN_ROUNDS}"
+                )
+            normalized["maxReturnRounds"] = max_return_rounds
+        if "incomingConnections" in step:
+            normalized["incomingConnections"] = deepcopy(
+                step.get("incomingConnections", [])
+            )
+        if "outgoingConnections" in step:
+            normalized["outgoingConnections"] = deepcopy(
+                step.get("outgoingConnections", [])
+            )
         if step.get("kind") == "task_dispatch":
             dispatch = step.get("dispatch")
             if not isinstance(dispatch, dict):

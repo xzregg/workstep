@@ -261,37 +261,13 @@ export function resolveTaskChatTarget(
   return runningStageKeys[0] ?? resumableStageKeys[0] ?? 'coordinator'
 }
 
-interface StageInsertAutoDrainState {
-  previousKey: string | null
-  stageRunKey: string
-  queueReady: boolean
-  activeStageRunning: boolean
-  autoDraining: boolean
-  awaitingRunStart: boolean
-  editingInsert: boolean
-  queueLength: number
-}
-
-/** 只有同一任务阶段恢复为同一队列的空闲态时，才允许自动推进插入消息。 */
-export function shouldAutoDrainStageInsert({
-  previousKey,
-  stageRunKey,
-  queueReady,
-  activeStageRunning,
-  autoDraining,
-  awaitingRunStart,
-  editingInsert,
-  queueLength,
-}: StageInsertAutoDrainState): boolean {
-  return Boolean(stageRunKey)
-    && queueReady
-    && previousKey !== null
-    && previousKey === stageRunKey
-    && !activeStageRunning
-    && !autoDraining
-    && !awaitingRunStart
-    && !editingInsert
-    && queueLength > 0
+export function taskTargetStagesInWorkflowOrder<T extends { key: string }>(
+  stages: readonly T[],
+  runningStageKeys: readonly string[],
+  resumableStageKeys: readonly string[],
+): T[] {
+  const available = new Set([...runningStageKeys, ...resumableStageKeys])
+  return stages.filter((stage) => available.has(stage.key))
 }
 
 export interface ArtifactRoundChoice {
@@ -482,7 +458,7 @@ export function orderConversationMessages(
     if (message.role !== 'user' && (
       message.run_status === 'running' || message.status === 'running'
     )) {
-      return now
+      return Math.max(now, toMilliseconds(message.created_at) ?? 0)
     }
     if (message.role === 'user') {
       return toMilliseconds(message.created_at) ?? 0
@@ -492,6 +468,11 @@ export function orderConversationMessages(
       ?? 0
   }
   return [...messages].sort((left, right) => {
+    // 回复与被回复消息是明确的因果关系，优先级高于时间戳。协调助手的
+    // user/assistant 消息会在同一数据库工作单元里使用相同 created_at；
+    // 实时刷新期间也可能暂时缺少 sequence，因此不能依赖稳定排序碰运气。
+    if (left.reply_to_message_id === right.id) return 1
+    if (right.reply_to_message_id === left.id) return -1
     const leftTime = effectiveTime(left)
     const rightTime = effectiveTime(right)
     const leftStage = left.context_step_key || left.step_key
@@ -676,7 +657,7 @@ export function resolveTaskComposerState({
   prompt = '',
 }: TaskComposerStateInput): { disabled: boolean; running: boolean } {
   if (target === 'coordinator') {
-    return { disabled: coordinatorRunning, running: coordinatorRunning }
+    return { disabled: false, running: coordinatorRunning }
   }
   if (stageResuming) return { disabled: true, running: true }
   return {
@@ -724,6 +705,28 @@ export function resolveStageDisplayStatus(
     : status
 }
 
+const ACTIVE_STAGE_PROGRESS_STATUSES = new Set([
+  'running',
+  'reviewing',
+  'awaiting_review',
+  'retrying',
+  'rework',
+  'rework_waiting',
+])
+
+export function findActiveStageIndex(
+  statuses: readonly string[],
+  taskStatus?: string | null,
+): number {
+  const active = statuses.findIndex((status) => ACTIVE_STAGE_PROGRESS_STATUSES.has(status))
+  if (active >= 0) return active
+  const failed = statuses.findIndex((status) => status === 'failed')
+  if (failed >= 0) return failed
+  return taskStatus === 'running'
+    ? statuses.findIndex((status) => status === 'pending')
+    : -1
+}
+
 interface PendingReviewCandidate {
   id: string
   step_key: string
@@ -763,69 +766,6 @@ export function isTaskCompleted(steps: TaskStepStartState[]): boolean {
     && steps.every((step) => step.status === 'passed' || step.status === 'skipped')
 }
 
-interface TaskDetailAdvanceStateInput {
-  taskNotStarted: boolean
-  running: boolean
-  taskStatus?: string
-  stepStates: Array<{ status?: string }>
-  activeStepStatus?: string
-  reviewActionPending: boolean
-  hasActiveReview: boolean
-  t: TFunction
-}
-
-/**
- * 任务详情底部主操作按钮的文案与禁用状态。owner 弹窗与分享页共用，
- * 避免两处状态机漂移。
- */
-export function resolveTaskDetailAdvanceState({
-  taskNotStarted,
-  running,
-  taskStatus,
-  stepStates,
-  activeStepStatus,
-  reviewActionPending,
-  hasActiveReview,
-  t,
-}: TaskDetailAdvanceStateInput): { label: string; disabled: boolean } {
-  if (taskNotStarted) {
-    return {
-      label: running ? t('taskDetail.starting') : t('taskList.start'),
-      disabled: running,
-    }
-  }
-  if (
-    taskStatus === 'ready'
-    && stepStates.length > 0
-    && stepStates.every(
-      (step) => step.status === 'passed' || step.status === 'skipped',
-    )
-  ) {
-    return { label: t('taskDetail.workflowCompleted'), disabled: true }
-  }
-  if (activeStepStatus === 'awaiting_review') {
-    return {
-      label: t('taskDetail.approveAndAdvance'),
-      disabled: reviewActionPending || !hasActiveReview,
-    }
-  }
-  if (activeStepStatus === 'rejected') {
-    return {
-      label: t('taskDetail.forceApproveAndAdvance'),
-      disabled: reviewActionPending || !hasActiveReview,
-    }
-  }
-  if (activeStepStatus === 'reviewing') {
-    return { label: t('taskDetail.reviewing'), disabled: true }
-  }
-  if (activeStepStatus === 'retrying') {
-    return { label: t('taskDetail.autoRerunning'), disabled: true }
-  }
-  if (activeStepStatus === 'running') {
-    return { label: t('taskDetail.stageRunning'), disabled: true }
-  }
-  return { label: t('taskDetail.waitForStage'), disabled: true }
-}
 
 export function createOptimisticUserMessage(
   id: string,

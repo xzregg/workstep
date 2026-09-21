@@ -109,10 +109,12 @@ _ADDITIVE_COLUMNS = {
     "workflow_runs": {
         "owner_id": "TEXT",
         "heartbeat_at": "DATETIME",
+        "routing_state_json": "TEXT",
     },
     "step_runs": {
         "artifact_round": "INTEGER",
         "input_rounds_json": "TEXT",
+        "input_snapshot_json": "TEXT",
     },
     "task_shares": {
         "mode": "TEXT DEFAULT 'read_only'",

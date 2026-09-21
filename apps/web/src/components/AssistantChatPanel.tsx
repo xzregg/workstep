@@ -4,6 +4,7 @@ import {
   useComposerOverlayClearance,
 } from '../hooks/useComposerOverlayClearance'
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import MobileSheet from './MobileSheet'
 import type { A2uiClientAction } from '@a2ui/web_core/v0_9'
 
@@ -39,10 +40,16 @@ import { useUserSettingsStore } from '../stores/userSettingsStore'
 import { shouldShowAssistantThinking } from '../utils/assistantThinking'
 import { displayUserDetail, displayUserSender } from '../utils/actorDisplay'
 import { useI18n } from '../i18n'
+import PendingMessageInserts from './PendingMessageInserts'
+import {
+  pendingInsertQueueKey,
+  usePendingMessageInsertStore,
+} from '../stores/pendingMessageInsertStore'
 
 const COMPOSER_HEIGHT_KEY = 'workstep-chat-composer-height'
 const MIN_COMPOSER_HEIGHT = 220
 const MAX_COMPOSER_FRACTION = 0.85
+const EMPTY_PENDING_INSERTS: never[] = []
 
 function loadChatComposerHeight(): number | null {
   try {
@@ -98,6 +105,7 @@ export interface AssistantChatPanelProps {
   attachmentPrefix: string
   onInputChange: (value: string) => void
   onSend: () => void
+  onSendContent: (content: string, pendingInsertIds: string[]) => Promise<boolean>
   onStop: () => void
   /** Allow messages to be inserted into the active engine turn. */
   allowSendWhileRunning?: boolean
@@ -250,7 +258,7 @@ const MessageItem = memo(function MessageItem({
 /** Shared visual shell for session-scoped assistant chats. */
 export default function AssistantChatPanel({
   projectId, sessionId, title, messages, running, stopping, input, sendError, copy,
-  locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onStop, onAttachmentError, onClose,
+  locale, config, permission, enhance, context, quota, onRefreshQuota, quotaRefreshing, plan, availableCommands, attachmentPrefix, onInputChange, onSend, onSendContent, onStop, onAttachmentError, onClose,
   onA2uiAction, headerActions, composerActions, composerOverlay, afterMessages, scrollKey, quickPrompts, quickPromptsLabel,
   onQuickPromptSelect, a2uiMessages, showUserTag = false,
   onLoadMessageEvents, onForkMessage, allowSendWhileRunning = false,
@@ -258,6 +266,72 @@ export default function AssistantChatPanel({
   const deviceId = useUserSettingsStore((state) => state.deviceId)
   const userName = useUserSettingsStore((state) => state.userName)
   const { t } = useI18n()
+  const activeMessageId = [...messages].reverse().find((message) => (
+    message.role === 'assistant' && message.status === 'running'
+  ))?.id || ''
+  const pendingKey = pendingInsertQueueKey(projectId, activeMessageId)
+  const pendingInserts = usePendingMessageInsertStore((state) => (
+    activeMessageId ? state.queues[pendingKey] || EMPTY_PENDING_INSERTS : EMPTY_PENDING_INSERTS
+  ))
+  const pendingActions = usePendingMessageInsertStore(useShallow((state) => ({
+    loadPending: state.load,
+    addPending: state.add,
+    updatePending: state.update,
+    removePending: state.remove,
+    clearPending: state.clear,
+    reorderPending: state.reorder,
+  })))
+  const [pendingError, setPendingError] = useState('')
+  const [editingInsertId, setEditingInsertId] = useState<string | null>(null)
+  const [editingInsertContent, setEditingInsertContent] = useState('')
+  const [pendingSendingIds, setPendingSendingIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!activeMessageId) return
+    void pendingActions.loadPending(projectId, activeMessageId).catch((reason) => {
+      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+    })
+  }, [activeMessageId, pendingActions, projectId, t])
+
+  const queueCurrentInput = useCallback(async () => {
+    const content = input.trim()
+    if (!content || !activeMessageId) return
+    setPendingError('')
+    try {
+      await pendingActions.addPending(projectId, activeMessageId, content)
+      onInputChange('')
+    } catch (reason) {
+      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+    }
+  }, [activeMessageId, input, onInputChange, pendingActions, projectId, t])
+
+  const queueEnabled = Boolean(sessionId && activeMessageId)
+
+  const sendPendingInserts = useCallback(async (
+    items: Array<{ id: string; content: string }>,
+  ) => {
+    if (!activeMessageId || items.length === 0) return
+    const content = items.map((item) => item.content.trim()).filter(Boolean).join('\n\n')
+    if (!content) return
+    const ids = items.map((item) => item.id)
+    setPendingError('')
+    setPendingSendingIds((current) => [...new Set([...current, ...ids])])
+    try {
+      const sent = await onSendContent(content, ids)
+      if (!sent) return
+      await Promise.all(items.map((item) => pendingActions.removePending(
+        projectId,
+        activeMessageId,
+        item.id,
+      )))
+    } catch (reason) {
+      setPendingError(reason instanceof Error ? reason.message : t('chatSession.sendFailed'))
+    } finally {
+      setPendingSendingIds((current) => current.filter((id) => !ids.includes(id)))
+    }
+  }, [activeMessageId, onSendContent, pendingActions, projectId, t])
+
+  const effectiveAllowSendWhileRunning = Boolean(allowSendWhileRunning || queueEnabled)
   const compactLayout = useCompactLayout()
   const [quickPromptsOpen, setQuickPromptsOpen] = useState(false)
   const [viewingPrompt, setViewingPrompt] = useState<string | null>(null)
@@ -596,7 +670,7 @@ export default function AssistantChatPanel({
         />
       </div>
 
-      {sendError && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError}</div>}
+      {(sendError || pendingError) && <div style={{ padding: '6px 12px', fontSize: 'calc(13px * var(--font-scale))', color: 'var(--danger)', background: 'var(--bg)' }}>{sendError || pendingError}</div>}
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -621,6 +695,61 @@ export default function AssistantChatPanel({
         }}
       >
         <ComposerOverlayHostContext.Provider value={registerOverlay}>
+          {activeMessageId && pendingInserts.length > 0 && (
+            <PendingMessageInserts
+              items={pendingInserts}
+              title={t('chatSession.pendingInsertTitle')}
+              titleTooltip={t('chatSession.pendingInsertHint')}
+              editingId={editingInsertId}
+              editingContent={editingInsertContent}
+              sendingIds={pendingSendingIds}
+              onEditingContentChange={setEditingInsertContent}
+              onEditStart={(item) => {
+                setEditingInsertId(item.id)
+                setEditingInsertContent(item.content)
+              }}
+              onEditSave={(id) => {
+                const content = editingInsertContent.trim()
+                if (!content) return
+                void pendingActions.updatePending(projectId, activeMessageId, id, content)
+                  .then(() => {
+                    setEditingInsertId(null)
+                    setEditingInsertContent('')
+                  })
+                  .catch((reason) => setPendingError(
+                    reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
+                  ))
+              }}
+              onEditCancel={() => {
+                setEditingInsertId(null)
+                setEditingInsertContent('')
+              }}
+              onSend={(item) => void sendPendingInserts([item])}
+              onSendAll={() => void sendPendingInserts(pendingInserts)}
+              onRemove={(id) => void pendingActions.removePending(
+                projectId,
+                activeMessageId,
+                id,
+              ).catch((reason) => setPendingError(
+                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
+              ))}
+              onClear={() => void pendingActions.clearPending(
+                projectId,
+                activeMessageId,
+              ).catch((reason) => setPendingError(
+                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
+              ))}
+              onReorder={(fromIndex, toIndex) => void pendingActions.reorderPending(
+                projectId,
+                activeMessageId,
+                fromIndex,
+                toIndex,
+              ).catch((reason) => setPendingError(
+                reason instanceof Error ? reason.message : t('chatSession.sendFailed'),
+              ))}
+              reorderHint={t('chatSession.pendingInsertReorderHint')}
+            />
+          )}
           {composerOverlay}
         </ComposerOverlayHostContext.Provider>
         <div
@@ -665,16 +794,20 @@ export default function AssistantChatPanel({
             value={input}
             onChange={onInputChange}
             onSend={() => {
-              if (!input.trim() || (running && !allowSendWhileRunning)) return
+              if (!input.trim() || (running && !effectiveAllowSendWhileRunning)) return
               followRef.current = true
               setHasUnreadMessages(false)
-              setAwaitingReply(true)
-              onSend()
+              if (running && queueEnabled) {
+                void queueCurrentInput()
+              } else {
+                setAwaitingReply(true)
+                onSend()
+              }
             }}
             onStop={onStop}
-            disabled={running && !allowSendWhileRunning}
+            disabled={running && !effectiveAllowSendWhileRunning}
             running={running}
-            allowSendWhileRunning={allowSendWhileRunning}
+            allowSendWhileRunning={effectiveAllowSendWhileRunning}
             stopping={stopping}
             placeholder={copy.placeholder}
             imageAttach={{ projectId, prefix: attachmentPrefix, onError: onAttachmentError }}

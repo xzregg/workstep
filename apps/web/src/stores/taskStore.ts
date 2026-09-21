@@ -138,6 +138,13 @@ interface TaskState {
   handleWsEvent: (event: TaskEvent) => void
 }
 
+type TaskListQuery = NonNullable<TaskState['listQuery']>
+
+const taskListRequests = new Map<string, {
+  query: TaskListQuery
+  promise: Promise<void>
+}>()
+
 export function selectWorkflowTasks(tasks: Task[], workflowId: string | null, archived: boolean): Task[] {
   return tasks.filter(task => (
     Boolean(task.archived) === archived
@@ -166,13 +173,31 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         ? previous.workflowId : workflowId ?? null,
       archived: archived ?? (previous?.projectId === projectId ? previous.archived : false),
     }
-    set({ loading: true, listQuery: query })
-    try {
-      const { tasks } = await taskApi.list(projectId, query.workflowId, query.archived)
-      if (get().listQuery === query) set({ tasks, loading: false })
-    } catch {
-      if (get().listQuery === query) set({ loading: false })
+    const requestKey = JSON.stringify(query)
+    const existing = taskListRequests.get(requestKey)
+    if (existing) {
+      // The user may switch away and back while the first request is pending.
+      // Re-select its query so that response is still allowed to update the board.
+      if (get().listQuery !== existing.query) {
+        set({ loading: true, listQuery: existing.query })
+      }
+      return existing.promise
     }
+
+    set({ loading: true, listQuery: query })
+    const promise = Promise.resolve()
+      .then(() => taskApi.list(projectId, query.workflowId, query.archived))
+      .then(({ tasks }) => {
+        if (get().listQuery === query) set({ tasks, loading: false })
+      })
+      .catch(() => {
+        if (get().listQuery === query) set({ loading: false })
+      })
+      .finally(() => {
+        taskListRequests.delete(requestKey)
+      })
+    taskListRequests.set(requestKey, { query, promise })
+    return promise
   },
 
   refreshTask: async (taskId, projectId) => {

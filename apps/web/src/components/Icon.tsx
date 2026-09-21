@@ -3,7 +3,7 @@ import {
   Archive, BarChart3, Book, Bookmark, Bot, Check, ChevronDown, ChevronRight, Clock, Copy, Download, Ellipsis, Eye,
   ExternalLink, FileText, Folder, FolderOpen, GitFork, GripVertical, Image as ImageIcon, Layers, LayoutGrid, List,
   Crosshair, Menu, Lightbulb, LoaderCircle, Minus, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Settings, Share2, SlidersHorizontal,
-  Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, Workflow, X,
+  Radio, Search, ShieldCheck, Sparkles, Table, Terminal, Trash2, Undo2, User, Workflow, X,
 } from 'lucide-react'
 
 /** 统一 Icon 库：lucide 图标 + 少量自定义字形（保留既有固定规格） */
@@ -52,6 +52,7 @@ const glyphs = {
   terminal: Terminal,
   trash: Trash2,
   'undo-2': Undo2,
+  user: User,
   workflow: Workflow,
   x: X,
 } as const

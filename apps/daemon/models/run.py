@@ -23,6 +23,7 @@ class WorkflowRun(BaseModel):
     # 启动恢复只接管租约已失效（或来自无租约旧库）的 run。
     owner_id = pw.TextField(null=True)
     heartbeat_at = UTCDateTimeField(null=True)
+    routing_state_json = pw.TextField(null=True)
     started_at = UTCDateTimeField(null=True)
     ended_at = UTCDateTimeField(null=True)
 
@@ -40,6 +41,7 @@ class StepRun(BaseModel):
     attempt = pw.IntegerField()
     artifact_round = pw.IntegerField(null=True)
     input_rounds_json = pw.TextField(null=True)
+    input_snapshot_json = pw.TextField(null=True)
     status = pw.TextField(default="running")
     engine = pw.TextField(null=True)
     model = pw.TextField(null=True)

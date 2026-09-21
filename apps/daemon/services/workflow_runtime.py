@@ -29,7 +29,17 @@ from services.intervention import seal_unanswered_interactions
 from agent_assistants.event_journal import TurnEventJournal
 from agent_assistants.context_handoff import append_handoff_log
 from services.pipeline import DAGScheduler, Step
-from services.artifact_rounds import discard_artifact_round, iter_artifact_rounds
+from services.artifact_rounds import (
+    ArtifactRound,
+    discard_artifact_round,
+    iter_artifact_rounds,
+    step_round_dir,
+    update_round_manifest_status,
+)
+from services.artifact_routing import (
+    normalize_routing_state,
+    route_artifact_round,
+)
 from engines.core.agui import AGUIContext, to_agui_events
 from streaming.bus import EventBus
 
@@ -473,6 +483,9 @@ class WorkflowRuntime:
         task_id: str,
         step_key: str,
         content: str,
+        *,
+        author_name: str | None = None,
+        pending_insert_ids: list[str] | None = None,
     ) -> dict:
         """Persist a user message and re-run a stopped or completed stage.
 
@@ -559,7 +572,14 @@ class WorkflowRuntime:
                 started_at=now,
                 ended_at=now,
                 created_at=now,
+                **({"author_name": author_name} if author_name else {}),
             )
+            if pending_insert_ids:
+                from services.pending_message_inserts import (
+                    delete_pending_insert_batch,
+                )
+
+                delete_pending_insert_batch(pending_insert_ids)
             StageSupplement.create(
                 id=str(uuid.uuid4()),
                 task=task,
@@ -608,6 +628,54 @@ class WorkflowRuntime:
             "sequence": user_message.sequence,
             "created_at": user_message.created_at.isoformat(),
         }
+
+    async def _consume_task_pending_inserts(
+        self,
+        project_id: str,
+        task_id: str,
+    ) -> None:
+        """Start one merged follow-up for the oldest completed stage target."""
+        def load_batch(_project):
+            from models import PendingMessageInsert
+            from services.pending_message_inserts import pending_insert_batch
+
+            first = (
+                PendingMessageInsert.select(PendingMessageInsert, Message)
+                .join(
+                    Message,
+                    on=(PendingMessageInsert.target_message_id == Message.id),
+                )
+                .where(Message.task == task_id)
+                .order_by(PendingMessageInsert.created_at, PendingMessageInsert.position)
+                .first()
+            )
+            if first is None:
+                return None
+            target = Message.get_by_id(first.target_message_id)
+            ids, content, username = pending_insert_batch(target.id)
+            if not ids or not content:
+                return None
+            return target.step_key, ids, content, username
+
+        batch = await self._run_db(project_id, load_batch)
+        if batch is None:
+            return
+        step_key, ids, content, username = batch
+        try:
+            await self.resume_stage_with_message(
+                project_id,
+                task_id,
+                step_key,
+                content,
+                author_name=username,
+                pending_insert_ids=ids,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to consume pending inserts for task %s stage %s",
+                task_id,
+                step_key,
+            )
 
     async def restart_stage_with_fresh_session(
         self,
@@ -733,7 +801,8 @@ class WorkflowRuntime:
         actor_fields = current_actor_message_fields()
         decision_data = await self._run_db(
             project_id,
-            lambda _project: self._persist_review_decision_sync(
+            lambda project: self._persist_review_decision_sync(
+                project,
                 task_id,
                 step_key,
                 review_run_id,
@@ -756,6 +825,7 @@ class WorkflowRuntime:
 
     def _persist_review_decision_sync(
         self,
+        project,
         task_id,
         step_key,
         review_run_id,
@@ -829,11 +899,93 @@ class WorkflowRuntime:
             task_step.ended_at = None
         task_step.save()
         task = Task.get_by_id(task_id)
+        workflow_run = review.workflow_run
+        halt_after_routing = False
+        if approved and review.step_run.artifact_round is not None:
+            manifest = update_round_manifest_status(
+                artifacts_root=Path(project.workstep_dir) / "artifacts",
+                workflow_id=task.workflow_id,
+                task_id=task.id,
+                step_key=step_key,
+                artifact_round=review.step_run.artifact_round,
+                status="passed",
+                eligible_for_downstream=True,
+            )
+            if manifest is not None:
+                compiled = WorkflowDefinition.load(
+                    json.loads(workflow_run.workflow_snapshot_json)
+                ).compile()
+                scheduler = DAGScheduler([
+                    Step.from_dict(item)
+                    for item in compiled.to_steps_config()["steps"]
+                ])
+                routed_step = scheduler.steps[step_key]
+                state = normalize_routing_state(
+                    json.loads(workflow_run.routing_state_json)
+                    if workflow_run.routing_state_json else None
+                )
+                result = route_artifact_round(
+                    step=routed_step,
+                    artifact_round=ArtifactRound(
+                        round=review.step_run.artifact_round,
+                        path=step_round_dir(
+                            Path(project.workstep_dir) / "artifacts",
+                            task.workflow_id,
+                            task.id,
+                            step_key,
+                            review.step_run.artifact_round,
+                        ),
+                        manifest=manifest,
+                    ),
+                    routing_state=state,
+                )
+                workflow_run.routing_state_json = json.dumps(
+                    result.state, ensure_ascii=False, sort_keys=True
+                )
+                if result.conflict or result.exhausted_edges:
+                    halt_after_routing = True
+                    task_step.status = "failed"
+                    task_step.error = (
+                        "同一轮同时产生了正常输出和返回输出，路由冲突"
+                        if result.conflict else
+                        f"返回线已达到配置上限 {routed_step.max_return_rounds} 次"
+                    )
+                    task_step.ended_at = now
+                    task_step.save()
+                elif result.feedback_edges:
+                    targets = {
+                        str(connection.get("to"))
+                        for connection in result.feedback_edges
+                    }
+                    rewind: set[str] = set()
+                    for target in targets:
+                        rewind.add(target)
+                        rewind.update(scheduler.get_all_downstream(target))
+                    for key in rewind:
+                        row = TaskStep.get(
+                            (TaskStep.task == task) & (TaskStep.step_key == key)
+                        )
+                        row.status = (
+                            "rework_waiting" if key == step_key else "rework"
+                        )
+                        row.error = None
+                        row.ended_at = None
+                        row.save()
+        if halt_after_routing:
+            task.status = "paused"
+            task.state_version += 1
+            task.updated_at = now
+            task.save()
+            workflow_run.status = "paused"
+            workflow_run.ended_at = now
+            workflow_run.owner_id = None
+            workflow_run.heartbeat_at = now
+            workflow_run.save()
+            return None
         task.status = "running"
         task.state_version += 1
         task.updated_at = now
         task.save()
-        workflow_run = review.workflow_run
         workflow_run.status = "running"
         workflow_run.ended_at = None
         workflow_run.owner_id = self._instance_id
@@ -1933,6 +2085,8 @@ class WorkflowRuntime:
                 await concurrency_gate.release_task(project_id, task.id)
             except Exception:
                 logger.exception("Failed to release task slot for %s", task.id)
+            if not (interrupted and self._graceful_shutdown):
+                await self._consume_task_pending_inserts(project_id, task.id)
 
         return workflow_run.id
 

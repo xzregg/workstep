@@ -9,6 +9,10 @@ import { I18nProvider } from '../src/i18n'
 import { assistantApi, chatSessionApi, engineApi, providerApi } from '../src/api/client'
 import { useChatListStore, useChatSessionStore } from '../src/stores/chatSessionStore'
 import { useProjectStore } from '../src/stores/projectStore'
+import {
+  pendingInsertQueueKey,
+  usePendingMessageInsertStore,
+} from '../src/stores/pendingMessageInsertStore'
 
 const project = { id: 'project-1', name: 'demo', path: '/tmp/demo', workflows: [] }
 
@@ -30,7 +34,9 @@ function installApiStubs() {
   chatSessionApi.get = async () => ({
     id: 'session-1', project_id: project.id, workflow_id: null, title: '会话',
     engine: 'claude', provider_id: '', model: '', fast_model: '', vision_model: '',
-    permission_mode: '', message_count: 0, messages: [], running: true,
+    permission_mode: '', message_count: 1, messages: [{
+      id: 'assistant-running', role: 'assistant', content: '', status: 'running', events: [],
+    }], running: true,
     created_at: '', updated_at: '',
   }) as never
   chatSessionApi.list = async () => ({ sessions: [] })
@@ -59,14 +65,19 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
     HTMLElement: window.HTMLElement,
     IS_REACT_ACT_ENVIRONMENT: true,
   })
-  localStorage.setItem(
-    'workstep-chat-insert-queue:session-1',
-    JSON.stringify([{ id: 'insert-1', content: '待插入内容' }]),
-  )
   const restoreApis = installApiStubs()
   useProjectStore.setState({ projects: [project] as never, activeProject: project as never, loading: false })
   useChatListStore.setState({ sessionsByProject: {}, quickButtons: [], listLoadingByProject: {} })
   useChatSessionStore.setState({ sessions: {} })
+  const pendingKey = pendingInsertQueueKey(project.id, 'assistant-running')
+  usePendingMessageInsertStore.setState({
+    queues: { [pendingKey]: [{
+      id: 'insert-1', target_message_id: 'assistant-running', content: '待插入内容',
+      position: 0, username: '测试用户', created_at: '', updated_at: '',
+    }] },
+    loaded: { [pendingKey]: true },
+    loading: {},
+  })
 
   const PANEL_HEIGHT = 96
   const MARGIN_BOTTOM = 6
@@ -109,7 +120,6 @@ test('pending-insert panel reserves space on the wrapper, not the scroller', asy
   } finally {
     window.HTMLElement.prototype.getBoundingClientRect = originalRect
     restoreApis()
-    localStorage.removeItem('workstep-chat-insert-queue:session-1')
     await window.happyDOM.close()
   }
 })

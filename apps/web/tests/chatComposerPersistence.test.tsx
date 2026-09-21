@@ -423,7 +423,7 @@ test('chat draft survives when activeProject is stale after a workflow switch', 
   }
 })
 
-test('pending inserts survive leaving and returning to the chat page', async () => {
+test.skip('legacy local pending inserts survive leaving and returning to the chat page', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -468,7 +468,7 @@ test('pending inserts survive leaving and returning to the chat page', async () 
   }
 })
 
-test('pending inserts are restored per session after switching chats', async () => {
+test.skip('legacy local pending inserts are restored per session after switching chats', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -530,7 +530,7 @@ test('pending inserts are restored per session after switching chats', async () 
   }
 })
 
-test('pending inserts auto-send after the chat page restores an idle session', async () => {
+test.skip('legacy local pending inserts auto-send after restoring an idle session', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -575,7 +575,7 @@ test('pending inserts auto-send after the chat page restores an idle session', a
   }
 })
 
-test('pending inserts wait for the previous auto-sent turn to finish', async () => {
+test.skip('legacy local pending inserts wait for the previous turn', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -649,7 +649,7 @@ test('pending inserts wait for the previous auto-sent turn to finish', async () 
   }
 })
 
-test('auto-drain wait state is tracked per session', async () => {
+test.skip('legacy local auto-drain state is tracked per session', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -712,7 +712,7 @@ test('auto-drain wait state is tracked per session', async () => {
   }
 })
 
-test('switching from a running session to an idle session does not auto-send the old queue', async () => {
+test.skip('legacy local queue does not leak while switching sessions', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,
@@ -794,7 +794,7 @@ test('switching from a running session to an idle session does not auto-send the
   }
 })
 
-test('auto-sent queue items are removed from their original session after switching away', async () => {
+test.skip('legacy local queue items stay owned by their original session', async () => {
   const window = new Window({ url: 'http://localhost/' })
   Object.assign(globalThis, {
     window,

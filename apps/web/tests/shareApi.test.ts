@@ -112,3 +112,16 @@ test('interactive share uploads attachments through its session and resolves sto
     'https://example.com/image.png',
   )
 })
+
+test('shared execution analysis loads through the share session', async (t) => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  globalThis.fetch = async (input, options) => {
+    assert.equal(String(input), '/api/task-share/public/share-token/execution-report')
+    assert.equal(new Headers(options?.headers).get('X-Share-Session'), 'share-session')
+    return Response.json({ runs: [], segments: [] })
+  }
+
+  const report = await shareApi.executionReport('share-token', 'share-session')
+  assert.deepEqual(report, { runs: [], segments: [] })
+})

@@ -1,4 +1,7 @@
+import asyncio
 import json
+import threading
+import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -70,6 +73,57 @@ async def test_user_name_rejects_blank_value(system_settings_client):
         json={"user_name": "   "},
     )
     assert response.status_code == 400
+
+
+async def test_git_scan_depth_defaults_and_persists(system_settings_client):
+    client, config_file = system_settings_client
+    assert (await client.get('/api/system-settings')).json()['git_scan_depth'] == 5
+    for depth in (0, 3, 5):
+        response = await client.put('/api/system-settings', json={'git_scan_depth': depth})
+        assert response.status_code == 200
+        assert response.json()['git_scan_depth'] == depth
+        assert json.loads(config_file.read_text())['git_scan_depth'] == depth
+        assert ConfigStore().get_git_scan_depth() == depth
+    await client.put('/api/system-settings', json={'open_mode': True})
+    assert (await client.get('/api/system-settings')).json()['git_scan_depth'] == 5
+
+
+@pytest.mark.parametrize('depth', [-1, 1.5, '3', True, 9007199254740992])
+async def test_git_scan_depth_rejects_invalid_values(system_settings_client, depth):
+    client, _ = system_settings_client
+    response = await client.put('/api/system-settings', json={'git_scan_depth': depth})
+    assert response.status_code == 422
+    assert (await client.get('/api/system-settings')).json()['git_scan_depth'] == 5
+
+
+@pytest.mark.parametrize('method', ['GET', 'PUT'])
+async def test_git_settings_slow_disk_does_not_block_event_loop(system_settings_client, monkeypatch, method):
+    client, _ = system_settings_client
+    await client.get('/api/system-settings')
+    store = system_settings_api.config_store
+    name = 'get_git_scan_depth' if method == 'GET' else 'set'
+    original = getattr(store, name)
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_io(*args, **kwargs):
+        started.set()
+        release.wait(timeout=1.0)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(store, name, slow_io)
+    kwargs = {'json': {'git_scan_depth': 4}} if method == 'PUT' else {}
+    request = asyncio.create_task(client.request(method, '/api/system-settings', **kwargs))
+    try:
+        assert await asyncio.to_thread(started.wait, 2.0)
+        assert not request.done(), 'slow config I/O blocked the event loop'
+        before = time.monotonic()
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.2)
+        assert time.monotonic() - before < 0.2
+    finally:
+        release.set()
+        response = await request
+    assert response.status_code == 200
 
 
 async def test_default_project_directory_round_trip_and_clear(system_settings_client, tmp_path):

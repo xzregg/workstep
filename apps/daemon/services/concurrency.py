@@ -69,6 +69,7 @@ class ConcurrencyGate:
             "max_chats": max_chats,
             "schedule_exempt": schedule_exempt,
         }
+        self._schedule_rebalance()
 
     def set_project_config(self, project_id: str, config: dict | None) -> None:
         """Push a project's override (None or all-null removes the override)."""
@@ -76,8 +77,10 @@ class ConcurrencyGate:
             cleaned = {k: v for k, v in config.items() if v is not None}
             if cleaned:
                 self._projects[project_id] = cleaned
+                self._schedule_rebalance(project_id)
                 return
         self._projects.pop(project_id, None)
+        self._schedule_rebalance(project_id)
 
     def drop_project(self, project_id: str) -> None:
         """Remove a project's override (project deleted / settings reset)."""
@@ -282,6 +285,51 @@ class ConcurrencyGate:
             "chats_running": len(self._chat_running.get(project_id, ())),
             "chats_queued": len(self._chat_waiters.get(project_id, ())),
         }
+
+    def _schedule_rebalance(self, project_id: str | None = None) -> None:
+        """Wake queued work after a live limit increase or unlimited switch."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._rebalance(project_id))
+
+    async def _rebalance(self, project_id: str | None = None) -> None:
+        async with self._lock:
+            project_ids = (
+                {project_id}
+                if project_id is not None
+                else set(self._task_waiters) | set(self._chat_waiters)
+            )
+            for pid in project_ids:
+                cfg = self._effective(pid)
+                task_waiters = self._task_waiters.get(pid)
+                if task_waiters:
+                    max_tasks = cfg["max_tasks"]
+                    while task_waiters and (
+                        max_tasks <= 0
+                        or len(self._task_running[pid]) < max_tasks
+                    ):
+                        queued_id, fut = task_waiters.popleft()
+                        if fut.done():
+                            continue
+                        if max_tasks > 0:
+                            self._task_running[pid].add(queued_id)
+                        fut.set_result(None)
+
+                chat_waiters = self._chat_waiters.get(pid)
+                if chat_waiters:
+                    max_chats = cfg["max_chats"]
+                    while chat_waiters and (
+                        max_chats <= 0
+                        or len(self._chat_running[pid]) < max_chats
+                    ):
+                        queued_key, fut = chat_waiters.popleft()
+                        if fut.done():
+                            continue
+                        if max_chats > 0:
+                            self._chat_running[pid].add(queued_key)
+                        fut.set_result(None)
 
 
 # Module-level singleton used by the runtime and assistant runtime.

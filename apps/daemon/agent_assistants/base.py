@@ -794,6 +794,7 @@ class AssistantRuntime:
         steps: dict | None = None,
         extra: dict | None = None,
         schedule: bool = True,
+        author_name: str | None = None,
     ) -> AcceptedTurn:
         """Queue one turn; returns immediately with an accepted turn.
 
@@ -898,6 +899,15 @@ class AssistantRuntime:
             except Exception:
                 logger.exception("Failed to start assistant event journal")
         actor = get_effective_actor()
+        stored_author_name = (author_name or "").strip() or (
+            actor.user_name if actor is not None else ""
+        )
+        stored_actor = (
+            actor
+            if actor is not None
+            and (not (author_name or "").strip() or stored_author_name == actor.user_name)
+            else None
+        )
         session.messages.append(
             {
                 "role": "user",
@@ -906,12 +916,17 @@ class AssistantRuntime:
                 "created_at": utc_now().isoformat(),
                 **(
                     {
-                        "author_id": actor.actor_id,
-                        "author_name": actor.user_name,
-                        "author_device_id": actor.device_id,
-                        "author_device_name": actor.device_name,
+                        "author_id": stored_actor.actor_id,
+                        "author_name": stored_actor.user_name,
+                        "author_device_id": stored_actor.device_id,
+                        "author_device_name": stored_actor.device_name,
                     }
-                    if actor is not None
+                    if stored_actor is not None
+                    else {}
+                ),
+                **(
+                    {"author_name": stored_author_name}
+                    if stored_author_name
                     else {}
                 ),
             }
@@ -927,6 +942,20 @@ class AssistantRuntime:
                 "status": "running",
                 "created_at": started_at,
                 "events": [],
+                **(
+                    {
+                        "author_id": stored_actor.actor_id,
+                        "author_name": stored_author_name,
+                        "author_device_id": stored_actor.device_id,
+                        "author_device_name": stored_actor.device_name,
+                    }
+                    if stored_actor is not None
+                    else (
+                        {"author_name": stored_author_name}
+                        if stored_author_name
+                        else {}
+                    )
+                ),
                 **(
                     {
                         "event_log_path": journal_ref.relative_path,
@@ -1007,11 +1036,128 @@ class AssistantRuntime:
 
         project_id = session.project_id
         key = session_key(project_id, session.session_id)
-        await concurrency_gate.acquire_chat(project_id, key)
+        try:
+            await concurrency_gate.acquire_chat(project_id, key)
+        except asyncio.CancelledError:
+            await self._finalize_queued_turn_as_stopped(
+                session,
+                turn_id,
+                assistant_message_id,
+            )
+            return
         try:
             await self._run_turn(session, turn_id, assistant_message_id)
+            state = self._turn_states.get(turn_id, {})
+            if (
+                not self._shutting_down
+                and state.get("status") in {"completed", "error"}
+            ):
+                await self._consume_pending_inserts(
+                    session,
+                    turn_id,
+                    str(state.get("assistant_message_id") or assistant_message_id),
+                )
         finally:
             await concurrency_gate.release_chat(project_id, key)
+
+    async def _finalize_queued_turn_as_stopped(
+        self,
+        session: AssistantSession,
+        turn_id: str,
+        assistant_message_id: str,
+    ) -> None:
+        """Persist and publish a terminal state when a queued turn is cancelled."""
+        state = self._turn_states.get(turn_id)
+        if state is None or state.get("status") == "stopped":
+            return
+        message = next(
+            (
+                item for item in session.messages
+                if item.get("id") == assistant_message_id
+            ),
+            None,
+        )
+        ended_at = utc_now().isoformat()
+        if message is not None:
+            message.update({
+                "status": "stopped",
+                "ended_at": ended_at,
+            })
+            await self._finish_journal(
+                state.get("journal_ref"),
+                message,
+                {"type": "status", "data": {"status": "stopped"}},
+            )
+        state["status"] = "stopped"
+        await self._persist_session(session)
+        try:
+            await self._publish(
+                session,
+                assistant_message_id,
+                "message_completed",
+                {"status": "stopped", "content": "", "ended_at": ended_at},
+                0,
+            )
+        except Exception:
+            logger.exception("Failed to publish stopped queued turn %s", turn_id)
+
+    async def _consume_pending_inserts(
+        self,
+        session: AssistantSession,
+        completed_turn_id: str,
+        target_message_id: str,
+    ) -> None:
+        """Merge one completed reply's pending inserts into one new turn."""
+        if self._project_manager is None or not target_message_id:
+            return
+        state = self._turn_states.get(completed_turn_id, {})
+        memory_key = state.get("memory_key")
+        if memory_key is None:
+            return
+
+        def prepare(_project):
+            from services.pending_message_inserts import (
+                delete_pending_insert_batch,
+                pending_insert_batch,
+            )
+
+            ids, content, username = pending_insert_batch(target_message_id)
+            if not ids or not content:
+                return None
+            accepted = AssistantRuntime.submit_message(
+                self,
+                session.project_id,
+                content,
+                f"pending-insert:{target_message_id}:{','.join(ids)}",
+                session_id=session.session_id,
+                memory_key=memory_key,
+                scope_key=session.scope_key,
+                engine=session.engine,
+                model=session.model,
+                fast_model=session.fast_model,
+                vision_model=session.vision_model,
+                provider_id=state.get("provider_id"),
+                steps=session.steps,
+                extra=session.extra,
+                schedule=False,
+                author_name=username,
+            )
+            delete_pending_insert_batch(ids)
+            return accepted
+
+        try:
+            accepted = await self._project_manager.run_db(
+                session.project_id,
+                prepare,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to consume pending inserts for assistant message %s",
+                target_message_id,
+            )
+            return
+        if accepted is not None:
+            self.start_queued_turn(accepted.turn_id)
 
     async def stop_current(self, session_id: str) -> bool:
         """Stop the newest queued or running turn for an assistant session."""
@@ -1064,6 +1210,7 @@ class AssistantRuntime:
         session_id: str,
         content: str,
         project_id: str | None = None,
+        pending_insert_ids: list[str] | None = None,
     ) -> dict:
         """Persist and queue a user message for the active assistant turn."""
         normalized = content.strip()
@@ -1112,12 +1259,31 @@ class AssistantRuntime:
                 else {}
             ),
         }
+        pending_ids = list(dict.fromkeys(pending_insert_ids or []))
         session.messages.append(message)
         if self._config.persistence is not None:
-            await self._project_manager.run_db(
-                session.project_id,
-                lambda _project: self._config.persistence.save(session),
-            )
+            def persist(_project):
+                if pending_ids:
+                    from models import PendingMessageInsert
+                    from services.pending_message_inserts import delete_pending_insert_batch
+
+                    existing = list(
+                        PendingMessageInsert.select(PendingMessageInsert.id).where(
+                            PendingMessageInsert.id.in_(pending_ids)
+                        )
+                    )
+                    if len(existing) != len(pending_ids):
+                        raise ValueError("待插入消息已被处理")
+                    self._config.persistence.save(session)
+                    delete_pending_insert_batch(pending_ids)
+                    return
+                self._config.persistence.save(session)
+
+            try:
+                await self._project_manager.run_db(session.project_id, persist)
+            except Exception:
+                session.messages = [item for item in session.messages if item.get("id") != message_id]
+                raise
         await self._publish(
             session,
             message_id,
@@ -1789,6 +1955,16 @@ class AssistantRuntime:
                                         "status": "running",
                                         "created_at": next_started_at,
                                         "events": [],
+                                        **{
+                                            key: inserted[key]
+                                            for key in (
+                                                "author_id",
+                                                "author_name",
+                                                "author_device_id",
+                                                "author_device_name",
+                                            )
+                                            if inserted is not None and inserted.get(key)
+                                        },
                                         **(
                                             {
                                                 "event_log_path": next_journal_ref.relative_path,

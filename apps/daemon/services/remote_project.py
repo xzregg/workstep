@@ -36,6 +36,9 @@ from starlette.routing import compile_path
 
 logger = logging.getLogger(__name__)
 
+REMOTE_REQUEST_BODY_LIMIT = 64 * 1024 * 1024
+REMOTE_REQUEST_CHUNK_BYTES = 3 * 1024 * 1024
+
 _LAN_IPV4_NETWORKS = tuple(
     ipaddress.ip_network(value)
     for value in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
@@ -1337,25 +1340,52 @@ class _RemoteProjectConnection:
             self._pending.clear()
 
     async def request(self, request: RemoteHttpRequest) -> RemoteHttpResponse:
+        if len(request.body) > REMOTE_REQUEST_BODY_LIMIT:
+            raise ValueError("Remote request body exceeds the 64 MiB limit")
         await self.connect()
         if self._socket is None:
             raise ConnectionError("Remote project is not connected")
         loop = asyncio.get_running_loop()
         future = loop.create_future()
         self._pending[request.request_id] = future
-        encoded_body = await asyncio.to_thread(base64.b64encode, request.body)
         envelope = {
-            "type": "http.request",
             "request_id": request.request_id,
             "method": request.method,
             "path": request.path,
             "query": request.query,
             "headers": request.headers,
-            "body_b64": encoded_body.decode(),
         }
         try:
             async with self._send_lock:
-                await self._socket.send(json.dumps(envelope, ensure_ascii=False))
+                if len(request.body) <= REMOTE_REQUEST_CHUNK_BYTES:
+                    encoded_body = await asyncio.to_thread(
+                        base64.b64encode, request.body
+                    )
+                    await self._socket.send(json.dumps({
+                        **envelope,
+                        "type": "http.request",
+                        "body_b64": encoded_body.decode(),
+                    }, ensure_ascii=False))
+                else:
+                    await self._socket.send(json.dumps({
+                        **envelope,
+                        "type": "http.request.start",
+                        "body_size": len(request.body),
+                    }, ensure_ascii=False))
+                    for offset in range(0, len(request.body), REMOTE_REQUEST_CHUNK_BYTES):
+                        encoded_chunk = await asyncio.to_thread(
+                            base64.b64encode,
+                            request.body[offset:offset + REMOTE_REQUEST_CHUNK_BYTES],
+                        )
+                        await self._socket.send(json.dumps({
+                            "type": "http.request.chunk",
+                            "request_id": request.request_id,
+                            "body_b64": encoded_chunk.decode(),
+                        }))
+                    await self._socket.send(json.dumps({
+                        "type": "http.request.end",
+                        "request_id": request.request_id,
+                    }))
             return await asyncio.wait_for(future, timeout=120)
         except BaseException:
             self._pending.pop(request.request_id, None)
@@ -1604,6 +1634,7 @@ async def serve_remote_project_socket(
     bus_queue = event_bus.subscribe()
     semaphore = asyncio.Semaphore(max_concurrent_requests)
     request_tasks: dict[str, asyncio.Task] = {}
+    request_uploads: dict[str, dict[str, Any]] = {}
     subscription: dict[str, set[str]] = {
         "task_ids": set(),
         "status_only_task_ids": set(),
@@ -1687,19 +1718,27 @@ async def serve_remote_project_socket(
                     principal.actor.device_id,
                 )
                 encoded_body = str(message.get("body_b64") or "")
+                assembled_body = message.get("_assembled_body")
+                body = (
+                    bytes(assembled_body)
+                    if isinstance(assembled_body, (bytes, bytearray))
+                    else (
+                        await asyncio.to_thread(
+                            base64.b64decode, encoded_body, validate=True
+                        )
+                        if encoded_body
+                        else b""
+                    )
+                )
+                if len(body) > REMOTE_REQUEST_BODY_LIMIT:
+                    raise ValueError("Remote request body exceeds the 64 MiB limit")
                 request = RemoteHttpRequest(
                     request_id=request_id,
                     method=str(message.get("method") or "GET"),
                     path=str(message.get("path") or ""),
                     query={str(k): str(v) for k, v in dict(message.get("query") or {}).items()},
                     headers={str(k): str(v) for k, v in dict(message.get("headers") or {}).items()},
-                    body=(
-                        await asyncio.to_thread(
-                            base64.b64decode, encoded_body, validate=True
-                        )
-                        if encoded_body
-                        else b""
-                    ),
+                    body=body,
                 )
                 response = await dispatcher.dispatch(request, principal)
                 discover_authorized_ids(request.path, response)
@@ -1733,6 +1772,29 @@ async def serve_remote_project_socket(
             }
         await outgoing.put(envelope)
 
+    async def schedule_request(message: dict[str, Any]) -> None:
+        request_id = str(message.get("request_id") or "")
+        if not request_id or request_id in request_tasks:
+            await outgoing.put(
+                {"type": "protocol_error", "detail": "Invalid or duplicate request_id"}
+            )
+            return
+        task = asyncio.create_task(run_request(message))
+        request_tasks[request_id] = task
+        task.add_done_callback(
+            lambda _task, rid=request_id: request_tasks.pop(rid, None)
+        )
+
+    async def reject_upload(request_id: str, status: int, detail: str) -> None:
+        body = json.dumps({"detail": detail}, ensure_ascii=False).encode()
+        await outgoing.put({
+            "type": "http.response",
+            "request_id": request_id,
+            "status": status,
+            "headers": {"content-type": "application/json"},
+            "body_b64": base64.b64encode(body).decode(),
+        })
+
     writer_task = asyncio.create_task(writer())
     event_task = asyncio.create_task(forward_events())
 
@@ -1754,19 +1816,71 @@ async def serve_remote_project_socket(
                 continue
             message_type = message.get("type")
             if message_type == "http.request":
+                await schedule_request(message)
+            elif message_type == "http.request.start":
                 request_id = str(message.get("request_id") or "")
-                if not request_id or request_id in request_tasks:
-                    await outgoing.put(
-                        {"type": "protocol_error", "detail": "Invalid or duplicate request_id"}
-                    )
+                try:
+                    body_size = int(message.get("body_size") or 0)
+                except (TypeError, ValueError):
+                    await reject_upload(request_id, 400, "Invalid request body size")
                     continue
-                task = asyncio.create_task(run_request(message))
-                request_tasks[request_id] = task
-                task.add_done_callback(
-                    lambda _task, rid=request_id: request_tasks.pop(rid, None)
-                )
+                if (
+                    not request_id
+                    or request_id in request_tasks
+                    or request_id in request_uploads
+                ):
+                    await reject_upload(request_id, 400, "Invalid or duplicate request_id")
+                elif len(request_uploads) >= max_concurrent_requests:
+                    await reject_upload(request_id, 429, "Too many concurrent uploads")
+                elif body_size < 0 or body_size > REMOTE_REQUEST_BODY_LIMIT:
+                    await reject_upload(
+                        request_id,
+                        413,
+                        "Remote request body exceeds the 64 MiB limit",
+                    )
+                else:
+                    request_uploads[request_id] = {
+                        "message": message,
+                        "body": bytearray(),
+                        "body_size": body_size,
+                    }
+            elif message_type == "http.request.chunk":
+                request_id = str(message.get("request_id") or "")
+                upload = request_uploads.get(request_id)
+                if upload is None:
+                    await reject_upload(request_id, 400, "Chunked request was not started")
+                    continue
+                try:
+                    chunk = await asyncio.to_thread(
+                        base64.b64decode,
+                        str(message.get("body_b64") or ""),
+                        validate=True,
+                    )
+                except (ValueError, TypeError):
+                    request_uploads.pop(request_id, None)
+                    await reject_upload(request_id, 400, "Invalid request chunk")
+                    continue
+                if len(upload["body"]) + len(chunk) > upload["body_size"]:
+                    request_uploads.pop(request_id, None)
+                    await reject_upload(request_id, 400, "Request body exceeds declared size")
+                    continue
+                upload["body"].extend(chunk)
+            elif message_type == "http.request.end":
+                request_id = str(message.get("request_id") or "")
+                upload = request_uploads.pop(request_id, None)
+                if upload is None:
+                    await reject_upload(request_id, 400, "Chunked request was not started")
+                elif len(upload["body"]) != upload["body_size"]:
+                    await reject_upload(request_id, 400, "Request body size does not match")
+                else:
+                    await schedule_request({
+                        **upload["message"],
+                        "_assembled_body": upload["body"],
+                    })
             elif message_type == "http.cancel":
-                task = request_tasks.get(str(message.get("request_id") or ""))
+                request_id = str(message.get("request_id") or "")
+                request_uploads.pop(request_id, None)
+                task = request_tasks.get(request_id)
                 if task is not None:
                     task.cancel()
             elif message_type == "subscribe":

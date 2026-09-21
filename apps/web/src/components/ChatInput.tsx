@@ -21,6 +21,7 @@ import {
   removeMarkdownImage,
   resolveMarkdownImageSrc,
   splitMarkdownImages,
+  type MarkdownInputSegment,
   type MarkdownImageSegment,
   type MarkdownTextSegment,
 } from '../utils/markdownImages'
@@ -28,6 +29,10 @@ import { applySlashInputItem, slashInputQuery } from '../utils/slashSkills'
 import { formatMarkdownAttachment } from '../utils/markdownAttachment'
 import { loadDraft, loadTaskDraft, saveDraft, saveTaskDraft } from '../utils/chatDraft'
 import { useMarkdownUrlResolver } from '../contexts/MarkdownAssetUrlContext'
+import {
+  applyTaskStageMention,
+  taskStageMentionQuery,
+} from '../utils/taskStageMention'
 
 const inputItemIcon = (item: EngineInputItem) => {
   if (item.kind === 'skill') return 'sparkles' as const
@@ -44,6 +49,23 @@ function readDraft(owner: { type: 'session' | 'task'; id: string }): string {
 function writeDraft(owner: { type: 'session' | 'task'; id: string }, value: string): void {
   if (owner.type === 'task') saveTaskDraft(owner.id, value)
   else saveDraft(owner.id, value)
+}
+
+function splitComposerSegments(markdown: string): MarkdownInputSegment[] {
+  const parsed = splitMarkdownImages(markdown)
+  const segments: MarkdownInputSegment[] = []
+  for (const segment of parsed) {
+    if (segment.type === 'image' && (segments.length === 0 || segments.at(-1)?.type === 'image')) {
+      segments.push({
+        type: 'text',
+        markdown: '',
+        start: segment.start,
+        end: segment.start,
+      })
+    }
+    segments.push(segment)
+  }
+  return segments
 }
 
 /* ══════════════════════════════════════════
@@ -154,6 +176,12 @@ export interface ChatInputPlan {
   disabled?: boolean
 }
 
+export interface ChatInputMentions {
+  options: Array<{ id: string; label: string; color?: string }>
+  menuLabel: string
+  onSelect: (id: string) => void
+}
+
 export interface ChatInputProps {
   value: string
   onChange: (value: string) => void
@@ -197,6 +225,8 @@ export interface ChatInputProps {
   quotaRefreshing?: boolean
   /** Plan-mode toggle (Codex-style lightbulb, left side). */
   plan?: ChatInputPlan
+  /** Optional @ completion used by task chat to select a recipient stage. */
+  mentions?: ChatInputMentions
   /** Enable image attach: paste-to-upload + the image button. */
   imageAttach?: ChatInputImageAttach
   /** Optional extra slot rendered at the bottom-left (before the image button). */
@@ -236,6 +266,7 @@ export default function ChatInput({
   onRefreshQuota,
   quotaRefreshing = false,
   plan,
+  mentions,
   imageAttach,
   left,
   onPaste,
@@ -249,6 +280,8 @@ export default function ChatInput({
   const markdownUrlResolver = useMarkdownUrlResolver()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const segmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
+  const inputSegmentRefs = useRef(new Map<number, HTMLTextAreaElement>())
+  const imageSegmentRefs = useRef(new Map<number, HTMLButtonElement>())
   const inputFocusedRef = useRef(false)
   const [configOpen, setConfigOpen] = useState(false)
   const [configFocus, setConfigFocus] = useState<'model' | 'reasoning' | null>(null)
@@ -261,6 +294,8 @@ export default function ChatInput({
   const [dragActive, setDragActive] = useState(false)
   const [previewImage, setPreviewImage] = useState<MarkdownImageSegment | null>(null)
   const [focused, setFocused] = useState(false)
+  const [allSelected, setAllSelected] = useState(false)
+  const allSelectedRef = useRef(false)
   const [contextTipOpen, setContextTipOpen] = useState(false)
   const contextRef = useRef<HTMLSpanElement>(null)
   const [contextTipStyle, setContextTipStyle] = useState<React.CSSProperties | undefined>(undefined)
@@ -287,6 +322,8 @@ export default function ChatInput({
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [skillsError, setSkillsError] = useState(false)
   const [skillIndex, setSkillIndex] = useState(0)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionDismissedValue, setMentionDismissedValue] = useState<string | null>(null)
   const attachInputRef = useRef<HTMLInputElement>(null)
   const attachFileInputRef = useRef<HTMLInputElement>(null)
   const draftOwnerRef = useRef<{ type: 'session' | 'task'; id: string } | null>(null)
@@ -303,9 +340,19 @@ export default function ChatInput({
     running && onStop && !(allowSendWhileRunning && value.trim().length > 0),
   )
   const imageAlt = t('md.image')
-  const inputSegments = splitMarkdownImages(value)
+  const inputSegments = splitComposerSegments(value)
   const hasImage = inputSegments.some((segment) => segment.type === 'image')
-  const textSegmentCount = inputSegments.filter((segment) => segment.type === 'text').length
+  const isInterImageWhitespace = (segmentIndex: number) => {
+    const segment = inputSegments[segmentIndex]
+    return segment?.type === 'text'
+      && segment.markdown.trim() === ''
+      && segment.end > segment.start
+      && inputSegments[segmentIndex - 1]?.type === 'image'
+      && inputSegments[segmentIndex + 1]?.type === 'image'
+  }
+  const textSegmentCount = inputSegments.filter((segment, index) => (
+    segment.type === 'text' && !isInterImageWhitespace(index)
+  )).length
   const thinkingEffortLabel: Record<string, string> = {
     auto: t('coord.thinkingLevels.auto'),
     minimal: t('coord.thinkingLevels.minimal'),
@@ -355,6 +402,20 @@ export default function ChatInput({
   const skillMenuVisible = slashActive
     && slashDismissedValue !== value
     && Boolean(projectId && effectiveEngine)
+  const mentionQuery = mentions ? taskStageMentionQuery(value, slashCursor) : null
+  const filteredMentions = (mentions?.options ?? []).filter((option) => {
+    const query = (mentionQuery?.query ?? '').toLocaleLowerCase()
+    return !query
+      || option.label.toLocaleLowerCase().includes(query)
+      || option.id.toLocaleLowerCase().includes(query)
+  })
+  const mentionMenuVisible = mentionQuery !== null
+    && mentionDismissedValue !== value
+    && filteredMentions.length > 0
+
+  useEffect(() => {
+    setMentionIndex(0)
+  }, [mentionQuery?.query])
 
   useEffect(() => {
     const previous = draftOwnerRef.current
@@ -390,6 +451,11 @@ export default function ChatInput({
 
   useEffect(() => {
     if (!inputFocusedRef.current) setSlashCursor(value.length)
+  }, [value])
+
+  useEffect(() => {
+    allSelectedRef.current = false
+    setAllSelected(false)
   }, [value])
 
   useEffect(() => {
@@ -441,6 +507,56 @@ export default function ChatInput({
   }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const modifier = event.metaKey || event.ctrlKey
+    const key = event.key.toLocaleLowerCase()
+    if (hasImage && modifier && key === 'a') {
+      event.preventDefault()
+      allSelectedRef.current = true
+      setAllSelected(true)
+      for (const element of segmentRefs.current.values()) {
+        element.setSelectionRange(0, element.value.length)
+      }
+      return
+    }
+    if (allSelectedRef.current && (key === 'backspace' || key === 'delete')) {
+      event.preventDefault()
+      allSelectedRef.current = false
+      setAllSelected(false)
+      setSlashCursor(0)
+      setSlashDismissedValue(null)
+      setStatusOpen(false)
+      onChange('')
+      requestAnimationFrame(() => focusMarkdownCursor('', 0))
+      return
+    }
+    if (allSelectedRef.current && !(modifier && key === 'c')) {
+      allSelectedRef.current = false
+      setAllSelected(false)
+    }
+    if (mentionMenuVisible) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setMentionIndex((index) => Math.min(index + 1, filteredMentions.length - 1))
+        return
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setMentionIndex((index) => Math.max(0, index - 1))
+        return
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMentionDismissedValue(value)
+        return
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        if (event.nativeEvent.isComposing) return
+        event.preventDefault()
+        const option = filteredMentions[mentionIndex] ?? filteredMentions[0]
+        if (option) selectMention(option.id)
+        return
+      }
+    }
     if (skillMenuVisible) {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -528,6 +644,18 @@ export default function ChatInput({
     }
   }
 
+  const selectMention = (id: string) => {
+    if (!mentions) return
+    const selection = applyTaskStageMention(value, slashCursor)
+    onChange(selection.value)
+    mentions.onSelect(id)
+    setSlashCursor(selection.cursor)
+    setMentionDismissedValue(selection.value)
+    requestAnimationFrame(() => {
+      focusMarkdownCursor(selection.value, selection.cursor)
+    })
+  }
+
   // ── Attachments (single implementation shared by every chat) ───────────
   const handleAttachments = async (files: File[]) => {
     if (!imageAttach || files.length === 0) return
@@ -548,8 +676,16 @@ export default function ChatInput({
           const markdown = formatMarkdownAttachment(file, uploaded.url)
           const before = nextValue.slice(0, nextCursor)
           const after = nextValue.slice(nextCursor)
-          const prefix = before && !before.endsWith('\n') ? '\n\n' : ''
-          const suffix = after && !after.startsWith('\n') ? '\n\n' : ''
+          const beforeEndsWithImage = splitMarkdownImages(before)
+            .some((segment) => segment.type === 'image' && segment.end === before.length)
+          const afterStartsWithImage = splitMarkdownImages(after)
+            .some((segment) => segment.type === 'image' && segment.start === 0)
+          const prefix = !isImage && before && !before.endsWith('\n') && !beforeEndsWithImage
+            ? '\n\n'
+            : ''
+          const suffix = !isImage && after && !after.startsWith('\n') && !afterStartsWithImage
+            ? '\n\n'
+            : ''
           nextValue = before + prefix + markdown + suffix + after
           nextCursor = before.length + prefix.length + markdown.length + suffix.length
           uploadedAny = true
@@ -581,6 +717,13 @@ export default function ChatInput({
     void handleAttachments(files)
   }
 
+  const handleCopy = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (!allSelectedRef.current || !event.clipboardData) return
+    event.preventDefault()
+    event.clipboardData.setData('text/plain', value)
+    event.clipboardData.setData('text/markdown', value)
+  }
+
   const handleDrop = (event: DragEvent<HTMLDivElement>) => {
     if (!imageAttach) return
     const files = Array.from(event.dataTransfer?.files || [])
@@ -595,6 +738,8 @@ export default function ChatInput({
     nextText: string,
     localCursor: number,
   ) => {
+    allSelectedRef.current = false
+    setAllSelected(false)
     onChange(value.slice(0, segment.start) + nextText + value.slice(segment.end))
     setSlashCursor(segment.start + localCursor)
     setSlashDismissedValue(null)
@@ -610,9 +755,40 @@ export default function ChatInput({
     requestAnimationFrame(() => focusMarkdownCursor(nextValue, nextCursor))
   }
 
+  const handleSegmentKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+    segment: MarkdownTextSegment,
+    segmentIndex: number,
+  ) => {
+    const element = event.currentTarget
+    if (element.selectionStart === element.selectionEnd) {
+      const adjacentImageIndex = event.key === 'ArrowLeft' && element.selectionStart === 0
+        ? segmentIndex - 1
+        : event.key === 'ArrowRight' && element.selectionStart === segment.markdown.length
+          ? segmentIndex + 1
+          : -1
+      if (inputSegments[adjacentImageIndex]?.type === 'image') {
+        event.preventDefault()
+        imageSegmentRefs.current.get(adjacentImageIndex)?.focus({ preventScroll: true })
+        return
+      }
+      const adjacent = event.key === 'Backspace' && element.selectionStart === 0
+        ? inputSegments[segmentIndex - 1]
+        : event.key === 'Delete' && element.selectionStart === segment.markdown.length
+          ? inputSegments[segmentIndex + 1]
+          : undefined
+      if (adjacent?.type === 'image') {
+        event.preventDefault()
+        removeImageSegment(adjacent)
+        return
+      }
+    }
+    handleKeyDown(event)
+  }
+
   return (
     <div className="chat-input-root" style={{ position: 'relative' }}>
-      {statusOpen && !skillMenuVisible && (
+      {statusOpen && !skillMenuVisible && !mentionMenuVisible && (
         <div className="chat-command-status" role="status">
           <div className="chat-command-status-header">
             <strong>{t('chatInput.statusTitle')}</strong>
@@ -624,6 +800,35 @@ export default function ChatInput({
           <div>{t('chatInput.statusPermission')}: {permissionLabel}</div>
           <div>{t('chatInput.statusPlan')}: {planActive ? t('chatInput.statusEnabled') : t('chatInput.statusDisabled')}</div>
           {context && <div>{t('chatInput.statusContext')}: {Math.round(context.percent)}%</div>}
+        </div>
+      )}
+      {mentionMenuVisible && mentions && (
+        <div
+          className="chat-skill-menu"
+          role="listbox"
+          aria-label={mentions.menuLabel}
+        >
+          {filteredMentions.map((option, index) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={index === mentionIndex}
+              className="chat-skill-menu-item"
+              data-selected={index === mentionIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectMention(option.id)}
+            >
+              <span
+                className="chat-skill-menu-icon"
+                aria-hidden="true"
+                style={{ color: option.color || 'var(--accent)' }}
+              >
+                @
+              </span>
+              <span className="chat-skill-menu-name">{option.label}</span>
+            </button>
+          ))}
         </div>
       )}
       {skillMenuVisible && (
@@ -708,7 +913,14 @@ export default function ChatInput({
         )}
         <div
           className="chat-input-editor"
+          data-all-selected={allSelected || undefined}
           style={{ minHeight, maxHeight }}
+          onCopy={handleCopy}
+          onMouseDownCapture={() => {
+            if (!allSelectedRef.current) return
+            allSelectedRef.current = false
+            setAllSelected(false)
+          }}
           onClick={(event) => {
             if (event.target !== event.currentTarget) return
             const lastInput = segmentRefs.current.get(textSegmentCount - 1)
@@ -726,11 +938,33 @@ export default function ChatInput({
                     contentEditable={false}
                   >
                     <button
+                      ref={(element) => {
+                        if (element) imageSegmentRefs.current.set(segmentIndex, element)
+                        else imageSegmentRefs.current.delete(segmentIndex)
+                      }}
                       type="button"
                       className="chat-input-image"
                       aria-label={`${t('md.preview')}：${segment.alt || imageAlt}`}
                       title={t('md.preview')}
                       onClick={() => setPreviewImage(segment)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                          event.preventDefault()
+                          const textSegmentIndex = event.key === 'ArrowLeft'
+                            ? segmentIndex - 1
+                            : segmentIndex + 1
+                          const element = inputSegmentRefs.current.get(textSegmentIndex)
+                          if (element) {
+                            element.focus({ preventScroll: true })
+                            const cursor = event.key === 'ArrowLeft' ? element.value.length : 0
+                            element.setSelectionRange(cursor, cursor)
+                          }
+                          return
+                        }
+                        if (event.key !== 'Backspace' && event.key !== 'Delete') return
+                        event.preventDefault()
+                        removeImageSegment(segment)
+                      }}
                     >
                       <img
                         src={markdownUrlResolver?.(segment.url)
@@ -752,9 +986,14 @@ export default function ChatInput({
                 )
               }
 
+              if (isInterImageWhitespace(segmentIndex)) return null
               textIndex += 1
               const currentTextIndex = textIndex
               const isLastText = currentTextIndex === textSegmentCount - 1
+              const inlineWithImage = !segment.markdown.includes('\n') && (
+                inputSegments[segmentIndex - 1]?.type === 'image'
+                || inputSegments[segmentIndex + 1]?.type === 'image'
+              )
               return (
                 <ChatInputTextSegment
                   key={`text:${segmentIndex}`}
@@ -762,13 +1001,16 @@ export default function ChatInput({
                   placeholder={inputSegments.length === 1 ? placeholder : undefined}
                   disabled={disabled}
                   rows={rows}
+                  inlineWithImage={inlineWithImage}
                   externalRef={isLastText ? inputRef : undefined}
                   onElement={(element) => {
                     if (element) {
                       segmentRefs.current.set(currentTextIndex, element)
+                      inputSegmentRefs.current.set(segmentIndex, element)
                       if (!textareaRef.current || isLastText) textareaRef.current = element
                     } else {
                       segmentRefs.current.delete(currentTextIndex)
+                      inputSegmentRefs.current.delete(segmentIndex)
                     }
                   }}
                   onCommitText={(text, localCursor) => updateTextSegment(segment, text, localCursor)}
@@ -784,7 +1026,7 @@ export default function ChatInput({
                       setFocused(false)
                     }
                   }}
-                  onKeyDown={handleKeyDown}
+                  onKeyDown={(event) => handleSegmentKeyDown(event, segment, segmentIndex)}
                   onPaste={imageAttach ? handleAttachPaste : onPaste}
                 />
               )

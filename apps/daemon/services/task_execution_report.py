@@ -166,6 +166,7 @@ def build_task_execution_report(
     titles = _step_titles(runs)
     round_by_run = _rounds(runs)
     usage_by_segment: dict[tuple[str, str], dict[str, Any]] = defaultdict(_new_usage_bucket)
+    usage_by_user: dict[str, dict[str, Any]] = {}
     eligible_calls = len(messages)
     reported_calls = 0
 
@@ -206,6 +207,23 @@ def build_task_execution_report(
             bucket["sources"].add(source)
         bucket["cost"] += cost
         bucket["message_count"] += 1
+        author_name = str(message.author_name or "").strip() or "未知用户"
+        author_id = str(message.author_id or "").strip()
+        user_key = author_id or f"name:{author_name}"
+        user_bucket = usage_by_user.setdefault(user_key, {
+            "author_id": author_id,
+            "author_name": author_name,
+            **_new_usage_bucket(),
+        })
+        if author_name != "未知用户":
+            user_bucket["author_name"] = author_name
+        for key in (
+            "input_tokens", "output_tokens", "cache_read_tokens",
+            "cache_write_tokens", "total_tokens",
+        ):
+            user_bucket[key] += usage[key]
+        user_bucket["cost"] += cost
+        user_bucket["message_count"] += 1
 
     segments: list[dict[str, Any]] = []
     for step in steps:
@@ -356,6 +374,22 @@ def build_task_execution_report(
     provider_cost = sum(bucket["provider_cost"] for bucket in usage_by_segment.values())
     estimated_cost = sum(bucket["estimated_cost"] for bucket in usage_by_segment.values())
     total_tokens = sum(bucket["total_tokens"] for bucket in usage_by_segment.values())
+    user_breakdown = []
+    for bucket in usage_by_user.values():
+        user_breakdown.append({
+            "author_id": bucket["author_id"],
+            "author_name": bucket["author_name"],
+            "message_count": bucket["message_count"],
+            "input_tokens": bucket["input_tokens"],
+            "output_tokens": bucket["output_tokens"],
+            "cache_read_tokens": bucket["cache_read_tokens"],
+            "cache_write_tokens": bucket["cache_write_tokens"],
+            "total_tokens": bucket["total_tokens"],
+            "cost": round(bucket["cost"], 6),
+        })
+    user_breakdown.sort(
+        key=lambda row: (-row["total_tokens"], row["author_name"], row["author_id"]),
+    )
 
     return {
         "currency": str(pricing.get("currency") or "USD"),
@@ -374,6 +408,7 @@ def build_task_execution_report(
         "runs": run_report,
         "segments": segments,
         "stage_breakdown": stage_breakdown,
+        "user_breakdown": user_breakdown,
         "milestones": milestones,
         "data_quality": {
             "eligible_usage_calls": eligible_calls,

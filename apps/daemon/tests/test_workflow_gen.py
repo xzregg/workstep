@@ -10,6 +10,7 @@ import pytest
 from services.project import ProjectManager
 from services.workflow_definition import WorkflowDefinition
 from agent_assistants.workflow_gen import SYSTEM_PROMPT, WorkflowGenModule
+from agent_assistants.workflow_patch import apply_patch
 from agent_assistants.base import AssistantConfig, AssistantRuntime
 from streaming.bus import EventBus
 
@@ -2544,3 +2545,25 @@ async def test_partial_nodes_payload_is_merged_instead_of_replacing_canvas(
         "change": "updated",
     }]
     assert [node["id"] for node in card["patch"]["upsertNodes"]] == [2]
+    assert card["autoApply"] is False
+
+
+def test_incremental_patch_ignores_unchanged_upsert_nodes():
+    base = {
+        "nodes": [
+            {"id": 1, "type": "req", "title": "需求"},
+            {"id": 2, "type": "dev", "title": "开发"},
+        ],
+        "connections": [{"from": 1, "to": 2}],
+    }
+    merged, changes, resolved = apply_patch(base, {
+        "upsertNodes": [
+            {"id": 1, "type": "req", "title": "需求"},
+            {"id": 2, "type": "dev", "title": "开发 v2"},
+        ],
+        "removeNodeIds": [],
+    })
+
+    assert [change["id"] for change in changes] == [2]
+    assert [node["id"] for node in resolved["upsertNodes"]] == [2]
+    assert merged["nodes"][0]["title"] == "需求"

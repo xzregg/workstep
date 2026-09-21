@@ -154,7 +154,7 @@ export default function AiTaskCreateChat({
 
   const send = useCallback(async (override?: string) => {
     const content = (override ?? input).trim()
-    if (!content || running) return
+    if (!content || (running && override === undefined)) return false
     setSendError('')
     let sid = sessionId
     if (!sid) {
@@ -193,8 +193,10 @@ export default function AiTaskCreateChat({
         }
         setSessionId(accepted.session_id)
       }
+      return true
     } catch (reason) {
       setSendError(reason instanceof Error ? reason.message : t('taskList.aiSendFailed'))
+      return false
     }
   }, [allowGenerateTitle, candidateWorkflowIds, input, projectId, running, selectedEngine, selectedProvider, selectedFastModel, selectedVisionModel, selectedModel, selectedThinkingEffort, sessionId, startStepKey, t, taskDescription, taskTitle, workflowId, resetEnhance])
 
@@ -241,6 +243,7 @@ export default function AiTaskCreateChat({
       attachmentPrefix="task-create"
       onInputChange={(value) => { enhanceInputChanged(value); setInput(value); setSendError('') }}
       onSend={() => void send()}
+      onSendContent={(content) => send(content)}
       onStop={() => void stop()}
       enhance={enhance}
       onAttachmentError={setSendError}

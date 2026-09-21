@@ -193,6 +193,14 @@ export default function Layout({ onSelectProject, children }: Props) {
     storedSidebarSections.flowsByProject,
   )
   const [creatingSession, setCreatingSession] = useState(false)
+  const previousSessionProjectIdsRef = useRef(new Set<string>())
+  const sessionProjectIdsKey = [...new Set([
+    ...expandedProjectIds,
+    ...(activeProject?.id ? [activeProject.id] : []),
+  ])]
+    .filter((projectId) => projects.some((project) => project.id === projectId))
+    .sort()
+    .join('\u0000')
   const startSidebarDrag = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     const startX = e.clientX
@@ -295,13 +303,16 @@ export default function Layout({ onSelectProject, children }: Props) {
   }
 
   useEffect(() => {
-    if (projects.length === 0 || expandedProjectIds.length === 0) return
-    for (const projectId of expandedProjectIds) {
-      if (projects.some((project) => project.id === projectId)) {
+    const sessionProjectIds = new Set(
+      sessionProjectIdsKey ? sessionProjectIdsKey.split('\u0000') : [],
+    )
+    for (const projectId of sessionProjectIds) {
+      if (!previousSessionProjectIdsRef.current.has(projectId)) {
         void useChatListStore.getState().fetchSessions(projectId)
       }
     }
-  }, [expandedProjectIds, projects])
+    previousSessionProjectIdsRef.current = sessionProjectIds
+  }, [sessionProjectIdsKey])
 
   const handleSelectProject = (p: Project) => {
     setActiveProject(p)
@@ -648,6 +659,13 @@ export default function Layout({ onSelectProject, children }: Props) {
           <Icon name="bar-chart" size={17} strokeWidth={2} />
           {t('nav.statistics')}
         </Button>
+
+        {import.meta.env.DEV && (
+          <Button variant="ghost" style={addButtonStyle} onClick={() => navigate('/prototype/git?variant=C')}>
+            <Icon name="git-fork" size={17} strokeWidth={2} />
+            {t('nav.gitPrototype')}
+          </Button>
+        )}
 
         <Button variant="ghost" style={addButtonStyle} onClick={openLocalProjectModal}>
           <Icon name="plus" size={17} strokeWidth={2} />

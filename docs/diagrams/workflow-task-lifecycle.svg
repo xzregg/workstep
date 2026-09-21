@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 520" role="img" aria-labelledby="workflow-lifecycle-title workflow-lifecycle-desc">
+      <title id="workflow-lifecycle-title">WorkStep 任务运行生命周期</title>
+      <desc id="workflow-lifecycle-desc">任务从预备、排队进入运行，运行中可等待审核或进入重试返工，正常收尾回到预备，异常进入暂停；daemon 重启可恢复运行和队列。</desc>
+      <defs><style>@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap");</style>
+        <marker id="life-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#4f5d75"/></marker>
+        <marker id="life-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#eb6c36"/></marker>
+        <marker id="life-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#2e5aa8"/></marker>
+        <style>
+          .ls{font-family:Geist,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}.lm{font-family:"Geist Mono",monospace}.ln{font-size:14px;font-weight:600;fill:#2d3142}.lb{font-size:12px;fill:#4f5d75}.lt{font-size:10px;fill:#7a8399}.le{fill:none;stroke:#4f5d75;stroke-width:1.2;marker-end:url(#life-arrow)}.la{fill:none;stroke:#eb6c36;stroke-width:1.4;marker-end:url(#life-accent)}.ld{fill:none;stroke:#4f5d75;stroke-width:1.1;stroke-dasharray:5 4;marker-end:url(#life-arrow)}.lbox{fill:#fff;stroke:#4f5d75;stroke-width:1}.lfocal{fill:#fef3ee;stroke:#eb6c36;stroke-width:1.2}.lsoft{fill:#f8f8f8;stroke:#7a8399;stroke-width:1;stroke-dasharray:5 4}
+        </style>
+      </defs>
+      <rect width="1400" height="520" fill="#f5f5f5"/>
+      <text x="36" y="42" class="lm" font-size="10" fill="#7a8399" letter-spacing="1.4">PRIMARY PHASE RAIL</text>
+      <text x="36" y="286" class="lm" font-size="10" fill="#7a8399" letter-spacing="1.4">WAIT / RETRY / RECOVERY</text>
+      <text x="36" y="446" class="lm" font-size="10" fill="#7a8399" letter-spacing="1.4">TERMINAL OUTCOME</text>
+
+      <path d="M250 126H324" class="le"/>
+      <path d="M508 126H604" class="le"/>
+      <path d="M812 126H1080" class="la"/>
+      <path d="M708 178V254" class="le"/>
+      <path d="M604 316H564Q548 316 548 300V198Q548 182 564 182H620" class="ld"/>
+      <path d="M812 150H876Q892 150 892 166V254" class="le"/>
+      <path d="M876 316H836Q820 316 820 300V198Q820 182 804 182H780" class="ld"/>
+      <path d="M604 150H584V410H1080" class="le"/>
+      <path d="M1148 366V198" class="ld"/>
+
+      <rect x="60" y="82" width="190" height="88" rx="8" fill="#f5f5f5"/>
+      <rect x="60" y="82" width="190" height="88" rx="8" class="lbox"/>
+      <text x="155" y="116" text-anchor="middle" class="ln ls">预备</text>
+      <text x="155" y="140" text-anchor="middle" class="lt lm">Task.ready</text>
+      <text x="155" y="158" text-anchor="middle" class="lb ls">手动 / 自动 / 定时入口</text>
+
+      <rect x="324" y="82" width="184" height="88" rx="8" fill="#f5f5f5"/>
+      <rect x="324" y="82" width="184" height="88" rx="8" class="lsoft"/>
+      <text x="416" y="116" text-anchor="middle" class="ln ls">等待槽位</text>
+      <text x="416" y="140" text-anchor="middle" class="lt lm">Task.queued · FIFO</text>
+      <text x="416" y="158" text-anchor="middle" class="lb ls">可取消并回到预备</text>
+
+      <rect x="604" y="74" width="208" height="104" rx="8" fill="#f5f5f5"/>
+      <rect x="604" y="74" width="208" height="104" rx="8" class="lfocal"/>
+      <text x="708" y="110" text-anchor="middle" class="ln ls">运行</text>
+      <text x="708" y="134" text-anchor="middle" class="lt lm">WorkflowRun.running</text>
+      <text x="708" y="154" text-anchor="middle" class="lb ls">DAG 调度 · 阶段并行</text>
+
+      <rect x="1080" y="82" width="208" height="88" rx="8" fill="#f5f5f5"/>
+      <rect x="1080" y="82" width="208" height="88" rx="8" class="lbox"/>
+      <text x="1184" y="116" text-anchor="middle" class="ln ls">正常收尾</text>
+      <text x="1184" y="140" text-anchor="middle" class="lt lm">Task.ready</text>
+      <text x="1184" y="158" text-anchor="middle" class="lb ls">历史保留在 Run 表</text>
+
+      <rect x="604" y="254" width="208" height="72" rx="8" fill="#f5f5f5"/>
+      <rect x="604" y="254" width="208" height="72" rx="8" class="lsoft"/>
+      <text x="708" y="284" text-anchor="middle" class="ln ls">等待人工审核</text>
+      <text x="708" y="308" text-anchor="middle" class="lt lm">awaiting_review</text>
+
+      <rect x="876" y="254" width="208" height="72" rx="8" fill="#f5f5f5"/>
+      <rect x="876" y="254" width="208" height="72" rx="8" class="lsoft"/>
+      <text x="980" y="284" text-anchor="middle" class="ln ls">重试 / 返工</text>
+      <text x="980" y="308" text-anchor="middle" class="lt lm">retrying · rework</text>
+
+      <rect x="1080" y="366" width="208" height="88" rx="8" fill="#f5f5f5"/>
+      <rect x="1080" y="366" width="208" height="88" rx="8" class="lfocal"/>
+      <text x="1184" y="400" text-anchor="middle" class="ln ls">暂停</text>
+      <text x="1184" y="424" text-anchor="middle" class="lt lm">Task.paused</text>
+      <text x="1184" y="442" text-anchor="middle" class="lb ls">失败 · 冲突 · 达到上限</text>
+
+      <rect x="280" y="360" width="244" height="92" rx="8" fill="#f5f5f5"/>
+      <rect x="280" y="360" width="244" height="92" rx="8" class="lsoft"/>
+      <text x="402" y="394" text-anchor="middle" class="ln ls">daemon 恢复</text>
+      <text x="402" y="418" text-anchor="middle" class="lt lm">lease · snapshot · requeue</text>
+      <text x="402" y="438" text-anchor="middle" class="lb ls">恢复运行和排队，不抢占活租约</text>
+      <path d="M524 406H548Q564 406 564 390V198Q564 182 580 182H620" class="ld"/>
+
+      <rect x="270" y="100" width="64" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="302" y="112" text-anchor="middle" class="lt lm">NO SLOT</text>
+      <rect x="920" y="100" width="104" height="16" rx="2" fill="#f5f5f5"/>
+      <text x="972" y="112" text-anchor="middle" class="lt lm">ALL COMPLETE</text>
+    </svg>

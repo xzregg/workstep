@@ -11,11 +11,13 @@ import { formatDuration } from '../utils/datetime'
 import { formatCompactMetric } from '../utils/statistics'
 import Button from './Button'
 import Icon from './Icon'
+import MarqueeText from './MarqueeText'
 import './TaskExecutionAnalysis.css'
 
 interface TaskExecutionAnalysisProps {
   taskId: string
-  projectId: string
+  projectId?: string
+  loadReport?: () => Promise<TaskExecutionReport>
 }
 
 interface TaskExecutionAnalysisViewProps {
@@ -64,7 +66,11 @@ function statusLabel(status: string, t: ReturnType<typeof useI18n>['t']) {
   return labels[status] || status
 }
 
-function useTaskExecutionReport(taskId: string, projectId: string) {
+function useTaskExecutionReport(
+  taskId: string,
+  projectId?: string,
+  loadReport?: () => Promise<TaskExecutionReport>,
+) {
   const { t } = useI18n()
   const [report, setReport] = useState<TaskExecutionReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -93,7 +99,9 @@ function useTaskExecutionReport(taskId: string, projectId: string) {
         setError('')
       }
       try {
-        const next = await taskApi.executionReport(taskId, projectId)
+        const next = loadReport
+          ? await loadReport()
+          : await taskApi.executionReport(taskId, projectId!)
         if (mountedRef.current) {
           runningRef.current = next.runs.some((run) => run.status === 'running')
           setReport(next)
@@ -106,7 +114,7 @@ function useTaskExecutionReport(taskId: string, projectId: string) {
     } while (queuedRef.current && mountedRef.current)
     loadingRef.current = false
     if (mountedRef.current) setLoading(false)
-  }, [projectId, t, taskId])
+  }, [loadReport, projectId, t, taskId])
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load() }, taskStatusEvents ? 350 : 0)
@@ -122,9 +130,9 @@ function useTaskExecutionReport(taskId: string, projectId: string) {
   return { report, loading, error, reload: load }
 }
 
-export default function TaskExecutionAnalysis({ taskId, projectId }: TaskExecutionAnalysisProps) {
+export default function TaskExecutionAnalysis({ taskId, projectId, loadReport }: TaskExecutionAnalysisProps) {
   const { t } = useI18n()
-  const { report, loading, error, reload } = useTaskExecutionReport(taskId, projectId)
+  const { report, loading, error, reload } = useTaskExecutionReport(taskId, projectId, loadReport)
 
   if (loading && !report) {
     return <div className="execution-analysis-state"><span className="task-status-spinner" />{t('common.loading')}</div>
@@ -146,6 +154,7 @@ export function TaskExecutionAnalysisView({ report }: TaskExecutionAnalysisViewP
   const [roundFilter, setRoundFilter] = useState<number | 'all'>('all')
   const [timeMode, setTimeMode] = useState<'relative' | 'clock'>('relative')
   const [selected, setSelected] = useState<TaskExecutionSegment | null>(null)
+  const userBreakdown = report.user_breakdown ?? []
 
   useEffect(() => {
     if (!selected) return
@@ -287,7 +296,7 @@ export function TaskExecutionAnalysisView({ report }: TaskExecutionAnalysisViewP
                               onClick={() => setSelected(segment)}
                               title={`${segment.step_title} · ${statusLabel(segment.status, t)}`}
                             >
-                              <span>{statusLabel(segment.status, t)}</span>
+                              <MarqueeText text={statusLabel(segment.status, t)} />
                               {segment.status === 'running' && <i className="task-status-spinner" />}
                             </button>
                           </div>
@@ -299,6 +308,35 @@ export function TaskExecutionAnalysisView({ report }: TaskExecutionAnalysisViewP
               })}
             </div>
           </div>
+        )}
+      </section>
+
+      <section className="execution-analysis-panel">
+        <div className="execution-analysis-panel-head"><strong>{t('executionAnalysis.userUsage')}</strong></div>
+        {userBreakdown.length === 0 ? (
+          <div className="execution-analysis-empty">{t('executionAnalysis.noUserUsage')}</div>
+        ) : (
+          <div className="execution-analysis-table-wrap"><table><thead><tr>
+            <th>{t('executionAnalysis.user')}</th>
+            <th className="is-number">{t('executionAnalysis.modelCalls')}</th>
+            <th className="is-number">{t('executionAnalysis.inputTokens')}</th>
+            <th className="is-number">{t('executionAnalysis.outputTokens')}</th>
+            <th className="is-number">{t('executionAnalysis.cacheRead')}</th>
+            <th className="is-number">Token</th>
+            <th className="is-number">{t('executionAnalysis.cost')}</th>
+          </tr></thead><tbody>
+            {userBreakdown.map((row) => (
+              <tr key={row.author_id || `name:${row.author_name}`}>
+                <td>{row.author_name || t('executionAnalysis.unknownUser')}</td>
+                <td className="is-number">{row.message_count}</td>
+                <td className="is-number">{formatCompactMetric(row.input_tokens, locale)}</td>
+                <td className="is-number">{formatCompactMetric(row.output_tokens, locale)}</td>
+                <td className="is-number">{formatCompactMetric(row.cache_read_tokens + row.cache_write_tokens, locale)}</td>
+                <td className="is-number">{formatCompactMetric(row.total_tokens, locale)}</td>
+                <td className="is-number">{formatCost(row.cost, report.currency, locale)}</td>
+              </tr>
+            ))}
+          </tbody></table></div>
         )}
       </section>
 

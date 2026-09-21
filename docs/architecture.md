@@ -63,18 +63,21 @@ Task
     └── ReviewRun（阶段审核 attempt）
 ```
 
-`TaskStep` 是每个阶段的当前状态投影；`WorkflowRun`、`StepRun` 和 `ReviewRun` 保存执行历史。`TaskRunner` 根据依赖关系并行启动 ready 阶段，汇合节点只有在所有依赖通过后才会执行。
+`TaskStep` 是每个阶段的当前状态投影；`WorkflowRun`、`StepRun` 和 `ReviewRun` 保存执行历史。`TaskRunner` 根据依赖关系并行启动 ready 阶段，汇合节点只有在所有依赖通过且每条实线输入连接已经被对应的非空产物激活后才会执行。
 
 任务并发和助手对话并发由 `ConcurrencyGate` 分通道管理，可配置全局值和项目覆盖值。定时任务可选择豁免任务并发限制。
 
 ## 阶段执行
+
+任务创建、并发排队、DAG 调度、提示词、审核、产物路由、返回线、阶段消息、协调助手重跑和进程恢复的完整语义见[工作流引擎执行全景](workflow-engine-execution.md)。本节只保留架构主链路。
 
 一次阶段执行的主链路是：
 
 ```text
 WorkflowRuntime
   → TaskRunner 选择 ready 阶段
-  → PromptAssembler 组装系统指令、任务说明、阶段要求和上游产物
+  → ArtifactRouter 按连接端口解析本轮动态输入快照
+  → PromptAssembler 组装系统指令、任务说明、阶段要求和精确输入产物
   → AcpEngineBase 适配器运行 CLI / SDK / ACP / 进程内引擎
   → InternalEvent（ACP 对齐词汇）
   → JSONL 事件日志 + 消息摘要 + EventBus
@@ -90,6 +93,12 @@ WorkflowRuntime
 
 阶段审核支持关闭、自动和人工模式。自动审核失败可以按配置重试；人工审核会停在 `awaiting_review`，通过、驳回和强制通过均作用于明确的 `StepRun` / `ReviewRun`。
 
+审核与路由是两个独立门：`skip` 只跳过审核，不跳过产物路由。阶段执行成功且审核通过（或配置为 `skip`）后，运行时才读取本轮 manifest 的端口状态；只有声明产物存在且大小大于 0 的输出端口会激活相连的下游。未产出、缺失或 0 字节输出不会激活连接，依赖这些连接的分支会一次性标记为 `skipped`，不会轮询重扫。
+
+每次 `StepRun` 会持久化 `input_snapshot_json`。快照按输入端口记录连接、来源阶段、来源轮次、文件路径和大小；提示词由该快照动态生成，不硬编码“首次开发”或“缺陷返工”等业务判断。返回线触发重跑时，目标阶段仍会同时取得其它已激活输入端口，例如开发阶段会同时收到原 PRD 和测试阶段返回的 Bug 列表。
+
+虚线是产物驱动的返回连接。其源端口产出非空文件后，目标阶段及其正向下游被回退重跑；画布流程中的审核驳回只重试当前阶段，不能绕过产物门控直接触发虚线。每个阶段通过 `maxReturnRounds` 独立设置其虚线返回连接最多可触发的次数，默认 3、允许 1–20；下一次超过配置上限时暂停流程。该配置与审核的 `review.maxRetries` 完全独立。若同一轮同时产出正向结果和返回结果，运行时按路由冲突暂停，避免一边交付一边返工。返回计数和活动连接持久化在 `WorkflowRun.routing_state_json`，重启和人工审核恢复不会重置上限。旧版 `steps/reworkUpstream` 定义仍保留原有的审核驱动返工语义。
+
 ## 产物轮次
 
 阶段产物使用稳定的工作流、任务、阶段和轮次目录：
@@ -100,11 +109,11 @@ WorkflowRuntime
 └── ...产物文件
 ```
 
-`StepRun.artifact_round` 记录该阶段成功产物的轮次，`input_rounds_json` 记录本次执行显式选择的上游轮次。失败、取消或中断的 attempt 不保留轮次目录；审核驳回但已经生成的产物轮次会保留，但不会成为下游默认输入。
+`StepRun.artifact_round` 记录该阶段成功产物的轮次，`input_rounds_json` 记录本次执行显式选择的上游轮次，`input_snapshot_json` 保存实际注入引擎的端口级输入。失败、取消或中断的 attempt 不保留轮次目录；审核驳回但已经生成的产物轮次会保留，但不会成为下游默认输入。
 
 下游默认选择每个依赖阶段最新的可继承轮次。用户也可以通过协调助手明确要求沿用某个历史轮次。legacy 阶段根目录按第 1 轮兼容读取，不自动搬迁。
 
-产物当前是文件与 manifest，不存在独立的 `artifacts` 数据表。列表、预览、审核、分享、协调助手和任务派发共用 `services/artifact_rounds.py` 的路径与选择规则。
+manifest 除文件清单外，还为每个声明输出记录 `port`、`exists`、`size` 和 `nonempty`，目录大小按其内部普通文件合计。产物当前是文件与 manifest，不存在独立的 `artifacts` 数据表。列表、预览、审核、分享、协调助手和任务派发共用 `services/artifact_rounds.py` 的路径与选择规则；端口激活和返回限制集中在 `services/artifact_routing.py`。
 
 ## 引擎边界
 
@@ -171,6 +180,8 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 
 协调助手不能直接执行副作用。它生成持久化动作提案，只有用户确认、版本校验和幂等检查通过后，后端才会执行阶段补充、审核决定或从指定阶段重跑。`rerun_from_stage` 可由协调助手按需携带 `payload.content`；确认后该内容会保存为目标阶段补充并注入本轮执行，目标阶段及其 DAG 下游阶段一起重跑。未携带 `content` 时仅重跑，不额外注入提示词。
 
+局部重跑使用当前流程定义创建子运行；范围外已通过阶段以 `reused` StepRun 进入子运行。输入恢复优先采用该子运行明确记录的复用轮次，再回退到最新可继承轮次，避免旧 manifest 标记漂移导致目标阶段被错误跳过。没有连接的孤立阶段只在自身被选为重跑目标时执行，协调助手负责按需读取任务全局信息并将整理后的上下文作为阶段补充注入。
+
 ## 核心数据表
 
 每个项目数据库的主要表包括：
@@ -179,6 +190,7 @@ Pydantic AI 是进程内引擎，固定挂载项目范围的 Coder 和 Skills。
 - `workflows`、`workflow_runs`、`step_runs`、`review_runs`
 - `messages`
 - `chat_sessions`、`chat_messages`
+- `pending_message_inserts`：按正在运行的 assistant Message ID 保存待插入内容；消费前不属于正式聊天记录，目标执行结束后按顺序合并为一条用户消息
 - `coordinator_sessions`、`coordinator_turns`、`action_proposals`、`stage_supplements`
 - `schedules`、`schedule_runs`
 - `task_shares`、`channels`

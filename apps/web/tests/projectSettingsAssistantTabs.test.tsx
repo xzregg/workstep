@@ -9,6 +9,14 @@ import ProjectSettingsPanel from '../src/components/ProjectSettingsPanel'
 import { I18nProvider, useLocaleStore } from '../src/i18n'
 import { useChatListStore } from '../src/stores/chatSessionStore'
 
+function setNativeValue(
+  window: ReturnType<typeof installDomEnvironment>['window'],
+  element: HTMLInputElement,
+  value: string,
+) {
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!.call(element, value)
+}
+
 const project: Project = {
   id: 'project-1',
   name: 'demo',
@@ -20,7 +28,9 @@ const project: Project = {
 test('system prompt and reorderable quick buttons use separate settings tabs', async () => {
   const { window } = installDomEnvironment()
   const originalSettings = projectApi.settings
+  const originalSetConcurrency = projectApi.setConcurrency
   const originalSaveQuickButtons = chatSessionApi.saveQuickButtons
+  const concurrencySaves: Array<{ maxTasks: number | null; maxChats: number | null; scheduleExempt: boolean | null }> = []
   projectApi.settings = async () => ({
     name: project.name,
     path: project.path,
@@ -36,6 +46,17 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     },
   })
   chatSessionApi.saveQuickButtons = async (_projectId, buttons) => ({ buttons })
+  projectApi.setConcurrency = async (_projectId, config) => {
+    concurrencySaves.push(config)
+    return {
+      saved: true,
+      project: {
+        max_tasks: config.maxTasks,
+        max_chats: config.maxChats,
+        schedule_exempt: config.scheduleExempt,
+      },
+    }
+  }
   useChatListStore.setState({ quickButtons: [] })
   useLocaleStore.setState({ locale: 'zh-CN' })
 
@@ -98,8 +119,33 @@ test('system prompt and reorderable quick buttons use separate settings tabs', a
     await act(async () => addTab.click())
     assert.equal(buttonList.querySelectorAll('button[draggable="true"]').length, 3)
     assert.equal(buttonList.querySelector('[aria-current="true"]')?.textContent?.trim(), '新快捷按钮')
+
+    const concurrencyNav = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === '并发限制')
+    assert.ok(concurrencyNav)
+    await act(async () => concurrencyNav.click())
+
+    const taskLimit = container.querySelector<HTMLInputElement>('#project-max-tasks')
+    const chatLimit = container.querySelector<HTMLInputElement>('#project-max-chats')
+    assert.equal(taskLimit?.value, '不限制')
+    assert.equal(chatLimit?.value, '不限制')
+    assert.equal(taskLimit?.type, 'text')
+    assert.equal(taskLimit?.list, null)
+
+    await act(async () => {
+      setNativeValue(window, taskLimit!, '0')
+      taskLimit!.dispatchEvent(new Event('input', { bubbles: true }))
+      setNativeValue(window, chatLimit!, '2')
+      chatLimit!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    const concurrencySave = [...container.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === '保存')
+    assert.ok(concurrencySave)
+    await act(async () => concurrencySave.click())
+    assert.deepEqual(concurrencySaves, [{ maxTasks: 0, maxChats: 2, scheduleExempt: false }])
   } finally {
     projectApi.settings = originalSettings
+    projectApi.setConcurrency = originalSetConcurrency
     chatSessionApi.saveQuickButtons = originalSaveQuickButtons
     await act(async () => root.unmount())
     container.remove()

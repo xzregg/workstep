@@ -9,20 +9,10 @@ import {
   type MarkdownUrlResolver,
 } from '../contexts/MarkdownAssetUrlContext'
 
-export interface TaskDetailPrimaryAction {
-  label: string
-  disabled?: boolean
-  loading?: boolean
-  onClick: () => void
-}
-
 /**
- * 任务详情的单一页面实现：owner 弹窗与公开分享页都渲染它，
- * 只通过 props 注入不同的数据源、权限和底部主操作。
+ * 任务详情的单一页面实现：owner 弹窗与公开分享页都渲染它。
  */
 export interface TaskDetailPageProps extends TaskDetailViewProps {
-  primaryAction?: TaskDetailPrimaryAction
-  closeLabel?: string
   artifactNotice?: string
   /** 产物预览的挂载与关闭由调用方管理状态，这里只负责统一渲染。 */
   previewArtifact?: TaskArtifact | null
@@ -38,8 +28,6 @@ export interface TaskDetailPageProps extends TaskDetailViewProps {
 }
 
 export default function TaskDetailPage({
-  primaryAction,
-  closeLabel,
   artifactNotice,
   previewArtifact,
   onCloseArtifactPreview,
@@ -58,43 +46,6 @@ export default function TaskDetailPage({
     <MarkdownAssetUrlProvider resolver={markdownUrlResolver}>
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <TaskDetailView {...viewProps} onClose={onClose} />
-
-      {(onClose || primaryAction) && (
-        <div
-          className="task-detail-footer-actions"
-          style={{
-            padding: '14px 24px',
-            borderTop: '1px solid var(--border-soft)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            flexShrink: 0,
-          }}
-        >
-          {onClose && (
-            <Button variant="ghost" onClick={onClose}>
-              {closeLabel || t('common.close')}
-            </Button>
-          )}
-          {primaryAction && (
-            <Button
-              variant="primary"
-              disabled={primaryAction.disabled}
-              loading={primaryAction.loading}
-              onClick={primaryAction.onClick}
-              style={primaryAction.disabled ? {
-                background: 'var(--border)',
-                color: 'var(--meta)',
-                borderColor: 'var(--border)',
-                cursor: 'not-allowed',
-                opacity: 1,
-              } : undefined}
-            >
-              {primaryAction.label}
-            </Button>
-          )}
-        </div>
-      )}
 
       {artifactNotice && (
         <div style={{

@@ -131,6 +131,11 @@ def apply_patch(
         node = deepcopy(dict(raw_node))
         node_id = _as_int(node.get("id"))
         if node_id is not None and node_id in nodes_by_id:
+            node["id"] = node_id
+            if node == nodes_by_id[node_id]:
+                # Models sometimes echo the complete canvas in upsertNodes.
+                # Do not present unchanged stages as user-visible edits.
+                continue
             change = "updated"
         else:
             if node_id is None:
