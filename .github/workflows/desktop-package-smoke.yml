@@ -1,0 +1,152 @@
+name: Desktop package smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit to package
+        required: true
+        default: main
+
+concurrency:
+  group: desktop-package-smoke-${{ inputs.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ inputs.ref }}" }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build bundled backend
+        env:
+          BUILD_PLATFORM: mac
+          WORKSTEP_BUILD_VERSION: smoke-${{ github.sha }}
+        run: ./apps/desktop/build-backend.sh
+      - name: Build unsigned macOS package
+        working-directory: apps/desktop
+        env:
+          BUILD_PLATFORM: mac
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          ./inject-backend.sh
+          yarn electron-builder --mac dmg zip --arm64 --publish never --config.mac.notarize=false
+          test -x resources-placeholder/backend/python/bin/python3
+          test -f resources-placeholder/backend/legal/sbom.cdx.json
+          test -n "$(find dist -name 'WorkStep*.app' -type d -print -quit)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-smoke-macos-arm64
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ inputs.ref }}" }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build bundled backend
+        shell: pwsh
+        env:
+          WORKSTEP_BUILD_VERSION: smoke-${{ github.sha }}
+        run: ./apps/desktop/build-backend.ps1
+      - name: Build unsigned Windows installer
+        shell: pwsh
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          ./inject-backend.ps1
+          yarn electron-builder --win nsis --x64 --publish never --config.win.forceCodeSigning=false
+          if (-not (Test-Path "resources-placeholder/backend/python/python.exe")) { throw "Bundled Python missing" }
+          if (-not (Test-Path "resources-placeholder/backend/legal/sbom.cdx.json")) { throw "SBOM missing" }
+          if (-not (Test-Path "dist/WorkStep-windows-x64.exe")) { throw "Windows installer missing" }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-smoke-windows-x64
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { ref: "${{ inputs.ref }}" }
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: |
+            apps/web/yarn.lock
+            apps/desktop/yarn.lock
+      - name: Build React application
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn build
+      - name: Build bundled backend
+        env:
+          BUILD_PLATFORM: linux
+          WORKSTEP_BUILD_VERSION: smoke-${{ github.sha }}
+        run: ./apps/desktop/build-backend.sh
+      - name: Build Linux AppImage
+        working-directory: apps/desktop
+        env:
+          BUILD_PLATFORM: linux
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+          ./inject-backend.sh
+          yarn electron-builder --linux AppImage --x64 --publish never
+          test -x resources-placeholder/backend/python/bin/python3
+          test -f resources-placeholder/backend/legal/sbom.cdx.json
+          test -f dist/WorkStep-linux-x64.AppImage
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-smoke-linux-x64
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
