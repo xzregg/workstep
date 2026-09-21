@@ -31,11 +31,10 @@ jobs:
           python scripts/check_secrets.py
       - name: Daemon tests
         working-directory: apps/daemon
-        # Optional-engine contract tests need vendor SDKs/CLIs that WorkStep
-        # deliberately does not install in public CI (notably Qoder). The
-        # portable core suite remains the required merge gate.
+        # Install the public Codex/Claude SDK contracts only in CI. They remain
+        # excluded from desktop packages; Qoder-specific tests stay deselected.
         run: |
-          uv run --frozen --group dev pytest \
+          uv run --frozen --group dev --group sdk-engines pytest \
             --deselect='tests/test_acp_command_inspection.py::test_hermes_inspection_discovers_and_caches_acp_commands[asyncio]' \
             --deselect=tests/test_assistant_api.py::test_assistant_set_and_read_config \
             --deselect=tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults \
