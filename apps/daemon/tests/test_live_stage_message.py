@@ -263,11 +263,19 @@ class SplitLiveFakeEngine(LiveFakeEngine):
     """Emits output before AND after an injected live message, so the runner
     must seal the pre-insert segment and open a new response segment."""
 
+    ready_for_live: asyncio.Event | None = None
+    continue_after_live: asyncio.Event | None = None
+
     async def spawn(self, prompt, cwd, **kwargs):
         queue = kwargs.get("live_message_queue")
         yield InternalEvent(type="status", data={"status": "running"})
         yield InternalEvent(type="agent_message_chunk", data={"content": {"text": "第一段输出"}})
-        await asyncio.sleep(0.05)
+        if type(self).ready_for_live is not None:
+            type(self).ready_for_live.set()
+        if type(self).continue_after_live is not None:
+            await type(self).continue_after_live.wait()
+        else:
+            await asyncio.sleep(0.05)
         if queue is not None:
             while not queue.empty():
                 message_id, content = queue.get_nowait()
@@ -432,13 +440,16 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path, monkeypatch)
         ),
     )
     LiveFakeEngine.received = []
+    SplitLiveFakeEngine.ready_for_live = asyncio.Event()
+    SplitLiveFakeEngine.continue_after_live = asyncio.Event()
     try:
         pipeline = asyncio.create_task(
             runner.run_pipeline(task, steps_config, tmp_path / "artifacts")
         )
-        await asyncio.sleep(0.05)
+        await asyncio.wait_for(SplitLiveFakeEngine.ready_for_live.wait(), timeout=1)
         accepted = await runner.send_live_message(task.id, "do", "插入内容")
         assert accepted["status"] == "queued"
+        SplitLiveFakeEngine.continue_after_live.set()
         await pipeline
 
         messages = list(
@@ -465,6 +476,10 @@ async def test_runner_splits_stage_message_on_live_insert(tmp_path, monkeypatch)
         # 段 A 的事件快照只含插入前的事件；段 B 的事件从插入后开始累积。
         assert "第二段" not in (tmp_path / pre_insert.event_log_path).read_text()
     finally:
+        if SplitLiveFakeEngine.continue_after_live is not None:
+            SplitLiveFakeEngine.continue_after_live.set()
+        SplitLiveFakeEngine.ready_for_live = None
+        SplitLiveFakeEngine.continue_after_live = None
         await bus.close()
         from engines.core.registry import ENGINE_REGISTRY
         ENGINE_REGISTRY.clear()
