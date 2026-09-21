@@ -15,7 +15,7 @@ dependencies = [
     "logfire[fastapi]>=4.0",
     "pydantic-ai-slim[anthropic,logfire,openai,duckduckgo,web-fetch]>=2.33.0",
     "croniter>=6.0",
-    "pydantic-ai-harness[skills]==0.27.0",
+    "pydantic-ai-harness[skills]==0.31.0",
 ]
 
 [dependency-groups]
