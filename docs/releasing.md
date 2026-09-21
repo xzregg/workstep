@@ -9,9 +9,10 @@ Before tagging:
 1. Ensure CI passes, including repository-health and full-history secret scans.
 2. Review Dependabot alerts and dependency changes in all lockfiles.
 3. Configure valid Windows signing secrets (`WIN_CSC_LINK` and
-   `WIN_CSC_KEY_PASSWORD`). Windows packaging fails closed when signing is
-   unavailable. macOS signing and notarization remain optional for the current
-   early-access channel.
+   `WIN_CSC_KEY_PASSWORD`) and macOS signing/notarization secrets
+   (`MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`). Packaging fails closed
+   when signing or notarization is unavailable.
 4. Confirm GitHub secret scanning, push protection, private vulnerability
    reporting, branch rulesets, and the `release` Environment are enabled.
 5. Create and push the version tag. Do not reuse or move a published tag.

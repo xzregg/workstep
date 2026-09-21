@@ -27,7 +27,7 @@ try {
   Copy-Item $PythonRoot.FullName (Join-Path $OutputDir "python") -Recurse
   Copy-Item (Join-Path $DesktopDir "backend/main.py") (Join-Path $OutputDir "app/main.py")
   Copy-Item (Join-Path $DesktopDir "backend/server.py") (Join-Path $OutputDir "app/server.py")
-  foreach ($File in @("__init__.py", "main.py", "settings.py")) {
+  foreach ($File in @("__init__.py", "main.py", "settings.py", "version.py")) {
     Copy-Item (Join-Path $DaemonDir $File) (Join-Path $OutputDir "app/daemon/$File")
   }
   foreach ($RuntimeDir in @("agent_assistants", "api", "data", "engines", "models", "schemas", "services", "static", "streaming")) {

@@ -421,7 +421,7 @@ styles/pages.css        # 看板、设置、模板等页面级布局
 | 2 | Icon 库：安装 `lucide-react`、新建 `Icon.tsx`、替换 37 处内联 SVG | `rg "<svg"` 仅剩 Icon 组件；构建通过 |
 | 3 | 基础输入组件：`Button`/`Input`/`Select`/`Textarea`/`Field`/`Spinner`/`StatusBadge`/`EmptyState` 落地并迁移表单 | 输入组件 props 统一；必填校验固定高度提示；无重复输入实现 |
 | 4 | 逐页迁移（顺序）：Layout → TaskList → TaskDetail → Settings → TemplateSettings → CanvasEditor | 每页内联 style 显著下降；布局对齐第 4 章；673 处内联 style 逐步趋零 |
-| 5 | 视觉回归：对照设计源视觉系统、视口矩阵抽查、明暗模式 | 截图对比通过；AGENTS.md 规范逐条过；`npm run build` + `oxlint` 通过 |
+| 5 | 视觉回归：对照设计源视觉系统、视口矩阵抽查、明暗模式 | 截图对比通过；AGENTS.md 规范逐条过；`corepack yarn build` + `oxlint` 通过 |
 
 > 每个阶段独立可交付、可回滚；阶段间不阻塞（一次只改一个域）。
 

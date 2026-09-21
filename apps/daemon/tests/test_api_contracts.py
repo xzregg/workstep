@@ -2,6 +2,7 @@
 
 from contextlib import AsyncExitStack
 import asyncio
+from datetime import datetime
 import sqlite3
 import threading
 import time
@@ -2348,7 +2349,9 @@ async def test_task_artifacts_are_listed_with_manifest_metadata(api_context):
         params={"project_id": project_id},
     )
     assert response.status_code == 200
-    assert response.json()["artifacts"] == [{
+    artifacts = response.json()["artifacts"]
+    assert datetime.fromisoformat(artifacts[0].pop("updated_at")).tzinfo is not None
+    assert artifacts == [{
         "step_key": "req",
         "round": 1,
         "is_latest": True,

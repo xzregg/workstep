@@ -46,3 +46,15 @@ def test_desktop_package_enables_restrictive_electron_fuses():
     assert fuses["enableEmbeddedAsarIntegrityValidation"] is True
     assert fuses["onlyLoadAppFromAsar"] is True
     assert fuses["grantFileProtocolExtraPrivileges"] is False
+
+
+def test_desktop_package_uses_branded_icons_for_every_platform():
+    package = json.loads((DESKTOP_DIR / "package.json").read_text())
+    build = package["build"]
+
+    assert build["mac"]["icon"] == "build/icon.icns"
+    assert build["win"]["icon"] == "build/icon.ico"
+    assert build["linux"]["icon"] == "build/icons"
+    assert (DESKTOP_DIR / "build" / "icon.icns").is_file()
+    assert (DESKTOP_DIR / "build" / "icon.ico").is_file()
+    assert (DESKTOP_DIR / "build" / "icons" / "512x512.png").is_file()

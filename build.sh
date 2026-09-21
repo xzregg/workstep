@@ -6,6 +6,22 @@ web_dir="$repo_dir/apps/web"
 desktop_build="$repo_dir/apps/desktop/build-backend.sh"
 build_web=""
 
+select_yarn() {
+  if command -v corepack >/dev/null 2>&1; then
+    YARN_COMMAND=(corepack yarn)
+  elif command -v yarn >/dev/null 2>&1; then
+    YARN_COMMAND=(yarn)
+    echo "未找到 Corepack，使用现有 Yarn $(yarn --version)"
+  else
+    echo "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 20/22" >&2
+    exit 1
+  fi
+}
+
+run_yarn() {
+  "${YARN_COMMAND[@]}" "$@"
+}
+
 usage() {
   cat <<'EOF'
 用法: ./build.sh [--with-web|--no-web]
@@ -54,12 +70,13 @@ if [[ -z "$build_web" ]]; then
 fi
 
 if [[ "$build_web" == "1" ]]; then
+  select_yarn
   echo "构建 Web dist..."
   cd "$web_dir"
   if [[ ! -x node_modules/.bin/vite ]]; then
-    yarn install
+    run_yarn install --frozen-lockfile
   fi
-  yarn build
+  run_yarn build
   test -f "$web_dir/dist/index.html"
 else
   test -f "$web_dir/dist/index.html" || {

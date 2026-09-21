@@ -87,6 +87,7 @@ async function backendUrl() {
       ...process.env,
       WORKSTEP_DESKTOP_RUNTIME: '1',
       WORKSTEP_DESKTOP_TOKEN: desktopToken,
+      WORKSTEP_VERSION: app.getVersion(),
     },
   })
   backendProcess = result.child

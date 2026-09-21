@@ -41,12 +41,12 @@ jobs:
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: yarn
@@ -67,7 +67,12 @@ jobs:
           BUILD_PLATFORM: mac
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD"
+          test -n "$APPLE_ID" && test -n "$APPLE_APP_SPECIFIC_PASSWORD" && test -n "$APPLE_TEAM_ID"
           corepack enable
           yarn install --frozen-lockfile
           version="${GITHUB_REF_NAME#v}"
@@ -80,8 +85,11 @@ jobs:
           test -f resources-placeholder/backend/legal/NOTICE
           test -f resources-placeholder/backend/legal/THIRD_PARTY_NOTICES.md
           test -f resources-placeholder/backend/legal/sbom.cdx.json
-          test -n "$(find dist -name 'WorkStep*.app' -type d -print -quit)"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+          app_path="$(find dist -name 'WorkStep*.app' -type d -print -quit)"
+          test -n "$app_path"
+          codesign --verify --deep --strict "$app_path"
+          spctl -a -t exec -vv "$app_path"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-macos-${{ matrix.arch }}
           path: |
@@ -95,12 +103,12 @@ jobs:
     needs: validate
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: yarn
@@ -130,11 +138,11 @@ jobs:
           yarn electron-builder --win nsis --x64 --publish never
           if (-not (Test-Path "resources-placeholder/backend/python/python.exe")) { throw "Bundled Python missing" }
           if (-not (Test-Path "resources-placeholder/backend/legal/sbom.cdx.json")) { throw "SBOM missing" }
-          $installer = Get-ChildItem "dist/WorkStep-*-windows-x64.exe" | Select-Object -First 1
+          $installer = Get-Item "dist/WorkStep-windows-x64.exe"
           if (-not $installer) { throw "Windows installer missing" }
           $signature = Get-AuthenticodeSignature $installer.FullName
           if ($signature.Status -ne "Valid") { throw "Invalid Windows signature: $($signature.Status)" }
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-windows-x64
           path: |
@@ -147,12 +155,12 @@ jobs:
     needs: validate
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ inputs.tag || github.ref }}" }
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with: { python-version: "3.12" }
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: yarn
@@ -185,8 +193,8 @@ jobs:
           test -f resources-placeholder/backend/legal/THIRD_PARTY_NOTICES.md
           test -f resources-placeholder/backend/legal/sbom.cdx.json
           cp resources-placeholder/backend/legal/sbom.cdx.json "dist/WorkStep-${version}-sbom.cdx.json"
-          test -n "$(find dist -name 'WorkStep-*-linux-x64.AppImage' -type f -print -quit)"
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+          test -f dist/WorkStep-linux-x64.AppImage
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-linux-x64
           path: |
@@ -205,7 +213,7 @@ jobs:
       attestations: write
     environment: release
     steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: desktop-*, merge-multiple: true, path: release }
       - name: Create checksums
         working-directory: release
@@ -213,7 +221,7 @@ jobs:
           sha256sum WorkStep-* > SHA256SUMS.txt
           test -s SHA256SUMS.txt
       - name: Attest release artifacts
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: |
             release/WorkStep-*

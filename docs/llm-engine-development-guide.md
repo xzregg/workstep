@@ -899,7 +899,7 @@ cd apps/daemon
 
 ```bash
 cd apps/web
-npm run build
+corepack yarn build
 ```
 
 ## 12. 提交前验收清单

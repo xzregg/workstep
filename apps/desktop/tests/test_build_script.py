@@ -20,7 +20,7 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def _fake_repo(tmp_path: Path) -> tuple[Path, Path]:
+def _fake_repo(tmp_path: Path, *, include_corepack: bool = True) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     web_dir = repo / "apps" / "web"
     desktop_dir = repo / "apps" / "desktop"
@@ -45,6 +45,18 @@ if [[ "${1:-}" == "build" ]]; then
 fi
 """,
     )
+    if include_corepack:
+        _write_executable(
+            bin_dir / "corepack",
+            """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "yarn" ]]; then
+  exit 2
+fi
+shift
+exec yarn "$@"
+""",
+        )
     _write_executable(
         desktop_dir / "build-backend.sh",
         """#!/usr/bin/env bash
@@ -56,10 +68,15 @@ echo "backend" >> "$BUILD_LOG"
     return repo, bin_dir
 
 
-def _run_build(repo: Path, bin_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _run_build(
+    repo: Path,
+    bin_dir: Path,
+    *args: str,
+    clean_path: bool = False,
+) -> subprocess.CompletedProcess[str]:
     log_path = repo / "build.log"
     env = os.environ.copy()
-    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["PATH"] = f"{bin_dir}:/usr/bin:/bin" if clean_path else f"{bin_dir}:{env['PATH']}"
     env["BUILD_LOG"] = str(log_path)
     result = subprocess.run(
         ["bash", str(repo / "build.sh"), *args],
@@ -80,6 +97,16 @@ def test_with_web_builds_dist_before_backend(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert result.build_log == "yarn:build\nbackend\n"
+
+
+def test_with_web_falls_back_to_yarn_when_corepack_is_unavailable(tmp_path: Path) -> None:
+    repo, bin_dir = _fake_repo(tmp_path, include_corepack=False)
+
+    result = _run_build(repo, bin_dir, "--with-web", clean_path=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "未找到 Corepack" in result.stdout
+    assert result.build_log == "yarn:--version\nyarn:build\nbackend\n"
 
 
 def test_without_web_reuses_existing_dist(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ from typing import Any, AsyncIterator
 
 import acp
 from acp import schema
+from settings import settings
 
 from engines.core.base import (
     BaseLLMEngine,
@@ -419,7 +420,7 @@ class AcpEngineBase(BaseLLMEngine):
                 self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
-                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                    client_info={"name": "WorkStep", "version": settings.version},
                 )
                 session = await client.new_session(
                     cwd=cwd,
@@ -610,7 +611,7 @@ class AcpEngineBase(BaseLLMEngine):
                 self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
-                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                    client_info={"name": "WorkStep", "version": settings.version},
                 )
                 session = await client.new_session(
                     cwd=cwd,
@@ -664,7 +665,7 @@ class AcpEngineBase(BaseLLMEngine):
                 self._initialize_response = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
-                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                    client_info={"name": "WorkStep", "version": settings.version},
                 )
                 return await action(client)
             finally:
@@ -1137,7 +1138,7 @@ class AcpEngineBase(BaseLLMEngine):
                 init_resp = await client.initialize(
                     protocol_version=acp.PROTOCOL_VERSION,
                     client_capabilities=self._client_capabilities(),
-                    client_info={"name": "WorkStep", "version": "0.1.0"},
+                    client_info={"name": "WorkStep", "version": settings.version},
                 )
                 self._initialize_response = init_resp
                 logger.info("ACP initialized: %s", init_resp)

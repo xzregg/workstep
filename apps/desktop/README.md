@@ -29,14 +29,14 @@ WORKSTEP_DESKTOP_PORT=43123 WorkStep
 
 ```bash
 cd apps/desktop
-yarn install
-WORKSTEP_DEV_SERVER_URL=http://127.0.0.1:5173 yarn start
+corepack yarn install --frozen-lockfile
+WORKSTEP_DEV_SERVER_URL=http://127.0.0.1:5173 corepack yarn start
 ```
 
 生产安装包只在 GitHub Actions 对应平台 Runner 上构建。本地测试不会启动常驻服务：
 
 ```bash
-cd apps/desktop && yarn test
+cd apps/desktop && corepack yarn test
 uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_entry.py
 ```
 
@@ -63,6 +63,8 @@ uv run --project apps/daemon --group dev pytest apps/desktop/tests/test_backend_
 
 生产 sidecar 每次启动都会生成新的随机令牌。令牌只保留在 Electron 主进程与 sidecar 环境中，由主进程为目标 loopback origin 的 HTTP/WebSocket 请求注入；渲染进程不会获得令牌。外部导航、新窗口、WebView 和浏览器权限请求均由桌面壳限制。
 
-后端包的 `legal/` 目录包含 `LICENSE`、`NOTICE`、第三方说明和 CycloneDX SBOM。Windows release 必须完成 Authenticode 签名；macOS 签名和公证在早期发布阶段暂为可选。
+后端包的 `legal/` 目录包含 `LICENSE`、`NOTICE`、第三方说明和 CycloneDX SBOM。Windows release 必须完成 Authenticode 签名；macOS release 必须完成 Developer ID 签名和 Apple 公证。
 
 Windows 构建使用隐藏子进程窗口并保留 stdout 管道，以便 `PORT:<port>` 就绪协议可靠传回主进程。
+
+正式发布要求 Windows Authenticode 签名以及 macOS Developer ID 签名和 Apple 公证；任一凭据缺失或校验失败，Release 工作流都会停止。macOS 自动更新依赖有效签名，因此不发布未签名更新包。

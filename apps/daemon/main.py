@@ -248,7 +248,7 @@ app.include_router(remote_project_router)
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": settings.version}
 
 
 # --- WebSocket routes (see streaming.ws) ---

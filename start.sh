@@ -42,6 +42,21 @@ ok()   { echo -e "${GREEN}[  ok  ]${NC} $1"; }
 warn() { echo -e "${YELLOW}[ warn ]${NC} $1"; }
 fail() { echo -e "${RED}[ fail ]${NC} $1"; exit 1; }
 
+select_yarn() {
+    if command -v corepack >/dev/null 2>&1; then
+        YARN_COMMAND=(corepack yarn)
+    elif command -v yarn >/dev/null 2>&1; then
+        YARN_COMMAND=(yarn)
+        warn "未找到 Corepack，使用现有 Yarn $(yarn --version)"
+    else
+        fail "需要 Yarn；请安装 Yarn，或使用带 Corepack 的 Node.js 20/22"
+    fi
+}
+
+run_yarn() {
+    "${YARN_COMMAND[@]}" "$@"
+}
+
 check_port() {
     if lsof -ti:"$1" >/dev/null 2>&1; then
         return 0  # 端口被占
@@ -51,7 +66,6 @@ check_port() {
 
 stop_service() {
     local pid_file=$1
-    local port=$2
     if [ -f "$pid_file" ]; then
         local pid
         pid=$(cat "$pid_file")
@@ -62,8 +76,6 @@ stop_service() {
         fi
         rm -f "$pid_file"
     fi
-    # 防漏杀：按端口清理
-    lsof -ti:"$port" 2>/dev/null | xargs kill -9 2>/dev/null || true
 }
 
 wait_ready() {
@@ -82,25 +94,22 @@ wait_ready() {
 
 # === 预检查 ===
 if check_port "$PORT"; then
-    warn "端口 $PORT 已被占用，尝试停止旧进程..."
-    stop_service "$PID_DIR/daemon.pid" "$PORT"
-    sleep 1
-    if check_port "$PORT"; then
-        fail "端口 $PORT 仍然被占用"
-    fi
+    fail "端口 $PORT 已被其他进程占用，请先停止该进程或传入其他端口"
 fi
 
 # 检查依赖
 command -v uv >/dev/null 2>&1 || fail "需要 uv (curl -LsSf https://astral.sh/uv/install.sh | sh)"
+command -v node >/dev/null 2>&1 || fail "需要 Node.js 20+"
+select_yarn
 
 # === 构建官网 ===
 # Daemon 在 "/landing" 托管官网，dev/prod 启动都需使用对应资源基路径。
 log "构建官网 landing..."
 cd "$LANDING_DIR"
 if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
-    NODE_ENV=development yarn install 2>&1 | tail -3
+    NODE_ENV=development run_yarn install --frozen-lockfile 2>&1 | tail -3
 fi
-LANDING_BASE=/landing/ yarn build
+LANDING_BASE=/landing/ run_yarn build
 cd "$SCRIPT_DIR"
 ok "官网已构建 → Daemon serve /landing"
 
@@ -108,8 +117,8 @@ ok "官网已构建 → Daemon serve /landing"
 cleanup() {
     echo ""
     log "正在停止..."
-    stop_service "$PID_DIR/daemon.pid" "$PORT"
-    stop_service "$PID_DIR/web.pid" "5173"
+    stop_service "$PID_DIR/daemon.pid"
+    stop_service "$PID_DIR/web.pid"
     ok "已停止"
     exit 0
 }
@@ -147,10 +156,10 @@ if [ "$MODE" = "dev" ]; then
     # 安装依赖
     if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
         log "安装前端依赖..."
-        NODE_ENV=development yarn install 2>&1 | tail -3
+        NODE_ENV=development run_yarn install --frozen-lockfile 2>&1 | tail -3
     fi
 
-    nohup npx vite --port 5173 \
+    nohup "${YARN_COMMAND[@]}" vite --port 5173 \
         > "$LOG_DIR/web.log" 2>&1 &
     echo $! > "$PID_DIR/web.pid"
     cd "$SCRIPT_DIR"
@@ -172,9 +181,9 @@ else
     log "构建前端 web..."
     cd "$WEB_DIR"
     if [ ! -d "node_modules" ] || [ ! -f "node_modules/.bin/vite" ]; then
-        NODE_ENV=development yarn install 2>&1 | tail -3
+        NODE_ENV=development run_yarn install --frozen-lockfile 2>&1 | tail -3
     fi
-    NODE_ENV=development npx tsc -b && NODE_ENV=development npx vite build
+    NODE_ENV=development run_yarn build
     cd "$SCRIPT_DIR"
     ok "前端已构建 → Daemon serve home /"
     echo ""

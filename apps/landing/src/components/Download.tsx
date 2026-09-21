@@ -1,4 +1,5 @@
 import { ArrowDownToLine, Terminal } from 'lucide-react'
+import { SOURCE_REPO_URL } from '../config/downloads'
 import { useI18n } from '../i18n'
 
 export function Download({ onOpen }: { onOpen: () => void }) {
@@ -22,7 +23,7 @@ export function Download({ onOpen }: { onOpen: () => void }) {
             {t('download.sourceTitle')}
           </div>
           <pre className="code-block code-block-dark">
-            <code>{`git clone workstep\ncd workstep\n./start.sh`}</code>
+            <code>{`git clone ${SOURCE_REPO_URL}\ncd workstep\n./start.sh`}</code>
           </pre>
         </div>
       </div>

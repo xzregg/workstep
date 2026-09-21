@@ -1,6 +1,7 @@
 {
   "name": "workstep-desktop",
   "version": "0.1.0",
+  "packageManager": "yarn@1.22.22",
   "private": true,
   "description": "Electron shell for the WorkStep FastAPI sidecar",
   "license": "Apache-2.0",
@@ -63,22 +64,27 @@
     },
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "notarize": true,
       "target": ["dmg", "zip"],
-      "artifactName": "WorkStep-${version}-macos-${arch}.${ext}"
+      "artifactName": "WorkStep-macos-${arch}.${ext}"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": ["nsis"],
       "forceCodeSigning": true,
-      "artifactName": "WorkStep-${version}-windows-${arch}.${ext}"
+      "artifactName": "WorkStep-windows-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
     "linux": {
+      "icon": "build/icons",
       "target": ["AppImage"],
       "category": "Development",
-      "artifactName": "WorkStep-${version}-linux-${arch}.${ext}"
+      "artifactName": "WorkStep-linux-${arch}.${ext}"
     }
   }
 }

@@ -1,10 +1,17 @@
+import importlib.util
 from pathlib import Path
-import sys
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+ROOT = Path(__file__).resolve().parents[3]
+SPEC = importlib.util.spec_from_file_location(
+    "workstep_generate_release_sbom",
+    ROOT / "scripts" / "generate_release_sbom.py",
+)
+assert SPEC is not None and SPEC.loader is not None
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
 
-from scripts.generate_release_sbom import build_bom  # noqa: E402
+build_bom = MODULE.build_bom
 
 
 def test_release_sbom_covers_bundled_python_and_javascript_dependencies():
@@ -17,6 +24,9 @@ def test_release_sbom_covers_bundled_python_and_javascript_dependencies():
     assert any(name == "electron" for name, _version in components)
     assert any(name == "electron-updater" for name, _version in components)
     assert any(name == "react" for name, _version in components)
+    assert any(name == "@electron/get" for name, _version in components)
+    assert all(not version.startswith(("^", "~", ">", "<", "=")) for _name, version in components)
+    assert bom["metadata"]["component"]["licenses"] == [{"license": {"id": "Apache-2.0"}}]
 
 
 def test_release_sbom_is_stably_sorted():

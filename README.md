@@ -1,6 +1,6 @@
 # WorkStep
 
-[简体中文](README.zh-CN.md) · [Website](https://xzregg.github.io/workstep/) · [Documentation](docs/README.md) · [Discussions](https://github.com/xzregg/workstep/discussions)
+[简体中文](README.zh-CN.md) · [Website](https://xzregg.github.io/workstep/) · [Documentation](docs/README.md) · [Changelog](CHANGELOG.md) · [Discussions](https://github.com/xzregg/workstep/discussions)
 
 > A local-first workflow orchestrator that connects Codex, Claude Code, ACP agents, and other LLM engines into visible, reusable development pipelines.
 
@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag)](https://github.com/xzregg/workstep/releases)
 [![License](https://img.shields.io/github/license/xzregg/workstep)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](apps/daemon/pyproject.toml)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](apps/web/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)](apps/web/package.json)
 
 ![WorkStep workflow workspace](apps/web/src/assets/hero.svg)
 
@@ -24,7 +24,7 @@ WorkStep keeps projects and execution data on your machine while giving every ta
 
 ## Quick start
 
-Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), and Node.js 20+.
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js 20 or 22, and the bundled Corepack command.
 
 ```bash
 git clone https://github.com/xzregg/workstep.git
@@ -32,11 +32,11 @@ cd workstep
 ./start.sh
 ```
 
-Then open `http://127.0.0.1:8765`. Development commands and repository conventions live in the [development guide](docs/development.md).
+Then open `http://127.0.0.1:5173`. Port `8765` serves the daemon API. Development commands and repository conventions live in the [development guide](docs/development.md).
 
 ## Desktop downloads
 
-Tagged releases publish early-access builds for macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64. Windows artifacts are Authenticode-signed; macOS signing and notarization are not yet guaranteed. Download artifacts, checksums, SBOMs, and provenance from [GitHub Releases](https://github.com/xzregg/workstep/releases). macOS may require explicit confirmation before opening an unsigned build.
+Tagged releases publish early-access builds for macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64. Windows artifacts are Authenticode-signed; macOS artifacts are Developer ID signed and notarized. Download installers, checksums, the dependency SBOM, and provenance from [GitHub Releases](https://github.com/xzregg/workstep/releases).
 
 ## Documentation
 

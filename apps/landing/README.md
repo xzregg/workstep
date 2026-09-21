@@ -7,17 +7,17 @@
 ## 开发命令
 
 ```bash
-yarn install
-yarn dev        # http://localhost:5174
-yarn test       # vitest：i18n 键集一致性 + 时间轴工具
-yarn lint       # oxlint
-yarn build      # tsc -b + vite build，产物在 dist/
+corepack yarn install --frozen-lockfile
+corepack yarn dev        # http://localhost:5174
+corepack yarn test       # vitest：i18n 键集一致性 + 时间轴工具
+corepack yarn lint       # oxlint
+corepack yarn build      # tsc -b + vite build，产物在 dist/
 ```
 
-`yarn build` 会把脚本、样式和品牌图标内联到 `dist/index.html`。构建完成后可直接双击
+`corepack yarn build` 会把脚本、样式和品牌图标内联到 `dist/index.html`。构建完成后可直接双击
 该文件离线预览，不需要本地服务器，也不会触发 `file://` 跨域限制。
 
-生产模式下 Daemon 会托管官网与 Web 应用：`./start.sh prod` 会同时构建
+生产模式下 Daemon 会托管官网与 Web 应用：`./start.sh 8765 prod` 会同时构建
 `apps/landing`（→ `http://<host>:8765/landing`，构建时使用
 `LANDING_BASE=/landing/` 使静态资源位于 `/landing` 子路径）与 `apps/web`
 （→ `http://<host>:8765/`，保持 home 不变）。
@@ -32,19 +32,9 @@ yarn build      # tsc -b + vite build，产物在 dist/
 
 ## 常见自定义
 
-- 下载链接：编辑 `src/config/downloads.ts` 中 `PLATFORM_DOWNLOADS` 的 `url` 字段；
-  留空时按钮显示「即将开放」。
+- 下载链接：`src/config/downloads.ts` 使用 GitHub Releases 的稳定资产名；修改平台产物名时，必须同步更新 Electron Builder 配置和下载测试。
 - 演示内容：新增演示时在 `src/demo/demos.tsx` 注册 `DemoDef`，在
   `src/scenes/` 下新增场景组件（纯函数 `{ time: number } => UI`），并同步补充
   `src/i18n/zh-CN.ts` 与 `src/i18n/en-US.ts` 文案。
 - 文案：新增任何展示文案必须同时写入中英两本词典，键集合一致性由
   `tests/i18n.test.ts` 保证。
-
-
-### 产品介绍页
-
-```bash
-cd apps/landing
-yarn install
-yarn dev        # http://localhost:5174
-```

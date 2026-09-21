@@ -10,8 +10,8 @@ uv run uvicorn main:app --reload --port 8765
 
 ```bash
 cd apps/web
-npm ci
-npm run dev
+corepack yarn install --frozen-lockfile
+corepack yarn dev
 ```
 
 The public landing page is in `apps/landing` and uses Yarn. Do not commit generated builds, local databases, logs, secrets, or personal configuration.
@@ -20,8 +20,8 @@ The public landing page is in `apps/landing` and uses Yarn. Do not commit genera
 
 ```bash
 cd apps/daemon && uv run pytest
-cd apps/web && npm test && npm run build
-cd apps/landing && yarn test && yarn build
+cd apps/web && corepack yarn test && corepack yarn build
+cd apps/landing && corepack yarn test && corepack yarn build
 python scripts/check_repository_health.py
 ```
 

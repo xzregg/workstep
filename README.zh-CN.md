@@ -1,6 +1,6 @@
 # WorkStep
 
-[English](README.md) · [官网](https://xzregg.github.io/workstep/) · [文档](docs/README.md) · [讨论区](https://github.com/xzregg/workstep/discussions)
+[English](README.md) · [官网](https://xzregg.github.io/workstep/) · [文档](docs/README.md) · [更新记录](CHANGELOG.md) · [讨论区](https://github.com/xzregg/workstep/discussions)
 
 > 一个本地优先的工作流编排工具，把 Codex、Claude Code、ACP Agent 等 LLM 引擎连接成可观察、可复用的研发流水线。
 
@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/xzregg/workstep?display_name=tag)](https://github.com/xzregg/workstep/releases)
 [![License](https://img.shields.io/github/license/xzregg/workstep)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)](apps/daemon/pyproject.toml)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6)](apps/web/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6)](apps/web/package.json)
 
 ![WorkStep 工作流工作台](apps/web/src/assets/hero.svg)
 
@@ -24,7 +24,7 @@ WorkStep 将项目和执行数据保存在本机，同时为任务提供结构�
 
 ## 快速开始
 
-环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/) 和 Node.js 20+。
+环境要求：Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 20 或 22，以及 Node.js 自带的 Corepack。
 
 ```bash
 git clone https://github.com/xzregg/workstep.git
@@ -32,11 +32,11 @@ cd workstep
 ./start.sh
 ```
 
-启动后访问 `http://127.0.0.1:8765`。开发命令和仓库约定见[开发指南](docs/development.md)。
+启动后访问 `http://127.0.0.1:5173`；`8765` 是后台 API 端口。开发命令和仓库约定见[开发指南](docs/development.md)。
 
 ## 桌面版下载
 
-带标签的发布版本会提供 macOS Apple Silicon、macOS Intel、Windows x64 和 Linux x64 的早期构建。Windows 产物使用 Authenticode 签名；macOS 签名与公证目前不作保证。安装包、校验和、SBOM 与来源证明可从 [GitHub Releases](https://github.com/xzregg/workstep/releases) 下载。打开未签名的 macOS 构建时，系统可能要求额外确认。
+带标签的发布版本会提供 macOS Apple Silicon、macOS Intel、Windows x64 和 Linux x64 的早期构建。Windows 产物使用 Authenticode 签名，macOS 产物使用 Developer ID 签名并完成公证。安装包、校验和、依赖 SBOM 与来源证明可从 [GitHub Releases](https://github.com/xzregg/workstep/releases) 下载。
 
 ## 文档
 

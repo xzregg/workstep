@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#268DFF"/>
+      <stop offset="1" stop-color="#0056B8"/>
+    </linearGradient>
+    <filter id="shadow" x="80" y="80" width="864" height="864" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#003B80" flood-opacity=".28"/>
+    </filter>
+    <marker id="arrow-white" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#D9ECFF"/>
+    </marker>
+    <marker id="arrow-gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#FFD45C"/>
+    </marker>
+  </defs>
+  <rect x="72" y="72" width="880" height="880" rx="220" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M458 264C321 286 228 408 242 545" stroke="#D9ECFF" stroke-width="54" stroke-linecap="round" marker-end="url(#arrow-white)"/>
+  <path d="M292 648C397 758 573 777 700 688" stroke="#D9ECFF" stroke-width="54" stroke-linecap="round" marker-end="url(#arrow-white)"/>
+  <path d="M778 565C796 423 705 292 566 264" stroke="#FFD45C" stroke-width="54" stroke-linecap="round" marker-end="url(#arrow-gold)"/>
+  <rect x="428" y="194" width="168" height="168" rx="46" fill="white"/>
+  <rect x="174" y="532" width="168" height="168" rx="46" fill="white"/>
+  <rect x="682" y="532" width="168" height="168" rx="46" fill="#FFD45C"/>
+</svg>

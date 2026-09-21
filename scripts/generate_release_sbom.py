@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,7 @@ def _component(ecosystem: str, name: str, version: str) -> dict[str, str]:
         "type": "library",
         "name": name,
         "version": normalized,
-        "purl": f"pkg:{ecosystem}/{package_name}@{normalized}",
+        "purl": f"pkg:{ecosystem}/{quote(package_name, safe='/')}@{normalized}",
     }
 
 
@@ -38,17 +39,31 @@ def _python_components() -> list[dict[str, str]]:
     return components
 
 
+def _selector_name(selector: str) -> str:
+    value = selector.strip().strip('"')
+    return value.rsplit("@", 1)[0]
+
+
+def _yarn_lock_components(path: Path) -> list[dict[str, str]]:
+    """Read exact direct and transitive versions from a Yarn v1 lockfile."""
+    components: list[dict[str, str]] = []
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith((" ", "#")) and line.endswith(":"):
+            names = [_selector_name(item) for item in line[:-1].split(",")]
+            continue
+        match = re.match(r'^  version "([^"]+)"$', line)
+        if match and names:
+            components.extend(
+                _component("npm", name, match.group(1)) for name in set(names)
+            )
+    return components
+
+
 def _javascript_components() -> list[dict[str, str]]:
-    components = []
-    for relative in ("apps/desktop/package.json", "apps/web/package.json"):
-        package = json.loads((ROOT / relative).read_text(encoding="utf-8"))
-        dependencies = dict(package.get("dependencies", {}))
-        if relative == "apps/desktop/package.json":
-            electron = package.get("devDependencies", {}).get("electron")
-            if electron:
-                dependencies["electron"] = electron
-        for name, version in dependencies.items():
-            components.append(_component("npm", name, str(version)))
+    components: list[dict[str, str]] = []
+    for relative in ("apps/desktop/yarn.lock", "apps/web/yarn.lock"):
+        components.extend(_yarn_lock_components(ROOT / relative))
     return components
 
 
@@ -66,6 +81,7 @@ def build_bom(version: str) -> dict:
                 "type": "application",
                 "name": "WorkStep",
                 "version": version,
+                "licenses": [{"license": {"id": "Apache-2.0"}}],
             }
         },
         "components": sorted(unique.values(), key=lambda item: (item["purl"], item["name"])),
