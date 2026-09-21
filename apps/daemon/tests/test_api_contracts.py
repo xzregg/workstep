@@ -3700,14 +3700,11 @@ async def test_stage_execution_config_write_does_not_block_health_check(api_cont
     task_id = created.json()["id"]
     step_key = created.json()["steps"][0]["step_key"]
     endpoint = f"/api/task/{task_id}/step/{step_key}/config?project_id={project_id}"
-    resolved = (await client.get(endpoint)).json()["resolved"]
-    # The resolved response may include inherited engine fields that are not
-    # writable stage overrides for the engine available in this environment.
-    # Keep this concurrency canary focused on the database write path by
-    # submitting the minimal valid override shape.
+    # Keep this concurrency canary independent of developer-machine engine
+    # installations by using the always-available built-in engine.
     current = {
-        "engine": resolved["engine"],
-        "model": resolved.get("model") or None,
+        "engine": "pydantic_ai",
+        "model": None,
         "config": {},
     }
     database_path = project_dir / ".workstep" / "workstep.db"
