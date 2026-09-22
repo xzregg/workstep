@@ -16,27 +16,37 @@ def _config_store(tmp_path, monkeypatch) -> ConfigStore:
 
 def test_assistant_defaults_fallback_and_overlay(tmp_path, monkeypatch):
     store = _config_store(tmp_path, monkeypatch)
+    store.set_execution_default_engine("codex_sdk")
     store.set_coordinator_defaults("claude", "m1", "m2", "m3", "medium")
     defaults = store.get_assistant_defaults("task_create")
     assert defaults == {
-        "engine": "claude",
-        "model": "m1",
-        "fast_model": "m2",
-        "vision_model": "m3",
-        "thinking_effort": "medium",
+        "engine": "codex_sdk",
+        "model": "",
+        "fast_model": "",
+        "vision_model": "",
+        "thinking_effort": "",
         "provider_id": "",
     }
     store.set_assistant_defaults("task_create", engine="codex", model="gm")
     defaults = store.get_assistant_defaults("task_create")
     assert defaults["engine"] == "codex"
     assert defaults["model"] == "gm"
-    # 未覆盖的字段继续回退协调默认
-    assert defaults["fast_model"] == "m2"
+    # 未覆盖的字段继续跟随全局执行引擎自己的默认配置。
+    assert defaults["fast_model"] == ""
     store.set_assistant_defaults("task_create", model="")
-    assert store.get_assistant_defaults("task_create")["model"] == "m1"
+    assert store.get_assistant_defaults("task_create")["model"] == ""
     # 协调 Agent 走旧键，保证既有配置与每任务协调配置兼容
     store.set_assistant_defaults("task_coordinator", engine="hermes")
     assert store.get_coordinator_default_engine() == "hermes"
+    assert store.get_assistant_defaults("task_coordinator")["engine"] == "hermes"
+
+
+def test_all_unconfigured_assistants_follow_execution_default(tmp_path, monkeypatch):
+    store = _config_store(tmp_path, monkeypatch)
+    store.set_execution_default_engine("codex_sdk")
+
+    for name in ("task_coordinator", "task_create", "workflow_gen", "chat_session", "channel_chat"):
+        assert store.get_assistant_defaults(name)["engine"] == "codex_sdk"
 
 
 def test_assistant_configured_values_keep_unset_fields_empty(tmp_path, monkeypatch):
@@ -62,8 +72,8 @@ def test_assistant_configured_values_keep_unset_fields_empty(tmp_path, monkeypat
     store.set_assistant_defaults("task_create", engine="codex", thinking_effort="")
     configured = store.get_assistant_config("task_create")
     assert configured["thinking_effort"] == ""
-    # 通用默认解析仍保留旧行为，运行时可显式选择是否采用。
-    assert store.get_assistant_defaults("task_create")["thinking_effort"] == "medium"
+    # 跟随默认时不继承任务协调助手的独立思考强度。
+    assert store.get_assistant_defaults("task_create")["thinking_effort"] == ""
 
 
 @pytest.fixture
@@ -607,8 +617,9 @@ async def test_assistant_runtime_resolves_builtin_engine_when_provider_set(monke
     monkeypatch.setattr(
         base,
         "create_engine",
-        lambda engine_id: SimpleNamespace() if engine_id in ("pydantic_ai", "claude") else None,
+        lambda engine_id: SimpleNamespace() if engine_id in ("pydantic_ai", "codex_sdk") else None,
     )
+    monkeypatch.setattr(base, "resolve_execution_engine", lambda engine_id: "codex_sdk")
     runtime = base.AssistantRuntime.__new__(base.AssistantRuntime)
     runtime._config = SimpleNamespace(
         name="chat_session", resolve_engine_models=None, engine_label="Chat engine"
@@ -624,4 +635,4 @@ async def test_assistant_runtime_resolves_builtin_engine_when_provider_set(monke
         lambda name: {"engine": "", "provider_id": "p-b"},
     )
     engine_id, model, _ = runtime._resolve_engine_models()
-    assert engine_id == "claude"
+    assert engine_id == "codex_sdk"

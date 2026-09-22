@@ -37,6 +37,9 @@ class MemoryConfigStore:
     def get_coordinator_default_engine(self):
         return self.values.get("coordinator_default_engine", "")
 
+    def get_execution_default_engine(self):
+        return self.values.get("execution_default_engine", "claude")
+
     def get_coordinator_default_model(self):
         return self.values.get("coordinator_default_model", "")
 

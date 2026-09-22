@@ -22,9 +22,10 @@ DEFAULT_EXECUTION_ENGINE = "pydantic_ai"
 def resolve_execution_engine(engine_id: str | None) -> str:
     """Resolve an optional per-step engine to the current global default."""
     normalized = str(engine_id or "").strip()
+    get_default = getattr(config_store, "get_execution_default_engine", None)
     return (
         normalized
-        or config_store.get_execution_default_engine()
+        or (get_default() if callable(get_default) else "")
         or DEFAULT_EXECUTION_ENGINE
     )
 
@@ -582,17 +583,30 @@ class ConfigStore:
     def get_assistant_defaults(self, name: str) -> dict:
         """Resolve one assistant's default engine/model settings.
 
-        Every assistant falls back to the coordinator defaults; per-assistant
-        overrides (``assistant_defaults.<name>``) win when set.
+        Every assistant follows the global execution engine by default;
+        per-assistant overrides (``assistant_defaults.<name>``) win when set.
+        The task coordinator keeps its legacy explicit coordinator settings,
+        but an empty coordinator engine follows the same global default.
         """
         merged = {
-            "engine": self.get_coordinator_default_engine(),
-            "model": self.get_coordinator_default_model(),
-            "fast_model": self.get_coordinator_default_fast_model(),
-            "vision_model": self.get_coordinator_default_vision_model(),
-            "thinking_effort": self.get_coordinator_default_thinking_effort(),
+            "engine": self.get_execution_default_engine() or DEFAULT_EXECUTION_ENGINE,
+            "model": "",
+            "fast_model": "",
+            "vision_model": "",
+            "thinking_effort": "",
             "provider_id": "",
         }
+        if name == "task_coordinator":
+            coordinator = {
+                "engine": self.get_coordinator_default_engine(),
+                "model": self.get_coordinator_default_model(),
+                "fast_model": self.get_coordinator_default_fast_model(),
+                "vision_model": self.get_coordinator_default_vision_model(),
+                "thinking_effort": self.get_coordinator_default_thinking_effort(),
+            }
+            for key, value in coordinator.items():
+                if value:
+                    merged[key] = value
         overrides = self.get("assistant_defaults", {})
         if not isinstance(overrides, dict):
             return merged
@@ -679,7 +693,7 @@ class ConfigStore:
         ``task_coordinator`` keeps using the legacy coordinator keys so
         existing saved settings and the per-task coordinator config keep
         working; other assistants store per-name overrides that fall back to
-        the coordinator defaults when empty. ``provider_id`` is the built-in
+        the global execution engine when empty. ``provider_id`` is the built-in
         engine's dynamic config override (empty = follow the engine config).
         """
         if name == "task_coordinator":

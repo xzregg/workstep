@@ -33,7 +33,7 @@ from agent_assistants.workflow_patch import (
     apply_patch,
     is_patch,
 )
-from services.config import CONFIG_DIR, config_store
+from services.config import CONFIG_DIR, config_store, resolve_execution_engine
 from services.workflow_definition import (
     WorkflowDefinition,
     WorkflowValidationError,
@@ -254,7 +254,7 @@ class WorkflowGenModule(AssistantRuntime):
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
         defaults = config_store.get_assistant_defaults("workflow_gen")
-        configured_id = defaults["engine"] or "claude"
+        configured_id = defaults["engine"] or resolve_execution_engine(None)
         if (
             configured_id == "pydantic_ai"
             and (defaults.get("provider_id") or "").strip()

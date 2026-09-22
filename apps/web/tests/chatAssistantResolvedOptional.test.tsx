@@ -144,7 +144,7 @@ test('chat page shows the resolved engine default when no session override exist
       engine_label: 'Chat engine',
       fields: ['engine', 'model', 'fast_model', 'vision_model', 'thinking_effort', 'provider_id'],
       configured: {
-        engine: 'codex_sdk',
+        engine: '',
         model: '',
         fast_model: '',
         vision_model: '',
@@ -167,7 +167,7 @@ test('chat page shows the resolved engine default when no session override exist
     project_id: project.id,
     workflow_id: null,
     title: '会话',
-    engine: 'codex_sdk',
+    engine: '',
     provider_id: '',
     model: '',
     fast_model: '',
@@ -204,6 +204,7 @@ test('chat page shows the resolved engine default when no session override exist
     })
     await act(async () => { await Promise.resolve() })
     assert.match(container.textContent || '', /默认（极简）/)
+    assert.match(container.textContent || '', /默认Codex/)
   } finally {
     await act(async () => root.unmount())
     assistantApi.list = originals.assistantList
