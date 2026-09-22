@@ -12,8 +12,8 @@ from services.config import CODEX_REASONING_EFFORTS, config_store
 
 router = APIRouter(prefix="/api/assistant")
 
-# All assistants expose the same settings fields. Each assistant's defaults
-# fall back to the coordinator defaults and are overridden per assistant
+# All assistants expose the same settings fields. Each assistant follows the
+# global execution engine by default and can be overridden per assistant
 # (see ``config_store.get_assistant_defaults`` / ``set_assistant_defaults``).
 ASSISTANT_FIELDS: tuple[str, ...] = (
     "engine",

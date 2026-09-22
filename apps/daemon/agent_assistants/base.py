@@ -37,7 +37,7 @@ from services.chat_permissions import (
     map_plan_mode_overrides,
     PLAN_MODE_INSTRUCTION,
 )
-from services.config import CODEX_REASONING_EFFORTS, config_store
+from services.config import CODEX_REASONING_EFFORTS, config_store, resolve_execution_engine
 from services.intervention import intervention_manager
 from services.remote_project import get_effective_actor
 from streaming.bus import EventBus
@@ -1576,7 +1576,7 @@ class AssistantRuntime:
         if resolver is not None:
             return resolver()
         defaults = config_store.get_assistant_defaults(self._config.name)
-        engine_id = defaults["engine"] or "claude"
+        engine_id = defaults["engine"] or resolve_execution_engine(None)
         engine = create_engine(engine_id)
         if engine is None:
             raise ValueError(f"{self._config.engine_label} is unavailable: {engine_id}")

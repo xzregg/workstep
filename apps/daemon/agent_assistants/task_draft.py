@@ -19,7 +19,7 @@ from agent_assistants.base import (
     extract_streaming_reply,
 )
 from agent_assistants.event_journal import TurnEventJournal
-from services.config import config_store
+from services.config import config_store, resolve_execution_engine
 from services.workflow_definition import WorkflowDefinition
 
 
@@ -231,7 +231,7 @@ class TaskDraftModule(AssistantRuntime):
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
         defaults = config_store.get_assistant_defaults("task_create")
-        configured_id = defaults["engine"] or "claude"
+        configured_id = defaults["engine"] or resolve_execution_engine(None)
         if (
             configured_id == "pydantic_ai"
             and (defaults.get("provider_id") or "").strip()

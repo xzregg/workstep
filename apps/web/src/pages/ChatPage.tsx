@@ -161,7 +161,8 @@ export default function ChatPage() {
   )
   const effectiveEngine = selectedEngine
     || assistantConfig?.configured.engine
-    || 'claude'
+    || assistantConfig?.resolved?.engine
+    || 'pydantic_ai'
   const [quota, setQuota] = useState<EngineQuota | null>(null)
   const [quotaRefreshing, setQuotaRefreshing] = useState(false)
   const quotaRequestRef = useRef(0)
@@ -194,7 +195,7 @@ export default function ChatPage() {
       : t('chatSession.providerDefaultLabel')
   ), [providers, t])
   const handoffSource: HandoffEndpoint = {
-    engine: selectedEngine || assistantConfig?.configured.engine || 'claude',
+    engine: selectedEngine || assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
     providerId: selectedProvider,
   }
   const forkMessageIndex = forkMessageId
@@ -803,7 +804,7 @@ export default function ChatPage() {
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,
-          defaultEngine: assistantConfig?.configured.engine || 'claude',
+          defaultEngine: assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
           model: selectedModel,
           fastModel: selectedFastModel,
           visionModel: selectedVisionModel,
@@ -817,7 +818,7 @@ export default function ChatPage() {
           hint: assistantConfig ? t('chatSession.sessionHint') : '',
           engineTitle: t('chatSession.engineTitle'),
           onEngineChange: (engineId) => {
-            const defaultEngine = assistantConfig?.configured.engine || 'claude'
+            const defaultEngine = assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'
             const sourceEngine = selectedEngine || defaultEngine
             const targetEngine = engineId || defaultEngine
             if (requiresEngineHandoff(
@@ -889,7 +890,7 @@ export default function ChatPage() {
         open={forkOpen}
         projectId={activeProject.id}
         sourceTitle={sessionTitle || t('chatSession.title')}
-        sourceEngine={selectedEngine || assistantConfig?.configured.engine || 'claude'}
+        sourceEngine={selectedEngine || assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'}
         sourceModel={selectedModel}
         sourceFastModel={selectedFastModel}
         sourceVisionModel={selectedVisionModel}
@@ -900,7 +901,7 @@ export default function ChatPage() {
         forkAtTail={forkMessageIndex < 0 || forkMessageIndex === messages.length - 1}
         engines={sharedEngines}
         providers={providers}
-        defaultEngine={assistantConfig?.configured.engine || 'claude'}
+        defaultEngine={assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai'}
         initialTargetEngine={forkTargetEngine}
         loading={forking}
         error={forkError}

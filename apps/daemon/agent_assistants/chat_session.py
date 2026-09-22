@@ -51,7 +51,7 @@ from agent_assistants.context_handoff import (
 )
 from engines.core.agui import AGUIContext, to_agui_events
 from services.chat_permissions import is_valid_permission_mode
-from services.config import config_store
+from services.config import config_store, resolve_execution_engine
 
 logger = logging.getLogger(__name__)
 
@@ -1529,7 +1529,7 @@ class ChatSessionModule(AssistantRuntime):
 
     def _resolve_engine_models(self) -> tuple[str, str | None, str | None]:
         defaults = config_store.get_assistant_defaults(self._config.name)
-        configured_id = defaults["engine"] or "claude"
+        configured_id = defaults["engine"] or resolve_execution_engine(None)
         if (
             configured_id == "pydantic_ai"
             and (defaults.get("provider_id") or "").strip()

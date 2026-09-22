@@ -473,7 +473,7 @@ export default function AiFlowChat({
           engine: selectedEngine,
           providers,
           providerId: selectedProvider,
-          defaultEngine: assistantConfig?.configured.engine || 'claude',
+          defaultEngine: assistantConfig?.configured.engine || assistantConfig?.resolved?.engine || 'pydantic_ai',
           model: selectedModel,
           fastModel: selectedFastModel,
           visionModel: selectedVisionModel,
