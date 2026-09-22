@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkStep 平台网关模式架构</title>
+  <style>
+    :root {
+      --paper: #fbfbfd;
+      --paper-2: #f5f5f7;
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --soft: #86868b;
+      --rule: rgba(29, 29, 31, 0.12);
+      --rule-solid: #d2d2d7;
+      --accent: #0071e3;
+      --accent-tint: rgba(0, 113, 227, 0.08);
+      --link: #0071e3;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+    }
+    main { max-width: 1360px; margin: 0 auto; padding: 44px 40px 36px; }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font: 600 11px/1.4 var(--mono);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0; font-size: 32px; line-height: 1.15; letter-spacing: -.025em; }
+    .subtitle { max-width: 850px; margin: 10px 0 28px; color: var(--muted); font-size: 15px; line-height: 1.65; }
+    figure { margin: 0; overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); }
+    svg { display: block; width: 100%; min-width: 960px; height: auto; }
+    .cards { display: grid; grid-template-columns: 1.12fr .92fr .96fr; gap: 16px; margin-top: 20px; }
+    .card { padding: 18px 20px; border: 1px solid var(--rule); border-radius: 8px; background: #fff; }
+    .card h2 { margin: 0 0 8px; font-size: 15px; }
+    .card p, .card li { color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .card p { margin: 0; }
+    .card ul { margin: 0; padding-left: 18px; }
+    .dot { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--rule); color: var(--soft); font: 11px/1.5 var(--mono); }
+    @media (max-width: 820px) {
+      main { padding: 28px 16px; }
+      .cards { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">WorkStep · Platform Gateway</p>
+  <h1>平台网关模式架构</h1>
+  <p class="subtitle">平台负责账号、设备、供应商策略与访问入口；每台 WorkStep PC 主动连接网关。同一条设备隧道既代理 HTTP / WebSocket，也同步供应商配置、回传应用状态与 Token 用量。</p>
+
+  <figure>
+    <svg viewBox="0 0 1280 720" role="img" aria-labelledby="platform-gateway-architecture-title platform-gateway-architecture-desc">
+      <title id="platform-gateway-architecture-title">WorkStep 平台网关模式架构</title>
+      <desc id="platform-gateway-architecture-desc">用户浏览器登录平台网关并选择已分配的电脑；网关通过电脑主动建立的 WebSocket 长连接代理界面请求、下发授权供应商配置并集中记录 Token 用量。</desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6e6e73"/>
+        </marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#0071e3"/>
+        </marker>
+        <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#0071e3"/>
+        </marker>
+        <marker id="arrow-link-start" markerWidth="8" markerHeight="6" refX="1" refY="3" orient="auto-start-reverse">
+          <polygon points="0 0, 8 3, 0 6" fill="#0071e3"/>
+        </marker>
+      </defs>
+      <rect width="1280" height="720" fill="#fbfbfd"/>
+
+      <!-- Trust zones -->
+      <rect x="40" y="100" width="240" height="500" rx="8" fill="rgba(29,29,31,.02)" stroke="rgba(29,29,31,.12)" stroke-width="1" stroke-dasharray="4 4"/>
+      <rect x="52" y="104" width="92" height="16" rx="2" fill="#fbfbfd"/>
+      <text x="98" y="116" text-anchor="middle" fill="#86868b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" letter-spacing="1.2">USER EDGE</text>
+
+      <rect x="320" y="100" width="400" height="500" rx="8" fill="rgba(0,113,227,.025)" stroke="rgba(0,113,227,.32)" stroke-width="1" stroke-dasharray="4 4"/>
+      <rect x="332" y="104" width="124" height="16" rx="2" fill="#fbfbfd"/>
+      <text x="394" y="116" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" letter-spacing="1.2">GATEWAY CLOUD</text>
+
+      <rect x="760" y="100" width="480" height="500" rx="8" fill="rgba(29,29,31,.02)" stroke="rgba(29,29,31,.12)" stroke-width="1" stroke-dasharray="4 4"/>
+      <rect x="772" y="104" width="116" height="16" rx="2" fill="#fbfbfd"/>
+      <text x="830" y="116" text-anchor="middle" fill="#86868b" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" letter-spacing="1.2">WORKSTEP PC ×N</text>
+
+      <!-- Connectors: drawn before nodes -->
+      <path d="M248 284 H304 Q312 284 312 276 V208 Q312 200 320 200 H360" fill="none" stroke="#0071e3" stroke-width="1.4" marker-end="url(#arrow-link)"/>
+      <rect x="252" y="260" width="96" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="300" y="269" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">LOGIN + DEVICES</text>
+
+      <line x1="248" y1="356" x2="360" y2="356" stroke="#0071e3" stroke-width="1.6" marker-start="url(#arrow-link-start)" marker-end="url(#arrow-link)"/>
+      <rect x="252" y="332" width="104" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="304" y="341" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">HTTP + WS PROXY</text>
+
+      <line x1="436" y1="240" x2="436" y2="300" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="444" y="260" width="80" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="484" y="269" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">IDENTITY</text>
+
+      <line x1="604" y1="240" x2="604" y2="300" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="612" y="260" width="72" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="648" y="269" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">POLICY</text>
+
+      <path d="M400 240 H344 Q336 240 336 248 V504 Q336 512 344 512 H360" fill="none" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="240" y="364" width="88" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="284" y="373" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">USER + ASSIGN</text>
+
+      <line x1="600" y1="412" x2="600" y2="472" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="608" y="432" width="104" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="660" y="441" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">PRESENCE + AUDIT</text>
+
+      <path d="M680 344 H728 Q736 344 736 336 V198 Q736 190 744 190 H800" fill="none" stroke="#0071e3" stroke-width="1.8" marker-start="url(#arrow-link-start)" marker-end="url(#arrow-link)"/>
+      <rect x="744" y="252" width="152" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="820" y="261" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">PROXY · CONFIG · USAGE</text>
+
+      <line x1="1000" y1="232" x2="1000" y2="308" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="1008" y="260" width="104" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="1060" y="269" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">LOCAL DISPATCH</text>
+
+      <line x1="1000" y1="408" x2="1000" y2="484" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <rect x="1008" y="436" width="80" height="12" rx="2" fill="#fbfbfd"/>
+      <text x="1048" y="445" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">PROJECT I/O</text>
+
+      <!-- Nodes -->
+      <rect x="72" y="260" width="176" height="96" rx="8" fill="#fbfbfd"/>
+      <rect x="72" y="260" width="176" height="96" rx="8" fill="rgba(110,110,115,.08)" stroke="#86868b" stroke-width="1"/>
+      <rect x="84" y="270" width="56" height="16" rx="2" fill="transparent" stroke="rgba(110,110,115,.45)"/>
+      <text x="112" y="281" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">BROWSER</text>
+      <text x="160" y="310" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">用户 / 管理员浏览器</text>
+      <text x="160" y="329" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">gateway.example.com</text>
+
+      <rect x="360" y="160" width="152" height="80" rx="8" fill="#fbfbfd"/>
+      <rect x="360" y="160" width="152" height="80" rx="8" fill="#fff" stroke="#1d1d1f" stroke-width="1"/>
+      <rect x="372" y="170" width="40" height="16" rx="2" fill="transparent" stroke="rgba(29,29,31,.35)"/>
+      <text x="392" y="181" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">PORTAL</text>
+      <text x="436" y="198" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">身份与 PC 分配</text>
+      <text x="436" y="217" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">users · devices</text>
+
+      <rect x="528" y="160" width="152" height="80" rx="8" fill="#fbfbfd"/>
+      <rect x="528" y="160" width="152" height="80" rx="8" fill="#fff" stroke="#1d1d1f" stroke-width="1"/>
+      <rect x="540" y="170" width="56" height="16" rx="2" fill="transparent" stroke="rgba(29,29,31,.35)"/>
+      <text x="568" y="181" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">PROVIDER</text>
+      <text x="604" y="198" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">供应商控制面</text>
+      <text x="604" y="217" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">models · pricing · grants</text>
+
+      <rect x="360" y="300" width="320" height="112" rx="8" fill="#fbfbfd"/>
+      <rect x="360" y="300" width="320" height="112" rx="8" fill="rgba(0,113,227,.08)" stroke="#0071e3" stroke-width="1.6"/>
+      <rect x="372" y="310" width="56" height="16" rx="2" fill="transparent" stroke="rgba(0,113,227,.5)"/>
+      <text x="400" y="321" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">GATEWAY</text>
+      <text x="520" y="350" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="700">HTTP / WebSocket 转发网关</text>
+      <text x="520" y="371" text-anchor="middle" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">代理界面 · 下发配置 · 汇总用量 · 注入签名身份</text>
+      <text x="520" y="392" text-anchor="middle" fill="#0071e3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">reverse proxy · config sync · usage ledger</text>
+
+      <rect x="360" y="472" width="320" height="80" rx="8" fill="#fbfbfd"/>
+      <rect x="360" y="472" width="320" height="80" rx="8" fill="rgba(29,29,31,.05)" stroke="#6e6e73" stroke-width="1"/>
+      <rect x="372" y="482" width="32" height="16" rx="2" fill="transparent" stroke="rgba(110,110,115,.45)"/>
+      <text x="388" y="493" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">DB</text>
+      <text x="520" y="510" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">平台主数据库</text>
+      <text x="520" y="529" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">users · providers · usage · audit</text>
+
+      <rect x="800" y="148" width="400" height="84" rx="8" fill="#fbfbfd"/>
+      <rect x="800" y="148" width="400" height="84" rx="8" fill="#fff" stroke="#1d1d1f" stroke-width="1"/>
+      <rect x="812" y="158" width="48" height="16" rx="2" fill="transparent" stroke="rgba(29,29,31,.35)"/>
+      <text x="836" y="169" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">AGENT</text>
+      <text x="1000" y="187" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">设备连接代理</text>
+      <text x="1000" y="207" text-anchor="middle" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">主动拨号 · 心跳 · 多路请求 · 身份验签</text>
+
+      <rect x="800" y="308" width="400" height="100" rx="8" fill="#fbfbfd"/>
+      <rect x="800" y="308" width="400" height="100" rx="8" fill="#fff" stroke="#1d1d1f" stroke-width="1"/>
+      <rect x="812" y="318" width="56" height="16" rx="2" fill="transparent" stroke="rgba(29,29,31,.35)"/>
+      <text x="840" y="329" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">DAEMON</text>
+      <text x="1000" y="351" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">本机 WorkStep Web + Daemon</text>
+      <text x="1000" y="372" text-anchor="middle" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">复用现有 FastAPI 路由、WebSocket 与前端界面</text>
+      <text x="1000" y="391" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">trusted gateway principal → CurrentActor</text>
+
+      <rect x="800" y="484" width="400" height="84" rx="8" fill="#fbfbfd"/>
+      <rect x="800" y="484" width="400" height="84" rx="8" fill="rgba(29,29,31,.05)" stroke="#6e6e73" stroke-width="1"/>
+      <rect x="812" y="494" width="40" height="16" rx="2" fill="transparent" stroke="rgba(110,110,115,.45)"/>
+      <text x="832" y="505" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8">LOCAL</text>
+      <text x="1000" y="523" text-anchor="middle" fill="#1d1d1f" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12" font-weight="600">项目目录、SQLite 与产物</text>
+      <text x="1000" y="543" text-anchor="middle" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="9">.workstep/workstep.db · files · artifacts</text>
+
+      <!-- Legend -->
+      <line x1="40" y1="628" x2="1240" y2="628" stroke="rgba(29,29,31,.12)" stroke-width="1"/>
+      <text x="40" y="650" fill="#6e6e73" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="8" letter-spacing="1.2">LEGEND</text>
+      <line x1="124" y1="647" x2="164" y2="647" stroke="#0071e3" stroke-width="1.6" marker-end="url(#arrow-link)"/>
+      <text x="176" y="650" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">跨网络访问与代理</text>
+      <line x1="348" y1="647" x2="388" y2="647" stroke="#6e6e73" stroke-width="1.2" marker-end="url(#arrow)"/>
+      <text x="400" y="650" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">内部调用或持久化</text>
+      <rect x="592" y="639" width="32" height="16" rx="4" fill="rgba(0,113,227,.08)" stroke="#0071e3"/>
+      <text x="636" y="650" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">核心网关</text>
+      <rect x="760" y="639" width="32" height="16" rx="4" fill="rgba(29,29,31,.05)" stroke="#6e6e73"/>
+      <text x="804" y="650" fill="#6e6e73" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">持久化数据</text>
+      <text x="40" y="690" fill="#86868b" font-family="system-ui, -apple-system, Segoe UI, PingFang SC, sans-serif" font-size="12">关键约束：PC 只向外建立 WSS；供应商密钥默认留在网关；配置按用户与设备授权；执行端或网关只记一次 Token 用量。</text>
+    </svg>
+  </figure>
+
+  <section class="cards" aria-label="架构说明">
+    <article class="card">
+      <h2><span class="dot"></span>网关同时管理访问与供应商策略</h2>
+      <p>统一完成注册登录、PC 分配、供应商与模型授权、价格版本和代理会话审计。每次调用都绑定平台用户与真正执行的 PC。</p>
+    </article>
+    <article class="card">
+      <h2>PC 主动连接</h2>
+      <ul>
+        <li>软件配置网关地址并完成设备注册。</li>
+        <li>PC 主动建立 WSS 长连接，适配 NAT 与防火墙。</li>
+        <li>一个隧道复用 HTTP、WebSocket、配置同步与用量回传。</li>
+      </ul>
+    </article>
+    <article class="card">
+      <h2>密钥默认不下发</h2>
+      <p>首选网关代理供应商请求，PC 只得到平台代理地址和短期凭据。确需 PC 直连时才发送设备公钥加密的凭据包；本机配置和日志都不得出现明文 Key。</p>
+    </article>
+  </section>
+
+  <footer>WORKSTEP ARCHITECTURE NOTE · architecture / doc-wide / mixed audience · 2026-09-22</footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+apps/web/dist/
+build-artifacts/
+apps/desktop/.nuitka-venv/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Local environment secrets
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+.claude/*.local.json
+
+# Open Design
+.od/
+.od-skills/
+.impeccable/
+
+# WorkStep runtime
+.workstep/
+*.db
+.pids/
+logs/
+.gstack/
+.bitfun/
+.playwright-cli/
+.pids/
+/data/

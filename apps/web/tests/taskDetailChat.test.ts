@@ -1,0 +1,1072 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import {
+  artifactsForMessage,
+  artifactsForStepRoundOutputs,
+  findActiveStepIndex,
+  findPreferredArtifact,
+  findStepRoundInputArtifact,
+  findStepRoundInputPort,
+  hasStepIoContractChanged,
+  findActionablePendingReview,
+  findLatestDispatchedTask,
+  resolveStepDisplayStatus,
+} from '../src/pages/taskDetailChat.ts'
+
+test('uses the selected round manifest outputs instead of the workflow declaration', () => {
+  const artifacts = [
+    { step_key: 'feedback-eval', round: 4, declared_output: true, name: 'old.md', logical_name: 'old.md', is_latest: false, is_selected: false },
+    { step_key: 'feedback-eval', round: 5, declared_output: true, name: 'score.md', logical_name: 'score.md', is_latest: true, is_selected: true },
+    { step_key: 'feedback-eval', round: 5, declared_output: true, name: 'value-report.html', logical_name: 'value-report.html', is_latest: true, is_selected: true },
+    { step_key: 'feedback-eval', round: 5, declared_output: false, name: 'nested.css', logical_name: null, is_latest: true, is_selected: true },
+  ]
+
+  assert.deepEqual(
+    artifactsForStepRoundOutputs(artifacts, 'feedback-eval', 5).map((item) => item.name),
+    ['score.md', 'value-report.html'],
+  )
+})
+
+test('resolves a step input from the selected output round input snapshot', () => {
+  const artifacts = [
+    { step_key: 'req', round: 1, path: '/artifacts/req/1/prd.md', name: 'prd.md', is_latest: false, is_selected: false },
+    { step_key: 'req', round: 2, path: '/artifacts/req/2/prd.md', name: 'prd.md', is_latest: true, is_selected: true },
+  ]
+  const snapshots = [{
+    step_key: 'build',
+    round: 3,
+    ports: [{
+      port: 0,
+      name: 'PRD',
+      status: 'ready',
+      sources: [{ step: 'req', round: 1, path: '/artifacts/req/1/prd.md', name: 'PRD' }],
+    }],
+  }]
+
+  assert.equal(
+    findStepRoundInputArtifact(artifacts, snapshots, 'build', 3, 0)?.round,
+    1,
+  )
+  assert.equal(findStepRoundInputArtifact(artifacts, snapshots, 'build', 2, 0), undefined)
+})
+
+test('preserves task-context input status even when there is no artifact file', () => {
+  const snapshots = [{
+    step_key: 'requirements',
+    round: 5,
+    ports: [{ port: 0, name: '需求内容', status: 'task_context', sources: [] }],
+  }]
+
+  assert.equal(
+    findStepRoundInputPort(snapshots, 'requirements', 5, 0)?.status,
+    'task_context',
+  )
+})
+
+test('detects only input and output contract changes against the run snapshot', () => {
+  const executedContract = {
+    inputs: [{ name: '初稿', type: 'md' }],
+    outputs: [{ name: '定稿', type: 'md' }],
+  }
+  const sameContract = {
+    key: 'review',
+    prompt: 'new prompt',
+    inputs: [{ name: '初稿', type: 'md' }],
+    outputs: [{ name: '定稿', type: 'md' }],
+  }
+  const changedContract = {
+    ...sameContract,
+    outputs: [{ name: '定稿目录', type: 'directory' }],
+  }
+
+  assert.equal(hasStepIoContractChanged(sameContract, executedContract), false)
+  assert.equal(hasStepIoContractChanged(changedContract, executedContract), true)
+  assert.equal(hasStepIoContractChanged(sameContract, undefined), false)
+})
+
+test('finds the latest task created by a workflow dispatch step', () => {
+  const tasks = [
+    {
+      id: 'child-old',
+      source_task_id: 'parent-1',
+      source_step_key: 'handoff',
+      created_at: '2026-09-20T10:00:00Z',
+    },
+    {
+      id: 'other-child',
+      source_task_id: 'another-parent',
+      source_step_key: 'handoff',
+      created_at: '2026-09-22T10:00:00Z',
+    },
+    {
+      id: 'child-new',
+      source_task_id: 'parent-1',
+      source_step_key: 'handoff',
+      created_at: '2026-09-21T10:00:00Z',
+    },
+  ]
+
+  assert.equal(
+    findLatestDispatchedTask(tasks, 'parent-1', 'handoff')?.id,
+    'child-new',
+  )
+  assert.equal(findLatestDispatchedTask(tasks, 'parent-1', 'missing'), undefined)
+})
+
+test('does not present an idle pending step as currently running', () => {
+  assert.equal(findActiveStepIndex(['passed', 'skipped', 'pending'], 'ready'), -1)
+  assert.equal(findActiveStepIndex(['passed', 'skipped', 'pending'], 'running'), 2)
+  assert.equal(findActiveStepIndex(['passed', 'failed', 'pending'], 'ready'), 1)
+})
+
+test('keeps previous step result visible while the current run is pending', () => {
+  assert.equal(resolveStepDisplayStatus('pending', 'passed'), 'passed')
+  assert.equal(resolveStepDisplayStatus('pending', 'failed'), 'failed')
+  assert.equal(resolveStepDisplayStatus('pending', null), 'pending')
+  assert.equal(resolveStepDisplayStatus('running', 'passed'), 'running')
+})
+
+test('only exposes a pending review while its step is currently awaiting review', () => {
+  const reviews = [
+    { id: 'old-pending', step_key: 'develop', status: 'pending', started_at: '2026-09-17T10:00:00Z' },
+  ]
+
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'cancelled' },
+  ]), undefined)
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'awaiting_review' },
+  ])?.id, 'old-pending')
+})
+
+test('ignores an old pending review when a newer review attempt already finished', () => {
+  const reviews = [
+    { id: 'old-pending', step_key: 'develop', status: 'pending', started_at: '2026-09-17T10:00:00Z' },
+    { id: 'new-passed', step_key: 'develop', status: 'passed', started_at: '2026-09-17T11:00:00Z' },
+  ]
+
+  assert.equal(findActionablePendingReview(reviews, [
+    { step_key: 'develop', status: 'awaiting_review' },
+  ]), undefined)
+})
+
+test('prefers the selected latest artifact round over older eligible rounds', () => {
+  const artifacts = [
+    {
+      step_key: 'req',
+      round: 1,
+      is_latest: false,
+      is_selected: false,
+      logical_name: 'PRD',
+      name: 'prd.md',
+    },
+    {
+      step_key: 'req',
+      round: 2,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'PRD',
+      name: 'prd.md',
+    },
+  ]
+
+  assert.equal(findPreferredArtifact(artifacts, 'PRD', 'req')?.round, 2)
+})
+
+test('keeps preferred step filtering when artifacts share a logical name', () => {
+  const artifacts = [
+    {
+      step_key: 'design',
+      round: 1,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'Spec',
+      name: 'spec.md',
+    },
+    {
+      step_key: 'req',
+      round: 2,
+      is_latest: true,
+      is_selected: true,
+      logical_name: 'Spec',
+      name: 'spec.md',
+    },
+  ]
+
+  assert.equal(findPreferredArtifact(artifacts, 'Spec', 'req')?.step_key, 'req')
+})
+
+test('uses the relative artifact identity when file names are duplicated', () => {
+  const artifacts = [
+    {
+      step_key: 'design', round: 1, is_latest: true, is_selected: true,
+      logical_name: null, name: 'solution.md', path: '/artifacts/方案一/solution.md',
+    },
+    {
+      step_key: 'design', round: 1, is_latest: true, is_selected: true,
+      logical_name: null, name: 'solution.md', path: '/artifacts/方案二/solution.md',
+    },
+  ]
+
+  assert.equal(
+    findPreferredArtifact(
+      artifacts,
+      'solution.md',
+      'design',
+      1,
+      '/artifacts/方案二/solution.md',
+    )?.path,
+    '/artifacts/方案二/solution.md',
+  )
+})
+
+test('selects only the artifact round owned by a task message', () => {
+  const artifacts = [
+    { step_key: 'req', round: 1, is_latest: false, is_selected: false, name: 'prd.md' },
+    { step_key: 'req', round: 2, is_latest: true, is_selected: true, name: 'prd.md' },
+    { step_key: 'build', round: 1, is_latest: true, is_selected: true, name: 'result.md' },
+  ]
+  assert.deepEqual(
+    artifactsForMessage(artifacts, 'req', 1).map((artifact: any) => artifact.round),
+    [1],
+  )
+  assert.deepEqual(
+    artifactsForMessage(artifacts, 'req', 2).map((artifact: any) => artifact.round),
+    [2],
+  )
+  assert.deepEqual(artifactsForMessage(artifacts, 'req', null), [])
+  assert.equal(findPreferredArtifact(artifacts, 'prd.md', 'req', 1)?.round, 1)
+})
+
+test('shows a directory artifact without listing files inside it', () => {
+  const artifacts = [
+    {
+      step_key: 'design', round: 1, is_latest: true, is_selected: true,
+      name: '方案目录', path: '/artifacts/design/方案目录', is_dir: true,
+    },
+    {
+      step_key: 'design', round: 1, is_latest: true, is_selected: true,
+      name: 'solution.md', path: '/artifacts/design/方案目录/solution.md', is_dir: false,
+    },
+    {
+      step_key: 'design', round: 1, is_latest: true, is_selected: true,
+      name: 'comparison.md', path: '/artifacts/design/comparison.md', is_dir: false,
+    },
+  ]
+
+  assert.deepEqual(
+    artifactsForMessage(artifacts, 'design', 1).map((artifact) => artifact.name),
+    ['方案目录', 'comparison.md'],
+  )
+})
+
+import {
+  createOptimisticUserMessage,
+  createOptimisticCoordinatorMessage,
+  isAutoShrinkClamp,
+  isVisibleHistoryMessage,
+  isVisibleLiveExecutionMessage,
+  isUnpersistedLiveMessage,
+  isTaskCompleted,
+  isTaskNotStarted,
+  isNearConversationBottom,
+  conversationBottomScrollTop,
+  shouldPauseConversationFollow,
+  isManualReviewMessage,
+  isMessageReviewActionable,
+  isReviewActionable,
+  isLostEngineSessionError,
+  isStepResumableWithMessage,
+  isSelectedStepRunning,
+  liveExecutionStatus,
+  mergeLoadedTaskMessageEvents,
+  mergeRefreshedTaskHistory,
+  mergeHistoryMessageWithLive,
+  orderConversationMessages,
+  resolveMessageReview,
+  resolveTaskChatTarget,
+  taskTargetStepsInWorkflowOrder,
+  reviewActorLabel,
+  resolveMessageError,
+  resolveMessagePrompt,
+  shouldRenderLegacyExecution,
+  stepAvatarText,
+} from '../src/pages/taskDetailChat.ts'
+
+test('only exposes review actions while the step is awaiting that latest review', () => {
+  const reviews = [
+    { id: 'old-rejected', step_key: 'review', status: 'rejected', started_at: '2026-09-17T10:00:00Z' },
+  ]
+
+  assert.equal(isReviewActionable(reviews[0], reviews, 'failed'), false)
+  assert.equal(isReviewActionable(reviews[0], reviews, 'awaiting_review'), true)
+
+  const newerReviews = [
+    ...reviews,
+    { id: 'new-pending', step_key: 'review', status: 'pending', started_at: '2026-09-17T11:00:00Z' },
+  ]
+  assert.equal(isReviewActionable(reviews[0], newerReviews, 'awaiting_review'), false)
+})
+
+test('formats the person who completed a manual review', () => {
+  assert.equal(reviewActorLabel({
+    id: 'review-1',
+    step_key: 'verify',
+    reviewer_name: '张三',
+    reviewer_device_name: 'MacBook',
+  }), '张三 · MacBook')
+  assert.equal(reviewActorLabel({
+    id: 'review-2',
+    step_key: 'verify',
+    reviewer_name: '李四',
+  }), '李四')
+})
+
+test('the composer stop state follows only the selected step tab', () => {
+  assert.equal(isSelectedStepRunning('implement', ['implement']), true)
+  assert.equal(isSelectedStepRunning('review', ['implement']), false)
+  assert.equal(isSelectedStepRunning('coordinator', ['implement']), false)
+})
+
+test('the chat target stays on coordinator unless a selected step is still available', () => {
+  assert.equal(
+    resolveTaskChatTarget('coordinator', ['requirement'], ['requirement']),
+    'coordinator',
+  )
+  assert.equal(
+    resolveTaskChatTarget('requirement', ['requirement'], []),
+    'requirement',
+  )
+  assert.equal(
+    resolveTaskChatTarget('design', [], ['design']),
+    'design',
+  )
+  assert.equal(
+    resolveTaskChatTarget('design', [], []),
+    'coordinator',
+  )
+})
+
+test('orders step targets by workflow instead of execution state', () => {
+  const steps = [
+    { key: 'requirement', label: '需求' },
+    { key: 'design', label: '设计' },
+    { key: 'develop', label: '开发' },
+  ]
+
+  assert.deepEqual(
+    taskTargetStepsInWorkflowOrder(steps, ['develop'], ['requirement', 'design'])
+      .map((step) => step.key),
+    ['requirement', 'design', 'develop'],
+  )
+})
+
+test('extracts a readable failure from persisted and live task events', () => {
+  const nestedError = JSON.stringify({
+    type: 'error',
+    status: 400,
+    error: {
+      type: 'invalid_request_error',
+      message: "The 'gpt-6-astra' model requires a newer version of Codex.",
+    },
+  })
+
+  assert.equal(resolveMessageError([{
+    type: 'error',
+    data: { message: nestedError },
+  }]), "The 'gpt-6-astra' model requires a newer version of Codex.")
+
+  assert.equal(resolveMessageError([{
+    type: 'CUSTOM',
+    name: 'workstep.error',
+    value: { message: nestedError },
+  }]), "The 'gpt-6-astra' model requires a newer version of Codex.")
+
+  assert.equal(resolveMessageError([{
+    type: 'RUN_ERROR',
+    error: 'Engine process exited unexpectedly',
+  }]), 'Engine process exited unexpectedly')
+})
+
+test('history refresh preserves already loaded detail events', () => {
+  const current = [{
+    id: 'message-1',
+    content: '旧回答',
+    events: [{ type: 'REASONING_MESSAGE_CHUNK', event_sequence: 1, delta: '完整思考' }],
+    event_detail: { available: true, loaded: true, loading: false, complete: true },
+  }]
+  const refreshed = [{
+    id: 'message-1',
+    content: '新回答',
+    events: [],
+    event_detail: { available: true, loaded: false, loading: false },
+  }]
+
+  const merged = mergeRefreshedTaskHistory(current, refreshed)
+
+  assert.equal(merged[0].content, '新回答')
+  assert.deepEqual(merged[0].events, current[0].events)
+  assert.deepEqual(merged[0].event_detail, current[0].event_detail)
+})
+
+test('history refresh keeps newer review messages missing from an older page', () => {
+  const current = [
+    {
+      id: 'execution-1',
+      channel: 'execution',
+      sequence: 1,
+      content: '阶段结果',
+      run_status: 'succeeded',
+    },
+    {
+      id: 'review-1',
+      channel: 'review',
+      sequence: 2,
+      content: '审核中',
+      run_status: 'running',
+    },
+  ]
+  const staleRefresh = [{
+    id: 'execution-1',
+    channel: 'execution',
+    sequence: 1,
+    content: '阶段结果',
+    run_status: 'succeeded',
+  }]
+
+  const merged = mergeRefreshedTaskHistory(current, staleRefresh)
+
+  assert.deepEqual(
+    new Set(merged.map((message) => message.id)),
+    new Set(['execution-1', 'review-1']),
+  )
+})
+
+test('merges live review chunks into the running review history message', () => {
+  const historyMessage = {
+    id: 'review-running',
+    channel: 'review',
+    step_key: 'build',
+    role: 'assistant',
+    content: '审核中',
+    run_status: 'running',
+    events: [],
+  }
+  const liveMessage = {
+    id: 'review-running',
+    channel: 'review',
+    step_key: 'build',
+    role: 'assistant',
+    content: '审核中正在检查验收标准',
+    status: 'running',
+    engine: 'codex_sdk',
+    events: [{ type: 'TEXT_MESSAGE_CHUNK', messageId: 'review-running', delta: '正在检查验收标准' }],
+  }
+
+  const merged = mergeHistoryMessageWithLive(historyMessage, liveMessage)
+
+  assert.equal(merged.content, '审核中正在检查验收标准')
+  assert.equal(merged.run_status, 'running')
+  assert.equal(isVisibleLiveExecutionMessage(liveMessage), true)
+  assert.equal(
+    isUnpersistedLiveMessage(liveMessage, new Set(['review-running'])),
+    false,
+  )
+})
+
+test('loads task JSONL details without dropping newer live events', () => {
+  const messages = [{
+    id: 'message-1',
+    role: 'assistant',
+    content: '回答',
+    events: [{ type: 'TEXT_MESSAGE_CHUNK', event_sequence: 3, delta: '实时尾部' }],
+    event_detail: { available: true, loaded: false, loading: true },
+  }]
+
+  const merged = mergeLoadedTaskMessageEvents(
+    messages,
+    'message-1',
+    [
+      { type: 'REASONING_MESSAGE_CHUNK', event_sequence: 1, delta: '历史思考' },
+      { type: 'TEXT_MESSAGE_CHUNK', event_sequence: 2, delta: '历史回答' },
+    ],
+    { complete: true, next_cursor: null },
+  )
+
+  assert.deepEqual(merged[0].events.map((event: any) => event.event_sequence), [1, 2, 3])
+  assert.deepEqual(merged[0].event_detail, {
+    available: true,
+    loaded: true,
+    loading: false,
+    complete: true,
+    next_cursor: null,
+    error: '',
+  })
+})
+
+test('matches each historical review message to its own review attempt', () => {
+  const reviews = [
+    {
+      id: 'review-pending', step_key: 'start', status: 'pending',
+      started_at: '2026-08-11T08:59:03.640614+00:00',
+    },
+    {
+      id: 'review-passed', step_key: 'start', status: 'passed',
+      started_at: '2026-08-11T08:52:50.010814+00:00',
+    },
+    {
+      id: 'review-rejected', step_key: 'start', status: 'rejected',
+      started_at: '2026-08-11T08:42:39.779239+00:00',
+    },
+  ]
+
+  assert.equal(resolveMessageReview({
+    channel: 'review', step_key: 'start',
+    started_at: '2026-08-11T08:42:39.779239+00:00',
+  }, reviews)?.id, 'review-rejected')
+  assert.equal(resolveMessageReview({
+    channel: 'review', step_key: 'start',
+    started_at: '2026-08-11T08:52:50.010814+00:00',
+  }, reviews)?.id, 'review-passed')
+  assert.equal(resolveMessageReview({
+    channel: 'review', step_key: 'start',
+    events: [{ type: 'review_context', data: { review_run_id: 'review-pending' } }],
+  }, reviews)?.id, 'review-pending')
+
+  assert.equal(isMessageReviewActionable({
+    channel: 'review', step_key: 'start',
+    started_at: '2026-08-11T08:42:39.779239+00:00',
+  }, reviews, 'awaiting_review'), false)
+  assert.equal(isMessageReviewActionable({
+    channel: 'review', step_key: 'start',
+    events: [{ type: 'review_context', data: { review_run_id: 'review-pending' } }],
+  }, reviews, 'awaiting_review'), true)
+})
+
+test('creates a user message that can render before the run request resolves', () => {
+  const message = createOptimisticUserMessage(
+    'pending-1',
+    '继续检查 token 统计',
+    'implement',
+    '2024-08-03T00:00:00+00:00',
+  )
+
+  assert.deepEqual(message, {
+    id: 'pending-1',
+    role: 'user',
+    content: '继续检查 token 统计',
+    step_key: 'implement',
+    run_status: 'pending',
+    created_at: '2024-08-03T00:00:00+00:00',
+    events: [],
+  })
+})
+
+test('creates a coordinator message with its channel before the request resolves', () => {
+  const message = createOptimisticCoordinatorMessage(
+    'pending-coordinator-1',
+    '结合需求阶段继续分析',
+    'requirement',
+    '2024-08-03T00:00:00+00:00',
+  )
+
+  assert.equal(message.channel, 'coordinator')
+  assert.equal(message.step_key, 'requirement')
+  assert.equal(message.context_step_key, 'requirement')
+  assert.equal(message.role, 'user')
+  assert.equal(message.content, '结合需求阶段继续分析')
+})
+
+test('detects tasks that have not started from their configured step', () => {
+  assert.equal(isTaskNotStarted([
+    { status: 'skipped', started_at: null },
+    { status: 'pending', started_at: null },
+  ]), true)
+  assert.equal(isTaskNotStarted([
+    { status: 'passed', started_at: '2026-08-04T00:00:00+00:00' },
+  ]), false)
+  assert.equal(isTaskNotStarted([
+    { status: 'running', started_at: '2026-08-04T00:00:00+00:00' },
+  ]), false)
+})
+
+test('distinguishes completed tasks from ready tasks that never started', () => {
+  assert.equal(isTaskCompleted([
+    { status: 'skipped', started_at: null },
+    { status: 'passed', started_at: '2026-08-04T00:00:00+00:00' },
+  ]), true)
+  assert.equal(isTaskCompleted([
+    { status: 'skipped', started_at: null },
+    { status: 'pending', started_at: null },
+  ]), false)
+})
+
+test('shows only step execution replies in the main task conversation', () => {
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'execution', role: 'assistant', content: '阶段结果', run_status: 'succeeded',
+  }), true)
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'review', role: 'assistant', content: '审核结果', run_status: 'succeeded',
+  }), true)
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'review', role: 'assistant', content: '等待你审核', run_status: 'completed',
+    events: [{
+      type: 'review_context',
+      data: { review_run_id: 'review-skipped', status: 'skipped' },
+    }],
+  }), false)
+  // 已停止/失败但无内容的执行消息仍保留展示（附带失败徽标）。
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'execution', role: 'assistant', content: '', run_status: 'failed',
+  }), true)
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'execution', role: 'assistant', content: '', run_status: 'succeeded',
+  }), false)
+  assert.equal(isVisibleHistoryMessage({
+    channel: 'coordinator', role: 'assistant', content: '协调回复', run_status: 'succeeded',
+  }), true)
+})
+
+test('detects a lost engine session so the step can be re-run with a fresh session', () => {
+  assert.equal(
+    isLostEngineSessionError(
+      'JSON-RPC error -32600: no rollout found for thread id 01a0aa38-2890-7ed3-9a30-ecfbe37f3056',
+    ),
+    true,
+  )
+  assert.equal(
+    isLostEngineSessionError(
+      'Claude Code returned an error result: No conversation found with session ID: a6b27625',
+    ),
+    true,
+  )
+  assert.equal(isLostEngineSessionError('Process exited with code 1'), false)
+  assert.equal(isLostEngineSessionError(''), false)
+  assert.equal(isLostEngineSessionError(undefined), false)
+})
+
+test('allows a message to rerun stopped, failed, review-waiting, or completed steps', () => {
+  for (const status of [
+    'cancelled', 'failed', 'rejected', 'awaiting_review', 'passed', 'skipped',
+  ]) {
+    assert.equal(isStepResumableWithMessage(status), true)
+  }
+  for (const status of ['pending', 'running', 'reviewing', 'retrying', 'rework', 'rework_waiting']) {
+    assert.equal(isStepResumableWithMessage(status), false)
+  }
+})
+
+test('allows @ on any step that ran before, even while it is pending again', () => {
+  // 只要执行过一次（成功或失败），不管当前状态是否为 pending 都能发消息重跑。
+  assert.equal(isStepResumableWithMessage('pending', true), true)
+  assert.equal(isStepResumableWithMessage('failed', true), true)
+  assert.equal(isStepResumableWithMessage('cancelled', true), true)
+  // 从未执行过的 pending 阶段不能 @。
+  assert.equal(isStepResumableWithMessage('pending', false), false)
+  assert.equal(isStepResumableWithMessage('pending'), false)
+  // 正在执行的阶段只走实时注入，历史标志不能把它变成重跑目标。
+  assert.equal(isStepResumableWithMessage('running', true), false)
+  assert.equal(isStepResumableWithMessage('reviewing', true), false)
+  assert.equal(isStepResumableWithMessage('rework', true), false)
+})
+
+test('keeps a running review placeholder visible in history', () => {
+  // 审核刚启动时 journal 还没有 chunk，历史只能提供「审核中」占位；
+  // 这条消息不能被当成空消息过滤掉，否则审核期间列表里什么都看不到。
+  assert.equal(isVisibleHistoryMessage({
+    id: 'review-running',
+    channel: 'review',
+    role: 'assistant',
+    content: '审核中',
+    run_status: 'running',
+    events: [],
+  }), true)
+  // 真正的空审核消息（例如占位被错误清空）才会被隐藏。
+  assert.equal(isVisibleHistoryMessage({
+    id: 'review-empty',
+    channel: 'review',
+    role: 'assistant',
+    content: '',
+    run_status: 'running',
+    events: [],
+  }), false)
+})
+
+test('keeps running execution and review messages visible and uses the step as its avatar', () => {
+  assert.equal(isVisibleLiveExecutionMessage({
+    channel: 'execution', content: '', status: 'running',
+  }), true)
+  assert.equal(isVisibleLiveExecutionMessage({
+    channel: 'review', content: '审核中', status: 'running',
+  }), true)
+  assert.equal(stepAvatarText('任务理解'), '任务')
+  assert.equal(stepAvatarText('测试'), '测试')
+})
+
+test('does not render a live message again after history contains it', () => {
+  const persistedIds = new Set(['message-1'])
+  assert.equal(isUnpersistedLiveMessage({ id: 'message-1' }, persistedIds), false)
+  assert.equal(isUnpersistedLiveMessage({ id: 'message-2' }, persistedIds), true)
+})
+
+test('marks live-inserted user messages as user so they never render as execution bubbles', () => {
+  // 引擎只发 live_message 确认，store 把该事件对应消息标记为 user；
+  // 左侧执行消息渲染应将其排除，避免插入消息出现第二个流式气泡。
+  assert.equal(isVisibleLiveExecutionMessage({
+    id: 'mid-1', channel: 'execution', role: 'user', content: '插入内容', status: 'running',
+  }), false)
+  assert.equal(isVisibleLiveExecutionMessage({
+    id: 'mid-1', channel: 'execution', role: 'assistant', content: '', status: 'running',
+  }), true)
+})
+
+test('merges live execution updates into a persisted running message', () => {
+  const merged = mergeHistoryMessageWithLive(
+    {
+      id: 'message-1',
+      content: '',
+      events: [],
+      run_status: 'running',
+      prompt: 'persisted prompt',
+    },
+    {
+      id: 'message-1',
+      content: '实时输出',
+      events: [{ type: 'text_delta', data: { delta: '实时输出' } }],
+      status: 'running',
+      prompt: 'live prompt',
+    },
+  )
+
+  assert.equal(merged.content, '实时输出')
+  assert.equal(merged.events.length, 1)
+  assert.equal(merged.prompt, 'live prompt')
+  assert.equal(merged.run_status, 'running')
+})
+
+test('keeps the inserted user message completed after its live_message ack', () => {
+  // 插入的用户消息没有 message_completed 事件，只有 live_message 确认；
+  // 合并时必须沿用历史 run_status，避免右侧用户气泡被误标为 streaming。
+  const merged = mergeHistoryMessageWithLive(
+    {
+      id: 'mid-1',
+      role: 'user',
+      content: '插入内容',
+      events: [],
+      run_status: 'completed',
+      created_at: '2026-08-12T08:00:00+00:00',
+    },
+    {
+      id: 'mid-1',
+      channel: 'execution',
+      role: 'user',
+      content: '插入内容',
+      events: [{ type: 'live_message', data: { status: 'delivered' } }],
+      status: 'running',
+    },
+  )
+
+  assert.equal(merged.run_status, 'completed')
+  assert.equal(merged.role, 'user')
+})
+
+test('keeps persisted interaction requests when the live update contains their response', () => {
+  const merged = mergeHistoryMessageWithLive(
+    {
+      id: 'message-1',
+      content: '',
+      events: [{
+        type: 'interaction_request',
+        data: { interaction_id: 'request-1', method: 'elicitation/create', params: {} },
+      }],
+      run_status: 'running',
+    },
+    {
+      id: 'message-1',
+      content: '',
+      events: [{
+        type: 'interaction_response',
+        data: { interaction_id: 'request-1', result: { action: 'accept', content: {} } },
+      }],
+      status: 'running',
+    },
+  )
+
+  assert.deepEqual(merged.events.map((event: { type: string }) => event.type), [
+    'interaction_request',
+    'interaction_response',
+  ])
+})
+
+test('orders sealed step segments around an inserted user message', () => {
+  const ordered = orderConversationMessages([
+    { id: 'B', role: 'assistant', sequence: 2, created_at: '2026-08-07T10:01:00.500Z', content: '第二段输出' },
+    { id: 'U', role: 'user', sequence: 1, created_at: '2026-08-07T10:01:00.000Z', content: '插入内容' },
+    { id: 'A', role: 'assistant', sequence: 0, created_at: '2026-08-07T10:00:00.000Z', content: '第一段输出' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['A', 'U', 'B'])
+})
+
+test('keeps a live-insert user message between step segments by server time', () => {
+  // 乐观消息按服务端 created_at 落位：即使客户端时钟与 daemon 有偏差，
+  // 插入消息也始终位于段 A 与段 B 之间（B 是引擎 ack 后才创建的服务端时间）。
+  const ordered = orderConversationMessages([
+    { id: 'A', role: 'assistant', created_at: '2026-08-07T10:00:00.000Z', content: '第一段输出' },
+    { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容' },
+    { id: 'B', role: 'assistant', created_at: '2026-08-07T10:01:00.500Z', content: '第二段输出' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['A', 'U', 'B'])
+})
+
+test('falls back to created_at when only one side carries a sequence', () => {
+  const ordered = orderConversationMessages([
+    { id: 'B', role: 'assistant', created_at: '2026-08-07T10:01:00.500Z', content: '第二段输出' },
+    { id: 'U', role: 'user', sequence: 1, created_at: '2026-08-07T10:01:00.000Z', content: '插入内容' },
+    { id: 'A', role: 'assistant', sequence: 0, created_at: '2026-08-07T10:00:00.000Z', content: '第一段输出' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['A', 'U', 'B'])
+})
+
+test('moves a still-running step message below the inserted user message', () => {
+  // 阶段仍在进行：按当前时间（创建时间 + 已进行时长）排序，晚于用户消息 → 挪到下方。
+  const now = new Date('2026-08-07T10:05:00.000Z').getTime()
+  const ordered = orderConversationMessages([
+    { id: 'A', role: 'assistant', run_status: 'running', created_at: '2026-08-07T10:00:00.000Z', content: '正在输出' },
+    { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容', run_status: 'completed' },
+  ], now)
+  assert.deepEqual(ordered.map((m) => m.id), ['U', 'A'])
+})
+
+test('keeps a coordinator reply after the user message when their timestamps are equal', () => {
+  const ordered = orderConversationMessages([
+    {
+      id: 'assistant',
+      role: 'assistant',
+      channel: 'coordinator',
+      reply_to_message_id: 'user',
+      run_status: 'running',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+    {
+      id: 'user',
+      role: 'user',
+      channel: 'coordinator',
+      run_status: 'completed',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+
+  assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
+})
+
+test('never gives a running reply an effective time before its own creation', () => {
+  const ordered = orderConversationMessages([
+    {
+      id: 'assistant',
+      role: 'assistant',
+      channel: 'coordinator',
+      run_status: 'running',
+      created_at: '2026-09-21T06:40:25.100Z',
+    },
+    {
+      id: 'user',
+      role: 'user',
+      channel: 'coordinator',
+      run_status: 'completed',
+      created_at: '2026-09-21T06:40:25.000Z',
+    },
+  ], new Date('2026-09-21T06:39:00.000Z').getTime())
+
+  assert.deepEqual(ordered.map((message) => message.id), ['user', 'assistant'])
+})
+
+test('sorts finished step messages by their completion time', () => {
+  // 段 A 在用户消息之后才完成（ended_at 晚于用户发送时间）→ 挪到用户消息下面；
+  // 更早完成的阶段消息保持在用户消息上面。
+  const ordered = orderConversationMessages([
+    { id: 'A', role: 'assistant', run_status: 'succeeded', created_at: '2026-08-07T10:00:00.000Z', ended_at: '2026-08-07T10:02:00.000Z', content: '第一段输出' },
+    { id: 'U', role: 'user', created_at: '2026-08-07T10:01:00.000Z', content: '插入内容', run_status: 'completed' },
+    { id: 'Prev', role: 'assistant', run_status: 'succeeded', created_at: '2026-08-07T09:58:00.000Z', ended_at: '2026-08-07T09:59:00.000Z', content: '早前输出' },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['Prev', 'U', 'A'])
+})
+
+test('keeps a step review after its execution when the execution end time is later', () => {
+  // 阶段执行消息的 ended_at 可能在 finally 中记成审核结束之后；此时若按
+  // 结束时间排序，审核会被顶到阶段输出上方。同阶段执行/审核必须按 sequence 排。
+  const ordered = orderConversationMessages([
+    {
+      id: 'review',
+      step_key: 'req',
+      channel: 'review',
+      role: 'assistant',
+      sequence: 3,
+      run_status: 'completed',
+      ended_at: '2026-09-18T04:21:43.996793Z',
+      content: '审核结果',
+    },
+    {
+      id: 'execution',
+      step_key: 'req',
+      channel: 'execution',
+      role: 'assistant',
+      sequence: 2,
+      run_status: 'succeeded',
+      ended_at: '2026-09-18T04:21:44.007427Z',
+      content: '阶段输出',
+    },
+  ])
+  assert.deepEqual(ordered.map((m) => m.id), ['execution', 'review'])
+})
+
+test('keeps a step review after its execution when their displayed times are equal', () => {
+  // 真实任务中审核记录先于 execution finally 封口约 0.7ms；两条消息在界面上显示为同一秒。
+  // 审核是该阶段执行结果的后续消息，应按服务端 sequence 保持在执行消息之后。
+  const ordered = orderConversationMessages([
+    {
+      id: 'execution',
+      step_key: 'start',
+      channel: 'execution',
+      role: 'assistant',
+      sequence: 1,
+      run_status: 'succeeded',
+      created_at: '2026-08-11T08:42:16.730656Z',
+      ended_at: '2026-08-11T08:42:39.781289Z',
+    },
+    {
+      id: 'review',
+      step_key: 'start',
+      channel: 'review',
+      role: 'assistant',
+      sequence: 2,
+      run_status: 'completed',
+      created_at: '2026-08-11T08:42:39.780547Z',
+    },
+  ])
+
+  assert.deepEqual(ordered.map((message) => message.id), ['execution', 'review'])
+})
+
+test('describes the latest live engine activity before text arrives', () => {
+  assert.equal(liveExecutionStatus([
+    { type: 'thinking_delta', data: { delta: '分析' } },
+    { type: 'tool_use', data: { name: 'Bash' } },
+  ]), '正在执行工具：Bash')
+  assert.equal(liveExecutionStatus([
+    { type: 'status', data: { status: 'idle_timeout' } },
+  ]), '等待插入消息超时，会话已自动结束')
+  assert.equal(liveExecutionStatus([
+    { type: 'status', data: { status: 'done' } },
+  ]), '处理中')
+  assert.equal(liveExecutionStatus([
+    { type: 'status', data: { status: 'done' } },
+  ], undefined, true), '回复已完成，等待插入消息…')
+  assert.equal(liveExecutionStatus([]), '处理中')
+})
+
+test('only follows new messages while the reader stays near the bottom', () => {
+  assert.equal(isNearConversationBottom(1000, 620, 300), true)
+  assert.equal(isNearConversationBottom(1000, 300, 300), false)
+})
+
+test('pauses message following as soon as the reader navigates toward older messages', () => {
+  assert.equal(shouldPauseConversationFollow({ type: 'wheel', deltaY: -1 }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'wheel', deltaY: 1 }), false)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'ArrowUp' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'PageUp' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'Home' }), true)
+  assert.equal(shouldPauseConversationFollow({ type: 'key', key: 'ArrowDown' }), false)
+})
+
+test('does not render the legacy running placeholder beside a structured message', () => {
+  assert.equal(shouldRenderLegacyExecution(true, false, '', true), false)
+  assert.equal(shouldRenderLegacyExecution(true, false, '', false), true)
+})
+
+test('adds the live coordinator prompt to an already persisted queued message', () => {
+  assert.equal(resolveMessagePrompt(null, '  complete coordinator prompt  '), 'complete coordinator prompt')
+  assert.equal(resolveMessagePrompt('persisted prompt', undefined), 'persisted prompt')
+})
+
+test('flags manual review messages so they render without a thinking trace', () => {
+  const reviews = [
+    {
+      id: 'review-manual', step_key: 'start', status: 'pending', mode: 'manual',
+      started_at: '2026-08-11T08:59:03.640614+00:00',
+    },
+    {
+      id: 'review-auto', step_key: 'impl', status: 'passed', mode: 'auto',
+      started_at: '2026-08-11T08:52:50.010814+00:00',
+    },
+  ]
+
+  assert.equal(isManualReviewMessage({
+    channel: 'review', step_key: 'start',
+    events: [{ type: 'review_context', data: { review_run_id: 'review-manual' } }],
+  }, reviews), true)
+  assert.equal(isManualReviewMessage({
+    channel: 'review', step_key: 'impl',
+    events: [{ type: 'review_context', data: { review_run_id: 'review-auto' } }],
+  }, reviews), false)
+  // 非审核消息不受影响
+  assert.equal(isManualReviewMessage({
+    channel: 'execution', step_key: 'start', engine: 'codex',
+  }, reviews), false)
+  // 旧数据没有匹配到审核记录时，按引擎缺失兜底（人工审核不跑引擎）
+  assert.equal(isManualReviewMessage({
+    channel: 'review', step_key: 'unknown', engine: null,
+  }, reviews), true)
+  assert.equal(isManualReviewMessage({
+    channel: 'review', step_key: 'unknown', engine: 'codex',
+  }, reviews), false)
+})
+
+test('conversationBottomScrollTop pins to the bottom without going negative', () => {
+  assert.equal(conversationBottomScrollTop(500, 300), 200)
+  assert.equal(conversationBottomScrollTop(200, 300), 0)
+  assert.equal(conversationBottomScrollTop(0, 0), 0)
+})
+
+test('treats a bottom-landing scroll as an auto shrink clamp, not a user scroll-up', () => {
+  // 思考块折叠：内容从 1000 缩到 600，scrollTop 被浏览器钳制到新的底部 300。
+  assert.equal(isAutoShrinkClamp({
+    scrollTop: 300,
+    prevScrollTop: 700,
+    scrollHeight: 600,
+    prevScrollHeight: 1000,
+    clientHeight: 300,
+  }), true)
+  // 用户滚轮上滚：scrollTop 减小但内容高度不变 → 手动滚动。
+  assert.equal(isAutoShrinkClamp({
+    scrollTop: 650,
+    prevScrollTop: 700,
+    scrollHeight: 1000,
+    prevScrollHeight: 1000,
+    clientHeight: 300,
+  }), false)
+  // 内容撑大、scrollTop 不变：没有滚动发生。
+  assert.equal(isAutoShrinkClamp({
+    scrollTop: 700,
+    prevScrollTop: 700,
+    scrollHeight: 1200,
+    prevScrollHeight: 1000,
+    clientHeight: 300,
+  }), false)
+  // 高度缩小、scrollTop 也减小但位置未落底（合成兜底分支）：不按自动钳制处理。
+  assert.equal(isAutoShrinkClamp({
+    scrollTop: 200,
+    prevScrollTop: 700,
+    scrollHeight: 600,
+    prevScrollHeight: 1000,
+    clientHeight: 300,
+  }), false)
+  // 向下滚动一律不是上滚钳制。
+  assert.equal(isAutoShrinkClamp({
+    scrollTop: 750,
+    prevScrollTop: 700,
+    scrollHeight: 1000,
+    prevScrollHeight: 1000,
+    clientHeight: 300,
+  }), false)
+})

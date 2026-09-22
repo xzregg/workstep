@@ -1,0 +1,425 @@
+{
+  "id": "hr-performance",
+  "default": true,
+  "name": "绩效考核",
+  "description": "目标设定 → 过程跟踪 → 评估 → 反馈",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "goal_setting",
+        "title": "目标设定",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "启动绩效考核周期的目标设定：对齐公司战略目标逐层拆解至部门和个人，按 OKR 或 KPI 框架制定可量化指标。产出个人绩效目标表（含权重、评分标准、数据来源），确保目标符合 SMART 原则并通过上级确认。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "战略目标",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "绩效目标表",
+                "type": "json"
+              },
+              {
+                "name": "OKR 对齐",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "绩效目标表",
+            "type": "json"
+          },
+          {
+            "name": "OKR 对齐",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "mid_review",
+        "title": "中期回顾",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "进行中期绩效回顾：对比实际完成进度与目标的偏差分析、识别阻塞因素和资源缺口、评估是否需要目标调整。产出中期回顾报告（进度评分、风险预警、下半周期改进计划），安排一对一反馈面谈。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "绩效目标表",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "回顾报告",
+                "type": "file"
+              },
+              {
+                "name": "改进计划",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "回顾报告",
+            "type": "file"
+          },
+          {
+            "name": "改进计划",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "self_evaluation",
+        "title": "员工自评",
+        "position": {
+          "x": 680,
+          "y": 80
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "引导员工完成自评：逐项对照绩效目标进行自评打分、总结关键成果和亮点、反思不足和成长空间、提出下一周期发展目标。产出员工自评报告和 360 度反馈收集计划（同事/下属/跨部门协作方）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "回顾报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "自评报告",
+                "type": "file"
+              },
+              {
+                "name": "360 反馈",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "自评报告",
+            "type": "file"
+          },
+          {
+            "name": "360 反馈",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "manager_evaluation",
+        "title": "上级评估",
+        "position": {
+          "x": 680,
+          "y": 260
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "直属上级完成绩效评估：基于实际数据（而非主观印象）逐项评分、结合 360 度反馈和多维度评估（业绩达成+能力成长+价值观匹配+团队贡献）形成综合判断。产出上级评估报告和绩效等级建议（S/A/B/C/D）。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "自评报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "上级评估",
+                "type": "file"
+              },
+              {
+                "name": "绩效等级",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "上级评估",
+            "type": "file"
+          },
+          {
+            "name": "绩效等级",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "calibration",
+        "title": "校准会议",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "组织绩效校准会议：横向对比各部门绩效分布确保公平性、讨论边界案例和争议评级、确定强制分布比例。产出校准后的绩效结果汇总和各部门绩效分布报告。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "绩效等级",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "校准结果",
+                "type": "json"
+              },
+              {
+                "name": "分布报告",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "校准结果",
+            "type": "json"
+          },
+          {
+            "name": "分布报告",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "result_communication",
+        "title": "结果沟通",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "准备绩效面谈材料和沟通话术：生成个性化反馈报告（肯定成绩+指出不足+改进建议）、制定个人发展计划（IDP）和培训需求、沟通薪酬调整和奖金方案。产出绩效反馈报告和员工签字确认函。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "校准结果",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "反馈报告",
+                "type": "file"
+              },
+              {
+                "name": "IDP 计划",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "反馈报告",
+            "type": "file"
+          },
+          {
+            "name": "IDP 计划",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "compensation_exec",
+        "title": "薪酬执行",
+        "position": {
+          "x": 1580,
+          "y": 120
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "根据绩效结果执行薪酬调整：计算调薪金额和奖金、生成薪资变动明细表、对接薪酬系统完成数据更新。确保调薪总额在预算范围内，产出薪酬变动汇总和个税影响分析。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "校准结果",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "薪酬变动表",
+                "type": "json"
+              },
+              {
+                "name": "个税分析",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "薪酬变动表",
+            "type": "json"
+          },
+          {
+            "name": "个税分析",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "type": "archive",
+        "title": "考核归档",
+        "position": {
+          "x": 1580,
+          "y": 300
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "完成绩效考核周期归档：汇总全员绩效结果、生成组织绩效分析报告（人才九宫格/潜力图/流失风险）、归档所有考核文档至员工档案。产出绩效总结报告和下一周期优化建议。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "反馈报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "绩效档案",
+                "type": "json"
+              },
+              {
+                "name": "总结报告",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "薪酬变动表",
+            "type": "json",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "绩效档案",
+            "type": "json"
+          },
+          {
+            "name": "总结报告",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 8,
+        "toPort": 0
+      },
+      {
+        "from": 7,
+        "fromPort": 0,
+        "to": 8,
+        "toPort": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with: { python-version: "3.12" }
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with: { enable-cache: true }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: "20", cache: yarn, cache-dependency-path: apps/web/yarn.lock }
+      - name: Repository health
+        run: |
+          python scripts/check_repository_health.py
+          python scripts/check_secrets.py
+      - name: Daemon tests
+        working-directory: apps/daemon
+        # Install the public Codex/Claude SDK contracts only in CI. They remain
+        # excluded from desktop packages; Qoder-specific tests stay deselected.
+        run: |
+          uv run --frozen --group dev --group sdk-engines pytest -k 'not does_not_block_health' \
+            --deselect='tests/test_acp_command_inspection.py::test_hermes_inspection_discovers_and_caches_acp_commands[asyncio]' \
+            --deselect=tests/test_assistant_api.py::test_assistant_set_and_read_config \
+            --deselect=tests/test_assistant_api.py::test_chat_session_config_stores_full_defaults \
+            --deselect=tests/test_assistant_api.py::test_assistant_config_accepts_auto_and_xhigh \
+            --deselect=tests/test_assistant_api.py::test_assistant_config_accepts_compatible_external_engine_provider \
+            --deselect=tests/test_deepseek_harness_engine.py::test_deepseek_harness_rejects_unknown_preset \
+            --deselect=tests/test_engine_base_hierarchy.py::test_acp_native_engine_declares_full_vocabulary \
+            --deselect='tests/test_engine_live_injection.py::test_qoder_sdk_client_injects_live_message[asyncio]' \
+            --deselect='tests/test_engine_live_injection.py::test_qoder_sdk_client_reports_failed_injection[asyncio]' \
+            --deselect=tests/test_engine_live_injection.py::test_registered_engines_advertise_live_support_honestly \
+            --deselect=tests/test_engine_live_injection.py::test_acp_base_engine_advertises_live_support \
+            --deselect=tests/test_engines.py::test_registry_has_claude \
+            --deselect=tests/test_engines.py::test_create_engine \
+            --deselect='tests/test_p2_engines.py::test_qoder_sdk_spawn_uses_message_dicts_and_resume[asyncio]' \
+            --deselect='tests/test_p2_engines.py::test_qoder_sdk_can_use_tool_permission_round_trip[asyncio]' \
+            --deselect=tests/test_p2_engines.py::test_qoder_sdk_resolve_bundled_cli \
+            --deselect=tests/test_p2_engines.py::test_qoder_sdk_maps_subagent_task_lifecycle \
+            --deselect=tests/test_p2_engines.py::test_qoder_sdk_maps_real_sdk_blocks_without_type_field \
+            --deselect=tests/test_p2_engines.py::test_qoder_sdk_real_task_tools_produce_plan_events \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
+            --deselect=tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
+            --deselect=tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
+            --deselect=tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
+            --deselect='tests/test_live_step_message.py::test_runner_splits_step_message_on_live_insert[asyncio]' \
+            --deselect='tests/test_recovery.py::test_e2e_three_step_run_resumes_after_crash[asyncio]' \
+            --deselect=tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
+            --deselect=tests/test_recovery.py::test_recovery_takes_over_expired_lease
+      - name: Isolation-sensitive daemon contracts
+        working-directory: apps/daemon
+        run: |
+          uv run --frozen --group dev --group sdk-engines pytest -k does_not_block_health
+          uv run --frozen --group dev --group sdk-engines pytest \
+            tests/test_chat_session.py::test_chat_history_converts_legacy_visualize_markers \
+            tests/test_chat_session.py::test_chat_history_converts_bare_visualize_marker \
+            tests/test_chat_session.py::test_chat_history_converts_visualize_marker_in_events \
+            tests/test_chat_session.py::test_quick_buttons_defaults_and_validation \
+            tests/test_chat_session.py::test_system_prompt_persistence_validation_and_clear \
+            'tests/test_live_step_message.py::test_runner_splits_step_message_on_live_insert[asyncio]' \
+            'tests/test_recovery.py::test_e2e_three_step_run_resumes_after_crash[asyncio]' \
+            tests/test_recovery.py::test_graceful_shutdown_leaves_run_recoverable \
+            tests/test_recovery.py::test_recovery_takes_over_expired_lease
+      - name: Desktop protocol tests
+        run: |
+          uv run --project apps/daemon --frozen --group dev pytest \
+            apps/desktop/tests/test_backend_entry.py \
+            apps/desktop/tests/test_build_script.py
+          node --test apps/desktop/tests/sidecar.test.cjs
+      - name: Web tests and build
+        working-directory: apps/web
+        run: corepack enable && yarn install --frozen-lockfile && yarn test && yarn build
+      - name: Landing tests and build
+        working-directory: apps/landing
+        run: corepack enable && yarn install --frozen-lockfile && yarn test && LANDING_BASE=/workstep/ yarn build

@@ -1,0 +1,48 @@
+{
+  "types": [
+    {
+      "value": "md",
+      "description": "Markdown document with clear structure and standard Markdown syntax."
+    },
+    {
+      "value": "html",
+      "description": "HTML page with a complete document structure that opens in a browser."
+    },
+    {
+      "value": "json",
+      "description": "UTF-8 JSON data file with valid, parseable structure."
+    },
+    {
+      "value": "txt",
+      "description": "UTF-8 plain text file with clear, directly readable structure."
+    },
+    {
+      "value": "jpg",
+      "description": "JPEG image file (binary) matching the artifact requirements."
+    },
+    {
+      "value": "png",
+      "description": "PNG image file (binary) matching the artifact requirements."
+    },
+    {
+      "value": "docx",
+      "description": "Microsoft Word document (binary .docx)."
+    },
+    {
+      "value": "xlsx",
+      "description": "Microsoft Excel workbook (binary .xlsx)."
+    },
+    {
+      "value": "csv",
+      "description": "UTF-8 CSV table with comma separators and a header row."
+    },
+    {
+      "value": "pdf",
+      "description": "PDF document (binary) matching the artifact requirements."
+    },
+    {
+      "value": "directory",
+      "description": "Directory artifact. Create multiple files and subdirectories in the output directory as needed; do not merge everything into one file. The file types and count follow the step requirements."
+    }
+  ]
+}

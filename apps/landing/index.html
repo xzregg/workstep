@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="WorkStep 把真实工作拆成可执行步骤，让 LLM 自动接力，并支持多人安全分享和共同推进本地项目。"
+    />
+    <meta property="og:title" content="WorkStep — 把工作交给 LLM，不再手工接力" />
+    <meta
+      property="og:description"
+      content="步骤式 AI 工作流：上下文与产物自动衔接，多引擎执行、全过程可审核，并支持远程团队协作。"
+    />
+    <title>WorkStep — 把工作交给 LLM，不再手工接力</title>
+    <script>
+      ;(() => {
+        let storedTheme = null
+        try {
+          storedTheme = localStorage.getItem('workstep-landing-theme')
+        } catch {}
+        const theme =
+          storedTheme === 'light' || storedTheme === 'dark'
+            ? storedTheme
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

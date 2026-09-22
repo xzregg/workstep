@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="task-stage-port-flow-title task-stage-port-flow-desc">
+  <title id="task-stage-port-flow-title">WorkStep 任务步骤端口产物路由与返回约束</title>
+  <desc id="task-stage-port-flow-desc">左侧是动态提示词输入槽，右侧是从流程编译、调度、引擎执行、审核、产物扫描到正向或返回路由的流程。返回连接默认最多三次并可按步骤配置，正向和返回产物同时出现时暂停。</desc>
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');</style>
+    <marker id="task-stage-port-flow-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0 0 9 3.5 0 7Z" fill="#4f5d75"/></marker>
+    <marker id="task-stage-port-flow-arrow-accent" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto"><path d="M0 0 9 3.5 0 7Z" fill="#eb6c36"/></marker>
+    <style>
+      .sans{font-family:Geist,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,monospace}.serif{font-family:"Instrument Serif","Noto Serif SC",serif}.name{font-size:12px;font-weight:600;fill:#2d3142}.body{font-size:12px;fill:#4f5d75}.meta{font-size:10px;fill:#7a8399}.eyebrow{font-size:11px;font-weight:600;letter-spacing:1.4px;fill:#eb6c36}.section{font-size:12px;font-weight:600;fill:#eb6c36}.edge{fill:none;stroke:#4f5d75;stroke-width:1.4;marker-end:url(#task-stage-port-flow-arrow)}.feedback{fill:none;stroke:#eb6c36;stroke-width:1.6;stroke-dasharray:7 5;marker-end:url(#task-stage-port-flow-arrow-accent)}.node{fill:#fff;stroke:#bfc0c0;stroke-width:1}.focal{fill:#fef3ee;stroke:#eb6c36;stroke-width:1.2}.optional{fill:#fafafa;stroke:#7a8399;stroke-width:1;stroke-dasharray:5 4}
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#f5f5f5"/>
+  <text x="40" y="48" class="eyebrow mono">WORKSTEP · PORT-AWARE EXECUTION</text>
+  <text x="40" y="84" class="serif" font-size="30" fill="#2d3142">任务步骤：端口产物路由与返回约束</text>
+  <text x="40" y="110" class="body sans">每条连接绑定一个输出端口和输入端口；只有本轮非空产物才能激活连接。</text>
+
+  <rect x="40" y="140" width="520" height="650" rx="8" fill="#ececec" stroke="#d9d9dc"/>
+  <text x="64" y="174" class="section sans">A · 动态步骤提示词</text>
+  <text x="64" y="198" class="body sans">固定槽位保持一致，输入内容由当前 routing state 解析。</text>
+  <rect x="64" y="222" width="472" height="76" rx="6" class="node"/>
+  <text x="84" y="248" class="name sans">系统角色与输出契约</text>
+  <text x="84" y="270" class="meta mono">step.outputs → exact round paths</text>
+  <text x="84" y="288" class="body sans">允许按需不产出；若产出，必须写入声明路径。</text>
+  <rect x="64" y="314" width="472" height="76" rx="6" class="node"/>
+  <text x="84" y="340" class="name sans">任务与项目上下文</text>
+  <text x="84" y="362" class="meta mono">MEMORY.md + task.description + user_input</text>
+  <text x="84" y="380" class="body sans">提供长期约束、任务目标和本次用户补充。</text>
+  <rect x="64" y="406" width="472" height="142" rx="6" class="focal"/>
+  <text x="84" y="434" class="name sans">动态输入端口快照</text>
+  <text x="84" y="456" class="meta mono">StepRun.input_snapshot_json</text>
+  <text x="84" y="480" class="body sans">每个输入端口标记 ready / inactive / task_context；</text>
+  <text x="84" y="502" class="body sans">只注入匹配连接的非空文件、来源步骤、轮次、路径和大小。</text>
+  <text x="84" y="528" class="body sans" font-weight="600">返工示例：开发步骤同时收到 PRD + Bug 列表。</text>
+  <rect x="64" y="564" width="472" height="76" rx="6" class="node"/>
+  <text x="84" y="590" class="name sans">步骤要求与确认补充</text>
+  <text x="84" y="612" class="meta mono">step.prompt + StageSupplement(active)</text>
+  <text x="84" y="630" class="body sans">业务要求与用户确认内容按稳定顺序追加。</text>
+  <rect x="64" y="656" width="472" height="106" rx="6" class="node"/>
+  <text x="84" y="682" class="name sans">运行时触发信息</text>
+  <text x="84" y="704" class="meta mono">execution_type: initial | forward | feedback</text>
+  <text x="84" y="726" class="body sans">类型由活动连接推导，不注入“首次开发”等硬编码业务句。</text>
+  <text x="84" y="748" class="body sans">可恢复会话仍沿用同一端口快照，不丢失其它有效输入。</text>
+
+  <rect x="584" y="140" width="976" height="650" rx="8" fill="#fff" stroke="#d9d9dc"/>
+  <text x="608" y="174" class="section sans">B · 执行、审核与端口路由</text>
+  <rect x="608" y="220" width="144" height="82" rx="6" class="node"/>
+  <text x="680" y="248" text-anchor="middle" class="name sans">编译连接</text>
+  <text x="680" y="270" text-anchor="middle" class="meta mono">fromPort → toPort</text>
+  <text x="680" y="288" text-anchor="middle" class="body sans">实线 DAG / 虚线返回</text>
+  <rect x="796" y="220" width="164" height="82" rx="6" class="node"/>
+  <text x="878" y="248" text-anchor="middle" class="name sans">选择 ready 步骤</text>
+  <text x="878" y="270" text-anchor="middle" class="meta mono">deps + active_edges</text>
+  <text x="878" y="288" text-anchor="middle" class="body sans">所有实线输入均已激活</text>
+  <rect x="1004" y="220" width="176" height="82" rx="6" class="focal"/>
+  <text x="1092" y="248" text-anchor="middle" class="name sans">快照 + 引擎执行</text>
+  <text x="1092" y="270" text-anchor="middle" class="meta mono">resolve → engine.spawn</text>
+  <text x="1092" y="288" text-anchor="middle" class="body sans">精确输入 · 声明输出路径</text>
+  <polygon points="1344,208 1424,261 1344,314 1264,261" fill="#fff" stroke="#2d3142" stroke-width="1.2"/>
+  <text x="1344" y="254" text-anchor="middle" class="name sans">审核模式</text>
+  <text x="1344" y="276" text-anchor="middle" class="meta mono">skip / auto / manual</text>
+  <path d="M752 261H796" class="edge"/><path d="M960 261H1004" class="edge"/><path d="M1180 261H1264" class="edge"/>
+
+  <rect x="1256" y="370" width="176" height="82" rx="6" class="node"/>
+  <text x="1344" y="398" text-anchor="middle" class="name sans">通过并固化 manifest</text>
+  <text x="1344" y="420" text-anchor="middle" class="meta mono">exists · size · nonempty</text>
+  <text x="1344" y="438" text-anchor="middle" class="body sans">skip 也必须进入此路由门</text>
+  <path d="M1344 314V370" class="edge"/>
+  <rect x="1360" y="326" width="132" height="20" rx="4" fill="#f5f5f5"/>
+  <text x="1426" y="341" text-anchor="middle" class="body sans">skip / 审核通过</text>
+  <polygon points="1344,500 1432,558 1344,616 1256,558" fill="#fef3ee" stroke="#eb6c36" stroke-width="1.2"/>
+  <text x="1344" y="548" text-anchor="middle" class="name sans">本轮非空输出</text>
+  <text x="1344" y="570" text-anchor="middle" class="meta mono">route_artifact_round</text>
+  <text x="1344" y="588" text-anchor="middle" class="body sans">按 fromPort 激活连接</text>
+  <path d="M1344 452V500" class="edge"/>
+
+  <rect x="1404" y="674" width="132" height="72" rx="20" class="node"/>
+  <text x="1470" y="702" text-anchor="middle" class="name sans">正向推进</text>
+  <text x="1470" y="724" text-anchor="middle" class="body sans">执行匹配下游</text>
+  <text x="1470" y="740" text-anchor="middle" class="meta mono">空分支 → skipped</text>
+  <path d="M1400 596Q1470 624 1470 674" class="edge"/>
+  <text x="1460" y="628" text-anchor="middle" class="body sans">实线非空</text>
+  <rect x="1012" y="674" width="184" height="72" rx="6" class="focal"/>
+  <text x="1104" y="702" text-anchor="middle" class="name sans">返回目标步骤</text>
+  <text x="1104" y="724" text-anchor="middle" class="body sans">保留其它端口 · 重跑下游</text>
+  <text x="1104" y="740" text-anchor="middle" class="meta mono">per edge: 1 / 2 / 3</text>
+  <path d="M1288 596Q1192 632 1158 674" class="feedback"/>
+  <text x="1210" y="642" text-anchor="middle" class="body sans">虚线非空且计数 &lt; 3</text>
+  <path d="M1012 710H752Q704 710 704 662V326Q704 302 728 302H796" class="feedback"/>
+  <rect x="1232" y="674" width="136" height="72" rx="20" class="optional"/>
+  <text x="1300" y="702" text-anchor="middle" class="name sans">暂停流程</text>
+  <text x="1300" y="724" text-anchor="middle" class="body sans">超过步骤配置上限</text>
+  <text x="1300" y="740" text-anchor="middle" class="meta mono">或正向 + 返回冲突</text>
+  <path d="M1344 616V646Q1344 658 1332 658H1300V674" class="edge"/>
+  <path d="M1264 261H1218Q1202 261 1202 245V198Q1202 182 1186 182H1092V220" fill="none" stroke="#7a8399" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#task-stage-port-flow-arrow)"/>
+  <text x="1200" y="174" text-anchor="middle" class="body sans">审核驳回：本步骤重试；耗尽后人工暂停</text>
+
+  <line x1="40" y1="826" x2="1560" y2="826" stroke="#bfc0c0"/>
+  <text x="40" y="860" class="section sans">C · 经典研发测试流程</text>
+  <rect x="40" y="884" width="1520" height="84" rx="8" fill="#fff" stroke="#d9d9dc"/>
+  <text x="72" y="918" class="name sans">PRD</text>
+  <text x="142" y="918" class="body sans">→ 开发（输入：PRD / Bug 列表）</text>
+  <text x="382" y="918" class="body sans">→ API 文档 + 修复结果</text>
+  <text x="584" y="918" class="body sans">→ 测试</text>
+  <text x="674" y="918" class="body sans">→ 测试报告（正向）</text>
+  <text x="852" y="918" class="body sans">或 Bug 列表（返回开发）</text>
+  <text x="72" y="948" class="meta mono">feedback prompt snapshot: input[0]=PRD.md · input[1]=Bug列表.md · execution_type=feedback</text>
+  <text x="1528" y="948" text-anchor="end" class="meta mono">maxReturnRounds = 3 default</text>
+</svg>

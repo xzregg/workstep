@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkStep · 任务执行监控原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg:#fff; --surface:#f5f5f7; --surface-2:#fafafa; --fg:#1d1d1f;
+      --fg-2:#424245; --muted:#6e6e73; --meta:#86868b; --border:#d2d2d7;
+      --border-soft:#e9e9ed; --accent:#0071e3; --accent-soft:#e6f0ff;
+      --success:#16a34a; --warn:#d89a00; --danger:#dc2626; --purple:#7c3aed;
+      --shadow:0 18px 55px rgba(0,0,0,.12);
+      --font:system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC",sans-serif;
+      --mono:ui-monospace,"SFMono-Regular",Menlo,monospace;
+    }
+    html[data-theme="dark"] {
+      color-scheme:dark; --bg:#171719; --surface:#222225; --surface-2:#1c1c1f;
+      --fg:#f5f5f7; --fg-2:#d2d2d7; --muted:#a1a1a6; --meta:#86868b;
+      --border:#444448; --border-soft:#303034; --accent:#2997ff;
+      --accent-soft:#172b42; --success:#32d74b; --warn:#ffd60a;
+      --danger:#ff453a; --purple:#bf5af2; --shadow:0 18px 55px rgba(0,0,0,.45);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; background:var(--surface); color:var(--fg); font:13px var(--font); }
+    button, select { font:inherit; color:inherit; }
+    button { cursor:pointer; }
+    .shell { min-height:100vh; display:grid; grid-template-rows:62px auto 1fr auto; background:var(--bg); }
+    .topbar { padding:0 20px; display:flex; align-items:center; gap:13px; border-bottom:1px solid var(--border-soft); }
+    .back { width:32px; height:32px; padding:0; border:1px solid var(--border-soft); border-radius:8px; background:transparent; }
+    .brand { display:flex; align-items:center; gap:9px; padding-right:14px; border-right:1px solid var(--border-soft); font-weight:650; }
+    .brand-mark { width:23px; height:23px; display:grid; place-items:center; border-radius:7px; background:var(--fg); color:var(--bg); font-size:12px; }
+    .heading { flex:1; min-width:0; }
+    .heading h1 { margin:0 0 3px; font-size:16px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .heading span { color:var(--meta); font-size:11px; }
+    .live { display:inline-flex; align-items:center; gap:7px; color:var(--success); font-size:11px; font-weight:600; }
+    .live i { width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 15%, transparent); animation:pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity:.35; transform:scale(.8); } }
+    .top-action { min-height:32px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:transparent; }
+    .summary { padding:14px 22px 15px; border-bottom:1px solid var(--border-soft); }
+    .stats { display:grid; grid-template-columns:repeat(5,minmax(100px,1fr)); gap:8px; }
+    .stat { padding:5px 12px; border-left:1px solid var(--border-soft); }
+    .stat:first-child { border-left:0; padding-left:0; }
+    .stat label { display:block; color:var(--meta); font-size:10px; }
+    .stat strong { display:block; margin-top:4px; font-size:17px; font-weight:650; font-variant-numeric:tabular-nums; }
+    .progress { height:4px; margin-top:13px; overflow:hidden; border-radius:4px; background:var(--surface); }
+    .progress span { display:block; width:68%; height:100%; background:var(--accent); transition:width .3s; }
+    .workspace { min-height:0; display:grid; grid-template-columns:minmax(480px,1.12fr) minmax(350px,.88fr); }
+    .flow-panel, .feed-panel { min-width:0; min-height:0; }
+    .flow-panel { padding:17px 20px 24px; border-right:1px solid var(--border-soft); overflow:auto; }
+    .feed-panel { display:flex; flex-direction:column; background:var(--surface-2); }
+    .panel-head { min-height:43px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .panel-title { font-weight:650; }
+    .panel-title small { margin-left:7px; color:var(--meta); font-weight:400; }
+    .controls { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    select, .control { height:30px; padding:0 9px; border:1px solid var(--border); border-radius:7px; background:var(--bg); }
+    .control.active { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+    .flow-canvas { position:relative; min-width:650px; min-height:460px; margin-top:8px; border:1px solid var(--border-soft); border-radius:12px; background-color:var(--bg); background-image:radial-gradient(var(--border-soft) .8px,transparent .8px); background-size:18px 18px; overflow:hidden; }
+    .flow-lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    .flow-lines path { fill:none; stroke:var(--border); stroke-width:2; }
+    .flow-lines path.active { stroke:var(--accent); }
+    .flow-lines path.done { stroke:var(--success); }
+    .node { position:absolute; width:146px; min-height:76px; padding:11px; border:1px solid var(--border); border-radius:11px; background:var(--bg); text-align:left; box-shadow:0 5px 16px rgba(0,0,0,.04); transition:transform .15s, border-color .15s, box-shadow .15s; }
+    .node:hover, .node.selected { transform:translateY(-2px); border-color:var(--accent); box-shadow:0 8px 22px color-mix(in srgb, var(--accent) 14%, transparent); }
+    .node.done { border-color:color-mix(in srgb,var(--success) 45%,var(--border)); }
+    .node.failed { border-color:color-mix(in srgb,var(--danger) 60%,var(--border)); }
+    .node.running { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 10%,transparent); }
+    .node-status { width:20px; height:20px; display:grid; place-items:center; border-radius:50%; color:var(--meta); background:var(--surface); font-size:10px; float:left; margin-right:8px; }
+    .done .node-status { color:var(--success); background:color-mix(in srgb,var(--success) 12%,transparent); }
+    .failed .node-status { color:var(--danger); background:color-mix(in srgb,var(--danger) 12%,transparent); }
+    .running .node-status { color:var(--accent); background:color-mix(in srgb,var(--accent) 12%,transparent); animation:pulse 1.5s infinite; }
+    .node strong { display:block; padding-top:1px; font-size:12px; }
+    .node-meta { clear:both; padding-top:9px; display:flex; justify-content:space-between; gap:5px; color:var(--meta); font-size:9px; }
+    .node-sub { clear:both; padding-top:6px; color:var(--muted); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .n-requirement { left:30px; top:185px; } .n-ui { left:218px; top:80px; } .n-backend { left:218px; top:285px; }
+    .n-frontend { left:414px; top:80px; } .n-review { left:414px; top:285px; } .n-release { left:585px; top:185px; width:54px; min-height:54px; padding:16px 10px; border-radius:50%; text-align:center; }
+    .round-banner { position:absolute; left:400px; top:170px; padding:5px 8px; border-radius:6px; background:var(--accent-soft); color:var(--accent); font-size:9px; font-weight:600; }
+    .feed-head { padding:12px 15px; border-bottom:1px solid var(--border-soft); }
+    .feed { flex:1; min-height:280px; padding:3px 15px 18px; overflow-y:auto; }
+    .feed-item { position:relative; display:grid; grid-template-columns:57px 1fr; gap:10px; padding:13px 0 13px 13px; border-bottom:1px solid var(--border-soft); }
+    .feed-item::before { content:""; position:absolute; left:0; top:18px; width:6px; height:6px; border-radius:50%; background:var(--meta); }
+    .feed-item.tool::before { background:var(--purple); } .feed-item.done::before { background:var(--success); } .feed-item.error::before { background:var(--danger); } .feed-item.active::before { background:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent); }
+    .feed-item time { color:var(--meta); font:10px var(--mono); }
+    .feed-copy strong { display:block; font-size:12px; font-weight:600; }
+    .feed-copy p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.45; }
+    .feed-tag { display:inline-flex; margin-top:7px; padding:3px 6px; border-radius:5px; background:var(--surface); color:var(--meta); font:9px var(--mono); }
+    .activity { padding:13px 20px 15px; border-top:1px solid var(--border-soft); background:var(--bg); }
+    .activity-head { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:10px; }
+    .activity-head strong { font-size:13px; }
+    .activity-head span { color:var(--accent); font-size:11px; }
+    .activity-grid { display:grid; grid-template-columns:minmax(240px,1.4fr) repeat(3,minmax(90px,.5fr)) auto; gap:10px; align-items:center; }
+    .thinking { min-width:0; padding:10px 12px; border-radius:9px; background:var(--surface); color:var(--muted); line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .activity-item { padding-left:10px; border-left:1px solid var(--border-soft); }
+    .activity-item label { display:block; color:var(--meta); font-size:9px; }
+    .activity-item strong { display:block; margin-top:3px; font-size:12px; font-variant-numeric:tabular-nums; }
+    .activity-actions { display:flex; gap:7px; }
+    .primary, .secondary, .danger { min-height:34px; padding:0 11px; border-radius:8px; white-space:nowrap; }
+    .primary { border:0; background:var(--fg); color:var(--bg); } .secondary { border:1px solid var(--border); background:transparent; }
+    .danger { border:1px solid color-mix(in srgb,var(--danger) 40%,var(--border)); background:transparent; color:var(--danger); }
+    .detail-pop { position:fixed; z-index:15; width:300px; display:none; padding:14px; border:1px solid var(--border); border-radius:11px; background:var(--bg); box-shadow:var(--shadow); }
+    .detail-pop.open { display:block; }
+    .detail-pop h3 { margin:0 0 4px; font-size:14px; } .detail-pop > span { color:var(--meta); font-size:10px; }
+    .detail-list { margin:12px 0; display:grid; grid-template-columns:74px 1fr; gap:8px; }
+    .detail-list dt { color:var(--meta); } .detail-list dd { margin:0; }
+    .prototype-switch { position:fixed; right:14px; bottom:14px; z-index:8; display:flex; gap:6px; padding:5px; border:1px solid var(--border); border-radius:10px; background:var(--bg); box-shadow:var(--shadow); }
+    .prototype-switch a { padding:7px 10px; border-radius:7px; color:var(--muted); text-decoration:none; font-size:11px; }
+    .prototype-switch a.active { background:var(--fg); color:var(--bg); }
+    @media (max-width:900px) { .workspace { grid-template-columns:1fr; } .flow-panel { border-right:0; border-bottom:1px solid var(--border-soft); } .feed { max-height:420px; } .activity-grid { grid-template-columns:1fr 1fr 1fr; } .thinking { grid-column:1/-1; } .activity-actions { grid-column:1/-1; } }
+    @media (max-width:620px) { .brand { display:none; } .topbar { padding:0 11px; } .top-action.back-detail { display:none; } .summary { padding:12px; overflow-x:auto; } .stats { min-width:600px; } .flow-panel { padding:12px; } .feed-panel { min-height:450px; } .activity { padding:12px 12px 74px; } .activity-grid { grid-template-columns:1fr 1fr; } .activity-item:nth-of-type(3) { display:none; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <button class="back" aria-label="返回">←</button>
+      <div class="brand"><span class="brand-mark">W</span>WorkStep</div>
+      <div class="heading"><h1>执行监控 · 实现用户登录与会话管理</h1><span>TASK-7F3A91 · 第 2 轮</span></div>
+      <span class="live"><i></i>运行中</span>
+      <button class="top-action back-detail">返回详情</button>
+      <button class="back" id="themeButton" aria-label="切换主题">◐</button>
+    </header>
+
+    <section class="summary">
+      <div class="stats">
+        <div class="stat"><label>已运行</label><strong id="elapsed">18m 42s</strong></div>
+        <div class="stat"><label>Token</label><strong id="tokens">128.6K</strong></div>
+        <div class="stat"><label>费用</label><strong>¥1.84</strong></div>
+        <div class="stat"><label>完成阶段</label><strong>3 / 5</strong></div>
+        <div class="stat"><label>当前动作</label><strong style="font-size:13px">运行测试</strong></div>
+      </div>
+      <div class="progress" aria-label="任务完成度 68%"><span id="progressBar"></span></div>
+    </section>
+
+    <section class="workspace">
+      <div class="flow-panel">
+        <div class="panel-head"><div class="panel-title">流程执行图<small>点击节点查看详情</small></div><div class="controls"><button class="control active" id="currentRound">当前轮次</button><button class="control" id="historyButton">显示历史轮次</button></div></div>
+        <div class="flow-canvas" id="flowCanvas">
+          <svg class="flow-lines" viewBox="0 0 650 460" preserveAspectRatio="none" aria-hidden="true">
+            <path class="done" d="M176 223 C195 223 195 118 218 118"></path><path class="done" d="M176 223 C195 223 195 323 218 323"></path>
+            <path class="active" d="M364 118 C384 118 394 118 414 118"></path><path class="done" d="M364 323 C384 323 394 323 414 323"></path>
+            <path class="active" d="M560 118 C580 118 580 212 585 212"></path><path d="M560 323 C580 323 580 238 585 238"></path>
+          </svg>
+          <button class="node done n-requirement" data-name="需求分析" data-status="已完成" data-time="3m12s" data-token="12.4K" data-cost="¥0.18"><span class="node-status">✓</span><strong>需求分析</strong><div class="node-meta"><span>3m12s</span><span>12.4K</span></div><div class="node-sub">输出需求说明与验收标准</div></button>
+          <button class="node done n-ui" data-name="UI 设计" data-status="已完成" data-time="4m08s" data-token="21.6K" data-cost="¥0.31"><span class="node-status">✓</span><strong>UI 设计</strong><div class="node-meta"><span>4m08s</span><span>21.6K</span></div><div class="node-sub">3 个界面产物</div></button>
+          <button class="node done n-backend" data-name="后端开发" data-status="已完成" data-time="6m21s" data-token="38.2K" data-cost="¥0.52"><span class="node-status">✓</span><strong>后端开发</strong><div class="node-meta"><span>6m21s</span><span>38.2K</span></div><div class="node-sub">API 与会话持久化完成</div></button>
+          <button class="node running selected n-frontend" data-name="前端开发" data-status="第 2 次执行中" data-time="2m34s" data-token="31.4K" data-cost="¥0.46"><span class="node-status">●</span><strong>前端开发</strong><div class="node-meta"><span id="nodeElapsed">2m34s</span><span>31.4K</span></div><div class="node-sub">正在运行 npm run test</div></button>
+          <button class="node failed n-review" data-name="自动审核" data-status="未通过" data-time="1m02s" data-token="7.3K" data-cost="¥0.11"><span class="node-status">!</span><strong>自动审核</strong><div class="node-meta"><span>1m02s</span><span>退回</span></div><div class="node-sub">缺少错误状态处理</div></button>
+          <button class="node n-release" data-name="人工审核" data-status="等待上游" data-time="—" data-token="—" data-cost="—"><span style="font-size:18px">○</span><div class="node-sub">审核</div></button>
+          <span class="round-banner">↻ 第 2 轮从这里重跑</span>
+        </div>
+      </div>
+
+      <div class="feed-panel">
+        <div class="feed-head"><div class="panel-head"><div class="panel-title">实时动态</div><div class="controls"><select id="feedFilter" aria-label="动态筛选"><option value="all">全部事件</option><option value="key">仅关键事件</option><option value="tool">工具调用</option></select><button class="control active" id="followButton">自动跟随</button></div></div></div>
+        <div class="feed" id="feed">
+          <article class="feed-item active key"><time>10:18:42</time><div class="feed-copy"><strong>前端开发 · 运行测试</strong><p>执行项目测试，验证表单错误状态与会话恢复。</p><span class="feed-tag">npm run test</span></div></article>
+          <article class="feed-item done key"><time>10:18:27</time><div class="feed-copy"><strong>登录表单组件完成</strong><p>已补充加载、失败和禁用状态。</p></div></article>
+          <article class="feed-item tool"><time>10:17:53</time><div class="feed-copy"><strong>修改文件</strong><p>更新登录页面与认证状态管理。</p><span class="feed-tag">src/pages/Login.tsx</span></div></article>
+          <article class="feed-item key"><time>10:16:08</time><div class="feed-copy"><strong>前端开发重新执行</strong><p>根据自动审核意见开始第 2 轮执行。</p></div></article>
+          <article class="feed-item error key"><time>10:15:06</time><div class="feed-copy"><strong>自动审核未通过</strong><p>登录失败时缺少明确错误反馈，并且提交按钮未恢复。</p></div></article>
+          <article class="feed-item done key"><time>10:14:32</time><div class="feed-copy"><strong>后端开发完成</strong><p>6m21s · 38.2K Token · ¥0.52</p></div></article>
+          <article class="feed-item tool"><time>10:13:48</time><div class="feed-copy"><strong>后端测试通过</strong><p>认证接口 28 项测试全部通过。</p><span class="feed-tag">pytest tests/test_auth.py</span></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="activity">
+      <div class="activity-head"><strong id="activityTitle">当前执行：前端开发</strong><span>● 模型正在工作</span></div>
+      <div class="activity-grid">
+        <div class="thinking" id="thinking">思考中：正在检查登录失败后的错误提示和表单状态……</div>
+        <div class="activity-item"><label>当前操作</label><strong>npm run test</strong></div>
+        <div class="activity-item"><label>本阶段耗时</label><strong id="stageElapsed">2m34s</strong></div>
+        <div class="activity-item"><label>本阶段 Token</label><strong>31,420</strong></div>
+        <div class="activity-actions"><button class="primary">查看实时对话</button><button class="danger" id="stopButton">停止阶段</button></div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="detail-pop" id="detailPop" role="dialog" aria-labelledby="popTitle">
+    <h3 id="popTitle">前端开发</h3><span id="popStatus">第 2 次执行中</span>
+    <dl class="detail-list"><dt>耗时</dt><dd id="popTime">2m34s</dd><dt>Token</dt><dd id="popToken">31.4K</dd><dt>费用</dt><dd id="popCost">¥0.46</dd><dt>引擎</dt><dd>Codex SDK · gpt-5.6</dd></dl>
+    <button class="secondary" id="closePop">关闭</button>
+  </aside>
+
+  <div class="prototype-switch"><a href="task-execution-analysis.html">方案 A · 分析</a><a class="active" href="task-execution-monitor.html">方案 B · 监控</a></div>
+  <script>
+    document.getElementById('themeButton').addEventListener('click', () => {
+      document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    });
+
+    const pop = document.getElementById('detailPop');
+    document.querySelectorAll('.node').forEach(node => node.addEventListener('click', event => {
+      document.querySelectorAll('.node').forEach(item => item.classList.toggle('selected', item === node));
+      document.getElementById('popTitle').textContent = node.dataset.name;
+      document.getElementById('popStatus').textContent = node.dataset.status;
+      document.getElementById('popTime').textContent = node.dataset.time;
+      document.getElementById('popToken').textContent = node.dataset.token;
+      document.getElementById('popCost').textContent = node.dataset.cost;
+      const rect = event.currentTarget.getBoundingClientRect();
+      pop.style.left = `${Math.min(window.innerWidth - 316, Math.max(12, rect.right + 10))}px`;
+      pop.style.top = `${Math.min(window.innerHeight - 250, Math.max(12, rect.top))}px`;
+      pop.classList.add('open');
+    }));
+    document.getElementById('closePop').addEventListener('click', () => pop.classList.remove('open'));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') pop.classList.remove('open'); });
+
+    document.getElementById('historyButton').addEventListener('click', event => {
+      const active = event.currentTarget.classList.toggle('active');
+      document.getElementById('currentRound').classList.toggle('active', !active);
+      document.querySelector('.round-banner').textContent = active ? '历史：第 1 轮失败 → 第 2 轮重跑' : '↻ 第 2 轮从这里重跑';
+      document.querySelector('.n-frontend .node-sub').textContent = active ? '第 1 轮失败 · 第 2 轮运行中' : '正在运行 npm run test';
+    });
+    document.getElementById('currentRound').addEventListener('click', () => {
+      document.getElementById('currentRound').classList.add('active'); document.getElementById('historyButton').classList.remove('active');
+    });
+
+    document.getElementById('feedFilter').addEventListener('change', event => {
+      document.querySelectorAll('.feed-item').forEach(item => {
+        item.hidden = event.target.value === 'key' ? !item.classList.contains('key') : event.target.value === 'tool' ? !item.classList.contains('tool') : false;
+      });
+    });
+    document.getElementById('followButton').addEventListener('click', event => {
+      const active = event.currentTarget.classList.toggle('active');
+      event.currentTarget.textContent = active ? '自动跟随' : '已暂停跟随';
+    });
+
+    document.getElementById('stopButton').addEventListener('click', event => {
+      const stopped = event.currentTarget.dataset.stopped === 'true';
+      event.currentTarget.dataset.stopped = String(!stopped);
+      event.currentTarget.textContent = stopped ? '停止阶段' : '继续模拟';
+      document.querySelector('.live').innerHTML = stopped ? '<i style="color:var(--warn)"></i>已暂停' : '<i></i>运行中';
+    });
+
+    let totalSeconds = 18 * 60 + 42, stageSeconds = 2 * 60 + 34, tokenValue = 128600;
+    const thoughts = ['正在检查登录失败后的错误提示和表单状态……','正在运行前端测试并分析失败项……','正在验证会话恢复和 Token 刷新逻辑……'];
+    let thoughtIndex = 0;
+    setInterval(() => {
+      if (document.getElementById('stopButton').dataset.stopped === 'true') return;
+      totalSeconds += 1; stageSeconds += 1; tokenValue += Math.floor(Math.random() * 8);
+      const format = value => `${Math.floor(value / 60)}m ${String(value % 60).padStart(2,'0')}s`;
+      document.getElementById('elapsed').textContent = format(totalSeconds);
+      document.getElementById('tokens').textContent = `${(tokenValue / 1000).toFixed(1)}K`;
+      document.getElementById('stageElapsed').textContent = format(stageSeconds);
+      document.getElementById('nodeElapsed').textContent = format(stageSeconds).replace(' ', '');
+    }, 1000);
+    setInterval(() => { thoughtIndex = (thoughtIndex + 1) % thoughts.length; document.getElementById('thinking').textContent = `思考中：${thoughts[thoughtIndex]}`; }, 4200);
+  </script>
+</body>
+</html>
