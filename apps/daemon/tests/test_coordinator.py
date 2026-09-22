@@ -94,6 +94,32 @@ def test_coordinator_parses_json_after_plain_language_explanation():
     assert parsed["proposal"]["target_step_key"] == "dev"
 
 
+def test_default_coordinator_engine_follows_global_execution_default(monkeypatch):
+    import agent_assistants.coordinator as coordinator_service
+
+    store = MemoryConfigStore()
+    store.set("execution_default_engine", "codex")
+    monkeypatch.setattr(coordinator_service, "config_store", store)
+    monkeypatch.setattr(
+        coordinator_service,
+        "create_engine",
+        lambda engine_id: SimpleNamespace(
+            capabilities=SimpleNamespace(supports_coordinator=True)
+        ),
+    )
+    task = SimpleNamespace(
+        engine="claude",
+        coordinator_engine="",
+        coordinator_model="",
+        coordinator_fast_model="",
+        coordinator_vision_model="",
+    )
+
+    engine_id, _, _, _ = CoordinatorModule.__new__(CoordinatorModule)._resolve_engine_models(task)
+
+    assert engine_id == "codex"
+
+
 @pytest.fixture
 async def api_context(tmp_path, monkeypatch):
     import api.history as history_api

@@ -38,7 +38,11 @@ from models import (
 )
 from models.base import db_proxy
 from models.fields import utc_now
-from services.config import CODEX_REASONING_EFFORTS, config_store
+from services.config import (
+    CODEX_REASONING_EFFORTS,
+    DEFAULT_EXECUTION_ENGINE,
+    config_store,
+)
 from services.messages import (
     allocate_message_sequences,
     current_actor_message_fields,
@@ -1496,8 +1500,8 @@ class CoordinatorModule:
         requested_id = (
             task.coordinator_engine
             or config_store.get_coordinator_default_engine()
-            or task.engine
-            or "claude"
+            or config_store.get_execution_default_engine()
+            or DEFAULT_EXECUTION_ENGINE
         )
         # 显式选择内置引擎并配置了供应商：能力由供应商动态配置决定，
         # 不再要求引擎全局已配置，避免被协调回退吞掉。
