@@ -1,0 +1,455 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "req",
+      "title": "需求",
+      "color": "#c026d3",
+      "autoStart": false,
+      "position": {
+        "x": -384.6939457545666,
+        "y": -3.946412463027528
+      },
+      "engine": "claude",
+      "model": "",
+      "prompt": "根据业务需求和用户调研，产出 PRD 文档和原型图。明确用户场景、功能点、验收标准。",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "业务需求",
+          "type": "文档",
+          "outputs": [
+            {
+              "name": "PRD 文档",
+              "type": "md"
+            },
+            {
+              "name": "SPEC 规范文档",
+              "type": "md"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "PRD 文档",
+          "type": "md"
+        },
+        {
+          "name": "SPEC 规范文档",
+          "type": "md"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "ui",
+      "title": "UI 设计",
+      "color": "#2563eb",
+      "autoStart": false,
+      "position": {
+        "x": -41.740689015666334,
+        "y": -218.61303697665932
+      },
+      "engine": "claude",
+      "model": "",
+      "prompt": "根据 PRD 和原型图，在 design/目录下找个对应项目的设计风格,设计高保真 UI 界面，产出设计稿和设计规范文档。",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "PRD 文档",
+          "type": "Markdown",
+          "outputs": [
+            {
+              "name": "UI 设计稿",
+              "type": "html"
+            },
+            {
+              "name": "设计规范",
+              "type": "md"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "UI 设计稿",
+          "type": "html"
+        },
+        {
+          "name": "设计规范",
+          "type": "md"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "frontend",
+      "title": "前端开发",
+      "color": "#db2777",
+      "autoStart": false,
+      "position": {
+        "x": 365.5024273925945,
+        "y": -328.18501956381795
+      },
+      "engine": "claude",
+      "model": "",
+      "prompt": "根据 UI 设计稿prd 功能文档，在 frontend/目录下找个对应项目,根据项目规范,根据后端 api 接口文档对接,实现前端代码, 输出功能分支名,公用组件文档(如有抽象一层)",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "前端功能开发/接口对接",
+          "type": "html",
+          "outputs": [
+            {
+              "name": "公用组件文档",
+              "type": "md"
+            },
+            {
+              "name": "分支名",
+              "type": "md"
+            }
+          ]
+        },
+        {
+          "name": "前端BUG 修复",
+          "type": "md",
+          "outputs": [
+            {
+              "name": "修复列表",
+              "type": "md"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "公用组件文档",
+          "type": "md"
+        },
+        {
+          "name": "分支名",
+          "type": "md"
+        },
+        {
+          "name": "修复列表",
+          "type": "md"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "backend",
+      "title": "后端开发",
+      "color": "#059669",
+      "autoStart": false,
+      "position": {
+        "x": 12.887824793694023,
+        "y": 150.93296195841347
+      },
+      "engine": "codex",
+      "model": "gpt-5.5",
+      "prompt": "根据 PRD ,实现功能的后端代码,输出 API 接口文档，设计数据库表结构文档,功能分支名。",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "后端功能开发",
+          "type": "md",
+          "outputs": [
+            {
+              "name": "API 接口文档",
+              "type": "md"
+            },
+            {
+              "name": "数据库设计文档",
+              "type": "md"
+            },
+            {
+              "name": "分支名",
+              "type": "md"
+            }
+          ]
+        },
+        {
+          "name": "后端 bug 修复",
+          "type": "md",
+          "outputs": [
+            {
+              "name": "修复列表",
+              "type": "md"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "API 接口文档",
+          "type": "md"
+        },
+        {
+          "name": "数据库设计文档",
+          "type": "md"
+        },
+        {
+          "name": "分支名",
+          "type": "md"
+        },
+        {
+          "name": "修复列表",
+          "type": "md"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "test",
+      "title": "测试",
+      "color": "#9333ea",
+      "autoStart": false,
+      "position": {
+        "x": 736.6450167784561,
+        "y": -191.78765723733216
+      },
+      "engine": "codex",
+      "model": "",
+      "prompt": "对前端页面和后端 API 进行集成测试，产出测试报告和 Bug 列表。",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "前端功能测试",
+          "type": "md",
+          "outputs": [
+            {
+              "name": "测试报告",
+              "type": "HTML"
+            },
+            {
+              "name": "Bug 列表",
+              "type": "md"
+            }
+          ]
+        },
+        {
+          "name": "后端功能测试",
+          "type": "md",
+          "outputs": [
+            {
+              "name": " BUG 列表",
+              "type": "md"
+            },
+            {
+              "name": "测试报告",
+              "type": "md"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "测试报告",
+          "type": "HTML"
+        },
+        {
+          "name": "Bug 列表",
+          "type": "md"
+        },
+        {
+          "name": " BUG 列表",
+          "type": "md"
+        },
+        {
+          "name": "测试报告",
+          "type": "md"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "deploy",
+      "title": "上线",
+      "color": "#544285",
+      "autoStart": false,
+      "position": {
+        "x": 1117.7714383262412,
+        "y": -56.32311295735819
+      },
+      "engine": "hermes",
+      "model": "grok-4.3",
+      "prompt": "根据测试报告和部署文档，将服务部署到生产环境。",
+      "kind": "llm",
+      "config": {},
+      "review": {
+        "auto": false,
+        "maxRetries": 1,
+        "engine": "",
+        "model": "",
+        "prompt": "",
+        "config": {}
+      },
+      "inputs": [
+        {
+          "name": "测试报告",
+          "type": "md",
+          "outputs": [
+            {
+              "name": "上下报告",
+              "type": "html"
+            }
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "name": "上下报告",
+          "type": "html"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": 1,
+      "fromPort": 0,
+      "to": 2,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 2,
+      "fromPort": 0,
+      "to": 3,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 3,
+      "fromPort": 0,
+      "to": 5,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 4,
+      "fromPort": 0,
+      "to": 5,
+      "toPort": 1,
+      "kind": "solid"
+    },
+    {
+      "from": 5,
+      "fromPort": 0,
+      "to": 6,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 5,
+      "fromPort": 3,
+      "to": 6,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 5,
+      "fromPort": 2,
+      "to": 4,
+      "toPort": 1,
+      "kind": "dashed"
+    },
+    {
+      "from": 1,
+      "fromPort": 1,
+      "to": 4,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 1,
+      "fromPort": 0,
+      "to": 4,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 4,
+      "fromPort": 0,
+      "to": 3,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 4,
+      "fromPort": 2,
+      "to": 5,
+      "toPort": 1,
+      "kind": "solid"
+    },
+    {
+      "from": 1,
+      "fromPort": 1,
+      "to": 2,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 2,
+      "fromPort": 1,
+      "to": 3,
+      "toPort": 0,
+      "kind": "solid"
+    },
+    {
+      "from": 5,
+      "fromPort": 1,
+      "to": 3,
+      "toPort": 1,
+      "kind": "dashed"
+    }
+  ],
+  "bookmarks": []
+}

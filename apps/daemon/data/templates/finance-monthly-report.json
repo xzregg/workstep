@@ -1,0 +1,385 @@
+{
+  "id": "finance-monthly-report",
+  "default": true,
+  "name": "财务月报",
+  "description": "数据收集 → 对账 → 计提 → 报表 → 分析",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "data_collection",
+        "title": "数据收集",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "从各业务系统收集当月财务原始数据：收入明细、成本费用、银行流水、发票台账、固定资产折旧、工资薪酬、税金明细。校验数据完整性和一致性，对缺失数据发起到业务部门的催报流程。生成原始数据汇总表。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "业务系统数据",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "原始数据汇总",
+                "type": "json"
+              },
+              {
+                "name": "数据校验报告",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "原始数据汇总",
+            "type": "json"
+          },
+          {
+            "name": "数据校验报告",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "account_reconciliation",
+        "title": "对账核账",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "执行月末对账：银行对账单与日记账核对、应收账款与客户确认、应付账款与供应商确认、存货盘点差异分析。标记未达账项和差异，生成银行余额调节表和往来账龄分析表。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "原始数据汇总",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "对账结果",
+                "type": "json"
+              },
+              {
+                "name": "余额调节表",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "对账结果",
+            "type": "json"
+          },
+          {
+            "name": "余额调节表",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "accrual_adjustment",
+        "title": "计提调整",
+        "position": {
+          "x": 380,
+          "y": 320
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "执行月末计提和摊销：预提费用计提、待摊费用摊销、固定资产折旧、坏账准备计提、税金计算（增值税、所得税、附加税）。编制计提摊销明细表和税务计算底稿。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "原始数据汇总",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "计提明细",
+                "type": "json"
+              },
+              {
+                "name": "税务底稿",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "计提明细",
+            "type": "json"
+          },
+          {
+            "name": "税务底稿",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "financial_statements",
+        "title": "报表编制",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "编制三张核心财务报表：资产负债表（资产=负债+所有者权益）、利润表（收入-成本-费用=利润）、现金流量表（经营+投资+筹资）。编制所有者权益变动表和报表附注，确保勾稽关系正确，数据与明细账一致。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "对账结果",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "财务报表",
+                "type": "json"
+              },
+              {
+                "name": "附注说明",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "计提明细",
+            "type": "json",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "财务报表",
+            "type": "json"
+          },
+          {
+            "name": "附注说明",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "analysis",
+        "title": "财务分析",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "对财务报表进行深度分析：盈利能力分析（毛利率、净利率、ROE）、偿债能力分析（流动比率、资产负债率）、营运能力分析（周转率、账龄）、同比环比趋势分析。产出财务分析报告和管理层建议。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "财务报表",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "分析报告",
+                "type": "file"
+              },
+              {
+                "name": "管理建议",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "分析报告",
+            "type": "file"
+          },
+          {
+            "name": "管理建议",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "tax_filing",
+        "title": "税务申报",
+        "position": {
+          "x": 680,
+          "y": 380
+        },
+        "engine": "codex",
+        "model": "",
+        "prompt": "根据财务报表和税务底稿生成各税种申报表：增值税申报表、企业所得税预缴申报表、附加税申报表、印花税申报表。核对申报数据与账务数据一致性，生成申报数据包提交至电子税务局。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "财务报表",
+            "type": "json",
+            "outputs": [
+              {
+                "name": "申报数据包",
+                "type": "json"
+              },
+              {
+                "name": "申报回执",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "申报数据包",
+            "type": "json"
+          },
+          {
+            "name": "申报回执",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "type": "archive",
+        "title": "归档封账",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "完成月度结账归档：锁定当月账期、生成财务档案目录、归档全部凭证报表和分析报告。生成月度经营管理简报摘要，更新财务指标看板，标注异常指标和处理建议。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "分析报告",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "归档文件",
+                "type": "json"
+              },
+              {
+                "name": "经营简报",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "申报回执",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "归档文件",
+            "type": "json"
+          },
+          {
+            "name": "经营简报",
+            "type": "file"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 0
+      },
+      {
+        "from": 6,
+        "fromPort": 0,
+        "to": 7,
+        "toPort": 1
+      }
+    ]
+  }
+}

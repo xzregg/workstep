@@ -1,0 +1,893 @@
+:root {
+  --mobile-button-height: 32px;
+  --mobile-control-compact: var(--mobile-button-height);
+  --mobile-control-composer: var(--mobile-button-height);
+  --mobile-control-regular: var(--mobile-button-height);
+  --mobile-control-touch: 44px;
+  --mobile-control-menu: 48px;
+  --mobile-toolbar-control-height: var(--mobile-control-regular);
+  --mobile-control-font-size: calc(13px * var(--font-scale));
+  --mobile-control-icon-size: 16px;
+  --mobile-control-gap: 8px;
+}
+
+.app-shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+.app-main { min-height: 0; overflow: hidden; }
+.mobile-header, .mobile-task-toolbar, .mobile-task-list { display: none; }
+.responsive-navigation { flex-shrink: 0; }
+.task-detail-steps, .task-detail-conversation { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.task-detail-steps > *, .task-detail-conversation > * { min-height: 0; }
+.mobile-overlay-backdrop, .mobile-sheet-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 35%); }
+.navigation-backdrop { z-index: 1200; }
+.mobile-sheet-backdrop { z-index: 2101; display: flex; align-items: end; }
+.mobile-sheet { background: var(--bg); color: var(--fg); border-radius: 16px 16px 0 0; width: 100%; max-height: calc(var(--app-viewport-height, 100dvh) - 24px); display: flex; flex-direction: column; box-shadow: 0 -8px 32px rgb(0 0 0 / 12%); padding-bottom: env(safe-area-inset-bottom); }
+.mobile-sheet > header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); flex-shrink: 0; }
+.mobile-sheet > header button { width: var(--mobile-button-height); height: var(--mobile-button-height); padding: 0; justify-content: center; }
+.mobile-sheet-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mobile-sheet-body > button, .mobile-sheet-body > select { height: var(--mobile-button-height); min-height: var(--mobile-button-height); }
+.mobile-node-config > div { padding-block: 8px; border-bottom: 1px solid var(--border-soft); }
+.mobile-node-config dt { color: var(--meta); font-size: calc(13px * var(--font-scale)); }
+.mobile-node-config dd { overflow-wrap: anywhere; margin-top: 4px; }
+.mobile-node-config pre { max-width: 100%; overflow: auto; }
+.mobile-canvas-notice { padding: 10px 16px; font-size: calc(13px * var(--font-scale)); color: var(--meta); background: var(--surface); }
+.ai-flow-editor-host { display: contents; }
+.ai-flow-editor-mobile-header { display: none; }
+.ai-flow-editor-error { position: absolute; right: 16px; bottom: 16px; z-index: 3; max-width: min(420px, calc(100% - 32px)); padding: 10px 12px; border: 1px solid var(--danger); border-radius: 10px; color: var(--danger); background: var(--bg); box-shadow: 0 8px 28px rgb(0 0 0 / 16%); }
+
+@media (max-width: 1023px) {
+  html, body, #root { height: 100%; width: 100%; overflow: hidden; }
+  .app-shell { flex-direction: column; height: var(--app-viewport-height, 100dvh); padding-top: env(safe-area-inset-top); }
+  .mobile-header { display: flex; height: 56px; flex-shrink: 0; align-items: center; gap: 8px; padding-inline: max(8px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-right)); border-bottom: 1px solid var(--border-soft); background: var(--bg); }
+  .mobile-header > span { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(16px * var(--font-scale)); font-weight: 600; }
+  .mobile-header button, .navigation-close { width: var(--mobile-button-height); height: var(--mobile-button-height); min-height: var(--mobile-button-height); flex-shrink: 0; padding: 0; justify-content: center; }
+  .ai-flow-entry-button { min-height: var(--mobile-control-regular); padding-inline: 12px !important; color: var(--ai-assistant); }
+  .ai-flow-editor-host {
+    position: absolute;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    min-width: 0;
+    background: var(--bg);
+  }
+  .ai-flow-editor-handle { display: none; }
+  .ai-flow-editor-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0;
+    height: 100%;
+    border-left: 0 !important;
+  }
+  .ai-flow-editor-mobile-header {
+    display: flex;
+    min-height: 40px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px max(12px, env(safe-area-inset-right)) 4px max(16px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg);
+  }
+  .ai-flow-editor-mobile-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ai-flow-editor-mobile-header button {
+    height: var(--mobile-control-regular);
+    min-width: 48px;
+    min-height: var(--mobile-control-regular);
+    padding: 0 10px;
+  }
+  .ai-flow-editor-panel > .assistant-chat-panel { flex: 1; min-height: 0; }
+  .ai-flow-editor-error { right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); }
+  .flow-canvas-toolbar { min-height: calc(var(--mobile-toolbar-control-height) + 8px); height: calc(var(--mobile-toolbar-control-height) + 8px) !important; }
+  .flow-canvas-toolbar > :not(.flow-canvas-toolbar-spacer) { flex: 0 0 auto; }
+  .flow-canvas-toolbar-spacer { flex: 1 0 0; min-width: 0; }
+  .flow-canvas-toolbar-slot { display: flex; align-items: center; gap: 8px; }
+  .flow-canvas-toolbar-slot > * { flex-shrink: 0; }
+  .flow-canvas-toolbar button,
+  .flow-canvas-toolbar [role="button"] {
+    height: var(--mobile-toolbar-control-height) !important;
+    min-height: var(--mobile-toolbar-control-height) !important;
+    padding-block: 0 !important;
+  }
+  .flow-canvas-toolbar select {
+    min-width: 120px;
+    height: var(--mobile-toolbar-control-height);
+    min-height: var(--mobile-toolbar-control-height);
+    flex-shrink: 0;
+  }
+  .flow-node-config-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 100%;
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom)) !important;
+    border-left: 0 !important;
+    gap: 16px !important;
+    overscroll-behavior: contain;
+  }
+  .flow-node-config-panel > div:first-child button {
+    height: var(--mobile-control-compact) !important;
+    min-height: var(--mobile-control-compact) !important;
+    padding-block: 0 !important;
+  }
+  .flow-node-config-panel > div:first-child .btn-icon {
+    width: var(--mobile-control-compact) !important;
+    min-width: var(--mobile-control-compact) !important;
+    padding: 0 !important;
+  }
+  .flow-canvas-workspace .react-flow__controls-button {
+    width: var(--mobile-control-compact) !important;
+    height: var(--mobile-control-compact) !important;
+    min-height: var(--mobile-control-compact) !important;
+    padding: 0 !important;
+  }
+  .responsive-navigation { position: fixed; inset: 0 auto 0 0; z-index: 1201; width: min(340px, calc(100vw - 48px)) !important; min-width: 0 !important; padding-block: env(safe-area-inset-top) env(safe-area-inset-bottom); transform: translateX(-100%); visibility: hidden; transition: transform 180ms var(--ease), visibility 180ms; }
+  .responsive-navigation.is-open { visibility: visible; transform: translateX(0); }
+  .responsive-navigation .onboarding-checklist,
+  .responsive-navigation .onboarding-launcher { display: none !important; }
+  .navigation-close { position: absolute; right: 4px; top: max(4px, env(safe-area-inset-top)); background: var(--bg); z-index: 1; }
+  .responsive-navigation > div:first-of-type { padding-right: 44px !important; }
+  .app-shell > .task-detail-split-handle { display: none; }
+  .app-main { width: 100%; }
+  .app-main > .assistant-chat-panel { width: 100%; max-width: 900px; margin-inline: auto; }
+  .assistant-chat-panel > div:first-child { padding: 8px 16px !important; gap: 8px !important; flex-wrap: wrap; }
+  .assistant-chat-header-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: calc(16px * var(--font-scale)) !important; }
+  .chat-history-scroll { min-height: 0; overscroll-behavior-y: contain; overflow-x: clip; }
+  .chat-history-content { max-width: 100%; padding-inline: 16px !important; }
+  .chat-message-row { max-width: 100%; min-width: 0; overflow-wrap: anywhere; }
+  .chat-composer-resize-handle { display: none; }
+  .chat-input-root { flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .chat-input-editor { min-height: 72px !important; max-height: min(180px, 28dvh) !important; height: auto !important; overflow-y: auto; }
+  .chat-input-toolbar { flex-wrap: wrap; gap: 4px; }
+  .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-width: 0; }
+  .chat-input-pill { max-width: min(240px, 65vw); }
+  .chat-input-pill > span { overflow: hidden; text-overflow: ellipsis; }
+  .chat-input-text-segment, input, textarea, select, [contenteditable="true"] { font-size: max(16px, calc(16px * var(--font-scale))) !important; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  .ws-select {
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+    font-size: var(--mobile-control-font-size) !important;
+  }
+  .btn:not(.btn-icon) {
+    font-size: var(--mobile-control-font-size) !important;
+  }
+  .mobile-sheet-body > button,
+  .mobile-sheet-body > select {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+    padding: 0 12px !important;
+    border-radius: var(--radius-sm) !important;
+    font-size: var(--mobile-control-font-size) !important;
+    line-height: 1.2;
+  }
+  .mobile-sheet-body > button {
+    justify-content: flex-start;
+    gap: var(--mobile-control-gap) !important;
+  }
+  .mobile-sheet-body > button svg {
+    width: var(--mobile-control-icon-size) !important;
+    height: var(--mobile-control-icon-size) !important;
+    flex: 0 0 var(--mobile-control-icon-size);
+  }
+  .provider-protocol-toggle { height: var(--mobile-button-height); min-height: var(--mobile-button-height); }
+  .chat-input-text-segment { min-width: 0; overflow-wrap: anywhere; }
+  .markdown-body, .markdown-message { min-width: 0; overflow-wrap: anywhere; }
+  .markdown-body pre, .markdown-message pre, .chat-message-row pre { max-width: 100%; overflow-x: auto; }
+  .markdown-body table, .markdown-message table { display: block; max-width: 100%; overflow-x: auto; }
+  .chat-message-row img { max-width: 100%; height: auto; }
+  .desktop-task-toolbar, .desktop-task-board { display: none !important; }
+  .mobile-task-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); }
+  .mobile-task-toolbar strong { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-task-toolbar > button {
+    height: var(--mobile-toolbar-control-height);
+    min-height: var(--mobile-toolbar-control-height);
+    width: auto;
+    flex-shrink: 0;
+    padding-inline: 10px;
+    justify-content: center;
+  }
+  .mobile-toolbar-icon-button {
+    width: var(--mobile-toolbar-control-height) !important;
+    min-width: var(--mobile-toolbar-control-height);
+    padding: 0 !important;
+  }
+  .mobile-task-toolbar > .mobile-task-new-button { width: auto; padding-inline: 12px; }
+  .mobile-task-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mobile-task-menu > button,
+  .mobile-task-menu > select {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--mobile-button-height) !important;
+    min-height: var(--mobile-button-height) !important;
+    padding: 0 12px !important;
+    border-radius: var(--radius-sm) !important;
+    font-size: var(--mobile-control-font-size) !important;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+  .mobile-task-menu > button {
+    justify-content: flex-start;
+    gap: var(--mobile-control-gap) !important;
+  }
+  .mobile-task-menu > button svg {
+    width: var(--mobile-control-icon-size) !important;
+    height: var(--mobile-control-icon-size) !important;
+    flex: 0 0 var(--mobile-control-icon-size);
+  }
+  .schedule-dialog-overlay {
+    padding: 0 !important;
+    align-items: stretch;
+  }
+  .schedule-dialog {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: var(--app-viewport-height, 100dvh) !important;
+    border-radius: 0 !important;
+  }
+  .schedule-page { width: 100%; min-width: 0; }
+  .schedule-header {
+    height: 48px !important;
+    padding: 0 12px !important;
+    gap: 6px !important;
+    flex-shrink: 0;
+  }
+  .schedule-project-name { display: none; }
+  .schedule-header > strong { white-space: nowrap; }
+  .schedule-header .schedule-mobile-back { display: inline-flex; }
+  .schedule-header .schedule-new-button { padding-inline: 10px !important; }
+  .schedule-page--editing .schedule-new-button { display: none; }
+  .schedule-header .schedule-close-button,
+  .schedule-header .schedule-mobile-back {
+    width: var(--mobile-control-regular) !important;
+    min-width: var(--mobile-control-regular);
+    padding: 0 !important;
+    justify-content: center;
+  }
+  .schedule-layout {
+    display: block !important;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .schedule-list {
+    width: 100%;
+    min-height: 100%;
+    overflow: visible !important;
+    padding: 8px 12px max(16px, env(safe-area-inset-bottom)) !important;
+  }
+  .schedule-list > button {
+    min-height: 0;
+    padding: 12px !important;
+  }
+  .schedule-page--editing .schedule-list { display: none; }
+  .schedule-page:not(.schedule-page--editing) .schedule-editor,
+  .schedule-page:not(.schedule-page--editing) .schedule-runs { display: none !important; }
+  .schedule-editor {
+    width: 100%;
+    min-width: 0;
+    overflow: visible !important;
+    padding: 16px 12px !important;
+  }
+  .schedule-runs {
+    width: 100%;
+    min-width: 0;
+    overflow: visible !important;
+    padding: 4px 12px max(20px, env(safe-area-inset-bottom)) !important;
+  }
+  .schedule-page--creating:not(.schedule-page--testing) .schedule-runs { display: none !important; }
+  .schedule-page--testing .schedule-layout { overflow-y: hidden; }
+  .schedule-page--testing .schedule-editor { display: none !important; }
+  .schedule-page--testing .schedule-runs {
+    display: flex !important;
+    height: 100%;
+    padding: 12px !important;
+  }
+  .schedule-split-handle { display: none !important; }
+  .schedule-form-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .schedule-frequency-tabs { display: flex; width: 100%; }
+  .schedule-frequency-tabs > button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: var(--mobile-control-regular);
+    min-height: var(--mobile-control-regular);
+    padding: 0 6px;
+  }
+  .schedule-frequency-row { flex-wrap: wrap; }
+  .schedule-frequency-row > select,
+  .schedule-frequency-row > input { width: 100% !important; }
+  .schedule-interval-row { display: grid; grid-template-columns: auto minmax(80px, 1fr) auto; }
+  .schedule-interval-row > input { width: 100% !important; }
+  .schedule-weekday-tabs { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .schedule-weekday-tabs > button {
+    min-width: 0;
+    min-height: var(--mobile-control-regular);
+    padding: 0 2px;
+    font-size: calc(11px * var(--font-scale));
+  }
+  .schedule-date-range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; }
+  .schedule-date-range > input { min-width: 0; }
+  .schedule-save-row > button { width: 100%; justify-content: center; }
+  .mobile-task-list { display: block; flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px max(16px, env(safe-area-inset-bottom)); }
+  .mobile-task-row { width: 100%; padding: 18px 0; display: flex; align-items: stretch; flex-direction: column; gap: 10px; border-radius: 0; border-bottom: 1px solid var(--border-soft); text-align: left; white-space: normal; }
+  .mobile-task-row-title { font-size: calc(16px * var(--font-scale)); line-height: 1.5; overflow-wrap: anywhere; color: var(--fg); font-weight: 600; }
+  .mobile-task-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: calc(12px * var(--font-scale)); color: var(--meta); }
+  .mobile-task-row-meta time { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .mobile-empty { padding-block: 48px; color: var(--meta); text-align: center; }
+  .task-detail-window, .task-create-panel { inset: 0 !important; width: 100% !important; min-width: 0 !important; height: var(--app-viewport-height, 100dvh) !important; max-height: var(--app-viewport-height, 100dvh); padding-top: env(safe-area-inset-top); box-shadow: none !important; border: 0 !important; }
+  .task-detail-header { padding: 8px 12px !important; gap: 8px !important; }
+  .task-detail-header > div { min-width: 0; }
+  .task-detail-header > div > div > span:first-child { font-size: calc(16px * var(--font-scale)) !important; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-detail-header > div > div { gap: 4px !important; }
+  .task-detail-header > div > div + div { display: none; }
+  .task-detail-share-button { margin-left: auto !important; }
+  .task-detail-id-button {
+    max-width: 180px;
+    overflow: hidden;
+    font-size: calc(10px * var(--font-scale)) !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-detail-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); padding-inline: 12px; }
+  .mobile-detail-tabs button { flex: 1; height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 12px; justify-content: center; border-radius: 0; border-bottom: 2px solid transparent; }
+  .mobile-detail-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  .task-detail-content { display: flex !important; flex-direction: column; overflow: hidden; }
+  .task-detail-content > div { display: none; }
+  .task-detail-content[data-mobile-tab="conversation"] > .task-detail-conversation,
+  .task-detail-content[data-mobile-tab="steps"] > .task-detail-steps,
+  .task-detail-content[data-mobile-tab="artifacts"] > .task-detail-artifacts { display: flex; flex: 1; min-height: 0; }
+  .task-detail-steps > * { width: 100% !important; }
+  .task-detail-artifacts { flex-direction: column; overflow: hidden; padding: 12px; gap: 12px; }
+  .task-detail-artifacts button { min-height: var(--mobile-button-height); white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  .task-artifact-step-section { padding: 10px; }
+  .task-artifact-round-tabs > button { white-space: nowrap; text-align: center; }
+  .task-artifact-file-row { padding-inline: 0; }
+  .task-detail-conversation > div > div:first-child { padding: 8px 16px !important; flex-wrap: wrap; }
+  .task-detail-composer {
+    padding: 2px 2px max(2px, env(safe-area-inset-bottom)) !important;
+    gap: 4px !important;
+    border-top: 0 !important;
+    background: var(--bg) !important;
+  }
+  .task-detail-composer .chat-input-root { padding: 2px; }
+  .task-create-panel[inert] { visibility: hidden; }
+  .task-create-panel .panel-header { padding: 8px 16px; }
+  .task-create-panel .panel-footer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .task-create-footer { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .task-create-primary { height: var(--mobile-button-height); }
+  .task-create-body { position: relative; overflow: hidden; }
+  .task-create-divider { display: none; }
+  .task-create-form > div:first-child { padding-inline: 8px !important; }
+  .mobile-assistant-tab { height: var(--mobile-button-height); min-height: var(--mobile-button-height); padding: 0 16px; flex-shrink: 0; border-bottom: 1px solid var(--border-soft); }
+  .mobile-assistant-tab[aria-pressed="true"] { color: var(--accent); }
+  .task-create-assistant { display: none !important; }
+  .task-create-panel[data-tab="assistant"] .task-create-assistant {
+    display: flex !important;
+    position: absolute;
+    inset: 45px 0 auto;
+    bottom: calc(128px + max(0px, env(safe-area-inset-bottom) - 16px));
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .task-create-panel .panel-footer { margin-top: auto; }
+  .modal-overlay { padding: 12px !important; }
+  .modal-overlay .modal { width: 100% !important; min-width: 0 !important; max-width: min(900px, calc(100vw - 24px)) !important; max-height: calc(var(--app-viewport-height, 100dvh) - 24px) !important; }
+  .modal-body, .settings-content { min-width: 0; overflow-x: hidden; }
+  .settings-layout { max-width: 100vw; }
+  .settings-nav { overflow-x: auto; flex-shrink: 0; }
+  .settings-nav button { flex-shrink: 0; }
+  .skill-center-project-summary { display: none; }
+  .settings-layout button:not(.btn-icon),
+  .settings-content button:not(.btn-icon),
+  .project-settings-layout button:not(.btn-icon) {
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+  }
+  .settings-layout .btn-icon,
+  .settings-content .btn-icon,
+  .project-settings-layout .btn-icon {
+    width: var(--mobile-control-compact) !important;
+    height: var(--mobile-control-compact) !important;
+    min-height: var(--mobile-control-compact) !important;
+  }
+  .settings-switch {
+    width: 52px !important;
+    height: var(--mobile-button-height) !important;
+    min-height: var(--mobile-button-height) !important;
+  }
+  .settings-switch-thumb {
+    width: 28px;
+    height: 28px;
+  }
+  .settings-switch[aria-checked="true"] .settings-switch-thumb { transform: translateX(20px); }
+  input[type="checkbox"]:not([role="switch"]) {
+    width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    flex: 0 0 16px;
+  }
+  input[type="checkbox"][role="switch"] {
+    appearance: none;
+    position: relative;
+    width: 52px !important;
+    height: var(--mobile-button-height) !important;
+    min-height: var(--mobile-button-height) !important;
+    flex: 0 0 52px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--border);
+    cursor: pointer;
+    transition: background 0.16s ease;
+  }
+  input[type="checkbox"][role="switch"]::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 24%);
+    transition: transform 0.16s ease;
+  }
+  input[type="checkbox"][role="switch"]:checked { background: var(--accent); }
+  input[type="checkbox"][role="switch"]:checked::before { transform: translateX(20px); }
+  input[type="checkbox"][role="switch"]:disabled { cursor: not-allowed; opacity: 0.55; }
+  label:has(> input[type="checkbox"]) {
+    min-height: var(--mobile-button-height);
+    align-items: center;
+  }
+  .provider-protocol-switch,
+  .channel-toggle span {
+    width: 52px;
+    height: var(--mobile-button-height);
+    flex-basis: 52px;
+  }
+  .provider-protocol-switch::after,
+  .channel-toggle span::after {
+    width: 28px;
+    height: 28px;
+    top: 2px;
+    left: 2px;
+  }
+  .provider-protocol-toggle input:checked + .provider-protocol-switch::after,
+  .channel-toggle input:checked + span::after { transform: translateX(20px); }
+  .provider-settings-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .engine-settings-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .provider-settings-heading,
+  .engine-settings-header > div:first-child {
+    width: 100%;
+    flex: none !important;
+  }
+  .provider-settings-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .provider-settings-card-row {
+    display: grid !important;
+    grid-template-columns: 34px minmax(0, 1fr);
+    align-items: start !important;
+  }
+  .provider-settings-card-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start !important;
+  }
+  .engine-settings-section-heading {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .engine-settings-card-row {
+    display: grid !important;
+    grid-template-columns: 32px 34px minmax(0, 1fr);
+    align-items: start !important;
+  }
+  .engine-settings-card-summary { min-width: 0; }
+  .engine-settings-card-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .segmented-control > button,
+  .task-create-cancel,
+  .open-location-menu-item {
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+  }
+  .statistics-header-actions select,
+  .statistics-custom-range input {
+    height: var(--mobile-control-regular) !important;
+  }
+  .btn.sidebar-add-button {
+    width: var(--mobile-control-touch);
+    height: var(--mobile-control-touch);
+    min-height: var(--mobile-control-touch);
+  }
+}
+
+@media (pointer: coarse), (max-width: 1023px) {
+  /* 触控高度：默认给按钮一个合理的最小高度（36px），
+     只有特定区域（toolbar、sheet body、菜单项）才需要 44px。 */
+  button, [role="button"], .ws-row { min-height: var(--mobile-button-height); }
+  .mobile-sheet-body > button, .mobile-sheet-body > select { min-height: var(--mobile-button-height); }
+  .chat-input-menu-item { min-height: var(--mobile-control-menu); }
+  .chat-input-toolbar > *, .chat-input-toolbar-scroll > * { min-height: var(--mobile-control-composer) !important; }
+  .chat-message-row .chat-message-action, .chat-message-row .footer-usage-summary { opacity: 1; pointer-events: auto; }
+
+  /* 需要紧凑的小按钮：图标按钮、消息操作、预览内按钮等 */
+  .btn-icon, .btn-sm,
+  .chat-message-action,
+  .chat-input-quota-refresh,
+  .chat-input-image-remove,
+  .conversation-new-messages-button,
+  .artifact-download-button,
+  .artifact-open-window-button,
+  .file-preview-dialog-close,
+  .step-target-tabs button,
+  .task-description-header button,
+  .file-preview-dialog-body button,
+  .artifact-preview-container button,
+  .dialog-header button {
+    min-height: var(--mobile-control-compact);
+  }
+  /* 图片删除按钮保持原始小尺寸 */
+  .chat-input-image-remove {
+    min-height: 20px;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  .ws-row .ws-more-btn { opacity: 1; pointer-events: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .responsive-navigation { transition: none; }
+}
+
+@media (max-width: 1023px) {
+  .mobile-menu-options .chat-input-menu-item { min-height: var(--mobile-control-menu) !important; }
+  .mobile-review-entry { justify-content: center; height: var(--mobile-button-height); min-height: var(--mobile-button-height); color: var(--accent); border-bottom: 1px solid var(--border-soft); border-radius: 0; flex-shrink: 0; }
+  .mobile-auxiliary-panel { width: 100% !important; min-width: 0 !important; height: var(--app-viewport-height, 100dvh); }
+  .mobile-auxiliary-panel[inert] { visibility: hidden; }
+  .project-settings-layout { flex-direction: column; }
+  .project-settings-layout > nav { width: 100% !important; flex-direction: row !important; overflow-x: auto; border-right: 0 !important; border-bottom: 1px solid var(--border-soft); padding: 8px !important; }
+  .project-settings-layout > nav button { width: auto !important; flex-shrink: 0; }
+  .project-settings-layout > section { padding: 16px !important; }
+  .file-preview-backdrop { padding: 8px; }
+  .file-preview-dialog { width: 100%; max-width: 100%; max-height: calc(var(--app-viewport-height, 100dvh) - 16px); }
+  .process-trace-thinking-copy { opacity: 1; }
+}
+
+.mobile-node-prompt { white-space: pre-wrap; line-height: 1.6; }
+
+/* The transparent hit area can grow without enlarging the visible add frame. */
+.btn.sidebar-add-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--meta);
+}
+.sidebar-add-button::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  pointer-events: none;
+}
+.sidebar-add-button:hover::before { background: var(--surface); }
+.sidebar-add-button > svg { position: relative; }
+.sidebar-add-button.btn-loading > svg:last-child { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════
+   移动端聊天页「极简布局」第一版（纯 CSS，原型见
+   ui/mobile-chat-prototype/b-pure-css.css）：
+   隐藏会话头部（新建入口保留顶栏「+」，去重）、隐藏消息操作按钮、
+   token 摘要限 2 行、输入区折叠感（44px 起 + 单行横滚工具条）。
+
+   注意作用域：.assistant-chat-panel / .chat-message-* / .chat-input-*
+   同时影响 ChatPage、任务详情对话、AI 流程助手与分享页 ——
+   此处有意让所有移动端聊天场景统一成这套简洁形态。
+   待补代码（不在本步）：⋮ 会话菜单（重命名/删除/设置入口）、
+   快捷提示 ⚡ 弹层、占位文案去 Shift+Enter。
+   ═══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1023px) {
+  /* 隐藏 40px 会话头部（标题/状态/新建/重命名/删除/打开位置/设置）。
+     覆盖上面的 padding/flex-wrap 规则：整行不再渲染。
+     运行状态由消息区 thinking 气泡承接；「新建对话」只剩顶栏「+」。 */
+  .assistant-chat-panel > div:first-child {
+    display: none !important;
+  }
+
+  /* 移动端思考中/运行中隐藏消息操作按钮（复制/fork），已完成消息保留显示。 */
+  .chat-message-row[data-thinking] .chat-message-action,
+  .message-footer--running .chat-message-action {
+    display: none !important;
+  }
+
+  /* 移动端 ghost 按钮：去掉 border，保持紧凑尺寸。
+     覆盖消息区域复制按钮 + 文件预览弹窗的复制/下载按钮。 */
+  .chat-message-row .btn-ghost,
+  .process-trace-thinking-copy .btn-ghost,
+  .llm-tool-call .btn-ghost,
+  .file-preview-dialog-body .btn-ghost,
+  .artifact-download-button {
+    border: none !important;
+    min-height: var(--mobile-control-compact) !important;
+    min-width: var(--mobile-control-compact) !important;
+    width: var(--mobile-control-compact); height: var(--mobile-control-compact); padding: 0 !important;
+  }
+
+  /* 移动端隐藏思考步骤的复制按钮 */
+  .process-trace-thinking-copy {
+    display: none !important;
+  }
+
+  /* token 摘要 4-5 行 → 2 行，超出省略。 */
+  .footer-usage-summary {
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  /* 快捷提示行：保留功能，压薄。 */
+  .chat-quick-prompts {
+    padding: 0 16px 4px !important;
+    gap: 6px !important;
+  }
+  .chat-quick-prompts .btn {
+    min-height: var(--mobile-control-composer) !important;
+    padding-block: 0 !important;
+  }
+
+  /* Composer 折叠感：悬浮横条卡片 + 单行输入。 */
+  .chat-input-root {
+    padding: 3px;
+  }
+  .chat-input-root > div {
+    border-radius: 16px !important;
+  }
+  .chat-input-editor {
+    min-height: var(--mobile-control-touch) !important;
+    max-height: 140px !important;
+  }
+  .chat-input-toolbar {
+    flex-wrap: nowrap !important;
+    overflow: hidden;
+    min-height: var(--mobile-control-regular) !important;
+  }
+  .chat-input-toolbar-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chat-input-toolbar-scroll::-webkit-scrollbar { display: none; }
+  .chat-input-toolbar-scroll > * {
+    flex-shrink: 0 !important;
+    min-height: var(--mobile-control-composer) !important;
+  }
+  .chat-input-attach {
+    width: var(--mobile-control-composer) !important;
+    height: var(--mobile-control-composer) !important;
+    min-height: var(--mobile-control-composer) !important;
+  }
+  /* 发送按钮独立占据 toolbar 右侧，不与横滚按钮区重叠；无输入时隐藏。 */
+  .chat-input-send {
+    flex: 0 0 var(--mobile-control-composer) !important;
+    width: var(--mobile-control-composer) !important;
+    height: var(--mobile-control-composer) !important;
+    min-height: var(--mobile-control-composer) !important;
+  }
+  .chat-input-send:disabled {
+    display: none !important;
+  }
+  .chat-input-pill {
+    max-width: min(200px, 50vw);
+  }
+
+  /* 图片预览：移动端适中尺寸 */
+  .chat-input-image-block {
+    flex: 0 0 120px;
+    width: 120px !important;
+    min-width: 120px;
+    height: 68px !important;
+  }
+
+  /* 图片删除按钮：移动端适中大小 */
+  .chat-input-image-remove {
+    width: 20px !important;
+    height: 20px !important;
+    top: -4px !important;
+    right: -4px !important;
+  }
+
+  /* 消息区留白略收紧，多换几行可视消息。 */
+  .chat-history-scroll {
+    padding-block: 6px !important;
+  }
+
+  /* ── C 方案补充（纯 CSS） ── */
+
+  /* 隐藏头像：移动端屏幕窄，省出 ~40px 给正文。 */
+  .chat-message-avatar-anchor {
+    display: none !important;
+  }
+
+  /* Meta 栏去底线 + 弱化：C 风格是灰色单行，不要分隔线。 */
+  .message-meta-details,
+  .chat-message-row > div[style*="border-bottom"] {
+    border-bottom: 0 !important;
+  }
+  /* MessageMetaBar 根容器是内联 style borderBottom，用属性选择器兜底；
+     reviewMode 分支同样处理。 */
+  [style*="borderBottom: 1px solid var(--border-soft)"] {
+    border-bottom: 0 !important;
+  }
+
+  /* 输入卡片悬浮感：横条圆角，去掉投影避免分割感 */
+  .chat-input-root > div {
+    border-radius: 16px !important;
+  }
+  .chat-input-root {
+    background: transparent !important;
+  }
+
+  /* ↓ 回底按钮居中（默认右下角）。 */
+  .conversation-new-messages-button {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    width: var(--mobile-control-regular) !important;
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+    font-size: 0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18) !important;
+  }
+  .conversation-new-messages-button.has-label {
+    width: auto !important;
+    height: auto !important;
+    min-height: var(--mobile-control-composer) !important;
+    padding: 6px 10px !important;
+    border-radius: 999px !important;
+    font-size: calc(11px * var(--font-scale)) !important;
+  }
+  .conversation-new-messages-button svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+  .conversation-new-messages-button.has-label svg {
+    width: 13px !important;
+    height: 13px !important;
+  }
+
+  /* footer token 摘要整行隐藏（C 方案极简取向）。
+     :has 在现代移动浏览器已支持；不支持的降级保留上面 clamp 2 行。 */
+  .chat-message-row > div:has(> .footer-usage-summary):has(> .chat-message-action) {
+    /* 仅当 footer 只剩 token+操作按钮时整行收掉；若还有别的内容则保留 */
+  }
+
+  /* ── 第②步：⋮ 菜单按钮 + ⚡ 快捷提示 + 气泡锚点样式 ── */
+
+  /* kebab 按钮：使用统一移动端按钮高度。 */
+  .mobile-session-kebab {
+    width: var(--mobile-control-regular) !important;
+    height: var(--mobile-control-regular) !important;
+    min-height: var(--mobile-control-regular) !important;
+    padding: 0 !important;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mobile-session-kebab:active { background: var(--surface); }
+
+  /* 用户气泡 accent 浅底（现在有稳定 class，不再依赖结构选择器） */
+  .chat-bubble--user {
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface)) !important;
+    padding: 10px 14px !important;
+    border-radius: 18px 18px 4px 18px !important;
+  }
+
+  /* 助手气泡微调：去掉多余内边距 */
+  .chat-bubble--assistant {
+    padding: 0 !important;
+  }
+
+  /* ⚡ 快捷提示已嵌入 toolbar 行内（通过 ChatInput left prop），不再单独一行 */
+
+  /* 步骤目标 tab（协调 / 需求 / 开发）：紧凑高度 */
+  .step-target-tabs button {
+    min-height: var(--mobile-control-compact) !important;
+    padding: 2px 8px !important;
+  }
+
+  /* 文件预览弹窗关闭按钮 */
+  .file-preview-dialog-close {
+    width: var(--mobile-control-compact) !important;
+    height: var(--mobile-control-compact) !important;
+    min-height: var(--mobile-control-compact) !important;
+  }
+
+  /* 消息操作按钮（编辑/发送/复制）：适中大小 */
+  .chat-message-action {
+    width: var(--mobile-control-compact) !important;
+    height: var(--mobile-control-compact) !important;
+    min-height: var(--mobile-control-compact) !important;
+    min-width: var(--mobile-control-compact) !important;
+    padding: 0 !important;
+  }
+
+  /* 上下文详情面板：移动端由 JS 计算 fixed 定位，避免被 toolbar overflow 裁剪 */
+  .chat-input-context-tip.chat-input-context-detail {
+    min-width: 260px !important;
+    max-width: calc(100vw - 32px) !important;
+    white-space: normal !important;
+  }
+}
+
+/* 消息区包裹层：白色背景 + 底部渐变（未滚到底时显示） */
+.chat-history-wrapper {
+  background: var(--bg);
+}
+.chat-history-wrapper::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg) 100%);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+.chat-history-wrapper.is-at-bottom::after {
+  opacity: 0;
+}

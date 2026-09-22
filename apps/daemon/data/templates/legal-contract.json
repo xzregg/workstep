@@ -1,0 +1,323 @@
+{
+  "id": "legal-contract",
+  "default": true,
+  "name": "合同管理",
+  "description": "合同起草 → 法务审核 → 签署 → 归档",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "contract_draft",
+        "title": "合同起草",
+        "position": {
+          "x": 80,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据业务需求和合同类型（采购/销售/服务/NDA/合伙等）起草合同初稿：选择适用模板、填写关键条款（标的物/金额/付款条件/交付标准/违约责任/争议解决）、标注需协商的可变条款和法定不可变条款。产出合同初稿和条款清单。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "业务需求",
+            "type": "文档",
+            "outputs": [
+              {
+                "name": "合同初稿",
+                "type": "Markdown"
+              },
+              {
+                "name": "条款清单",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "合同初稿",
+            "type": "Markdown"
+          },
+          {
+            "name": "条款清单",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "legal_review",
+        "title": "法律审核",
+        "position": {
+          "x": 380,
+          "y": 120
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "法务团队对合同条款进行法律审核：检查条款合法合规性（合同法/民法典/行业法规）、识别潜在法律风险并标注风险等级（高/中/低）、审核知识产权和数据保护条款。产出法律审核意见和风险矩阵。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "合同初稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "法律意见",
+                "type": "file"
+              },
+              {
+                "name": "风险矩阵",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "法律意见",
+            "type": "file"
+          },
+          {
+            "name": "风险矩阵",
+            "type": "json"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "commercial_review",
+        "title": "商务审核",
+        "position": {
+          "x": 380,
+          "y": 300
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "商务团队审核商业条款：验证价格和付款条件的合理性、评估交付周期和验收标准是否可执行、审核违约责任和赔偿上限是否在可接受范围内。产出商务审核意见和谈判策略建议。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "合同初稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "商务意见",
+                "type": "file"
+              },
+              {
+                "name": "谈判策略",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "商务意见",
+            "type": "file"
+          },
+          {
+            "name": "谈判策略",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "revision",
+        "title": "条款修订",
+        "position": {
+          "x": 680,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "汇总法律审核和商务审核意见，修订合同条款：合并修改建议、采用修订模式标记变更、对争议条款提供备选方案。产出修订版合同和对审核意见的逐条回复说明。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "法律意见",
+            "type": "file",
+            "outputs": [
+              {
+                "name": "修订合同",
+                "type": "Markdown"
+              },
+              {
+                "name": "回复说明",
+                "type": "file"
+              }
+            ]
+          },
+          {
+            "name": "商务意见",
+            "type": "file",
+            "outputs": []
+          }
+        ],
+        "outputs": [
+          {
+            "name": "修订合同",
+            "type": "Markdown"
+          },
+          {
+            "name": "回复说明",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "counterparty_negotiation",
+        "title": "双方确认",
+        "position": {
+          "x": 980,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "与合同相对方进行最终确认：发送修订版合同供对方审阅、逐条跟踪对方反馈意见、处理反提案并更新合同版本、确认双方对所有条款达成一致。产出最终版合同和谈判纪要。",
+        "review": {
+          "auto": false,
+          "maxRetries": 2,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "修订合同",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "最终合同",
+                "type": "Markdown"
+              },
+              {
+                "name": "谈判纪要",
+                "type": "file"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "最终合同",
+            "type": "Markdown"
+          },
+          {
+            "name": "谈判纪要",
+            "type": "file"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "type": "sign_archive",
+        "title": "签署归档",
+        "position": {
+          "x": 1280,
+          "y": 200
+        },
+        "engine": "hermes",
+        "model": "",
+        "prompt": "执行合同签署和归档：发起电子签章流程（双方签章+时间戳）、验证签署人权限和印章有效性、归档至合同管理系统并设置关键节点提醒（付款时间/交付节点/续约窗口）。产出签署完成的合同文件和归档索引。",
+        "review": {
+          "auto": false,
+          "maxRetries": 1,
+          "engine": "",
+          "model": "",
+          "prompt": ""
+        },
+        "inputs": [
+          {
+            "name": "最终合同",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "签署文件",
+                "type": "file"
+              },
+              {
+                "name": "归档索引",
+                "type": "json"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "签署文件",
+            "type": "file"
+          },
+          {
+            "name": "归档索引",
+            "type": "json"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 1
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      },
+      {
+        "from": 5,
+        "fromPort": 0,
+        "to": 6,
+        "toPort": 0
+      }
+    ]
+  }
+}

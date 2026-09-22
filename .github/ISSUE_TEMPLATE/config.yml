@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/xzregg/workstep/discussions
+    about: Ask for help or explore an idea in Discussions.
+  - name: Security report
+    url: https://github.com/xzregg/workstep/security/advisories/new
+    about: Report vulnerabilities privately.

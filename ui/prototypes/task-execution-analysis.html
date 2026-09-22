@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorkStep · 任务执行分析原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #ffffff; --surface: #f5f5f7; --surface-2: #fafafa;
+      --fg: #1d1d1f; --fg-2: #424245; --muted: #6e6e73; --meta: #86868b;
+      --border: #d2d2d7; --border-soft: #e9e9ed; --accent: #0071e3;
+      --accent-soft: #e6f0ff; --success: #16a34a; --warn: #d89a00;
+      --danger: #dc2626; --purple: #7c3aed; --shadow: 0 18px 55px rgba(0,0,0,.12);
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #171719; --surface: #222225; --surface-2: #1c1c1f;
+      --fg: #f5f5f7; --fg-2: #d2d2d7; --muted: #a1a1a6; --meta: #86868b;
+      --border: #444448; --border-soft: #303034; --accent: #2997ff;
+      --accent-soft: #172b42; --success: #32d74b; --warn: #ffd60a;
+      --danger: #ff453a; --purple: #bf5af2; --shadow: 0 18px 55px rgba(0,0,0,.45);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; background: var(--surface); color: var(--fg); font-family: var(--font); font-size: 13px; }
+    button, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 214px minmax(0, 1fr); }
+    .sidebar { padding: 14px 12px; background: var(--surface-2); border-right: 1px solid var(--border-soft); }
+    .brand { height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 10px 13px; font-weight: 650; font-size: 15px; }
+    .brand-mark { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 7px; background: var(--fg); color: var(--bg); font-size: 12px; }
+    .project { margin: 5px 3px 14px; padding: 10px; border: 1px solid var(--border-soft); border-radius: 10px; background: var(--bg); }
+    .project small { display: block; color: var(--meta); margin-bottom: 3px; }
+    .nav-label { padding: 10px 10px 6px; color: var(--meta); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+    .nav-item { width: 100%; height: 36px; padding: 0 10px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); text-align: left; }
+    .nav-item.active { background: var(--bg); color: var(--fg); box-shadow: inset 0 0 0 1px var(--border-soft); }
+    .nav-icon { width: 16px; text-align: center; color: var(--meta); }
+    .main { min-width: 0; background: var(--bg); }
+    .task-head { min-height: 62px; padding: 10px 22px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-soft); }
+    .back, .icon-btn { width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 1px solid var(--border-soft); border-radius: 8px; background: transparent; }
+    .title-wrap { min-width: 0; flex: 1; }
+    .title-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 17px; font-weight: 650; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; min-height: 23px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge.running { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .badge.stage { color: var(--purple); background: color-mix(in srgb, var(--purple) 12%, transparent); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent); }
+    .task-id { margin-top: 4px; color: var(--meta); font: 11px var(--mono); }
+    .head-action { height: 32px; padding: 0 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: transparent; color: var(--muted); }
+    .tabs { height: 46px; display: flex; align-items: end; gap: 23px; padding: 0 24px; border-bottom: 1px solid var(--border-soft); }
+    .tab { height: 45px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); }
+    .tab.active { color: var(--fg); border-color: var(--accent); font-weight: 600; }
+    .content { max-width: 1440px; margin: 0 auto; padding: 22px 24px 34px; }
+    .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .section-head h2 { margin: 0 0 5px; font-size: 19px; }
+    .section-head p { margin: 0; color: var(--muted); }
+    .live { display: flex; align-items: center; gap: 8px; color: var(--success); font-size: 12px; }
+    .live .dot { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(128px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .metric { min-height: 100px; padding: 15px; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--surface-2); }
+    .metric-label { color: var(--muted); font-size: 12px; }
+    .metric-value { margin: 8px 0 5px; font-size: 23px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+    .metric-note { color: var(--meta); font-size: 11px; }
+    .metric-note strong { color: var(--fg-2); font-weight: 600; }
+    .panel { border: 1px solid var(--border-soft); border-radius: 13px; background: var(--bg); overflow: hidden; }
+    .panel-head { min-height: 54px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-soft); }
+    .panel-title { font-weight: 650; }
+    .panel-sub { margin-left: 7px; color: var(--meta); font-size: 11px; font-weight: 400; }
+    .controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    select, .control { height: 30px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .control { display: inline-flex; align-items: center; gap: 6px; }
+    .control.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .gantt-wrap { overflow-x: auto; }
+    .gantt { min-width: 900px; --label: 155px; }
+    .axis, .gantt-row { display: grid; grid-template-columns: var(--label) minmax(720px, 1fr); }
+    .axis { height: 38px; background: var(--surface-2); border-bottom: 1px solid var(--border-soft); }
+    .axis-label { padding: 12px 14px; color: var(--meta); font-size: 11px; }
+    .ticks { position: relative; }
+    .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border-soft); }
+    .tick span { position: absolute; top: 11px; left: 6px; color: var(--meta); font-size: 10px; white-space: nowrap; }
+    .round-row { min-height: 34px; padding: 0 14px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-bottom: 1px solid var(--border-soft); font-weight: 650; }
+    .round-note { color: var(--meta); font-size: 11px; font-weight: 400; }
+    .gantt-row { min-height: 48px; border-bottom: 1px solid var(--border-soft); }
+    .gantt-row:last-child { border-bottom: 0; }
+    .lane-label { padding: 8px 14px; display: flex; align-items: center; gap: 9px; }
+    .state-icon { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; font-size: 10px; color: var(--meta); background: var(--surface); }
+    .state-icon.done { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+    .state-icon.fail { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+    .state-icon.run { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .lane-name { min-width: 0; }
+    .lane-name strong { display: block; font-size: 12px; font-weight: 600; }
+    .lane-name small { color: var(--meta); font-size: 10px; }
+    .timeline { position: relative; background: repeating-linear-gradient(to right, transparent 0, transparent calc(12.5% - 1px), var(--border-soft) calc(12.5% - 1px), var(--border-soft) 12.5%); }
+    .bar { position: absolute; top: 11px; height: 26px; min-width: 18px; padding: 0 9px; display: flex; align-items: center; gap: 7px; overflow: hidden; border: 0; border-radius: 6px; color: #fff; font-size: 10px; white-space: nowrap; transition: transform .15s, filter .15s; }
+    .bar:hover, .bar:focus { transform: translateY(-1px); filter: brightness(1.07); outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 2px; }
+    .bar.done { background: var(--success); }
+    .bar.failed { background: var(--danger); }
+    .bar.running { background: var(--accent); }
+    .bar.review { color: var(--fg); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 40%, var(--bg)) 0 6px, color-mix(in srgb, var(--warn) 16%, var(--bg)) 6px 12px); border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--border)); }
+    .bar.wait { color: var(--muted); background: var(--surface); border: 1px dashed var(--border); }
+    .bar.reused { color: var(--muted); background: var(--surface); border: 1px solid var(--border); }
+    .bar.running::after { content: ""; width: 12px; height: 12px; flex: 0 0 auto; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .now-line { position: absolute; z-index: 3; top: 0; bottom: 0; left: 94%; width: 1px; background: var(--danger); pointer-events: none; }
+    .now-line::before { content: "现在"; position: absolute; top: -18px; right: -12px; color: var(--danger); font-size: 9px; }
+    .bottom-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 12px; margin-top: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border-soft); font-size: 12px; }
+    th { color: var(--meta); font-weight: 500; background: var(--surface-2); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: var(--surface-2); }
+    .status-text { font-size: 11px; font-weight: 600; }
+    .status-text.done { color: var(--success); } .status-text.run { color: var(--accent); } .status-text.fail { color: var(--danger); }
+    .event-list { padding: 4px 14px 8px; }
+    .event { display: grid; grid-template-columns: 54px 10px 1fr; gap: 8px; padding: 11px 0; border-bottom: 1px solid var(--border-soft); }
+    .event:last-child { border-bottom: 0; }
+    .event time { color: var(--meta); font: 10px var(--mono); padding-top: 2px; }
+    .event-marker { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: var(--success); }
+    .event-copy strong { display: block; font-size: 12px; font-weight: 600; }
+    .event-copy span { display: block; margin-top: 3px; color: var(--meta); font-size: 10px; }
+    .drawer-backdrop { position: fixed; inset: 0; z-index: 20; display: none; background: rgba(0,0,0,.2); }
+    .drawer-backdrop.open { display: block; }
+    .drawer { position: absolute; top: 0; right: 0; width: min(390px, 100%); height: 100%; padding: 18px; overflow-y: auto; background: var(--bg); box-shadow: var(--shadow); }
+    .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 15px; border-bottom: 1px solid var(--border-soft); }
+    .drawer-head h3 { margin: 0 0 6px; font-size: 16px; }
+    .drawer-status { color: var(--accent); font-size: 11px; }
+    .detail-grid { display: grid; grid-template-columns: 98px 1fr; gap: 12px; padding: 17px 0; border-bottom: 1px solid var(--border-soft); }
+    .detail-grid dt { color: var(--meta); } .detail-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .usage-box { margin: 16px 0; padding: 14px; border-radius: 10px; background: var(--surface); }
+    .usage-total { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 650; }
+    .usage-row { display: flex; justify-content: space-between; padding: 5px 0; color: var(--muted); font-size: 12px; }
+    .drawer-actions { display: grid; gap: 8px; }
+    .primary, .secondary { min-height: 38px; border-radius: 8px; }
+    .primary { border: 0; background: var(--fg); color: var(--bg); }
+    .secondary { border: 1px solid var(--border); background: transparent; }
+    .prototype-switch { position: fixed; right: 14px; bottom: 14px; z-index: 8; display: flex; gap: 6px; padding: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); box-shadow: var(--shadow); }
+    .prototype-switch a { padding: 7px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 11px; }
+    .prototype-switch a.active { background: var(--fg); color: var(--bg); }
+    @media (max-width: 1040px) { .metrics { grid-template-columns: repeat(3, 1fr); } .bottom-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) {
+      .app { display: block; } .sidebar { display: none; } .task-head { padding: 9px 12px; } .head-action { display: none; }
+      .tabs { padding: 0 14px; } .content { padding: 16px 12px 80px; } .metrics { grid-template-columns: repeat(2, 1fr); }
+      .metric:last-child { grid-column: 1 / -1; } .section-head { align-items: center; }
+      .panel-head { align-items: flex-start; flex-direction: column; } .gantt { --label: 122px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">W</span> WorkStep</div>
+      <div class="project"><small>当前项目</small><strong>WorkStep</strong></div>
+      <div class="nav-label">工作区</div>
+      <button class="nav-item active"><span class="nav-icon">▦</span>任务</button>
+      <button class="nav-item"><span class="nav-icon">◇</span>流程画布</button>
+      <button class="nav-item"><span class="nav-icon">⌁</span>数据统计</button>
+      <div class="nav-label">系统</div>
+      <button class="nav-item"><span class="nav-icon">⚙</span>设置</button>
+    </aside>
+    <main class="main">
+      <header class="task-head">
+        <button class="back" aria-label="返回">←</button>
+        <div class="title-wrap">
+          <div class="title-line">
+            <h1>实现用户登录与会话管理</h1>
+            <span class="badge stage">前端开发</span>
+            <span class="badge running"><span class="dot"></span>运行中</span>
+          </div>
+          <div class="task-id">TASK-7F3A91 · 创建于今天 09:58</div>
+        </div>
+        <button class="head-action">分享</button>
+        <button class="icon-btn" id="themeButton" aria-label="切换主题">◐</button>
+      </header>
+      <nav class="tabs" aria-label="任务详情页签">
+        <button class="tab">任务详情</button>
+        <button class="tab active">执行分析</button>
+      </nav>
+      <div class="content">
+        <div class="section-head">
+          <div><h2>执行分析</h2><p>查看任务每轮执行的时间、用量、费用和完成节点</p></div>
+          <div class="live"><span class="dot"></span><span>实时更新</span></div>
+        </div>
+
+        <section class="metrics" aria-label="执行摘要">
+          <div class="metric"><div class="metric-label">总耗时</div><div class="metric-value" id="elapsed">18m 42s</div><div class="metric-note"><strong>当前运行中</strong> · 并行节省 6m</div></div>
+          <div class="metric"><div class="metric-label">Token 总量</div><div class="metric-value" id="tokens">128.6K</div><div class="metric-note">统计覆盖率 <strong>92%</strong></div></div>
+          <div class="metric"><div class="metric-label">消耗金额</div><div class="metric-value">¥1.84</div><div class="metric-note">其中 <strong>36%</strong> 按配置估算</div></div>
+          <div class="metric"><div class="metric-label">模型调用</div><div class="metric-value">7 次</div><div class="metric-note">Codex SDK · Claude</div></div>
+          <div class="metric"><div class="metric-label">重试</div><div class="metric-value">1 次</div><div class="metric-note"><strong>前端开发</strong>审核退回</div></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">执行时间线<span class="panel-sub">点击执行条查看详情</span></div>
+            <div class="controls">
+              <select id="timeMode" aria-label="时间显示方式"><option value="relative">相对时间</option><option value="clock">实际时间</option></select>
+              <button class="control active" data-round="all">全部轮次</button>
+              <button class="control" data-round="1">第 1 轮</button>
+              <button class="control" data-round="2">第 2 轮</button>
+            </div>
+          </div>
+          <div class="gantt-wrap">
+            <div class="gantt" id="gantt">
+              <div class="axis"><div class="axis-label">阶段 / 尝试</div><div class="ticks" id="ticks"></div></div>
+              <div class="round-row" data-round-row="1">第 1 轮 <span class="round-note">09:58–10:15 · 自动审核退回</span></div>
+              <div class="gantt-row" data-round-row="1"><div class="lane-label"><span class="state-icon done">✓</span><span class="lane-name"><strong>需求分析</strong><small>3m12s</small></span></div><div class="timeline"><button class="bar done" style="left:2%;width:14%" data-stage="需求分析" data-status="已完成" data-duration="3m12s" data-token="12,420" data-cost="¥0.18" data-engine="Claude Code" data-model="claude-sonnet-4.5">完成</button></div></div>
+              <div class="gantt-row" data-round-row="1"><div class="lane-label"><span class="state-icon done">✓</span><span class="lane-name"><strong>UI 设计</strong><small>4m08s</small></span></div><div class="timeline"><button class="bar done" style="left:17%;width:18%" data-stage="UI 设计" data-status="已完成" data-duration="4m08s" data-token="21,640" data-cost="¥0.31" data-engine="Codex SDK" data-model="gpt-5.6">完成</button></div></div>
+              <div class="gantt-row" data-round-row="1"><div class="lane-label"><span class="state-icon done">✓</span><span class="lane-name"><strong>后端开发</strong><small>6m21s</small></span></div><div class="timeline"><button class="bar done" style="left:36%;width:28%" data-stage="后端开发" data-status="已完成" data-duration="6m21s" data-token="38,210" data-cost="¥0.52" data-engine="Codex SDK" data-model="gpt-5.6">完成 · 6m21s</button></div></div>
+              <div class="gantt-row" data-round-row="1"><div class="lane-label"><span class="state-icon fail">×</span><span class="lane-name"><strong>前端开发</strong><small>第 1 次 · 失败</small></span></div><div class="timeline"><button class="bar failed" style="left:36%;width:14%" data-stage="前端开发" data-status="审核未通过" data-duration="3m06s" data-token="16,880" data-cost="¥0.25" data-engine="Codex SDK" data-model="gpt-5.6">失败</button></div></div>
+              <div class="gantt-row" data-round-row="1"><div class="lane-label"><span class="state-icon fail">!</span><span class="lane-name"><strong>自动审核</strong><small>退回修改</small></span></div><div class="timeline"><button class="bar review" style="left:51%;width:7%" data-stage="自动审核" data-status="未通过" data-duration="1m02s" data-token="7,310" data-cost="¥0.11" data-engine="Claude Code" data-model="claude-sonnet-4.5">退回</button></div></div>
+              <div class="round-row" data-round-row="2">第 2 轮 <span class="round-note">10:16–现在 · 从前端开发重跑</span></div>
+              <div class="gantt-row" data-round-row="2"><div class="lane-label"><span class="state-icon run">●</span><span class="lane-name"><strong>前端开发</strong><small>第 2 次 · 运行中</small></span></div><div class="timeline"><button class="bar running" style="left:61%;width:31%" data-stage="前端开发" data-status="运行中" data-duration="2m34s" data-token="31,420" data-cost="¥0.46" data-engine="Codex SDK" data-model="gpt-5.6">运行中 · npm run test</button><span class="now-line"></span></div></div>
+              <div class="gantt-row" data-round-row="2"><div class="lane-label"><span class="state-icon">○</span><span class="lane-name"><strong>人工审核</strong><small>等待上游</small></span></div><div class="timeline"><button class="bar wait" style="left:92%;width:7%" data-stage="人工审核" data-status="等待中" data-duration="—" data-token="—" data-cost="—" data-engine="—" data-model="—">等待</button></div></div>
+            </div>
+          </div>
+        </section>
+
+        <div class="bottom-grid">
+          <section class="panel">
+            <div class="panel-head"><div class="panel-title">阶段消耗</div><span class="panel-sub">按 Token 排序</span></div>
+            <div style="overflow-x:auto"><table><thead><tr><th>阶段</th><th>状态</th><th class="num">执行</th><th class="num">总耗时</th><th class="num">Token</th><th class="num">费用</th></tr></thead><tbody>
+              <tr data-open-stage="前端开发"><td>前端开发</td><td><span class="status-text run">运行中</span></td><td class="num">2</td><td class="num">5m40s</td><td class="num">48.3K</td><td class="num">¥0.71</td></tr>
+              <tr data-open-stage="后端开发"><td>后端开发</td><td><span class="status-text done">完成</span></td><td class="num">1</td><td class="num">6m21s</td><td class="num">38.2K</td><td class="num">¥0.52</td></tr>
+              <tr data-open-stage="UI 设计"><td>UI 设计</td><td><span class="status-text done">完成</span></td><td class="num">1</td><td class="num">4m08s</td><td class="num">21.6K</td><td class="num">¥0.31</td></tr>
+              <tr data-open-stage="需求分析"><td>需求分析</td><td><span class="status-text done">完成</span></td><td class="num">1</td><td class="num">3m12s</td><td class="num">12.4K</td><td class="num">¥0.18</td></tr>
+            </tbody></table></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div class="panel-title">完成记录</div><button class="control" id="toggleEvents">显示全部</button></div>
+            <div class="event-list" id="eventList">
+              <div class="event"><time>10:16:08</time><span class="event-marker" style="background:var(--accent)"></span><div class="event-copy"><strong>前端开发重新执行</strong><span>第 2 轮 · 根据审核意见修复错误状态</span></div></div>
+              <div class="event"><time>10:15:06</time><span class="event-marker" style="background:var(--danger)"></span><div class="event-copy"><strong>自动审核未通过</strong><span>缺少登录失败后的错误提示处理</span></div></div>
+              <div class="event"><time>10:14:32</time><span class="event-marker"></span><div class="event-copy"><strong>后端开发完成</strong><span>6m21s · 38.2K Token · ¥0.52</span></div></div>
+              <div class="event extra" hidden><time>10:11:17</time><span class="event-marker"></span><div class="event-copy"><strong>UI 设计完成</strong><span>4m08s · 21.6K Token · 3 个产物</span></div></div>
+              <div class="event extra" hidden><time>10:07:04</time><span class="event-marker"></span><div class="event-copy"><strong>需求分析完成</strong><span>3m12s · 12.4K Token · 1 个产物</span></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop" aria-hidden="true">
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="drawer-head"><div><h3 id="drawerTitle">前端开发 · 第 2 轮</h3><div class="drawer-status" id="drawerStatus">● 运行中</div></div><button class="icon-btn" id="closeDrawer" aria-label="关闭">×</button></div>
+      <dl class="detail-grid"><dt>开始时间</dt><dd>今天 10:16:08</dd><dt>执行耗时</dt><dd id="drawerDuration">2m34s</dd><dt>引擎</dt><dd id="drawerEngine">Codex SDK</dd><dt>模型</dt><dd id="drawerModel">gpt-5.6</dd><dt>执行轮次</dt><dd>第 2 轮 / 第 1 次尝试</dd></dl>
+      <div class="usage-box"><div class="usage-total"><span>Token 用量</span><span id="drawerToken">31,420</span></div><div class="usage-row"><span>输入</span><span>24,180</span></div><div class="usage-row"><span>输出</span><span>7,240</span></div><div class="usage-row"><span>缓存读取</span><span>8,320</span></div><div class="usage-row"><span>费用</span><strong id="drawerCost">¥0.46</strong></div><div class="usage-row"><span>费用来源</span><span>供应商上报</span></div></div>
+      <div class="drawer-actions"><button class="primary">查看对应对话</button><button class="secondary">查看过程追踪</button><button class="secondary">查看 4 个产物</button></div>
+    </aside>
+  </div>
+
+  <div class="prototype-switch"><a class="active" href="task-execution-analysis.html">方案 A · 分析</a><a href="task-execution-monitor.html">方案 B · 监控</a></div>
+  <script>
+    const root = document.documentElement;
+    const themeButton = document.getElementById('themeButton');
+    themeButton.addEventListener('click', () => {
+      root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    });
+
+    const relativeTicks = ['0m', '3m', '6m', '9m', '12m', '15m', '18m', '21m'];
+    const clockTicks = ['09:58', '10:01', '10:04', '10:07', '10:10', '10:13', '10:16', '10:19'];
+    function renderTicks(values) {
+      document.getElementById('ticks').innerHTML = values.map((value, index) =>
+        `<i class="tick" style="left:${index * 12.5}%"><span>${value}</span></i>`
+      ).join('');
+    }
+    renderTicks(relativeTicks);
+    document.getElementById('timeMode').addEventListener('change', event => renderTicks(event.target.value === 'clock' ? clockTicks : relativeTicks));
+
+    document.querySelectorAll('[data-round]').forEach(button => button.addEventListener('click', () => {
+      document.querySelectorAll('[data-round]').forEach(item => item.classList.toggle('active', item === button));
+      const round = button.dataset.round;
+      document.querySelectorAll('[data-round-row]').forEach(row => row.hidden = round !== 'all' && row.dataset.roundRow !== round);
+    }));
+
+    const backdrop = document.getElementById('drawerBackdrop');
+    function openDrawer(data) {
+      document.getElementById('drawerTitle').textContent = `${data.stage} · ${data.stage === '前端开发' ? '第 2 轮' : '第 1 轮'}`;
+      document.getElementById('drawerStatus').textContent = `● ${data.status}`;
+      document.getElementById('drawerDuration').textContent = data.duration;
+      document.getElementById('drawerEngine').textContent = data.engine;
+      document.getElementById('drawerModel').textContent = data.model;
+      document.getElementById('drawerToken').textContent = data.token;
+      document.getElementById('drawerCost').textContent = data.cost;
+      backdrop.classList.add('open'); backdrop.setAttribute('aria-hidden', 'false');
+      document.getElementById('closeDrawer').focus();
+    }
+    document.querySelectorAll('.bar').forEach(bar => bar.addEventListener('click', () => openDrawer(bar.dataset)));
+    document.querySelectorAll('[data-open-stage]').forEach(row => row.addEventListener('click', () => {
+      const bar = [...document.querySelectorAll('.bar')].reverse().find(item => item.dataset.stage === row.dataset.openStage);
+      if (bar) openDrawer(bar.dataset);
+    }));
+    function closeDrawer() { backdrop.classList.remove('open'); backdrop.setAttribute('aria-hidden', 'true'); }
+    document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+    backdrop.addEventListener('click', event => { if (event.target === backdrop) closeDrawer(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeDrawer(); });
+
+    document.getElementById('toggleEvents').addEventListener('click', event => {
+      const showing = event.currentTarget.dataset.showing === 'true';
+      document.querySelectorAll('.event.extra').forEach(item => item.hidden = showing);
+      event.currentTarget.dataset.showing = String(!showing);
+      event.currentTarget.textContent = showing ? '显示全部' : '收起';
+    });
+
+    let seconds = 18 * 60 + 42, tokenValue = 128600;
+    setInterval(() => {
+      seconds += 1; tokenValue += Math.floor(Math.random() * 8);
+      document.getElementById('elapsed').textContent = `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+      document.getElementById('tokens').textContent = `${(tokenValue / 1000).toFixed(1)}K`;
+    }, 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "@workstep/wechat-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WorkStep WeChat channel bridge: JSONL sidecar over wechaty",
+  "bin": {
+    "workstep-wechat-bridge": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "postinstall": "echo 'optional: npm i puppet-wechat4'"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "wechaty": "^1.21.0"
+  },
+  "devDependencies": {
+    "puppet-wechat4": "^1.19.0"
+  }
+}

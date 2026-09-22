@@ -1,0 +1,186 @@
+{
+  "id": "writing-workflow",
+  "default": true,
+  "name": "写作流程",
+  "description": "选题 → 大纲 → 初稿 → 审校 → 排版",
+  "steps": {
+    "nodes": [
+      {
+        "id": 1,
+        "type": "topic",
+        "title": "选题",
+        "position": {
+          "x": 100,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据目标读者和主题方向，确定文章选题和核心观点。",
+        "inputs": [
+          {
+            "name": "主题方向",
+            "type": "文档",
+            "outputs": [
+              {
+                "name": "选题报告",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "选题报告",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "type": "outline",
+        "title": "大纲",
+        "position": {
+          "x": 380,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据选题报告，撰写详细文章大纲，包括各章节要点。",
+        "inputs": [
+          {
+            "name": "选题报告",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "文章大纲",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "文章大纲",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "type": "draft",
+        "title": "初稿",
+        "position": {
+          "x": 660,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "根据文章大纲，撰写完整初稿。",
+        "inputs": [
+          {
+            "name": "文章大纲",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "文章初稿",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "文章初稿",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "type": "review",
+        "title": "审校",
+        "position": {
+          "x": 940,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "审校文章初稿，修正错误，优化表达。",
+        "inputs": [
+          {
+            "name": "文章初稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "审校稿",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "审校稿",
+            "type": "Markdown"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "type": "format",
+        "title": "排版",
+        "position": {
+          "x": 1220,
+          "y": 200
+        },
+        "engine": "claude",
+        "model": "",
+        "prompt": "对审校稿进行最终排版，输出发布版本。",
+        "inputs": [
+          {
+            "name": "审校稿",
+            "type": "Markdown",
+            "outputs": [
+              {
+                "name": "发布版",
+                "type": "Markdown"
+              }
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "发布版",
+            "type": "Markdown"
+          }
+        ]
+      }
+    ],
+    "connections": [
+      {
+        "from": 1,
+        "fromPort": 0,
+        "to": 2,
+        "toPort": 0
+      },
+      {
+        "from": 2,
+        "fromPort": 0,
+        "to": 3,
+        "toPort": 0
+      },
+      {
+        "from": 3,
+        "fromPort": 0,
+        "to": 4,
+        "toPort": 0
+      },
+      {
+        "from": 4,
+        "fromPort": 0,
+        "to": 5,
+        "toPort": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+.git
+.gitignore
+.dockerignore
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+.venv
+**/.venv
+.workstep
+**/.workstep
+.pids
+logs
+*.db
+.DS_Store
