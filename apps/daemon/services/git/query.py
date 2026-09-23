@@ -63,8 +63,8 @@ class GitQueries:
     async def identity(self, id):
         directory = await self.directory(id)
         path = directory['path']
-        name, _ = await self.command(path, 'config', '--local', '--get', 'user.name', check=False)
-        email, _ = await self.command(path, 'config', '--local', '--get', 'user.email', check=False)
+        name, _ = await self.command(path, 'config', '--get', 'user.name', check=False)
+        email, _ = await self.command(path, 'config', '--get', 'user.email', check=False)
         return {'name': text(name).strip(), 'email': text(email).strip()}
 
     async def revision(self, path, ref=None):

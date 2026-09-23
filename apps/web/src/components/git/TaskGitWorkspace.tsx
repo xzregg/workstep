@@ -6,6 +6,7 @@ import Button from '../Button'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../Icon'
 import GitWorktreePanel from './GitWorktreePanel'
+import GitRepositorySettings from './GitRepositorySettings'
 import { clampGitTreeWidth, useGitTreeResize } from './useGitTreeResize'
 import './git.css'
 
@@ -28,6 +29,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   const [removing, setRemoving] = useState('')
   const [removeBusy, setRemoveBusy] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [settings, setSettings] = useState(false)
   const [deleteWorkspaceOpen, setDeleteWorkspaceOpen] = useState(false)
   const [deleteWorkspaceBusy, setDeleteWorkspaceBusy] = useState(false)
   const { treeWidth, startResize, resizeWithKeyboard, resetResize } = useGitTreeResize()
@@ -78,6 +80,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
   }, [sourceTreeId, currentSourceBranch])
 
   const selectedTree = workspace?.worktrees.find(tree => tree.id === selected) ?? workspace?.worktrees[0]
+  const settingsId = selectedTree?.id ?? repositories.flatMap(repo => repo.worktrees).find(tree => tree.available)?.id
 
   async function refresh() {
     await scan()
@@ -145,6 +148,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
       <small title={workspace?.path}>{workspace?.path}</small>
       <span className="git-grow" />
       {available.length > 0 && <Button size="sm" onClick={() => setShowAdd(value => !value)}>{t('git.taskAddRepository')}</Button>}
+      {settingsId && <Button className="git-settings-toggle" size="sm" aria-label={t('git.settings')} aria-expanded={settings} onClick={() => setSettings(value => !value)}><Icon name="settings" size={14} /><span>{t('git.settings')}</span></Button>}
       <Button className="task-git-delete-workspace" size="sm" variant="danger" disabled={loading} onClick={() => setDeleteWorkspaceOpen(true)}>{t('git.taskDeleteWorkspace')}</Button>
       <Button size="sm" loading={loading} onClick={() => void refresh()}>{t('git.refresh')}</Button>
     </header>
@@ -193,7 +197,7 @@ export default function TaskGitWorkspace({ projectId, taskId }: { projectId: str
           <Button variant="primary" loading={adding} disabled={!alias || !baseRef || !branchName || branchLoading} onClick={() => void add()}>{t('git.taskCreateWorktree')}</Button>
         </>}
       </div>}
-      {workspace?.worktrees.length ? <div className="git-page-body">
+      {settings && settingsId ? <main className="git-settings"><GitRepositorySettings key={settingsId} id={settingsId} /></main> : workspace?.worktrees.length ? <div className="git-page-body">
         <aside className="task-git-tree" style={{ width: treeWidth, flexBasis: treeWidth }}>
           {workspace.worktrees.map(tree => <div className="task-git-tree-row" key={tree.id}>
             <button type="button" className={tree.id === selectedTree?.id ? 'selected' : ''} onClick={() => setSelected(tree.id)} title={tree.path}>

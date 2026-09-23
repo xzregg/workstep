@@ -252,6 +252,10 @@ class GitCredentialRequest(GitAuth):
     remote: str = Field(min_length=1, max_length=1024)
 
 
+class GitHostCredentialRequest(GitAuth):
+    host: str = Field(min_length=1, max_length=253)
+
+
 class RemoteRequest(BaseModel):
     remote: str = Field(min_length=1, max_length=1024)
 
@@ -259,6 +263,21 @@ class RemoteRequest(BaseModel):
 @router.get('/worktrees/{id}/credentials')
 async def credentials(id: str):
     return await result(git_service.credentials(id))
+
+
+@router.get('/credentials')
+async def credential_hosts():
+    return await result(git_service.credential_hosts())
+
+
+@router.put('/credentials')
+async def save_host_credentials(body: GitHostCredentialRequest):
+    return await result(git_service.save_host_credentials(body.host, body.username, body.token))
+
+
+@router.delete('/credentials/{host}')
+async def clear_host_credentials(host: str):
+    return await result(git_service.clear_host_credentials(host))
 
 
 @router.put('/worktrees/{id}/credentials')

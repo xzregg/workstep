@@ -1,6 +1,7 @@
 """Bounded, asynchronous Git execution. No shell, pager or credential prompts."""
 import asyncio
 import os
+import re
 import signal
 import shutil
 import sys
@@ -12,6 +13,13 @@ class GitError(Exception):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+def explain_auth_error(message: str) -> str:
+    match = re.search(r"could not read (?:Username|Password) for 'https://([^/']+)", message)
+    if match:
+        return f'远程仓库 {match.group(1)} 需要登录，请在 Git 设置中填写 HTTPS 主机、登录账号和访问令牌后重试。'
+    return message
 
 
 def _askpass_script():
@@ -96,7 +104,7 @@ async def run_git(path, *args: str, stdin: bytes | None = None, check=True, time
         await asyncio.to_thread(shutil.rmtree, askpass_dir)
     if code and check:
         message = stderr.decode('utf-8', 'replace').replace(auth['token'], '[已隐藏]') if auth else stderr.decode('utf-8', 'replace')
-        raise GitError(message.strip() or 'Git 操作失败。')
+        raise GitError(explain_auth_error(message.strip()) or 'Git 操作失败。')
     return stdout, code
 
 

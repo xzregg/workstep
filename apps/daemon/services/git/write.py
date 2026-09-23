@@ -104,6 +104,31 @@ class GitWrites:
             return None
         return parsed.hostname.lower() + (f':{parsed.port}' if parsed.port else '')
 
+    @classmethod
+    def normalize_credential_host(cls, host):
+        host = host.strip()
+        if not re.fullmatch(r'[A-Za-z0-9.-]+(?::[0-9]{1,5})?', host):
+            raise GitError('请输入 HTTPS 远程地址中的主机名。')
+        try:
+            normalized = cls.credential_host('https://' + host)
+        except ValueError as exc:
+            raise GitError('HTTPS 主机名无效。') from exc
+        if not normalized:
+            raise GitError('HTTPS 主机名无效。')
+        return normalized
+
+    async def credential_hosts(self):
+        return {'hosts': sorted(self.remote_credentials)}
+
+    async def save_host_credentials(self, host, username, token):
+        host = self.normalize_credential_host(host)
+        self.remote_credentials[host] = {'username': username, 'token': token}
+        return await self.credential_hosts()
+
+    async def clear_host_credentials(self, host):
+        self.remote_credentials.pop(self.normalize_credential_host(host), None)
+        return await self.credential_hosts()
+
     async def remote_url(self, path, remote, *, push=False):
         args = ('remote', 'get-url', '--push', '--', remote) if push else ('remote', 'get-url', '--', remote)
         url, _ = await self.command(path, *args)
@@ -112,8 +137,9 @@ class GitWrites:
     async def credentials(self, id):
         remotes = await self.remotes(id)
         return {'remotes': [{'name': item['name'], 'url': item['url'],
+            'push_url': item['push_url'],
             'configured': self.credential_host(item['url']) in self.remote_credentials}
-            for item in remotes['remotes']]}
+            for item in remotes['remotes']], 'hosts': sorted(self.remote_credentials)}
 
     async def save_credentials(self, id, remote, username, token):
         directory = await self.directory(id)
@@ -142,7 +168,6 @@ class GitWrites:
         async with self.locks.setdefault(directory['common_dir'], asyncio.Lock()):
             await self.command(directory['path'], 'config', '--local', 'user.name', name)
             await self.command(directory['path'], 'config', '--local', 'user.email', email)
-            await self.command(directory['path'], 'config', '--local', 'workstep.sharedIdentity', 'true')
             await self.command(directory['path'], 'config', '--local', 'extensions.worktreeConfig', 'true')
             repository = await self.discover_repository(Path(directory['path']))
             for worktree in repository['worktrees']:
